@@ -12,16 +12,6 @@ import {
 } from '@/lib/telecaller/crmQuote';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 
-const EDITABLE_STATUSES = new Set([
-  'NEW',
-  'CONTACTED',
-  'INCOMPLETE',
-  'ASSIGNED',
-  'VALIDATED',
-  'PENDING',
-  'IN_PROGRESS',
-]);
-
 const LEAD_SELECT_FULL =
   'id, lead_number, status, customer_name, customer_phone, customer_id, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, service_type, service_type_ids, subservice_ids, estimated_amount, discount_amount, coupon_code, preferred_slot_start, preferred_slot_end, pickup_required, pickup_address, customer_address, city, city_id, pincode, workshop_id, coupon_meta';
 
@@ -114,11 +104,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (!existingLead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
-    }
-
-    const status = String((existingLead as any).status || (readableLead as any).status || '');
-    if (!EDITABLE_STATUSES.has(status)) {
-      return NextResponse.json({ error: `Cannot edit lead with status: ${status}` }, { status: 400 });
     }
 
     const body = await request.json().catch(() => ({}));

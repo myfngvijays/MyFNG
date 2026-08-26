@@ -15,6 +15,7 @@ import {
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 export default function LeadManagerLeadsScreen({ navigation, route }: any) {
@@ -28,6 +29,9 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
   const [sortBy, setSortBy] = useState<'priority' | 'sla' | 'created'>('priority');
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [sourceChip, setSourceChip] = useState('ALL');
+  const [couponChip, setCouponChip] = useState('ALL');
+  const [dateChip, setDateChip] = useState('last_7_days');
 
   const filters = [
     { value: 'all', label: 'All', icon: 'format-list-bulleted' },
@@ -42,7 +46,7 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
 
   useEffect(() => {
     fetchLeads();
-  }, [activeFilter, sortBy]);
+  }, [activeFilter, sortBy, sourceChip, couponChip, dateChip]);
 
   // Handle hardware back button
   useEffect(() => {
@@ -59,79 +63,25 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
 
   const fetchLeads = async () => {
     try {
-      let query = supabase
-        .from('service_leads')
-        .select(`
-          *,
-          workshop:workshops(name, city),
-          assigned_telecaller:assigned_telecaller_id(full_name),
-          city_info:city_id(name)
-        `);
-
-      // Apply filters
-      switch (activeFilter) {
-        case 'NEW':
-          query = query.eq('status', 'NEW').is('workshop_id', null);
-          break;
-        case 'INCOMPLETE':
-          query = query.eq('is_incomplete', true);
-          break;
-        case 'NEED_ASSIGNMENT':
-          query = query
-            .in('status', ['NEW', 'VALIDATED'])
-            .is('workshop_id', null)
-            .eq('is_incomplete', false);
-          break;
-        case 'WORKSHOP_REJECTED':
-          query = query.eq('status', 'REJECTED');
-          break;
-        case 'TELECALLER_PENDING':
-          query = query
-            .eq('follow_up_required', true)
-            .not('assigned_telecaller_id', 'is', null);
-          break;
-        case 'SLA_AT_RISK':
-          query = query
-            .eq('sla_state', 'AT_RISK')
-            .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)');
-          break;
-        case 'SLA_BREACHED':
-          query = query
-            .eq('sla_state', 'BREACHED')
-            .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)');
-          break;
-        default:
-          query = query.not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)');
+      const params = new URLSearchParams({ limit: '100', page: '1' });
+      if (searchTerm.trim()) params.set('q', searchTerm.trim());
+      if (sourceChip !== 'ALL') params.set('source', sourceChip);
+      if (couponChip !== 'ALL') params.set('has_coupon', couponChip);
+      if (activeFilter === 'NEW') params.set('filter', 'new');
+      else if (activeFilter === 'INCOMPLETE') params.set('filter', 'incomplete');
+      else if (activeFilter === 'WORKSHOP_REJECTED') params.set('filter', 'lost');
+      else if (activeFilter === 'TELECALLER_PENDING') params.set('filter', 'follow_up');
+      if (dateChip !== 'all_time') {
+        const end = new Date();
+        const start = new Date();
+        if (dateChip === 'today') start.setHours(0, 0, 0, 0);
+        else if (dateChip === 'last_7_days') start.setDate(start.getDate() - 6);
+        else if (dateChip === 'last_30_days') start.setDate(start.getDate() - 29);
+        params.set('from', start.toISOString());
+        params.set('to', end.toISOString());
       }
-
-      // Apply search
-      if (searchTerm) {
-        query = query.or(
-          `customer_name.ilike.%${searchTerm}%,` +
-          `customer_phone.ilike.%${searchTerm}%,` +
-          `lead_number.ilike.%${searchTerm}%,` +
-          `vehicle_number.ilike.%${searchTerm}%`
-        );
-      }
-
-      // Apply sorting
-      switch (sortBy) {
-        case 'priority':
-          query = query.order('lead_priority', { ascending: false });
-          break;
-        case 'sla':
-          query = query.order('sla_expires_at', { ascending: true });
-          break;
-        case 'created':
-          query = query.order('created_at', { ascending: false });
-          break;
-      }
-
-      const { data, error } = await query.limit(100);
-
-      if (error) throw error;
-      setLeads(data || []);
-
+      const data = await apiFetch<any>(`/api/telecaller/crm/leads?${params.toString()}`);
+      setLeads(Array.isArray(data?.leads) ? data.leads : []);
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
@@ -464,6 +414,8 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
           placeholder="Search leads..."
           value={searchTerm}
           onChangeText={setSearchTerm}
+          onSubmitEditing={() => fetchLeads()}
+          returnKeyType="search"
           placeholderTextColor={COLORS.textSecondary}
         />
         {searchTerm.length > 0 && (
@@ -472,6 +424,49 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
           </TouchableOpacity>
         )}
       </View>
+
+      {(
+        [
+          { value: dateChip, set: setDateChip, opts: [
+            { id: 'today', label: 'Today' },
+            { id: 'last_7_days', label: '7 days' },
+            { id: 'last_30_days', label: '30 days' },
+            { id: 'all_time', label: 'All time' },
+          ] },
+          { value: sourceChip, set: setSourceChip, opts: [
+            { id: 'ALL', label: 'All sources' },
+            { id: 'APP', label: 'App' },
+            { id: 'WEBSITE', label: 'Website' },
+            { id: 'MISA', label: 'MISA' },
+            { id: 'GOOGLE', label: 'Google' },
+            { id: 'META', label: 'Meta' },
+          ] },
+          { value: couponChip, set: setCouponChip, opts: [
+            { id: 'ALL', label: 'All discounts' },
+            { id: 'YES', label: 'Any discount' },
+            { id: 'PROMO', label: 'Promo' },
+            { id: 'REFERRAL', label: 'Refer & Rise' },
+            { id: 'NO', label: 'No discount' },
+          ] },
+        ] as const
+      ).map((group, idx) => (
+        <View key={idx} style={styles.bookingFilterRow}>
+          {group.opts.map((opt) => {
+            const on = group.value === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                style={[styles.bookingChip, on && styles.bookingChipOn]}
+                onPress={() => group.set(opt.id as any)}
+              >
+                <Text style={[styles.bookingChipTxt, on && styles.bookingChipTxtOn]} numberOfLines={1}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
 
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
@@ -943,6 +938,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textSecondary,
     fontWeight: '600',
+  },
+  bookingFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: 6,
+  },
+  bookingChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  bookingChipOn: {
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
+  },
+  bookingChipTxt: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  bookingChipTxtOn: {
+    color: '#fff',
   },
 });
 

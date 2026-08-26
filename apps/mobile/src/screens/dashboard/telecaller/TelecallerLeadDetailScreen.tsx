@@ -24,6 +24,19 @@ import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { parseIds } from '../../../lib/parseIds';
+import {
+  emptySecondCar,
+  parseSecondCar,
+  serializeSecondCar,
+  secondCarLabel,
+  type CrmSecondCar,
+} from '../../../lib/crmSecondCar';
+import {
+  parseReferredBy,
+  serializeReferredBy,
+  referredByLabel,
+  type CrmReferredBy,
+} from '../../../lib/crmLeadReference';
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -425,6 +438,18 @@ export default function TelecallerLeadDetailScreen({
   const [showWaChat, setShowWaChat] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>(emptyEditForm);
   const [carDisplay, setCarDisplay] = useState('');
+  const [showSecondCar, setShowSecondCar] = useState(false);
+  const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
+  const [secondCarDisplay, setSecondCarDisplay] = useState('');
+  const [referredBy, setReferredBy] = useState<CrmReferredBy | null>(null);
+  const [referredTo, setReferredTo] = useState<
+    { id: string; lead_number: string; customer_name: string; customer_phone: string }[]
+  >([]);
+  const [referrerQuery, setReferrerQuery] = useState('');
+  const [referrerHits, setReferrerHits] = useState<
+    { id: string; lead_number: string; customer_name: string; customer_phone: string }[]
+  >([]);
+  const [referrerSearching, setReferrerSearching] = useState(false);
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
   const [couponMeta, setCouponMeta] = useState<any>({});
@@ -486,6 +511,24 @@ export default function TelecallerLeadDetailScreen({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const term = referrerQuery.trim();
+    if (term.length < 4) {
+      setReferrerHits([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      setReferrerSearching(true);
+      apiFetch<any>(
+        `/api/telecaller/crm/lead-reference?q=${encodeURIComponent(term)}&exclude=${encodeURIComponent(String(leadId || ''))}`,
+      )
+        .then((json) => setReferrerHits(Array.isArray(json?.results) ? json.results : []))
+        .catch(() => setReferrerHits([]))
+        .finally(() => setReferrerSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [referrerQuery, leadId]);
 
   const lookupCustomerByPhone = async (phoneRaw: string) => {
     const phone10 = String(phoneRaw || '')
@@ -557,6 +600,23 @@ export default function TelecallerLeadDetailScreen({
     if (phone10.length === 10) lastPhoneLookupRef.current = phone10;
     const meta = data?.coupon_meta && typeof data.coupon_meta === 'object' ? data.coupon_meta : {};
     setCouponMeta(meta);
+    setReferredBy(parseReferredBy(meta));
+    void apiFetch<any>(`/api/telecaller/crm/lead-reference?lead_id=${encodeURIComponent(String(data?.id || ''))}`)
+      .then((json) => {
+        if (json?.referred_by) setReferredBy(json.referred_by);
+        setReferredTo(Array.isArray(json?.referred_to) ? json.referred_to : []);
+      })
+      .catch(() => setReferredTo([]));
+    const existingSecond = parseSecondCar(meta);
+    if (existingSecond) {
+      setShowSecondCar(true);
+      setSecondCar(existingSecond);
+      setSecondCarDisplay([existingSecond.vehicle_make, existingSecond.vehicle_model].filter(Boolean).join(' '));
+    } else {
+      setShowSecondCar(false);
+      setSecondCar(emptySecondCar());
+      setSecondCarDisplay('');
+    }
     setInitialServiceTypes(next.service_types);
     setInitialServiceAddons(next.service_addons);
     const hist = Array.isArray(meta.profile_history) ? meta.profile_history : [];
@@ -632,6 +692,10 @@ export default function TelecallerLeadDetailScreen({
       Alert.alert('Missing info', 'Fuel type required');
       return;
     }
+    if (showSecondCar && (!secondCar.vehicle_make || !secondCar.vehicle_model)) {
+      Alert.alert('Missing info', 'Select second car model');
+      return;
+    }
 
     const bookingConfirmed = activityData.result === 'BOOKING_CONFIRMED';
     // Service plan required only when confirming booking — soft leads can save without plan
@@ -697,6 +761,8 @@ export default function TelecallerLeadDetailScreen({
         pickup_time: editForm.pickup_time || null,
         pickup_address: editForm.pickup_address || null,
         vehicle_class: editForm.vehicle_class || null,
+        second_car: showSecondCar ? serializeSecondCar(secondCar) : null,
+        referred_by: serializeReferredBy(referredBy),
         first_message: couponMeta.first_message || lead?.problem_description || null,
         last_inbound_message:
           couponMeta.last_inbound_message ||
@@ -2342,6 +2408,126 @@ export default function TelecallerLeadDetailScreen({
               )}
             />
           ) : null}
+          <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', marginTop: 12, marginBottom: 6 }}>
+            REFERRED BY
+          </Text>
+          {referredBy ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#F5F3FF',
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#DDD6FE',
+                padding: 10,
+                gap: 8,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>
+                  {referredByLabel(referredBy)}
+                </Text>
+                {referredBy.lead_number ? (
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{referredBy.lead_number}</Text>
+                ) : null}
+              </View>
+              {referredBy.lead_id ? (
+                <TouchableOpacity
+                  onPress={() => navigation?.navigate?.('TelecallerLeadDetail', { leadId: referredBy.lead_id })}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#5B21B6' }}>Open</Text>
+                </TouchableOpacity>
+              ) : null}
+              {editing ? (
+                <TouchableOpacity onPress={() => setReferredBy(null)}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Clear</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : editing ? (
+            <View>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#fff',
+                  color: '#0F172A',
+                }}
+                placeholder="Search referrer by phone or name"
+                placeholderTextColor="#94A3B8"
+                value={referrerQuery}
+                onChangeText={setReferrerQuery}
+                keyboardType="default"
+              />
+              {referrerSearching ? (
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>Searching…</Text>
+              ) : null}
+              {referrerHits.map((hit) => (
+                <TouchableOpacity
+                  key={hit.id}
+                  style={{
+                    paddingVertical: 10,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: '#E2E8F0',
+                  }}
+                  onPress={() => {
+                    setReferredBy({
+                      lead_id: hit.id,
+                      customer_name: hit.customer_name,
+                      customer_phone: hit.customer_phone,
+                      lead_number: hit.lead_number,
+                    });
+                    setReferrerQuery('');
+                    setReferrerHits([]);
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
+                    {hit.customer_name || 'Unknown'}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>
+                    {hit.customer_phone}
+                    {hit.lead_number ? ` · ${hit.lead_number}` : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, color: '#94A3B8' }}>Not set</Text>
+          )}
+          {referredTo.length > 0 ? (
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', marginBottom: 6 }}>
+                REFERENCES GIVEN
+              </Text>
+              {referredTo.map((row) => (
+                <TouchableOpacity
+                  key={row.id}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingVertical: 8,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: '#E2E8F0',
+                  }}
+                  onPress={() => navigation?.navigate?.('TelecallerLeadDetail', { leadId: row.id })}
+                >
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
+                      {row.customer_name || '—'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#64748B' }}>{row.customer_phone || '—'}</Text>
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.primary }}>
+                    {row.lead_number || 'Open'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
           <DetailRow
             icon="clock-outline"
             label="Created"
@@ -2489,8 +2675,124 @@ export default function TelecallerLeadDetailScreen({
               {lead.vehicle_variant ? (
                 <DetailRow icon="tag" label="Variant" value={lead.vehicle_variant} />
               ) : null}
+              {(() => {
+                const second = parseSecondCar(lead?.coupon_meta);
+                return second ? (
+                  <DetailRow icon="car" label="Second car" value={secondCarLabel(second) || '—'} />
+                ) : null;
+              })()}
             </>
           )}
+          {editing ? (
+            !showSecondCar ? (
+              <TouchableOpacity
+                style={{
+                  marginTop: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#BAE6FD',
+                  backgroundColor: '#F0F9FF',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  setShowSecondCar(true);
+                  setSecondCar(emptySecondCar());
+                  setSecondCarDisplay('');
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>Add second car</Text>
+              </TouchableOpacity>
+            ) : (
+              <View
+                style={{
+                  marginTop: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#BAE6FD',
+                  backgroundColor: '#F0F9FF',
+                  padding: 12,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0C4A6E' }}>Second car</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowSecondCar(false);
+                      setSecondCar(emptySecondCar());
+                      setSecondCarDisplay('');
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+                <DetailRow
+                  icon="car"
+                  label="Registration"
+                  value={secondCar.vehicle_number}
+                  editing
+                  autoCapitalize="characters"
+                  maxLength={12}
+                  onChangeText={(v) =>
+                    setSecondCar((prev) => ({
+                      ...prev,
+                      vehicle_number: v.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
+                    }))
+                  }
+                  placeholder="e.g. MH01BJ7842 or NA"
+                />
+                <CarModelSearchField
+                  label="SECOND CAR MODEL"
+                  variant="default"
+                  hideVariant
+                  displayValue={secondCarDisplay}
+                  selectedMake={secondCar.vehicle_make}
+                  selectedModel={secondCar.vehicle_model}
+                  placeholder="Type second car model"
+                  onSelect={(make, model, display, meta) => {
+                    setSecondCarDisplay(display);
+                    setSecondCar((prev) => ({
+                      ...prev,
+                      vehicle_make: make,
+                      vehicle_model: model,
+                      model_id: meta?.id || prev.model_id,
+                      vehicle_class: meta?.class || prev.vehicle_class,
+                    }));
+                  }}
+                  onClear={() => {
+                    setSecondCarDisplay('');
+                    setSecondCar((prev) => ({
+                      ...prev,
+                      vehicle_make: '',
+                      vehicle_model: '',
+                      model_id: '',
+                      vehicle_class: '',
+                    }));
+                  }}
+                />
+              </View>
+            )
+          ) : !parseSecondCar(lead?.coupon_meta) ? (
+            <TouchableOpacity
+              style={{
+                marginTop: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#BAE6FD',
+                backgroundColor: '#F0F9FF',
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+              onPress={() => {
+                setEditing(true);
+                setShowSecondCar(true);
+                setSecondCar(emptySecondCar());
+                setSecondCarDisplay('');
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>Add second car</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 

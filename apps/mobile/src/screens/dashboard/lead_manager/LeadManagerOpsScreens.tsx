@@ -1037,7 +1037,8 @@ export function LeadManagerClickToCallScreen() {
                 <Text style={styles.addBtnText}>Edit telecaller phones</Text>
               </TouchableOpacity>
               <Text style={styles.hint}>
-                DID pool / gateway secrets Super Admin set karta hai. Yahan phones + overview.
+                Assigned DID exclusive hai — sirf usi telecaller ka caller ID. DID pool /
+                gateway Super Admin set karta hai.
               </Text>
               <Text style={[styles.name, { marginTop: 8 }]}>DID assignments</Text>
             </View>
@@ -1051,7 +1052,11 @@ export function LeadManagerClickToCallScreen() {
               <View style={[styles.card, { marginHorizontal: SPACING.md }]}>
                 <Text style={styles.name}>{item.did}</Text>
                 <Text style={styles.meta}>
-                  {tc?.full_name || (item.telecaller_id ? 'Assigned' : 'Unassigned')}
+                  {tc?.full_name
+                    ? `${tc.full_name} · Exclusive`
+                    : item.telecaller_id
+                      ? 'Assigned · Exclusive'
+                      : 'Unassigned'}
                   {tc?.phone ? ` · ${tc.phone}` : ''}
                 </Text>
               </View>

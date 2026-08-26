@@ -68,7 +68,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     body:
       'Sirf gateway URL hit hota hai (?from=&to=&did=&provider=). Call button aur Fresh auto-dial dono same URL.\n\nDID pool + telecaller from-number yahan set karo. Auto-dial Fresh ON = naya lead assign pe turant call.',
     tips: [
-      'Example: 919262190064 → Sitaram — DID assignment table se set/change karo.',
+      'Assigned DID exclusive hai — Ajit / Mahendra ke numbers koi aur use nahi kar sakta.',
       'Smartflo API token ki zaroorat nahi — sirf tumhara gateway URL.',
       'System Monitor me bhi is gateway ki health check dikhegi.',
     ],
@@ -165,7 +165,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/lead_manager/leads': {
     title: 'Leads',
     body:
-      'Saari service leads / bookings list — website, app, MISA, incoming Sarv call. Filter, search, assign telecaller, status change.',
+      'Bookings + CRM leads ek page — source / discount / trigger filters, stats cards, export, upload. Click se Service Lead Details.',
   },
   '/dashboard/lead_manager/followups': {
     title: 'Reminders',
@@ -396,7 +396,6 @@ export function getLeadManagerReadme(): ReadmeSection[] {
         { href: '/dashboard/lead_manager/book', ...BY_HREF['/dashboard/lead_manager/book'] },
         { href: '/dashboard/lead_manager/assignment', ...BY_HREF['/dashboard/lead_manager/assignment'] },
         { href: '/dashboard/lead_manager/workshops', ...BY_HREF['/dashboard/lead_manager/workshops'] },
-        { href: '/dashboard/lead_manager/bookings', ...BY_HREF['/dashboard/lead_manager/bookings'] },
         { href: '/dashboard/lead_manager/customer-insights', ...BY_HREF['/dashboard/lead_manager/customer-insights'] },
         { href: '/dashboard/lead_manager/workshop-proximity', ...BY_HREF['/dashboard/lead_manager/workshop-proximity'] },
         { href: '/dashboard/lead_manager/membership-customers', ...BY_HREF['/dashboard/lead_manager/membership-customers'] },

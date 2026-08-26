@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
           did: result.did,
           via: result.via,
         },
-        { status: 502 },
+        { status: result.status === 403 ? 403 : 502 },
       );
     }
 

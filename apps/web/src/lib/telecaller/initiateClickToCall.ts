@@ -7,7 +7,7 @@
 
 import {
   getClickToCallConfig,
-  resolveDidForTelecaller,
+  resolveExclusiveDidForTelecaller,
   type ClickToCallConfig,
 } from '@/lib/telecaller/clickToCallConfig';
 import { SMARTFLO_API_BASE } from '@/lib/telecaller/smartfloCdr';
@@ -304,10 +304,17 @@ export async function initiateClickToCall(input: {
     return { ok: false, error: 'Click-to-call is disabled', status: 503 };
   }
 
-  const did =
-    digitsOnly(input.did) ||
-    resolveDidForTelecaller(cfg, input.telecallerId) ||
-    digitsOnly(cfg.did);
+  const resolved = resolveExclusiveDidForTelecaller(cfg, input.telecallerId, input.did);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      error: resolved.error,
+      status: 403,
+      from: from10,
+      to: to10,
+    };
+  }
+  const did = resolved.did;
 
   // Prefer gateway first — it maps agent phone correctly; Smartflo direct
   // often needs agent *ID* not mobile and can hang.

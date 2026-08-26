@@ -19,6 +19,11 @@ import {
   applyCrmNewLeadFilter,
   resolveCrmLeadOrderColumn,
 } from '@/lib/telecaller/crmLeadFilters';
+import {
+  computeServiceLeadOverview,
+  enrichBookingLead,
+  filterBookingLeads,
+} from '@/lib/booking-lead-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +97,11 @@ export async function GET(request: NextRequest) {
     const lostReason = String(sp.get('lost_reason') || '').trim();
     const telecallerFilter = String(sp.get('telecaller_id') || '').trim();
     const unassignedOnly = sp.get('unassigned') === '1';
+    const sourceFilter = seesAll ? String(sp.get('source') || 'ALL').trim().toUpperCase() : 'ALL';
+    const couponFilter = seesAll ? String(sp.get('has_coupon') || 'ALL').trim().toUpperCase() : 'ALL';
+    const triggerFilter = seesAll ? String(sp.get('trigger') || '').trim() : '';
+    const bookingFilterOn =
+      seesAll && (sourceFilter !== 'ALL' || couponFilter !== 'ALL' || Boolean(triggerFilter));
     // Chart / export may request larger pages; list UI stays ≤100 for snappy paging
     const requestedLimit = parseInt(sp.get('limit') || '25', 10) || 25;
     const maxLimit = sp.get('for_chart') === '1' ? 1000 : 100;
@@ -99,6 +109,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(sp.get('page') || '1', 10) || 1);
     const rangeFrom = (page - 1) * pageSize;
     const rangeTo = rangeFrom + pageSize - 1;
+    const wantOverview = seesAll && sp.get('overview') === '1';
 
     const applyAssigneeScope = (query: any) => {
       if (seesAll) {
@@ -117,15 +128,18 @@ export async function GET(request: NextRequest) {
         lead_priority, is_incomplete, follow_up_required, next_follow_up_at, last_call_at,
         total_calls, workshop_id, created_at, updated_at, coupon_code, coupon_meta, payment_mode,
         vehicle_make, vehicle_model, vehicle_number, service_type, estimated_amount, problem_description,
-        assigned_telecaller_id,
+        assigned_telecaller_id, lead_source, created_from,
         workshop:workshops(id, name, city),
         assigned_telecaller:users_login!assigned_telecaller_id(id, full_name, phone)
       `;
 
     let query = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
-    query = applyAssigneeScope(query)
-      .order(orderCol, { ascending: false })
-      .range(rangeFrom, rangeTo);
+    query = applyAssigneeScope(query).order(orderCol, { ascending: false });
+    if (wantOverview || bookingFilterOn) {
+      query = query.limit(wantOverview ? 4000 : 2000);
+    } else {
+      query = query.range(rangeFrom, rangeTo);
+    }
 
     // Soft-deleted hide (ignore if column missing — query will fail and we retry below)
     query = query.is('deleted_at', null);
@@ -186,9 +200,12 @@ export async function GET(request: NextRequest) {
     if (error && /deleted_at/i.test(String(error.message || ''))) {
       // Retry without soft-delete filter for older schemas
       let retry = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
-      retry = applyAssigneeScope(retry)
-        .order(orderCol, { ascending: false })
-        .range(rangeFrom, rangeTo);
+      retry = applyAssigneeScope(retry).order(orderCol, { ascending: false });
+      if (wantOverview || bookingFilterOn) {
+        retry = retry.limit(wantOverview ? 4000 : 2000);
+      } else {
+        retry = retry.range(rangeFrom, rangeTo);
+      }
 
       if (status) retry = retry.eq('status', status.toUpperCase());
       if (city) retry = retry.ilike('city', `%${city}%`);
@@ -305,7 +322,7 @@ export async function GET(request: NextRequest) {
       const nextAt = fromFu?.at || row.next_follow_up_at || null;
       return seesAll
         ? {
-            ...row,
+            ...enrichBookingLead(row),
             assigned_telecaller_name:
               row?.assigned_telecaller?.full_name ||
               row?.assigned_telecaller_name ||
@@ -342,10 +359,38 @@ export async function GET(request: NextRequest) {
           });
     });
 
+    let scoped = leads;
+    if (bookingFilterOn) {
+      scoped = filterBookingLeads(scoped, {
+        source: sourceFilter,
+        hasCoupon: couponFilter,
+      });
+      if (triggerFilter) {
+        scoped = scoped.filter((row: any) => {
+          const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
+          const id = String(meta.message_trigger_id || '').trim();
+          const label = String(meta.message_trigger_label || '').trim();
+          if (triggerFilter === 'NONE') return !id && !label;
+          return id === triggerFilter || label === triggerFilter;
+        });
+      }
+    }
+
+    if (wantOverview) {
+      return NextResponse.json({
+        success: true,
+        overview: computeServiceLeadOverview(scoped),
+        total: scoped.length,
+      });
+    }
+
+    const filteredTotal = bookingFilterOn ? scoped.length : typeof count === 'number' ? count : scoped.length;
+    const paged = bookingFilterOn ? scoped.slice(rangeFrom, rangeFrom + pageSize) : scoped;
+
     return NextResponse.json({
       success: true,
-      leads,
-      total: typeof count === 'number' ? count : leads.length,
+      leads: paged,
+      total: filteredTotal,
       page,
       page_size: pageSize,
       scope: seesAll ? 'all' : 'mine',

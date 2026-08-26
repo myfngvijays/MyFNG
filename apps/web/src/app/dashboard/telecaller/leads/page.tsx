@@ -34,6 +34,9 @@ import {
   LineChart,
   Columns3,
   CalendarDays,
+  Download,
+  Upload,
+  UserPlus,
 } from 'lucide-react';
 import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel';
 import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkActionsBar';
@@ -41,6 +44,29 @@ import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import CrmDatePickerModal from '@/components/telecaller/crm/CrmDatePickerModal';
 
 const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v5';
+
+const BOOKING_SOURCE_OPTIONS = [
+  { value: 'ALL', label: 'All Sources' },
+  { value: 'APP', label: 'App Booking' },
+  { value: 'WEBSITE', label: 'Website' },
+  { value: 'MISA', label: 'MISA AI' },
+  { value: 'SARV', label: 'Incoming Sarv Call' },
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'GOOGLE', label: 'Google Ads' },
+  { value: 'META', label: 'Meta / Insta Ads' },
+  { value: 'PARTNER', label: 'Partner' },
+  { value: 'REFERENCE', label: 'Reference' },
+  { value: 'BANNER', label: 'Banner / Offline' },
+  { value: 'OTHER', label: 'Other' },
+] as const;
+
+const BOOKING_COUPON_OPTIONS = [
+  { value: 'ALL', label: 'All discounts' },
+  { value: 'YES', label: 'Any discount' },
+  { value: 'PROMO', label: 'Promo coupon' },
+  { value: 'REFERRAL', label: 'Refer & Rise' },
+  { value: 'NO', label: 'No discount' },
+] as const;
 
 const LEADS_TABLE_COLUMNS = [
   { key: 'leadNumber', label: 'Lead #', onByDefault: false, locked: false },
@@ -52,6 +78,7 @@ const LEADS_TABLE_COLUMNS = [
   { key: 'makeModel', label: 'Make / Model', onByDefault: true, locked: false },
   { key: 'city', label: 'City', onByDefault: true, locked: false },
   { key: 'priority', label: 'Priority', onByDefault: false, locked: false },
+  { key: 'source', label: 'Source', onByDefault: false, locked: false },
   { key: 'assignee', label: 'Assignee', onByDefault: true, locked: false },
   { key: 'date', label: 'Created on', onByDefault: true, locked: false },
   { key: 'modified', label: 'Modified', onByDefault: true, locked: false },
@@ -163,6 +190,9 @@ function TelecallerCrmLeadsContent() {
   const lostParam = searchParams?.get('lost_reason');
   const telecallerParam = searchParams?.get('telecaller_id');
   const unassignedParam = searchParams?.get('unassigned');
+  const sourceParam = searchParams?.get('source');
+  const couponParam = searchParams?.get('has_coupon');
+  const triggerParam = searchParams?.get('trigger');
 
   // Defaults only — hydrate from localStorage after mount (SSR-safe)
   const defaults = defaultTelecallerCrmFilterPrefs();
@@ -182,6 +212,21 @@ function TelecallerCrmLeadsContent() {
   const [priority, setPriority] = useState(priorityParam || '');
   const [telecallerId, setTelecallerId] = useState(telecallerParam || '');
   const [unassignedOnly, setUnassignedOnly] = useState(unassignedParam === '1');
+  const [sourceFilter, setSourceFilter] = useState(sourceParam || 'ALL');
+  const [couponFilter, setCouponFilter] = useState(couponParam || 'ALL');
+  const [triggerFilter, setTriggerFilter] = useState(triggerParam || '');
+  const [messageTriggers, setMessageTriggers] = useState<Array<{ id: string; label: string }>>([]);
+  const [overview, setOverview] = useState<{
+    total: number;
+    app: number;
+    website: number;
+    misa: number;
+    googleAds: number;
+    metaAds: number;
+    withPromoCoupon: number;
+    withReferralReward: number;
+    newLeads: number;
+  } | null>(null);
   const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string | null }>>([]);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>(dateParam || defaults.datePreset);
   const [dateField, setDateField] = useState<'created' | 'modified'>(
@@ -229,6 +274,7 @@ function TelecallerCrmLeadsContent() {
 
   const showCol = (key: LeadsColumnKey) => {
     if (key === 'assignee' && !isLeadManager) return false;
+    if (key === 'source' && !isLeadManager) return false;
     return Boolean(visibleColumns[key]);
   };
 
@@ -334,6 +380,9 @@ function TelecallerCrmLeadsContent() {
     setAppliedQ(qParam || saved.q || '');
     setTelecallerId(telecallerParam || saved.telecallerId || '');
     setUnassignedOnly(unassignedParam === '1' || saved.unassignedOnly);
+    setSourceFilter(sourceParam || 'ALL');
+    setCouponFilter(couponParam || 'ALL');
+    setTriggerFilter(triggerParam || '');
     setAdvIncomplete(saved.advIncomplete);
     setAdvFollowUp(saved.advFollowUp);
     setAdvHasVehicle(saved.advHasVehicle);
@@ -354,6 +403,9 @@ function TelecallerCrmLeadsContent() {
       lostReason?: string;
       telecallerId?: string;
       unassignedOnly?: boolean;
+      source?: string;
+      hasCoupon?: string;
+      trigger?: string;
     }) => {
       const params = new URLSearchParams(searchParams?.toString() || '');
       const f = next.filter ?? filter;
@@ -365,6 +417,9 @@ function TelecallerCrmLeadsContent() {
       const lr = next.lostReason ?? lostReason;
       const tid = next.telecallerId ?? telecallerId;
       const una = next.unassignedOnly ?? unassignedOnly;
+      const src = next.source ?? sourceFilter;
+      const coupon = next.hasCoupon ?? couponFilter;
+      const trig = next.trigger ?? triggerFilter;
 
       if (!f || f === 'all') params.delete('filter');
       else params.set('filter', f);
@@ -384,6 +439,12 @@ function TelecallerCrmLeadsContent() {
       else params.delete('telecaller_id');
       if (isLeadManager && una) params.set('unassigned', '1');
       else params.delete('unassigned');
+      if (isLeadManager && src && src !== 'ALL') params.set('source', src);
+      else params.delete('source');
+      if (isLeadManager && coupon && coupon !== 'ALL') params.set('has_coupon', coupon);
+      else params.delete('has_coupon');
+      if (isLeadManager && trig) params.set('trigger', trig);
+      else params.delete('trigger');
 
       const qs = params.toString();
       router.replace(`${base}/leads${qs ? `?${qs}` : ''}`, { scroll: false });
@@ -399,6 +460,9 @@ function TelecallerCrmLeadsContent() {
       lostReason,
       telecallerId,
       unassignedOnly,
+      sourceFilter,
+      couponFilter,
+      triggerFilter,
       isLeadManager,
       router,
       base,
@@ -504,6 +568,71 @@ function TelecallerCrmLeadsContent() {
     })();
   }, [isLeadManager]);
 
+  useEffect(() => {
+    if (!isLeadManager) return;
+    let cancelled = false;
+    fetch('/api/lead-manager/message-triggers', { credentials: 'include', cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const rows = Array.isArray(json?.triggers) ? json.triggers : [];
+        setMessageTriggers(
+          rows
+            .filter((t: any) => t?.id && t?.is_active !== false)
+            .map((t: any) => ({
+              id: String(t.id),
+              label: String(t.label || t.phrase || t.id),
+            })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setMessageTriggers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLeadManager]);
+
+  useEffect(() => {
+    if (!isLeadManager || !prefsReady) return;
+    let cancelled = false;
+    const range = resolveCrmDateRange(datePreset, customStart, customEnd);
+    const params = new URLSearchParams({ overview: '1', limit: '4000' });
+    if (!range.allTime) {
+      params.set('from', range.start);
+      params.set('to', range.end);
+    }
+    if (dateField === 'modified') params.set('date_field', 'updated_at');
+    fetch(`/api/telecaller/crm/leads?${params.toString()}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled || !json?.overview) return;
+        setOverview(json.overview);
+      })
+      .catch(() => {
+        if (!cancelled) setOverview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLeadManager, prefsReady, datePreset, customStart, customEnd, dateField]);
+
+  const exportLeadsCsv = () => {
+    const range = resolveCrmDateRange(datePreset, customStart, customEnd);
+    const params = new URLSearchParams({ export: '1' });
+    const preset =
+      datePreset === 'last_3_days' || datePreset === 'custom' ? 'custom' : datePreset;
+    params.set('preset', preset === 'last_7_days' ? 'last_7_days' : String(preset));
+    if (preset === 'custom' || datePreset === 'last_3_days') {
+      params.set('start', range.start);
+      params.set('end', range.end);
+    }
+    if (sourceFilter !== 'ALL') params.set('source', sourceFilter);
+    if (couponFilter !== 'ALL') params.set('has_coupon', couponFilter);
+    if (appliedQ.trim()) params.set('search', appliedQ.trim());
+    window.location.href = `/api/super_admin/leads?${params.toString()}`;
+  };
+
   const toggleSelect = (id: string) => {
     if (!isLeadManager) return;
     setSelectedIds((prev) => {
@@ -550,6 +679,11 @@ function TelecallerCrmLeadsContent() {
       if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
       if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
       if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
+      if (isLeadManager && sourceFilter && sourceFilter !== 'ALL') baseParams.set('source', sourceFilter);
+      if (isLeadManager && couponFilter && couponFilter !== 'ALL') {
+        baseParams.set('has_coupon', couponFilter);
+      }
+      if (isLeadManager && triggerFilter) baseParams.set('trigger', triggerFilter);
       // Name / phone / lead# search must not be limited by Last 7 Days — match across all time
       const searching = Boolean(appliedQ.trim());
       if (!searching && !range.allTime) {
@@ -615,6 +749,9 @@ function TelecallerCrmLeadsContent() {
     isLeadManager,
     telecallerId,
     unassignedOnly,
+    sourceFilter,
+    couponFilter,
+    triggerFilter,
   ]);
 
   useEffect(() => {
@@ -636,6 +773,9 @@ function TelecallerCrmLeadsContent() {
     customEnd,
     telecallerId,
     unassignedOnly,
+    sourceFilter,
+    couponFilter,
+    triggerFilter,
     pageSize,
     advIncomplete,
     advFollowUp,
@@ -727,7 +867,7 @@ function TelecallerCrmLeadsContent() {
             <h1 className="text-2xl md:text-3xl font-extrabold text-[#023D95]">Leads</h1>
             <p className="text-sm text-slate-500 mt-0.5">
               {isLeadManager
-                ? 'Click a lead to open full Service Lead Details. Assign / filter by telecaller.'
+                ? 'Bookings + CRM leads ek jagah. Source / discount / trigger filter — click karke Service Lead Details.'
                 : 'Sirf aapke assigned (ya aapke banaye) leads — WhatsApp · 6161 sticky pe niche.'}
             </p>
           </div>
@@ -798,7 +938,8 @@ function TelecallerCrmLeadsContent() {
                     </div>
                     <div className="max-h-72 space-y-0.5 overflow-y-auto">
                       {LEADS_TABLE_COLUMNS.filter(
-                        (c) => c.key !== 'assignee' || isLeadManager,
+                        (c) =>
+                          (c.key !== 'assignee' && c.key !== 'source') || isLeadManager,
                       ).map((col) => (
                         <label
                           key={col.key}
@@ -821,6 +962,25 @@ function TelecallerCrmLeadsContent() {
                 ) : null}
               </div>
             ) : null}
+            {isLeadManager ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => exportLeadsCsv()}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </button>
+                <Link
+                  href="/dashboard/lead_manager/bookings?upload=1"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload CRM
+                </Link>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
@@ -830,13 +990,58 @@ function TelecallerCrmLeadsContent() {
               <WhatsAppIcon className="h-5 w-5" />
             </button>
             <Link
-              href={`${base}/book`}
-              className="rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white shadow-sm"
+              href={`${base}/book?mode=book`}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
             >
               + New Booking
             </Link>
+            <Link
+              href={`${base}/book?mode=lead`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
+            >
+              <UserPlus className="h-4 w-4" />
+              + Add Lead
+            </Link>
           </div>
         </div>
+
+        {isLeadManager && overview ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {(
+              [
+                { key: 'ALL', label: 'Total', value: overview.total },
+                { key: 'APP', label: 'App', value: overview.app },
+                { key: 'WEBSITE', label: 'Website', value: overview.website },
+                { key: 'MISA', label: 'MISA AI', value: overview.misa },
+                { key: 'GOOGLE', label: 'Google Ads', value: overview.googleAds },
+                { key: 'META', label: 'Meta / Insta', value: overview.metaAds },
+              ] as const
+            ).map((card) => {
+              const active = (card.key === 'ALL' && sourceFilter === 'ALL') || sourceFilter === card.key;
+              return (
+                <button
+                  key={card.key}
+                  type="button"
+                  onClick={() => {
+                    const next = card.key === 'ALL' || sourceFilter === card.key ? 'ALL' : card.key;
+                    setSourceFilter(next);
+                    syncFiltersToUrl({ source: next });
+                  }}
+                  className={`rounded-xl border px-3 py-2.5 text-left ${
+                    active
+                      ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                      : 'border-slate-200 bg-white text-slate-800'
+                  }`}
+                >
+                  <p className={`text-[10px] font-bold uppercase tracking-wide ${active ? 'text-blue-100' : 'text-slate-500'}`}>
+                    {card.label}
+                  </p>
+                  <p className="mt-0.5 text-xl font-extrabold tabular-nums">{card.value.toLocaleString('en-IN')}</p>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-3.5 shadow-sm space-y-3">
           {/* Search + clear in same bar */}
@@ -878,6 +1083,9 @@ function TelecallerCrmLeadsContent() {
                   setPriority('');
                   setTelecallerId('');
                   setUnassignedOnly(false);
+                  setSourceFilter('ALL');
+                  setCouponFilter('ALL');
+                  setTriggerFilter('');
                   setLostReason('');
                   setQ('');
                   setAppliedQ('');
@@ -913,6 +1121,9 @@ function TelecallerCrmLeadsContent() {
                     lostReason: '',
                     q: '',
                     dateField: 'created',
+                    source: 'ALL',
+                    hasCoupon: 'ALL',
+                    trigger: '',
                   });
                 }}
                 className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
@@ -1048,6 +1259,70 @@ function TelecallerCrmLeadsContent() {
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               </div>
+            ) : null}
+
+            {isLeadManager ? (
+              <>
+                <div className="relative min-w-0">
+                  <select
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                    value={sourceFilter}
+                    onChange={(e) => {
+                      const v = e.target.value || 'ALL';
+                      setSourceFilter(v);
+                      syncFiltersToUrl({ source: v });
+                    }}
+                    aria-label="Source"
+                  >
+                    {BOOKING_SOURCE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                </div>
+                <div className="relative min-w-0">
+                  <select
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                    value={couponFilter}
+                    onChange={(e) => {
+                      const v = e.target.value || 'ALL';
+                      setCouponFilter(v);
+                      syncFiltersToUrl({ hasCoupon: v });
+                    }}
+                    aria-label="Discount"
+                  >
+                    {BOOKING_COUPON_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                </div>
+                <div className="relative min-w-0">
+                  <select
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                    value={triggerFilter}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTriggerFilter(v);
+                      syncFiltersToUrl({ trigger: v });
+                    }}
+                    aria-label="Trigger"
+                  >
+                    <option value="">All triggers</option>
+                    <option value="NONE">No trigger</option>
+                    {messageTriggers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                </div>
+              </>
             ) : null}
 
             <div className="relative" ref={advancedMenuRef}>
@@ -1280,6 +1555,11 @@ function TelecallerCrmLeadsContent() {
                           Priority
                         </th>
                       ) : null}
+                      {showCol('source') && isLeadManager ? (
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('source')}>
+                          Source
+                        </th>
+                      ) : null}
                       {showCol('assignee') && isLeadManager ? (
                         <th className="px-2 py-2 truncate" style={colWidthStyle('assignee')}>
                           Assignee
@@ -1442,6 +1722,11 @@ function TelecallerCrmLeadsContent() {
                           {showCol('priority') ? (
                             <td className="px-2 py-2 text-slate-700 truncate text-[12px] font-semibold">
                               {lead.lead_priority || lead.priority || 'NORMAL'}
+                            </td>
+                          ) : null}
+                          {showCol('source') && isLeadManager ? (
+                            <td className="px-2 py-2 text-slate-600 truncate text-[12px]">
+                              {lead.booking_source_label || lead.lead_source || '—'}
                             </td>
                           ) : null}
                           {showCol('assignee') && isLeadManager ? (

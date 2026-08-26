@@ -273,17 +273,91 @@ export async function saveClickToCallConfig(
   return next;
 }
 
-/** Resolve DID for a telecaller; falls back to default DID. */
+function didKey(raw: unknown): string {
+  const d = digitsOnly(raw);
+  return d.length >= 10 ? d.slice(-10) : d;
+}
+
+/** Who exclusively owns this DID, or null if unassigned / unknown. */
+export function ownerOfDid(
+  cfg: ClickToCallConfig,
+  did: string | null | undefined,
+): string | null {
+  const key = didKey(did);
+  if (!key) return null;
+  const hit = cfg.did_assignments.find((a) => didKey(a.did) === key && a.telecaller_id);
+  return hit?.telecaller_id ? String(hit.telecaller_id).trim() : null;
+}
+
+export type ExclusiveDidResult =
+  | { ok: true; did: string; source: 'assigned' | 'unassigned_pool' | 'requested' }
+  | { ok: false; error: string; code: 'DID_EXCLUSIVE' | 'NO_DID_ASSIGNED' };
+
+/**
+ * Assigned DIDs are exclusive (Ajit / Mahendra etc. cannot be used by anyone else).
+ * Unassigned telecallers may only use an unassigned pool DID — never someone else's.
+ */
+export function resolveExclusiveDidForTelecaller(
+  cfg: ClickToCallConfig,
+  telecallerId: string | null | undefined,
+  requestedDid?: string | null,
+): ExclusiveDidResult {
+  const tid = String(telecallerId || '').trim();
+  const assignedToMe = tid
+    ? cfg.did_assignments.find((a) => a.telecaller_id === tid && a.did)
+    : undefined;
+
+  const req = digitsOnly(requestedDid);
+  if (req) {
+    const owner = ownerOfDid(cfg, req);
+    if (owner && owner !== tid) {
+      return {
+        ok: false,
+        error: `DID ${didKey(req)} is assigned exclusively to another telecaller.`,
+        code: 'DID_EXCLUSIVE',
+      };
+    }
+    if (assignedToMe?.did && didKey(assignedToMe.did) !== didKey(req)) {
+      return {
+        ok: false,
+        error: `This telecaller can only use their assigned DID (${didKey(assignedToMe.did)}).`,
+        code: 'DID_EXCLUSIVE',
+      };
+    }
+    return { ok: true, did: req, source: 'requested' };
+  }
+
+  if (assignedToMe?.did) {
+    return { ok: true, did: assignedToMe.did, source: 'assigned' };
+  }
+
+  const unassigned = cfg.did_assignments.filter((a) => a.did && !a.telecaller_id);
+  const fallbackKey = didKey(cfg.did);
+  const preferred =
+    fallbackKey && !ownerOfDid(cfg, cfg.did)
+      ? unassigned.find((a) => didKey(a.did) === fallbackKey)
+      : undefined;
+  const pick = preferred || unassigned[0];
+  if (pick?.did) {
+    return { ok: true, did: pick.did, source: 'unassigned_pool' };
+  }
+
+  return {
+    ok: false,
+    error: tid
+      ? 'No caller ID assigned to this telecaller. Ask Super Admin to assign a dedicated DID — assigned numbers cannot be shared.'
+      : 'No unassigned DID available. Assigned caller IDs cannot be shared.',
+    code: 'NO_DID_ASSIGNED',
+  };
+}
+
+/** Resolve exclusive DID; empty string if none (never returns someone else's assigned DID). */
 export function resolveDidForTelecaller(
   cfg: ClickToCallConfig,
   telecallerId: string | null | undefined,
 ): string {
-  const tid = String(telecallerId || '').trim();
-  if (tid) {
-    const hit = cfg.did_assignments.find((a) => a.telecaller_id === tid && a.did);
-    if (hit?.did) return hit.did;
-  }
-  return digitsOnly(cfg.did) || cfg.dids[0] || DEFAULT_CLICK_TO_CALL_DID;
+  const resolved = resolveExclusiveDidForTelecaller(cfg, telecallerId);
+  return resolved.ok ? resolved.did : '';
 }
 
 /** Public-safe view (mask secrets). */

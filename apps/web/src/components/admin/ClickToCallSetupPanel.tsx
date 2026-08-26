@@ -305,6 +305,11 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       .filter(Boolean) as TelecallerRow[];
   }, [activeTelecallers, didAssignments, telecallerById]);
 
+  const fallbackAssignedTo = useMemo(() => {
+    const row = didAssignments.find((a) => a.did === did && a.telecaller_id);
+    return row?.telecaller_id ? telecallerById.get(row.telecaller_id) || null : null;
+  }, [didAssignments, did, telecallerById]);
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-slate-600 py-12 justify-center">
@@ -395,8 +400,15 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
               ))}
             </select>
             <span className="mt-1 block text-[11px] text-slate-400">
-              Used when telecaller has no DID assigned below
+              Only used if this number is still Unassigned. Assigned DIDs (Ajit / Mahendra
+              etc.) are exclusive and never shared.
             </span>
+            {fallbackAssignedTo ? (
+              <span className="mt-1 block text-[11px] text-amber-700">
+                This fallback is assigned to {fallbackAssignedTo.full_name || 'a telecaller'} —
+                others cannot use it.
+              </span>
+            ) : null}
           </label>
           <label className="block">
             <span className="text-xs font-medium text-slate-600">Provider</span>
@@ -486,8 +498,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           DID assignment
         </h2>
         <p className="text-sm text-slate-500 mb-3">
-          Apne 5 Smartflo DIDs — har number kisi telecaller ko assign / change karo. Example:{' '}
-          <code className="text-xs bg-slate-100 px-1 rounded">919262190064</code> → Sitaram.
+          Assigned DID is exclusive — sirf wahi telecaller us number se customer ko dikhata
+          hai. Koi aur (Vijay / dialer / auto-dial) us number ko use nahi kar sakta.
         </p>
 
         <div className="overflow-x-auto border border-slate-100 rounded-lg">
@@ -505,7 +517,14 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
                   : null;
                 return (
                   <tr key={row.did}>
-                    <td className="px-3 py-2.5 font-mono text-slate-900">{row.did}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-900">
+                      {row.did}
+                      {assigned ? (
+                        <span className="ml-2 text-[10px] font-sans font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded">
+                          Exclusive
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2.5">
                       <select
                         value={row.telecaller_id || ''}

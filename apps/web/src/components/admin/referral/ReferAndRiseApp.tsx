@@ -412,14 +412,6 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
     updatePushNotifications(pushNotifications.filter((_, i) => i !== idx));
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#f4f6fb] flex items-center justify-center">
-        <div className="animate-pulse text-lg text-gray-400">Loading Refer & Rise...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-full bg-[#f4f6fb]">
       {/* Toast */}
@@ -486,6 +478,11 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
 
       {/* Content */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {loading && !stats && (
+          <div className="rounded-2xl border border-white/60 bg-white/90 px-4 py-8 text-center text-sm font-semibold text-gray-400 animate-pulse">
+            Loading referral analytics…
+          </div>
+        )}
         {/* Stats */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -498,15 +495,20 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
         )}
 
         {/* Tabs */}
-        {!analyticsOnly && (
         <div className="flex gap-1 bg-white/70 backdrop-blur rounded-xl p-1 border border-gray-200/50 w-fit">
-          {[
-            { key: 'milestones' as const, label: 'Milestones & Rewards', icon: <Trophy className="h-3.5 w-3.5" /> },
-            { key: 'content' as const, label: 'Content & T&C', icon: <Pencil className="h-3.5 w-3.5" /> },
-            { key: 'deeplinks' as const, label: 'Deep Links', icon: <Link2 className="h-3.5 w-3.5" /> },
-            { key: 'users' as const, label: 'Users & Analytics', icon: <Users className="h-3.5 w-3.5" /> },
-            { key: 'activity' as const, label: 'Recent Activity', icon: <Clock className="h-3.5 w-3.5" /> },
-          ].map((tab) => (
+          {(analyticsOnly
+            ? [
+                { key: 'users' as const, label: 'Users & Analytics', icon: <Users className="h-3.5 w-3.5" /> },
+                { key: 'activity' as const, label: 'Recent Activity', icon: <Clock className="h-3.5 w-3.5" /> },
+              ]
+            : [
+                { key: 'milestones' as const, label: 'Milestones & Rewards', icon: <Trophy className="h-3.5 w-3.5" /> },
+                { key: 'content' as const, label: 'Content & T&C', icon: <Pencil className="h-3.5 w-3.5" /> },
+                { key: 'deeplinks' as const, label: 'Deep Links', icon: <Link2 className="h-3.5 w-3.5" /> },
+                { key: 'users' as const, label: 'Users & Analytics', icon: <Users className="h-3.5 w-3.5" /> },
+                { key: 'activity' as const, label: 'Recent Activity', icon: <Clock className="h-3.5 w-3.5" /> },
+              ]
+          ).map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -516,7 +518,6 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
             </button>
           ))}
         </div>
-        )}
 
         {!analyticsOnly && !canEdit && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 font-semibold">
@@ -928,7 +929,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
         )}
 
         {/* Users & Analytics Tab */}
-        {(analyticsOnly || activeTab === 'users') && (
+        {activeTab === 'users' && (
           <div className="space-y-6">
             {/* Analytics Summary */}
             {stats && (
@@ -1247,7 +1248,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
         )}
 
         {/* Activity Tab */}
-        {!analyticsOnly && activeTab === 'activity' && (
+        {activeTab === 'activity' && (
           <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm">
             <h2 className="text-lg font-black text-gray-900 mb-4">Recent Referral Activity</h2>
             {events.length === 0 ? (
@@ -1262,7 +1263,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                       <th className="pb-3 pr-4">Friend</th>
                       <th className="pb-3 pr-4">Code</th>
                       <th className="pb-3 pr-4">Status</th>
-                      <th className="pb-3">Action</th>
+                      {!analyticsOnly && <th className="pb-3">Action</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1281,6 +1282,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                         </td>
                         <td className="py-3 pr-4 font-mono text-xs font-bold text-gray-600">{ev.referral_code}</td>
                         <td className="py-3 pr-4"><StatusBadge status={ev.status} /></td>
+                        {!analyticsOnly && (
                         <td className="py-3">
                           {ev.status === 'PENDING' && (
                             <button
@@ -1292,6 +1294,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                             </button>
                           )}
                         </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

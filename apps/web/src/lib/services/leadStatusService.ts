@@ -461,8 +461,8 @@ export function getStatusTimeline(lead: any): {
 /**
  * Check if lead can be edited
  */
-export function canEditLead(status: LeadStatus): boolean {
-  return !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(status);
+export function canEditLead(_status: LeadStatus): boolean {
+  return true;
 }
 
 /**

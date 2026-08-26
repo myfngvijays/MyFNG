@@ -1860,7 +1860,7 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
       status: ok ? (responseTime > 5000 ? 'degraded' : 'healthy') : 'degraded',
       responseTime,
       message: ok ? 'Click-to-call gateway host reachable' : 'Gateway probe inconclusive',
-      reason: `Hits gateway URL with ?from=&to=&did= (DID ${did}). Fresh auto-dial uses the same URL when enabled.`,
+      reason: `Hits gateway URL with ?from=&to=&did=. Assigned DIDs are exclusive (not shared as fallback). Fresh auto-dial uses the same URL when enabled.`,
       lastChecked: new Date().toISOString(),
       quickFix: {
         label: 'Open Click to Call setup',
@@ -1872,6 +1872,10 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
         did,
         provider,
         enabled: true,
+        exclusive_did_assignments: (cfg.did_assignments || []).filter((a) => a.telecaller_id)
+          .length,
+        unassigned_dids: (cfg.did_assignments || []).filter((a) => a.did && !a.telecaller_id)
+          .length,
         auto_dial_on_fresh_assign: Boolean(cfg.auto_dial_on_fresh_assign),
         has_gateway_key: Boolean(cfg.gateway_key),
         has_smartflo_api_token: Boolean(cfg.smartflo_api_token),

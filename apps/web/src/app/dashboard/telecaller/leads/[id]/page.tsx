@@ -22,6 +22,8 @@ import {
 import { redactLeadSourceForTelecaller } from '@/lib/telecaller/redactLeadSource';
 import { parseCallDisposition } from '@/lib/telecaller/callDisposition';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import { parseSecondCar, secondCarLabel } from '@/lib/telecaller/crmSecondCar';
+import { parseReferredBy, referredByLabel } from '@/lib/telecaller/crmLeadReference';
 import { requestClickToCall } from '@/lib/telecaller/clickToCall';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
@@ -55,6 +57,9 @@ function LeadDetailContent() {
   const [serviceGroups, setServiceGroups] = useState<Array<{ category: string; names: string[] }>>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
+  const [referredTo, setReferredTo] = useState<
+    { id: string; lead_number: string; customer_name: string; customer_phone: string }[]
+  >([]);
   const [peers, setPeers] = useState<Array<{ id: string; full_name: string | null; phone: string | null }>>([]);
   const [peersLoading, setPeersLoading] = useState(false);
   const [assigningTc, setAssigningTc] = useState(false);
@@ -218,6 +223,13 @@ function LeadDetailContent() {
       if (leadError) throw leadError;
       const raw = leadData as Record<string, any>;
       setLead(sanitizeLead(raw));
+      try {
+        const refRes = await fetch(`/api/telecaller/crm/lead-reference?lead_id=${encodeURIComponent(leadId)}`);
+        const refJson = await refRes.json().catch(() => ({}));
+        setReferredTo(Array.isArray(refJson?.referred_to) ? refJson.referred_to : []);
+      } catch {
+        setReferredTo([]);
+      }
 
       // Fetch service types grouped by category (Periodic / AC / Brake / Engine …)
       if (leadData.service_type_ids) {
@@ -954,6 +966,57 @@ function LeadDetailContent() {
               </div>
             </div>
 
+            {(() => {
+              const referredBy = parseReferredBy(lead?.coupon_meta);
+              if (!referredBy && referredTo.length === 0) return null;
+              return (
+                <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
+                  <h2 className="text-base sm:text-lg font-black text-[#023D95] flex items-center gap-2 mb-3">
+                    <Users className="w-5 h-5" /> References
+                  </h2>
+                  {referredBy ? (
+                    <div className="mb-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Referred by</p>
+                      {referredBy.lead_id ? (
+                        <Link href={`${base}/leads/${referredBy.lead_id}`} className="text-sm font-bold text-[#023D95] hover:underline">
+                          {referredByLabel(referredBy)}
+                        </Link>
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-800">{referredByLabel(referredBy)}</p>
+                      )}
+                    </div>
+                  ) : null}
+                  {referredTo.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5">References given</p>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-[11px] font-bold uppercase text-slate-400">
+                            <th className="pb-2 pr-3">Name</th>
+                            <th className="pb-2 pr-3">Number</th>
+                            <th className="pb-2">Lead</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {referredTo.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-100">
+                              <td className="py-2 pr-3 font-semibold">{row.customer_name || '—'}</td>
+                              <td className="py-2 pr-3 text-slate-600">{row.customer_phone || '—'}</td>
+                              <td className="py-2">
+                                <Link href={`${base}/leads/${row.id}`} className="font-bold text-[#023D95] hover:underline">
+                                  {row.lead_number || 'Open'}
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
+
             <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
               <h2 className="text-base sm:text-lg font-black text-[#023D95] flex items-center gap-2 mb-3"><Car className="w-5 h-5" /> Vehicle</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -972,6 +1035,27 @@ function LeadDetailContent() {
                 {lead.vehicle_year ? <InfoItem icon={<Calendar className="w-4 h-4" />} label="Year" value={String(lead.vehicle_year)} /> : null}
                 {lead.vehicle_fuel_type ? <InfoItem icon={<Car className="w-4 h-4" />} label="Fuel" value={lead.vehicle_fuel_type} /> : null}
               </div>
+              {(() => {
+                const second = parseSecondCar(lead?.coupon_meta);
+                if (second) {
+                  return (
+                    <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2.5">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-sky-700">Second car</p>
+                      <p className="mt-0.5 text-sm font-semibold text-slate-800">{secondCarLabel(second) || '—'}</p>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100"
+                  >
+                    <Car className="w-4 h-4" />
+                    Add second car
+                  </button>
+                );
+              })()}
             </div>
 
             <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">

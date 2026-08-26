@@ -23,6 +23,16 @@ import CrmPickupVisitStep from '../../../components/telecaller/CrmPickupVisitSte
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
 import { useAuth } from '../../../context/AuthContext';
+import {
+  serializeReferredBy,
+  referredByLabel,
+  type CrmReferredBy,
+} from '../../../lib/crmLeadReference';
+import {
+  emptySecondCar,
+  serializeSecondCar,
+  type CrmSecondCar,
+} from '../../../lib/crmSecondCar';
 
 /**
  * Telecaller CRM booking — same flow as https://myfng.in/book-service
@@ -145,6 +155,15 @@ export default function CrmBookWizard({
   const [activityTime, setActivityTime] = useState(nowTimeStr);
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [referredBy, setReferredBy] = useState<CrmReferredBy | null>(null);
+  const [referrerQuery, setReferrerQuery] = useState('');
+  const [referrerHits, setReferrerHits] = useState<
+    { id: string; lead_number: string; customer_name: string; customer_phone: string }[]
+  >([]);
+  const [referrerSearching, setReferrerSearching] = useState(false);
+  const [showSecondCar, setShowSecondCar] = useState(false);
+  const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
+  const [secondCarDisplay, setSecondCarDisplay] = useState('');
 
   const [form, setForm] = useState({
     customer_name: '',
@@ -213,6 +232,22 @@ export default function CrmBookWizard({
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const term = referrerQuery.trim();
+    if (term.length < 4) {
+      setReferrerHits([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      setReferrerSearching(true);
+      apiFetch<any>(`/api/telecaller/crm/lead-reference?q=${encodeURIComponent(term)}`)
+        .then((json) => setReferrerHits(Array.isArray(json?.results) ? json.results : []))
+        .catch(() => setReferrerHits([]))
+        .finally(() => setReferrerSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [referrerQuery]);
 
   const setField = (key: string, value: any) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -529,6 +564,10 @@ export default function CrmBookWizard({
           lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
           activity_at: activityIso,
           tag_ids: selectedTagIds,
+          coupon_meta: {
+            referred_by: serializeReferredBy(referredBy),
+            second_car: showSecondCar ? serializeSecondCar(secondCar) : null,
+          },
           ...(statusOpt.id === 'CALLBACK'
             ? {
                 follow_up_required: true,
@@ -822,6 +861,71 @@ export default function CrmBookWizard({
                 }}
               />
             </View>
+            {!showSecondCar ? (
+              <TouchableOpacity
+                style={{
+                  marginTop: 8,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#BAE6FD',
+                  backgroundColor: '#F0F9FF',
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  setShowSecondCar(true);
+                  setSecondCar(emptySecondCar());
+                  setSecondCarDisplay('');
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>Add second car</Text>
+              </TouchableOpacity>
+            ) : (
+              <View
+                style={{
+                  marginTop: 8,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#BAE6FD',
+                  backgroundColor: '#F0F9FF',
+                  padding: 12,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0C4A6E' }}>Second car</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowSecondCar(false);
+                      setSecondCar(emptySecondCar());
+                      setSecondCarDisplay('');
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+                <CarModelSearchField
+                  label="Second car model"
+                  displayValue={secondCarDisplay}
+                  selectedMake={secondCar.vehicle_make}
+                  selectedModel={secondCar.vehicle_model}
+                  placeholder="e.g. Creta, City"
+                  onSelect={(make, model, display, meta) => {
+                    setSecondCarDisplay(display);
+                    setSecondCar((prev) => ({
+                      ...prev,
+                      vehicle_make: make,
+                      vehicle_model: model,
+                      model_id: meta?.id || prev.model_id,
+                      vehicle_class: meta?.class || prev.vehicle_class,
+                    }));
+                  }}
+                  onClear={() => {
+                    setSecondCarDisplay('');
+                    setSecondCar(emptySecondCar());
+                  }}
+                />
+              </View>
+            )}
 
             <Text style={styles.sectionLabel}>Lead Status</Text>
             <TouchableOpacity
@@ -858,6 +962,78 @@ export default function CrmBookWizard({
               canManage={canManageTags}
               onSelectionChange={setSelectedTagIds}
             />
+
+            <Text style={styles.sectionLabel}>Referred by</Text>
+            {referredBy ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#F5F3FF',
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#DDD6FE',
+                  padding: 10,
+                  marginBottom: 8,
+                  gap: 8,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>
+                    {referredByLabel(referredBy)}
+                  </Text>
+                  {referredBy.lead_number ? (
+                    <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      {referredBy.lead_number}
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity onPress={() => setReferredBy(null)}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ marginBottom: 8 }}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Search referrer by phone or name"
+                  placeholderTextColor="#94A3B8"
+                  value={referrerQuery}
+                  onChangeText={setReferrerQuery}
+                />
+                {referrerSearching ? (
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>Searching…</Text>
+                ) : null}
+                {referrerHits.map((hit) => (
+                  <TouchableOpacity
+                    key={hit.id}
+                    style={{
+                      paddingVertical: 10,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: '#E2E8F0',
+                    }}
+                    onPress={() => {
+                      setReferredBy({
+                        lead_id: hit.id,
+                        customer_name: hit.customer_name,
+                        customer_phone: hit.customer_phone,
+                        lead_number: hit.lead_number,
+                      });
+                      setReferrerQuery('');
+                      setReferrerHits([]);
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
+                      {hit.customer_name || 'Unknown'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#64748B' }}>
+                      {hit.customer_phone}
+                      {hit.lead_number ? ` · ${hit.lead_number}` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             <Field
               label="Call Activity"

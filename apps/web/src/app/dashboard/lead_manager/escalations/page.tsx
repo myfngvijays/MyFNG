@@ -1,15 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getBrowserClient } from '@/lib/supabase/browserClient';
 import Link from 'next/link';
 import { formatDateTime } from "@/lib/utils";
 import PageHelpIcon from '@/components/PageHelpIcon';
 
 export default function LeadManagerEscalationsPage() {
-  const supabase = getBrowserClient();
   const [escalations, setEscalations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'resolved'>('active');
 
   useEffect(() => {
@@ -17,32 +16,19 @@ export default function LeadManagerEscalationsPage() {
   }, [filter]);
 
   const fetchEscalations = async () => {
+    setLoadError(null);
     try {
-      let query = supabase
-        .from('service_leads')
-        .select(`
-          *,
-          workshop:workshops(name),
-          city_info:city_id(name)
-        `)
-        .not('escalation', 'is', null);
-
-      switch (filter) {
-        case 'active':
-          query = query.eq('escalation', 'ESCALATED').not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)');
-          break;
-        case 'resolved':
-          query = query.eq('escalation', 'RESOLVED');
-          break;
+      const res = await fetch(`/api/lead-manager/escalations?filter=${encodeURIComponent(filter)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setEscalations([]);
+        setLoadError(json.error || 'Could not load escalations');
+        return;
       }
-
-      query = query.order('updated_at', { ascending: false });
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setEscalations(data || []);
-    } catch (error) {
-      console.error('Error fetching escalations:', error);
+      setEscalations(Array.isArray(json.escalations) ? json.escalations : []);
+    } catch {
+      setEscalations([]);
+      setLoadError('Could not load escalations');
     } finally {
       setLoading(false);
     }
@@ -51,19 +37,18 @@ export default function LeadManagerEscalationsPage() {
   const handleResolveEscalation = async (leadId: string) => {
     if (confirm('Mark this escalation as resolved?')) {
       try {
-        const { error } = await supabase
-          .from('service_leads')
-          .update({
-            escalation: 'RESOLVED',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', leadId);
-
-        if (!error) {
-          alert('Escalation resolved successfully!');
+        const res = await fetch('/api/lead-manager/escalations', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lead_id: leadId }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.success) {
           fetchEscalations();
+        } else {
+          alert(json.error || 'Failed to resolve escalation');
         }
-      } catch (error) {
+      } catch {
         alert('Failed to resolve escalation');
       }
     }
@@ -130,6 +115,12 @@ export default function LeadManagerEscalationsPage() {
           Resolved
         </button>
       </div>
+
+      {loadError && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {loadError}
+        </div>
+      )}
 
       {/* Escalations List */}
       {escalations.length === 0 ? (

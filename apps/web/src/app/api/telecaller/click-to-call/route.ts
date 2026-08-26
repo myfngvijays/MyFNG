@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
     const to = normalizePhone10(body?.to);
     const fromOverride = normalizePhone10(body?.from);
     const fromProfile = normalizePhone10((profile as any)?.phone);
-    const from = fromOverride || fromProfile;
+    // Telecallers cannot spoof another agent's phone — only their profile number.
+    const from =
+      roleCode === 'TELECALLER' ? fromProfile : fromOverride || fromProfile;
     const profileId = String((profile as any)?.id || user.id || '').trim();
 
     if (!to) {
@@ -61,16 +63,24 @@ export async function POST(request: NextRequest) {
 
     if (!result.ok) {
       const status =
-        result.status === 503 ? 503 : result.status === 504 ? 504 : 502;
+        result.status === 403
+          ? 403
+          : result.status === 503
+            ? 503
+            : result.status === 504
+              ? 504
+              : 502;
       return NextResponse.json(
         {
           error: result.error || 'Click-to-call failed',
           code:
-            result.status === 503
-              ? 'DISABLED'
-              : result.status === 504
-                ? 'GATEWAY_TIMEOUT'
-                : undefined,
+            result.status === 403
+              ? 'DID_EXCLUSIVE'
+              : result.status === 503
+                ? 'DISABLED'
+                : result.status === 504
+                  ? 'GATEWAY_TIMEOUT'
+                  : undefined,
           from: result.from || from,
           to: result.to || to,
           did: result.did,

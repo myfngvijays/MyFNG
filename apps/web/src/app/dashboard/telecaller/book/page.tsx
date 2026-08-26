@@ -8,6 +8,13 @@ import CrmCarSearch from '@/components/telecaller/crm/CrmCarSearch';
 import CrmBookingCatalog, { type CrmCatalogSelection } from '@/components/telecaller/crm/CrmBookingCatalog';
 import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
+import CrmReferredByField from '@/components/telecaller/crm/CrmReferredByField';
+import { serializeReferredBy, type CrmReferredBy } from '@/lib/telecaller/crmLeadReference';
+import {
+  emptySecondCar,
+  serializeSecondCar,
+  type CrmSecondCar,
+} from '@/lib/telecaller/crmSecondCar';
 import { createClient } from '@/lib/supabase/client';
 import {
   AlertCircle,
@@ -19,6 +26,7 @@ import {
   Loader2,
   Search,
   UserPlus,
+  Car,
   Wrench,
 } from 'lucide-react';
 
@@ -198,6 +206,10 @@ function TelecallerCrmBookContent() {
   const [activityDate, setActivityDate] = useState(todayDateStr);
   const [activityTime, setActivityTime] = useState(nowTimeStr);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [referredBy, setReferredBy] = useState<CrmReferredBy | null>(null);
+  const [showSecondCar, setShowSecondCar] = useState(false);
+  const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
+  const [secondCarDisplay, setSecondCarDisplay] = useState('');
 
   const [form, setForm] = useState<FormState>(() => ({
     ...initialForm,
@@ -564,6 +576,10 @@ function TelecallerCrmBookContent() {
           lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
           activity_at: activityIso,
           tag_ids: selectedTagIds,
+          coupon_meta: {
+            referred_by: serializeReferredBy(referredBy),
+            second_car: showSecondCar ? serializeSecondCar(secondCar) : null,
+          },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -799,181 +815,304 @@ function TelecallerCrmBookContent() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto w-full max-w-4xl pb-8">
-        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className={`mx-auto w-full pb-8 ${mode === 'lead' ? 'max-w-5xl' : 'max-w-4xl'}`}>
+        <div className="mb-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('book');
+              setStep(0);
+              router.replace(`${base}/book?mode=book`);
+            }}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm transition ${
+              mode === 'book'
+                ? 'bg-[#023D95] text-white'
+                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Calendar className="h-4 w-4" />
+            New Booking
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('lead');
+              setStep(0);
+              router.replace(`${base}/book?mode=lead`);
+            }}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm transition ${
+              mode === 'lead'
+                ? 'bg-[#023D95] text-white'
+                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <UserPlus className="h-4 w-4" />
+            Add Lead
+          </button>
+        </div>
+        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-[#023D95] via-[#0346b0] to-indigo-700 p-5 text-white shadow-md">
           {mode === 'book' ? (
             <>
               <div className="mb-3 flex gap-1.5">
                 {[0, 1, 2, 3, 4].map((s) => (
                   <div
                     key={s}
-                    className={`h-1 flex-1 rounded-full ${step >= s ? 'bg-[#004AAD]' : 'bg-gray-200'}`}
+                    className={`h-1 flex-1 rounded-full ${step >= s ? 'bg-white' : 'bg-white/25'}`}
                   />
                 ))}
               </div>
-              <p className="text-xs font-bold text-[#004AAD]">Step {step + 1} of 5</p>
-              <h2 className="mt-1 text-xl font-extrabold text-gray-900">{meta.title}</h2>
-              <p className="text-sm text-gray-500">{meta.subtitle}</p>
+              <p className="text-xs font-bold text-blue-100">Step {step + 1} of 5</p>
+              <h2 className="mt-1 text-xl font-extrabold text-white">{meta.title}</h2>
+              <p className="text-sm text-blue-100">{meta.subtitle}</p>
             </>
           ) : (
             <>
-              <p className="text-xs font-bold text-[#004AAD]">Quick save</p>
-              <h2 className="mt-1 text-xl font-extrabold text-gray-900">Add Lead</h2>
-              <p className="text-sm text-gray-500">
-                Name, phone, pin, status & call notes — book later from Lead Details
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-100">Quick save</p>
+              <h2 className="mt-1 text-2xl font-black text-white">Add Lead</h2>
+              <p className="mt-1 text-sm text-blue-100">
+                Customer + car + status — booking later Lead Details se
               </p>
             </>
           )}
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-6 shadow-sm">
           {mode === 'lead' && (
-            <>
-              <Field
-                label="Customer Name *"
-                value={form.customer_name}
-                onChange={(v) => setField('customer_name', v)}
-                placeholder="Customer name"
-              />
-              <Field
-                label="Phone *"
-                value={form.customer_phone}
-                onChange={(v) => setField('customer_phone', v.replace(/\D/g, '').slice(0, 15))}
-                inputMode="tel"
-                placeholder="10-digit mobile"
-              />
-              <Field
-                label="Pincode *"
-                value={form.pincode}
-                onChange={(v) => {
-                  const pin = v.replace(/\D/g, '').slice(0, 6);
-                  setField('pincode', pin);
-                  if (pin.length === 6) void resolveCityFromPincode(pin);
-                  if (pin.length < 6) {
-                    setField('city', '');
-                    setField('city_id', '');
-                  }
-                }}
-                inputMode="numeric"
-                placeholder="6-digit pincode"
-              />
-              {resolvingCity ? (
-                <p className="mb-3 text-xs font-semibold text-gray-500">Finding city…</p>
-              ) : form.city ? (
-                <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-[#004AAD]">
-                  <Search className="h-3.5 w-3.5" />
-                  {form.city}
-                </p>
-              ) : form.pincode.length === 6 ? (
-                <p className="mb-3 text-xs font-semibold text-amber-600">
-                  City not found for this pincode
-                </p>
-              ) : null}
-
-              <div className="mb-3">
-                <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-                  Car Model
-                </p>
-                <CrmCarSearch
-                  displayValue={carDisplay}
-                  onSelect={(car) => {
-                    setField('vehicle_make', car.make);
-                    setField('vehicle_model', car.model);
-                    setField('model_id', car.id);
-                    setField('vehicle_class', car.vehicleClass || '');
-                    setCarDisplay([car.make, car.model, car.variant].filter(Boolean).join(' '));
-                  }}
-                  onClear={() => {
-                    setField('vehicle_make', '');
-                    setField('vehicle_model', '');
-                    setField('model_id', '');
-                    setField('vehicle_class', '');
-                    setCarDisplay('');
-                  }}
-                />
-              </div>
-
-              <div className="mb-3">
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
-                  Lead Status
-                </label>
-                <select
-                  value={leadStatusId}
-                  onChange={(e) => {
-                    setLeadStatusId(e.target.value);
-                    if (e.target.value !== 'LOST') setLostReason('');
-                  }}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                >
-                  {LEAD_STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {leadStatusId === 'LOST' ? (
-                <div className="mb-3">
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Lost reason *
-                  </label>
-                  <select
-                    value={lostReason}
-                    onChange={(e) => setLostReason(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                  >
-                    <option value="">Select lost reason</option>
-                    {LOST_REASONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              <div className="mb-3">
-                <LeadTagsPanel
-                  canManage={isLeadManager}
-                  compact
-                  onSelectionChange={setSelectedTagIds}
-                />
-              </div>
-
-              <Field
-                label="Call Activity"
-                value={form.problem_description}
-                onChange={(v) => setField('problem_description', v)}
-                placeholder="Kya baat hui — notes"
-                multiline
-              />
-
-              <div className="mb-3">
-                <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-                  Call date & time (kab baat hui)
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="date"
-                    value={activityDate}
-                    onChange={(e) => setActivityDate(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Customer</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field
+                    label="Customer Name *"
+                    value={form.customer_name}
+                    onChange={(v) => setField('customer_name', v)}
+                    placeholder="Customer name"
+                    className=""
                   />
-                  <input
-                    type="time"
-                    value={activityTime}
-                    onChange={(e) => setActivityTime(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                  <Field
+                    label="Phone *"
+                    value={form.customer_phone}
+                    onChange={(v) => setField('customer_phone', v.replace(/\D/g, '').slice(0, 15))}
+                    inputMode="tel"
+                    placeholder="10-digit mobile"
+                    className=""
                   />
+                  <Field
+                    label="Pincode *"
+                    value={form.pincode}
+                    onChange={(v) => {
+                      const pin = v.replace(/\D/g, '').slice(0, 6);
+                      setField('pincode', pin);
+                      if (pin.length === 6) void resolveCityFromPincode(pin);
+                      if (pin.length < 6) {
+                        setField('city', '');
+                        setField('city_id', '');
+                      }
+                    }}
+                    inputMode="numeric"
+                    placeholder="6-digit pincode"
+                    className=""
+                  />
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                      City
+                    </label>
+                    <div className="flex h-[42px] items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                      {resolvingCity ? (
+                        <span className="text-slate-400">Finding city…</span>
+                      ) : form.city ? (
+                        <span className="inline-flex items-center gap-1.5 text-[#023D95]">
+                          <Search className="h-3.5 w-3.5" />
+                          {form.city}
+                        </span>
+                      ) : form.pincode.length === 6 ? (
+                        <span className="text-amber-600">City not found</span>
+                      ) : (
+                        <span className="text-slate-400">Auto from pincode</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              <div className="mt-1 rounded-xl bg-[#004AAD]/10 px-4 py-3 text-sm font-semibold text-[#004AAD]">
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Vehicle</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">Car 1</p>
+                    <CrmCarSearch
+                      displayValue={carDisplay}
+                      onSelect={(car) => {
+                        setField('vehicle_make', car.make);
+                        setField('vehicle_model', car.model);
+                        setField('model_id', car.id);
+                        setField('vehicle_class', car.vehicleClass || '');
+                        setCarDisplay([car.make, car.model, car.variant].filter(Boolean).join(' '));
+                      }}
+                      onClear={() => {
+                        setField('vehicle_make', '');
+                        setField('vehicle_model', '');
+                        setField('model_id', '');
+                        setField('vehicle_class', '');
+                        setCarDisplay('');
+                      }}
+                    />
+                  </div>
+                  <div>
+                    {!showSecondCar ? (
+                      <div className="flex h-full min-h-[72px] items-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSecondCar(true);
+                            setSecondCar(emptySecondCar());
+                            setSecondCarDisplay('');
+                          }}
+                          className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm font-bold text-sky-800 hover:bg-sky-100"
+                        >
+                          <Car className="h-4 w-4" />
+                          Add second car
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <p className="text-xs font-bold uppercase tracking-wide text-sky-800">Car 2</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowSecondCar(false);
+                              setSecondCar(emptySecondCar());
+                              setSecondCarDisplay('');
+                            }}
+                            className="text-xs font-bold text-slate-500 hover:text-rose-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <CrmCarSearch
+                          displayValue={secondCarDisplay}
+                          placeholder="Second car model"
+                          onSelect={(car) => {
+                            setSecondCar((prev) => ({
+                              ...prev,
+                              vehicle_make: car.make,
+                              vehicle_model: car.model,
+                              model_id: car.id,
+                              vehicle_class: car.vehicleClass || '',
+                            }));
+                            setSecondCarDisplay([car.make, car.model].filter(Boolean).join(' '));
+                          }}
+                          onClear={() => {
+                            setSecondCar(emptySecondCar());
+                            setSecondCarDisplay('');
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Status & source</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                      Lead Status
+                    </label>
+                    <select
+                      value={leadStatusId}
+                      onChange={(e) => {
+                        setLeadStatusId(e.target.value);
+                        if (e.target.value !== 'LOST') setLostReason('');
+                      }}
+                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                    >
+                      {LEAD_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <LeadTagsPanel
+                      canManage={isLeadManager}
+                      compact
+                      onSelectionChange={setSelectedTagIds}
+                    />
+                  </div>
+                  {leadStatusId === 'LOST' ? (
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                        Lost reason *
+                      </label>
+                      <select
+                        value={lostReason}
+                        onChange={(e) => setLostReason(e.target.value)}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                      >
+                        <option value="">Select lost reason</option>
+                        {LOST_REASONS.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                  <div className="sm:col-span-2">
+                    <CrmReferredByField
+                      leadId=""
+                      value={referredBy}
+                      onChange={setReferredBy}
+                      referredTo={[]}
+                      leadHref={(id) => `${base}/leads/${id}`}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Call activity</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2">
+                    <Field
+                      label="Notes"
+                      value={form.problem_description}
+                      onChange={(v) => setField('problem_description', v)}
+                      placeholder="Kya baat hui — notes"
+                      multiline
+                      className=""
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">Call date</p>
+                    <input
+                      type="date"
+                      value={activityDate}
+                      onChange={(e) => setActivityDate(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">Call time</p>
+                    <input
+                      type="time"
+                      value={activityTime}
+                      onChange={(e) => setActivityTime(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <div className="rounded-xl bg-[#023D95]/10 px-4 py-3 text-sm font-semibold text-[#023D95]">
                 Incomplete lead save. Book later from Lead Details — Send Pricing bhi wahan se.
                 {selectedLeadStatus ? ` Status: ${selectedLeadStatus.label}.` : ''}
               </div>
-            </>
+            </div>
           )}
 
           {mode === 'book' && step === 0 && (
@@ -1441,6 +1580,7 @@ function Field({
   placeholder,
   inputMode,
   multiline,
+  className = 'mb-3',
 }: {
   label: string;
   value: string;
@@ -1448,9 +1588,10 @@ function Field({
   placeholder?: string;
   inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   multiline?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="mb-3">
+    <div className={className}>
       <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">{label}</label>
       {multiline ? (
         <textarea

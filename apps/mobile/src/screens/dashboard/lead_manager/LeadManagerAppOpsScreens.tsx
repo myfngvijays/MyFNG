@@ -707,6 +707,7 @@ export function LeadManagerReferralScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [payload, setPayload] = useState<any>(null);
+  const [tab, setTab] = useState<'users' | 'activity'>('users');
 
   const load = useCallback(async () => {
     try {
@@ -726,43 +727,86 @@ export function LeadManagerReferralScreen() {
 
   const stats = payload?.stats || {};
   const leaderboard = Array.isArray(payload?.leaderboard) ? payload.leaderboard : [];
+  const events = Array.isArray(payload?.recent_events) ? payload.recent_events : [];
+  const listData = tab === 'users' ? leaderboard : events;
 
   return (
     <OpsShell title="Refer & Rise">
-      {loading ? (
+      {loading && !payload ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
       ) : (
         <FlatList
-          data={leaderboard}
-          keyExtractor={(item, idx) => String(item.customer_id || item.phone || idx)}
+          data={listData}
+          keyExtractor={(item, idx) =>
+            String(item.customer_id || item.id || item.phone || idx)
+          }
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}
           ListHeaderComponent={
-            <View style={styles.stats}>
-              <View style={[styles.stat, { backgroundColor: '#ECFDF5' }]}>
-                <Text style={styles.statVal}>{stats.total_referrals ?? 0}</Text>
-                <Text style={styles.statLbl}>Referrals</Text>
+            <View>
+              <View style={styles.stats}>
+                <View style={[styles.stat, { backgroundColor: '#ECFDF5' }]}>
+                  <Text style={styles.statVal}>{stats.total_referrals ?? 0}</Text>
+                  <Text style={styles.statLbl}>Referrals</Text>
+                </View>
+                <View style={[styles.stat, { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={styles.statVal}>{stats.pending ?? 0}</Text>
+                  <Text style={styles.statLbl}>Pending</Text>
+                </View>
+                <View style={[styles.stat, { backgroundColor: '#E0F2FE' }]}>
+                  <Text style={styles.statVal}>{stats.rewarded ?? 0}</Text>
+                  <Text style={styles.statLbl}>Rewarded</Text>
+                </View>
               </View>
-              <View style={[styles.stat, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={styles.statVal}>{stats.pending ?? 0}</Text>
-                <Text style={styles.statLbl}>Pending</Text>
-              </View>
-              <View style={[styles.stat, { backgroundColor: '#E0F2FE' }]}>
-                <Text style={styles.statVal}>{stats.rewarded ?? 0}</Text>
-                <Text style={styles.statLbl}>Rewarded</Text>
+              <View style={styles.refTabs}>
+                <TouchableOpacity
+                  style={[styles.refTab, tab === 'users' && styles.refTabOn]}
+                  onPress={() => setTab('users')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="people-outline" size={16} color={tab === 'users' ? '#fff' : '#475569'} />
+                  <Text style={[styles.refTabTxt, tab === 'users' && styles.refTabTxtOn]}>Users & Analytics</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.refTab, tab === 'activity' && styles.refTabOn]}
+                  onPress={() => setTab('activity')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="time-outline" size={16} color={tab === 'activity' ? '#fff' : '#475569'} />
+                  <Text style={[styles.refTabTxt, tab === 'activity' && styles.refTabTxtOn]}>Recent Activity</Text>
+                </TouchableOpacity>
               </View>
             </View>
           }
           contentContainerStyle={{ paddingBottom: SPACING.lg }}
-          renderItem={({ item }) => (
-            <View style={[styles.card, { marginHorizontal: SPACING.md }]}>
-              <Text style={styles.name}>{item.full_name || item.phone || 'Referrer'}</Text>
-              <Text style={styles.meta}>
-                {item.total_referrals ?? 0} referrals
-                {item.total_rewards != null ? ` · ₹${item.total_rewards}` : ''}
-              </Text>
-            </View>
-          )}
-          ListEmptyComponent={<Text style={styles.empty}>No referral leaderboard yet.</Text>}
+          renderItem={({ item }) =>
+            tab === 'users' ? (
+              <View style={[styles.card, { marginHorizontal: SPACING.md }]}>
+                <Text style={styles.name}>{item.full_name || item.phone || 'Referrer'}</Text>
+                <Text style={styles.meta}>
+                  {item.total_referrals ?? 0} referrals
+                  {item.total_earned != null ? ` · ₹${item.total_earned}` : item.total_rewards != null ? ` · ₹${item.total_rewards}` : ''}
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.card, { marginHorizontal: SPACING.md }]}>
+                <Text style={styles.name}>
+                  {item.referrer?.full_name || item.referrer?.phone || 'Referrer'}
+                  {' → '}
+                  {item.referee?.full_name || item.referee?.phone || 'Friend'}
+                </Text>
+                <Text style={styles.meta}>
+                  {item.referral_code ? `${item.referral_code} · ` : ''}
+                  {item.status || 'PENDING'}
+                  {item.created_at ? ` · ${formatDateDMY(item.created_at)}` : ''}
+                </Text>
+              </View>
+            )
+          }
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {tab === 'users' ? 'No referral leaderboard yet.' : 'No referral activity yet.'}
+            </Text>
+          }
         />
       )}
     </OpsShell>
@@ -794,6 +838,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.primary,
   },
+  refTabs: {
+    flexDirection: 'row',
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  refTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  refTabOn: { backgroundColor: COLORS.primary },
+  refTabTxt: { fontSize: 12, fontWeight: '800', color: '#475569' },
+  refTabTxtOn: { color: '#fff' },
   stats: { flexDirection: 'row', gap: 10, padding: SPACING.md },
   stat: { flex: 1, borderRadius: 14, padding: 14 },
   statVal: { fontSize: 22, fontWeight: '900', color: COLORS.textPrimary },

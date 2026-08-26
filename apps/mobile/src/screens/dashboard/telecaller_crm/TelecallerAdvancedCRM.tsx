@@ -139,14 +139,6 @@ const LM_NAV: NavRow[] = [
   { type: 'item', id: 'book', label: 'Add lead / Book', icon: 'person-add-outline', kind: 'tab' },
   {
     type: 'item',
-    id: 'dialer',
-    label: 'Dialer',
-    icon: 'keypad-outline',
-    kind: 'stack',
-    screen: 'CrmDialer',
-  },
-  {
-    type: 'item',
     id: 'workshops_stack',
     label: 'Workshops',
     icon: 'business-outline',
@@ -161,10 +153,10 @@ const LM_NAV: NavRow[] = [
     children: [
       {
         id: 'app_bookings',
-        label: 'Bookings & Leads',
+        label: 'Leads',
         icon: 'clipboard-outline',
         kind: 'stack',
-        screen: 'LeadManagerAppBookings',
+        screen: 'LeadManagerLeads',
       },
       {
         id: 'app_customers',
@@ -981,7 +973,9 @@ export default function TelecallerAdvancedCRM() {
       {!detailLeadId && tab !== 'book' ? (
         <TelecallerWhatsAppFab
           onPress={() => setWhatsAppOpen(true)}
-          onCallPress={() => stackNav.navigate('CrmDialer')}
+          onCallPress={
+            isLeadManager ? undefined : () => stackNav.navigate('CrmDialer')
+          }
           bottomOffset={28}
         />
       ) : null}

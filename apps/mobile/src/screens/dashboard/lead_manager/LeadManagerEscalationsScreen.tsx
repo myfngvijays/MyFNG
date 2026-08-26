@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
-import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 export default function LeadManagerEscalationsScreen({ navigation }: any) {
@@ -40,35 +40,10 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
 
   const fetchEscalations = async () => {
     try {
-      let query = supabase
-        .from('service_leads')
-        .select(`
-          *,
-          workshop:workshops(name),
-          city_info:city_id(name)
-        `)
-        .not('escalation', 'is', null);
-
-      switch (filter) {
-        case 'active':
-          query = query
-            .eq('escalation', 'ESCALATED')
-            .not('status', 'in', '(COMPLETED,CANCELLED,CLOSED)');
-          break;
-        case 'resolved':
-          query = query.eq('escalation', 'RESOLVED');
-          break;
-      }
-
-      query = query.order('updated_at', { ascending: false });
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setEscalations(data || []);
-
-    } catch (error) {
-      console.error('Error fetching escalations:', error);
+      const data = await apiFetch<any>(`/api/lead-manager/escalations?filter=${encodeURIComponent(filter)}`);
+      setEscalations(Array.isArray(data?.escalations) ? data.escalations : []);
+    } catch {
+      setEscalations([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -90,19 +65,18 @@ export default function LeadManagerEscalationsScreen({ navigation }: any) {
           text: 'Resolve',
           onPress: async () => {
             try {
-              const { error } = await supabase
-                .from('service_leads')
-                .update({
-                  escalation: 'RESOLVED',
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', leadId);
-
-              if (!error) {
+              const json = await apiFetch<any>('/api/lead-manager/escalations', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lead_id: leadId }),
+              });
+              if (json?.success) {
                 Alert.alert('Success', 'Escalation resolved');
                 fetchEscalations();
+              } else {
+                Alert.alert('Error', json?.error || 'Failed to resolve escalation');
               }
-            } catch (error) {
+            } catch {
               Alert.alert('Error', 'Failed to resolve escalation');
             }
           }

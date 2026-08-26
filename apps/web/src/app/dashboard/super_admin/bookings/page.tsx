@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
@@ -1624,6 +1624,8 @@ function FilterMultiSelect({
 
 export default function SuperAdminBookingsPage() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const [showUploadCrm, setShowUploadCrm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
@@ -2224,6 +2226,10 @@ export default function SuperAdminBookingsPage() {
       setLoading(false);
     }
   }, [showUploadCrm, datePreset, customStart, customEnd]);
+
+  useEffect(() => {
+    if (searchParams.get('upload') === '1') setShowUploadCrm(true);
+  }, [searchParams]);
 
   useEffect(() => {
     const presetRaw = String(searchParams.get('preset') || '')
@@ -2839,7 +2845,13 @@ export default function SuperAdminBookingsPage() {
               {showUploadCrm ? (
                 <button
                   type="button"
-                  onClick={() => setShowUploadCrm(false)}
+                  onClick={() => {
+                    if (String(pathname || '').includes('/lead_manager/bookings')) {
+                      router.push('/dashboard/lead_manager/leads');
+                      return;
+                    }
+                    setShowUploadCrm(false);
+                  }}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   Back to leads

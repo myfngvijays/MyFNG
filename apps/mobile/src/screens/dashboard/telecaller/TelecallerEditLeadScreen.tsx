@@ -23,6 +23,12 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 import { apiFetch } from '@/lib/api';
 import { parseIds } from '@/lib/parseIds';
+import {
+  emptySecondCar,
+  parseSecondCar,
+  serializeSecondCar,
+  type CrmSecondCar,
+} from '@/lib/crmSecondCar';
 import { COLORS, SPACING } from '@/constants/theme';
 import CarModelSearchField from '@/components/CarModelSearchField';
 import CrmServicePlanPicker from '@/components/telecaller/CrmServicePlanPicker';
@@ -33,19 +39,6 @@ import {
 } from '@/lib/servicePricing';
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
-const EDITABLE_STATUSES = new Set([
-  'NEW',
-  'CONTACTED',
-  'INCOMPLETE',
-  'ASSIGNED',
-  'VALIDATED',
-  'PENDING',
-  'IN_PROGRESS',
-  'REJECTED',
-  'ACCEPTED',
-  'HOLD',
-  'COMPLETED',
-]);
 
 type FormData = {
   customer_name: string;
@@ -230,6 +223,9 @@ export default function TelecallerEditLeadScreen({
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
   const [carDisplay, setCarDisplay] = useState('');
+  const [showSecondCar, setShowSecondCar] = useState(false);
+  const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
+  const [secondCarDisplay, setSecondCarDisplay] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [couponMeta, setCouponMeta] = useState<any>({});
   const [initialServiceTypes, setInitialServiceTypes] = useState<string[]>([]);
@@ -280,10 +276,6 @@ export default function TelecallerEditLeadScreen({
 
         if (leadRes.error) throw leadRes.error;
         const data = leadRes.data;
-        if (!EDITABLE_STATUSES.has(String(data.status || '').toUpperCase())) {
-          setErrorMessage(`Cannot edit lead with status: ${data.status}`);
-          return;
-        }
 
         const meta = data.coupon_meta && typeof data.coupon_meta === 'object' ? data.coupon_meta : {};
         setCouponMeta(meta);
@@ -291,6 +283,18 @@ export default function TelecallerEditLeadScreen({
         const make = data.vehicle_make || '';
         const model = data.vehicle_model || '';
         setCarDisplay([make, model].filter(Boolean).join(' '));
+        const existingSecond = parseSecondCar(meta);
+        if (existingSecond) {
+          setShowSecondCar(true);
+          setSecondCar(existingSecond);
+          setSecondCarDisplay(
+            [existingSecond.vehicle_make, existingSecond.vehicle_model].filter(Boolean).join(' '),
+          );
+        } else {
+          setShowSecondCar(false);
+          setSecondCar(emptySecondCar());
+          setSecondCarDisplay('');
+        }
 
         const cityName = data.city || '';
         const pin = String(data.pincode || meta.pincode || '').replace(/\D/g, '').slice(0, 6);
@@ -397,6 +401,9 @@ export default function TelecallerEditLeadScreen({
     }
     if (!form.city_id && !form.city) next.city_id = 'City required';
     if (!form.vehicle_make || !form.vehicle_model) next.vehicle = 'Select car model';
+    if (showSecondCar && (!secondCar.vehicle_make || !secondCar.vehicle_model)) {
+      next.second_vehicle = 'Select second car model';
+    }
     if (!form.vehicle_fuel_type) next.vehicle_fuel_type = 'Fuel type required';
     if (form.service_types.length === 0) next.service_types = 'Select at least one service';
     if (form.pickup_required) {
@@ -437,6 +444,7 @@ export default function TelecallerEditLeadScreen({
         pickup_time: form.pickup_time || null,
         pickup_address: form.pickup_address || null,
         vehicle_class: form.vehicle_class || null,
+        second_car: showSecondCar ? serializeSecondCar(secondCar) : null,
       };
 
       const sorted = (ids: string[]) => [...ids].map(String).sort();
@@ -765,6 +773,93 @@ export default function TelecallerEditLeadScreen({
             }}
           />
           {errors.vehicle ? <Text style={styles.err}>{errors.vehicle}</Text> : null}
+          {!showSecondCar ? (
+            <TouchableOpacity
+              style={{
+                marginTop: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#BAE6FD',
+                backgroundColor: '#F0F9FF',
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+              onPress={() => {
+                setShowSecondCar(true);
+                setSecondCar(emptySecondCar());
+                setSecondCarDisplay('');
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>Add second car</Text>
+            </TouchableOpacity>
+          ) : (
+            <View
+              style={{
+                marginTop: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#BAE6FD',
+                backgroundColor: '#F0F9FF',
+                padding: 12,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0C4A6E' }}>Second car</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowSecondCar(false);
+                    setSecondCar(emptySecondCar());
+                    setSecondCarDisplay('');
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={[styles.input, styles.inputPremium]}
+                placeholder="Reg. no or NA"
+                placeholderTextColor={COLORS.textSecondary}
+                value={secondCar.vehicle_number}
+                onChangeText={(v) =>
+                  setSecondCar((prev) => ({
+                    ...prev,
+                    vehicle_number: v.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
+                  }))
+                }
+                autoCapitalize="characters"
+                maxLength={12}
+              />
+              <CarModelSearchField
+                label="Second car model *"
+                variant="website"
+                displayValue={secondCarDisplay}
+                selectedMake={secondCar.vehicle_make}
+                selectedModel={secondCar.vehicle_model}
+                placeholder="Type second car model"
+                onSelect={(make, model, display, meta) => {
+                  setSecondCarDisplay(display);
+                  setSecondCar((prev) => ({
+                    ...prev,
+                    vehicle_make: make,
+                    vehicle_model: model,
+                    model_id: meta?.id || prev.model_id,
+                    vehicle_class: meta?.class || prev.vehicle_class,
+                  }));
+                }}
+                onClear={() => {
+                  setSecondCarDisplay('');
+                  setSecondCar((prev) => ({
+                    ...prev,
+                    vehicle_make: '',
+                    vehicle_model: '',
+                    model_id: '',
+                    vehicle_class: '',
+                  }));
+                }}
+              />
+              {errors.second_vehicle ? <Text style={styles.err}>{errors.second_vehicle}</Text> : null}
+            </View>
+          )}
 
           <Text style={styles.label}>Fuel type *</Text>
           <View style={styles.fuelRow}>
