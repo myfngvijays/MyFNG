@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, BackHandler } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../../constants/theme';
 
 export default function SupervisorMenuScreen({ navigation }: any) {
+  const { width } = useWindowDimensions();
+  const twoCol = width >= 600;
   // Handle hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -105,9 +107,16 @@ export default function SupervisorMenuScreen({ navigation }: any) {
     {
       id: 'profile',
       title: '👤 Profile',
-      subtitle: 'View/Edit profile',
+      subtitle: 'Name, phone, workshop',
       screen: 'SupervisorProfile',
       color: '#64748b',
+    },
+    {
+      id: 'readme',
+      title: '📖 ReadMe',
+      subtitle: 'Har menu kya karta hai',
+      screen: 'AdvisorReadMe',
+      color: '#023D95',
     },
   ];
 
@@ -118,15 +127,15 @@ export default function SupervisorMenuScreen({ navigation }: any) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Supervisor Menu</Text>
-        <Text style={styles.subtitle}>Choose a feature to access</Text>
+        <Text style={styles.title}>Workshop Advisor</Text>
+        <Text style={styles.subtitle}>Choose a feature</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, twoCol && styles.scrollGrid]}>
         {menuItems.map((item) => (
           <TouchableOpacity
             key={item.id}
-            style={[styles.menuCard, { borderLeftColor: item.color }]}
+            style={[styles.menuCard, twoCol && styles.menuCardHalf, { borderLeftColor: item.color }]}
             onPress={() => handleNavigate(item.screen)}
           >
             <View style={styles.menuContent}>
@@ -166,6 +175,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 32,
+  },
+  scrollGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   menuCard: {
     flexDirection: 'row',
@@ -180,6 +195,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  menuCardHalf: {
+    width: '48.5%',
   },
   menuContent: {
     flex: 1,

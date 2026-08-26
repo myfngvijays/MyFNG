@@ -139,7 +139,7 @@ export async function POST(
         priority: 'HIGH',
         lead_id: leadId,
         lead_number: lead.lead_number,
-        action_url: `/dashboard/workshop_supervisor/leads/${leadId}`,
+        action_url: `/dashboard/workshop-advisor/leads/${leadId}`,
         metadata: { concerns: body.specific_concerns },
       });
     }

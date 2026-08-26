@@ -69,6 +69,7 @@ import JobMonitoringScreen from '../screens/dashboard/workshop_supervisor/JobMon
 import JobDetailScreen from '../screens/dashboard/workshop_supervisor/JobDetailScreen';
 import MechanicAssignmentScreen from '../screens/dashboard/workshop_supervisor/MechanicAssignmentScreen';
 import SupervisorMenuScreen from '../screens/dashboard/workshop_supervisor/SupervisorMenuScreen';
+import AdvisorReadMeScreen from '../screens/dashboard/workshop_supervisor/AdvisorReadMeScreen';
 
 // CSE screens
 import ComplaintsManagementScreen from '../screens/dashboard/cse/ComplaintsManagementScreen';
@@ -790,7 +791,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen 
           name="WorkshopSupervisorDashboard" 
           component={WorkshopSupervisorDashboard}
-          options={{ title: 'Supervisor Dashboard' }}
+          options={{ title: 'Workshop Advisor' }}
         />
         <Stack.Screen 
           name="SupervisorMenu" 
@@ -866,6 +867,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="SupervisorProfile" 
           component={SupervisorProfileScreen}
           options={{ title: 'My Profile' }}
+        />
+        <Stack.Screen
+          name="AdvisorReadMe"
+          component={AdvisorReadMeScreen}
+          options={{ title: 'ReadMe' }}
         />
         <Stack.Screen
           name="SupervisorAdditionalJobsMaster"

@@ -225,7 +225,7 @@ export default function WorkshopSupervisorDashboard({ navigation }: any) {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.title}>Supervisor Dashboard</Text>
+        <Text style={styles.title}>Workshop Advisor Dashboard</Text>
         <Text style={styles.subtitle}>Manage job assignments and team performance</Text>
         <TouchableOpacity
           style={styles.actionButton}

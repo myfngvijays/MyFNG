@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { BookOpen } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHelpIcon from '@/components/PageHelpIcon';
+import { AdvisorPageHeader } from '@/components/advisor/AdvisorPageHeader';
 import {
   getLeadManagerReadme,
   getTelecallerReadme,
+  getWorkshopAdvisorReadme,
   type ReadmeSection,
 } from '@/lib/dashboard/menuHelpCopy';
 
@@ -14,14 +16,26 @@ function ReadMeContent({
   role,
   sections,
 }: {
-  role: 'LEAD_MANAGER' | 'TELECALLER';
+  role: 'LEAD_MANAGER' | 'TELECALLER' | 'WORKSHOP_SUPERVISOR';
   sections: ReadmeSection[];
 }) {
-  const base = role === 'LEAD_MANAGER' ? '/dashboard/lead_manager' : '/dashboard/telecaller';
+  const base =
+    role === 'LEAD_MANAGER'
+      ? '/dashboard/lead_manager'
+      : role === 'WORKSHOP_SUPERVISOR'
+        ? '/dashboard/workshop-advisor'
+        : '/dashboard/telecaller';
 
   return (
     <DashboardLayout role={role}>
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-6">
+      <div className={role === 'WORKSHOP_SUPERVISOR' ? 'w-full max-w-full min-w-0 space-y-4 sm:space-y-5' : 'mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-6'}>
+        {role === 'WORKSHOP_SUPERVISOR' ? (
+          <AdvisorPageHeader
+            title="ReadMe"
+            subtitle="Har menu kya hai aur kya karta hai — short guide."
+            href={`${base}/readme`}
+          />
+        ) : (
         <div>
           <h1 className="text-2xl font-black text-[#023D95] flex items-center gap-2">
             <BookOpen className="h-6 w-6" />
@@ -36,6 +50,7 @@ function ReadMeContent({
             <span className="font-semibold text-slate-700">i</span> bhi dikhega us page ke baare mein.
           </p>
         </div>
+        )}
 
         {sections.map((section) => (
           <section key={section.heading} className="space-y-3">
@@ -88,4 +103,8 @@ export function LeadManagerReadMePage() {
 
 export function TelecallerReadMePage() {
   return <ReadMeContent role="TELECALLER" sections={getTelecallerReadme()} />;
+}
+
+export function WorkshopAdvisorReadMePage() {
+  return <ReadMeContent role="WORKSHOP_SUPERVISOR" sections={getWorkshopAdvisorReadme()} />;
 }

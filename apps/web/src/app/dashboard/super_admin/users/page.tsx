@@ -91,7 +91,7 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('active');
   const [showAddModal, setShowAddModal] = useState(false);
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
@@ -545,7 +545,7 @@ export default function UserManagementPage() {
 
   const selectRole = (code: string) => {
     setFilterRole(code);
-    setFilterStatus('all');
+    setFilterStatus('active');
   };
 
   const toggleSelect = (id: string) => {
@@ -594,39 +594,41 @@ export default function UserManagementPage() {
     }
   };
 
-  const StatusHeaderFilter = () => (
-    <div className="inline-flex items-center gap-2 flex-wrap">
-      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-        Status
-      </span>
-      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
-        {(
-          [
-            { key: 'all', label: 'All', count: roleStatusCounts.total },
-            { key: 'active', label: 'Active', count: roleStatusCounts.active },
-            { key: 'inactive', label: 'Inactive', count: roleStatusCounts.inactive },
-          ] as const
-        ).map((opt) => (
-          <button
-            key={opt.key}
-            type="button"
-            onClick={() => setFilterStatus(opt.key)}
-            className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition whitespace-nowrap ${
-              filterStatus === opt.key
-                ? opt.key === 'active'
-                  ? 'bg-green-600 text-white'
-                  : opt.key === 'inactive'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-slate-800 text-white'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {opt.label}
-            <span className="ml-1 opacity-80">{opt.count}</span>
-          </button>
-        ))}
-      </div>
-    </div>
+  const StatusRadioFilter = () => (
+    <fieldset className="flex items-center gap-3 sm:gap-4">
+      <legend className="sr-only">User status</legend>
+      {(
+        [
+          { key: 'all', label: 'All', count: roleStatusCounts.total },
+          { key: 'active', label: 'Active', count: roleStatusCounts.active },
+          { key: 'inactive', label: 'Inactive', count: roleStatusCounts.inactive },
+        ] as const
+      ).map((opt) => (
+        <label
+          key={opt.key}
+          className={`inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none ${
+            filterStatus === opt.key
+              ? opt.key === 'active'
+                ? 'text-emerald-700'
+                : opt.key === 'inactive'
+                  ? 'text-red-600'
+                  : 'text-slate-800'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <input
+            type="radio"
+            name="user-status-filter"
+            value={opt.key}
+            checked={filterStatus === opt.key}
+            onChange={() => setFilterStatus(opt.key)}
+            className="h-3.5 w-3.5 border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          {opt.label}
+          <span className="tabular-nums opacity-70">{opt.count}</span>
+        </label>
+      ))}
+    </fieldset>
   );
 
   if (loading) {
@@ -728,6 +730,9 @@ export default function UserManagementPage() {
               );
             })}
           </div>
+          <div className="mt-3 flex justify-end">
+            <StatusRadioFilter />
+          </div>
         </div>
 
         {selectedIds.size > 0 ? (
@@ -800,8 +805,8 @@ export default function UserManagementPage() {
                   <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Role
                   </th>
-                  <th className="px-4 md:px-6 py-2 md:py-3 text-left align-middle min-w-[220px]">
-                    <StatusHeaderFilter />
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
                   </th>
                   <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Joined
@@ -914,9 +919,6 @@ export default function UserManagementPage() {
 
         {/* Users Cards - Mobile/Tablet */}
         <div className="lg:hidden space-y-3 sm:space-y-4">
-          <div className="bg-white rounded-lg shadow p-3 border border-gray-100">
-            <StatusHeaderFilter />
-          </div>
           {filteredUsers.map((user) => {
             const roleStyle = getRoleStyle(user.role?.role_code || user.role_code);
             const userId = String(user.id || '');

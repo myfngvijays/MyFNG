@@ -774,7 +774,8 @@ function SuperAdminLayoutInner({
           return;
         }
         if (roleCode !== 'SUPER_ADMIN') {
-          router.replace(`/dashboard/${roleCode.toLowerCase()}`);
+          const { getRoleDashboardHome } = await import('@/lib/dashboard/roleHome');
+          router.replace(getRoleDashboardHome(roleCode));
           return;
         }
         if (active) setAuthReady(true);
@@ -1464,7 +1465,7 @@ function SuperAdminLayoutInner({
 
       {/* Main Content */}
       <main
-        className={`flex-1 min-w-0 overflow-x-clip overflow-y-auto ${
+        className={`flex-1 min-w-0 overflow-x-hidden overflow-y-auto ${
           isSiteSeoPage ? 'bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50/40' : ''
         }`}
       >
@@ -1473,7 +1474,7 @@ function SuperAdminLayoutInner({
           style={{ height: 'calc(3.25rem + env(safe-area-inset-top))' }}
           aria-hidden
         />
-        <div className="min-w-0 max-w-[100vw] overflow-x-clip pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="min-w-0 w-full max-w-full overflow-x-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {children}
         </div>
       </main>

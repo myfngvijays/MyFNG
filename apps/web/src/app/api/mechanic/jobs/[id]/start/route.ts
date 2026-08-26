@@ -149,7 +149,7 @@ export async function POST(
           leadId,
           leadNumber,
           relatedUserName: mechanicName,
-          actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+          actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`,
         });
       }
 

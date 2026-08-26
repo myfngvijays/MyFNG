@@ -81,7 +81,7 @@ export default function LeadManagerTeamWhatsAppPage() {
 
   return (
     <DashboardLayout role="LEAD_MANAGER">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 space-y-4">
+      <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-black text-[#023D95] flex items-center gap-2">

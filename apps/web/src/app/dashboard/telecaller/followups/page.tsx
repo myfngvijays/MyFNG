@@ -272,7 +272,7 @@ export default function FollowUpsPage() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto w-full min-w-0 max-w-6xl overflow-x-clip space-y-3 sm:space-y-4">
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-3 sm:space-y-4">
         {/* Header */}
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Reminders / Follow-ups</h1>

@@ -198,7 +198,7 @@ export default function RSAManagerSettingsPage() {
 
   return (
     <DashboardLayout role="rsa_manager">
-      <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
+      <div className="w-full min-w-0 max-w-6xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
         <div className="bg-gradient-to-r from-slate-700 to-slate-600 text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>

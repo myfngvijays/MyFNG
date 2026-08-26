@@ -12,7 +12,7 @@ export default function TelecallerDialerPage() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto max-w-3xl px-3 py-4 sm:px-4 sm:py-6">
+      <div className="mx-auto w-full min-w-0 max-w-3xl">
         <div className="mb-4 flex items-center gap-2">
           <PageHelpIcon href={`${base}/dialer`} label="Dialer" />
         </div>

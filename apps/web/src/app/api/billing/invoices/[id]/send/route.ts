@@ -505,7 +505,7 @@ export async function POST(
             priority: 'MEDIUM',
             leadId: invoice.lead_id,
             leadNumber: lead?.lead_number,
-            actionUrl: `/dashboard/workshop_supervisor/jobs/${invoice.lead_id}`,
+            actionUrl: `/dashboard/workshop-advisor/jobs/${invoice.lead_id}`,
             metadata: { invoice_id: invoiceId, methods },
           });
         }

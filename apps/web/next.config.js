@@ -121,6 +121,8 @@ const nextConfig = {
       // Dead admin placeholder path — send to contact
       { source: '/service-partner', destination: '/contact-us', permanent: true },
       { source: '/service-partner/:path*', destination: '/contact-us', permanent: true },
+      { source: '/dashboard/workshop_supervisor', destination: '/dashboard/workshop-advisor', permanent: false },
+      { source: '/dashboard/workshop_supervisor/:path*', destination: '/dashboard/workshop-advisor/:path*', permanent: false },
       { source: '/dashboard/app_operations', destination: '/dashboard/lead_manager', permanent: false },
       { source: '/dashboard/app_operations/bookings', destination: '/dashboard/lead_manager/bookings', permanent: false },
       {

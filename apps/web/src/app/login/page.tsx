@@ -68,8 +68,8 @@ export default function LoginPage() {
       if (isTelecallerFloorRole(roleCode)) {
         await ensureTelecallerPunchInOnLogin();
       }
-      const destRole = roleCode === 'APP_OPERATIONS' ? 'lead_manager' : roleCode.toLowerCase();
-      router.push(`/dashboard/${destRole}`);
+      const { getRoleDashboardHome } = await import('@/lib/dashboard/roleHome');
+      router.push(getRoleDashboardHome(roleCode));
       
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');

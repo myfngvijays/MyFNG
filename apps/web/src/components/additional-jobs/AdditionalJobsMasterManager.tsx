@@ -30,8 +30,10 @@ type Item = {
 
 export default function AdditionalJobsMasterManager({
   mode,
+  hideHeading = false,
 }: {
   mode: 'SUPER_ADMIN' | 'WORKSHOP_ADMIN' | 'WORKSHOP_SUPERVISOR';
+  hideHeading?: boolean;
 }) {
   const isSuperAdmin = mode === 'SUPER_ADMIN';
   const isSupervisor = mode === 'WORKSHOP_SUPERVISOR';
@@ -1357,14 +1359,16 @@ export default function AdditionalJobsMasterManager({
   }
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-3">
+    <div className={hideHeading ? 'w-full max-w-full min-w-0' : 'p-4 sm:p-6'}>
+      <div className={`flex flex-col md:flex-row items-start md:items-center mb-5 gap-3 ${hideHeading ? 'justify-end' : 'justify-between'}`}>
+        {!hideHeading ? (
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Additional Jobs Master</h1>
           <p className="text-gray-500">
             Create reusable additional jobs list (workshop-wise) for faster approvals & billing.
           </p>
         </div>
+        ) : null}
         <div className="flex gap-2">
           <AdminPageRefresh
             onClick={() => {

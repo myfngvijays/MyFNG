@@ -1232,7 +1232,7 @@ export async function POST(
           priority: 'MEDIUM',
           leadId,
           leadNumber: lead.lead_number,
-          actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+          actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`,
           metadata: { invoice_id: invoice.id, invoice_number: invoiceNumber },
         });
       }

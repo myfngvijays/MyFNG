@@ -35,7 +35,7 @@
     @apply p-2 sm:p-3 md:p-4;
   }
   body {
-    @apply bg-[#F5F7FA] text-[#3A3F45] font-['Poppins',sans-serif] overflow-x-clip;
+    @apply bg-[#F5F7FA] text-[#3A3F45] font-['Poppins',sans-serif] overflow-x-hidden;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply text-[#023D95] font-semibold;
@@ -104,9 +104,8 @@
 
   /* Shared admin / dashboard shell — works in browser + mobile app WebView */
   .admin-shell {
-    @apply min-h-[100dvh] min-h-screen bg-background-grey overflow-x-clip;
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    @apply min-h-[100dvh] min-h-screen bg-background-grey w-full max-w-[100vw];
+    overflow-x: hidden;
   }
 
   .admin-header {
@@ -115,11 +114,56 @@
   }
 
   .admin-main {
-    @apply min-w-0 w-full overflow-x-clip;
+    @apply min-w-0 w-full max-w-full box-border;
   }
 
-  .admin-page {
-    @apply p-3 sm:p-4 md:p-5 min-w-0 w-full max-w-full overflow-x-clip;
+  .admin-page,
+  .dashboard-page {
+    @apply p-3 sm:p-4 md:p-5 min-w-0 w-full max-w-full box-border;
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+  }
+  @media (min-width: 640px) {
+    .admin-page,
+    .dashboard-page {
+      padding-left: max(1rem, env(safe-area-inset-left));
+      padding-right: max(1rem, env(safe-area-inset-right));
+    }
+  }
+  @media (min-width: 768px) {
+    .admin-page,
+    .dashboard-page {
+      padding-left: max(1.25rem, env(safe-area-inset-left));
+      padding-right: max(1.25rem, env(safe-area-inset-right));
+    }
+  }
+  /* 14" / 15" / 15.6" / MacBook — use the extra width without clipping */
+  @media (min-width: 1280px) {
+    .admin-page,
+    .dashboard-page {
+      padding-left: max(1.5rem, env(safe-area-inset-left));
+      padding-right: max(1.5rem, env(safe-area-inset-right));
+    }
+  }
+
+  .admin-page img,
+  .dashboard-page img,
+  .admin-page video,
+  .dashboard-page video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Phone + tablet: wide tables scroll instead of cutting the right edge */
+  @media (max-width: 1023px) {
+    .admin-page table,
+    .dashboard-page table {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
   }
 
   /* Auth screens — keep padding in CSS so SSR/client markup stays identical */

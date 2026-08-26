@@ -107,9 +107,9 @@ export default function WorkshopsPage() {
 
   return (
     <DashboardLayout role="lead_manager">
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="w-full max-w-7xl mx-auto min-w-0">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg -mx-6 -mt-6 mb-8">
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-2xl shadow-lg mb-6 sm:mb-8">
           <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🏢 Workshop Management</h1>
           <p className="text-white font-medium mt-1">Partner Network • Quality Control • Assignment Ready</p>
         </div>

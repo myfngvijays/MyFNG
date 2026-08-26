@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, BackHandler } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
@@ -46,7 +47,8 @@ export default function SupervisorProfileScreen() {
         .from('users_login')
         .select(`
           *,
-          role:role_id(role_name, role_code)
+          role:role_id(role_name, role_code),
+          workshop:workshops(name, city)
         `)
         .eq('email', user.email)
         .single();
@@ -93,13 +95,17 @@ export default function SupervisorProfileScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <ScrollView contentContainerStyle={styles.scrollInner}>
       <View style={styles.header}>
         <View style={styles.avatar}>
           <Ionicons name="person" size={48} color={COLORS.white} />
         </View>
         <Text style={styles.name}>{userProfile?.full_name}</Text>
-        <Text style={styles.role}>{userProfile?.role?.role_name}</Text>
+        <Text style={styles.role}>Workshop Advisor</Text>
+        {userProfile?.workshop?.name ? (
+          <Text style={styles.workshop}>{userProfile.workshop.name}</Text>
+        ) : null}
       </View>
 
       <View style={styles.section}>
@@ -128,15 +134,18 @@ export default function SupervisorProfileScreen() {
         )}
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.gray[50] },
+  scrollInner: { paddingBottom: 32 },
   header: { backgroundColor: COLORS.primary, padding: SPACING.xl, alignItems: 'center' },
   avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary + 'AA', justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.md },
   name: { fontSize: SIZES.xl, fontWeight: 'bold', color: COLORS.white },
   role: { fontSize: SIZES.sm, color: COLORS.white, opacity: 0.9, marginTop: SPACING.xs },
+  workshop: { fontSize: SIZES.xs, color: COLORS.white, opacity: 0.8, marginTop: 4 },
   section: { backgroundColor: COLORS.white, margin: SPACING.md, borderRadius: SIZES.sm, padding: SPACING.md },
   row: { paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.gray[100] },
   label: { fontSize: SIZES.sm, color: COLORS.gray[600], marginBottom: SPACING.xs },

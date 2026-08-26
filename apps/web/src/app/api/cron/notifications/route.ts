@@ -884,7 +884,7 @@ async function runPickupBoySlaCron() {
             priority: 'HIGH',
             lead_id: leadId,
             lead_number: leadNumber,
-            action_url: `/dashboard/workshop_supervisor/pickup-delivery`,
+            action_url: `/dashboard/workshop-advisor/pickup-delivery`,
             metadata: { kind: 'PICKUP_AUTO_REASSIGNED', pickup_boy_id: pickupBoyId },
             is_read: false,
             created_at: nowIso,

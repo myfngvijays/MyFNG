@@ -7,7 +7,7 @@ import CrmTemplatesPanel from '@/components/telecaller/crm/CrmTemplatesPanel';
 
 function Body() {
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="w-full min-w-0 max-w-5xl mx-auto">
       <div className="flex justify-end mb-2">
         <PageHelpIcon href="/dashboard/lead_manager/templates" label="Msg Templates" />
       </div>

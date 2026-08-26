@@ -20,7 +20,7 @@ import { dispatchPushToUser } from '@/lib/push/dispatchPush';
  * - Telecaller lead: `/dashboard/telecaller/leads/{leadId}`
  * - Teamlead dashboard: `/dashboard/sub_admin/telecaller`
  * - Workshop admin pending leads: `/dashboard/workshop_admin/leads/pending`
- * - Workshop supervisor job: `/dashboard/workshop_supervisor/jobs/{leadId}`
+ * - Workshop supervisor job: `/dashboard/workshop-advisor/jobs/{leadId}`
  * - Workshop mechanic manage: `/dashboard/workshop_mechanic/jobs/{leadId}/manage`
  * - Pickup tasks: `/dashboard/workshop_pickup_boy/tasks/{leadId}`
  */
@@ -415,7 +415,7 @@ export async function notifyTeamAssignment(
       leadId,
       leadNumber,
       relatedUserName: assignedBy,
-      actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`
+      actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`
     });
   }
 
@@ -732,7 +732,7 @@ export async function notifyReadyForQC(
       priority: 'HIGH',
       leadId,
       leadNumber,
-      actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+      actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`,
     });
   }
 

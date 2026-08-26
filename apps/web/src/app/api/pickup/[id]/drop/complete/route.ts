@@ -296,7 +296,7 @@ export async function POST(
           priority: 'LOW',
           leadId,
           leadNumber,
-          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          actionUrl: `/dashboard/workshop-advisor/pickup-delivery`,
           metadata: { kind: 'DELIVERY_COMPLETED' },
         });
       }

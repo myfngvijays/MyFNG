@@ -116,7 +116,7 @@ export default function LeadManagerTelecallerIdsPage() {
 
   return (
     <DashboardLayout role="LEAD_MANAGER">
-      <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">
+      <div className="w-full min-w-0 max-w-3xl mx-auto space-y-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-[#023D95] flex items-center gap-2">

@@ -290,7 +290,7 @@ export async function POST(
           leadId,
           leadNumber,
           relatedUserName: mechanicName,
-          actionUrl: `/dashboard/workshop_supervisor/extra-work`,
+          actionUrl: `/dashboard/workshop-advisor/extra-work`,
           metadata: { extra_work_id: extraWorkRequest.id, amount: costNum, is_urgent: Boolean(is_urgent) },
         });
       }

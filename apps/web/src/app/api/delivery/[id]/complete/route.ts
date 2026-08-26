@@ -372,7 +372,7 @@ export async function POST(
           priority: damage_reported ? 'HIGH' : 'LOW',
           leadId,
           leadNumber,
-          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          actionUrl: `/dashboard/workshop-advisor/pickup-delivery`,
           metadata: { kind: 'DELIVERY_COMPLETED', damage_reported: Boolean(damage_reported), support_ticket_id: supportTicketId },
         });
       }
