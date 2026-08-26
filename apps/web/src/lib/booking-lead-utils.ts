@@ -1,5 +1,6 @@
 import { extractUtmFromUnknown, UTM_KEYS, type UtmParams } from '@/lib/utm';
 import { FAMILIES, normalizeFamilyKey } from '@/lib/refer-and-rise';
+import { findMatchingMessageTrigger, type MessageTrigger } from '@/lib/enquiry/messageTriggers';
 
 export type LeadReferralRewardInfo = {
   claim_id: string | null;
@@ -760,6 +761,35 @@ export function getLeadInboundWhatsAppMessage(lead: Record<string, any>): string
     if (!isInvalidStoredMessage(value)) return String(value).trim();
   }
   return null;
+}
+
+export const NO_MESSAGE_TRIGGER = 'NONE';
+
+export function getLeadStoredMessageTrigger(
+  lead: Record<string, any>,
+): { id: string; label: string } | null {
+  const meta =
+    lead?.coupon_meta && typeof lead.coupon_meta === 'object'
+      ? (lead.coupon_meta as Record<string, unknown>)
+      : {};
+  const id = String(meta.message_trigger_id || '').trim();
+  const label = String(meta.message_trigger_label || '').trim();
+  if (!id && !label) return null;
+  return { id: id || label, label: label || id };
+}
+
+/** Stored trigger on the lead, or a match against configured Meta/WhatsApp phrases. */
+export function resolveLeadMessageTrigger(
+  lead: Record<string, any>,
+  catalog: MessageTrigger[] = [],
+): { id: string; label: string } | null {
+  const stored = getLeadStoredMessageTrigger(lead);
+  if (stored) return stored;
+  const message = getLeadInboundWhatsAppMessage(lead);
+  if (!message || catalog.length === 0) return null;
+  const hit = findMatchingMessageTrigger(message, catalog);
+  if (!hit) return null;
+  return { id: hit.id, label: hit.label || hit.phrase };
 }
 
 /** Incomplete WhatsApp chat lead — not a confirmed app/website booking. */

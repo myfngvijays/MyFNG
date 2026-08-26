@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import CrmSavedViewsSheet, { type MobileSavedViewFilters } from '../../../components/CrmSavedViewsSheet';
+import { apiFetch } from '../../../lib/api';
 
 interface Lead {
   id: string;
@@ -35,6 +37,10 @@ export default function LeadsManagementScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [viewName, setViewName] = useState('All Leads');
+  const [appliedView, setAppliedView] = useState<MobileSavedViewFilters>({});
+  const [tagLeadIds, setTagLeadIds] = useState<Set<string> | null>(null);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -50,7 +56,42 @@ export default function LeadsManagementScreen() {
 
   useEffect(() => {
     filterLeads();
-  }, [leads, searchQuery, activeFilter]);
+  }, [leads, searchQuery, activeFilter, appliedView, tagLeadIds]);
+
+  useEffect(() => {
+    const tagIds = Array.isArray(appliedView.tagIds) ? appliedView.tagIds.filter(Boolean) : [];
+    if (tagIds.length === 0) {
+      setTagLeadIds(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetch<any>(`/api/lead-manager/tags?map_tag_ids=${encodeURIComponent(tagIds.join(','))}`)
+      .then((json) => {
+        if (cancelled) return;
+        const ids = new Set<string>();
+        const mode = appliedView.tagMode === 'all' ? 'all' : 'any';
+        const byLead = new Map<string, Set<string>>();
+        for (const row of Array.isArray(json?.maps) ? json.maps : []) {
+          const leadId = String(row?.lead_id || '');
+          const tagId = String(row?.tag_id || '');
+          if (!leadId || !tagId) continue;
+          const set = byLead.get(leadId) || new Set<string>();
+          set.add(tagId);
+          byLead.set(leadId, set);
+        }
+        for (const [leadId, have] of byLead) {
+          const ok = mode === 'all' ? tagIds.every((id) => have.has(id)) : tagIds.some((id) => have.has(id));
+          if (ok) ids.add(leadId);
+        }
+        setTagLeadIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setTagLeadIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedView.tagIds, appliedView.tagMode]);
 
   const fetchLeads = async () => {
     try {
@@ -99,14 +140,24 @@ export default function LeadsManagementScreen() {
     }
 
     // Apply search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    const search = String(appliedView.search || searchQuery || '').trim();
+    if (search) {
+      const query = search.toLowerCase();
       filtered = filtered.filter(
         lead =>
           lead.lead_number?.toLowerCase().includes(query) ||
           lead.customer_name?.toLowerCase().includes(query) ||
           lead.vehicle_number?.toLowerCase().includes(query)
       );
+    }
+
+    const viewStatus = String(appliedView.status || '').toUpperCase();
+    if (viewStatus && viewStatus !== 'ALL' && activeFilter === 'ALL') {
+      filtered = filtered.filter((lead) => String(lead.status || '').toUpperCase() === viewStatus);
+    }
+
+    if (tagLeadIds) {
+      filtered = filtered.filter((lead) => tagLeadIds.has(String(lead.id)));
     }
 
     setFilteredLeads(filtered);
@@ -213,6 +264,19 @@ export default function LeadsManagementScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Leads Management 📊</Text>
         <Text style={styles.subtitle}>{filteredLeads.length} leads</Text>
+        <TouchableOpacity
+          onPress={() => setViewsOpen(true)}
+          style={{
+            marginTop: 8,
+            alignSelf: 'flex-start',
+            backgroundColor: '#EEF2FF',
+            borderRadius: 10,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+          }}
+        >
+          <Text style={{ color: '#3730A3', fontWeight: '800', fontSize: 12 }}>{viewName}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Stats Cards */}
@@ -285,6 +349,27 @@ export default function LeadsManagementScreen() {
             <Text style={styles.emptySubtext}>Leads will appear here</Text>
           </View>
         }
+      />
+      <CrmSavedViewsSheet
+        visible={viewsOpen}
+        onClose={() => setViewsOpen(false)}
+        currentFilters={{
+          ...appliedView,
+          search: searchQuery,
+          status: activeFilter,
+        }}
+        onApply={(filters, name) => {
+          const next = filters || {};
+          setAppliedView(next);
+          setViewName(name || 'Saved view');
+          if (next.search) setSearchQuery(String(next.search));
+          if (next.status) setActiveFilter(String(next.status).toUpperCase());
+          if (!filters || Object.keys(filters).length === 0) {
+            setSearchQuery('');
+            setActiveFilter('ALL');
+            setViewName('All Leads');
+          }
+        }}
       />
     </SafeAreaView>
   );

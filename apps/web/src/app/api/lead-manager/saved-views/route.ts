@@ -23,7 +23,7 @@ async function requireCrmUser(request: NextRequest) {
     .trim()
     .toUpperCase();
 
-  if (!['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN', 'TELECALLER'].includes(roleCode)) {
+  if (!['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN', 'TELECALLER', 'APP_OPERATIONS'].includes(roleCode)) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 
@@ -58,7 +58,11 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({ views: data || [] });
+  return NextResponse.json({
+    views: data || [],
+    me: gate.userId,
+    can_share: gate.canShare,
+  });
 }
 
 /** POST create / update saved view */

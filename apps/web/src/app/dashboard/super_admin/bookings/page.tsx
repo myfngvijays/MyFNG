@@ -33,6 +33,9 @@ import {
   getLeadInboundWhatsAppMessage,
   isWhatsAppEnquiryLead,
   getLeadUtmParams,
+  resolveLeadMessageTrigger,
+  getLeadStoredMessageTrigger,
+  NO_MESSAGE_TRIGGER,
   resolveLeadSourceBadgeTheme,
   computeServiceLeadOverview,
   type LeadSourceBadgeKind,
@@ -46,10 +49,17 @@ import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
 import { leadStatusCardColors, leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
+import BookingsSavedViews from '@/components/admin/bookings/BookingsSavedViews';
+import {
+  EMPTY_BOOKINGS_VIEW,
+  normalizeBookingsViewFilters,
+  type BookingsViewSnapshot,
+} from '@/lib/bookings/savedViewFilters';
 import {
   getMisaOtpVerifiedLabel,
   inferMisaOtpChannel,
 } from '@/lib/chatbot_v2/misaLeadSource';
+import type { MessageTrigger } from '@/lib/enquiry/messageTriggers';
 
 type ServiceLead = Record<string, any>;
 type CsvRow = Record<string, string>;
@@ -1478,12 +1488,12 @@ function FilterSelect({
   className?: string;
 }) {
   return (
-    <label className={`flex flex-col gap-1 min-w-[140px] ${className}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
+    <label className={`inline-flex h-8 min-w-[120px] items-center ${className}`} title={label}>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        aria-label={label}
+        className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
       >
         {children}
       </select>
@@ -1546,23 +1556,30 @@ function FilterMultiSelect({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  const firstLabel =
+  const selectedLabels = selected.map(
+    (value) => options.find((opt) => opt.value === value)?.label || value,
+  );
+  const display =
     selected.length === 0
       ? allLabel
-      : options.find((opt) => opt.value === selected[0])?.label || selected[0];
-  const display = selected.length <= 1 ? firstLabel : `${firstLabel} +${selected.length - 1}`;
+      : selected.length === 1
+        ? selectedLabels[0]
+        : selected.length === 2
+          ? `${selectedLabels[0]}, ${selectedLabels[1]}`
+          : `${selectedLabels[0]} +${selected.length - 1}`;
 
   const toggle = (value: string) => {
     onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]);
   };
 
   return (
-    <div className={`relative flex flex-col gap-1 min-w-[180px] ${className}`} ref={ref}>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
+    <div className={`relative min-w-[140px] ${className}`} ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        title={`${label} — tick more than one`}
+        aria-label={label}
+        className="flex h-8 w-full items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-left text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
       >
         <span className="truncate">{display}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-gray-500 transition ${open ? 'rotate-180' : ''}`} />
@@ -1619,9 +1636,17 @@ export default function SuperAdminBookingsPage() {
   const [loadingRecordingIds, setLoadingRecordingIds] = useState(false);
   /** Empty = all assignees. Values: UNASSIGNED or telecaller name. */
   const [assigneeFilter, setAssigneeFilter] = useState<string[]>([]);
+  /** Empty = all message triggers. Values: trigger id or NONE. */
+  const [messageTriggerFilter, setMessageTriggerFilter] = useState<string[]>([]);
+  const [messageTriggersCatalog, setMessageTriggersCatalog] = useState<MessageTrigger[]>([]);
   const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [tagMode, setTagMode] = useState<'any' | 'all'>('any');
+  const [listSort, setListSort] = useState<'newest' | 'oldest'>('newest');
+  const [leadTagMap, setLeadTagMap] = useState<Map<string, Set<string>>>(new Map());
+  const [tagMapsReady, setTagMapsReady] = useState(true);
   const [urlFiltersReady, setUrlFiltersReady] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1818,6 +1843,31 @@ export default function SuperAdminBookingsPage() {
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [serviceLeads]);
 
+  const activeMessageTriggers = useMemo(
+    () => messageTriggersCatalog.filter((trigger) => trigger.is_active !== false && trigger.id),
+    [messageTriggersCatalog],
+  );
+
+  const messageTriggerOptions = useMemo(() => {
+    const groups = new Map<string, { label: string; ids: string[] }>();
+    for (const trigger of activeMessageTriggers) {
+      const label = String(trigger.label || trigger.phrase || trigger.id).trim() || trigger.id;
+      const key = label.toLowerCase();
+      const group = groups.get(key) || { label, ids: [] };
+      if (!group.ids.includes(trigger.id)) group.ids.push(trigger.id);
+      groups.set(key, group);
+    }
+    return [
+      { value: NO_MESSAGE_TRIGGER, label: 'No trigger' },
+      ...[...groups.values()]
+        .map((group) => ({
+          value: group.label,
+          label: group.ids.length > 1 ? `${group.label}  ·  ${group.ids.length} campaigns` : group.label,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+  }, [activeMessageTriggers]);
+
   const baseFilteredServiceLeads = useMemo(() => {
     let leads = filterBookingLeads(serviceLeads, {
       source: sourceFilter,
@@ -1841,6 +1891,27 @@ export default function SuperAdminBookingsPage() {
         return selected.has(name.toLowerCase());
       });
     }
+    if (messageTriggerFilter.length > 0) {
+      const selected = new Set(messageTriggerFilter.map((item) => item.trim().toLowerCase()));
+      const includeNone = selected.has(NO_MESSAGE_TRIGGER.toLowerCase());
+      const catalogIds = new Set(activeMessageTriggers.map((trigger) => trigger.id));
+      const selectedIds = new Set<string>();
+      for (const trigger of activeMessageTriggers) {
+        const label = String(trigger.label || trigger.phrase || '').trim().toLowerCase();
+        if (selected.has(trigger.id.toLowerCase()) || (label && selected.has(label))) {
+          selectedIds.add(trigger.id);
+        }
+      }
+      leads = leads.filter((lead) => {
+        const stored = getLeadStoredMessageTrigger(lead);
+        const currentId = stored && catalogIds.has(stored.id) ? stored.id : null;
+        const hit = currentId
+          ? { id: currentId, label: activeMessageTriggers.find((t) => t.id === currentId)?.label || stored!.label }
+          : resolveLeadMessageTrigger(lead, activeMessageTriggers);
+        if (!hit || !catalogIds.has(hit.id)) return includeNone;
+        return selectedIds.has(hit.id);
+      });
+    }
     if (recordingFilter !== 'ALL') {
       if (!recordingLeadIds) {
         // Wait until recording index loads — avoid flashing full list
@@ -1850,6 +1921,13 @@ export default function SuperAdminBookingsPage() {
         const id = String(lead.id || '').trim();
         const has = recordingLeadIds.has(id);
         return recordingFilter === 'YES' ? has : !has;
+      });
+    }
+    if (tagIds.length > 0) {
+      if (!tagMapsReady) return [];
+      leads = leads.filter((lead) => {
+        const have = leadTagMap.get(String(lead.id || '')) || new Set<string>();
+        return tagMode === 'all' ? tagIds.every((id) => have.has(id)) : tagIds.some((id) => have.has(id));
       });
     }
     return leads;
@@ -1862,16 +1940,29 @@ export default function SuperAdminBookingsPage() {
     statusFilter,
     leadTypeFilter,
     assigneeFilter,
+    messageTriggerFilter,
+    activeMessageTriggers,
     recordingFilter,
     recordingLeadIds,
+    tagIds,
+    tagMode,
+    leadTagMap,
+    tagMapsReady,
   ]);
 
   const displayedServiceLeads = useMemo(() => {
-    if (!chartDrill) return baseFilteredServiceLeads;
-    return baseFilteredServiceLeads.filter((lead) =>
-      leadMatchesChartBucket(lead, chartDrill.dimension, chartDrill.key, baseFilteredServiceLeads),
-    );
-  }, [baseFilteredServiceLeads, chartDrill]);
+    const rows = chartDrill
+      ? baseFilteredServiceLeads.filter((lead) =>
+          leadMatchesChartBucket(lead, chartDrill.dimension, chartDrill.key, baseFilteredServiceLeads),
+        )
+      : baseFilteredServiceLeads;
+    const sorted = [...rows].sort((a, b) => {
+      const da = new Date(a.created_at || 0).getTime();
+      const db = new Date(b.created_at || 0).getTime();
+      return listSort === 'oldest' ? da - db : db - da;
+    });
+    return sorted;
+  }, [baseFilteredServiceLeads, chartDrill, listSort]);
 
   /** All loaded leads for a phone (for Bookings count + modal). */
   const bookingsByPhone = useMemo(() => {
@@ -1922,7 +2013,7 @@ export default function SuperAdminBookingsPage() {
   // Reset to first page whenever filters / search change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter]);
+  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, messageTriggerFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter, tagIds, listSort]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -1976,6 +2067,8 @@ export default function SuperAdminBookingsPage() {
     statusFilter !== 'ALL' ||
     recordingFilter !== 'ALL' ||
     assigneeFilter.length > 0 ||
+    messageTriggerFilter.length > 0 ||
+    tagIds.length > 0 ||
     Boolean(searchTerm.trim()) ||
     Boolean(sourceLabelFilter.trim()) ||
     Boolean(leadTypeFilter.trim()) ||
@@ -2006,6 +2099,89 @@ export default function SuperAdminBookingsPage() {
     setDatePreset(preset);
     setCustomStart(start);
     setCustomEnd(end);
+  };
+
+  const viewSnapshot = useMemo<BookingsViewSnapshot>(
+    () =>
+      normalizeBookingsViewFilters({
+        source: sourceFilter,
+        status: statusFilter,
+        coupon: couponFilter,
+        recording: recordingFilter,
+        assignees: assigneeFilter,
+        search: searchTerm,
+        sourceLabel: sourceLabelFilter,
+        leadType: leadTypeFilter,
+        datePreset,
+        customStart,
+        customEnd,
+        tagIds,
+        tagMode,
+        messageTriggers: messageTriggerFilter,
+        sort: listSort,
+      }),
+    [
+      sourceFilter,
+      statusFilter,
+      couponFilter,
+      recordingFilter,
+      assigneeFilter,
+      searchTerm,
+      sourceLabelFilter,
+      leadTypeFilter,
+      datePreset,
+      customStart,
+      customEnd,
+      tagIds,
+      tagMode,
+      messageTriggerFilter,
+      listSort,
+    ],
+  );
+
+  const applyViewSnapshot = (nextRaw: BookingsViewSnapshot) => {
+    const next = normalizeBookingsViewFilters(nextRaw);
+    setSourceFilter(
+      (SOURCE_OPTIONS as readonly string[]).includes(next.source)
+        ? (next.source as (typeof SOURCE_OPTIONS)[number])
+        : 'ALL',
+    );
+    setStatusFilter(
+      (STATUS_OPTIONS as readonly string[]).includes(next.status)
+        ? (next.status as (typeof STATUS_OPTIONS)[number])
+        : 'ALL',
+    );
+    setCouponFilter(
+      (COUPON_OPTIONS as readonly string[]).includes(next.coupon)
+        ? (next.coupon as (typeof COUPON_OPTIONS)[number])
+        : 'ALL',
+    );
+    setRecordingFilter(
+      (RECORDING_OPTIONS as readonly string[]).includes(next.recording)
+        ? (next.recording as (typeof RECORDING_OPTIONS)[number])
+        : 'ALL',
+    );
+    setAssigneeFilter(next.assignees);
+    setSearchTerm(next.search);
+    setSourceLabelFilter(next.sourceLabel);
+    setLeadTypeFilter(next.leadType);
+    setDatePreset(next.datePreset);
+    setCustomStart(next.customStart);
+    setCustomEnd(next.customEnd);
+    setTagIds(next.tagIds);
+    setTagMode(next.tagMode);
+    setMessageTriggerFilter(next.messageTriggers);
+    setListSort(next.sort);
+  };
+
+  const clearLeadFilters = () => {
+    applyViewSnapshot({
+      ...EMPTY_BOOKINGS_VIEW,
+      datePreset,
+      customStart,
+      customEnd,
+    });
+    setChartDrill(null);
   };
 
   const fetchData = useCallback(async () => {
@@ -2133,6 +2309,67 @@ export default function SuperAdminBookingsPage() {
       cancelled = true;
     };
   }, [recordingFilter, recordingLeadIds]);
+
+  useEffect(() => {
+    if (tagIds.length === 0) {
+      setLeadTagMap(new Map());
+      setTagMapsReady(true);
+      return;
+    }
+    let cancelled = false;
+    setTagMapsReady(false);
+    fetch(`/api/lead-manager/tags?map_tag_ids=${encodeURIComponent(tagIds.join(','))}`, {
+      credentials: 'include',
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed to load lead tags');
+        const next = new Map<string, Set<string>>();
+        for (const row of Array.isArray(json?.maps) ? json.maps : []) {
+          const leadId = String(row?.lead_id || '');
+          const tagId = String(row?.tag_id || '');
+          if (!leadId || !tagId) continue;
+          const set = next.get(leadId) || new Set<string>();
+          set.add(tagId);
+          next.set(leadId, set);
+        }
+        if (!cancelled) setLeadTagMap(next);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[bookings] tag filter load failed', err);
+          setLeadTagMap(new Map());
+          toast.error(err?.message || 'Could not load tag filter');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTagMapsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tagIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/lead-manager/message-triggers', { credentials: 'include', cache: 'no-store' })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed to load message triggers');
+        const rows = Array.isArray(json?.triggers) ? json.triggers : [];
+        if (!cancelled) setMessageTriggersCatalog(rows);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[bookings] message triggers load failed', err);
+          setMessageTriggersCatalog([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadTelecallers = useCallback(async (forLead?: Record<string, any> | null) => {
     setTelecallersLoading(true);
@@ -2593,7 +2830,9 @@ export default function SuperAdminBookingsPage() {
                 <ClipboardList className="w-6 h-6 text-brand-primary" />
                 Bookings & Leads
               </h1>
-              <p className="text-sm text-gray-600 mt-1">All bookings in one place — filter by source, status & assignee.</p>
+              <p className="text-sm text-gray-600 mt-1">
+                All bookings in one place — save filter views, then reuse them anytime.
+              </p>
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full xl:flex-1 xl:justify-end min-w-0">
@@ -2768,18 +3007,45 @@ export default function SuperAdminBookingsPage() {
           </div>
 
           {!showUploadCrm ? (
-            <div className="mt-3 rounded-xl border border-[#003A8C] bg-[#004AAD] px-3 py-3 space-y-3 shadow-sm [&_span.text-gray-400]:text-blue-100">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="flex flex-col gap-1 min-w-[160px]">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Date</span>
-                  <ReportDateRangeFilter
-                    variant="compact"
-                    preset={datePreset}
-                    customStart={customStart}
-                    customEnd={customEnd}
-                    onChange={handleDateRangeChange}
-                  />
-                </div>
+            <div className="mt-2">
+              <BookingsSavedViews
+                snapshot={viewSnapshot}
+                onApply={applyViewSnapshot}
+                sourceOptions={SOURCE_OPTIONS.map((source) => ({
+                  value: source,
+                  label: sourceFilterLabel(source),
+                }))}
+                statusOptions={STATUS_OPTIONS.map((status) => ({
+                  value: status,
+                  label: status === 'ALL' ? 'All statuses' : status.replace(/_/g, ' '),
+                }))}
+                couponOptions={COUPON_OPTIONS.map((coupon) => ({
+                  value: coupon,
+                  label: couponFilterLabel(coupon),
+                }))}
+                recordingOptions={RECORDING_OPTIONS.map((opt) => ({
+                  value: opt,
+                  label: recordingFilterLabel(opt),
+                }))}
+                assigneeOptions={[
+                  { value: 'UNASSIGNED', label: 'Unassigned' },
+                  ...assigneeOptions.map((name) => ({ value: name, label: name })),
+                ]}
+                messageTriggerOptions={messageTriggerOptions}
+              />
+            </div>
+          ) : null}
+
+          {!showUploadCrm ? (
+            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <ReportDateRangeFilter
+                  variant="compact"
+                  preset={datePreset}
+                  customStart={customStart}
+                  customEnd={customEnd}
+                  onChange={handleDateRangeChange}
+                />
 
                     <FilterSelect
                       label="Source"
@@ -2809,7 +3075,7 @@ export default function SuperAdminBookingsPage() {
                       label="Status"
                       value={statusFilter}
                       onChange={(v) => setStatusFilter(v as (typeof STATUS_OPTIONS)[number])}
-                      className="min-w-[180px]"
+                      className="min-w-[130px]"
                     >
                       {STATUS_OPTIONS.map((status) => (
                         <option key={status} value={status}>
@@ -2822,7 +3088,7 @@ export default function SuperAdminBookingsPage() {
                       label="Recording"
                       value={recordingFilter}
                       onChange={(v) => setRecordingFilter(v as (typeof RECORDING_OPTIONS)[number])}
-                      className="min-w-[160px]"
+                      className="min-w-[120px]"
                     >
                       {RECORDING_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>
@@ -2831,21 +3097,30 @@ export default function SuperAdminBookingsPage() {
                       ))}
                     </FilterSelect>
                     {recordingFilter !== 'ALL' && loadingRecordingIds ? (
-                      <span className="mb-0.5 inline-flex items-center gap-1 text-[11px] text-violet-700">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
                       </span>
                     ) : null}
 
                     <FilterMultiSelect
                       label="Assignee"
-                      allLabel="All assignees"
+                      allLabel="Assignee"
                       selected={assigneeFilter}
                       onChange={setAssigneeFilter}
-                      className="min-w-[200px]"
+                      className="min-w-[150px]"
                       options={[
                         { value: 'UNASSIGNED', label: 'Unassigned' },
                         ...assigneeOptions.map((name) => ({ value: name, label: name })),
                       ]}
+                    />
+
+                    <FilterMultiSelect
+                      label="Trigger"
+                      allLabel="Trigger"
+                      selected={messageTriggerFilter}
+                      onChange={setMessageTriggerFilter}
+                      className="min-w-[140px]"
+                      options={messageTriggerOptions}
                     />
 
                 {(sourceFilter !== 'ALL' ||
@@ -2853,39 +3128,31 @@ export default function SuperAdminBookingsPage() {
                   statusFilter !== 'ALL' ||
                   recordingFilter !== 'ALL' ||
                   assigneeFilter.length > 0 ||
+                  messageTriggerFilter.length > 0 ||
+                  tagIds.length > 0 ||
                   sourceLabelFilter.trim() ||
                   leadTypeFilter.trim() ||
                   chartDrill) ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setSourceFilter('ALL');
-                      setSourceLabelFilter('');
-                      setLeadTypeFilter('');
-                      setCouponFilter('ALL');
-                      setStatusFilter('ALL');
-                      setRecordingFilter('ALL');
-                      setAssigneeFilter([]);
-                      setChartDrill(null);
-                    }}
-                    className="mb-0.5 px-3 py-2 text-xs font-semibold text-white border border-white/40 rounded-lg hover:bg-white/10"
+                    onClick={clearLeadFilters}
+                    className="h-8 px-2 text-xs font-semibold text-[#004AAD] hover:bg-blue-50 rounded-md"
                   >
-                    Clear filters
+                    Clear
                   </button>
                 ) : null}
 
-                <label className="flex flex-col gap-1 min-w-[220px] flex-1 max-w-md">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Search</span>
+                <label className="relative min-w-[180px] flex-1 max-w-sm">
                   <div className="relative">
-                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       id="bookings-search"
                       name="bookings-search"
                       type="text"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Name, phone, vehicle, city, coupon..."
-                      className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-9 py-2 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Search name, phone, vehicle..."
+                      className="h-8 w-full rounded-md border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
                       autoComplete="off"
                     />
                     {searchTerm.trim() ? (
@@ -3126,13 +3393,7 @@ export default function SuperAdminBookingsPage() {
                 label={hasActiveLeadFilters ? 'Filtered Leads' : 'Total Leads'}
                 value={serviceLeadOverview.total}
                 icon={<ClipboardList className="h-4 w-4" />}
-                onClick={() => {
-                  setSourceFilter('ALL');
-                  setCouponFilter('ALL');
-                  setStatusFilter('ALL');
-                  setAssigneeFilter([]);
-                  setSearchTerm('');
-                }}
+                onClick={clearLeadFilters}
                 active={hasActiveLeadFilters}
               />
               <StatCard

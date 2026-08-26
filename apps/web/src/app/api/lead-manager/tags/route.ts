@@ -50,7 +50,7 @@ async function requireCrmUser(request: NextRequest) {
     .trim()
     .toUpperCase();
 
-  if (!['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN', 'TELECALLER'].includes(roleCode)) {
+  if (!['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN', 'TELECALLER', 'APP_OPERATIONS'].includes(roleCode)) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 
@@ -95,9 +95,29 @@ export async function GET(request: NextRequest) {
     leadTagIds = (map || []).map((m: any) => String(m.tag_id));
   }
 
+  const mapTagIds = String(request.nextUrl.searchParams.get('map_tag_ids') || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+    .slice(0, 80);
+
+  let maps: Array<{ lead_id: string; tag_id: string }> = [];
+  if (mapTagIds.length > 0) {
+    const { data: mapRows } = await supabaseAdmin
+      .from('crm_lead_tag_map')
+      .select('lead_id, tag_id')
+      .in('tag_id', mapTagIds)
+      .limit(20000);
+    maps = (mapRows || []).map((row: any) => ({
+      lead_id: String(row.lead_id),
+      tag_id: String(row.tag_id),
+    }));
+  }
+
   return NextResponse.json({
     tags: tags || [],
     lead_tag_ids: leadTagIds,
+    maps,
     palette: [...CRM_TAG_COLORS],
   });
 }

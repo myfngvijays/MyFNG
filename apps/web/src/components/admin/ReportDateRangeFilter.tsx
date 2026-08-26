@@ -55,7 +55,7 @@ export default function ReportDateRangeFilter({
         <select
           value={preset}
           onChange={(e) => update({ preset: e.target.value as ReportDatePreset })}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800"
+          className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
           aria-label="Date range"
         >
           {REPORT_DATE_PRESETS.map((p) => (

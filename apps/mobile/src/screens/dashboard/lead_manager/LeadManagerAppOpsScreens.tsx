@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
+import CrmSavedViewsSheet, { type MobileSavedViewFilters } from '../../../components/CrmSavedViewsSheet';
 
 function OpsShell({
   title,
@@ -67,10 +68,20 @@ export function LeadManagerAppBookingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<any[]>([]);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [viewName, setViewName] = useState('All Leads');
+  const [applied, setApplied] = useState<MobileSavedViewFilters>({});
+  const [tagLeadIds, setTagLeadIds] = useState<Set<string> | null>(null);
+
+  const datePreset = String(applied.datePreset || 'all_time');
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<any>('/api/super_admin/leads?limit=80');
+      const params = new URLSearchParams({ limit: '200' });
+      if (datePreset && datePreset !== 'all_time') params.set('preset', datePreset);
+      if (applied.customStart) params.set('start', String(applied.customStart));
+      if (applied.customEnd) params.set('end', String(applied.customEnd));
+      const data = await apiFetch<any>(`/api/super_admin/leads?${params.toString()}`);
       setRows(Array.isArray(data?.leads) ? data.leads : []);
     } catch (e: any) {
       Alert.alert('Bookings', e?.message || 'Failed to load');
@@ -78,22 +89,113 @@ export function LeadManagerAppBookingsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [datePreset, applied.customStart, applied.customEnd]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const tagIds = Array.isArray(applied.tagIds) ? applied.tagIds.filter(Boolean) : [];
+    if (tagIds.length === 0) {
+      setTagLeadIds(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetch<any>(`/api/lead-manager/tags?map_tag_ids=${encodeURIComponent(tagIds.join(','))}`)
+      .then((json) => {
+        if (cancelled) return;
+        const ids = new Set<string>();
+        const mode = applied.tagMode === 'all' ? 'all' : 'any';
+        const byLead = new Map<string, Set<string>>();
+        for (const row of Array.isArray(json?.maps) ? json.maps : []) {
+          const leadId = String(row?.lead_id || '');
+          const tagId = String(row?.tag_id || '');
+          if (!leadId || !tagId) continue;
+          const set = byLead.get(leadId) || new Set<string>();
+          set.add(tagId);
+          byLead.set(leadId, set);
+        }
+        for (const [leadId, have] of byLead) {
+          const ok = mode === 'all' ? tagIds.every((id) => have.has(id)) : tagIds.some((id) => have.has(id));
+          if (ok) ids.add(leadId);
+        }
+        setTagLeadIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setTagLeadIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applied.tagIds, applied.tagMode]);
+
   const filtered = rows.filter((item) => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return true;
-    return [item.customer_name, item.customer_phone, item.lead_number, item.status]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(needle));
+    const needle = (applied.search || q).trim().toLowerCase();
+    if (needle) {
+      const hit = [item.customer_name, item.customer_phone, item.lead_number, item.status]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(needle));
+      if (!hit) return false;
+    }
+    const status = String(applied.status || 'ALL').toUpperCase();
+    if (status && status !== 'ALL' && String(item.status || 'NEW').toUpperCase() !== status) return false;
+    const source = String(applied.source || 'ALL').toUpperCase();
+    if (source && source !== 'ALL') {
+      const leadSource = String(item.lead_source || item.source || '').toUpperCase();
+      if (!leadSource.includes(source) && source !== 'ALL') {
+        if (source === 'WEBSITE' && !/WEB|SITE/.test(leadSource)) return false;
+        if (source === 'APP' && !leadSource.includes('APP')) return false;
+        if (source !== 'WEBSITE' && source !== 'APP' && !leadSource.includes(source)) return false;
+      }
+    }
+    const assignees = Array.isArray(applied.assignees) ? applied.assignees : [];
+    if (assignees.length > 0) {
+      const name = String(item.assigned_telecaller_name || '').trim();
+      const selected = new Set(assignees.map((a) => a.trim().toLowerCase()));
+      if (!name) {
+        if (!selected.has('unassigned')) return false;
+      } else if (!selected.has(name.toLowerCase())) {
+        return false;
+      }
+    }
+    if (tagLeadIds) {
+      if (!tagLeadIds.has(String(item.id))) return false;
+    }
+    const triggers = Array.isArray(applied.messageTriggers) ? applied.messageTriggers : [];
+    if (triggers.length > 0) {
+      const meta = item.coupon_meta && typeof item.coupon_meta === 'object' ? item.coupon_meta : {};
+      const id = String(meta.message_trigger_id || '').trim();
+      const label = String(meta.message_trigger_label || '').trim();
+      const selected = new Set(triggers);
+      if (!id && !label) {
+        if (!selected.has('NONE')) return false;
+      } else if (!selected.has(id) && !selected.has(label)) {
+        return false;
+      }
+    }
+    return true;
   });
 
   return (
     <OpsShell title="Bookings & Leads">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: SPACING.md, paddingTop: SPACING.md }}>
+        <TouchableOpacity
+          onPress={() => setViewsOpen(true)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: '#EEF2FF',
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+          }}
+        >
+          <Ionicons name="funnel-outline" size={16} color="#4F46E5" />
+          <Text style={{ color: '#3730A3', fontWeight: '800', fontSize: 13 }}>{viewName}</Text>
+        </TouchableOpacity>
+      </View>
       <SearchBox value={q} onChange={setQ} placeholder="Search name / phone / L-number" />
       {loading ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
@@ -122,6 +224,24 @@ export function LeadManagerAppBookingsScreen() {
           ListEmptyComponent={<Text style={styles.empty}>No bookings found.</Text>}
         />
       )}
+      <CrmSavedViewsSheet
+        visible={viewsOpen}
+        onClose={() => setViewsOpen(false)}
+        currentFilters={{
+          ...applied,
+          search: q,
+          datePreset: datePreset,
+        }}
+        onApply={(filters, name) => {
+          setApplied(filters || {});
+          setViewName(name || 'Saved view');
+          if (filters?.search) setQ(String(filters.search));
+          if (!filters || Object.keys(filters).length === 0) {
+            setQ('');
+            setViewName('All Leads');
+          }
+        }}
+      />
     </OpsShell>
   );
 }
