@@ -43,16 +43,17 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/telecaller/dialer': {
     title: 'Dialer',
     body:
-      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.',
+      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.\n\nFresh auto-dial / click-to-call pe phone ring hote hi CRM popup dikhata hai kaunsi lead hai (DID number se dhundne ki zaroorat nahi).',
     tips: [
       'Click to Call setup me aapka from-number set hona chahiye.',
       'Agar number pe pehle se lead hai to call log us lead pe attach ho sakta hai.',
+      'Ring aate hi Open lead dabao — phone pe DID dikhega, lead CRM mein khulegi.',
     ],
   },
   '/dashboard/lead_manager/dialer': {
     title: 'Dialer',
     body:
-      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.',
+      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.\n\nRing aate hi popup dikhata hai kaunsi lead hai.',
   },
   '/dashboard/lead_manager/click-to-call': {
     title: 'Click to Call',

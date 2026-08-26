@@ -226,6 +226,53 @@ export async function notifyTelecallerForLead(params: {
   });
 }
 
+export async function notifyTelecallerClickToCallRinging(params: {
+  telecallerId: string;
+  leadId: string;
+  sessionId?: string | null;
+}) {
+  const telecallerId = String(params.telecallerId || '').trim();
+  const leadId = String(params.leadId || '').trim();
+  if (!telecallerId || !leadId) return;
+
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+
+  const { data: lead } = await supabaseAdmin
+    .from('service_leads')
+    .select('id, lead_number, customer_name, vehicle_number, vehicle_make, vehicle_model, city')
+    .eq('id', leadId)
+    .maybeSingle();
+
+  const name = String((lead as any)?.customer_name || '').trim() || 'Customer';
+  const leadNumber = String((lead as any)?.lead_number || leadId);
+  const vehicle = [
+    (lead as any)?.vehicle_make,
+    (lead as any)?.vehicle_model,
+    (lead as any)?.vehicle_number,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const city = String((lead as any)?.city || '').trim();
+  const bits = [leadNumber, name, vehicle || null, city || null].filter(Boolean);
+
+  await createNotification({
+    userId: telecallerId,
+    type: 'LEAD_ASSIGNED',
+    title: 'Phone ringing — this lead',
+    message: `${bits.join(' · ')}. Phone pe DID dikhega — CRM mein yeh lead open karo.`,
+    priority: 'URGENT',
+    leadId,
+    leadNumber,
+    actionUrl: `/dashboard/telecaller/leads/${leadId}`,
+    metadata: {
+      kind: 'CLICK_TO_CALL_RINGING',
+      session_id: params.sessionId || null,
+    },
+  });
+}
+
 export async function notifyTelecallerAssignedToLead(params: {
   leadId: string;
   leadNumber: string;

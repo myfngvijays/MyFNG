@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -207,6 +207,7 @@ export default function CrmDialerPanel() {
   const [missedCount, setMissedCount] = useState(0);
   const [historyGroup, setHistoryGroup] = useState<ContactGroup | null>(null);
   const [digitBump, setDigitBump] = useState(0);
+  const dismissedSessionIds = useRef<Set<string>>(new Set());
 
   const display = useMemo(() => {
     const d = digits.replace(/\D/g, '');
@@ -395,9 +396,47 @@ export default function CrmDialerPanel() {
   }, [activeCall?.phase, activeCall?.answeredAt]);
 
   const dismissCall = useCallback(() => {
-    setActiveCall(null);
+    setActiveCall((prev) => {
+      if (prev?.sessionId) dismissedSessionIds.current.add(prev.sessionId);
+      return null;
+    });
     setElapsedSec(0);
   }, []);
+
+  useEffect(() => {
+    if (activeCall) return;
+    let cancelled = false;
+    const adopt = async () => {
+      try {
+        const res = await fetch('/api/telecaller/crm/dial-session?active=1', {
+          cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+        const s = json?.session;
+        if (cancelled || !res.ok || !s?.id) return;
+        const st = String(s.status || '').toUpperCase();
+        if (!['INITIATED', 'RINGING', 'ANSWERED'].includes(st)) return;
+        if (dismissedSessionIds.current.has(String(s.id))) return;
+        setActiveCall({
+          to: String(s.customer_phone || ''),
+          name: s.lead?.customer_name || null,
+          leadId: s.lead_id || s.lead?.id || null,
+          phase: st === 'ANSWERED' ? 'connected' : 'ringing',
+          sessionId: String(s.id),
+          answeredAt: s.answered_at ? new Date(s.answered_at).getTime() : null,
+        });
+        if (typeof s.elapsed_seconds === 'number') setElapsedSec(s.elapsed_seconds);
+      } catch {
+        /* ignore */
+      }
+    };
+    void adopt();
+    const id = setInterval(adopt, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [activeCall]);
 
   const append = useCallback(
     (ch: string) => {

@@ -428,16 +428,45 @@ export async function autoDialFreshLeadIfEnabled(input: {
     cfg,
   }).then(async (result) => {
     if (result.ok && input.leadId && telecallerId) {
+      let sessionId: string | null = null;
       try {
-        await supabaseAdmin.from('telecaller_call_logs').insert({
-          lead_id: String(input.leadId),
-          telecaller_id: telecallerId,
-          call_type: 'OUTBOUND',
-          call_status: 'RINGING',
-          notes: '[Click-to-call] Auto-dial Fresh — recording syncs after hangup',
-          phone_number: to,
-          created_at: new Date().toISOString(),
+        const { createDialSession } = await import('@/lib/telecaller/smartfloDialSessions');
+        const session = await createDialSession({
+          telecallerId,
+          leadId: String(input.leadId),
+          agentPhone: result.from || from,
+          customerPhone: result.to || to,
+          did: result.did,
+          upstream: result.upstream,
         });
+        sessionId = session?.id || null;
+      } catch (e) {
+        console.warn('[autoDialFresh] dial session failed:', e);
+      }
+
+      try {
+        const { data: inserted } = await supabaseAdmin
+          .from('telecaller_call_logs')
+          .insert({
+            lead_id: String(input.leadId),
+            telecaller_id: telecallerId,
+            call_type: 'OUTBOUND',
+            call_status: 'RINGING',
+            notes: '[Click-to-call] Auto-dial Fresh — recording syncs after hangup',
+            phone_number: to,
+            created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .maybeSingle();
+        if (inserted?.id && sessionId) {
+          await supabaseAdmin
+            .from('smartflo_dial_sessions')
+            .update({
+              call_log_id: inserted.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', sessionId);
+        }
       } catch (e) {
         console.warn('[autoDialFresh] pending log insert failed:', e);
       }
@@ -445,6 +474,16 @@ export async function autoDialFreshLeadIfEnabled(input: {
         await clearAutoDialPending(String(input.leadId));
       } catch (e) {
         console.warn('[autoDialFresh] pending clear failed:', e);
+      }
+      try {
+        const { notifyTelecallerClickToCallRinging } = await import('@/lib/notifications');
+        await notifyTelecallerClickToCallRinging({
+          telecallerId,
+          leadId: String(input.leadId),
+          sessionId,
+        });
+      } catch (e) {
+        console.warn('[autoDialFresh] ringing notify failed:', e);
       }
     }
     return result;

@@ -172,6 +172,7 @@ interface DashboardNavigatorProps {
 }
 
 export default function DashboardNavigator({ userProfile, onLogout }: DashboardNavigatorProps) {
+  const crmStackRef = React.useRef<any>(null);
   // ✅ FIX: Extract role code from various possible locations
   const roleCode = 
     userProfile?.role?.role_code ||  // From database join (roles!role_id)
@@ -216,8 +217,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
 
   // Telecaller Navigation
   if (roleCode === 'TELECALLER') {
+    const IncomingCallLeadOverlay =
+      require('../components/telecaller/IncomingCallLeadOverlay').default;
     return (
-      <Stack.Navigator screenOptions={screenOptions}>
+      <View style={{ flex: 1 }}>
+      <Stack.Navigator ref={crmStackRef} screenOptions={screenOptions}>
         <Stack.Screen
           name="TelecallerDashboard"
           component={TelecallerAdvancedCRM}
@@ -319,14 +323,22 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Dialer', headerShown: false }}
         />
       </Stack.Navigator>
+      <IncomingCallLeadOverlay
+        leadScreen="TelecallerLeadDetail"
+        onOpenLead={(leadId) => crmStackRef.current?.navigate('TelecallerLeadDetail', { leadId })}
+      />
+      </View>
     );
   }
 
   // Lead Manager Navigation — CRM shell + ops screens
   if (roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
     const TelecallerAdvancedCRM = require('../screens/dashboard/telecaller_crm/TelecallerAdvancedCRM').default;
+    const IncomingCallLeadOverlay =
+      require('../components/telecaller/IncomingCallLeadOverlay').default;
     return (
-      <Stack.Navigator screenOptions={screenOptions}>
+      <View style={{ flex: 1 }}>
+      <Stack.Navigator ref={crmStackRef} screenOptions={screenOptions}>
         <Stack.Screen
           name="LeadManagerAdvancedCRM"
           component={TelecallerAdvancedCRM}
@@ -523,6 +535,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Notifications' }}
         />
       </Stack.Navigator>
+      <IncomingCallLeadOverlay
+        leadScreen="TelecallerLeadDetail"
+        onOpenLead={(leadId) => crmStackRef.current?.navigate('TelecallerLeadDetail', { leadId })}
+      />
+      </View>
     );
   }
 
