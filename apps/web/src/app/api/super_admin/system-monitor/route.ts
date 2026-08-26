@@ -2495,6 +2495,7 @@ function calculateHealthScore(checks: HealthCheck[]): number {
     'Third Party': 4,
     'Background Jobs': 4,
     Security: 3,
+    Compliance: 5,
   };
 
   let totalWeight = 0;
@@ -2862,6 +2863,60 @@ async function checkTelecallerLeadsShiftSummary(): Promise<HealthCheck> {
   }
 }
 
+async function checkDpdpCompliance(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'DPDP consent & rights',
+      category: 'Compliance',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: configError || 'Cannot verify DPDP tables',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+  try {
+    const [consents, rights] = await Promise.all([
+      client.from('dpdp_consent_records').select('id', { count: 'exact', head: true }),
+      client.from('data_rights_requests').select('id', { count: 'exact', head: true }),
+    ]);
+    const responseTime = Date.now() - start;
+    if (consents.error || rights.error) {
+      return {
+        name: 'DPDP consent & rights',
+        category: 'Compliance',
+        status: 'down',
+        responseTime,
+        message: consents.error?.message || rights.error?.message || 'Tables missing',
+        reason: 'Run database/353_dpdp_consent_and_rights.sql so consent and data-rights requests persist.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'DPDP consent & rights',
+      category: 'Compliance',
+      status: 'healthy',
+      responseTime,
+      message: `Consent log ${consents.count || 0} · rights requests ${rights.count || 0}`,
+      reason: 'dpdp_consent_records and data_rights_requests are available.',
+      lastChecked: new Date().toISOString(),
+      details: { consents: consents.count || 0, rights: rights.count || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'DPDP consent & rights',
+      category: 'Compliance',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -2900,6 +2955,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkSmartfloRecordings(),
     checkSmartfloDialSessions(),
     checkCallIntelligence(),
+    checkDpdpCompliance(),
   ]);
 }
 

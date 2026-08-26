@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import ConsentCheckboxes from '@/components/dpdp/ConsentCheckboxes';
 import { 
   User, 
   Phone, 
@@ -41,6 +42,7 @@ export default function CustomerRegisterPage() {
   // Validation
   const [errors, setErrors] = useState<any>({});
   const [successMessage, setSuccessMessage] = useState('');
+  const [registerConsent, setRegisterConsent] = useState<{ service?: boolean; marketing?: boolean }>({});
 
   async function handleSubmitDetails(e: React.FormEvent) {
     e.preventDefault();
@@ -63,11 +65,30 @@ export default function CustomerRegisterPage() {
         newErrors.phone = 'Please enter a valid 10-digit Indian mobile number';
       }
 
+      if (!registerConsent.service) {
+        newErrors.consent = 'Please tick service delivery consent to continue.';
+      }
+
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
         setLoading(false);
         return;
       }
+
+      void fetch('/api/public/dpdp/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'customer-register',
+          subject_name: fullName,
+          subject_email: email,
+          subject_phone: phone,
+          consents: [
+            { purpose: 'service', granted: Boolean(registerConsent.service) },
+            { purpose: 'marketing', granted: Boolean(registerConsent.marketing) },
+          ],
+        }),
+      }).catch(() => undefined);
 
       const supabase = createClient();
 
@@ -343,6 +364,14 @@ export default function CustomerRegisterPage() {
                   <p className="text-red-500 text-[10px] sm:text-xs mt-0.5 sm:mt-1">{errors.phone}</p>
                 )}
               </div>
+
+              <ConsentCheckboxes
+                value={registerConsent}
+                onChange={setRegisterConsent}
+                purposes={['service', 'marketing']}
+                requiredPurposes={['service']}
+                error={errors.consent}
+              />
 
               <button
                 type="submit"

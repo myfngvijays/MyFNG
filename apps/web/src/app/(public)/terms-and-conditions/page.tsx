@@ -11,19 +11,19 @@ export async function generateMetadata() {
 
 function NumberedHeading({ number, title }: { number: string; title: string }) {
   return (
-    <div className="flex items-start gap-3 mb-3 mt-6 first:mt-0">
+    <div className="flex items-start gap-3 mb-2 mt-8 first:mt-0">
       <span className="flex-shrink-0 w-7 h-7 rounded-lg bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
         {number}
       </span>
-      <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-snug pt-0.5">{title}</h3>
+      <h3 className="text-base font-semibold text-gray-900 leading-7 pt-0.5">{title}</h3>
     </div>
   );
 }
 
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
-    <li className="flex items-start gap-2.5 text-sm text-gray-700 leading-relaxed">
-      <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+    <li className="flex items-start gap-3 text-[15px] text-gray-700 leading-7">
+      <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
       <span>{children}</span>
     </li>
   );
@@ -31,24 +31,24 @@ function Bullet({ children }: { children: React.ReactNode }) {
 
 function IndentBullet({ children }: { children: React.ReactNode }) {
   return (
-    <li className="flex items-start gap-2.5 text-sm text-gray-700 leading-relaxed ml-4">
-      <span className="mt-1.5 w-1 h-1 rounded-full bg-gray-400 flex-shrink-0" />
+    <li className="flex items-start gap-3 text-[15px] text-gray-700 leading-7 ml-1 sm:ml-4">
+      <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0" />
       <span>{children}</span>
     </li>
   );
 }
 
 function Para({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-gray-700 leading-relaxed mb-3">{children}</p>;
+  return <p className="text-[15px] text-gray-700 leading-7 mb-4">{children}</p>;
 }
 
 function DefinitionItem({ number, term, desc }: { number: string; term: string; desc: string }) {
   return (
-    <div className="flex items-start gap-3 mb-3">
-      <span className="flex-shrink-0 w-6 h-6 rounded-md bg-gray-100 text-gray-600 text-[11px] font-bold flex items-center justify-center">{number}</span>
-      <p className="text-sm text-gray-700 leading-relaxed">
-        <span className="font-semibold text-gray-900">&ldquo;{term}&rdquo;</span> {desc}
+    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3.5 sm:px-5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+        {number}. {term}
       </p>
+      <p className="mt-1.5 text-[15px] leading-7 text-gray-700">{desc}</p>
     </div>
   );
 }
@@ -58,7 +58,7 @@ export default function TermsAndConditionsPage() {
     <>
       <Navbar />
       <main className="bg-gradient-to-b from-gray-50 to-white min-h-screen pt-20 sm:pt-24">
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12 sm:px-6">
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12 sm:px-6">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 mb-4">
@@ -69,7 +69,7 @@ export default function TermsAndConditionsPage() {
         </div>
 
         {/* CONTRACTUAL RELATIONSHIP — first one expanded */}
-        <AccordionCard title="Contractual Relationship" variant="bar" defaultOpen>
+        <AccordionCard defaultOpen title="Contractual Relationship" variant="bar">
           <Para>
             My FNG Autocare Private Limited, a company duly incorporated under the Companies Act, 2013 and having its registered office at A/309, Centrum Business Square, Road No. 16, Wagle Industrial Estate, Thane (West), Thane - 400604, Maharashtra, India (&ldquo;My FNG&rdquo;, &ldquo;Company&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;), owns and operates a digital platform under the brand name My FNG. The Platform enables users to discover, schedule, and manage car maintenance, repair, inspection, and other related automotive services offered by independent third-party service providers (&ldquo;Partner Workshops&rdquo;).
           </Para>
@@ -100,11 +100,11 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* DEFINITIONS */}
-        <AccordionCard title="Definitions" variant="bar">
+        <AccordionCard defaultOpen title="Definitions" variant="bar">
           <Para>
             Unless the context otherwise requires, the following capitalized terms used in these Terms &amp; Conditions shall have the meanings assigned to them below. Words denoting the singular shall include the plural and vice versa, and words denoting any gender shall include all genders.
           </Para>
-          <div className="space-y-0">
+          <div className="space-y-3">
             <DefinitionItem number="1" term="Account" desc="means the registered user account created by a User on the Platform for the purpose of accessing and using the Services." />
             <DefinitionItem number="2" term="Additional Services" desc="means any services, repairs, replacements, inspections, or other works requested by the User or identified during inspection that fall outside the scope of the selected Service Package." />
             <DefinitionItem number="3" term="Affiliate" desc='means any entity that directly or indirectly controls, is controlled by, or is under common control with My FNG, where "control" means ownership of more than fifty percent (50%) of the voting rights or equity interests of such entity.' />
@@ -126,7 +126,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* SERVICES */}
-        <AccordionCard title="Services" variant="bar">
+        <AccordionCard defaultOpen title="Services" variant="bar">
           <NumberedHeading number="1" title="Nature of Services" />
           <Para>My FNG provides a technology-enabled facilitation platform that enables Users to discover, request, schedule, and manage automotive maintenance, repair, inspection, and roadside support services offered by independent third-party service providers (&ldquo;Partner Workshops&rdquo; and &ldquo;RSA Partners&rdquo;).</Para>
           <Para>My FNG&apos;s role is strictly limited to providing digital infrastructure, coordination tools, and customer support to enable such interactions between Users and service providers.</Para>
@@ -137,7 +137,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="3" title="Service Facilitation Scope" />
           <Para>The Services facilitated through the Platform may include, without limitation:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Periodic and general car servicing</Bullet>
             <Bullet>Mechanical, electrical, and diagnostic assistance</Bullet>
             <Bullet>Car air-conditioning, battery, tyre, and wheel-related services</Bullet>
@@ -162,7 +162,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <NumberedHeading number="5" title="Indicative Information and Response Times" />
           <Para>Any pricing, response times, distance coverage, or estimated arrival times displayed on the Platform for RSA or other Services are indicative only.</Para>
           <Para>Actual response times and costs may vary due to factors including but not limited to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Traffic conditions</Bullet>
             <Bullet>Location accessibility</Bullet>
             <Bullet>Weather conditions</Bullet>
@@ -173,7 +173,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <Para>Such factors are beyond the control of My FNG.</Para>
 
           <NumberedHeading number="6" title="Appointment-Based and On-Demand Services" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Regular car servicing and repair Services are generally provided on an appointment-only basis.</Bullet>
             <Bullet>Roadside Assistance (RSA) services may be provided on an on-demand or emergency basis, subject to availability and operational feasibility.</Bullet>
             <Bullet>My FNG does not guarantee immediate assistance or minimum response times.</Bullet>
@@ -184,7 +184,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="8" title="No Warranty or Guarantee by My FNG" />
           <Para>My FNG does not provide any warranty, assurance, or guarantee with respect to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>The quality or outcome of services provided by Partner Workshops or RSA Partners</Bullet>
             <Bullet>The timeliness of service delivery or response</Bullet>
             <Bullet>The prevention of future breakdowns, failures, or emergencies</Bullet>
@@ -197,7 +197,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* ELIGIBILITY */}
-        <AccordionCard title="Eligibility" variant="bar">
+        <AccordionCard defaultOpen title="Eligibility" variant="bar">
           <NumberedHeading number="1" title="Age and Legal Capacity" />
           <Para>Access to and use of the Platform and Services is available only to individuals who are at least eighteen (18) years of age and are legally competent to enter into a binding contract under Applicable Law.</Para>
           <Para>By accessing or using the Platform, you represent and warrant that you meet these eligibility requirements.</Para>
@@ -212,7 +212,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="4" title="Accurate Information Requirement" />
           <Para>You agree to provide true, accurate, current, and complete information while:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>creating an Account</Bullet>
             <Bullet>requesting Services</Bullet>
             <Bullet>communicating through the Platform</Bullet>
@@ -222,7 +222,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="5" title="Technical and Access Requirements" />
           <Para>To access and use the Platform, you must have:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>A compatible device and supported operating system</Bullet>
             <Bullet>Active internet connectivity</Bullet>
             <Bullet>The ability to receive calls, SMS messages, or platform notifications</Bullet>
@@ -231,7 +231,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="6" title="Compliance with Laws and Platform Policies" />
           <Para>You agree to use the Platform and Services in compliance with:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>all Applicable Laws</Bullet>
             <Bullet>these Terms &amp; Conditions</Bullet>
             <Bullet>any guidelines, policies, or instructions communicated by My FNG from time to time.</Bullet>
@@ -240,7 +240,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="7" title="Right to Refuse or Restrict Access" />
           <Para>My FNG reserves the right, at its sole discretion, to refuse registration, restrict access, suspend, or terminate eligibility to use the Platform or Services, either temporarily or permanently, without prior notice, where:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Eligibility criteria are not met</Bullet>
             <Bullet>False or misleading information is provided</Bullet>
             <Bullet>Misuse, abuse, or fraudulent activity is detected</Bullet>
@@ -249,13 +249,13 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* USE OF SERVICES */}
-        <AccordionCard title="Use of Services" variant="bar">
+        <AccordionCard defaultOpen title="Use of Services" variant="bar">
           <NumberedHeading number="1" title="Permitted Use" />
           <Para>Subject to compliance with these Terms, My FNG grants the User a limited, personal, non-exclusive, non-transferable, and revocable right to access and use the Platform and Services solely for lawful purposes related to obtaining automotive maintenance, repair, inspection, or roadside assistance services for the User&apos;s own Vehicle.</Para>
 
           <NumberedHeading number="2" title="Account Responsibility" />
           <Para>Where account creation is required, the User is solely responsible for:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Maintaining the confidentiality of account credentials</Bullet>
             <Bullet>All activities carried out through the User&apos;s Account</Bullet>
             <Bullet>Promptly notifying My FNG of any unauthorized access, suspected misuse, or security breach</Bullet>
@@ -263,14 +263,14 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <Para>My FNG shall not be liable for any loss or damage arising from unauthorized use of the User&apos;s Account.</Para>
 
           <NumberedHeading number="3" title="Service Requests and Approvals" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>All service requests must be initiated through the Platform in the manner prescribed.</Bullet>
             <Bullet>The User shall review service descriptions, scope, inclusions, exclusions, and applicable Charges before confirming a Booking.</Bullet>
             <Bullet>Any Additional Services, including repairs, part replacements, or extended RSA support, shall be undertaken only after the User&apos;s express approval.</Bullet>
           </ul>
 
           <NumberedHeading number="4" title="Appointment-Based and On-Demand Services" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Non-emergency automotive Services are provided strictly on an appointment basis.</Bullet>
             <Bullet>Roadside Assistance (RSA) services may be offered on an on-demand or emergency basis, subject to availability.</Bullet>
             <Bullet>The User acknowledges that service availability, response times, and completion timelines are not guaranteed and may vary due to external factors.</Bullet>
@@ -278,7 +278,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="5" title="Vehicle Handover and Inspection" />
           <Para>The User agrees to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Hand over the Vehicle in a condition reasonably suitable for inspection or service</Bullet>
             <Bullet>Remove personal belongings and valuables from the Vehicle prior to service</Bullet>
             <Bullet>Inspect the Vehicle at the time of delivery or completion of service</Bullet>
@@ -287,7 +287,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="6" title="Fair and Responsible Use" />
           <Para>The User shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Place false, duplicate, or fraudulent service requests</Bullet>
             <Bullet>Misuse Roadside Assistance services for non-emergency purposes or repeated unjustified requests</Bullet>
             <Bullet>Interfere with service providers, Platform operations, or customer support processes</Bullet>
@@ -296,7 +296,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="7" title="Communication and Consent" />
           <Para>By using the Services, the User consents to receive communications from My FNG and its service partners, including calls, SMS messages, emails, and app notifications, for purposes related to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Service coordination</Bullet>
             <Bullet>Booking confirmations</Bullet>
             <Bullet>Service updates and alerts</Bullet>
@@ -309,7 +309,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="9" title="Suspension for Misuse" />
           <Para>My FNG reserves the right to suspend, restrict, or terminate a User&apos;s access to the Platform or Services, with or without prior notice, in the event of:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Breach of these Terms</Bullet>
             <Bullet>Misuse or abuse of Services, including RSA misuse</Bullet>
             <Bullet>Non-payment of applicable Charges</Bullet>
@@ -321,7 +321,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* SUPPORT */}
-        <AccordionCard title="Support" variant="bar">
+        <AccordionCard defaultOpen title="Support" variant="bar">
           <NumberedHeading number="1" title="Scope of Support Services" />
           <Para>My FNG provides customer support to assist Users with matters relating to access to the Platform, service bookings, coordination with Partner Workshops or RSA Partners, and general queries regarding the Services facilitated through the Platform.</Para>
           <Para>Such support is provided strictly on a facilitative basis and does not constitute the provision, supervision, control, or guarantee of any automotive or roadside service.</Para>
@@ -329,7 +329,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <NumberedHeading number="2" title="Modes of Support" />
           <Para>The Company offers email-based and phone-based support, along with an online knowledge repository of frequently asked questions (FAQs) available on the Platform.</Para>
           <Para>Support may be accessed through the following channels:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Email: support@myfng.in</Bullet>
             <Bullet>Helpline: +91-9152307030</Bullet>
             <Bullet>FAQs / Knowledge Base: Available on the Platform</Bullet>
@@ -338,7 +338,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="3" title="Response and Availability" />
           <Para>While My FNG endeavors to respond to support requests in a timely manner, response times may vary depending on factors such as:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>the nature and complexity of the request</Bullet>
             <Bullet>service location</Bullet>
             <Bullet>availability of Partner Workshops or RSA Partners</Bullet>
@@ -348,7 +348,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="4" title="Support Limitations" />
           <Para>The User acknowledges and agrees that:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>My FNG support does not replace or substitute the obligations of Partner Workshops or RSA Partners.</Bullet>
             <Bullet>Mechanical issues, service quality concerns, and execution-related matters remain the responsibility of the relevant third-party service provider.</Bullet>
             <Bullet>My FNG does not control the method, manner, or execution of services performed by third-party providers.</Bullet>
@@ -365,7 +365,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <NumberedHeading number="7" title="Emergency and Roadside Situations" />
           <Para>My FNG support services are not emergency response services.</Para>
           <Para>For Roadside Assistance requests, facilitation is subject to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>availability of service providers</Bullet>
             <Bullet>location accessibility</Bullet>
             <Bullet>operational feasibility</Bullet>
@@ -375,7 +375,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="8" title="User Conduct and Right to Refuse Support" />
           <Para>My FNG reserves the right to refuse, restrict, or discontinue support services where a User:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>engages in abusive, threatening, or inappropriate conduct</Bullet>
             <Bullet>submits false or misleading information</Bullet>
             <Bullet>repeatedly raises unreasonable, fraudulent, or frivolous requests</Bullet>
@@ -384,14 +384,14 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* PROHIBITED USAGE */}
-        <AccordionCard title="Prohibited Usage of the Platform" variant="bar">
+        <AccordionCard defaultOpen title="Prohibited Usage of the Platform" variant="bar">
           <NumberedHeading number="1" title="Unlawful or Unauthorized Use" />
           <Para>The User shall not access or use the Platform or Services for any purpose that is unlawful, fraudulent, deceptive, malicious, or otherwise prohibited under Applicable Law or these Terms.</Para>
           <Para>Any use of the Platform in violation of statutory, regulatory, or contractual obligations is strictly prohibited.</Para>
 
           <NumberedHeading number="2" title="Misrepresentation and Fraud" />
           <Para>The User shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Impersonate Any Person Or Entity</Bullet>
             <Bullet>Misrepresent Identity, Vehicle Ownership, Service Requirements, Or Location</Bullet>
             <Bullet>Submit False, Misleading, Or Fabricated Information</Bullet>
@@ -400,7 +400,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="3" title="Abuse of Services and RSA Misuse" />
           <Para>The User shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Misuse Or Repeatedly Abuse Roadside Assistance Services For Non-Emergency Situations</Bullet>
             <Bullet>Generate Service Requests Without Genuine Intent To Avail The Services</Bullet>
             <Bullet>Engage In Repeated Cancellations Or No-Shows Without Valid Justification</Bullet>
@@ -409,7 +409,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="4" title="Interference with Platform Operations" />
           <Para>The User shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Attempt To Gain Unauthorized Access To The Platform, Servers, Databases, Or Systems</Bullet>
             <Bullet>Reverse Engineer, Decompile, Disassemble, Or Attempt To Derive Source Code</Bullet>
             <Bullet>Introduce Viruses, Malware, Or Any Harmful Code</Bullet>
@@ -424,7 +424,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="7" title="Commercial Exploitation and Circumvention" />
           <Para>The User shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Use The Platform Or Services For Commercial Resale, Redistribution, Or Solicitation</Bullet>
             <Bullet>Harvest Or Extract Data, Contact Details, Or Pricing Information For Competitive Purposes</Bullet>
             <Bullet>Circumvent Pricing, Payment Mechanisms, Service Workflows, Or Platform Safeguards</Bullet>
@@ -435,7 +435,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="9" title="Disclosure and Transfer of User Information" />
           <Para>My FNG may disclose, share, or transfer User-generated information:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>To Its Affiliates Or Service Partners Where Necessary For Service Facilitation</Bullet>
             <Bullet>To Governmental, Regulatory, Or Law Enforcement Authorities Where Required Or Permitted By Applicable Law</Bullet>
           </ul>
@@ -443,7 +443,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="10" title="Immediate Termination for Non-Compliance" />
           <Para>My FNG reserves the right to immediately suspend or terminate the User&apos;s access to the Platform or Services in the event of:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Violation Of Applicable Law</Bullet>
             <Bullet>Breach Of These Terms Or The Privacy Policy</Bullet>
             <Bullet>Conduct Posing Legal, Security, Or Operational Risks</Bullet>
@@ -451,7 +451,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="11" title="Consequences and Remedies" />
           <Para>My FNG may, at its sole discretion:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Cancel Pending Or Future Bookings</Bullet>
             <Bullet>Restrict Or Permanently Block Access To The Platform</Bullet>
             <Bullet>Recover Losses Or Damages Caused By The Violation</Bullet>
@@ -463,7 +463,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* USER COMMENTS, FEEDBACK */}
-        <AccordionCard title="User Comments, Feedback and Other Submissions" variant="bar">
+        <AccordionCard defaultOpen title="User Comments, Feedback and Other Submissions" variant="bar">
           <NumberedHeading number="1" title="User Submissions" />
           <Para>The Platform may permit Users to submit reviews, ratings, comments, suggestions, feedback, images, messages, or other content in connection with the Services (&ldquo;User Submissions&rdquo;).</Para>
           <Para>By providing any User Submission, you represent and warrant that such content is accurate to the best of your knowledge and does not violate Applicable Law or the rights of any third party.</Para>
@@ -479,7 +479,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="5" title="Content Standards" />
           <Para>You agree that User Submissions shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Be False, Misleading, Or Deceptive</Bullet>
             <Bullet>Be Defamatory, Abusive, Obscene, Or Offensive</Bullet>
             <Bullet>Infringe Intellectual Property, Privacy, Or Publicity Rights</Bullet>
@@ -501,14 +501,14 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* USER DATA */}
-        <AccordionCard title="User Data" variant="bar">
+        <AccordionCard defaultOpen title="User Data" variant="bar">
           <NumberedHeading number="1" title="Accuracy and Responsibility for User Data" />
           <Para>The User represents and warrants that all information provided (&ldquo;User Data&rdquo;) is true, accurate, current, and complete. The User undertakes to maintain and promptly update such information.</Para>
           <Para>My FNG reserves the right to suspend or terminate access if User Data is found to be false, misleading, outdated, or incomplete.</Para>
 
           <NumberedHeading number="2" title="Collection and Processing of User Data" />
           <Para>My FNG may collect, receive, store, and process User Data for lawful purposes including:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Facilitating Service Bookings And Roadside Assistance Requests</Bullet>
             <Bullet>Verifying And Validating Documents Or Service-Related Information</Bullet>
             <Bullet>Coordinating With Partner Workshops, RSA Partners, And Other Service Providers</Bullet>
@@ -525,7 +525,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="5" title="Sharing and Disclosure of User Data" />
           <Para>My FNG may disclose or share User Data:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>With Partner Workshops, RSA Partners, Payment Gateways, and other Service Providers</Bullet>
             <Bullet>With Affiliates Or Group Companies for operational or compliance purposes</Bullet>
             <Bullet>With Governmental Authorities or Law Enforcement Agencies where required by Applicable Law</Bullet>
@@ -542,7 +542,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="9" title="User Rights" />
           <Para>Subject to Applicable Law, the User may have the right to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Access and review User Data</Bullet>
             <Bullet>Correct inaccurate information</Bullet>
             <Bullet>Request deletion of User Data</Bullet>
@@ -553,8 +553,43 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <Para>The collection and protection of User Data are further governed by My FNG&apos;s Privacy Policy, which forms an integral part of these Terms.</Para>
         </AccordionCard>
 
+        <AccordionCard defaultOpen title="Data Protection (DPDP Act, 2023)" variant="bar">
+          <NumberedHeading number="1" title="Role of the Parties" />
+          <Para>
+            MY FNG Autocare Private Limited is a Data Fiduciary for personal data processed to operate the
+            Platform. Partner workshops and certain processors act as Data Processors or independent Data
+            Fiduciaries for work they perform themselves.
+          </Para>
+          <NumberedHeading number="2" title="Lawful Purpose and Consent" />
+          <Para>
+            Personal data is processed to perform a service the User requested, to comply with law, or on
+            consent that is free, specific, informed, and unambiguous. Optional purposes (promotional
+            messages, analytics cookies, advertising cookies) require a separate, unticked opt-in.
+            Withdrawal of consent does not affect processing already completed or processing required by law.
+          </Para>
+          <NumberedHeading number="3" title="Notice and Rights" />
+          <Para>
+            The Privacy Notice and Privacy Policy describe what data is collected, why, retention, and
+            third parties. The User may access, correct, erase (where permitted), withdraw consent, nominate
+            another person, and raise a grievance via the data-rights form or the Grievance Officer
+            (cs-reply@myfng.in).
+          </Para>
+          <NumberedHeading number="4" title="Security and Breach" />
+          <Para>
+            MY FNG shall implement reasonable security safeguards. In a personal data breach, MY FNG will
+            follow its internal breach runbook, including notice to the Data Protection Board of India and
+            affected Data Principals as required under applicable law (including the 72-hour Board notice
+            standard when it applies).
+          </Para>
+          <NumberedHeading number="5" title="Processors and Cross-Border Transfer" />
+          <Para>
+            Processors (hosting, payments, messaging, maps, telephony) may process data in or outside India
+            under contracts that require confidentiality and comparable protection.
+          </Para>
+        </AccordionCard>
+
         {/* INTELLECTUAL PROPERTY RIGHTS */}
-        <AccordionCard title="Intellectual Property Rights" variant="bar">
+        <AccordionCard defaultOpen title="Intellectual Property Rights" variant="bar">
           <NumberedHeading number="1" title="Ownership of Intellectual Property" />
           <Para>All intellectual property rights in and to the Platform (&ldquo;Platform IP&rdquo;) are owned by or lawfully licensed to My FNG Autocare Private Limited.</Para>
 
@@ -566,7 +601,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="4" title="Restrictions" />
           <Para>The User shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Copy, Reproduce, Modify, Or Create Derivative Works From The Platform</Bullet>
             <Bullet>Reverse Engineer, Decompile, Or Extract Source Code</Bullet>
             <Bullet>Remove Or Obscure Any Copyright Or Trademark Notices</Bullet>
@@ -588,12 +623,12 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* USER CONTENT AND FEEDBACK */}
-        <AccordionCard title="User Content and Feedback" variant="bar">
+        <AccordionCard defaultOpen title="User Content and Feedback" variant="bar">
           <Para>By submitting reviews, ratings, comments, images, feedback, or other content (&ldquo;User Content&rdquo;), the User grants My FNG a worldwide, non-exclusive, royalty-free, transferable license to use, reproduce, modify, publish, display, and distribute such User Content for operating, improving, and promoting the Platform and Services. The User represents that they own or have the necessary rights to submit such content.</Para>
         </AccordionCard>
 
         {/* LICENSE */}
-        <AccordionCard title="License" variant="bar">
+        <AccordionCard defaultOpen title="License" variant="bar">
           <NumberedHeading number="1" title="Grant of License" />
           <Para>My FNG grants the User a limited, non-exclusive, non-transferable, non-sublicensable, and revocable license to access and use the Platform and its content for availing the Services.</Para>
 
@@ -602,7 +637,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="3" title="Restrictions on Use" />
           <Para>The User shall not:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Copy, Reproduce, Or Create Derivative Works</Bullet>
             <Bullet>Distribute, Sell, Or Otherwise Exploit The Platform</Bullet>
             <Bullet>Publicly Display Or Broadcast Any Part Of The Platform</Bullet>
@@ -624,12 +659,12 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* THIRD-PARTY PLATFORM DISTRIBUTION */}
-        <AccordionCard title="Third-Party Platform Distribution" variant="bar">
+        <AccordionCard defaultOpen title="Third-Party Platform Distribution" variant="bar">
           <Para>The Platform may be made available through third-party distribution platforms such as mobile application stores. The User acknowledges that such platforms may have their own terms. My FNG is not responsible for their policies or practices.</Para>
         </AccordionCard>
 
         {/* LIMITATION OF LIABILITY */}
-        <AccordionCard title="Limitation of Liability" variant="bar">
+        <AccordionCard defaultOpen title="Limitation of Liability" variant="bar">
           <NumberedHeading number="1" title="Platform-as-a-Facilitator Disclaimer" />
           <Para>My FNG operates solely as a technology-enabled facilitation platform. All automotive services are performed by independent Partner Workshops or RSA Partners.</Para>
 
@@ -656,21 +691,21 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* EXEMPTIONS TO LIABILITY */}
-        <AccordionCard title="Exemptions to Liability of the Company" variant="bar">
+        <AccordionCard defaultOpen title="Exemptions to Liability of the Company" variant="bar">
           <Para>My FNG shall not be liable for losses arising from:</Para>
 
           <NumberedHeading number="1" title="Acts or Omissions of Third-Party Service Providers" />
           <Para>Including workmanship quality, service outcomes, spare parts, or service timelines.</Para>
 
           <NumberedHeading number="2" title="Vehicle Condition and Pre-Existing Issues" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Pre-existing issues, normal wear and tear, or manufacturer defects</Bullet>
             <Bullet>Damage from prior repairs, modifications, or improper maintenance</Bullet>
             <Bullet>Issues not reasonably detectable beforehand</Bullet>
           </ul>
 
           <NumberedHeading number="3" title="Roadside Assistance and Emergency Services" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Delays or non-availability of RSA services</Bullet>
             <Bullet>Route selection or handling decisions by towing operators</Bullet>
             <Bullet>Damage during towing, jump-start, fuel delivery, or on-road assistance</Bullet>
@@ -702,7 +737,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* BILLING / CHARGES */}
-        <AccordionCard title="Billing / Charges" variant="bar">
+        <AccordionCard defaultOpen title="Billing / Charges" variant="bar">
           <NumberedHeading number="1" title="Service Charges and Pricing Structure" />
           <Para>Charges may include service fees, labour, inspection charges, facilitation fees, spare parts, towing, taxes, and other levies.</Para>
 
@@ -719,7 +754,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <Para>All Charges are exclusive of applicable taxes unless expressly stated otherwise.</Para>
 
           <NumberedHeading number="6" title="Payment Methods" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Digital payment gateways</Bullet>
             <Bullet>UPI</Bullet>
             <Bullet>Credit or debit cards</Bullet>
@@ -744,7 +779,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* CANCELLATION AND REFUND */}
-        <AccordionCard title="Cancellation and Refund" variant="bar">
+        <AccordionCard defaultOpen title="Cancellation and Refund" variant="bar">
           <NumberedHeading number="1" title="Cancellation by User" />
           <Para>Cancellation requests shall be effective only upon confirmation by My FNG.</Para>
 
@@ -767,7 +802,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <Para>Approved refunds processed within a reasonable period. Delays by banks are not My FNG&apos;s responsibility.</Para>
 
           <NumberedHeading number="8" title="Non-Refundable Amounts" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Inspection, Diagnostic, Or Visit Charges</Bullet>
             <Bullet>Towing Or RSA Dispatch Charges</Bullet>
             <Bullet>Charges For Additional Services Approved By The User</Bullet>
@@ -785,7 +820,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* DISPUTE RESOLUTION */}
-        <AccordionCard title="Dispute Resolution" variant="bar">
+        <AccordionCard defaultOpen title="Dispute Resolution" variant="bar">
           <NumberedHeading number="1" title="Good Faith Resolution" />
           <Para>The User and My FNG shall first attempt to resolve Disputes amicably through mutual discussions.</Para>
 
@@ -794,7 +829,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
 
           <NumberedHeading number="3" title="Arbitration" />
           <Para>Unresolved Disputes shall be referred to arbitration under the Arbitration and Conciliation Act, 1996.</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Sole arbitrator appointed by My FNG</Bullet>
             <Bullet>Seat and venue: Thane, Maharashtra, India</Bullet>
             <Bullet>Language: English</Bullet>
@@ -817,17 +852,17 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* GOVERNING LAW */}
-        <AccordionCard title="Governing Law" variant="bar">
+        <AccordionCard defaultOpen title="Governing Law" variant="bar">
           <Para>These Terms shall be governed by the laws of India. Competent courts in Thane, Maharashtra, India shall have exclusive jurisdiction, subject to Applicable Law.</Para>
         </AccordionCard>
 
         {/* MODIFICATION OF TERMS */}
-        <AccordionCard title="Modification of Terms" variant="bar">
+        <AccordionCard defaultOpen title="Modification of Terms" variant="bar">
           <Para>My FNG may modify these Terms at any time. Updated versions will be published with a revised &ldquo;Effective Date.&rdquo; Continued use constitutes acceptance. If you disagree, discontinue use.</Para>
         </AccordionCard>
 
         {/* GENERAL PROVISIONS */}
-        <AccordionCard title="General Provisions" variant="bar">
+        <AccordionCard defaultOpen title="General Provisions" variant="bar">
           <NumberedHeading number="1" title="Entire Agreement" />
           <Para>These Terms and Privacy Policy constitute the entire agreement, superseding all prior understandings.</Para>
 
@@ -856,7 +891,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <Para>These Terms are an electronic record under the IT Act, 2000. Electronic communications have the same legal effect as written ones.</Para>
 
           <NumberedHeading number="10" title="Interpretation" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Singular includes plural and vice versa</Bullet>
             <Bullet>&ldquo;Including&rdquo; means &ldquo;including without limitation&rdquo;</Bullet>
             <Bullet>Statute references include amendments and replacements</Bullet>
@@ -864,7 +899,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* TERMINATION */}
-        <AccordionCard title="Termination" variant="bar">
+        <AccordionCard defaultOpen title="Termination" variant="bar">
           <NumberedHeading number="1" title="Termination by User" />
           <Para>The User may discontinue use at any time. Active bookings and payment obligations survive termination.</Para>
 
@@ -875,7 +910,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
           <Para>Immediate termination without notice for conduct causing harm, RSA misuse, or IP infringement.</Para>
 
           <NumberedHeading number="4" title="Effect of Termination" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Access rights immediately cease</Bullet>
             <Bullet>Pending bookings may be cancelled</Bullet>
             <Bullet>Outstanding Charges become immediately payable</Bullet>
@@ -893,7 +928,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* INDEMNIFICATION */}
-        <AccordionCard title="Indemnification" variant="bar">
+        <AccordionCard defaultOpen title="Indemnification" variant="bar">
           <Para>The User agrees to indemnify and hold harmless My FNG from all claims, losses, and expenses arising from:</Para>
 
           <NumberedHeading number="1" title="Breach of Terms" />
@@ -922,7 +957,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         </AccordionCard>
 
         {/* SUPPORT / CONTACTING US */}
-        <AccordionCard title="Support / Contacting Us" variant="bar">
+        <AccordionCard defaultOpen title="Support / Contacting Us" variant="bar">
           <NumberedHeading number="1" title="Scope of Support Services" />
           <Para>My FNG provides facilitative customer support for Platform access, bookings, coordination, and general queries.</Para>
 

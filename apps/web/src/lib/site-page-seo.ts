@@ -198,6 +198,28 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
     canonicalPath: '/privacy-policy',
   },
   {
+    page_path: '/privacy-notice',
+    page_label: 'Privacy Notice',
+    display_order: 12,
+    title: 'Privacy Notice (DPDP) | MyFNG',
+    description:
+      'MYFNG DPDP Act 2023 privacy notice: what personal data we collect, why, retention, third parties, your rights, and grievance officer.',
+    keywords: ['MYFNG privacy notice', 'DPDP', 'data protection'],
+    keyphrase: 'DPDP privacy notice',
+    canonicalPath: '/privacy-notice',
+  },
+  {
+    page_path: '/data-rights',
+    page_label: 'Data Rights',
+    display_order: 12,
+    title: 'Data Rights Request | MyFNG',
+    description:
+      'Request access, correction, erasure, or withdraw consent for your MYFNG personal data under the DPDP Act, 2023.',
+    keywords: ['MYFNG data rights', 'DPDP access request', 'delete my data'],
+    keyphrase: 'data rights request',
+    canonicalPath: '/data-rights',
+  },
+  {
     page_path: '/terms-and-conditions',
     page_label: 'Terms & Conditions',
     display_order: 13,

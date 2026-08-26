@@ -1,9 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { Phone, Mail, MapPin, Clock, Send, Truck } from 'lucide-react';
+import ConsentCheckboxes, {
+  requiredConsentsGranted,
+  type ConsentMap,
+} from '@/components/dpdp/ConsentCheckboxes';
 
 const MAP_EMBED_URL =
   'https://www.google.com/maps/embed?pb=!1m16!1m12!1m3!1d120646.4!2d73.0679487!3d19.1220139!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!2m1!1sMY%20FNG!5e0!3m2!1sen!2sin';
@@ -11,6 +15,52 @@ const MAP_OPEN_URL =
   'https://maps.app.goo.gl/WjBHrvYCDjvhEe7X9';
 
 export default function ContactPage() {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [mobile, setMobile] = useState('');
+  const [subject, setSubject] = useState('General Inquiry');
+  const [message, setMessage] = useState('');
+  const [consent, setConsent] = useState<ConsentMap>({});
+  const [consentError, setConsentError] = useState('');
+  const [status, setStatus] = useState('');
+
+  async function handleContactSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!requiredConsentsGranted(consent, ['service'])) {
+      setConsentError('Please tick service / support consent.');
+      return;
+    }
+    setConsentError('');
+    const fullName = `${firstName} ${lastName}`.trim();
+    await fetch('/api/public/dpdp/consent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'contact-us',
+        subject_name: fullName,
+        subject_email: email,
+        subject_phone: mobile,
+        consents: [
+          { purpose: 'service', granted: Boolean(consent.service) },
+          { purpose: 'marketing', granted: Boolean(consent.marketing) },
+        ],
+      }),
+    }).catch(() => undefined);
+    await fetch('/api/public/dpdp/rights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_type: 'grievance',
+        full_name: fullName || 'Website visitor',
+        email: email || 'unknown@myfng.in',
+        phone: mobile,
+        details: `[Contact form · ${subject}] ${message}`,
+      }),
+    }).catch(() => undefined);
+    setStatus('Thanks. We recorded your message and consent. Our team will reply on email or phone.');
+  }
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: `
@@ -126,36 +176,33 @@ export default function ContactPage() {
 
               <main className="form-container">
                 <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    // Optional: wire to API later
-                  }}
+                  onSubmit={(e) => void handleContactSubmit(e)}
                 >
                   <h3>Send us a Message</h3>
                   <div className="form-row">
                     <div className="form-group">
                       <label>First Name</label>
-                      <input type="text" placeholder="My FNG" required />
+                      <input type="text" placeholder="My FNG" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                     </div>
                     <div className="form-group">
                       <label>Last Name</label>
-                      <input type="text" placeholder="Autocare" required />
+                      <input type="text" placeholder="Autocare" required value={lastName} onChange={(e) => setLastName(e.target.value)} />
                     </div>
                   </div>
 
                   <div className="form-group">
                     <label>Email Address</label>
-                    <input type="email" placeholder="info@myfng.in" required />
+                    <input type="email" placeholder="info@myfng.in" required value={email} onChange={(e) => setEmail(e.target.value)} />
                   </div>
 
                   <div className="form-group">
                     <label>Mobile Number <span style={{ color: 'red' }}>*</span></label>
-                    <input type="tel" placeholder="9152307030" required />
+                    <input type="tel" placeholder="9152307030" required value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))} />
                   </div>
 
                   <div className="form-group">
                     <label>Subject</label>
-                    <select>
+                    <select value={subject} onChange={(e) => setSubject(e.target.value)}>
                       <option>General Inquiry</option>
                       <option>Service Support</option>
                       <option>Partner With Us</option>
@@ -165,8 +212,20 @@ export default function ContactPage() {
 
                   <div className="form-group">
                     <label>Message</label>
-                    <textarea rows={4} placeholder="How can we help you?" />
+                    <textarea rows={4} placeholder="How can we help you?" value={message} onChange={(e) => setMessage(e.target.value)} />
                   </div>
+
+                  <div className="form-group">
+                    <ConsentCheckboxes
+                      value={consent}
+                      onChange={setConsent}
+                      purposes={['service', 'marketing']}
+                      requiredPurposes={['service']}
+                      error={consentError}
+                    />
+                  </div>
+
+                  {status ? <p style={{ color: '#166534', marginBottom: 12 }}>{status}</p> : null}
 
                   <button type="submit" className="btn-submit">
                     Send Message <Send className="w-5 h-5" />

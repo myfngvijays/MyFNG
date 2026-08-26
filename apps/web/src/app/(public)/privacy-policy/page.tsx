@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Shield, Mail, MapPin } from 'lucide-react';
 import { AccordionCard } from '@/components/shared/PolicyAccordion';
 import Navbar from '@/components/landing/Navbar';
@@ -11,7 +12,7 @@ export async function generateMetadata() {
 
 function SubHeading({ label, title }: { label: string; title: string }) {
   return (
-    <h3 className="text-sm sm:text-base font-semibold text-gray-800 mt-5 mb-2">
+    <h3 className="text-base font-semibold text-gray-800 mt-7 mb-3">
       <span className="text-blue-600 font-bold mr-1.5">{label}</span>
       {title}
     </h3>
@@ -20,15 +21,15 @@ function SubHeading({ label, title }: { label: string; title: string }) {
 
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
-    <li className="flex items-start gap-2.5 text-sm text-gray-700 leading-relaxed">
-      <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+    <li className="flex items-start gap-3 text-[15px] text-gray-700 leading-7">
+      <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
       <span>{children}</span>
     </li>
   );
 }
 
 function Para({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-gray-700 leading-relaxed mb-3">{children}</p>;
+  return <p className="text-[15px] text-gray-700 leading-7 mb-4">{children}</p>;
 }
 
 function Divider() {
@@ -40,7 +41,7 @@ export default function PrivacyPolicyPage() {
     <>
       <Navbar />
       <main className="bg-gradient-to-b from-gray-50 to-white min-h-screen pt-20 sm:pt-24">
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12 sm:px-6">
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12 sm:px-6">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 mb-4">
@@ -49,6 +50,16 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Privacy Policy</h1>
           <p className="mt-2 text-sm text-gray-500">Last updated: August 26, 2026</p>
         </div>
+        <p className="mb-4 text-center text-sm text-gray-600">
+          Short DPDP notice:{' '}
+          <Link href="/privacy-notice" className="font-semibold text-blue-700 underline">
+            Privacy Notice
+          </Link>
+          {' · '}
+          <Link href="/data-rights" className="font-semibold text-blue-700 underline">
+            Exercise your data rights
+          </Link>
+        </p>
 
         {/* Intro — always visible, not collapsible */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6 mb-3">
@@ -79,7 +90,7 @@ export default function PrivacyPolicyPage() {
           <Para>We may collect the following categories of personal data when you access or use our Platform:</Para>
 
           <SubHeading label="A." title="Registration Information" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Name</Bullet>
             <Bullet>Mobile number</Bullet>
             <Bullet>Email address</Bullet>
@@ -87,7 +98,7 @@ export default function PrivacyPolicyPage() {
           </ul>
 
           <SubHeading label="B." title="Vehicle Information" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Vehicle registration number</Bullet>
             <Bullet>Car model and variant</Bullet>
             <Bullet>Fuel type</Bullet>
@@ -95,7 +106,7 @@ export default function PrivacyPolicyPage() {
           </ul>
 
           <SubHeading label="C." title="Transaction Information" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Service booking details</Bullet>
             <Bullet>Appointment information</Bullet>
             <Bullet>Workshop interactions</Bullet>
@@ -103,7 +114,7 @@ export default function PrivacyPolicyPage() {
           </ul>
 
           <SubHeading label="D." title="Technical Information" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>IP address</Bullet>
             <Bullet>Browser type and version</Bullet>
             <Bullet>Device information</Bullet>
@@ -113,7 +124,7 @@ export default function PrivacyPolicyPage() {
           </ul>
 
           <SubHeading label="E." title="Usage and Behavioral Data" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Pages visited on the Platform</Bullet>
             <Bullet>Search queries and activity</Bullet>
             <Bullet>Interaction timestamps</Bullet>
@@ -134,35 +145,35 @@ export default function PrivacyPolicyPage() {
           <Para>MY FNG uses the personal data collected for the following purposes:</Para>
 
           <SubHeading label="A." title="Service Delivery" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>To process and manage service bookings</Bullet>
             <Bullet>To coordinate with partner workshops and service providers</Bullet>
             <Bullet>To arrange vehicle pickup and delivery services</Bullet>
           </ul>
 
           <SubHeading label="B." title="Customer Support" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>To respond to customer queries and resolve complaints</Bullet>
             <Bullet>To provide updates regarding ongoing or completed services</Bullet>
             <Bullet>To maintain and improve service quality</Bullet>
           </ul>
 
           <SubHeading label="C." title="Platform Improvement" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>To analyze user behavior and usage patterns</Bullet>
             <Bullet>To improve platform functionality, features, and performance</Bullet>
             <Bullet>To enhance overall user experience</Bullet>
           </ul>
 
           <SubHeading label="D." title="Communication" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>To send booking confirmations and service-related notifications</Bullet>
             <Bullet>To provide important updates regarding services or platform changes</Bullet>
             <Bullet>To share promotional communications, offers, and new services (where permitted by applicable law)</Bullet>
           </ul>
 
           <SubHeading label="E." title="Security and Fraud Prevention" />
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>To detect, prevent, and investigate fraudulent or unauthorized activities</Bullet>
             <Bullet>To prevent misuse of the Platform</Bullet>
             <Bullet>To ensure the security and integrity of our systems and services</Bullet>
@@ -195,7 +206,7 @@ export default function PrivacyPolicyPage() {
             MY FNG may use Meta Pixel and Conversions API (CAPI) to measure advertising performance and improve marketing campaigns.
           </Para>
           <Para>These tools may process limited personal data, including encrypted or hashed identifiers (such as email addresses or phone numbers), to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Create Custom And Lookalike Audiences</Bullet>
             <Bullet>Measure Campaign Effectiveness</Bullet>
             <Bullet>Deliver Relevant Advertisements</Bullet>
@@ -228,7 +239,7 @@ export default function PrivacyPolicyPage() {
 
           <SubHeading label="C." title="Service Providers" />
           <Para>We may engage trusted third-party service providers to support the operation of our Platform and services, including:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Cloud hosting and infrastructure providers</Bullet>
             <Bullet>Payment gateway providers</Bullet>
             <Bullet>Analytics and tracking service providers</Bullet>
@@ -266,7 +277,7 @@ export default function PrivacyPolicyPage() {
         {/* 7. Data Security */}
         <AccordionCard number="7" title="Data Security">
           <Para>MY FNG implements appropriate technical and organizational measures to safeguard personal data against unauthorized access, disclosure, alteration, or destruction. These measures include:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Encryption of data during transmission</Bullet>
             <Bullet>Secure servers and hosting infrastructure</Bullet>
             <Bullet>Role-based access controls and restricted employee access</Bullet>
@@ -284,7 +295,7 @@ export default function PrivacyPolicyPage() {
         {/* 8. Data Retention */}
         <AccordionCard number="8" title="Data Retention">
           <Para>MY FNG retains personal data only for as long as necessary to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Provide and manage services requested by users</Bullet>
             <Bullet>Comply with applicable legal and regulatory obligations</Bullet>
             <Bullet>Resolve disputes or enforce agreements</Bullet>
@@ -328,7 +339,7 @@ export default function PrivacyPolicyPage() {
         {/* 10. Cookies */}
         <AccordionCard number="10" title="Cookies and Similar Technologies">
           <Para>MY FNG uses cookies and similar technologies to enhance the user experience on our Platform, including to:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Remember user preferences and settings</Bullet>
             <Bullet>Analyze website and platform traffic</Bullet>
             <Bullet>Improve platform functionality, performance, and features</Bullet>
@@ -341,7 +352,7 @@ export default function PrivacyPolicyPage() {
         {/* 11. Communications */}
         <AccordionCard number="11" title="Communications">
           <Para>By providing your contact information, you consent to receive communications from MY FNG, which may include:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Booking confirmations and service-related notifications</Bullet>
             <Bullet>Customer support messages</Bullet>
             <Bullet>Promotional communications, offers, or updates via SMS, WhatsApp, RCS, email, or phone calls</Bullet>
@@ -374,7 +385,7 @@ export default function PrivacyPolicyPage() {
             All content on the MY FNG Platform, including but not limited to trademarks, service marks, logos, software, and materials, is the property of MY FNG Autocare Private Limited.
           </Para>
           <Para>Users are prohibited from:</Para>
-          <ul className="space-y-1.5 mb-3 ml-1">
+          <ul className="space-y-3 mb-5 ml-1">
             <Bullet>Copying, reproducing, or modifying Platform content</Bullet>
             <Bullet>Distributing or publicly displaying Platform content</Bullet>
             <Bullet>Reverse engineering or decompiling software or materials</Bullet>
