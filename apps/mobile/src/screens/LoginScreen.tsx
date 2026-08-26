@@ -541,8 +541,14 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           <View style={styles.brandWrap}>
             <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
           </View>
-          <Text style={styles.brandTitle}>Welcome to MyFNG</Text>
-          <Text style={styles.brandSubTitle}>Your car&apos;s best friend is just a login away</Text>
+          <Text style={styles.brandTitle}>
+            {loginMethod === 'email' ? 'Staff login' : 'Welcome to MyFNG'}
+          </Text>
+          <Text style={styles.brandSubTitle}>
+            {loginMethod === 'email'
+              ? 'Login to your admin or workshop account'
+              : "Your car's best friend is just a login away"}
+          </Text>
 
           {customerStep === 'input' && (
             <View style={styles.methodToggle}>
@@ -565,13 +571,17 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
           <View style={styles.formArea}>
             {customerStep === 'input' || loginMethod === 'email' ? (
-              <View style={styles.formSection}>
+              <View style={[styles.formSection, loginMethod === 'email' && styles.staffCard]}>
                 <Text style={styles.inputLabel}>{loginMethod === 'phone' ? 'Phone Number' : 'Email Address'}</Text>
-                <View style={styles.inputContainer}>
-                  {loginMethod === 'phone' && <Text style={styles.countryCode}>+91</Text>}
+                <View style={[styles.inputContainer, loginMethod === 'email' && styles.staffInput]}>
+                  {loginMethod === 'phone' ? (
+                    <Text style={styles.countryCode}>+91</Text>
+                  ) : (
+                    <Ionicons name="mail-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
+                  )}
                   <TextInput
                     style={[styles.input, loginMethod === 'phone' && styles.phoneInput]}
-                    placeholder={loginMethod === 'phone' ? '9152307030' : 'name@example.com'}
+                    placeholder={loginMethod === 'phone' ? '9152307030' : 'your@email.com'}
                     placeholderTextColor="#9CA3AF"
                     value={loginMethod === 'phone' ? customerPhone : email}
                     onChangeText={(text) =>
@@ -582,27 +592,37 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                     keyboardType={loginMethod === 'phone' ? 'phone-pad' : 'email-address'}
                     maxLength={loginMethod === 'phone' ? 10 : 80}
                     autoCapitalize="none"
+                    autoComplete={loginMethod === 'email' ? 'email' : 'tel'}
                     editable={!loading}
                   />
                 </View>
                 {loginMethod === 'email' && (
-                  <View style={[styles.inputContainer, styles.passwordContainer]}>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter password"
-                      placeholderTextColor="#9CA3AF"
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                      editable={!loading}
-                    />
-                    <TouchableOpacity style={styles.eyeIcon} onPress={() => setShowPassword((prev) => !prev)} activeOpacity={0.8}>
-                      <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <>
+                    <Text style={[styles.inputLabel, { marginTop: 10 }]}>Password</Text>
+                    <View style={[styles.inputContainer, styles.passwordContainer, styles.staffInput]}>
+                      <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="••••••••"
+                        placeholderTextColor="#9CA3AF"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!showPassword}
+                        autoCapitalize="none"
+                        autoComplete="password"
+                        editable={!loading}
+                      />
+                      <TouchableOpacity style={styles.eyeIcon} onPress={() => setShowPassword((prev) => !prev)} activeOpacity={0.8}>
+                        <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#6B7280" />
+                      </TouchableOpacity>
+                    </View>
+                  </>
                 )}
-                {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+                {errorText ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{errorText}</Text>
+                  </View>
+                ) : null}
                 {__DEV__ && isDevSimulator() && loginMethod === 'phone' && customerStep === 'input' ? (
                   <Text style={styles.simulatorHint}>
                     Simulator: real number par SMS nahi aayega. Real phone use karein, ya test number 7007543565 (OTP 454545).
@@ -651,10 +671,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                     {loading ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
-                      <View style={styles.primaryButtonRow}>
-                        <Text style={styles.primaryButtonText}>Login</Text>
-                        <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-                      </View>
+                      <Text style={styles.primaryButtonText}>Login</Text>
                     )}
                   </TouchableOpacity>
                 )}
@@ -855,6 +872,33 @@ const styles = StyleSheet.create({
   formSection: {
     gap: 8,
   },
+  staffCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  staffInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+  },
+  fieldIcon: {
+    marginRight: 8,
+  },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
   otpButtonsWrap: {
     marginTop: 14,
     gap: 10,
@@ -1004,10 +1048,10 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   errorText: {
-    marginTop: 8,
-    fontSize: 10,
+    marginTop: 0,
+    fontSize: 12,
     color: '#DC2626',
-    fontWeight: '700',
+    fontWeight: '600',
   },
   simulatorHint: {
     marginTop: 8,

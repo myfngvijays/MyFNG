@@ -71,6 +71,8 @@ import {
   syncWorkshopGeofencingPreference,
   showWorkshopGeofencePermissionAlert,
 } from '../lib/workshopGeofencing';
+import { setBackgroundLocationConsent } from '../lib/backgroundLocationConsent';
+import BackgroundLocationDisclosureModal from '../components/BackgroundLocationDisclosureModal';
 import {
   isExpoPushConfigured,
   isPushConfigured,
@@ -428,6 +430,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   const [workshopProximityEnabled, setWorkshopProximityEnabled] = useState(false);
   const [workshopProximityLoading, setWorkshopProximityLoading] = useState(false);
   const [workshopProximityRadiusM, setWorkshopProximityRadiusM] = useState(750);
+  const [bgLocationDisclosureVisible, setBgLocationDisclosureVisible] = useState(false);
   const [selectedFaqCategory, setSelectedFaqCategory] = useState<string | null>(null);
   // Legal sections are now rendered inline (fully expanded). No modal state needed.
   const [faqModal, setFaqModal] = useState<{ question: string; answer: string } | null>(null);
@@ -1077,7 +1080,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     return 'Phone settings se contacts allow karein.';
   }, [contactsPermissionGranted]);
 
-  const handleWorkshopProximityToggle = useCallback(async (val: boolean) => {
+  const persistWorkshopProximity = useCallback(async (val: boolean) => {
     const prev = workshopProximityEnabled;
     setWorkshopProximityEnabled(val);
     setWorkshopProximityLoading(true);
@@ -1106,11 +1109,34 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     }
   }, [workshopProximityEnabled]);
 
+  const handleWorkshopProximityToggle = useCallback(
+    (val: boolean) => {
+      if (val) {
+        setBgLocationDisclosureVisible(true);
+        return;
+      }
+      void persistWorkshopProximity(false);
+    },
+    [persistWorkshopProximity],
+  );
+
+  const handleBackgroundLocationAgree = useCallback(async () => {
+    setBgLocationDisclosureVisible(false);
+    await setBackgroundLocationConsent(true);
+    await persistWorkshopProximity(true);
+  }, [persistWorkshopProximity]);
+
+  const handleBackgroundLocationDecline = useCallback(async () => {
+    setBgLocationDisclosureVisible(false);
+    await setBackgroundLocationConsent(false);
+    setWorkshopProximityEnabled(false);
+  }, []);
+
   const workshopProximityHint = useMemo(() => {
     if (!workshopProximityEnabled) {
-      return `Optional. Detects when you are within ~${workshopProximityRadiusM}m of a MyFNG service center.`;
+      return `Optional. This app collects location data to enable nearby workshop alerts even when the app is closed or not in use (within ~${workshopProximityRadiusM}m of a MyFNG center).`;
     }
-    return `Active within ~${workshopProximityRadiusM}m of nearby MyFNG workshops. Requires Always location on iPhone.`;
+    return `Active within ~${workshopProximityRadiusM}m. This app collects location data to enable nearby workshop alerts even when the app is closed or not in use.`;
   }, [workshopProximityEnabled, workshopProximityRadiusM]);
 
   const membershipListPrice = useMemo(
@@ -6356,6 +6382,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           </View>
         </View>
       </Modal>
+      <BackgroundLocationDisclosureModal
+        visible={bgLocationDisclosureVisible}
+        onAgree={() => void handleBackgroundLocationAgree()}
+        onDecline={() => void handleBackgroundLocationDecline()}
+      />
     </SafeAreaView>
   );
 }

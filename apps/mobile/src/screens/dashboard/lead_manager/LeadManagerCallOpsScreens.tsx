@@ -13,7 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -64,10 +64,13 @@ function fmtDur(sec?: number | null) {
 
 /** Lead Manager — call recordings browser (same API as web). */
 export function LeadManagerRecordingsScreen() {
+  const route = useRoute<any>();
+  const initialQ = String(route.params?.q || '').trim();
+  const datePreset = String(route.params?.preset || 'last_7_days');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [q, setQ] = useState('');
-  const [appliedQ, setAppliedQ] = useState('');
+  const [q, setQ] = useState(initialQ);
+  const [appliedQ, setAppliedQ] = useState(initialQ);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [rows, setRows] = useState<any[]>([]);
@@ -80,7 +83,7 @@ export function LeadManagerRecordingsScreen() {
     async (pageNum = 1, replace = true) => {
       try {
         const params = new URLSearchParams({
-          preset: 'last_7_days',
+          preset: datePreset || 'last_7_days',
           page: String(pageNum),
           limit: '30',
         });
@@ -98,7 +101,7 @@ export function LeadManagerRecordingsScreen() {
         setRefreshing(false);
       }
     },
-    [appliedQ],
+    [appliedQ, datePreset],
   );
 
   useEffect(() => {

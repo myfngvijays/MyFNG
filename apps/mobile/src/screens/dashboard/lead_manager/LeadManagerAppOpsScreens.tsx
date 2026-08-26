@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CrmSavedViewsSheet, { type MobileSavedViewFilters } from '../../../components/CrmSavedViewsSheet';
+import { leadStatusKpiColors } from '../../../lib/telecaller/leadStatusColors';
+import { formatDateDMY } from '@/lib/dateFormat';
 
 function OpsShell({
   title,
@@ -41,6 +45,55 @@ function OpsShell({
   );
 }
 
+function FilterDropdown({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly { id: string; label: string }[];
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.id === value)?.label || label;
+  return (
+    <View style={styles.ddWrap}>
+      <Text style={styles.ddLbl}>{label}</Text>
+      <TouchableOpacity style={styles.ddBtn} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Text style={styles.ddVal} numberOfLines={1}>
+          {selected}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color="#64748B" />
+      </TouchableOpacity>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.ddBackdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.ddSheet} onPress={() => undefined}>
+            <Text style={styles.ddSheetTitle}>{label}</Text>
+            {options.map((opt) => {
+              const on = opt.id === value;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.ddOpt, on && styles.ddOptOn]}
+                  onPress={() => {
+                    onChange(opt.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={[styles.ddOptTxt, on && styles.ddOptTxtOn]}>{opt.label}</Text>
+                  {on ? <Ionicons name="checkmark" size={16} color={COLORS.primary} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 function SearchBox({
   value,
   onChange,
@@ -62,34 +115,105 @@ function SearchBox({
   );
 }
 
+const STATUS_CHIPS = [
+  { id: 'ALL', label: 'All' },
+  { id: 'NEW', label: 'New' },
+  { id: 'ASSIGNED', label: 'Assigned' },
+  { id: 'ACCEPTED', label: 'Accepted' },
+  { id: 'IN_PROGRESS', label: 'In progress' },
+  { id: 'COMPLETED', label: 'Completed' },
+  { id: 'HOLD', label: 'Hold' },
+  { id: 'CANCELLED', label: 'Cancelled' },
+] as const;
+
+const DATE_CHIPS = [
+  { id: 'today', label: 'Today' },
+  { id: 'last_7_days', label: '7 days' },
+  { id: 'last_30_days', label: '30 days' },
+  { id: 'this_month', label: 'This month' },
+  { id: 'all_time', label: 'All time' },
+] as const;
+
+const SOURCE_CHIPS = [
+  { id: 'ALL', label: 'All sources' },
+  { id: 'APP', label: 'App' },
+  { id: 'WEBSITE', label: 'Website' },
+  { id: 'MISA', label: 'MISA AI' },
+  { id: 'GOOGLE', label: 'Google Ads' },
+  { id: 'META', label: 'Meta / Insta' },
+  { id: 'WHATSAPP', label: 'WhatsApp' },
+] as const;
+
+const COUPON_CHIPS = [
+  { id: 'ALL', label: 'All coupons' },
+  { id: 'YES', label: 'Any coupon' },
+  { id: 'PROMO', label: 'Promo' },
+  { id: 'REFERRAL', label: 'Refer & Rise' },
+  { id: 'NO', label: 'No coupon' },
+] as const;
+
+function leadServiceLabel(item: any): string {
+  return String(
+    item.service_display ||
+      item.service_type ||
+      item.package_name ||
+      item.lead_type ||
+      '—',
+  );
+}
+
+function leadAmount(item: any): string {
+  const n = Number(item.display_amount ?? item.final_amount ?? item.estimated_amount ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
+}
+
 export function LeadManagerAppBookingsScreen() {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
+  const [statusChip, setStatusChip] = useState('ALL');
   const [rows, setRows] = useState<any[]>([]);
   const [viewsOpen, setViewsOpen] = useState(false);
   const [viewName, setViewName] = useState('All Leads');
   const [applied, setApplied] = useState<MobileSavedViewFilters>({});
   const [tagLeadIds, setTagLeadIds] = useState<Set<string> | null>(null);
+  const [sourceChip, setSourceChip] = useState('ALL');
+  const [couponChip, setCouponChip] = useState('ALL');
+  const [dateChip, setDateChip] = useState('all_time');
+  const [summary, setSummary] = useState<{
+    total_fetched?: number;
+    total_filtered?: number;
+    total_in_range?: number | null;
+    truncated?: boolean;
+  } | null>(null);
 
-  const datePreset = String(applied.datePreset || 'all_time');
+  const datePreset = String(applied.datePreset || dateChip || 'all_time');
+  const sourceFilter = String(applied.source || sourceChip || 'ALL').toUpperCase();
+  const couponFilter = String(applied.coupon || couponChip || 'ALL').toUpperCase();
 
   const load = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: '200' });
-      if (datePreset && datePreset !== 'all_time') params.set('preset', datePreset);
+      const params = new URLSearchParams({
+        limit: '5000',
+        preset: datePreset || 'all_time',
+      });
       if (applied.customStart) params.set('start', String(applied.customStart));
       if (applied.customEnd) params.set('end', String(applied.customEnd));
+      if (statusChip && statusChip !== 'ALL') params.set('status', statusChip);
+      if (sourceFilter && sourceFilter !== 'ALL') params.set('source', sourceFilter);
+      if (couponFilter && couponFilter !== 'ALL') params.set('has_coupon', couponFilter);
       const data = await apiFetch<any>(`/api/super_admin/leads?${params.toString()}`);
       setRows(Array.isArray(data?.leads) ? data.leads : []);
+      setSummary(data?.summary || null);
     } catch (e: any) {
       Alert.alert('Bookings', e?.message || 'Failed to load');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [datePreset, applied.customStart, applied.customEnd]);
+  }, [datePreset, applied.customStart, applied.customEnd, statusChip, sourceFilter, couponFilter]);
 
   useEffect(() => {
     void load();
@@ -138,7 +262,7 @@ export function LeadManagerAppBookingsScreen() {
         .some((v) => String(v).toLowerCase().includes(needle));
       if (!hit) return false;
     }
-    const status = String(applied.status || 'ALL').toUpperCase();
+    const status = String(applied.status || statusChip || 'ALL').toUpperCase();
     if (status && status !== 'ALL' && String(item.status || 'NEW').toUpperCase() !== status) return false;
     const source = String(applied.source || 'ALL').toUpperCase();
     if (source && source !== 'ALL') {
@@ -162,6 +286,13 @@ export function LeadManagerAppBookingsScreen() {
     if (tagLeadIds) {
       if (!tagLeadIds.has(String(item.id))) return false;
     }
+    const rec = String(applied.recording || 'ALL').toUpperCase();
+    if (rec === 'YES' && !(item.has_recording || item.call_recording_url || item.has_call_recording)) {
+      return false;
+    }
+    if (rec === 'NO' && (item.has_recording || item.call_recording_url || item.has_call_recording)) {
+      return false;
+    }
     const triggers = Array.isArray(applied.messageTriggers) ? applied.messageTriggers : [];
     if (triggers.length > 0) {
       const meta = item.coupon_meta && typeof item.coupon_meta === 'object' ? item.coupon_meta : {};
@@ -177,51 +308,169 @@ export function LeadManagerAppBookingsScreen() {
     return true;
   });
 
+  const kpis = {
+    total: rows.length,
+    fresh: rows.filter((r) => String(r.status || '').toUpperCase() === 'NEW').length,
+    assigned: rows.filter((r) => String(r.status || '').toUpperCase() === 'ASSIGNED').length,
+    completed: rows.filter((r) => String(r.status || '').toUpperCase() === 'COMPLETED').length,
+    sla: rows.filter((r) => String(r.sla_state || '').toUpperCase() === 'BREACHED').length,
+  };
+
+  const goBack = () => {
+    if (navigation.canGoBack?.()) navigation.goBack();
+    else navigation.navigate('SuperAdminDashboard');
+  };
+
   return (
-    <OpsShell title="Bookings & Leads">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: SPACING.md, paddingTop: SPACING.md }}>
-        <TouchableOpacity
-          onPress={() => setViewsOpen(true)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            backgroundColor: '#EEF2FF',
-            borderRadius: 12,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-          }}
-        >
-          <Ionicons name="funnel-outline" size={16} color="#4F46E5" />
-          <Text style={{ color: '#3730A3', fontWeight: '800', fontSize: 13 }}>{viewName}</Text>
+    <SafeAreaView style={styles.bookingsSafe} edges={['top']}>
+      <View style={styles.bookingsHeader}>
+        <TouchableOpacity style={styles.bookingsBack} onPress={goBack} hitSlop={12}>
+          <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.bookingsTitle}>Bookings & Leads</Text>
+          <Text style={styles.bookingsSub}>
+            {summary?.truncated
+              ? `Showing ${filtered.length.toLocaleString('en-IN')} of ${(summary.total_in_range || 0).toLocaleString('en-IN')}`
+              : `${filtered.length.toLocaleString('en-IN')} records`}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.bookingsViewBtn} onPress={() => setViewsOpen(true)}>
+          <Ionicons name="funnel-outline" size={16} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
-      <SearchBox value={q} onChange={setQ} placeholder="Search name / phone / L-number" />
+
+      <View style={styles.kpiRow}>
+        <View style={[styles.kpi, { backgroundColor: '#EFF6FF' }]}>
+          <Text style={styles.kpiVal}>{kpis.total}</Text>
+          <Text style={styles.kpiLbl}>Total</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: '#FEF3C7' }]}>
+          <Text style={styles.kpiVal}>{kpis.fresh}</Text>
+          <Text style={styles.kpiLbl}>New</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: '#ECFDF5' }]}>
+          <Text style={styles.kpiVal}>{kpis.completed}</Text>
+          <Text style={styles.kpiLbl}>Done</Text>
+        </View>
+        <View style={[styles.kpi, { backgroundColor: '#FEF2F2' }]}>
+          <Text style={styles.kpiVal}>{kpis.sla}</Text>
+          <Text style={styles.kpiLbl}>SLA</Text>
+        </View>
+      </View>
+
+      <View style={styles.toolbar}>
+        <Text style={styles.viewChip}>{viewName}</Text>
+        <TextInput
+          value={q}
+          onChangeText={setQ}
+          placeholder="Search name, phone, L-number"
+          placeholderTextColor="#94A3B8"
+          style={styles.bookingsSearch}
+          autoCorrect={false}
+        />
+      </View>
+
+      <View style={styles.filterRow}>
+        <FilterDropdown
+          label="Date"
+          value={datePreset}
+          options={DATE_CHIPS}
+          onChange={(id) => {
+            setDateChip(id);
+            setApplied((prev) => ({ ...prev, datePreset: id }));
+          }}
+        />
+        <FilterDropdown
+          label="Source"
+          value={sourceFilter}
+          options={SOURCE_CHIPS}
+          onChange={(id) => {
+            setSourceChip(id);
+            setApplied((prev) => ({ ...prev, source: id }));
+          }}
+        />
+      </View>
+      <View style={styles.filterRow}>
+        <FilterDropdown
+          label="Coupon"
+          value={couponFilter}
+          options={COUPON_CHIPS}
+          onChange={(id) => {
+            setCouponChip(id);
+            setApplied((prev) => ({ ...prev, coupon: id }));
+          }}
+        />
+        <FilterDropdown
+          label="Status"
+          value={statusChip}
+          options={STATUS_CHIPS}
+          onChange={(id) => setStatusChip(id)}
+        />
+      </View>
+
       {loading ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(item) => String(item.id)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}
-          contentContainerStyle={{ padding: SPACING.md }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => navigation.navigate('LeadManagerLeadDetail', { leadId: item.id })}
-            >
-              <View style={styles.row}>
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void load();
+              }}
+            />
+          }
+          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+          renderItem={({ item }) => {
+            const tint = leadStatusKpiColors(item);
+            const status = String(item.status || 'NEW').replace(/_/g, ' ');
+            return (
+              <TouchableOpacity
+                style={[styles.leadCard, { backgroundColor: tint.cardBg, borderColor: tint.border }]}
+                onPress={() => navigation.navigate('LeadManagerLeadDetail', { leadId: item.id })}
+                activeOpacity={0.85}
+              >
+                <View style={styles.row}>
+                  <Text style={styles.leadNo} numberOfLines={1}>
+                    {item.lead_number || `#${String(item.id).slice(0, 8)}`}
+                  </Text>
+                  <View style={[styles.statusPill, { backgroundColor: tint.badgeBg }]}>
+                    <Text style={[styles.statusPillTxt, { color: tint.badgeText }]}>{status}</Text>
+                  </View>
+                </View>
                 <Text style={styles.name} numberOfLines={1}>
                   {item.customer_name || item.customer_phone || 'Lead'}
                 </Text>
-                <Text style={[styles.badge, styles.badgeOn]}>{item.status || '—'}</Text>
-              </View>
-              <Text style={styles.meta}>
-                {[item.lead_number, item.customer_phone, item.city].filter(Boolean).join(' · ')}
-              </Text>
-            </TouchableOpacity>
-          )}
-          ListEmptyComponent={<Text style={styles.empty}>No bookings found.</Text>}
+                <Text style={styles.meta}>
+                  {[item.customer_phone, item.city].filter(Boolean).join(' · ') || '—'}
+                </Text>
+                <View style={styles.leadGrid}>
+                  <View style={styles.leadCell}>
+                    <Text style={styles.leadCellLbl}>Service</Text>
+                    <Text style={styles.leadCellVal} numberOfLines={1}>
+                      {leadServiceLabel(item)}
+                    </Text>
+                  </View>
+                  <View style={styles.leadCell}>
+                    <Text style={styles.leadCellLbl}>Amount</Text>
+                    <Text style={styles.leadCellVal}>{leadAmount(item)}</Text>
+                  </View>
+                  <View style={styles.leadCell}>
+                    <Text style={styles.leadCellLbl}>Date</Text>
+                    <Text style={styles.leadCellVal}>{formatDateDMY(item.created_at) || '—'}</Text>
+                  </View>
+                </View>
+                {item.assigned_telecaller_name ? (
+                  <Text style={styles.assignee}>Assignee · {item.assigned_telecaller_name}</Text>
+                ) : null}
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={<Text style={styles.empty}>No bookings found for this filter.</Text>}
         />
       )}
       <CrmSavedViewsSheet
@@ -231,18 +480,29 @@ export function LeadManagerAppBookingsScreen() {
           ...applied,
           search: q,
           datePreset: datePreset,
+          status: statusChip,
+          source: sourceFilter,
+          coupon: couponFilter,
         }}
         onApply={(filters, name) => {
           setApplied(filters || {});
           setViewName(name || 'Saved view');
           if (filters?.search) setQ(String(filters.search));
+          if (filters?.status) setStatusChip(String(filters.status).toUpperCase());
+          if (filters?.source) setSourceChip(String(filters.source).toUpperCase());
+          if (filters?.coupon) setCouponChip(String(filters.coupon).toUpperCase());
+          if (filters?.datePreset) setDateChip(String(filters.datePreset));
           if (!filters || Object.keys(filters).length === 0) {
             setQ('');
+            setStatusChip('ALL');
+            setSourceChip('ALL');
+            setCouponChip('ALL');
+            setDateChip('all_time');
             setViewName('All Leads');
           }
         }}
       />
-    </OpsShell>
+    </SafeAreaView>
   );
 }
 
@@ -576,4 +836,115 @@ const styles = StyleSheet.create({
     marginTop: 24,
     fontSize: 13,
   },
+  bookingsSafe: { flex: 1, backgroundColor: '#F5F7FA' },
+  bookingsHeader: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  bookingsBack: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingsTitle: { fontSize: 17, fontWeight: '800', color: '#FFFFFF' },
+  bookingsSub: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.8)', marginTop: 1 },
+  bookingsViewBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kpiRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  kpi: { flex: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 6, alignItems: 'center' },
+  kpiVal: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  kpiLbl: { fontSize: 10, fontWeight: '700', color: '#6B7280', marginTop: 2 },
+  toolbar: { paddingHorizontal: 16, paddingTop: 12, gap: 8 },
+  viewChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    color: COLORS.heading,
+    fontSize: 12,
+    fontWeight: '800',
+    overflow: 'hidden',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  bookingsSearch: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#111827',
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  ddWrap: { flex: 1 },
+  ddLbl: { fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 },
+  ddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+    gap: 6,
+  },
+  ddVal: { flex: 1, fontSize: 13, fontWeight: '700', color: '#111827' },
+  ddBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.35)',
+    justifyContent: 'flex-end',
+  },
+  ddSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    paddingBottom: 28,
+  },
+  ddSheetTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+  ddOpt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
+  },
+  ddOptOn: {},
+  ddOptTxt: { fontSize: 15, fontWeight: '600', color: '#334155' },
+  ddOptTxtOn: { color: COLORS.primary, fontWeight: '800' },
+  leadCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 10,
+  },
+  leadNo: { fontSize: 11, fontWeight: '800', color: '#64748B', flex: 1 },
+  statusPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  statusPillTxt: { fontSize: 10, fontWeight: '800', textTransform: 'capitalize' },
+  leadGrid: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  leadCell: { flex: 1 },
+  leadCellLbl: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase' },
+  leadCellVal: { fontSize: 12, fontWeight: '700', color: '#111827', marginTop: 2 },
+  assignee: { marginTop: 8, fontSize: 12, fontWeight: '600', color: '#004AAD' },
 });

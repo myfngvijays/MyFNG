@@ -19,18 +19,27 @@ type LeadHistoryResponse = {
   events: any[];
 };
 
-export default function LeadHistoryScreen({ navigation }: any) {
-  const [leadId, setLeadId] = useState('');
+export default function LeadHistoryScreen({ navigation, route }: any) {
+  const [leadId, setLeadId] = useState(String(route?.params?.leadId || route?.params?.leadNumber || ''));
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<LeadHistoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchHistory() {
-    if (!leadId.trim()) return;
+  React.useEffect(() => {
+    const incoming = String(route?.params?.leadId || route?.params?.leadNumber || '').trim();
+    if (!incoming) return;
+    setLeadId(incoming);
+    void fetchHistory(incoming);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.params?.leadId, route?.params?.leadNumber]);
+
+  async function fetchHistory(idOverride?: string) {
+    const id = String(idOverride || leadId || '').trim();
+    if (!id) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<LeadHistoryResponse>(`/api/audit/lead-history/${leadId.trim()}`);
+      const res = await apiFetch<LeadHistoryResponse>(`/api/audit/lead-history/${id}`);
       setData(res);
     } catch (e: any) {
       setError(e?.message || 'Failed to load history');

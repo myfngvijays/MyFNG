@@ -16,6 +16,7 @@ import {
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AVAILABLE_ROLES = [
   { code: 'SUPER_ADMIN', name: 'Super Admin', icon: 'shield-crown', color: COLORS.red },
@@ -39,6 +40,7 @@ const SUB_ADMIN_DEPARTMENTS = [
 ];
 
 export default function UserRoleManagementScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -351,7 +353,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>

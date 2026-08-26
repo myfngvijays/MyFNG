@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } 
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
-import StatCard from '../../components/StatCard';
 import BottomNav from '../../components/BottomNav';
+import { AdminMetricCard, AdminSectionTitle } from '../../components/admin/AdminUi';
 import WorkshopStaffScreen from '../workshop/WorkshopStaffScreen';
 import WorkshopLeadsScreen from '../workshop/WorkshopLeadsScreen';
 import WorkshopProfileScreen from '../workshop/WorkshopProfileScreen';
@@ -162,39 +162,40 @@ export default function WorkshopAdminDashboard() {
         </TouchableOpacity>
       </View>
 
-      {/* Stats Grid */}
-      <Text style={styles.sectionTitle}>Overview</Text>
-      
-      <StatCard
-        title="Pending Leads"
-        value={stats.pendingLeads}
-        subtitle="Awaiting action"
-        color={COLORS.warning}
-      />
-      
-      <StatCard
-        title="Active Leads"
-        value={stats.activeLeads}
-        subtitle="In progress"
-        color={COLORS.primary}
-      />
-      
-      <StatCard
-        title="Completed"
-        value={stats.completedLeads}
-        subtitle="Finished jobs"
-        color={COLORS.success}
-      />
-      
-      <StatCard
-        title="Total Staff"
-        value={stats.totalStaff}
-        subtitle="Team members"
-        color={COLORS.secondary}
-      />
+      <AdminSectionTitle>Overview</AdminSectionTitle>
+      <View style={styles.metricsGrid}>
+        <AdminMetricCard
+          icon="time-outline"
+          label="Pending leads"
+          value={stats.pendingLeads}
+          iconBg="#FFFBEB"
+          iconColor={COLORS.warning}
+          onPress={() => navigation.navigate('PendingLeads')}
+        />
+        <AdminMetricCard
+          icon="construct-outline"
+          label="Active jobs"
+          value={stats.activeLeads}
+          onPress={() => navigation.navigate('ActiveJobs')}
+        />
+        <AdminMetricCard
+          icon="checkmark-circle-outline"
+          label="Completed"
+          value={stats.completedLeads}
+          iconBg="#ECFDF5"
+          iconColor={COLORS.success}
+        />
+        <AdminMetricCard
+          icon="people-outline"
+          label="Staff"
+          value={stats.totalStaff}
+          iconBg="#F3F4F6"
+          iconColor={COLORS.heading}
+          onPress={() => navigation.navigate('WorkshopAdminStaffManagement')}
+        />
+      </View>
 
-      {/* Recent Activity */}
-      <Text style={styles.sectionTitle}>Recent Leads</Text>
+      <AdminSectionTitle>Recent leads</AdminSectionTitle>
       <View style={styles.card}>
         {recentActivities.length > 0 ? (
           recentActivities.map((activity, index) => (
@@ -242,6 +243,7 @@ export default function WorkshopAdminDashboard() {
       <DashboardHeader
         name={userProfile?.full_name || 'Admin'}
         role="Workshop Admin"
+        panelLabel="Workshop Control Panel"
         onLogout={handleLogout}
       />
       
@@ -259,7 +261,7 @@ export default function WorkshopAdminDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F7FA',
   },
   content: {
     flex: 1,
@@ -268,14 +270,26 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING.xxl + SPACING.lg,
   },
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: SPACING.md,
+  },
   header: {
     marginBottom: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   actionButton: {
     marginTop: SPACING.sm,
     backgroundColor: COLORS.primary,
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
     alignSelf: 'flex-start',
   },
   actionButtonText: {
@@ -301,14 +315,11 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 12,
     padding: SPACING.md,
     marginBottom: SPACING.md,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   activityItem: {
     flexDirection: 'row',

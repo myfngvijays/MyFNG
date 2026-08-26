@@ -133,7 +133,7 @@ export default function NotificationPreferenceSwitch({
           <View style={styles.rowDivider} />
           <SwitchRow
             label="Nearby Workshop Alerts"
-            sub="Opt in to detect when you're near a MyFNG service center"
+            sub="Optional. Collects location even when the app is closed, to detect a nearby MyFNG center."
             value={Boolean(workshopProximityValue)}
             onValueChange={onWorkshopProximityValueChange!}
             disabled={workshopProximityDisabled}

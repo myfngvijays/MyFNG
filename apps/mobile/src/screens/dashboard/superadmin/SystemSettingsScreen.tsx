@@ -12,8 +12,10 @@ import {
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { COLORS, SPACING } from '../../../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SystemSettingsScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState({
     maintenanceMode: false,
     autoAssignment: true,
@@ -82,7 +84,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
@@ -93,7 +95,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
       <ScrollView style={styles.content}>
         {/* System Status */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🚀 System Status</Text>
+          <Text style={styles.sectionTitle}>System status</Text>
           
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
@@ -137,7 +139,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
         {/* Notifications */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔔 Notifications</Text>
+          <Text style={styles.sectionTitle}>Notifications</Text>
 
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
@@ -184,7 +186,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
         {/* Security */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔐 Security</Text>
+          <Text style={styles.sectionTitle}>Security</Text>
 
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
@@ -222,7 +224,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
         {/* SLA Rules */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⏱️ SLA Rules (minutes)</Text>
+          <Text style={styles.sectionTitle}>SLA rules (minutes)</Text>
 
           <View style={styles.slaCard}>
             <View style={styles.slaRow}>
@@ -277,7 +279,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
         {/* Data & Backup */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💾 Data & Backup</Text>
+          <Text style={styles.sectionTitle}>Data & backup</Text>
 
           <View style={styles.settingCard}>
             <View style={styles.settingRow}>
@@ -301,7 +303,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
         {/* System Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚙️ System Actions</Text>
+          <Text style={styles.sectionTitle}>System actions</Text>
 
           <TouchableOpacity style={styles.actionCard} onPress={handleClearCache}>
             <Icon name="broom" size={24} color={COLORS.orange} />
@@ -345,7 +347,7 @@ export default function SystemSettingsScreen({ navigation }: any) {
 
         {/* Integrations */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔌 Integrations</Text>
+          <Text style={styles.sectionTitle}>Integrations</Text>
 
           <TouchableOpacity style={styles.integrationCard}>
             <View style={styles.integrationHeader}>
@@ -415,9 +417,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.heading,
     marginBottom: SPACING.sm,
   },
   settingCard: {
@@ -425,7 +427,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   settingRow: {
     flexDirection: 'row',

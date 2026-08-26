@@ -90,3 +90,8 @@ export async function apiFetch<T = JsonValue>(
 
   return json as T;
 }
+
+/** Multipart upload (do not set Content-Type — RN sets the boundary). */
+export async function apiUpload<T = JsonValue>(path: string, formData: FormData): Promise<T> {
+  return apiFetch<T>(path, { method: 'POST', body: formData as any });
+}

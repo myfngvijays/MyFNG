@@ -79,7 +79,7 @@
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>MyFNG uses your location to show nearby workshops, calculate accurate ETAs for vehicle pickup, track your service request, and help drivers reach your location.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>MyFNG uses your location in the background to notify you when you are near a MyFNG service center when you opt in to nearby workshop alerts.</string>
+    <string>This app collects location data to enable nearby workshop alerts even when the app is closed or not in use.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>MyFNG needs access to your photo library so you can attach existing photos of your vehicle for service requests, complaints, and inspection records.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>

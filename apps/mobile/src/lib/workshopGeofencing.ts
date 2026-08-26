@@ -4,6 +4,7 @@ import { getTaskManager } from './taskManagerSafe';
 import { registerWorkshopGeofencingTask } from './workshopGeofencingTask';
 import { apiFetch } from './api';
 import { ENV } from '../config/environment';
+import { hasBackgroundLocationConsent } from './backgroundLocationConsent';
 import {
   MAX_WORKSHOP_GEOFENCE_REGIONS,
   WORKSHOP_GEOFENCE_TASK_NAME,
@@ -32,18 +33,37 @@ export async function isWorkshopGeofencingSupported(): Promise<boolean> {
   }
 }
 
-async function requestGeofencePermissions(): Promise<{ ok: boolean; reason?: string }> {
+async function ensureGeofencePermissions(request: boolean): Promise<{ ok: boolean; reason?: string }> {
   const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
   if (!servicesEnabled) {
     return { ok: false, reason: 'Location services are turned off on your phone.' };
   }
 
-  const foreground = await Location.requestForegroundPermissionsAsync();
-  if (foreground.status !== 'granted') {
-    return { ok: false, reason: 'Location permission is required for nearby workshop alerts.' };
+  if (request) {
+    const consented = await hasBackgroundLocationConsent();
+    if (!consented) {
+      return {
+        ok: false,
+        reason: 'Please accept the background location notice before enabling nearby workshop alerts.',
+      };
+    }
   }
 
-  const background = await Location.requestBackgroundPermissionsAsync();
+  const foreground = request
+    ? await Location.requestForegroundPermissionsAsync()
+    : await Location.getForegroundPermissionsAsync();
+  if (foreground.status !== 'granted') {
+    return {
+      ok: false,
+      reason: request
+        ? 'Location permission is required for nearby workshop alerts.'
+        : 'Location permission is not granted yet.',
+    };
+  }
+
+  const background = request
+    ? await Location.requestBackgroundPermissionsAsync()
+    : await Location.getBackgroundPermissionsAsync();
   if (background.status !== 'granted') {
     return {
       ok: false,
@@ -106,7 +126,9 @@ function pickNearestWorkshops(
   return ranked.length > 0 ? ranked : workshops.slice(0, maxRegions);
 }
 
-export async function startWorkshopGeofencing(): Promise<{ ok: boolean; reason?: string; regions?: number }> {
+export async function startWorkshopGeofencing(
+  opts?: { requestPermissions?: boolean },
+): Promise<{ ok: boolean; reason?: string; regions?: number }> {
   const TaskManager = getTaskManager();
   if (!TaskManager) {
     return {
@@ -123,7 +145,14 @@ export async function startWorkshopGeofencing(): Promise<{ ok: boolean; reason?:
     return { ok: false, reason: 'Geofencing is not available in this app build.' };
   }
 
-  const permission = await requestGeofencePermissions();
+  if (!(await hasBackgroundLocationConsent())) {
+    return {
+      ok: false,
+      reason: 'Please accept the background location notice before enabling nearby workshop alerts.',
+    };
+  }
+
+  const permission = await ensureGeofencePermissions(opts?.requestPermissions === true);
   if (!permission.ok) return { ok: false, reason: permission.reason };
 
   const config = await loadGeofenceConfig();
@@ -183,7 +212,7 @@ export async function syncWorkshopGeofencingPreference(enabled: boolean): Promis
     await stopWorkshopGeofencing();
     return { ok: true };
   }
-  return startWorkshopGeofencing();
+  return startWorkshopGeofencing({ requestPermissions: true });
 }
 
 export async function reportForegroundWorkshopProximity(): Promise<void> {

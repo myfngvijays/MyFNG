@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import NotificationBell from './NotificationBell';
@@ -22,6 +23,9 @@ interface DashboardHeaderProps {
   userRole?: string;
   userProfile?: any;
   subtitle?: string;
+  /** Web-style panel line, e.g. "Super Admin Control Panel" */
+  panelLabel?: string;
+  onMenuPress?: () => void;
 }
 
 export default function DashboardHeader({
@@ -36,11 +40,16 @@ export default function DashboardHeader({
   userRole,
   userProfile,
   subtitle,
+  panelLabel,
+  onMenuPress,
 }: DashboardHeaderProps) {
+  const insets = useSafeAreaInsets();
+  const topPad = embedded ? SPACING.sm : Math.max(insets.top, 12) + 10;
+
   // Simple header: back + title (no welcome, no logout)
   if (title) {
     return (
-      <View style={[styles.simpleHeader, embedded && styles.simpleHeaderEmbedded]}>
+      <View style={[styles.simpleHeader, embedded && styles.simpleHeaderEmbedded, { paddingTop: topPad }]}>
         <View style={styles.leftSection}>
           <View style={styles.simpleRow}>
             {onBack && !embedded ? (
@@ -56,8 +65,13 @@ export default function DashboardHeader({
             <NotificationBell onPress={onNotificationPress} size={22} color={COLORS.white} />
           )}
           {onLogout && (
-            <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-              <Text style={styles.logoutText}>Logout</Text>
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={onLogout}
+              accessibilityRole="button"
+              accessibilityLabel="Logout"
+            >
+              <Ionicons name="power-outline" size={20} color={COLORS.white} />
             </TouchableOpacity>
           )}
         </View>
@@ -65,12 +79,38 @@ export default function DashboardHeader({
     );
   }
 
+  const displayName = name || userName || userProfile?.full_name || 'User';
+  const displayRole = role || userRole || userProfile?.role?.role_name || subtitle || '';
+  const showRole = Boolean(displayRole && displayRole !== displayName);
+
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { paddingTop: topPad }]}>
       <View style={styles.leftSection}>
-        <Text style={styles.greeting}>Welcome back,</Text>
-        <Text style={styles.name}>{name || userName || userProfile?.full_name || 'User'}</Text>
-        <Text style={styles.role}>{role || userRole || userProfile?.role?.role_name || subtitle || ''}</Text>
+        <View style={styles.nameRow}>
+          {onMenuPress ? (
+            <TouchableOpacity
+              style={styles.menuBtn}
+              onPress={onMenuPress}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Open menu"
+            >
+              <Ionicons name="menu" size={24} color={COLORS.white} />
+            </TouchableOpacity>
+          ) : null}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.greeting}>Welcome back</Text>
+            <Text style={styles.name} numberOfLines={1}>
+              {displayName}
+            </Text>
+            {showRole ? (
+              <Text style={styles.role} numberOfLines={1}>
+                {displayRole}
+              </Text>
+            ) : null}
+            {panelLabel ? <Text style={styles.panelLabel}>{panelLabel}</Text> : null}
+          </View>
+        </View>
       </View>
       <View style={styles.rightSection}>
         {onNotificationPress && (
@@ -81,8 +121,13 @@ export default function DashboardHeader({
           />
         )}
         {onLogout && (
-          <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-            <Text style={styles.logoutText}>Logout</Text>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={onLogout}
+            accessibilityRole="button"
+            accessibilityLabel="Logout"
+          >
+            <Ionicons name="power-outline" size={20} color={COLORS.white} />
           </TouchableOpacity>
         )}
       </View>
@@ -95,10 +140,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.md,
-    paddingTop: SPACING.xl,
+    paddingTop: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     shadowColor: COLORS.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
@@ -109,7 +154,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.md,
-    paddingTop: 50,
+    paddingTop: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -124,6 +169,20 @@ const styles = StyleSheet.create({
   },
   leftSection: {
     flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  menuBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
   },
   simpleRow: {
     flexDirection: 'row',
@@ -149,6 +208,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    paddingTop: 4,
   },
   greeting: {
     fontSize: FONT_SIZES.sm,
@@ -170,22 +230,25 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: 'Poppins',
   },
+  panelLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FDE68A',
+    fontFamily: 'Poppins',
+  },
   logoutButton: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: COLORS.black,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.12,
     shadowRadius: 4,
     elevation: 2,
-  },
-  logoutText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    fontFamily: 'Poppins',
   },
 });
 

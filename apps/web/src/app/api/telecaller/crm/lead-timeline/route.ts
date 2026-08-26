@@ -74,13 +74,26 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: 'Admin unavailable' }, { status: 500 });
 
+    const leadSelectFull =
+      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model';
+    const leadSelectLean =
+      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id';
+
     let { data: lead, error: leadErr } = await supabaseAdmin
       .from('service_leads')
-      .select(
-        'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model',
-      )
+      .select(leadSelectFull)
       .eq('id', leadId)
       .maybeSingle();
+
+    if (leadErr && /column|does not exist|Could not find/i.test(String(leadErr.message || ''))) {
+      const retry = await supabaseAdmin
+        .from('service_leads')
+        .select(leadSelectLean)
+        .eq('id', leadId)
+        .maybeSingle();
+      lead = retry.data;
+      leadErr = retry.error;
+    }
 
     if (leadErr || !lead) {
       return NextResponse.json({ error: leadErr?.message || 'Lead not found' }, { status: 404 });
@@ -119,47 +132,96 @@ export async function GET(request: NextRequest) {
 
     const phone = normalizePhone(String((lead as any).customer_phone || ''));
 
+    const safeSelect = async (
+      run: () => PromiseLike<{ data: any; error: any }>,
+      fallback?: () => PromiseLike<{ data: any; error: any }>,
+    ) => {
+      const first = await run();
+      if (!first.error) return first;
+      if (fallback) {
+        const second = await fallback();
+        if (!second.error) return second;
+      }
+      console.warn('[lead-timeline] query skipped', first.error?.message);
+      return { data: [] as any[], error: null };
+    };
+
     const [callsRes, fuRes, waRes, archivedRes] = await Promise.all([
-      supabaseAdmin
-        .from('telecaller_call_logs')
-        .select(
-          'id, call_status, call_duration, outcome, notes, created_at, telecaller_id, call_recording_url, telecaller:telecaller_id(full_name)',
-        )
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false })
-        .limit(50),
-      supabaseAdmin
-        .from('telecaller_follow_ups')
-        .select(
-          'id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
-        )
-        .eq('lead_id', leadId)
-        .order('scheduled_time', { ascending: false })
-        .limit(40),
-      phone
-        ? supabaseAdmin
-            .from('whatsapp_messages')
+      safeSelect(
+        () =>
+          supabaseAdmin
+            .from('telecaller_call_logs')
             .select(
-              'id, direction, message_type, text_body, media_caption, template_name, status, created_at, sender_phone, recipient_phone',
+              'id, call_status, call_duration, outcome, notes, created_at, telecaller_id, call_recording_url, telecaller:telecaller_id(full_name)',
             )
-            .or(`sender_phone.eq.${phone},recipient_phone.eq.${phone}`)
+            .eq('lead_id', leadId)
             .order('created_at', { ascending: false })
-            .limit(40)
-        : Promise.resolve({ data: [] as any[] }),
+            .limit(50),
+        () =>
+          supabaseAdmin
+            .from('telecaller_call_logs')
+            .select('id, call_status, call_duration, outcome, notes, created_at, telecaller_id')
+            .eq('lead_id', leadId)
+            .order('created_at', { ascending: false })
+            .limit(50),
+      ),
+      safeSelect(() =>
+        supabaseAdmin
+          .from('telecaller_follow_ups')
+          .select(
+            'id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
+          )
+          .eq('lead_id', leadId)
+          .order('scheduled_time', { ascending: false })
+          .limit(40),
+      ),
+      phone
+        ? safeSelect(
+            () =>
+              supabaseAdmin
+                .from('whatsapp_messages')
+                .select(
+                  'id, direction, message_type, text_body, media_caption, template_name, status, created_at, sender_phone, recipient_phone',
+                )
+                .or(`sender_phone.eq.${phone},recipient_phone.eq.${phone}`)
+                .order('created_at', { ascending: false })
+                .limit(40),
+            () =>
+              supabaseAdmin
+                .from('whatsapp_messages')
+                .select('id, direction, message_type, status, created_at')
+                .or(`sender_phone.eq.${phone},recipient_phone.eq.${phone}`)
+                .order('created_at', { ascending: false })
+                .limit(40),
+          )
+        : Promise.resolve({ data: [] as any[], error: null }),
       phone10
-        ? supabaseAdmin
-            .from('service_leads')
-            .select(
-              'id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, created_at, updated_at, deleted_at, coupon_meta',
-            )
-            .or(
-              `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.eq.+91${phone10},customer_phone.ilike.%${phone10}`,
-            )
-            .neq('id', leadId)
-            .not('deleted_at', 'is', null)
-            .order('deleted_at', { ascending: false })
-            .limit(20)
-        : Promise.resolve({ data: [] as any[] }),
+        ? safeSelect(
+            () =>
+              supabaseAdmin
+                .from('service_leads')
+                .select(
+                  'id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, created_at, updated_at, deleted_at, coupon_meta',
+                )
+                .or(
+                  `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.eq.+91${phone10},customer_phone.ilike.%${phone10}`,
+                )
+                .neq('id', leadId)
+                .not('deleted_at', 'is', null)
+                .order('deleted_at', { ascending: false })
+                .limit(20),
+            () =>
+              supabaseAdmin
+                .from('service_leads')
+                .select('id, lead_number, status, created_at, updated_at')
+                .or(
+                  `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.eq.+91${phone10}`,
+                )
+                .neq('id', leadId)
+                .order('created_at', { ascending: false })
+                .limit(20),
+          )
+        : Promise.resolve({ data: [] as any[], error: null }),
     ]);
 
     type Item = {

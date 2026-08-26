@@ -3,7 +3,7 @@
     "name": "MyFNG",
     "slug": "myfng-app",
     "scheme": "myfng",
-    "version": "1.2.7",
+    "version": "1.2.8",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
     "icon": "./assets/app-icon.png",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "35",
+      "buildNumber": "36",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:myfng.in",
@@ -31,7 +31,7 @@
         "NSCameraUsageDescription": "MyFNG needs access to your camera to take photos of your vehicle for service inspections, before/after service documentation, and incident reports during pickup and delivery.",
         "NSContactsUsageDescription": "MyFNG needs access to your contacts so you can invite friends and share your referral code with them.",
         "NSLocationWhenInUseUsageDescription": "MyFNG uses your location to show nearby workshops, calculate accurate ETAs for vehicle pickup, track your service request, and help drivers reach your location.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "MyFNG uses your location to notify you when you are near a MyFNG service center and help our team assist with walk-in visits when you opt in to nearby workshop alerts.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app collects location data to enable nearby workshop alerts even when the app is closed or not in use, so we can notify you when you are near a MyFNG service center.",
         "UIBackgroundModes": [
           "location",
           "remote-notification",
@@ -63,7 +63,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
-      "versionCode": 35,
+      "versionCode": 36,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",
@@ -107,7 +107,7 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "MyFNG uses your location to show nearby workshops, booking ETAs, and pickup tracking.",
-          "locationAlwaysAndWhenInUsePermission": "MyFNG uses your location in the background to notify you when you are near a MyFNG service center (optional nearby workshop alerts).",
+          "locationAlwaysAndWhenInUsePermission": "This app collects location data to enable nearby workshop alerts even when the app is closed or not in use.",
           "isAndroidBackgroundLocationEnabled": true,
           "isIosBackgroundLocationEnabled": true
         }

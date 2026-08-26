@@ -23,6 +23,14 @@ import CouponsScreen from '../screens/dashboard/superadmin/CouponsScreen';
 import ManualInvoicesScreen from '../screens/dashboard/superadmin/ManualInvoicesScreen';
 import TelecallerDistributionScreen from '../screens/dashboard/superadmin/TelecallerDistributionScreen';
 import LeadHistoryScreen from '../screens/dashboard/superadmin/LeadHistoryScreen';
+import {
+  SuperAdminApiModuleScreen,
+  SuperAdminSystemMonitorScreen,
+} from '../screens/dashboard/superadmin/SuperAdminMoreScreens';
+import {
+  SuperAdminWalletLogicScreen,
+  SuperAdminWalletHistoryScreen,
+} from '../screens/dashboard/superadmin/SuperAdminWalletScreens';
 import WebsiteImagesHubScreen from '../screens/dashboard/superadmin/WebsiteImagesHubScreen';
 import HomeCarouselScreen from '../screens/dashboard/superadmin/HomeCarouselScreen';
 import WorkshopPublicPagesScreen from '../screens/dashboard/superadmin/WorkshopPublicPagesScreen';
@@ -482,6 +490,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="LeadManagerReferral"
           component={LeadManagerReferralScreen}
           options={{ title: 'Refer & Rise', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadHistory"
+          component={LeadHistoryScreen}
+          options={{ title: 'Lead History', headerShown: false }}
         />
         <Stack.Screen
           name="TelecallerLeadDetail"
@@ -1253,6 +1266,29 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={LeadsManagementScreen}
           options={{ title: 'Leads Overview' }}
         />
+        <Stack.Screen
+          name="LeadManagerLeadDetail"
+          component={LeadManagerLeadDetailScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen name="LeadManagerRecordings" component={LeadManagerRecordingsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerAiSuite" component={LeadManagerAiSuiteScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerCallIntelligence" component={LeadManagerCallIntelligenceScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerLeadIq" component={LeadManagerLeadIqScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerWorkflow" component={LeadManagerWorkflowScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerPlaybook" component={LeadManagerPlaybookScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerClickToCall" component={LeadManagerClickToCallScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerAppBookings" component={LeadManagerAppBookingsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerAppCustomers" component={LeadManagerAppCustomersScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerWorkshopProximity" component={LeadManagerWorkshopProximityScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerMembershipCustomers" component={LeadManagerMembershipCustomersScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerReferral" component={LeadManagerReferralScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerTeamWhatsApp" component={LeadManagerTeamWhatsAppScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LeadManagerWhatsAppDnd" component={LeadManagerWhatsAppDndScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminSystemMonitor" component={SuperAdminSystemMonitorScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminWalletLogic" component={SuperAdminWalletLogicScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminWalletHistory" component={SuperAdminWalletHistoryScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminApiModule" component={SuperAdminApiModuleScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     );
   }

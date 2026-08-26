@@ -4,14 +4,21 @@ import {
   Text,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
-import BottomNav from '../../components/BottomNav';
+import AdminHamburgerDrawer from '../../components/admin/AdminHamburgerDrawer';
+import type { SaNavLeaf } from '../../constants/superAdminNav';
+import {
+  AdminDeptCard,
+  AdminMenuTile,
+  AdminMetricCard,
+  AdminQuickLink,
+  AdminSectionTitle,
+} from '../../components/admin/AdminUi';
 import { COLORS, FONTS } from '../../constants/theme';
 
 // Import Super Admin screens
@@ -345,7 +352,7 @@ export default function SuperAdminDashboard() {
         criticalAlerts.push({
           id: 'sla',
           type: 'CRITICAL',
-          title: '🚨 SLA Breaches',
+          title: 'SLA Breaches',
           message: `${slaBreachedResult.count} leads have breached SLA`,
           color: COLORS.red
         });
@@ -354,7 +361,7 @@ export default function SuperAdminDashboard() {
         criticalAlerts.push({
           id: 'rsa',
           type: 'WARNING',
-          title: '⚠️ High RSA Load',
+          title: 'High RSA Load',
           message: `${rsaActiveResult.count} active RSA emergencies`,
           color: COLORS.orange
         });
@@ -363,7 +370,7 @@ export default function SuperAdminDashboard() {
         criticalAlerts.push({
           id: 'complaints',
           type: 'WARNING',
-          title: '⚠️ High Complaints',
+          title: 'High Complaints',
           message: `${complaintsResult.count} active customer complaints`,
           color: COLORS.orange
         });
@@ -390,18 +397,25 @@ export default function SuperAdminDashboard() {
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [routeParams, setRouteParams] = useState<any>({});
   const [screenParams, setScreenParams] = useState<any>({});
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const handleNavigation = (screen: string, params?: any) => {
+    if (screen === 'dashboard') {
+      setCurrentScreen('dashboard');
+      setScreenParams({});
+      return;
+    }
     const screenMap: { [key: string]: string } = {
-      'workshops': 'WorkshopManagement',
-      'users': 'UserRoleManagement',
-      'reports': 'ReportsAnalytics',
-      'settings': 'SystemSettings',
-      'finance': 'FinancePayout',
-      'leads': 'LeadsManagement',
-      'fraud': 'FraudDetection',
-      'audit': 'AuditLogs',
-      'brands': 'Brands',
+      workshops: 'WorkshopManagement',
+      users: 'UserRoleManagement',
+      reports: 'ReportsAnalytics',
+      settings: 'SystemSettings',
+      finance: 'FinancePayout',
+      leads: 'LeadManagerAppBookings',
+      LeadsManagement: 'LeadManagerAppBookings',
+      fraud: 'FraudDetection',
+      audit: 'AuditLogs',
+      brands: 'Brands',
       'inventory-products': 'InventoryProducts',
       'inventory-packages': 'InventoryPackages',
       'inventory-package-detail': 'InventoryPackageDetail',
@@ -409,7 +423,7 @@ export default function SuperAdminDashboard() {
       'inventory-pricing': 'InventoryPricing',
       'inventory-service-pricing': 'InventoryServicePricing',
       'additional-jobs-master': 'AdditionalJobsMaster',
-      'coupons': 'Coupons',
+      coupons: 'Coupons',
       'manual-invoices': 'ManualInvoices',
       'telecaller-distribution': 'TelecallerDistribution',
       'lead-history': 'LeadHistory',
@@ -418,16 +432,10 @@ export default function SuperAdminDashboard() {
       'workshop-public-pages': 'WorkshopPublicPages',
       'kb-manager': 'KBManager',
       'kb-questions': 'KBQuestions',
+      'workshop-rates': 'WorkshopRates',
     };
-    
-    const screenName = screenMap[screen];
-    if (screenName) {
-      setCurrentScreen(screenName);
-      if (params) setScreenParams(params);
-    } else {
-      setCurrentScreen(screen);
-      if (params) setScreenParams(params);
-    }
+    const stackName = screenMap[screen] || screen;
+    (navigation as any).navigate(stackName, params);
   };
 
   const navigationObj = {
@@ -438,6 +446,20 @@ export default function SuperAdminDashboard() {
       setCurrentScreen('dashboard');
       setScreenParams({});
     },
+  };
+
+  const runSaNav = (leaf: SaNavLeaf) => {
+    setMenuOpen(false);
+    if (leaf.kind === 'home') {
+      setCurrentScreen('dashboard');
+      setScreenParams({});
+      return;
+    }
+    if (leaf.kind === 'stack') {
+      (navigation as any).navigate(leaf.target, leaf.params);
+      return;
+    }
+    handleNavigation(leaf.target);
   };
 
   // Render different screens based on currentScreen
@@ -558,19 +580,15 @@ export default function SuperAdminDashboard() {
     );
   }
 
-  const tabs = [
-    { id: 'dashboard', label: 'Home', icon: '🏠' },
-    { id: 'workshops', label: 'Workshops', icon: '🏭' },
-    { id: 'users', label: 'Users', icon: '👥' },
-    { id: 'reports', label: 'Reports', icon: '📊' },
-    { id: 'settings', label: 'Settings', icon: '⚙️' },
-  ];
+  const inr = (n: number) => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
 
   return (
     <View style={styles.container}>
       <DashboardHeader
         userName={userProfile?.full_name || 'Super Admin'}
         userRole="System Administrator"
+        panelLabel="Super Admin Control Panel"
+        onMenuPress={() => setMenuOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -580,21 +598,19 @@ export default function SuperAdminDashboard() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        {/* System Status */}
-        <View style={[styles.statusBanner, { backgroundColor: globalMetrics.systemUptime > 99 ? COLORS.green + '20' : COLORS.red + '20' }]}>
+        <View style={[styles.statusBanner, { backgroundColor: globalMetrics.systemUptime > 99 ? '#ECFDF5' : '#FEF2F2' }]}>
           <View style={styles.statusLeft}>
             <View style={[styles.statusDot, { backgroundColor: globalMetrics.systemUptime > 99 ? COLORS.green : COLORS.red }]} />
-            <Text style={[styles.statusText, { color: globalMetrics.systemUptime > 99 ? COLORS.green : COLORS.red }]}>
+            <Text style={[styles.statusText, { color: globalMetrics.systemUptime > 99 ? '#047857' : COLORS.red }]}>
               System Operational
             </Text>
           </View>
-          <Text style={styles.uptimeText}>{globalMetrics.systemUptime}% Uptime</Text>
+          <Text style={styles.uptimeText}>{globalMetrics.systemUptime}% uptime</Text>
         </View>
 
-        {/* Critical Alerts */}
         {alerts.length > 0 && (
           <View style={styles.alertsSection}>
-            <Text style={styles.sectionTitle}>🚨 Critical Alerts</Text>
+            <AdminSectionTitle>Alerts</AdminSectionTitle>
             {alerts.map((alert) => (
               <View key={alert.id} style={[styles.alertCard, { backgroundColor: alert.color + '15', borderColor: alert.color }]}>
                 <Text style={[styles.alertTitle, { color: alert.color }]}>{alert.title}</Text>
@@ -604,352 +620,157 @@ export default function SuperAdminDashboard() {
           </View>
         )}
 
-        {/* Global Metrics */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🌍 Global Metrics</Text>
-          <View style={styles.metricsGrid}>
-            <View style={[styles.metricCard, { backgroundColor: COLORS.primary + '15' }]}>
-              <Text style={styles.metricIcon}>📋</Text>
-              <Text style={styles.metricValue}>{globalMetrics.totalLeadsToday}</Text>
-              <Text style={styles.metricLabel}>Leads Today</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: COLORS.green + '15' }]}>
-              <Text style={styles.metricIcon}>✅</Text>
-              <Text style={styles.metricValue}>{globalMetrics.acceptedLeads}</Text>
-              <Text style={styles.metricLabel}>Accepted</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: COLORS.red + '15' }]}>
-              <Text style={styles.metricIcon}>❌</Text>
-              <Text style={styles.metricValue}>{globalMetrics.rejectedLeads}</Text>
-              <Text style={styles.metricLabel}>Rejected</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: COLORS.orange + '15' }]}>
-              <Text style={styles.metricIcon}>⏰</Text>
-              <Text style={styles.metricValue}>{globalMetrics.slaBreaches}</Text>
-              <Text style={styles.metricLabel}>SLA Breach</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: COLORS.purple + '15' }]}>
-              <Text style={styles.metricIcon}>🏭</Text>
-              <Text style={styles.metricValue}>{globalMetrics.activeWorkshops}</Text>
-              <Text style={styles.metricLabel}>Active Workshops</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: COLORS.teal + '15' }]}>
-              <Text style={styles.metricIcon}>👥</Text>
-              <Text style={styles.metricValue}>{globalMetrics.totalCustomers}</Text>
-              <Text style={styles.metricLabel}>Customers</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: COLORS.indigo + '15' }]}>
-              <Text style={styles.metricIcon}>⚠️</Text>
-              <Text style={styles.metricValue}>{globalMetrics.complaintVolume}</Text>
-              <Text style={styles.metricLabel}>Complaints</Text>
-            </View>
-
-            <View style={[styles.metricCard, { backgroundColor: COLORS.red + '15' }]}>
-              <Text style={styles.metricIcon}>🚨</Text>
-              <Text style={styles.metricValue}>{globalMetrics.rsaEmergencies}</Text>
-              <Text style={styles.metricLabel}>RSA Active</Text>
-            </View>
+          <AdminSectionTitle>Quick links</AdminSectionTitle>
+          <View style={styles.quickLinkRow}>
+            <AdminQuickLink icon="call-outline" label="Bookings & Leads" onPress={() => handleNavigation('leads')} />
+            <AdminQuickLink icon="document-text-outline" label="Reports" onPress={() => handleNavigation('reports')} />
+            <AdminQuickLink icon="storefront-outline" label="Workshops" onPress={() => handleNavigation('workshops')} />
+            <AdminQuickLink icon="people-outline" label="Users & Roles" onPress={() => handleNavigation('users')} />
+            <AdminQuickLink icon="cash-outline" label="Finance" onPress={() => handleNavigation('finance')} />
+            <AdminQuickLink icon="settings-outline" label="Settings" onPress={() => handleNavigation('settings')} />
           </View>
         </View>
 
-        {/* Revenue Overview */}
+        <View style={styles.section}>
+          <AdminSectionTitle>Key metrics</AdminSectionTitle>
+          <View style={styles.metricsGrid}>
+            <AdminMetricCard icon="clipboard-outline" label="Leads today" value={globalMetrics.totalLeadsToday} onPress={() => handleNavigation('leads')} />
+            <AdminMetricCard icon="checkmark-circle-outline" label="Accepted" value={globalMetrics.acceptedLeads} iconBg="#ECFDF5" iconColor={COLORS.green} />
+            <AdminMetricCard icon="close-circle-outline" label="Rejected" value={globalMetrics.rejectedLeads} iconBg="#FEF2F2" iconColor={COLORS.red} />
+            <AdminMetricCard icon="time-outline" label="SLA breach" value={globalMetrics.slaBreaches} iconBg="#FFFBEB" iconColor={COLORS.orange} />
+            <AdminMetricCard icon="storefront-outline" label="Active workshops" value={globalMetrics.activeWorkshops} onPress={() => handleNavigation('workshops')} />
+            <AdminMetricCard icon="people-outline" label="Customers" value={globalMetrics.totalCustomers} iconBg="#F0FDFA" iconColor={COLORS.teal} />
+            <AdminMetricCard icon="warning-outline" label="Complaints" value={globalMetrics.complaintVolume} iconBg="#EEF2FF" iconColor={COLORS.indigo} />
+            <AdminMetricCard icon="car-outline" label="RSA active" value={globalMetrics.rsaEmergencies} iconBg="#FEF2F2" iconColor={COLORS.red} />
+          </View>
+        </View>
+
         <View style={styles.section}>
           <View style={styles.revenueCard}>
-            <Text style={styles.sectionTitle}>💰 Revenue Overview</Text>
+            <AdminSectionTitle>Revenue overview</AdminSectionTitle>
             <View style={styles.revenueGrid}>
-              <View style={styles.revenueItem}>
-                <Text style={styles.revenueLabel}>Daily Revenue</Text>
-                <Text style={[styles.revenueValue, { color: COLORS.green }]}>
-                  ₹{(globalMetrics.dailyRevenue / 1000).toFixed(1)}K
-                </Text>
+              <View style={[styles.revenueItem, { backgroundColor: '#ECFDF5' }]}>
+                <Text style={styles.revenueLabel}>Today</Text>
+                <Text style={[styles.revenueValue, { color: '#047857' }]}>{inr(globalMetrics.dailyRevenue)}</Text>
               </View>
-              <View style={styles.revenueDivider} />
-              <View style={styles.revenueItem}>
-                <Text style={styles.revenueLabel}>Total Revenue</Text>
-                <Text style={[styles.revenueValue, { color: COLORS.primary }]}>
-                  ₹{(globalMetrics.totalRevenue / 100000).toFixed(1)}L
-                </Text>
+              <View style={[styles.revenueItem, { backgroundColor: '#EFF6FF' }]}>
+                <Text style={styles.revenueLabel}>This month</Text>
+                <Text style={[styles.revenueValue, { color: COLORS.primary }]}>{inr(globalMetrics.totalRevenue)}</Text>
               </View>
-              <View style={styles.revenueDivider} />
-              <View style={styles.revenueItem}>
-                <Text style={styles.revenueLabel}>Avg Rating</Text>
-                <Text style={[styles.revenueValue, { color: COLORS.orange }]}>
-                  {globalMetrics.avgWorkshopRating}⭐
+              <View style={[styles.revenueItem, { backgroundColor: '#FFFBEB' }]}>
+                <Text style={styles.revenueLabel}>Avg rating</Text>
+                <Text style={[styles.revenueValue, { color: '#D97706' }]}>
+                  {Number(globalMetrics.avgWorkshopRating || 0).toFixed(1)}
                 </Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* Department Metrics */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📊 Department Performance</Text>
-
-          {/* Telecaller */}
-          <View style={styles.deptCard}>
-            <View style={styles.deptHeader}>
-              <Text style={styles.deptIcon}>📞</Text>
-              <Text style={styles.deptTitle}>Telecaller</Text>
-            </View>
-            <View style={styles.deptMetrics}>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.telecaller.leads}</Text>
-                <Text style={styles.deptMetricLabel}>Leads</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.telecaller.followUps}</Text>
-                <Text style={styles.deptMetricLabel}>Follow-ups</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>{departmentMetrics.telecaller.conversion}%</Text>
-                <Text style={styles.deptMetricLabel}>Conversion</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Lead Manager */}
-          <View style={styles.deptCard}>
-            <View style={styles.deptHeader}>
-              <Text style={styles.deptIcon}>📋</Text>
-              <Text style={styles.deptTitle}>Lead Manager</Text>
-            </View>
-            <View style={styles.deptMetrics}>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.leadManager.assigned}</Text>
-                <Text style={styles.deptMetricLabel}>Assigned</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.leadManager.avgTime}m</Text>
-                <Text style={styles.deptMetricLabel}>Avg Time</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.leadManager.accuracy}%</Text>
-                <Text style={styles.deptMetricLabel}>Accuracy</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Workshops */}
-          <View style={styles.deptCard}>
-            <View style={styles.deptHeader}>
-              <Text style={styles.deptIcon}>🏭</Text>
-              <Text style={styles.deptTitle}>Workshops</Text>
-            </View>
-            <View style={styles.deptMetrics}>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{globalMetrics.totalWorkshops}</Text>
-                <Text style={styles.deptMetricLabel}>Total</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>{globalMetrics.activeWorkshops}</Text>
-                <Text style={styles.deptMetricLabel}>Active</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.red }]}>{globalMetrics.inactiveWorkshops}</Text>
-                <Text style={styles.deptMetricLabel}>Inactive</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.orange }]}>{globalMetrics.pendingWorkshops}</Text>
-                <Text style={styles.deptMetricLabel}>Pending</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* RSA */}
-          <View style={styles.deptCard}>
-            <View style={styles.deptHeader}>
-              <Text style={styles.deptIcon}>🚨</Text>
-              <Text style={styles.deptTitle}>RSA (Roadside Assistance)</Text>
-            </View>
-            <View style={styles.deptMetrics}>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.rsa.active}</Text>
-                <Text style={styles.deptMetricLabel}>Active</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.rsa.avgDispatch}m</Text>
-                <Text style={styles.deptMetricLabel}>Avg Dispatch</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.rsa.completion}%</Text>
-                <Text style={styles.deptMetricLabel}>Completion</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Auditors */}
-          <View style={styles.deptCard}>
-            <View style={styles.deptHeader}>
-              <Text style={styles.deptIcon}>🔍</Text>
-              <Text style={styles.deptTitle}>Auditors</Text>
-            </View>
-            <View style={styles.deptMetrics}>
-              <View style={styles.deptMetricItem}>
-                <Text style={styles.deptMetricValue}>{departmentMetrics.auditors.auditsToday}</Text>
-                <Text style={styles.deptMetricLabel}>Audits Today</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.red }]}>{departmentMetrics.auditors.fraudFound}</Text>
-                <Text style={styles.deptMetricLabel}>Fraud Found</Text>
-              </View>
-              <View style={styles.deptMetricItem}>
-                <Text style={[styles.deptMetricValue, { color: COLORS.green }]}>{departmentMetrics.auditors.avgScore}</Text>
-                <Text style={styles.deptMetricLabel}>Avg Score</Text>
-              </View>
-            </View>
-          </View>
+          <AdminSectionTitle>Department performance</AdminSectionTitle>
+          <AdminDeptCard
+            icon="call-outline"
+            title="Telecaller"
+            metrics={[
+              { label: 'Leads', value: departmentMetrics.telecaller.leads },
+              { label: 'Follow-ups', value: departmentMetrics.telecaller.followUps },
+              { label: 'Conversion', value: `${departmentMetrics.telecaller.conversion}%`, highlight: true },
+            ]}
+          />
+          <AdminDeptCard
+            icon="clipboard-outline"
+            title="Lead Manager"
+            metrics={[
+              { label: 'Assigned', value: departmentMetrics.leadManager.assigned },
+              { label: 'Avg time', value: `${departmentMetrics.leadManager.avgTime}m` },
+              { label: 'Accuracy', value: `${departmentMetrics.leadManager.accuracy}%` },
+            ]}
+          />
+          <AdminDeptCard
+            icon="storefront-outline"
+            title="Workshops"
+            metrics={[
+              { label: 'Total', value: globalMetrics.totalWorkshops },
+              { label: 'Active', value: globalMetrics.activeWorkshops, highlight: true },
+              { label: 'Inactive', value: globalMetrics.inactiveWorkshops },
+            ]}
+          />
+          <AdminDeptCard
+            icon="car-outline"
+            title="RSA"
+            metrics={[
+              { label: 'Active', value: departmentMetrics.rsa.active },
+              { label: 'Avg dispatch', value: `${departmentMetrics.rsa.avgDispatch}m` },
+              { label: 'Completion', value: `${departmentMetrics.rsa.completion}%` },
+            ]}
+          />
+          <AdminDeptCard
+            icon="shield-checkmark-outline"
+            title="Quality auditors"
+            metrics={[
+              { label: 'Audits today', value: departmentMetrics.auditors.auditsToday },
+              { label: 'Fraud found', value: departmentMetrics.auditors.fraudFound },
+              { label: 'Avg score', value: departmentMetrics.auditors.avgScore, highlight: true },
+            ]}
+          />
         </View>
 
-        {/* Quick Actions - Inventory Management */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📦 Inventory Management</Text>
+          <AdminSectionTitle>Operations</AdminSectionTitle>
           <View style={styles.quickActionsGrid}>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('inventory-products')}
-            >
-              <Text style={styles.quickActionIcon}>📦</Text>
-              <Text style={styles.quickActionLabel}>Products</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('inventory-packages')}
-            >
-              <Text style={styles.quickActionIcon}>📋</Text>
-              <Text style={styles.quickActionLabel}>Packages</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('inventory-zones')}
-            >
-              <Text style={styles.quickActionIcon}>🗺️</Text>
-              <Text style={styles.quickActionLabel}>Zones</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('inventory-pricing')}
-            >
-              <Text style={styles.quickActionIcon}>💰</Text>
-              <Text style={styles.quickActionLabel}>Product Pricing</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('inventory-service-pricing')}
-            >
-              <Text style={styles.quickActionIcon}>🔧</Text>
-              <Text style={styles.quickActionLabel}>Service Pricing</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('workshops')}
-            >
-              <Text style={styles.quickActionIcon}>🏭</Text>
-              <Text style={styles.quickActionLabel}>Workshops</Text>
-            </TouchableOpacity>
+            <AdminMenuTile icon="call-outline" label="Telecaller Dist." onPress={() => handleNavigation('telecaller-distribution')} />
+            <AdminMenuTile icon="receipt-outline" label="Manual invoices" onPress={() => handleNavigation('manual-invoices')} />
+            <AdminMenuTile icon="time-outline" label="Lead history" onPress={() => handleNavigation('lead-history')} />
           </View>
         </View>
 
-        {/* Quick Actions - System Management */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚙️ System Management</Text>
+          <AdminSectionTitle>Catalog & pricing</AdminSectionTitle>
           <View style={styles.quickActionsGrid}>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('users')}
-            >
-              <Text style={styles.quickActionIcon}>👥</Text>
-              <Text style={styles.quickActionLabel}>Users</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('leads')}
-            >
-              <Text style={styles.quickActionIcon}>📋</Text>
-              <Text style={styles.quickActionLabel}>Leads</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('reports')}
-            >
-              <Text style={styles.quickActionIcon}>📊</Text>
-              <Text style={styles.quickActionLabel}>Reports</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('audit')}
-            >
-              <Text style={styles.quickActionIcon}>🔍</Text>
-              <Text style={styles.quickActionLabel}>Audit Logs</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('fraud')}
-            >
-              <Text style={styles.quickActionIcon}>🚨</Text>
-              <Text style={styles.quickActionLabel}>Fraud</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              onPress={() => handleNavigation('finance')}
-            >
-              <Text style={styles.quickActionIcon}>💰</Text>
-              <Text style={styles.quickActionLabel}>Finance</Text>
-            </TouchableOpacity>
+            <AdminMenuTile icon="cube-outline" label="Products" onPress={() => handleNavigation('inventory-products')} />
+            <AdminMenuTile icon="layers-outline" label="Packages" onPress={() => handleNavigation('inventory-packages')} />
+            <AdminMenuTile icon="map-outline" label="Zones" onPress={() => handleNavigation('inventory-zones')} />
+            <AdminMenuTile icon="pricetag-outline" label="Product pricing" onPress={() => handleNavigation('inventory-pricing')} />
+            <AdminMenuTile icon="construct-outline" label="Service pricing" onPress={() => handleNavigation('inventory-service-pricing')} />
+            <AdminMenuTile icon="briefcase-outline" label="Additional jobs" onPress={() => handleNavigation('additional-jobs-master')} />
           </View>
         </View>
 
-        {/* Quick Actions - Admin Tools */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🛠️ Admin Tools</Text>
+          <AdminSectionTitle>Admin users</AdminSectionTitle>
           <View style={styles.quickActionsGrid}>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('additional-jobs-master')}>
-              <Text style={styles.quickActionIcon}>🧰</Text>
-              <Text style={styles.quickActionLabel}>Additional Jobs</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('coupons')}>
-              <Text style={styles.quickActionIcon}>🏷️</Text>
-              <Text style={styles.quickActionLabel}>Coupons</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('manual-invoices')}>
-              <Text style={styles.quickActionIcon}>🧾</Text>
-              <Text style={styles.quickActionLabel}>Manual Invoices</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('telecaller-distribution')}>
-              <Text style={styles.quickActionIcon}>📞</Text>
-              <Text style={styles.quickActionLabel}>Telecaller Dist.</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('lead-history')}>
-              <Text style={styles.quickActionIcon}>📜</Text>
-              <Text style={styles.quickActionLabel}>Lead History</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('website-images')}>
-              <Text style={styles.quickActionIcon}>🖼️</Text>
-              <Text style={styles.quickActionLabel}>Website Images</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('workshop-public-pages')}>
-              <Text style={styles.quickActionIcon}>🌐</Text>
-              <Text style={styles.quickActionLabel}>Public Pages</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionCard} onPress={() => handleNavigation('kb-questions')}>
-              <Text style={styles.quickActionIcon}>📚</Text>
-              <Text style={styles.quickActionLabel}>KB Questions</Text>
-            </TouchableOpacity>
+            <AdminMenuTile icon="people-outline" label="Users & roles" onPress={() => handleNavigation('users')} />
+            <AdminMenuTile icon="shield-outline" label="Fraud cases" onPress={() => handleNavigation('fraud')} />
+            <AdminMenuTile icon="document-text-outline" label="Audit logs" onPress={() => handleNavigation('audit')} />
           </View>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={styles.section}>
+          <AdminSectionTitle>App + website</AdminSectionTitle>
+          <View style={styles.quickActionsGrid}>
+            <AdminMenuTile icon="pricetags-outline" label="Coupons" onPress={() => handleNavigation('coupons')} />
+            <AdminMenuTile icon="image-outline" label="Website images" onPress={() => handleNavigation('website-images')} />
+            <AdminMenuTile icon="globe-outline" label="Public pages" onPress={() => handleNavigation('workshop-public-pages')} />
+            <AdminMenuTile icon="book-outline" label="KB questions" onPress={() => handleNavigation('kb-questions')} />
+          </View>
+        </View>
+
+        <View style={{ height: 32 }} />
       </ScrollView>
 
-      <BottomNav
-        activeTab="dashboard"
-        onTabChange={handleNavigation}
-        tabs={tabs}
+      <AdminHamburgerDrawer
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        userName={userProfile?.full_name || 'Super Admin'}
+        userEmail={userProfile?.email || 'Super Admin Control Panel'}
+        activeId="home"
+        onSelect={runSaNav}
+        onLogout={() => {
+          setMenuOpen(false);
+          void handleLogout();
+        }}
       />
     </View>
   );
@@ -958,17 +779,17 @@ export default function SuperAdminDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F7FA',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F7FA',
   },
   loadingText: {
     marginTop: 16,
-    fontSize: 16,
+    fontSize: 14,
     color: COLORS.text,
     fontFamily: FONTS.family,
   },
@@ -977,195 +798,104 @@ const styles = StyleSheet.create({
   },
   statusBanner: {
     margin: 16,
-    padding: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
   },
   statusLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statusText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     fontFamily: FONTS.family,
   },
   uptimeText: {
-    fontSize: 14,
+    fontSize: 12,
     color: COLORS.textLight,
+    fontWeight: '600',
     fontFamily: FONTS.family,
   },
   alertsSection: {
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   alertCard: {
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    marginTop: 8,
+    marginBottom: 8,
   },
   alertTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     fontFamily: FONTS.family,
   },
   alertMessage: {
-    fontSize: 14,
+    fontSize: 12,
     color: COLORS.textLight,
-    marginTop: 4,
+    marginTop: 3,
     fontFamily: FONTS.family,
   },
   section: {
     marginHorizontal: 16,
     marginBottom: 16,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 12,
-    fontFamily: FONTS.family,
-  },
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
-  metricCard: {
-    width: '48%',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  metricIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  metricValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    fontFamily: FONTS.family,
-  },
-  metricLabel: {
-    fontSize: 14,
-    color: COLORS.textLight,
-    marginTop: 4,
-    fontFamily: FONTS.family,
+  quickLinkRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   revenueCard: {
     backgroundColor: COLORS.white,
-    padding: 20,
+    padding: 14,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   revenueGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 8,
   },
   revenueItem: {
     flex: 1,
     alignItems: 'center',
-  },
-  revenueDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
   },
   revenueLabel: {
-    fontSize: 14,
+    fontSize: 10,
     color: COLORS.textLight,
-    marginBottom: 8,
+    marginBottom: 4,
+    fontWeight: '700',
     fontFamily: FONTS.family,
   },
   revenueValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    fontFamily: FONTS.family,
-  },
-  deptCard: {
-    backgroundColor: COLORS.white,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  deptHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  deptIcon: {
-    fontSize: 24,
-  },
-  deptTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.text,
-    fontFamily: FONTS.family,
-  },
-  deptMetrics: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  deptMetricItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  deptMetricValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    fontFamily: FONTS.family,
-  },
-  deptMetricLabel: {
-    fontSize: 12,
-    color: COLORS.textLight,
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '800',
     fontFamily: FONTS.family,
   },
   quickActionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-  },
-  quickActionCard: {
-    width: '23%',
-    minWidth: 90,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#FFF',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  quickActionIcon: {
-    fontSize: 28,
-    marginBottom: 8,
-  },
-  quickActionLabel: {
-    fontSize: 12,
-    color: COLORS.text,
-    textAlign: 'center',
-    fontFamily: FONTS.family,
+    gap: 8,
   },
 });

@@ -17,8 +17,10 @@ import {
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function FinancePayoutScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'payouts' | 'refunds' | 'invoices' | 'overview'>('overview');
@@ -420,7 +422,7 @@ export default function FinancePayoutScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>

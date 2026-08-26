@@ -1,6 +1,11 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
+import { COLORS } from '../../../constants/theme';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export default function WorkshopAdminMenuScreen({ navigation }: any) {
   useEffect(() => {
@@ -15,100 +20,53 @@ export default function WorkshopAdminMenuScreen({ navigation }: any) {
     return () => backHandler.remove();
   }, [navigation]);
 
-  const menuItems = [
-    {
-      id: 'pending-leads',
-      title: '⏰ Pending Leads',
-      subtitle: 'Accept or reject leads',
-      screen: 'PendingLeads',
-      color: '#f59e0b',
-    },
-    {
-      id: 'leads',
-      title: '📋 All Leads',
-      subtitle: 'View and manage leads',
-      screen: 'WorkshopAdminLeadsList',
-      color: '#3b82f6',
-    },
-    {
-      id: 'assign-team',
-      title: '👥 Assign Team',
-      subtitle: 'Assign mechanic or pickup',
-      screen: 'WorkshopAdminJobAssignment',
-      color: '#6366f1',
-    },
-    {
-      id: 'active-jobs',
-      title: '🔧 Active Jobs',
-      subtitle: 'Track jobs in progress',
-      screen: 'ActiveJobs',
-      color: '#10b981',
-    },
-    {
-      id: 'pickup-tracking',
-      title: '🚗 Pickup Tracking',
-      subtitle: 'Monitor pickup status',
-      screen: 'WorkshopAdminPickupTracking',
-      color: '#ec4899',
-    },
-    {
-      id: 'staff',
-      title: '👤 Staff Management',
-      subtitle: 'Manage team members',
-      screen: 'WorkshopAdminStaffManagement',
-      color: '#14b8a6',
-    },
-    {
-      id: 'additional-jobs',
-      title: '💰 Additional Jobs Master',
-      subtitle: 'Manage additional jobs',
-      screen: 'WorkshopAdminAdditionalJobsMaster',
-      color: '#f97316',
-    },
-    {
-      id: 'public-page',
-      title: '🌐 Public Page',
-      subtitle: 'Manage workshop public page',
-      screen: 'WorkshopAdminPublicPage',
-      color: '#0ea5e9',
-    },
-    {
-      id: 'reports',
-      title: '📊 Reports',
-      subtitle: 'Workshop reports',
-      screen: 'WorkshopAdminReports',
-      color: '#8b5cf6',
-    },
-    {
-      id: 'settings',
-      title: '⚙️ Settings',
-      subtitle: 'Workshop settings',
-      screen: 'WorkshopAdminSettings',
-      color: '#64748b',
-    },
+  const menuItems: {
+    id: string;
+    title: string;
+    subtitle: string;
+    screen: string;
+    icon: IoniconName;
+  }[] = [
+    { id: 'pending-leads', title: 'Pending leads', subtitle: 'Accept or reject new jobs', screen: 'PendingLeads', icon: 'time-outline' },
+    { id: 'leads', title: 'All leads', subtitle: 'View and manage leads', screen: 'WorkshopAdminLeadsList', icon: 'clipboard-outline' },
+    { id: 'assign-team', title: 'Assign team', subtitle: 'Assign mechanic or pickup', screen: 'WorkshopAdminJobAssignment', icon: 'people-outline' },
+    { id: 'active-jobs', title: 'Active jobs', subtitle: 'Track jobs in progress', screen: 'ActiveJobs', icon: 'construct-outline' },
+    { id: 'pickup-tracking', title: 'Pickup tracking', subtitle: 'Monitor pickup status', screen: 'WorkshopAdminPickupTracking', icon: 'car-outline' },
+    { id: 'staff', title: 'Staff management', subtitle: 'Manage team members', screen: 'WorkshopAdminStaffManagement', icon: 'person-outline' },
+    { id: 'additional-jobs', title: 'Additional jobs master', subtitle: 'Manage extra job items', screen: 'WorkshopAdminAdditionalJobsMaster', icon: 'briefcase-outline' },
+    { id: 'public-page', title: 'Public page', subtitle: 'Workshop public profile', screen: 'WorkshopAdminPublicPage', icon: 'globe-outline' },
+    { id: 'reports', title: 'Reports', subtitle: 'Workshop reports', screen: 'WorkshopAdminReports', icon: 'bar-chart-outline' },
+    { id: 'settings', title: 'Settings', subtitle: 'Workshop settings', screen: 'WorkshopAdminSettings', icon: 'settings-outline' },
   ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Workshop Admin</Text>
-        <Text style={styles.subtitle}>Choose a feature to access</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Workshop Admin</Text>
+          <Text style={styles.subtitle}>Workshop Control Panel</Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {menuItems.map((item) => (
           <TouchableOpacity
             key={item.id}
-            style={[styles.menuCard, { borderLeftColor: item.color }]}
+            style={styles.menuCard}
             onPress={() => navigation.navigate(item.screen)}
+            activeOpacity={0.85}
           >
+            <View style={styles.menuIcon}>
+              <Ionicons name={item.icon} size={18} color={COLORS.primary} />
+            </View>
             <View style={styles.menuContent}>
               <Text style={styles.menuTitle}>{item.title}</Text>
               <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
             </View>
-            <View style={[styles.menuIcon, { backgroundColor: item.color }]}>
-              <Text style={styles.arrow}>→</Text>
-            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -119,64 +77,70 @@ export default function WorkshopAdminMenuScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F5F7FA',
   },
   header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+    fontSize: 12,
+    color: '#FDE68A',
+    marginTop: 2,
+    fontWeight: '700',
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 32,
   },
   menuCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    gap: 12,
   },
   menuContent: {
     flex: 1,
   },
   menuTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '800',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   menuSubtitle: {
-    fontSize: 13,
-    color: '#6b7280',
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   menuIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  arrow: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
   },
 });

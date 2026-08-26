@@ -88,7 +88,8 @@ import { initializeClarity } from './src/lib/clarity';
 import { preloadMobileAuthConfig } from './src/lib/mobileAuthConfig';
 import { initializeFirebaseAnalytics, refreshFirebaseAnalyticsEnabled } from './src/lib/firebaseAnalytics';
 import { trackScreen, trackEvent, setUserId } from './src/lib/trackEvent';
-import { reportForegroundWorkshopProximity, syncWorkshopGeofencingPreference } from './src/lib/workshopGeofencing';
+import { reportForegroundWorkshopProximity, startWorkshopGeofencing } from './src/lib/workshopGeofencing';
+import { hasBackgroundLocationConsent } from './src/lib/backgroundLocationConsent';
 import { apiFetch } from './src/lib/api';
 
 const Stack = createNativeStackNavigator();
@@ -197,8 +198,9 @@ function AppContent() {
     void (async () => {
       try {
         const pref = await apiFetch<{ enabled?: boolean }>('/api/customer/workshop-proximity/preferences');
-        if (pref?.enabled) {
-          await syncWorkshopGeofencingPreference(true);
+        if (pref?.enabled && (await hasBackgroundLocationConsent())) {
+          // Never prompt BACKGROUND_LOCATION on launch — only resume after in-app consent.
+          await startWorkshopGeofencing({ requestPermissions: false });
         }
         await reportForegroundWorkshopProximity();
       } catch {

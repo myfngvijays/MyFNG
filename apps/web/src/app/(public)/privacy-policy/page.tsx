@@ -47,7 +47,7 @@ export default function PrivacyPolicyPage() {
             <Shield className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Privacy Policy</h1>
-          <p className="mt-2 text-sm text-gray-500">Last updated: March, 2026</p>
+          <p className="mt-2 text-sm text-gray-500">Last updated: August 26, 2026</p>
         </div>
 
         {/* Intro — always visible, not collapsible */}
@@ -122,7 +122,10 @@ export default function PrivacyPolicyPage() {
 
           <SubHeading label="F." title="Location Data" />
           <Para>
-            We may collect approximate geographic location data to enable location-based services such as identifying nearby workshops, service availability, and facilitating vehicle pickup and delivery.
+            We may collect geographic location data to enable location-based services such as identifying nearby workshops, service availability, and facilitating vehicle pickup and delivery.
+          </Para>
+          <Para>
+            If you opt in to Nearby Workshop Alerts in the MyFNG Android or iOS app, this app collects location data to enable nearby workshop alerts even when the app is closed or not in use. This is optional. You can decline or turn it off at any time in Settings → Notifications → Nearby Workshop Alerts and still use booking, workshop search, and other features. We do not sell location data.
           </Para>
         </AccordionCard>
 

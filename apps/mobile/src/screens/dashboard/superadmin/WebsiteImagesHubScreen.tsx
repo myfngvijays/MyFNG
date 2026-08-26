@@ -11,11 +11,11 @@ export default function WebsiteImagesHubScreen({ navigation }: any) {
         <Text style={styles.title}>Manage Website Images</Text>
         <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('Brands')}>
           <Text style={styles.cardTitle}>Car Brand Images</Text>
-          <Text style={styles.cardMeta}>Manage car brand logos</Text>
+          <Text style={styles.cardMeta}>Logos with photo upload — same as web</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('HomeCarousel')}>
           <Text style={styles.cardTitle}>Home Carousel Images</Text>
-          <Text style={styles.cardMeta}>Manage app hero banners</Text>
+          <Text style={styles.cardMeta}>Hero banners with preview + replace photo</Text>
         </TouchableOpacity>
       </View>
     </View>

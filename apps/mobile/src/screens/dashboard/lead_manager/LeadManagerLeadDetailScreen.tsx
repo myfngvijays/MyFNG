@@ -12,6 +12,7 @@ import {
   Alert,
   BackHandler,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
@@ -21,6 +22,7 @@ import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecord
 
 export default function LeadManagerLeadDetailScreen({ navigation, route }: any) {
   const { leadId, mode = 'view' } = route.params;
+  const insets = useSafeAreaInsets();
 
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -209,8 +211,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(leadId)}`,
       );
       setActivityItems(Array.isArray(data?.items) ? data.items : []);
-    } catch (error) {
-      console.error('Error fetching activity timeline:', error);
+    } catch {
       setActivityItems([]);
     } finally {
       setActivityLoading(false);
@@ -425,10 +426,21 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
     lead.status === 'VALIDATED' ||
     (lead.workshop_id && !['ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(lead.status));
 
+  const recordingItems = activityItems.filter((item: any) => {
+    const callLogId = String(item?.meta?.call_log_id || '').trim();
+    return (
+      item.kind === 'call' &&
+      callLogId &&
+      (Boolean(item?.meta?.call_recording_url) || Boolean(item?.meta?.has_call_recording))
+    );
+  });
+  const historyItems = activityItems.filter(
+    (item: any) => item.kind === 'system' || item.kind === 'booking' || item.kind === 'followup',
+  );
+
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
@@ -860,6 +872,128 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
           </View>
         )}
 
+        <View style={styles.jumpRow}>
+          <TouchableOpacity
+            style={styles.jumpBtn}
+            onPress={() =>
+              navigation.navigate('LeadManagerRecordings', {
+                q: lead.lead_number || lead.customer_phone || '',
+                preset: 'all_time',
+              })
+            }
+          >
+            <Icon name="headphones" size={16} color={COLORS.primary} />
+            <Text style={styles.jumpTxt}>All recordings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.jumpBtn}
+            onPress={() =>
+              navigation.navigate('LeadHistory', {
+                leadId: lead.id,
+                leadNumber: lead.lead_number,
+              })
+            }
+          >
+            <Icon name="clock-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.jumpTxt}>Lead history</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="headphones" size={24} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>
+              Recordings{recordingItems.length > 0 ? ` (${recordingItems.length})` : ''}
+            </Text>
+          </View>
+          <View style={styles.sectionContent}>
+            {activityLoading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : recordingItems.length === 0 ? (
+              <Text style={styles.emptyTimeline}>No call recordings for this lead yet</Text>
+            ) : (
+              recordingItems.map((item: any) => {
+                const callLogId = String(item?.meta?.call_log_id || '').trim();
+                const isPlaying = playingCallLogId === callLogId;
+                return (
+                  <View key={`rec-${item.id || callLogId}`} style={styles.timelineItem}>
+                    <View style={styles.timelineHeader}>
+                      <Text style={styles.timelineStatus}>{item.title}</Text>
+                      <TouchableOpacity
+                        onPress={() =>
+                          setPlayingCallLogId((prev) => (prev === callLogId ? null : callLogId))
+                        }
+                        style={{
+                          backgroundColor: isPlaying ? '#DDD6FE' : '#EDE9FE',
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                          borderRadius: 999,
+                          marginLeft: 8,
+                        }}
+                      >
+                        <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>
+                          {isPlaying ? '■ Stop' : '▶ Play'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.timelineTime}>
+                      {item.at ? formatDateTime(item.at) : '—'}
+                      {item?.meta?.by ? ` · ${item.meta.by}` : ''}
+                    </Text>
+                    {isPlaying ? (
+                      <CallRecordingInlinePlayer
+                        callLogId={callLogId}
+                        onClose={() => setPlayingCallLogId(null)}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="clock-outline" size={24} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>
+              Lead History{historyItems.length > 0 ? ` (${historyItems.length})` : ''}
+            </Text>
+          </View>
+          <View style={styles.sectionContent}>
+            {activityLoading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : historyItems.length === 0 && leadEvents.length === 0 ? (
+              <Text style={styles.emptyTimeline}>No lead history yet</Text>
+            ) : (
+              <>
+                {historyItems.map((item: any) => (
+                  <View key={item.id || `hist-${item.at}`} style={styles.timelineItem}>
+                    <Text style={styles.timelineStatus}>{item.title}</Text>
+                    {item.body ? (
+                      <Text style={styles.timelineMeta}>{String(item.body)}</Text>
+                    ) : null}
+                    <Text style={styles.timelineTime}>
+                      {item.at ? formatDateTime(item.at) : '—'}
+                    </Text>
+                  </View>
+                ))}
+                {leadEvents.map((event: any) => (
+                  <View key={`evt-${event.id}`} style={styles.timelineItem}>
+                    <Text style={styles.timelineStatus}>{event.event_type || event.description || 'Event'}</Text>
+                    {event.description && event.event_type ? (
+                      <Text style={styles.timelineMeta}>{event.description}</Text>
+                    ) : null}
+                    <Text style={styles.timelineTime}>
+                      {event.created_at ? formatDateTime(event.created_at) : '—'}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </View>
+        </View>
+
         {/* Activity — TeleCRM-style: updates + calls + recordings */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -1087,9 +1221,31 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: COLORS.primary,
     padding: SPACING.md,
-    paddingTop: SPACING.xl,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  jumpRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+  },
+  jumpBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  jumpTxt: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 13,
   },
   backButton: {
     padding: SPACING.xs,
