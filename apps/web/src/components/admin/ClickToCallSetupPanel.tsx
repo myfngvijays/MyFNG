@@ -1006,6 +1006,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
               </div>
 
               {section === 'days' ? (
+              <>
               <label
                 className={`mb-4 flex items-center justify-between gap-3 rounded-xl border px-3 py-3 ${
                   autodialOn
@@ -1107,6 +1108,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
                     </select>
                   </label>
                 ) : null}
+              </>
               ) : null}
 
                 {section === 'leave' ? (() => {
