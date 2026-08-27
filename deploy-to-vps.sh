@@ -89,6 +89,11 @@ cd apps/web
 say "pnpm install (frozen lockfile)"
 pnpm install --frozen-lockfile
 
+say "Clear leftover Next standalone cache (avoids ENOTEMPTY rmdir while PM2 is live)"
+rm -rf .next/cache \
+       .next/standalone/apps/web/.next/cache \
+       .next/standalone/.next/cache
+
 say "pnpm run build"
 pnpm run build
 
