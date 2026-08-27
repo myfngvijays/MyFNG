@@ -23,6 +23,7 @@ import { requestClickToCall, normalizeClickToCallPhone } from '@/lib/telecaller/
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { formatDateTimeIST } from '@/lib/utils';
 import { CallRecordingCardRow } from '@/components/telecaller/CallRecordingPlayer';
+import { LeadBrainStrip } from '@/components/telecaller/crm/LeadBrainCard';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'] as const;
 
@@ -194,7 +195,7 @@ function buildDaySections(rows: HistoryRow[]): { title: string; data: HistoryRow
 
 export default function CrmDialerPanel() {
   const pathname = usePathname();
-  const { base } = getCrmDashboardBase(pathname);
+  const { base, isLeadManager } = getCrmDashboardBase(pathname);
   const [tab, setTab] = useState<DialerTab>('keypad');
   const [digits, setDigits] = useState('');
   const [calling, setCalling] = useState(false);
@@ -999,6 +1000,11 @@ export default function CrmDialerPanel() {
                 {activeCall.name ? (
                   <p className="text-center font-mono text-sm text-slate-500">{activeCall.to}</p>
                 ) : null}
+                {isLeadManager && activeCall.leadId ? (
+                  <div className="mt-3">
+                    <LeadBrainStrip leadId={activeCall.leadId} />
+                  </div>
+                ) : null}
                 <div className="mt-5 space-y-2">
                   {activeCall.leadId ? (
                     <Link
@@ -1053,6 +1059,11 @@ export default function CrmDialerPanel() {
                 </p>
                 {activeCall.name ? (
                   <p className="text-center font-mono text-sm text-slate-500">{activeCall.to}</p>
+                ) : null}
+                {isLeadManager && activeCall.leadId ? (
+                  <div className="mt-3">
+                    <LeadBrainStrip leadId={activeCall.leadId} />
+                  </div>
                 ) : null}
                 <div className="mt-5 space-y-2">
                   {activeCall.leadId ? (

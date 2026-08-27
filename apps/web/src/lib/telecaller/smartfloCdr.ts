@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { getClickToCallConfig } from '@/lib/telecaller/clickToCallConfig';
 import { normalizePhone10 } from '@/lib/telecaller/initiateClickToCall';
 import { enqueueCallIqOnRecordingCompleted } from '@/lib/telecaller/callIqWorkflow';
+import { enqueueCrmDlOnRecordingCompleted } from '@/lib/telecaller/leadDlVoice';
 
 export const SMARTFLO_API_BASE = 'https://api-smartflo.tatateleservices.com/v1';
 
@@ -620,6 +621,7 @@ export async function upsertSmartfloRecording(
 
   if (attach.newRecording && attach.callLogId) {
     enqueueCallIqOnRecordingCompleted(attach.callLogId, true);
+    enqueueCrmDlOnRecordingCompleted(attach.callLogId);
   }
 
   return {
@@ -715,6 +717,7 @@ export async function repairDetachedSmartfloRecordings(limit = 200): Promise<{
     if (attach.callLogId) {
       if (attach.newRecording) {
         enqueueCallIqOnRecordingCompleted(attach.callLogId, true);
+        enqueueCrmDlOnRecordingCompleted(attach.callLogId);
       }
       await db
         .from('smartflo_call_recordings')

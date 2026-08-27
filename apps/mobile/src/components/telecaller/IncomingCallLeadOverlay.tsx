@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '../../lib/api';
+import { LeadBrainStrip } from './LeadBrainCard';
 import { COLORS, SHADOWS } from '../../constants/theme';
 
 type DialLead = {
@@ -34,9 +35,11 @@ function vehicleLine(lead?: DialLead | null): string {
 export default function IncomingCallLeadOverlay({
   leadScreen = 'TelecallerLeadDetail',
   onOpenLead,
+  showMlInsights = false,
 }: {
   leadScreen?: string;
   onOpenLead?: (leadId: string) => void;
+  showMlInsights?: boolean;
 }) {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -150,6 +153,7 @@ export default function IncomingCallLeadOverlay({
             </Text>
           ) : null}
           <Text style={styles.hint}>Phone pe DID dikhega. Lead yahan se open karo.</Text>
+          {showMlInsights && leadId ? <LeadBrainStrip leadId={leadId} /> : null}
         </View>
         <View>
           <TouchableOpacity onPress={() => setMinimized(true)} hitSlop={8} style={styles.iconBtn}>

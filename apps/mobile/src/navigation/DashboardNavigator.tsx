@@ -537,6 +537,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
       </Stack.Navigator>
       <IncomingCallLeadOverlay
         leadScreen="TelecallerLeadDetail"
+        showMlInsights
         onOpenLead={(leadId) => crmStackRef.current?.navigate('TelecallerLeadDetail', { leadId })}
       />
       </View>

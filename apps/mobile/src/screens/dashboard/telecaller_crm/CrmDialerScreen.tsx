@@ -19,8 +19,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { apiFetch } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
+import { LeadBrainStrip } from '../../../components/telecaller/LeadBrainCard';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'] as const;
 type Tab = 'keypad' | 'recents' | 'missed';
@@ -215,6 +217,10 @@ function buildDaySections(rows: HistoryRow[]): { title: string; data: HistoryRow
 export default function CrmDialerScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { role } = useAuth();
+  const canSeeMlDl = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+    String(role || '').toUpperCase(),
+  );
   const leadDetailScreen = 'TelecallerLeadDetail';
   const [tab, setTab] = useState<Tab>('keypad');
   const [digits, setDigits] = useState('');
@@ -1073,6 +1079,7 @@ export default function CrmDialerScreen() {
                 {activeCall.name ? (
                   <Text style={styles.ringPhone}>{activeCall.to}</Text>
                 ) : null}
+                {canSeeMlDl && activeCall.leadId ? <LeadBrainStrip leadId={activeCall.leadId} /> : null}
                 <View style={styles.ringActions}>
                   {activeCall.leadId ? (
                     <TouchableOpacity
@@ -1108,6 +1115,7 @@ export default function CrmDialerScreen() {
                 {activeCall.name ? (
                   <Text style={styles.ringPhone}>{activeCall.to}</Text>
                 ) : null}
+                {canSeeMlDl && activeCall.leadId ? <LeadBrainStrip leadId={activeCall.leadId} /> : null}
                 <View style={styles.ringActions}>
                   {activeCall.leadId ? (
                     <TouchableOpacity

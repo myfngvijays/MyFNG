@@ -31,6 +31,7 @@ import {
 } from '../../../lib/crmFilterPrefs';
 import { leadStatusCardColors, leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
+import { MlScorePill } from '../../../components/telecaller/LeadBrainCard';
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -1051,6 +1052,12 @@ export default function CrmQueueTab({
                   <Text style={styles.meta}>{item.customer_phone || '—'}</Text>
                 </View>
                 <View style={styles.cardRightCol}>
+                  {managerOps ? (
+                    <MlScorePill
+                      score={item.ml_score?.conversion_score}
+                      temperature={item.ml_score?.temperature}
+                    />
+                  ) : null}
                   <View style={[styles.statusCornerInline, { backgroundColor: tint.badgeBg }]}>
                     <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
                       {statusLabel}

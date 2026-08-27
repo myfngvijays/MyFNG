@@ -23,6 +23,7 @@ import { supabase } from '../../../lib/supabase';
 import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
+import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
 import { parseIds } from '../../../lib/parseIds';
 import {
   emptySecondCar,
@@ -411,8 +412,11 @@ export default function TelecallerLeadDetailScreen({
   embedded = false,
   initialEditing = true,
 }: any) {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const { leadId } = route.params;
+  const canSeeMlDl = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+    String(role || '').toUpperCase(),
+  );
 
   const [lead, setLead] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
@@ -1971,6 +1975,13 @@ export default function TelecallerLeadDetailScreen({
               </View>
             </View>
 
+      {canSeeMlDl ? (
+        <LeadBrainCard
+          leadId={leadId}
+          onOpenSimilar={(id) => navigation?.navigate?.('TelecallerLeadDetail', { leadId: id })}
+        />
+      ) : null}
+
       {/* Quick Actions */}
       <View style={styles.quickActions}>
         <TouchableOpacity
@@ -2041,6 +2052,7 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
+      {canSeeMlDl ? (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Lead IQ</Text>
         <View style={styles.sectionContent}>
@@ -2079,6 +2091,7 @@ export default function TelecallerLeadDetailScreen({
           )}
         </View>
       </View>
+      ) : null}
 
       {/* Coupon — view only at top; in edit mode it lives under Booking confirmed → Pickup */}
       {!editing ? (

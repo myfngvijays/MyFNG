@@ -55,6 +55,10 @@
     {
       "path": "/api/cron/auto-dial-fresh-hours",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/crm-ml-dl",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

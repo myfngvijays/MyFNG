@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronDown, ChevronUp, Phone, UserRound, X } from 'lucide-react';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import { LeadBrainStrip } from '@/components/telecaller/crm/LeadBrainCard';
 
 type DialLead = {
   id?: string | null;
@@ -35,7 +36,7 @@ function vehicleLine(lead?: DialLead | null): string {
 
 export default function IncomingClickToCallBanner() {
   const pathname = usePathname();
-  const { base } = getCrmDashboardBase(pathname);
+  const { base, isLeadManager } = getCrmDashboardBase(pathname);
   const [session, setSession] = useState<DialSession | null>(null);
   const [minimized, setMinimized] = useState(false);
   const lastIdRef = useRef<string | null>(null);
@@ -134,6 +135,7 @@ export default function IncomingClickToCallBanner() {
           <p className="mt-1 text-[11px] text-slate-400">
             Phone pe DID dikhega. Lead yahan se open karo.
           </p>
+          {isLeadManager && leadId ? <div className="mt-2"><LeadBrainStrip leadId={leadId} /></div> : null}
         </div>
         <div className="flex shrink-0 flex-col gap-1">
           <button
