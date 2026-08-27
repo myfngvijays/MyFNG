@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -1622,7 +1622,7 @@ function FilterMultiSelect({
   );
 }
 
-export default function SuperAdminBookingsPage() {
+function SuperAdminBookingsPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
@@ -4538,6 +4538,20 @@ export default function SuperAdminBookingsPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function SuperAdminBookingsRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
+          Loading bookings…
+        </div>
+      }
+    >
+      <SuperAdminBookingsPage />
+    </Suspense>
   );
 }
 
