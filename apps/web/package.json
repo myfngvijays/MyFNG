@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/next-build-safe.mjs",
     "start": "NODE_ENV=production node --require ./scripts/html-pretty-patch.js ./node_modules/next/dist/bin/next start",
     "start:plain": "next start",
     "start:standalone": "NODE_ENV=production node --require ./scripts/html-pretty-patch.js ./scripts/start-server.js",

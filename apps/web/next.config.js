@@ -58,6 +58,11 @@ const nextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   },
   
+  // Do not trace webpack/fetch cache into standalone (VPS ENOTEMPTY rmdir).
+  outputFileTracingExcludes: {
+    '*': ['.next/cache/**', '**/.next/cache/**'],
+  },
+
   // For Hostinger deployment - use `next start` (loads .env at runtime).
   // Standalone bundle is optional via `npm run start:standalone`.
 

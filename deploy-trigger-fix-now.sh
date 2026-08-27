@@ -41,6 +41,10 @@ echo "HEAD=$(git rev-parse --short HEAD) $(git log -1 --oneline)"
 cd apps/web
 say "pnpm install"
 pnpm install --frozen-lockfile
+say "Clear leftover Next standalone cache"
+rm -rf .next/cache \
+       .next/standalone/apps/web/.next/cache \
+       .next/standalone/.next/cache
 say "pnpm build"
 pnpm run build
 
