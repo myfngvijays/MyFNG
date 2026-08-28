@@ -4785,6 +4785,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             coupons={myCoupons}
             loading={myCouponsLoading}
             onLogin={() => navigation.navigate('Login' as never)}
+            onWalletCouponApplied={() => {
+              void apiFetch<any>('/api/customer/coupons/my')
+                .then((res) => setMyCoupons(Array.isArray(res?.coupons) ? res.coupons : []))
+                .catch(() => {});
+            }}
             onUseInCart={(code, coupon) => {
               if (coupon?.locked || coupon?.can_use === false) {
                 if (coupon?.lock_reason === 'profile') {

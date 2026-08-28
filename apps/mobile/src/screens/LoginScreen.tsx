@@ -36,6 +36,7 @@ import {
 } from '../lib/backendSmsOtp';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import { ReferralCodeModal } from '../components/ReferralCodeModal';
+import { InstallCouponModal } from '../components/InstallCouponModal';
 import { getPendingReferralCode, clearPendingReferralCode } from '../lib/referralDeepLink';
 import {
   AuthVerifyResponse,
@@ -64,6 +65,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const [referralModalVisible, setReferralModalVisible] = useState(false);
+  const [installCouponVisible, setInstallCouponVisible] = useState(false);
   const [deepLinkReferralCode, setDeepLinkReferralCode] = useState('');
   const pendingHomeNavigationRef = useRef(false);
   const isNewCustomerRef = useRef(false);
@@ -118,8 +120,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           setDeepLinkReferralCode(pendingCode);
           void clearPendingReferralCode();
         }
-        // Slight delay so prior Modal (welcome) fully unmounts first.
-        setTimeout(() => setReferralModalVisible(true), 350);
+        // Welcome → install coupon → referral. Delay so prior Modal unmounts first.
+        setTimeout(() => setInstallCouponVisible(true), 350);
       });
       return;
     }
@@ -767,6 +769,14 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
             // can leave an invisible iOS touch blocker (home swipe/scroll dies).
             setTimeout(() => finishLoginNavigation(), 400);
           }
+        }}
+      />
+      <InstallCouponModal
+        visible={installCouponVisible}
+        welcomeAmount={creditedWelcomeAmount}
+        onClose={() => {
+          setInstallCouponVisible(false);
+          setTimeout(() => setReferralModalVisible(true), 400);
         }}
       />
       <ReferralCodeModal

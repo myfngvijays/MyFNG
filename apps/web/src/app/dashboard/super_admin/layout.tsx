@@ -66,6 +66,8 @@ import {
   Brain,
   Plug,
   BookOpen,
+  Mail,
+  Hash,
 } from 'lucide-react';
 
 type NavItem = {
@@ -622,6 +624,67 @@ const navigationItems: NavItem[] = [
     ],
   },
   {
+    name: 'DLT SMS',
+    icon: Mail,
+    description: 'TRAI DLT headers, templates & SMS gateway',
+    children: [
+      {
+        name: 'DLT Dashboard',
+        href: '/dashboard/super_admin/dlt-sms?section=dashboard',
+        icon: LayoutDashboard,
+        description: 'Entity, header & template counts',
+      },
+      {
+        name: 'Entity',
+        href: '/dashboard/super_admin/dlt-sms?section=entity',
+        icon: Building2,
+        description: 'PE ID, operator & approval status',
+      },
+      {
+        name: 'Header SMS',
+        href: '/dashboard/super_admin/dlt-sms?section=headers',
+        icon: Hash,
+        description: 'Sender IDs (MYFNG / TRANS / PROMO)',
+      },
+      {
+        name: 'Consent Templates',
+        href: '/dashboard/super_admin/dlt-sms?section=consent',
+        icon: FileText,
+        description: 'Promotional consent templates',
+      },
+      {
+        name: 'Content Templates',
+        href: '/dashboard/super_admin/dlt-sms?section=content',
+        icon: MessageSquare,
+        description: 'DLT-approved SMS bodies',
+      },
+      {
+        name: 'Own SMS pipe',
+        href: '/dashboard/super_admin/dlt-sms?section=telemarketers',
+        icon: Plug,
+        description: 'Own Jio/Airtel operator HTTP pipe',
+      },
+      {
+        name: 'CTA Whitelisting',
+        href: '/dashboard/super_admin/dlt-sms?section=cta',
+        icon: Link2,
+        description: 'URLs and numbers in SMS',
+      },
+      {
+        name: 'Send SMS',
+        href: '/dashboard/super_admin/dlt-sms?section=compose',
+        icon: Send,
+        description: 'Test send with approved template',
+      },
+      {
+        name: 'Transaction History',
+        href: '/dashboard/super_admin/dlt-sms?section=history',
+        icon: History,
+        description: 'SMS delivery logs',
+      },
+    ],
+  },
+  {
     name: 'System & Governance',
     isSection: true,
   },
@@ -853,6 +916,9 @@ function SuperAdminLayoutInner({
       pathname?.startsWith('/dashboard/super_admin/whatsapp-workflows')
     ) {
       setOpenGroups((prev) => ({ ...prev, WhatsApp: true }));
+    }
+    if (pathname?.startsWith('/dashboard/super_admin/dlt-sms')) {
+      setOpenGroups((prev) => ({ ...prev, 'DLT SMS': true }));
     }
   }, [pathname]);
 

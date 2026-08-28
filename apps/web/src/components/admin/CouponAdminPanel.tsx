@@ -1511,6 +1511,11 @@ export default function CouponAdminPanel({
                   ))}
                   <option value="__new__">+ Add new type...</option>
                 </select>
+                {['festival', 'society', 'cashback', 'welcome', 'corporate', 'loyalty', 'flat'].includes(form.coupon_type_slug) && form.coupon_type_slug !== '__new__' ? (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Flat ₹ amount of this type can be entered on first app/web login. It adds on top of welcome bonus in the same wallet (example: ₹1000 + ₹500 = ₹1500, same wallet rules).
+                  </p>
+                ) : null}
                 {form.coupon_type_slug === '__new__' ? (
                   <div className="mt-2 flex flex-col sm:flex-row gap-2">
                     <input

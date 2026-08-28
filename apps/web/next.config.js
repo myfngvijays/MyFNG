@@ -3,7 +3,7 @@ const nextConfig = {
   output: 'standalone',
 
   // xlsx is CJS; keep it external so Turbopack resolves from node_modules reliably
-  serverExternalPackages: ['xlsx'],
+  serverExternalPackages: ['xlsx', '@modelcontextprotocol/sdk'],
 
   // Next 16 route type generation is stricter; keep builds unblocked
   // while route handler typings are progressively updated.

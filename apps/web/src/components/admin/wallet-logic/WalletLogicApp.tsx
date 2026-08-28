@@ -369,7 +369,7 @@ function RulesForm({
       </div>
       <Toggle
         label="Welcome bonus"
-        hint="Off karne par naye app users ko login par welcome wallet credit nahi milega"
+        hint="Naye users ko login par welcome wallet milta hai. Festival/society coupon usi bucket mein add hota hai, isliye 1000+500=1500 par yahi wallet rules lagenge."
         checked={welcomeEnabled}
         onChange={(v) => onPatch('welcome_bonus_enabled', v)}
         disabled={disabled}

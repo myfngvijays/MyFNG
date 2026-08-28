@@ -16,6 +16,8 @@ import { formatDateDMY } from "@/lib/utils";
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { InstallCouponModal } from '@/components/customer/InstallCouponModal';
+import { RedeemInstallCouponCard } from '@/components/customer/RedeemInstallCouponCard';
 import {
   Plus,
   Clock,
@@ -40,6 +42,8 @@ export default function CustomerDashboardPage() {
     total: 0,
   });
   const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [installCouponOpen, setInstallCouponOpen] = useState(false);
+  const [welcomeAmount, setWelcomeAmount] = useState(1000);
 
   useEffect(() => {
     fetchCustomerData();
@@ -72,6 +76,23 @@ export default function CustomerDashboardPage() {
       setLeads(leadsData);
       const flagsData = flagsRes.ok ? (await flagsRes.json().catch(() => ({})))?.flags ?? {} : {};
       setFlags(flagsData);
+
+      try {
+        const skip = typeof window !== 'undefined' && window.localStorage.getItem('myfng_install_coupon_prompt') === '1';
+        if (!skip) {
+          const [eligRes, walletRes] = await Promise.all([
+            fetch('/api/customer/wallet/claim-install-coupon', { credentials: 'include' }),
+            fetch('/api/customer/wallet', { credentials: 'include' }),
+          ]);
+          const elig = eligRes.ok ? await eligRes.json().catch(() => ({})) : {};
+          const wallet = walletRes.ok ? await walletRes.json().catch(() => ({})) : {};
+          const amount = Number(wallet?.rules?.welcome_bonus_amount || 1000);
+          if (Number.isFinite(amount) && amount > 0) setWelcomeAmount(amount);
+          if (elig?.eligible) setInstallCouponOpen(true);
+        }
+      } catch {
+        // non-fatal
+      }
 
       const allLeads = Array.isArray(leadsData) ? leadsData : [];
       setStats({
@@ -147,6 +168,9 @@ export default function CustomerDashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6">
+          <RedeemInstallCouponCard />
+        </div>
         {/* Quick Actions */}
         <div className="mb-8">
           <Link
@@ -296,6 +320,18 @@ export default function CustomerDashboardPage() {
           </Link>
         </div>
 
+        <InstallCouponModal
+          open={installCouponOpen}
+          welcomeAmount={welcomeAmount}
+          onClose={() => {
+            try {
+              window.localStorage.setItem('myfng_install_coupon_prompt', '1');
+            } catch {
+              // ignore
+            }
+            setInstallCouponOpen(false);
+          }}
+        />
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           {(flags.customer_referral ?? true) && <Link href="/customer/refer" className="bg-white rounded-lg shadow p-3 text-center text-sm">Refer & Earn</Link>}
           <Link href="/customer/notifications" className="bg-white rounded-lg shadow p-3 text-center text-sm">Notification Toggles</Link>

@@ -26,6 +26,7 @@ import LeadHistoryScreen from '../screens/dashboard/superadmin/LeadHistoryScreen
 import {
   SuperAdminApiModuleScreen,
   SuperAdminSystemMonitorScreen,
+  SuperAdminDltSmsScreen,
 } from '../screens/dashboard/superadmin/SuperAdminMoreScreens';
 import {
   SuperAdminWalletLogicScreen,
@@ -1286,6 +1287,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen name="LeadManagerTeamWhatsApp" component={LeadManagerTeamWhatsAppScreen} options={{ headerShown: false }} />
         <Stack.Screen name="LeadManagerWhatsAppDnd" component={LeadManagerWhatsAppDndScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminSystemMonitor" component={SuperAdminSystemMonitorScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminDltSms" component={SuperAdminDltSmsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminWalletLogic" component={SuperAdminWalletLogicScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminWalletHistory" component={SuperAdminWalletHistoryScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminApiModule" component={SuperAdminApiModuleScreen} options={{ headerShown: false }} />

@@ -7,6 +7,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +54,12 @@ function flattenRows(payload: any): any[] {
     'popups',
     'services',
     'overrides',
+    'headers',
+    'setupSteps',
+    'contentTemplates',
+    'consentTemplates',
+    'telemarketers',
+    'logs',
   ];
   for (const key of keys) {
     if (Array.isArray(payload[key])) return payload[key];
@@ -175,6 +183,144 @@ export function SuperAdminApiModuleScreen() {
               </View>
             ))
           )}
+        </ScrollView>
+      )}
+    </Shell>
+  );
+}
+
+export function SuperAdminDltSmsScreen() {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [payload, setPayload] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [peId, setPeId] = useState('');
+  const [peName, setPeName] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await apiFetch<any>('/api/super_admin/dlt-sms');
+      setPayload(data);
+      setPeId(String(data?.entity?.pe_id || ''));
+      setPeName(String(data?.entity?.pe_name || ''));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load DLT SMS');
+      setPayload(null);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const saveEntity = async () => {
+    setSaving(true);
+    try {
+      await apiFetch('/api/super_admin/dlt-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_entity',
+          entity: { ...(payload?.entity || {}), pe_id: peId, pe_name: peName },
+        }),
+      });
+      await load();
+      Alert.alert('Saved', 'DLT entity updated');
+    } catch (e: any) {
+      Alert.alert('Save failed', e?.message || 'Could not save entity');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const stats = payload?.stats || {};
+  const steps: any[] = Array.isArray(payload?.setupSteps) ? payload.setupSteps : [];
+
+  return (
+    <Shell title="DLT SMS">
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.body}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void load();
+              }}
+            />
+          }
+        >
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.summaryGrid}>
+            {[
+              ['Entity', stats.entity],
+              ['Headers', stats.headers],
+              ['Consent', stats.consent],
+              ['Content', stats.content],
+            ].map(([label, counts]: any) => (
+              <View key={String(label)} style={styles.summaryCard}>
+                <Text style={styles.summaryLbl}>{label}</Text>
+                <Text style={styles.summaryVal}>
+                  {counts?.approved ?? 0} ok · {counts?.pending ?? 0} wait
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Principal Entity</Text>
+            <Text style={styles.cardMeta}>
+              {payload?.entity?.operator || 'JIO'} · {payload?.entity?.entity_status || '—'}
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={peId}
+              onChangeText={setPeId}
+              placeholder="PE ID"
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.input}
+              value={peName}
+              onChangeText={setPeName}
+              placeholder="Registered name"
+            />
+            <TouchableOpacity style={styles.saveBtn} onPress={() => void saveEntity()} disabled={saving}>
+              <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save entity'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Setup checklist</Text>
+            {steps.map((step, i) => (
+              <Text key={step.id || i} style={styles.cardMeta}>
+                {step.done ? '✓' : `${i + 1}.`} {step.label}
+              </Text>
+            ))}
+            <Text style={[styles.cardMeta, { marginTop: 8 }]}>
+              Approve header & templates on Jio TrueConnect, then paste DLT IDs on web admin (full editor).
+            </Text>
+          </View>
+
+          {(payload?.headers || []).slice(0, 8).map((row: any) => (
+            <View key={row.id} style={styles.card}>
+              <View style={styles.row}>
+                <Text style={styles.cardTitle}>{row.header}</Text>
+                <Text style={styles.badge}>{row.status}</Text>
+              </View>
+              <Text style={styles.cardMeta}>
+                {row.header_type} · {row.dlt_header_id || 'no DLT id'}
+              </Text>
+            </View>
+          ))}
         </ScrollView>
       )}
     </Shell>
@@ -318,4 +464,23 @@ const styles = StyleSheet.create({
   },
   empty: { textAlign: 'center', color: '#64748B', marginTop: 24 },
   error: { color: '#B91C1C', marginBottom: 12, fontWeight: '700' },
+  input: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+  },
+  saveBtn: {
+    marginTop: 12,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
 });

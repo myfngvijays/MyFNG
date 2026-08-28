@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { COLORS } from '../constants/theme';
+import { apiFetch } from '../lib/api';
 
 export type MyCouponItem = {
   id?: string;
@@ -58,6 +60,7 @@ type Props = {
   onUseInCart: (code: string, coupon?: MyCouponItem) => void;
   onLogin?: () => void;
   isLoggedIn: boolean;
+  onWalletCouponApplied?: () => void;
 };
 
 function CouponTicket({
@@ -192,7 +195,117 @@ function CouponTicket({
   );
 }
 
-export default function MyCouponsContent({ coupons, loading, onUseInCart, onLogin, isLoggedIn }: Props) {
+function RedeemInstallCodeCard({ onApplied }: { onApplied?: () => void }) {
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [claimedCode, setClaimedCode] = useState<string | null>(null);
+  const [canClaim, setCanClaim] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<{ can_claim?: boolean; already_claimed?: boolean; code?: string | null }>(
+          '/api/customer/wallet/claim-install-coupon',
+        );
+        if (cancelled) return;
+        setCanClaim(res?.can_claim !== false && !res?.already_claimed);
+        if (res?.already_claimed) setClaimedCode(res.code || 'applied');
+      } catch {
+        if (!cancelled) setCanClaim(true);
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const apply = async () => {
+    const trimmed = code.trim().toUpperCase();
+    if (!trimmed) {
+      Alert.alert('Coupon', 'Enter a festive or society code');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiFetch<{
+        coupon_amount?: number;
+        welcome_amount?: number;
+        wallet_total?: number;
+        coupon_code?: string;
+      }>('/api/customer/wallet/claim-install-coupon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: trimmed }),
+      });
+      const extra = Number(res?.coupon_amount || 0);
+      const total = Number(res?.wallet_total || 0);
+      setClaimedCode(res?.coupon_code || trimmed);
+      setCanClaim(false);
+      setCode('');
+      Alert.alert(
+        'Added to wallet',
+        `₹${Math.round(extra).toLocaleString('en-IN')} added. Wallet total ₹${Math.round(total).toLocaleString('en-IN')}. Same wallet rules apply.`,
+      );
+      onApplied?.();
+    } catch (e: any) {
+      Alert.alert('Coupon', e?.message || 'Could not apply this coupon.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (checking) return null;
+
+  if (!canClaim && claimedCode) {
+    return (
+      <View style={styles.redeemCard}>
+        <View style={styles.redeemDoneRow}>
+          <Ionicons name="checkmark-circle" size={18} color="#059669" />
+          <Text style={styles.redeemDoneText}>
+            Wallet code applied{claimedCode && claimedCode !== 'applied' ? `: ${claimedCode}` : ''}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.redeemCard}>
+      <Text style={styles.redeemTitle}>Have a festive or society code?</Text>
+      <Text style={styles.redeemSub}>
+        Missed it at login? Enter here — amount adds to your welcome wallet.
+      </Text>
+      <View style={styles.redeemRow}>
+        <TextInput
+          style={styles.redeemInput}
+          value={code}
+          onChangeText={setCode}
+          placeholder="Enter code"
+          placeholderTextColor="#94A3B8"
+          autoCapitalize="characters"
+          autoCorrect={false}
+          editable={!loading}
+        />
+        <TouchableOpacity
+          style={[styles.redeemBtn, loading && { opacity: 0.7 }]}
+          onPress={() => { void apply(); }}
+          disabled={loading}
+          activeOpacity={0.88}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.redeemBtnText}>Add</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+export default function MyCouponsContent({ coupons, loading, onUseInCart, onLogin, isLoggedIn, onWalletCouponApplied }: Props) {
   if (!isLoggedIn) {
     return (
       <View style={styles.wrap}>
@@ -226,7 +339,7 @@ export default function MyCouponsContent({ coupons, loading, onUseInCart, onLogi
           <View style={{ flex: 1 }}>
             <Text style={styles.heroEyebrow}>MYFNG REWARDS</Text>
             <Text style={styles.heroTitle}>Offers & Coupons</Text>
-            <Text style={styles.heroSub}>Tap code to copy · Apply instantly at cart checkout</Text>
+            <Text style={styles.heroSub}>Enter a code to add wallet credit · Or use offers in cart</Text>
           </View>
           {!loading ? (
             <View style={styles.countBadge}>
@@ -236,6 +349,8 @@ export default function MyCouponsContent({ coupons, loading, onUseInCart, onLogi
           ) : null}
         </View>
       </View>
+
+      <RedeemInstallCodeCard onApplied={onWalletCouponApplied} />
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -392,6 +507,68 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: '#64748B',
     textAlign: 'center',
+  },
+  redeemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 16,
+  },
+  redeemTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  redeemSub: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  redeemRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  redeemInput: {
+    flex: 1,
+    height: 44,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+    letterSpacing: 0.6,
+  },
+  redeemBtn: {
+    minWidth: 72,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  redeemBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  redeemDoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  redeemDoneText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#047857',
   },
   list: {
     gap: 14,

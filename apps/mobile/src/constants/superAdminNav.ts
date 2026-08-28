@@ -176,6 +176,16 @@ export const SA_NAV: SaNavRow[] = [
   },
   {
     type: 'group',
+    id: 'dlt_sms',
+    label: 'DLT SMS',
+    icon: 'mail-outline',
+    children: [
+      { id: 'dlt_dash', label: 'DLT Dashboard', icon: 'mail-outline', target: 'SuperAdminDltSms', kind: 'stack' },
+      { id: 'dlt_headers', label: 'Headers & Templates', icon: 'document-text-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'DLT SMS', path: '/api/super_admin/dlt-sms' } },
+    ],
+  },
+  {
+    type: 'group',
     id: 'governance',
     label: 'System & Governance',
     icon: 'shield-checkmark-outline',

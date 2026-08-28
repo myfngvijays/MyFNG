@@ -7,6 +7,10 @@
   "bin": {
     "myfng-mcp": "./dist/index.js"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./create-server": "./src/createServer.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",

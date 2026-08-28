@@ -16,6 +16,7 @@ import { probeOpenAiAdminBillingAccess } from '@/lib/chatbot_v2/openAiOrgUsage';
 import { getMisaAiUsdInrRate } from '@/lib/chatbot_v2/misaAiBilling';
 import { getOpenAiCreditBalanceStatus } from '@/lib/chatbot_v2/openAiCreditBalance';
 import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
+import { getMcpHttpToken, MCP_PUBLIC_ORIGIN } from '@/lib/mcp/httpAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -737,9 +738,15 @@ async function checkAdvanceCoupons(): Promise<HealthCheck> {
   }
 
   try {
-    const [all, active] = await Promise.all([
+    const [all, active, installWallet] = await Promise.all([
       client.from('coupons').select('id', { count: 'exact', head: true }),
       client.from('coupons').select('id', { count: 'exact', head: true }).eq('is_active', true),
+      client
+        .from('coupons')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true)
+        .in('coupon_type_slug', ['festival', 'society', 'cashback', 'welcome', 'corporate', 'loyalty', 'flat'])
+        .eq('discount_mode', 'AMOUNT'),
     ]);
     const responseTime = Date.now() - start;
     if (all.error) {
@@ -763,10 +770,14 @@ async function checkAdvanceCoupons(): Promise<HealthCheck> {
       category: 'Commerce',
       status: 'healthy',
       responseTime,
-      message: `${active.count || 0} active / ${all.count || 0} total coupons`,
-      reason: 'Coupon catalog is readable for Advance Coupons, bookings, and push targeting.',
+      message: `${active.count || 0} active / ${all.count || 0} total · ${installWallet.error ? 0 : installWallet.count || 0} first-login wallet coupons`,
+      reason: 'Coupon catalog is readable for Advance Coupons, bookings, first-login wallet codes, and push targeting.',
       lastChecked: new Date().toISOString(),
-      details: { total: all.count || 0, active: active.count || 0 },
+      details: {
+        total: all.count || 0,
+        active: active.count || 0,
+        installWallet: installWallet.error ? 0 : installWallet.count || 0,
+      },
     };
   } catch (e: any) {
     return {
@@ -2862,6 +2873,167 @@ async function checkTelecallerLeadsShiftSummary(): Promise<HealthCheck> {
   }
 }
 
+async function checkDltSms(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'DLT SMS (TRAI)',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify DLT SMS tables: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const [entityRes, headersRes, templatesRes, tmRes] = await Promise.all([
+      client.from('dlt_sms_entity').select('pe_id, entity_status').eq('config_key', 'default').maybeSingle(),
+      client.from('dlt_sms_headers').select('id, status', { count: 'exact' }),
+      client.from('dlt_sms_templates').select('id, kind, status, dlt_template_id, provider_template_id'),
+      client.from('dlt_sms_telemarketers').select('id, is_primary, is_active, api_key'),
+    ]);
+    const responseTime = Date.now() - start;
+    const err = entityRes.error || headersRes.error || templatesRes.error || tmRes.error;
+    if (err) {
+      const missing = /does not exist|relation|42P01|PGRST205/i.test(err.message);
+      return {
+        name: 'DLT SMS (TRAI)',
+        category: 'Notifications',
+        status: 'down',
+        responseTime,
+        message: missing ? 'Migration not applied' : `Query failed: ${err.message}`,
+        reason: missing
+          ? 'Tables dlt_sms_* missing. Run database/352_dlt_sms.sql'
+          : err.message,
+        quickFix: {
+          label: 'Open DLT SMS',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/dlt-sms' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const entity = entityRes.data as { pe_id?: string; entity_status?: string } | null;
+    const headers = headersRes.data || [];
+    const templates = templatesRes.data || [];
+    const tms = tmRes.data || [];
+    const approvedHeaders = headers.filter((h: any) => h.status === 'APPROVED').length;
+    const approvedContent = templates.filter(
+      (t: any) =>
+        t.kind === 'CONTENT' &&
+        t.status === 'APPROVED' &&
+        String(t.dlt_template_id || t.provider_template_id || '').trim(),
+    ).length;
+    const primaryTm = tms.some(
+      (t: any) => t.is_primary && t.is_active && String(t.api_url || t.api_key || '').trim(),
+    );
+    const peOk = Boolean(entity?.pe_id) && entity?.entity_status === 'APPROVED';
+
+    let status: ServiceStatus = 'healthy';
+    let message = 'DLT registry ready to send';
+    let reason = 'PE, approved header, content template, and primary gateway are configured.';
+    if (!peOk || approvedHeaders === 0 || approvedContent === 0 || !primaryTm) {
+      status = 'degraded';
+      const missingBits = [
+        !peOk ? 'approved PE ID' : '',
+        approvedHeaders === 0 ? 'approved header' : '',
+        approvedContent === 0 ? 'approved content template + DLT ID' : '',
+        !primaryTm ? 'own operator HTTP pipe' : '',
+      ].filter(Boolean);
+      message = `Setup incomplete: ${missingBits.join(', ')}`;
+      reason =
+        'Finish Jio TrueConnect header/template approval, paste DLT IDs, and connect your own operator HTTP URL (no MSG91).';
+    }
+
+    return {
+      name: 'DLT SMS (TRAI)',
+      category: 'Notifications',
+      status,
+      responseTime,
+      message,
+      reason,
+      quickFix: {
+        label: 'Open DLT SMS',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/dlt-sms' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: {
+        peId: entity?.pe_id || '',
+        entityStatus: entity?.entity_status || 'NOT_REGISTERED',
+        approvedHeaders,
+        approvedContent,
+        telemarketers: tms.length,
+        hasPrimaryGateway: primaryTm,
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'DLT SMS (TRAI)',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: String(e?.message || e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkMcpRemote(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const token = await getMcpHttpToken();
+    const url = `${MCP_PUBLIC_ORIGIN}/api/mcp`;
+    if (!token) {
+      return {
+        name: 'MyFNG MCP (Claude)',
+        category: 'AI',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Remote MCP URL is live but token is missing',
+        reason: 'Generate a bearer token on Super Admin → MyFNG MCP, then paste https://myfng.in/api/mcp into Claude Connectors.',
+        quickFix: {
+          label: 'Open MyFNG MCP',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/myfng-mcp' },
+        },
+        lastChecked: new Date().toISOString(),
+        details: { url },
+      };
+    }
+    return {
+      name: 'MyFNG MCP (Claude)',
+      category: 'AI',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: `Claude connector ${url}`,
+      reason: 'Bearer token is set. Add this HTTPS URL in Claude → Connectors (not a local file path).',
+      quickFix: {
+        label: 'Open MyFNG MCP',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/myfng-mcp' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { url, hasToken: true },
+    };
+  } catch (e: any) {
+    return {
+      name: 'MyFNG MCP (Claude)',
+      category: 'AI',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: String(e?.message || e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -2873,6 +3045,8 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkFirebase(),
     checkPushCampaigns(),
     checkPushDevices(),
+    checkDltSms(),
+    checkMcpRemote(),
     checkEmailService(),
     checkWalletSystem(),
     checkAdvanceCoupons(),
@@ -2949,6 +3123,8 @@ export async function GET() {
       CLICK_TO_CALL_DID: !!String(process.env.CLICK_TO_CALL_DID || '').trim(),
       SMARTFLO_API_TOKEN: !!String(process.env.SMARTFLO_API_TOKEN || '').trim(),
       SMARTFLO_WEBHOOK_SECRET: !!String(process.env.SMARTFLO_WEBHOOK_SECRET || '').trim(),
+      DLT_SMS_ADMIN: true,
+      MYFNG_MCP_TOKEN: !!(process.env.MYFNG_MCP_TOKEN || '').trim(),
     };
 
     const healthAlertTemplate = await getHealthAlertTemplateStatus();

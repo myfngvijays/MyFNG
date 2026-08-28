@@ -104,6 +104,18 @@ export async function sendSMS(
     }
 
     const fullPhone = `+91${cleanPhone}`;
+    if (templateId) {
+      try {
+        const { sendDltEventSms } = await import('@/lib/dlt-sms/send');
+        const dlt = await sendDltEventSms({ phone: cleanPhone, eventKey: templateId });
+        if (dlt.attempted) {
+          await logNotification(fullPhone, 'SMS', message, dlt.ok ? 'SENT' : 'FAILED');
+          return dlt.ok;
+        }
+      } catch (dltErr) {
+        console.error('[SMS] DLT path skipped:', dltErr);
+      }
+    }
     const success = await sendViaTwilio(fullPhone, message);
 
     await logNotification(fullPhone, 'SMS', message, success ? 'SENT' : 'FAILED');
@@ -154,6 +166,23 @@ export async function sendLeadNotification(
     default:
       console.error('Unknown event type:', eventType);
       return false;
+  }
+
+  try {
+    const { sendDltEventSms } = await import('@/lib/dlt-sms/send');
+    const dlt = await sendDltEventSms({
+      phone,
+      eventKey: eventType,
+      vars: {
+        leadNumber,
+        workshopName: additionalData?.workshopName || 'Workshop',
+        mechanicName: additionalData?.mechanicName || 'Mechanic',
+        amount: String(additionalData?.amount ?? 0),
+      },
+    });
+    if (dlt.attempted) return dlt.ok;
+  } catch (dltErr) {
+    console.error('[SMS] DLT lead notification skipped:', dltErr);
   }
 
   return await sendSMS(phone, message, eventType);

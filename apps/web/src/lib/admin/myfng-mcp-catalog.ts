@@ -27,7 +27,7 @@ export const MYFNG_MCP_META = {
     'PII (phone/email) masked by default via MYFNG_MCP_MASK_PII=true.',
     'Row cap via MYFNG_MCP_MAX_ROWS (default 50, max 100).',
     'Bookings = real statuses (BOOKING_CONFIRMED / IN_SERVICE / SERVICE_DONE…), not every new lead.',
-    'This package is standalone. Connecting it to Cursor/Claude Desktop is optional and manual.',
+    'This package is standalone. Claude.ai uses the public HTTPS URL /api/mcp — not a local file path.',
   ],
 };
 

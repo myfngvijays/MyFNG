@@ -23,6 +23,23 @@ export const DEFAULT_COUPON_TYPES: CouponTypeRecord[] = [
   { slug: 'scratch', label: 'Scratch Card', is_system: true, display_order: 13 },
 ];
 
+/** Flat-amount types that first-login popup can credit into welcome wallet. */
+export const INSTALL_WALLET_COUPON_TYPES = [
+  'festival',
+  'society',
+  'cashback',
+  'welcome',
+  'corporate',
+  'loyalty',
+  'flat',
+] as const;
+
+export type InstallWalletCouponType = (typeof INSTALL_WALLET_COUPON_TYPES)[number];
+
+export function isInstallWalletCouponType(slug: string | null | undefined): boolean {
+  return INSTALL_WALLET_COUPON_TYPES.includes(String(slug || '').toLowerCase() as InstallWalletCouponType);
+}
+
 export const COUPON_PLATFORM_CHANNELS: Array<{ id: Exclude<CouponPlatformChannel, 'MOBILE' | 'ALL'>; label: string }> = [
   { id: 'WEB', label: 'Website' },
   { id: 'ANDROID', label: 'Android App' },

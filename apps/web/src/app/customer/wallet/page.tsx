@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { RedeemInstallCouponCard } from '@/components/customer/RedeemInstallCouponCard';
 
 export default function CustomerWalletPage() {
   const router = useRouter();
@@ -35,6 +36,7 @@ export default function CustomerWalletPage() {
           <p className="text-sm text-gray-600">Current Balance</p>
           <p className="text-3xl font-bold">₹{Number(data.wallet?.current_balance || 0).toFixed(2)}</p>
         </div>
+        <RedeemInstallCouponCard onApplied={() => { void load(); }} />
         <div className="bg-white rounded-lg shadow p-4">
           <h2 className="font-semibold mb-3">Transaction History</h2>
           <div className="space-y-2">

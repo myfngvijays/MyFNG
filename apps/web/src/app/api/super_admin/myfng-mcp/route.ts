@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import {
@@ -7,6 +8,12 @@ import {
   MYFNG_MCP_META,
   MYFNG_MCP_TOOLS,
 } from '@/lib/admin/myfng-mcp-catalog';
+import {
+  CLAUDE_CONNECTORS_URL,
+  MCP_PUBLIC_ORIGIN,
+  mcpTokenStatus,
+  saveMcpHttpToken,
+} from '@/lib/mcp/httpAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +27,7 @@ async function requireSuperAdmin(request: NextRequest) {
 
   const { data: userProfile, error: profileError } = await supabase
     .from('users_login')
-    .select('role:roles!role_id(role_code)')
+    .select('id, role:roles!role_id(role_code)')
     .eq('id', user.id)
     .single();
 
@@ -29,11 +36,10 @@ async function requireSuperAdmin(request: NextRequest) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 
-  return { ok: true as const };
+  return { ok: true as const, userId: String((userProfile as any)?.id || user.id) };
 }
 
 function resolveRepoRoot(): string {
-  // Next usually runs with cwd = apps/web
   const cwd = process.cwd();
   if (existsSync(join(cwd, 'packages', 'myfng-mcp', 'package.json'))) return cwd;
   if (existsSync(join(cwd, '..', '..', 'packages', 'myfng-mcp', 'package.json'))) {
@@ -43,6 +49,13 @@ function resolveRepoRoot(): string {
     return join(cwd, '..');
   }
   return cwd;
+}
+
+function requestOrigin(request: NextRequest): string {
+  const proto = request.headers.get('x-forwarded-proto') || 'https';
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+  if (host) return `${proto}://${host}`.replace(/\/$/, '');
+  return MCP_PUBLIC_ORIGIN;
 }
 
 export async function GET(request: NextRequest) {
@@ -57,12 +70,8 @@ export async function GET(request: NextRequest) {
     const runner = join(pkgDir, 'scripts', 'run-with-env.mjs');
     const readme = join(pkgDir, 'README.md');
 
-    const hasUrl = Boolean(
-      process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
-    );
-    const hasKey = Boolean(
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY,
-    );
+    const hasUrl = Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const hasKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY);
 
     const packagePresent = existsSync(packageJson);
     const built = existsSync(distEntry);
@@ -75,21 +84,13 @@ export async function GET(request: NextRequest) {
 
     const absRunner = runnerPresent ? runner : null;
     const absDist = built ? distEntry : null;
-
-    const sampleConfig = {
-      mcpServers: {
-        myfng: {
-          command: 'node',
-          args: [absRunner || absDist || MYFNG_MCP_META.entryDev],
-        },
-      },
-    };
+    const origin = requestOrigin(request);
+    const productionUrl = `${MCP_PUBLIC_ORIGIN}/api/mcp`;
+    const thisHostUrl = `${origin}/api/mcp`;
+    const tokenInfo = await mcpTokenStatus();
 
     const byArea = Object.fromEntries(
-      MYFNG_MCP_AREAS.map((area) => [
-        area,
-        MYFNG_MCP_TOOLS.filter((t) => t.area === area),
-      ]),
+      MYFNG_MCP_AREAS.map((area) => [area, MYFNG_MCP_TOOLS.filter((t) => t.area === area)]),
     );
 
     return NextResponse.json({
@@ -112,17 +113,81 @@ export async function GET(request: NextRequest) {
         mask_pii: process.env.MYFNG_MCP_MASK_PII ?? 'true (default)',
         max_rows: process.env.MYFNG_MCP_MAX_ROWS ?? '50 (default)',
       },
+      claude: {
+        connectors_url: CLAUDE_CONNECTORS_URL,
+        connector_url: productionUrl,
+        this_host_url: thisHostUrl,
+        localhost_blocked: /localhost|127\.0\.0\.1/i.test(origin),
+        auth: 'none_plus_header',
+        header_name: 'authorization',
+        header_value_prefix: 'Bearer ',
+        ...tokenInfo,
+      },
+      sample_mcp_config: {
+        mcpServers: {
+          myfng: {
+            url: productionUrl,
+            headers: {
+              Authorization: 'Bearer <paste token from this page>',
+            },
+          },
+        },
+      },
+      local_stdio_config: {
+        mcpServers: {
+          myfng: {
+            command: 'node',
+            args: [absRunner || absDist || MYFNG_MCP_META.entryDev],
+          },
+        },
+      },
       tool_count: MYFNG_MCP_TOOLS.length,
       tools: MYFNG_MCP_TOOLS,
       by_area: byArea,
-      sample_mcp_config: sampleConfig,
       setup_steps: [
-        'cd packages/myfng-mcp && npm install && npm run build',
-        'Ensure apps/web/.env.local has SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) + SUPABASE_SERVICE_ROLE_KEY',
-        'Point any MCP host at scripts/run-with-env.mjs (loads .env.local) — optional; not required for MyFNG web',
+        'Generate a Claude token on this page (or set MYFNG_MCP_TOKEN in server env)',
+        `Claude → Customize → Connectors → Add custom connector → Web → paste ${productionUrl}`,
+        'Authentication: None. Request header authorization = Bearer <token>',
+        'Claude.ai cannot use localhost or a Mac file path — it must call the public HTTPS URL',
       ],
       checked_at: new Date().toISOString(),
     });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Failed' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const gate = await requireSuperAdmin(request);
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    const body = await request.json().catch(() => ({}));
+    const action = String(body?.action || '').trim();
+
+    if (action === 'generate_token') {
+      const token = randomBytes(32).toString('hex');
+      await saveMcpHttpToken(token, gate.userId);
+      const status = await mcpTokenStatus();
+      return NextResponse.json({
+        success: true,
+        token,
+        ...status,
+        note: 'Copy this token now. Claude header value: Bearer ' + token,
+      });
+    }
+
+    if (action === 'save_token') {
+      const token = String(body?.token || '').trim();
+      if (token.length < 16) {
+        return NextResponse.json({ error: 'Token must be at least 16 characters' }, { status: 400 });
+      }
+      await saveMcpHttpToken(token, gate.userId);
+      const status = await mcpTokenStatus();
+      return NextResponse.json({ success: true, ...status });
+    }
+
+    return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Failed' }, { status: 500 });
   }

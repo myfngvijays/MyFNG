@@ -31,7 +31,21 @@ Env comes from `apps/web/.env.local` when using `scripts/run-with-env.mjs` (pref
 
 Optional: `MYFNG_MCP_MASK_PII=true`, `MYFNG_MCP_MAX_ROWS=50`
 
-## Optional: wire a host (manual)
+## Claude.ai (the link)
+
+Claude does **not** use a Mac file path. It needs the public HTTPS connector:
+
+`https://myfng.in/api/mcp`
+
+1. Super Admin → **MyFNG MCP** → **Generate token**
+2. Open [Claude Connectors](https://claude.ai/settings/connectors) → Add custom connector → **Web**
+3. Paste the URL above
+4. Auth: **None**. Request header `authorization` = `Bearer <token>`
+
+`localhost` and `node /Users/.../run-with-env.mjs` will not work in Claude.ai (Anthropic’s servers call the URL).
+
+## Optional local stdio (Cursor on this Mac only)
+
 
 Example config (absolute path on your machine):
 

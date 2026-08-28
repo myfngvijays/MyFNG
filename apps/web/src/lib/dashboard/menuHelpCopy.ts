@@ -125,10 +125,10 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/super_admin/myfng-mcp': {
     title: 'MyFNG MCP',
     body:
-      'Read-only MCP package (packages/myfng-mcp) — CRM / calls / reports tools for any MCP host.\n\nYeh Cursor se auto-connect nahi hota. Admin page pe status, tool list, aur optional config JSON dikhta hai.',
+      'Claude.ai ke liye public HTTPS link chahiye: https://myfng.in/api/mcp — Mac file path nahi.\n\nAdmin page pe connector URL copy karo, token generate karo, Claude → Customize → Connectors → Add custom connector (Web).',
     tips: [
-      'Build: cd packages/myfng-mcp && npm install && npm run build',
-      'Env apps/web/.env.local se aati hai (run-with-env.mjs).',
+      'Claude cloud localhost / /Users/... path use nahi kar sakta.',
+      'Generate token, then Authorization header: Bearer <token>',
       'Sirf SELECT — koi write tool nahi.',
     ],
   },
