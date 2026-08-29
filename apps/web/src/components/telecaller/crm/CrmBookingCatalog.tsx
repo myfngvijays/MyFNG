@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { filterAppMembershipPlans } from '@/lib/membership-plans-db';
 
 export type CrmCatalogSelection = {
   service_type_ids: string[];
@@ -163,7 +164,7 @@ export default function CrmBookingCatalog({
           plans = data || [];
         }
 
-        if (!cancelled) setMembershipPlans(plans);
+        if (!cancelled) setMembershipPlans(filterAppMembershipPlans(plans));
       } catch {
         if (!cancelled) setMembershipPlans([]);
       } finally {

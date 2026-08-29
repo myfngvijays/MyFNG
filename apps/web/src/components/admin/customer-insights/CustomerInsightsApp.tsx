@@ -33,6 +33,7 @@ import {
 import ExportDateRangeMenu from '@/components/admin/ExportDateRangeMenu';
 import { getLeadServiceLabel, getLeadVehicleLabel, getLeadPricingBreakdown } from '@/lib/booking-lead-utils';
 import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
+import { filterAppMembershipPlans } from '@/lib/membership-plans-db';
 
 type Overview = {
   total_customers: number;
@@ -138,13 +139,17 @@ function membershipCrownClass(customer?: {
   return isPrimeMembership(customer) ? 'text-violet-600' : 'text-amber-500';
 }
 
+function membershipEndDate(start: Date, durationDays: number) {
+  const end = new Date(start.getTime() + Number(durationDays || 365) * 24 * 60 * 60 * 1000);
+  end.setHours(23, 59, 0, 0);
+  return end;
+}
+
 function buildDefaultActivateDates(plan?: { duration_days?: number | null }) {
   const start = new Date();
-  const durationDays = Number(plan?.duration_days || 365);
-  const end = new Date(start.getTime() + durationDays * 24 * 60 * 60 * 1000);
   return {
     start: toDateTimeLocalValue(start),
-    end: toDateTimeLocalValue(end),
+    end: toDateTimeLocalValue(membershipEndDate(start, Number(plan?.duration_days || 365))),
   };
 }
 
@@ -372,7 +377,9 @@ export default function CustomerInsightsApp() {
         const res = await fetch('/api/super_admin/membership-plans');
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Failed to load plans');
-        const plans = (json.data || []).filter((p: any) => p.active !== false);
+        const plans = filterAppMembershipPlans(
+          (json.data || []).filter((p: any) => p.active !== false),
+        );
         if (active) {
           setMembershipPlans(plans);
           setActivatePlanId((prev) => prev || (plans[0]?.id ? String(plans[0].id) : ''));
@@ -414,7 +421,7 @@ export default function CustomerInsightsApp() {
     const plan = membershipPlans.find((p) => String(p.id) === planId);
     const start = activateStartDate ? new Date(activateStartDate) : new Date();
     const safeStart = Number.isNaN(start.getTime()) ? new Date() : start;
-    const end = new Date(safeStart.getTime() + Number(plan?.duration_days || 365) * 24 * 60 * 60 * 1000);
+    const end = membershipEndDate(safeStart, Number(plan?.duration_days || 365));
     setActivateStartDate(toDateTimeLocalValue(safeStart));
     setActivateEndDate(toDateTimeLocalValue(end));
   };
