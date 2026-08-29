@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 300;
 
 const DEFAULT_STATS = {
   cars_serviced: '1 Million+',
@@ -34,8 +34,14 @@ export async function GET() {
       } catch {}
     }
 
-    return NextResponse.json({ success: true, stats });
+    return NextResponse.json(
+      { success: true, stats },
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } },
+    );
   } catch {
-    return NextResponse.json({ success: true, stats: DEFAULT_STATS });
+    return NextResponse.json(
+      { success: true, stats: DEFAULT_STATS },
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } },
+    );
   }
 }

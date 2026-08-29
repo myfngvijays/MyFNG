@@ -5,9 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/next-build-safe.mjs",
-    "start": "NODE_ENV=production node --require ./scripts/html-pretty-patch.js ./node_modules/next/dist/bin/next start",
+    "start": "NODE_ENV=production next start",
     "start:plain": "next start",
-    "start:standalone": "NODE_ENV=production node --require ./scripts/html-pretty-patch.js ./scripts/start-server.js",
+    "start:standalone": "NODE_ENV=production node ./scripts/start-server.js",
+    "start:pretty": "PRETTY_HTML=1 NODE_ENV=production node --require ./scripts/html-pretty-patch.js ./node_modules/next/dist/bin/next start",
     "lint": "next lint",
     "postinstall": "node scripts/copy-tinymce.mjs",
     "kb:ingest-faqs": "node scripts/ingestFaqTxtToKb.mjs",

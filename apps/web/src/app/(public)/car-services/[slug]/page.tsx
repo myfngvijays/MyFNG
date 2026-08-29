@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import { notFound } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -6,8 +7,11 @@ import { Activity, ArrowRight, Calendar, CheckCircle, Shield } from 'lucide-reac
 import Link from 'next/link';
 import Image from 'next/image';
 import { findServiceBySlug, makeShortDescription, MARKETING_SLUG_TO_INTERNAL } from '@/lib/services/catalog';
-import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
+
+export const revalidate = 300;
+
+const AppDownloadPopup = dynamic(() => import('@/components/landing/AppDownloadPopup'), { ssr: false });
 import { SITE_URL } from '@/lib/seo/metadata';
 import { breadcrumbSchema, serviceSchema } from '@/lib/seo/schemas';
 import JsonLd from '@/components/seo/JsonLd';

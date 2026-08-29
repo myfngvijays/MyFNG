@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Notification as NotificationRow } from '@/shared/types/notifications';
 import toast from 'react-hot-toast';
 import { ensureWebPushSubscribed } from '@/lib/push/registerWebPush';
+import { usePathname } from 'next/navigation';
 
 interface NotificationContextType {
   notifications: NotificationRow[];
@@ -19,6 +20,8 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isStaffApp = pathname?.startsWith('/dashboard') || pathname === '/login' || pathname?.startsWith('/login/');
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -136,6 +139,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // Fetch user ID
   useEffect(() => {
+    if (!isStaffApp) {
+      setLoading(false);
+      return;
+    }
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -163,7 +170,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
 
     fetchUser();
-  }, []);
+  }, [isStaffApp]);
 
   // Fetch notifications
   const fetchNotifications = useCallback(async () => {

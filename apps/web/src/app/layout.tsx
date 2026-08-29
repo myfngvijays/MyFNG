@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
+import { cache } from 'react';
 import Script from 'next/script';
 import { Toaster } from 'react-hot-toast';
-import { NotificationProvider } from '@/contexts/NotificationContext';
 import MobileBottomNav from '@/components/landing/MobileBottomNav';
 import UiDensityController from '@/components/UiDensityController';
 import DevStaleCacheGuard from '@/components/DevStaleCacheGuard';
@@ -10,12 +10,9 @@ import {
   buildSiteViewportFromSettings,
   getSiteTechnicalSeo,
 } from '@/lib/site-technical-seo';
-import '@fontsource/poppins/300.css';
 import '@fontsource/poppins/400.css';
-import '@fontsource/poppins/500.css';
 import '@fontsource/poppins/600.css';
 import '@fontsource/poppins/700.css';
-import 'leaflet/dist/leaflet.css';
 import './globals.css';
 
 /** Runs before hydration — drop stale SW/cache/zoom on localhost so normal Chrome matches Incognito. */
@@ -24,13 +21,15 @@ const DEV_CACHE_BOOTSTRAP = `(function(){try{var h=location.hostname||'';if(h!==
 /** Runs before hydration — avoids oversized flash on Windows dashboards. */
 const UI_DENSITY_BOOTSTRAP = `(function(){try{var p=location.pathname||'';if(p.indexOf('/dashboard')!==0)return;if((window.innerWidth||0)<1024)return;var ua=navigator.userAgent||'';var apple=(/Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(ua))&&!/Windows/i.test(ua);if(apple)return;document.documentElement.classList.add('ui-density-compact');document.documentElement.setAttribute('data-ui-density','compact');}catch(e){}})();`;
 
+const seoSettings = cache(getSiteTechnicalSeo);
+
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSiteTechnicalSeo();
+  const settings = await seoSettings();
   return buildRootMetadataFromSettings(settings);
 }
 
 export async function generateViewport(): Promise<Viewport> {
-  const settings = await getSiteTechnicalSeo();
+  const settings = await seoSettings();
   return buildSiteViewportFromSettings(settings);
 }
 
@@ -50,10 +49,8 @@ export default function RootLayout({
         </Script>
         <UiDensityController />
         <DevStaleCacheGuard />
-        <NotificationProvider>
-          {children}
-          <MobileBottomNav />
-        </NotificationProvider>
+        {children}
+        <MobileBottomNav />
         <Toaster
           position="top-center"
           containerStyle={{

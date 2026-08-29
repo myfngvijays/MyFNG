@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 120;
 
 export async function GET(request: NextRequest) {
   try {
@@ -98,15 +98,18 @@ export async function GET(request: NextRequest) {
       categories: (blog.categories || []).map((c: any) => c?.category).filter(Boolean) || [],
     }));
 
-    return NextResponse.json({
-      blogs: transformedBlogs,
-      pagination: {
-        page,
-        limit,
-        total: tag_id || category_id ? filteredBlogs.length : (count || 0),
-        totalPages: tag_id || category_id ? Math.ceil(filteredBlogs.length / limit) : Math.ceil((count || 0) / limit)
-      }
-    });
+    return NextResponse.json(
+      {
+        blogs: transformedBlogs,
+        pagination: {
+          page,
+          limit,
+          total: tag_id || category_id ? filteredBlogs.length : (count || 0),
+          totalPages: tag_id || category_id ? Math.ceil(filteredBlogs.length / limit) : Math.ceil((count || 0) / limit)
+        }
+      },
+      { headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' } },
+    );
   } catch (error: any) {
     console.error('Error in public blog API:', error);
     return NextResponse.json(

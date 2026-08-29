@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,5 +10,9 @@ export default function DashboardSegmentLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <Suspense fallback={null}>{children}</Suspense>;
+  return (
+    <NotificationProvider>
+      <Suspense fallback={null}>{children}</Suspense>
+    </NotificationProvider>
+  );
 }

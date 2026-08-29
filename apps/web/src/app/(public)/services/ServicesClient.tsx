@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { ArrowRight, CheckCircle, Clock, IndianRupee, Shield, ShieldCheck, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { DEFAULT_SERVICES, Service, canonicalCategoryName, makeShortDescription, normalizeSpaces, INTERNAL_SLUG_TO_MARKETING as INTERNAL_SLUG_TO_CAR_SERVICES } from '@/lib/services/catalog';
-import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
+
+const AppDownloadPopup = dynamic(() => import('@/components/landing/AppDownloadPopup'), { ssr: false });
 
 type CategoryRow = { uuid: string; category: string; description: string | null; sequence: number };
 

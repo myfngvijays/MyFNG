@@ -1,7 +1,9 @@
 import { buildManagedPageMetadata } from '@/lib/site-page-seo';
-import { getOrganizationSchema, localBusinessSchema, websiteSchema } from '@/lib/seo/schemas';
+import { organizationSchema, localBusinessSchema, websiteSchema } from '@/lib/seo/schemas';
 import JsonLd from '@/components/seo/JsonLd';
 import HomePageClient from './HomePageClient';
+
+export const revalidate = 120;
 
 export async function generateMetadata() {
   return buildManagedPageMetadata('/');
@@ -12,7 +14,7 @@ export default async function HomePage() {
     <>
       <JsonLd
         data={[
-          await getOrganizationSchema(),
+          organizationSchema(),
           websiteSchema(),
           localBusinessSchema('Mumbai'),
         ]}

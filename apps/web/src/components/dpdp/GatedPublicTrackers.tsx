@@ -31,7 +31,7 @@ export default function GatedPublicTrackers() {
       {consent.advertising ? (
         <Script
           id="meta-pixel"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `!function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -49,10 +49,10 @@ fbq('track', 'PageView');`,
 
       {consent.analytics ? (
         <>
-          <Script id="gtag-js" strategy="afterInteractive" src="https://www.googletagmanager.com/gtag/js?id=G-S493ENTH9Z" />
+          <Script id="gtag-js" strategy="lazyOnload" src="https://www.googletagmanager.com/gtag/js?id=G-S493ENTH9Z" />
           <Script
             id="google-analytics"
-            strategy="afterInteractive"
+            strategy="lazyOnload"
             dangerouslySetInnerHTML={{
               __html: `window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
@@ -62,7 +62,7 @@ gtag('config', 'G-S493ENTH9Z');`,
           />
           <Script
             id="google-tag-manager"
-            strategy="afterInteractive"
+            strategy="lazyOnload"
             dangerouslySetInnerHTML={{
               __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],

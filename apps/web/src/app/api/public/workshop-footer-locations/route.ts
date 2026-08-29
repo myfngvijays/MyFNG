@@ -5,7 +5,7 @@ import {
   filterFooterLocationsByPublishedSlugs,
 } from '@/lib/workshop/footer-locations';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 300;
 
 /**
  * GET /api/public/workshop-footer-locations
@@ -36,7 +36,10 @@ export async function GET() {
     }
 
     const result = filterFooterLocationsByPublishedSlugs((data || []).map((row) => String(row.slug)));
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json(
+      { success: true, ...result },
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } },
+    );
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Failed to load footer locations';
     return NextResponse.json({ error: message, locations: [], popular: [] }, { status: 500 });

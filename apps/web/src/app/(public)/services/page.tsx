@@ -1,6 +1,8 @@
 import ServicesClient from './ServicesClient';
 import { fetchActiveCategories } from '@/lib/chatbot_v2/db/supabase';
 
+export const revalidate = 300;
+
 export default async function ServicesPage() {
   let categories: Array<{ uuid: string; category: string; description: string | null; sequence: number }> = [];
   try {

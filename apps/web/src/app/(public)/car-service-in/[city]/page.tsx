@@ -7,6 +7,8 @@ import AppDownloadSection from '@/components/landing/AppDownloadSection';
 import { getCityPageBySlug } from '@/lib/city-pages';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 
+export const revalidate = 300;
+
 export default async function CityServicePage({ params }: { params: Promise<{ city: string }> }) {
   const { city: citySlug } = await params;
   const city = getCityPageBySlug(citySlug);

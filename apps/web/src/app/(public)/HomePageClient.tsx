@@ -1,15 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
-import BookingForm from '@/components/landing/BookingForm';
 import LiveStats from '@/components/landing/LiveStats';
 import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
 import DynamicFOMO from '@/components/landing/DynamicFOMO';
-import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
-import AppDownloadSection from '@/components/landing/AppDownloadSection';
 import ServiceExplorer, { type ServiceExplorerItem } from '@/components/landing/ServiceExplorer';
 import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import { 
@@ -44,6 +42,10 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+
+const AppDownloadPopup = dynamic(() => import('@/components/landing/AppDownloadPopup'), { ssr: false });
+const AppDownloadSection = dynamic(() => import('@/components/landing/AppDownloadSection'));
+const BookingForm = dynamic(() => import('@/components/landing/BookingForm'), { ssr: false });
 
 function extractLatLngFromMapLink(mapLink?: string | null): { lat: number; lng: number } | null {
   if (!mapLink) return null;
@@ -322,7 +324,7 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchBrands() {
       try {
-        const response = await fetch('/api/super_admin/car-brands?active_only=true');
+        const response = await fetch('/api/public/car-brands');
         if (response.ok) {
           const result = await response.json();
           const brands = (result.data || []).map((brand: any) => ({

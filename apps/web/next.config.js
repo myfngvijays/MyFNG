@@ -12,7 +12,6 @@ const nextConfig = {
   },
   
   images: {
-    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
@@ -66,15 +65,11 @@ const nextConfig = {
   // For Hostinger deployment - use `next start` (loads .env at runtime).
   // Standalone bundle is optional via `npm run start:standalone`.
 
-  // Full <head> in first HTML chunk (cleaner document structure in view-source)
-  htmlLimitedBots: /.*/,
-
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
     },
-    // Keep tag boundaries readable before pretty-print patch runs
-    serverMinification: false,
+    optimizePackageImports: ['lucide-react', 'date-fns'],
   },
 
   async rewrites() {

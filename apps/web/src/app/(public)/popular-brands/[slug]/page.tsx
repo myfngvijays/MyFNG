@@ -28,7 +28,7 @@ export function generateStaticParams() {
   return POPULAR_BRAND_PAGES.map((brand) => ({ slug: brand.slug }));
 }
 
-export const revalidate = 0;
+export const revalidate = 300;
 
 const COVERAGE_CITIES = ['Mumbai', 'Thane', 'Navi Mumbai', 'Pune', 'Kalyan', 'Dombivli', 'Vasai', 'Nashik'];
 

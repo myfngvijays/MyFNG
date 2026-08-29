@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { NextResponse } from 'next/server';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 300;
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
