@@ -23,6 +23,10 @@ import {
   BellOff,
   BellRing,
   Trash2,
+  MapPin,
+  Gift,
+  MessageCircle,
+  ShoppingCart,
 } from 'lucide-react';
 import { appPlatformBadgeClass, appPlatformLabel } from '@/lib/app-platform';
 import {
@@ -110,6 +114,32 @@ function fmtDate(value?: string | null) {
   });
 }
 
+function fmtDay(value?: string | null) {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatAddressLine(a: {
+  label?: string | null;
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+}) {
+  return [a.line1, a.line2, a.city, a.state, a.pincode].filter(Boolean).join(', ');
+}
+
+function friendlyEventName(name?: string | null) {
+  return String(name || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function toDateTimeLocalValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -191,6 +221,7 @@ export default function CustomerInsightsApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
+  const [eventsExpanded, setEventsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [membershipPlans, setMembershipPlans] = useState<any[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
@@ -403,6 +434,10 @@ export default function CustomerInsightsApp() {
     setWalletCreditAmount('');
     setWalletCreditNote('');
   }, [selectedId, detailTab]);
+
+  useEffect(() => {
+    setEventsExpanded(false);
+  }, [selectedId]);
 
   useEffect(() => {
     if (detailTab !== 'membership' || membershipPlans.length === 0) return;
@@ -1120,6 +1155,14 @@ export default function CustomerInsightsApp() {
                   <div className="space-y-4 text-sm">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-xl bg-gray-50 p-3">
+                        <div className="text-xs text-gray-500">Phone</div>
+                        <div className="font-semibold break-all">{detail.customer.phone || '—'}</div>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <div className="text-xs text-gray-500">Email</div>
+                        <div className="font-semibold break-all">{detail.customer.email || '—'}</div>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-3">
                         <div className="text-xs text-gray-500">App platform</div>
                         <div className="font-semibold">
                           <span
@@ -1154,10 +1197,6 @@ export default function CustomerInsightsApp() {
                         </div>
                       </div>
                       <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">Email</div>
-                        <div className="font-semibold">{detail.customer.email || '—'}</div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
                         <div className="text-xs text-gray-500">Last login</div>
                         <div className="font-semibold">{fmtDate(detail.customer.last_login_at)}</div>
                       </div>
@@ -1175,7 +1214,270 @@ export default function CustomerInsightsApp() {
                           </span>
                         </div>
                       </div>
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <div className="text-xs text-gray-500">Loyalty</div>
+                        <div className="font-semibold">{detail.profile?.loyalty_tier || '—'}</div>
+                      </div>
+                      {detail.profile?.gender ? (
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <div className="text-xs text-gray-500">Gender</div>
+                          <div className="font-semibold">{detail.profile.gender}</div>
+                        </div>
+                      ) : null}
+                      {detail.profile?.dob ? (
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <div className="text-xs text-gray-500">Date of birth</div>
+                          <div className="font-semibold">{fmtDay(detail.profile.dob)}</div>
+                        </div>
+                      ) : null}
+                      {detail.profile?.alt_phone ? (
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <div className="text-xs text-gray-500">Alt phone</div>
+                          <div className="font-semibold">{detail.profile.alt_phone}</div>
+                        </div>
+                      ) : null}
                     </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDetailTab('wallet')}
+                        className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3 text-left hover:border-emerald-300"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Wallet</div>
+                        <div className="font-extrabold text-emerald-900">
+                          {inr(Number(detail.wallet?.spendable_balance ?? detail.wallet?.current_balance ?? 0))}
+                        </div>
+                        {detail.wallet?.welcome_bonus_expires_at ? (
+                          <div className="text-[11px] text-emerald-700 mt-0.5">
+                            Welcome till {fmtDay(detail.wallet.welcome_bonus_expires_at)}
+                          </div>
+                        ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDetailTab('membership')}
+                        className="rounded-xl border border-violet-100 bg-violet-50/70 p-3 text-left hover:border-violet-300"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Membership</div>
+                        <div className="font-extrabold text-violet-900">
+                          {activeMembership
+                            ? activeMembership.plan?.name || 'Active'
+                            : 'None'}
+                        </div>
+                        {activeMembership?.ends_at ? (
+                          <div className="text-[11px] text-violet-700 mt-0.5">
+                            Till {fmtDay(activeMembership.ends_at)}
+                          </div>
+                        ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDetailTab('bookings')}
+                        className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-left hover:border-blue-300"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Bookings</div>
+                        <div className="font-extrabold text-blue-900">
+                          {detail.service_bookings?.length || 0}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDetailTab('coupons')}
+                        className="rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-left hover:border-amber-300"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Coupons</div>
+                        <div className="font-extrabold text-amber-900">
+                          {detail.coupon_assignments?.length || 0} assigned
+                        </div>
+                      </button>
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <MapPin className="h-4 w-4" /> Addresses
+                      </h3>
+                      {detail.addresses?.length ? (
+                        <div className="space-y-2">
+                          {detail.addresses.map((a: any) => (
+                            <div key={a.id} className="rounded-xl border p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-bold">{a.label || 'Address'}</div>
+                                {a.is_default ? (
+                                  <span className="text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5">
+                                    Default
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">{formatAddressLine(a) || '—'}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-400 text-xs">No address saved</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <Car className="h-4 w-4" /> Vehicles
+                      </h3>
+                      {detail.vehicles?.length ? (
+                        <div className="space-y-2">
+                          {detail.vehicles.map((v: any) => (
+                            <div key={v.id} className="rounded-xl border p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-bold">{v.vehicle_number}</div>
+                                {v.is_default ? (
+                                  <span className="text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5">
+                                    Default
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                {[v.make, v.model, v.variant, v.year, v.fuel_type].filter(Boolean).join(' · ')}
+                              </div>
+                              {v.odometer_km != null ? (
+                                <div className="text-[11px] text-gray-500 mt-1">
+                                  Odometer {Number(v.odometer_km).toLocaleString('en-IN')} km
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-400 text-xs">No vehicles saved</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <ShoppingCart className="h-4 w-4" /> Cart / incomplete booking
+                      </h3>
+                      {detail.cart?.items?.length ? (
+                        <div className="rounded-xl border p-3 space-y-2">
+                          <div className="flex justify-between text-xs text-gray-500">
+                            <span>{detail.cart.status || 'ACTIVE'}</span>
+                            <span>Updated {fmtDate(detail.cart.updated_at)}</span>
+                          </div>
+                          {detail.cart.items.map((item: any) => (
+                            <div key={item.id} className="flex justify-between gap-2 text-xs border-t border-gray-100 pt-2">
+                              <div>
+                                <div className="font-semibold text-gray-800">{item.service_type}</div>
+                                <div className="text-gray-500">Qty {item.quantity}</div>
+                              </div>
+                              <div className="font-bold">{inr(Number(item.total_price || item.unit_price || 0))}</div>
+                            </div>
+                          ))}
+                          {Number(detail.cart.grand_total) > 0 ? (
+                            <div className="text-xs font-bold text-gray-800 pt-1">
+                              Total {inr(Number(detail.cart.grand_total))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-gray-400 text-xs">No open cart</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <Gift className="h-4 w-4" /> Referral
+                      </h3>
+                      {detail.referral?.code ? (
+                        <div className="rounded-xl border p-3">
+                          <div className="font-bold tracking-wide">{detail.referral.code}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {detail.referral.active === false ? 'Inactive' : 'Active'} · used {detail.referral.usage_count || 0} time(s)
+                          </div>
+                          {detail.referral_events?.length ? (
+                            <div className="text-xs text-gray-600 mt-2">
+                              {detail.referral_events.length} referral event(s)
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-400 mt-1">No referrals yet</div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-gray-400 text-xs">No referral code</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4" /> WhatsApp
+                      </h3>
+                      {detail.whatsapp_messages?.length ? (
+                        <div className="space-y-2">
+                          {detail.whatsapp_messages.slice(0, 8).map((m: any) => (
+                            <div key={m.id} className="rounded-xl border p-3">
+                              <div className="flex justify-between gap-2 text-[11px] text-gray-500">
+                                <span className="font-bold text-gray-700">
+                                  {m.direction || 'MSG'} · {m.template_name || m.message_type || 'message'}
+                                </span>
+                                <span>{m.status} · {fmtDate(m.created_at)}</span>
+                              </div>
+                              {m.text_body ? (
+                                <p className="text-xs text-gray-700 mt-1 whitespace-pre-line line-clamp-4">
+                                  {m.text_body}
+                                </p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-400 text-xs">No WhatsApp messages</p>
+                      )}
+                    </div>
+
+                    {detail.rsa_leads?.length ? (
+                      <div>
+                        <h3 className="font-bold text-gray-800 mb-2">RSA leads</h3>
+                        <div className="space-y-2">
+                          {detail.rsa_leads.map((r: any) => (
+                            <div key={r.id} className="rounded-xl border p-3">
+                              <div className="flex justify-between gap-2">
+                                <span className="font-bold">{r.service_type || 'RSA'}</span>
+                                <span className="text-xs rounded-full bg-gray-100 px-2 py-0.5">
+                                  {r.lead_status || r.complaint_status}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                {[r.vehicle_number, r.vehicle_model, r.pincode].filter(Boolean).join(' · ')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {detail.analytics_events?.length ? (
+                      <div>
+                        <h3 className="font-bold text-gray-800 mb-2">Recent App Events</h3>
+                        <div className="space-y-1">
+                          {(eventsExpanded
+                            ? detail.analytics_events
+                            : detail.analytics_events.slice(0, 5)
+                          ).map((ev: any) => (
+                            <div key={ev.id} className="flex justify-between text-xs border-b border-gray-100 py-1.5 gap-2">
+                              <span className="font-medium">{friendlyEventName(ev.event_name)}</span>
+                              <span className="text-gray-400 shrink-0">{fmtDate(ev.created_at)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {detail.analytics_events.length > 5 ? (
+                          <button
+                            type="button"
+                            onClick={() => setEventsExpanded((v) => !v)}
+                            className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-800"
+                          >
+                            {eventsExpanded
+                              ? 'Show less'
+                              : `Show more (${detail.analytics_events.length - 5})`}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/80 p-4 space-y-3">
                       <div>
@@ -1253,40 +1555,6 @@ export default function CustomerInsightsApp() {
                         )}
                       </div>
                     </div>
-
-                    <div>
-                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <Car className="h-4 w-4" /> Vehicles
-                      </h3>
-                      {detail.vehicles?.length ? (
-                        <div className="space-y-2">
-                          {detail.vehicles.map((v: any) => (
-                            <div key={v.id} className="rounded-xl border p-3">
-                              <div className="font-bold">{v.vehicle_number}</div>
-                              <div className="text-xs text-gray-500">
-                                {[v.make, v.model, v.year].filter(Boolean).join(' · ')}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-gray-400 text-xs">No vehicles saved</p>
-                      )}
-                    </div>
-
-                    {detail.analytics_events?.length ? (
-                      <div>
-                        <h3 className="font-bold text-gray-800 mb-2">Recent App Events</h3>
-                        <div className="space-y-1">
-                          {detail.analytics_events.slice(0, 8).map((ev: any) => (
-                            <div key={ev.id} className="flex justify-between text-xs border-b border-gray-100 py-1.5">
-                              <span className="font-medium">{ev.event_name}</span>
-                              <span className="text-gray-400">{fmtDate(ev.created_at)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
                 ) : detailTab === 'bookings' ? (
                   <div className="space-y-3">

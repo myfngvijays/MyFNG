@@ -480,6 +480,11 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
   const chatFilter = phoneChatbotFilter(customer.phone);
   const digits = phoneDigits(customer.phone);
 
+  const whatsappFilter = digits
+    ? `recipient_phone.ilike.%${digits}%,sender_phone.ilike.%${digits}%`
+    : null;
+  const rsaFilter = digits ? `contact_number.ilike.%${digits}%` : null;
+
   const [
     vehiclesRes,
     addressesRes,
@@ -491,6 +496,12 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     chatbotRes,
     pushPrefsRes,
     pushDevicesRes,
+    profileRes,
+    referralRes,
+    referralEventsRes,
+    cartRes,
+    whatsappRes,
+    rsaRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('customer_vehicles')
@@ -556,7 +567,55 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
       .eq('is_active', true)
       .order('last_seen_at', { ascending: false })
       .limit(5),
+    supabaseAdmin
+      .from('customer_profiles')
+      .select('gender, dob, alt_phone, loyalty_tier, preferences')
+      .eq('customer_id', customerId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('referral_codes')
+      .select('code, active, usage_count, created_at')
+      .eq('customer_id', customerId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('referral_events')
+      .select('id, referrer_customer_id, referee_customer_id, referral_code, status, created_at')
+      .or(`referrer_customer_id.eq.${customerId},referee_customer_id.eq.${customerId}`)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    supabaseAdmin.from('carts').select('*').eq('customer_id', customerId).maybeSingle(),
+    whatsappFilter
+      ? supabaseAdmin
+          .from('whatsapp_messages')
+          .select(
+            'id, direction, sender_phone, recipient_phone, message_type, template_name, status, text_body, created_at, lead_id',
+          )
+          .or(whatsappFilter)
+          .order('created_at', { ascending: false })
+          .limit(25)
+      : Promise.resolve({ data: [] }),
+    rsaFilter
+      ? supabaseAdmin
+          .from('rsa_leads')
+          .select(
+            'id, customer_name, contact_number, lead_status, complaint_status, vehicle_number, vehicle_model, service_type, address, pincode, lead_registered_at',
+          )
+          .or(rsaFilter)
+          .order('lead_registered_at', { ascending: false })
+          .limit(20)
+      : Promise.resolve({ data: [] }),
   ]);
+
+  let cartItems: any[] = [];
+  const cartRow = cartRes?.error ? null : cartRes?.data || null;
+  if (cartRow?.id) {
+    const { data: itemRows } = await supabaseAdmin
+      .from('cart_items')
+      .select('id, cart_id, item_type, service_type, quantity, unit_price, total_price, metadata, created_at')
+      .eq('cart_id', cartRow.id)
+      .order('created_at', { ascending: false });
+    cartItems = itemRows || [];
+  }
 
   const leads = (leadsRes.data || []).map((l: any) => enrichBookingLead(l));
 
@@ -685,6 +744,17 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     },
     vehicles: vehiclesRes.data || [],
     addresses: addressesRes.data || [],
+    profile: profileRes?.error ? null : profileRes?.data || null,
+    referral: referralRes?.error ? null : referralRes?.data || null,
+    referral_events: referralEventsRes?.error ? [] : referralEventsRes?.data || [],
+    cart: cartRow
+      ? {
+          ...cartRow,
+          items: cartItems,
+        }
+      : null,
+    whatsapp_messages: whatsappRes?.error ? [] : whatsappRes?.data || [],
+    rsa_leads: rsaRes?.error ? [] : rsaRes?.data || [],
     wallet: walletSummary
       ? {
           ...walletSummary.wallet,

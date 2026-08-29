@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -506,12 +507,39 @@ export function LeadManagerAppBookingsScreen() {
   );
 }
 
+function inr(n: number) {
+  return `₹${Number(n || 0).toLocaleString('en-IN')}`;
+}
+
+function fmtWhen(value?: string | null) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function addressLine(a: any) {
+  return [a?.line1, a?.line2, a?.city, a?.state, a?.pincode].filter(Boolean).join(', ');
+}
+
 export function LeadManagerAppCustomersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<any[]>([]);
   const [overview, setOverview] = useState<any>(null);
+  const [selected, setSelected] = useState<any | null>(null);
+  const [detail, setDetail] = useState<any | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [eventsExpanded, setEventsExpanded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -531,6 +559,32 @@ export function LeadManagerAppCustomersScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const openCustomer = async (row: any) => {
+    setSelected(row);
+    setDetail(null);
+    setEventsExpanded(false);
+    setDetailLoading(true);
+    try {
+      const data = await apiFetch<any>(`/api/super_admin/customers/${row.id}`);
+      setDetail(data);
+    } catch (e: any) {
+      Alert.alert('Customer', e?.message || 'Failed to load profile');
+      setSelected(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeCustomer = () => {
+    setSelected(null);
+    setDetail(null);
+  };
+
+  const activeMembership = (detail?.memberships || []).find(
+    (m: any) => m.status === 'ACTIVE' && new Date(String(m.ends_at || 0)).getTime() > Date.now(),
+  );
+  const customer = detail?.customer || selected;
 
   return (
     <OpsShell title="App Customers">
@@ -552,7 +606,7 @@ export function LeadManagerAppCustomersScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}
           contentContainerStyle={{ padding: SPACING.md }}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <TouchableOpacity style={styles.card} onPress={() => void openCustomer(item)} activeOpacity={0.8}>
               <View style={styles.row}>
                 <Text style={styles.name} numberOfLines={1}>
                   {item.full_name || item.phone || 'Customer'}
@@ -564,11 +618,159 @@ export function LeadManagerAppCustomersScreen() {
               <Text style={styles.meta}>
                 {[item.phone, item.email, item.app_platform].filter(Boolean).join(' · ')}
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={<Text style={styles.empty}>No customers found.</Text>}
         />
       )}
+
+      <Modal visible={!!selected} animationType="slide" onRequestClose={closeCustomer}>
+        <SafeAreaView style={styles.shell} edges={['top']}>
+          <View style={styles.topBar}>
+            <TouchableOpacity style={styles.backBtn} onPress={closeCustomer} hitSlop={12}>
+              <Ionicons name="close" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <Text style={styles.topTitle} numberOfLines={1}>
+              {customer?.full_name || customer?.phone || 'Customer'}
+            </Text>
+            <View style={{ width: 40 }} />
+          </View>
+          {detailLoading || !detail ? (
+            <ActivityIndicator style={{ marginTop: 32 }} color={COLORS.primary} />
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: 40 }}>
+              <Text style={styles.meta}>{[customer?.phone, customer?.email].filter(Boolean).join(' · ')}</Text>
+
+              <View style={styles.kpiRow}>
+                <View style={[styles.kpi, { backgroundColor: '#ECFDF5' }]}>
+                  <Text style={styles.kpiVal}>
+                    {inr(Number(detail.wallet?.spendable_balance ?? detail.wallet?.current_balance ?? 0))}
+                  </Text>
+                  <Text style={styles.kpiLbl}>Wallet</Text>
+                </View>
+                <View style={[styles.kpi, { backgroundColor: '#F5F3FF' }]}>
+                  <Text style={styles.kpiVal} numberOfLines={1}>
+                    {activeMembership ? activeMembership.plan?.name || 'Active' : 'None'}
+                  </Text>
+                  <Text style={styles.kpiLbl}>Membership</Text>
+                </View>
+                <View style={[styles.kpi, { backgroundColor: '#EFF6FF' }]}>
+                  <Text style={styles.kpiVal}>{detail.service_bookings?.length || 0}</Text>
+                  <Text style={styles.kpiLbl}>Bookings</Text>
+                </View>
+              </View>
+
+              <Text style={styles.sectionTitle}>Addresses</Text>
+              {(detail.addresses || []).length ? (
+                (detail.addresses || []).map((a: any) => (
+                  <View key={a.id} style={styles.card}>
+                    <Text style={styles.name}>{a.label || 'Address'}{a.is_default ? ' · Default' : ''}</Text>
+                    <Text style={styles.meta}>{addressLine(a) || '—'}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyHint}>No address saved</Text>
+              )}
+
+              <Text style={styles.sectionTitle}>Vehicles</Text>
+              {(detail.vehicles || []).length ? (
+                (detail.vehicles || []).map((v: any) => (
+                  <View key={v.id} style={styles.card}>
+                    <Text style={styles.name}>{v.vehicle_number}</Text>
+                    <Text style={styles.meta}>
+                      {[v.make, v.model, v.year, v.fuel_type].filter(Boolean).join(' · ')}
+                      {v.odometer_km != null ? ` · ${Number(v.odometer_km).toLocaleString('en-IN')} km` : ''}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyHint}>No vehicles saved</Text>
+              )}
+
+              <Text style={styles.sectionTitle}>Cart / incomplete</Text>
+              {(detail.cart?.items || []).length ? (
+                (detail.cart.items || []).map((item: any) => (
+                  <View key={item.id} style={styles.card}>
+                    <Text style={styles.name}>{item.service_type}</Text>
+                    <Text style={styles.meta}>
+                      Qty {item.quantity} · {inr(Number(item.total_price || item.unit_price || 0))}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyHint}>No open cart</Text>
+              )}
+
+              <Text style={styles.sectionTitle}>Referral</Text>
+              <View style={styles.card}>
+                <Text style={styles.name}>{detail.referral?.code || 'No code'}</Text>
+                <Text style={styles.meta}>
+                  Used {detail.referral?.usage_count || 0} time(s)
+                </Text>
+              </View>
+
+              <Text style={styles.sectionTitle}>WhatsApp</Text>
+              {(detail.whatsapp_messages || []).length ? (
+                (detail.whatsapp_messages || []).slice(0, 8).map((m: any) => (
+                  <View key={m.id} style={styles.card}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {m.direction} · {m.template_name || m.message_type}
+                    </Text>
+                    <Text style={styles.meta}>{fmtWhen(m.created_at)} · {m.status}</Text>
+                    {m.text_body ? (
+                      <Text style={[styles.meta, { marginTop: 6 }]} numberOfLines={4}>
+                        {m.text_body}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyHint}>No WhatsApp messages</Text>
+              )}
+
+              <Text style={styles.sectionTitle}>Bookings</Text>
+              {(detail.service_bookings || []).length ? (
+                (detail.service_bookings || []).map((b: any) => (
+                  <View key={b.id} style={styles.card}>
+                    <Text style={styles.name}>{b.lead_number || 'Lead'}</Text>
+                    <Text style={styles.meta}>{[b.status, b.service_type, b.vehicle_number].filter(Boolean).join(' · ')}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyHint}>No service bookings</Text>
+              )}
+
+              <Text style={styles.sectionTitle}>Recent App Events</Text>
+              {(detail.analytics_events || []).length ? (
+                <>
+                  {(eventsExpanded
+                    ? detail.analytics_events
+                    : detail.analytics_events.slice(0, 5)
+                  ).map((ev: any) => (
+                    <View key={ev.id} style={styles.row}>
+                      <Text style={[styles.meta, { flex: 1, color: COLORS.textPrimary, fontWeight: '600' }]}>
+                        {String(ev.event_name || '').replace(/_/g, ' ')}
+                      </Text>
+                      <Text style={styles.meta}>{fmtWhen(ev.created_at)}</Text>
+                    </View>
+                  ))}
+                  {detail.analytics_events.length > 5 ? (
+                    <TouchableOpacity onPress={() => setEventsExpanded((v) => !v)} style={{ paddingVertical: 8 }}>
+                      <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>
+                        {eventsExpanded
+                          ? 'Show less'
+                          : `Show more (${detail.analytics_events.length - 5})`}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              ) : (
+                <Text style={styles.emptyHint}>No app events</Text>
+              )}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
     </OpsShell>
   );
 }
@@ -901,6 +1103,18 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 24,
     fontSize: 13,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyHint: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginBottom: 8,
   },
   bookingsSafe: { flex: 1, backgroundColor: '#F5F7FA' },
   bookingsHeader: {
