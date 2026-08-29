@@ -274,6 +274,26 @@ export function appendUtmToPath(path: string): string {
   return appendUtmToHref(path);
 }
 
+/** /go/myfngapp with ads UTMs (if present) plus a placement so LP clicks are identifiable. */
+export function buildGoAppDownloadHref(placement: string): string {
+  const merged = mergeUtmParams(
+    {
+      utm_source: 'myfng',
+      utm_medium: 'landing',
+      utm_campaign: 'car-service-and-repairs',
+    },
+    typeof window !== 'undefined' ? getCurrentOrStoredUtmParams() : {},
+    { utm_content: placement },
+  );
+  const params = new URLSearchParams();
+  UTM_KEYS.forEach((key) => {
+    const value = merged[key];
+    if (value) params.set(key, value);
+  });
+  const query = params.toString();
+  return query ? `/go/myfngapp?${query}` : '/go/myfngapp';
+}
+
 export function decorateInternalLinks(root: ParentNode = document): void {
   const utm = getStoredUtmParams();
   if (Object.keys(utm).length === 0) return;

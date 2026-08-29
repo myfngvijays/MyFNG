@@ -1,6 +1,24 @@
-export default function AppDownloadSection() {
+export default function AppDownloadSection({
+  downloadHref,
+  asHero = false,
+}: {
+  downloadHref?: string;
+  asHero?: boolean;
+} = {}) {
+  const playHref = downloadHref || 'https://play.google.com/store/apps/details?id=com.myfng.app';
+  const iosHref = downloadHref || 'https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114';
+  const openStore = downloadHref
+    ? {}
+    : { target: '_blank' as const, rel: 'noopener noreferrer' };
+  const TitleTag = asHero ? 'h1' : 'h2';
   return (
-    <section className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 relative overflow-hidden">
+    <section
+      className={`bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 relative overflow-hidden ${
+        asHero
+          ? 'pt-40 sm:pt-44 md:pt-48 lg:pt-52 pb-12 sm:pb-16 md:pb-20'
+          : 'py-12 sm:py-16 md:py-20'
+      }`}
+    >
       {/* Background decoration */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute top-10 left-10 w-72 h-72 bg-white rounded-full blur-3xl" />
@@ -16,13 +34,15 @@ export default function AppDownloadSection() {
               Now Available on Android & iOS
             </div>
 
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
+            <TitleTag className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
               Download the<br />
               <span className="text-yellow-300">MyFNG App</span>
-            </h2>
+            </TitleTag>
 
             <p className="text-blue-100 text-sm sm:text-base max-w-lg mb-5">
-              Book car services in 60 seconds, track live updates, get AI-powered diagnostics, and manage everything from your phone.
+              {asHero
+                ? 'Book car service and repairs near you in Mumbai, Thane, Navi Mumbai and Pune. Periodic servicing, AC repair, engine work — with live updates from your phone.'
+                : 'Book car services in 60 seconds, track live updates, get AI-powered diagnostics, and manage everything from your phone.'}
             </p>
 
             {/* App Features */}
@@ -44,10 +64,21 @@ export default function AppDownloadSection() {
 
             {/* Download Buttons */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3">
+              {downloadHref ? (
+                <a
+                  href={downloadHref}
+                  className="inline-flex items-center justify-center gap-2 bg-white text-blue-800 hover:bg-blue-50 font-bold pl-4 pr-6 py-3 rounded-xl transition-all hover:scale-105 shadow-xl"
+                >
+                  <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
+                    <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 14.59L8.41 12 11 9.41V17h2V9.41l2.59 2.59L17 11l-5-5-5 5 1.41 1.41L11 9.41V17h2Z" />
+                  </svg>
+                  Download MyFNG App
+                </a>
+              ) : (
+                <>
               <a
-                href="https://play.google.com/store/apps/details?id=com.myfng.app"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={playHref}
+                {...openStore}
                 className="flex items-center gap-2 bg-[#01875f] hover:bg-[#016d4d] text-white pl-3 pr-5 py-2.5 rounded-xl transition-all hover:scale-105 shadow-xl"
               >
                 <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
@@ -60,9 +91,8 @@ export default function AppDownloadSection() {
               </a>
 
               <a
-                href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={iosHref}
+                {...openStore}
                 className="flex items-center gap-2 bg-black hover:bg-gray-900 text-white pl-3 pr-5 py-2.5 rounded-xl transition-all hover:scale-105 shadow-xl border border-white/20"
               >
                 <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
@@ -73,6 +103,8 @@ export default function AppDownloadSection() {
                   <div className="text-sm font-semibold leading-tight">App Store</div>
                 </div>
               </a>
+                </>
+              )}
             </div>
 
             {/* Rating */}
@@ -89,12 +121,12 @@ export default function AppDownloadSection() {
           {/* Center: Phone Mockup with 3D Popups */}
           <div className="lg:col-span-3 flex justify-center">
             <div className="relative">
-              <div className="relative w-52 sm:w-56 h-[26rem] sm:h-[28rem] bg-black rounded-[2.5rem] border-[5px] border-gray-800 shadow-2xl shadow-black/40 overflow-hidden">
+              <div className="relative w-52 sm:w-56 h-[26rem] sm:h-[28rem] bg-white rounded-[2.5rem] border-[5px] border-gray-800 shadow-2xl shadow-black/40 overflow-hidden">
                 <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-full z-10" />
                 <img
-                  src="/myfng-app-screenshot.png"
+                  src="/myfng-app-ui.png"
                   alt="MyFNG App"
-                  className="w-full h-full object-cover object-top"
+                  className="absolute inset-0 w-full h-full object-cover object-top"
                 />
               </div>
               {/* 3D Floating Popups */}
@@ -190,10 +222,18 @@ export default function AppDownloadSection() {
                   <p className="text-white text-xl font-bold">₹6,650+ <span className="text-sm font-normal text-blue-200">/ year</span></p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {downloadHref ? (
+                    <a
+                      href={downloadHref}
+                      className="bg-white hover:bg-blue-50 text-blue-800 px-4 py-2 rounded-lg font-bold text-xs transition-all hover:scale-105 shadow-lg"
+                    >
+                      Download App
+                    </a>
+                  ) : (
+                    <>
                   <a
-                    href="https://play.google.com/store/apps/details?id=com.myfng.app"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={playHref}
+                    {...openStore}
                     className="bg-[#01875f] hover:bg-[#016d4d] text-white px-3.5 py-2 rounded-lg font-bold text-xs transition-all hover:scale-105 shadow-lg flex items-center gap-1.5"
                   >
                     <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
@@ -202,9 +242,8 @@ export default function AppDownloadSection() {
                     Android
                   </a>
                   <a
-                    href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={iosHref}
+                    {...openStore}
                     className="bg-black hover:bg-gray-900 text-white px-3.5 py-2 rounded-lg font-bold text-xs transition-all hover:scale-105 shadow-lg flex items-center gap-1.5 border border-white/20"
                   >
                     <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
@@ -212,6 +251,8 @@ export default function AppDownloadSection() {
                     </svg>
                     iOS
                   </a>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

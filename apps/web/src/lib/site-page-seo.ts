@@ -176,6 +176,30 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
     city: 'Mumbai',
   },
   {
+    page_path: '/car-service-and-repairs',
+    page_label: 'Car Service and Repairs (Ads)',
+    display_order: 15,
+    title: 'Car Service and Repairs Near Me | MyFNG Mumbai Pune Thane',
+    description:
+      'Book car service and repairs near you at verified MYFNG workshops in Mumbai, Pune, Thane & Navi Mumbai. Periodic car servicing, AC repair, engine repair, free pickup, genuine parts and warranty.',
+    keywords: [
+      'car service and repairs',
+      'car service near me',
+      'car repair near me',
+      'car servicing Mumbai',
+      'car repair Pune',
+      'car service Thane',
+      'mechanic near me',
+      'periodic car service',
+      'car AC repair',
+      'car garage near me',
+      'MYFNG',
+    ],
+    keyphrase: 'car service and repairs',
+    canonicalPath: '/car-service-and-repairs',
+    city: 'Mumbai',
+  },
+  {
     page_path: '/blogs',
     page_label: 'Blogs',
     display_order: 11,
@@ -414,7 +438,7 @@ export async function listSitePageSitemapEntries(): Promise<Array<{ path: string
       const path = normalizePagePath(brand.pagePath);
       if (!byPath.has(path)) byPath.set(path, { path });
     }
-    for (const path of ['/privacy-policy', '/privacy-notice', '/data-rights', '/terms-and-conditions']) {
+    for (const path of ['/privacy-policy', '/privacy-notice', '/data-rights', '/terms-and-conditions', '/car-service-and-repairs']) {
       if (!byPath.has(path)) byPath.set(path, { path });
     }
 

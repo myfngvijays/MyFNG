@@ -17,7 +17,7 @@ const ctaTitles = [
   "Mumbai & Pune's Trusted Multi-Brand Car Service.",
 ];
 
-export default function Footer() {
+export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) {
   const [ctaIndex, setCtaIndex] = useState(0);
   const [ctaFading, setCtaFading] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
@@ -108,7 +108,7 @@ export default function Footer() {
 
   return (
     <>
-      {/* GRADIENT CTA SECTION */}
+      {!hideCta ? (
       <section
         className="py-[10px] px-5 pb-[35px] text-center text-white relative overflow-hidden"
         style={{
@@ -144,6 +144,7 @@ export default function Footer() {
           </div>
         </div>
       </section>
+      ) : null}
 
       {/* FOOTER */}
       <footer className="text-[#d6d6d6] pt-[10px]" style={{ background: '#0088e8' }}>
@@ -170,6 +171,7 @@ export default function Footer() {
                   { href: '/car-loan', label: 'Car Loan' },
                   { href: '/faqs', label: 'FAQs' },
                   { href: '/car-roadside-assistance', label: 'Roadside Assistance' },
+                  { href: '/car-service-and-repairs', label: 'Car Service & Repairs' },
                 ].map((item) => (
                   <li key={item.href} className="mb-0">
                     <TrackedLink
