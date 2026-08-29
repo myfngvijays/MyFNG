@@ -49,4 +49,4 @@ export const DATA_RIGHTS_TYPES = [
   { id: 'grievance', label: 'Grievance / complaint' },
 ] as const;
 
-export const TRACKER_CONSENT_KEY = 'myfng.dpdp.tracker.v1';
+export const TRACKER_CONSENT_KEY = 'myfng.dpdp.tracker.v2';

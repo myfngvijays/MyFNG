@@ -41,7 +41,7 @@ export default function CookieConsentBanner() {
   if (!open) return null;
 
   return (
-    <div className="pointer-events-none fixed bottom-20 left-3 z-[80] sm:bottom-6 sm:left-4">
+    <div className="pointer-events-none fixed bottom-3 right-3 z-[120] sm:bottom-4 sm:right-4">
       <div className="pointer-events-auto w-[min(19.5rem,calc(100vw-1.5rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
         <p className="text-[13px] font-semibold text-slate-900">Cookies</p>
         <p className="mt-0.5 text-[11px] leading-snug text-slate-600">
