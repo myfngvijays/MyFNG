@@ -34,12 +34,15 @@ export async function performWhatsAppHandoff(input: {
   const assignedNote = rsaLeadId
     ? `${input.note} | RSA lead: ${rsaLeadId}`
     : input.note;
+  const noteWithMarker = assignedNote.includes('[CUSTOMER_HUMAN_REQUEST]')
+    ? assignedNote
+    : `[CUSTOMER_HUMAN_REQUEST] ${assignedNote}`.trim();
 
   await supabaseAdmin.from('whatsapp_chat_assignments').upsert(
     {
       phone,
       assigned_to_ids: [],
-      assigned_note: assignedNote,
+      assigned_note: noteWithMarker,
       assigned_at: now,
       updated_at: now,
     },

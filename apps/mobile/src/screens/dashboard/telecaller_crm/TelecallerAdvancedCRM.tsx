@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -15,10 +15,11 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { apiFetch } from '../../../lib/api';
+import { useNotifications } from '../../../context/NotificationContext';
 import { setAndroidShellBackHandler } from '../../../lib/androidShellBack';
 import TelecallerWhatsAppInbox, {
   TelecallerWhatsAppFab,
@@ -475,6 +476,7 @@ const TC_NAV: NavRow[] = [
 export default function TelecallerAdvancedCRM() {
   const stackNav = useNavigation<any>();
   const route = useRoute();
+  const { unreadCount, refreshNotifications } = useNotifications();
   const isLeadManager = String(route?.name || '').includes('LeadManager');
   const insets = useSafeAreaInsets();
   const drawerNav = isLeadManager ? LM_NAV : TC_NAV;
@@ -504,6 +506,13 @@ export default function TelecallerAdvancedCRM() {
     name: string;
     email: string;
   } | null>(null);
+  const [reminderBadge, setReminderBadge] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshNotifications();
+    }, [refreshNotifications]),
+  );
 
   useEffect(() => {
     const phone = String((route.params as any)?.openAddLeadPhone || '')
@@ -521,43 +530,57 @@ export default function TelecallerAdvancedCRM() {
     }
   }, [(route.params as any)?.openAddLeadPhone, stackNav]);
 
+  const consumeInnerBack = useCallback(() => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return true;
+    }
+    if (whatsAppOpen) {
+      setWhatsAppOpen(false);
+      return true;
+    }
+    if (detailLeadId) {
+      setDetailLeadId(null);
+      setDetailEditing(false);
+      return true;
+    }
+    if (bookMode) {
+      setBookMode(null);
+      setTab('home');
+      return true;
+    }
+    if (tab !== 'home') {
+      setTab('home');
+      return true;
+    }
+    return false;
+  }, [menuOpen, whatsAppOpen, detailLeadId, bookMode, tab]);
+
+  const onAndroidBack = useCallback(() => {
+    if (consumeInnerBack()) return true;
+    if (stackNav.canGoBack()) {
+      stackNav.goBack();
+      return true;
+    }
+    return false;
+  }, [consumeInnerBack, stackNav]);
+
   useEffect(() => {
-    const onBack = () => {
-      if (menuOpen) {
-        setMenuOpen(false);
-        return true;
-      }
-      if (whatsAppOpen) {
-        setWhatsAppOpen(false);
-        return true;
-      }
-      if (detailLeadId) {
-        setDetailLeadId(null);
-        setDetailEditing(false);
-        return true;
-      }
-      if (bookMode) {
-        setBookMode(null);
-        setTab('home');
-        return true;
-      }
-      if (stackNav.canGoBack()) {
-        stackNav.goBack();
-        return true;
-      }
-      if (tab !== 'home') {
-        setTab('home');
-        return true;
-      }
-      return false;
-    };
-    setAndroidShellBackHandler(onBack);
-    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    setAndroidShellBackHandler(onAndroidBack);
+    const sub = BackHandler.addEventListener('hardwareBackPress', onAndroidBack);
+    // Native stack can finish the activity on Android even when JS BackHandler
+    // returns true. Catch the CRM root screen being popped and keep the user in-app.
+    const unsub = stackNav.addListener('beforeRemove', (e: any) => {
+      const type = String(e?.data?.action?.type || '');
+      if (type && !['GO_BACK', 'POP', 'POP_TO_TOP'].includes(type)) return;
+      if (consumeInnerBack()) e.preventDefault();
+    });
     return () => {
       setAndroidShellBackHandler(null);
       sub.remove();
+      unsub();
     };
-  }, [menuOpen, whatsAppOpen, detailLeadId, bookMode, tab, stackNav]);
+  }, [onAndroidBack, consumeInnerBack, stackNav]);
 
   useEffect(() => {
     let cancelled = false;
@@ -862,6 +885,13 @@ export default function TelecallerAdvancedCRM() {
               accessibilityLabel="Reminders"
             >
               <Ionicons name="alarm-outline" size={22} color={COLORS.primary} />
+              {reminderBadge > 0 ? (
+                <View style={styles.topBadge}>
+                  <Text style={styles.topBadgeText}>
+                    {reminderBadge > 99 ? '99+' : String(reminderBadge)}
+                  </Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuBtn}
@@ -872,9 +902,20 @@ export default function TelecallerAdvancedCRM() {
                   /* ignore */
                 }
               }}
-              accessibilityLabel="Notifications"
+              accessibilityLabel={
+                unreadCount > 0
+                  ? `Notifications, ${unreadCount} unread`
+                  : 'Notifications'
+              }
             >
               <Ionicons name="notifications-outline" size={22} color={COLORS.primary} />
+              {unreadCount > 0 ? (
+                <View style={styles.topBadge}>
+                  <Text style={styles.topBadgeText}>
+                    {unreadCount > 99 ? '99+' : String(unreadCount)}
+                  </Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuBtn}
@@ -897,6 +938,8 @@ export default function TelecallerAdvancedCRM() {
             <CrmHomeTab
               {...dateProps}
               embedInShell
+              isActive={homeActive}
+              onRemindersCount={setReminderBadge}
               onNavigate={(screen, params) => {
                 if (screen === 'queue') {
                   setQueueFilter(params?.filter || 'all');
@@ -1235,6 +1278,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  topBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  topBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
   },
   topSide: {
     flex: 1,

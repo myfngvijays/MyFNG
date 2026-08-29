@@ -251,7 +251,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
   return (
     <div className="fixed inset-0 z-[6900] flex items-center justify-center bg-black/45 p-4">
       <div className="w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-black/10 bg-[#075e54] px-4 py-3 text-white">
+        <div className="flex items-center justify-between border-b border-black/10 bg-[#004AAD] px-4 py-3 text-white">
           <div className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
             <p className="text-sm font-semibold">{title || 'WhatsApp Chats'}</p>
@@ -262,7 +262,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
         </div>
 
         {hasNewMessages && (
-          <div className="flex items-center justify-center gap-1.5 bg-[#25D366] px-3 py-1.5 text-xs font-medium text-white animate-pulse">
+          <div className="flex items-center justify-center gap-1.5 bg-[#004AAD] px-3 py-1.5 text-xs font-medium text-white animate-pulse">
             <RefreshCw className="h-3 w-3 animate-spin" />
             New message received
           </div>
@@ -284,7 +284,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
               type="button"
               onClick={() => setMode('assigned')}
               className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                mode === 'assigned' ? 'bg-white text-[#075e54] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                mode === 'assigned' ? 'bg-white text-[#004AAD] shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Assigned
@@ -294,7 +294,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
               type="button"
               onClick={() => setMode('unassigned')}
               className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                mode === 'unassigned' ? 'bg-white text-[#075e54] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                mode === 'unassigned' ? 'bg-white text-[#004AAD] shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Unassigned
@@ -322,7 +322,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                 onClick={() => setFilter(key)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   filter === key
-                    ? 'bg-[#075e54] text-white'
+                    ? 'bg-[#004AAD] text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
@@ -330,7 +330,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                 {count > 0 ? (
                   <span
                     className={`ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
-                      filter === key ? 'bg-white/20 text-white' : 'bg-[#25D366] text-white'
+                      filter === key ? 'bg-white/20 text-white' : 'bg-[#004AAD] text-white'
                     }`}
                   >
                     {count > 99 ? '99+' : count}
@@ -352,7 +352,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
               <p className="font-semibold">{loadError}</p>
               <button
                 type="button"
-                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#075e54] px-3 py-1.5 text-xs font-bold text-white"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#004AAD] px-3 py-1.5 text-xs font-bold text-white"
                 onClick={() => {
                   setSearch((s) => s);
                   setLoadError(null);
@@ -394,7 +394,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                   <button
                     key={chat.phone}
                     type="button"
-                    className={`w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 ${isUnread ? 'bg-[#25D366]/[0.04]' : ''}`}
+                    className={`w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 ${isUnread ? 'bg-[#004AAD]/[0.04]' : ''}`}
                     onClick={() => {
                       const phone = String(chat.phone || '');
                       void fetch('/api/whatsapp/chats/read', {
@@ -414,7 +414,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                             {titleLine}
                           </p>
                           <span
-                            className={`shrink-0 text-[11px] font-medium ${isUnread ? 'text-[#25D366]' : 'text-gray-500'}`}
+                            className={`shrink-0 text-[11px] font-medium ${isUnread ? 'text-[#004AAD]' : 'text-gray-500'}`}
                           >
                             {formatTime(chat.last_message_at)}
                           </span>
@@ -424,7 +424,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                             {subLine}
                           </p>
                           {isUnread ? (
-                            <span className="inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1.5 text-[11px] font-bold leading-none text-white">
+                            <span className="inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#004AAD] px-1.5 text-[11px] font-bold leading-none text-white">
                               {unreadCount > 99 ? '99+' : unreadCount}
                             </span>
                           ) : null}
@@ -437,14 +437,14 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
               {debouncedSearch && debouncedSearch.replace(/\D/g, '').length >= 10 && !filteredRows.some((r) => r.phone.includes(debouncedSearch.replace(/\D/g, ''))) ? (
                 <button
                   type="button"
-                  className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-green-50"
+                  className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-blue-50"
                   onClick={() => {
                     const digits = debouncedSearch.replace(/\D/g, '');
                     const normalized = digits.startsWith('91') ? digits : `91${digits}`;
                     onOpenChat(normalized);
                   }}
                 >
-                  <p className="text-sm font-semibold text-[#075e54]">Open chat with {formatPhone(debouncedSearch.replace(/\D/g, ''))}</p>
+                  <p className="text-sm font-semibold text-[#004AAD]">Open chat with {formatPhone(debouncedSearch.replace(/\D/g, ''))}</p>
                   <p className="mt-0.5 text-xs text-gray-500">Not in your assigned list</p>
                 </button>
               ) : null}

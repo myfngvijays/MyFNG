@@ -168,7 +168,7 @@ function themePalette(theme: WaTheme) {
       searchBg: '#f0f2f5',
       chatEmpty: '#f0f2f5',
       avatar: '#dfe5e7',
-      unread: '#25D366',
+      unread: '#004AAD',
     };
   }
   return {
@@ -184,7 +184,7 @@ function themePalette(theme: WaTheme) {
     searchBg: '#202c33',
     chatEmpty: '#222e35',
     avatar: '#6a7175',
-    unread: '#25D366',
+    unread: '#004AAD',
   };
 }
 
@@ -540,7 +540,7 @@ export default function WhatsAppWebWorkspace({
               style={{ background: colors.listHeader }}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <MessageCircle className="h-5 w-5 text-[#25D366] shrink-0" />
+                <MessageCircle className="h-5 w-5 text-[#004AAD] shrink-0" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold" style={{ color: colors.text }}>
                     {title}
@@ -637,7 +637,7 @@ export default function WhatsAppWebWorkspace({
                         style={{
                           background: active
                             ? tab.id === 'awaiting'
-                              ? '#25D366'
+                              ? '#004AAD'
                               : colors.listBorder
                             : 'transparent',
                           color: active && tab.id === 'awaiting' ? '#fff' : colors.muted,
@@ -817,8 +817,8 @@ export default function WhatsAppWebWorkspace({
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#25D366]/15">
-                  <MessageCircle className="h-8 w-8 text-[#25D366]" />
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#004AAD]/15">
+                  <MessageCircle className="h-8 w-8 text-[#004AAD]" />
                 </div>
                 <p className="text-lg font-semibold" style={{ color: colors.text }}>
                   WhatsApp · 6161

@@ -699,10 +699,6 @@ export default function TelecallerLeadDetailScreen({
         Alert.alert('Missing info', 'Select car model');
         return;
       }
-      if (!editForm.vehicle_fuel_type) {
-        Alert.alert('Missing info', 'Fuel type required');
-        return;
-      }
       if (showSecondCar && (!secondCar.vehicle_make || !secondCar.vehicle_model)) {
         Alert.alert('Missing info', 'Select second car model');
         return;
@@ -1431,12 +1427,20 @@ export default function TelecallerLeadDetailScreen({
         setShowLostMenu(false);
         return true;
       }
+      if (embedded) {
+        navigation?.goBack?.();
+        return true;
+      }
+      if (navigation?.canGoBack?.()) {
+        navigation.goBack();
+        return true;
+      }
       navigation?.goBack?.();
       return true;
     });
 
     return () => backHandler.remove();
-  }, [navigation, showWaChat, showStatusMenu, showLostMenu]);
+  }, [embedded, navigation, showWaChat, showStatusMenu, showLostMenu]);
 
   const fetchLeadDetails = async () => {
     let settled = false;

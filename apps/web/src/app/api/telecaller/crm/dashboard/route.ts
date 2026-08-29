@@ -141,10 +141,6 @@ export async function GET(request: NextRequest) {
       }
       return q;
     };
-    const applySchedRange = (q: any) => {
-      if (rangeStart && rangeEnd) return q.gte('scheduled_time', rangeStart).lte('scheduled_time', rangeEnd);
-      return q;
-    };
     const applyCallRange = (q: any) => {
       if (rangeStart && rangeEnd) return q.gte('created_at', rangeStart).lte('created_at', rangeEnd);
       return q;
@@ -167,6 +163,32 @@ export async function GET(request: NextRequest) {
           .is('deleted_at', null),
       );
 
+    const freshPreviewQuery = applyCreatedRange(
+      applyCrmNewLeadFilter(
+        applyAssignee(
+          db
+            .from('service_leads')
+            .select(
+              'id, lead_number, customer_name, customer_phone, city, created_at, vehicle_make, vehicle_model',
+            )
+            .is('deleted_at', null),
+        ),
+      ),
+    )
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    const todayStartIso = `${today}T00:00:00.000+05:30`;
+    const todayEndIso = `${today}T23:59:59.999+05:30`;
+    const pendingFollowUpCount = () =>
+      seesAll
+        ? db.from('telecaller_follow_ups').select('id', { count: 'exact', head: true }).eq('status', 'PENDING')
+        : db
+            .from('telecaller_follow_ups')
+            .select('id', { count: 'exact', head: true })
+            .eq('telecaller_id', teleCallerId)
+            .eq('status', 'PENDING');
+
     const [
       totalLeads,
       newLeads,
@@ -180,9 +202,11 @@ export async function GET(request: NextRequest) {
       lost,
       overdueCallbacks,
       followUps,
+      pendingReminders,
       rangeCalls,
       metrics,
       attendance,
+      freshPreview,
     ] = await Promise.all([
       applyCreatedRange(leadBase()),
       // Same filters as /api/telecaller/crm/leads?filter=…
@@ -196,20 +220,8 @@ export async function GET(request: NextRequest) {
       applyCreatedRange(leadBase().eq('status', 'COMPLETED')),
       applyCreatedRange(leadBase().eq('status', 'REJECTED')),
       applyFuRange(followUpBase().lte('next_follow_up_at', new Date().toISOString())),
-      seesAll
-        ? applySchedRange(
-            db
-              .from('telecaller_follow_ups')
-              .select('id', { count: 'exact', head: true })
-              .eq('status', 'PENDING'),
-          )
-        : applySchedRange(
-            db
-              .from('telecaller_follow_ups')
-              .select('id', { count: 'exact', head: true })
-              .eq('telecaller_id', teleCallerId)
-              .eq('status', 'PENDING'),
-          ),
+      pendingFollowUpCount().gte('scheduled_time', todayStartIso).lte('scheduled_time', todayEndIso),
+      pendingFollowUpCount(),
       seesAll
         ? applyCallRange(db.from('telecaller_call_logs').select('call_status, call_duration'))
         : applyCallRange(
@@ -244,6 +256,7 @@ export async function GET(request: NextRequest) {
             .eq('telecaller_id', teleCallerId)
             .is('punch_out_at', null)
             .maybeSingle(),
+      freshPreviewQuery,
     ]);
 
     const calls = rangeCalls.data || [];
@@ -253,17 +266,19 @@ export async function GET(request: NextRequest) {
       0,
     );
 
-    // Upcoming reminders (next 5 pending)
+    // Upcoming reminders — top 3 pending for today (IST)
     let upcomingReminders: any[] = [];
     try {
       let remQ = db
         .from('telecaller_follow_ups')
         .select(
-          'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, lead_number, customer_name, customer_phone)',
+          'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, customer_name, customer_phone)',
         )
         .eq('status', 'PENDING')
+        .gte('scheduled_time', todayStartIso)
+        .lte('scheduled_time', todayEndIso)
         .order('scheduled_time', { ascending: true })
-        .limit(5);
+        .limit(3);
       if (!seesAll) remQ = remQ.eq('telecaller_id', teleCallerId);
       const remRes = await remQ;
       upcomingReminders = remRes.data || [];
@@ -350,6 +365,7 @@ export async function GET(request: NextRequest) {
         rejected: lost.count || 0,
         overdue_callbacks: overdueCallbacks.count || 0,
         followups_today: followUps.count || 0,
+        reminders_pending: pendingReminders.count || 0,
         today_calls: calls.length,
         answered_calls: answered,
         answer_rate: calls.length ? Math.round((answered / calls.length) * 100) : 0,
@@ -358,6 +374,7 @@ export async function GET(request: NextRequest) {
         leaderboard_size: leaderboardSize,
       },
       upcoming_reminders: upcomingReminders,
+      fresh_leads: Array.isArray(freshPreview?.data) ? freshPreview.data : [],
       trend,
       attendance: {
         is_punched_in: Boolean(attendance.data),

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatDateTime } from "@/lib/dateFormat";
 import {
   View,
@@ -106,9 +106,13 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   const [rescheduleDraft, setRescheduleDraft] = useState(new Date());
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
   const [rescheduleMode, setRescheduleMode] = useState<'reschedule' | 'next_after_done'>('reschedule');
+  const [androidPickerStep, setAndroidPickerStep] = useState<'date' | 'time'>('date');
+  const androidDraftRef = useRef(new Date());
+  const skipAndroidPickerEvent = useRef(false);
   const [completionTarget, setCompletionTarget] = useState<any | null>(null);
   const [completionNotes, setCompletionNotes] = useState('');
   const [showCompletion, setShowCompletion] = useState(false);
+  const [expandedFollowUpId, setExpandedFollowUpId] = useState<string | null>(null);
 
   const calendarLabel =
     customStart === customEnd
@@ -501,6 +505,8 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     setRescheduleMode(mode);
     setRescheduleTarget(target || null);
     setRescheduleDraft(initial);
+    androidDraftRef.current = initial;
+    setAndroidPickerStep('date');
     setShowReschedulePicker(true);
   };
 
@@ -509,6 +515,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     setRescheduleTarget(null);
     setRescheduleMode('reschedule');
     setRescheduleSaving(false);
+    setAndroidPickerStep('date');
   };
 
   const handleReschedule = (followUpId: string) => {
@@ -551,13 +558,37 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     }
   };
 
-  const handleAndroidPickerChange = (_event: any, selectedDate?: Date) => {
-    // Android dialog — apply immediately on set, dismiss on cancel
-    if (_event?.type === 'dismissed' || !selectedDate) {
+  const handleAndroidPickerChange = (event: any, selectedDate?: Date) => {
+    // Android does not support mode="datetime" — date then time, or native dismiss crashes.
+    if (skipAndroidPickerEvent.current) {
+      skipAndroidPickerEvent.current = false;
+      if (event?.type === 'dismissed') closeReschedulePicker();
+      return;
+    }
+    if (event?.type === 'dismissed') {
       closeReschedulePicker();
       return;
     }
-    void applyReschedule(selectedDate);
+    if (!selectedDate) return;
+
+    if (androidPickerStep === 'date') {
+      const next = new Date(selectedDate);
+      next.setHours(androidDraftRef.current.getHours(), androidDraftRef.current.getMinutes(), 0, 0);
+      androidDraftRef.current = next;
+      setRescheduleDraft(next);
+      setShowReschedulePicker(false);
+      setAndroidPickerStep('time');
+      skipAndroidPickerEvent.current = true;
+      setTimeout(() => setShowReschedulePicker(true), 220);
+      return;
+    }
+
+    const combined = new Date(androidDraftRef.current);
+    combined.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+    androidDraftRef.current = combined;
+    setRescheduleDraft(combined);
+    setShowReschedulePicker(false);
+    void applyReschedule(combined);
   };
 
   const handleViewLead = (leadId: string) => {
@@ -575,8 +606,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     const rawType = String(item.follow_up_type || 'CALLBACK').toUpperCase();
     const typeLabel = rawType === 'CALLBACK' ? 'CALLBACK' : rawType.replace(/_/g, ' ');
     const phone = String(item.lead?.customer_phone || '').replace(/\D/g, '').slice(-10);
-    const assignee = String(item.telecaller?.full_name || '').trim();
-    const phoneLine = [phone || null, assignee || null].filter(Boolean).join(' · ') || '—';
+    const expanded = expandedFollowUpId === item.id;
     const pillLabel = isDone
       ? 'Done'
       : isCancelled
@@ -607,7 +637,11 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
 
     return (
       <View key={item.id} style={[styles.followUpCard, isOverdue && styles.overdueCard]}>
-        <View style={styles.cardTop}>
+        <TouchableOpacity
+          style={styles.cardTop}
+          onPress={() => setExpandedFollowUpId(expanded ? null : item.id)}
+          activeOpacity={0.85}
+        >
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
               {String(item.lead?.customer_name || 'C')
@@ -617,19 +651,21 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             </Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={styles.nameRow}>
-              <Text style={styles.customerName} numberOfLines={1}>
-                {item.lead?.customer_name || 'Customer'}
-              </Text>
-              {item.lead?.lead_number ? (
-                <Text style={styles.leadChip} numberOfLines={1}>
-                  {item.lead.lead_number}
-                </Text>
-              ) : null}
-            </View>
-            <Text style={styles.leadMeta} numberOfLines={1}>
-              {phoneLine}
+            <Text style={styles.customerName} numberOfLines={1}>
+              {item.lead?.customer_name || 'Customer'}
             </Text>
+            <Text style={styles.leadMeta} numberOfLines={1}>
+              {phone || '—'}
+            </Text>
+          </View>
+          <View style={[styles.timePill, pillStyle]}>
+            <Text style={[styles.timePillText, pillTextStyle]}>{pillLabel}</Text>
+          </View>
+          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+
+        {expanded ? (
+          <>
             <View style={styles.detailBlock}>
               <Text style={styles.detailLine} numberOfLines={1}>
                 <Text style={styles.detailKey}>Type </Text>
@@ -648,62 +684,65 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
                   {item.reason}
                 </Text>
               ) : null}
-            </View>
-          </View>
-          <View style={[styles.timePill, pillStyle]}>
-            <Text style={[styles.timePillText, pillTextStyle]}>{pillLabel}</Text>
-          </View>
-        </View>
-
-        {isPending ? (
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.actionPrimary]}
-              onPress={() => Linking.openURL(`tel:${item.lead?.customer_phone}`)}
-            >
-              <Icon name="phone" size={15} color="#fff" />
-              <Text style={styles.actionBtnTextOn}>Call</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.actionGhost]}
-              onPress={() => handleViewLead(item.lead_id)}
-            >
-              <Text style={styles.actionGhostText}>Open</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconAction}
-              onPress={() => handleMarkCompleted(item.id)}
-              accessibilityLabel="Done"
-            >
-              <Icon name="check" size={18} color="#059669" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconAction}
-              onPress={() => handleReschedule(item.id)}
-              accessibilityLabel="Reschedule"
-            >
-              <Icon name="calendar-clock" size={17} color="#0369A1" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconAction}
-              onPress={() => handleMarkMissed(item.id)}
-              accessibilityLabel="Cancel"
-            >
-              <Icon name="close" size={18} color="#DC2626" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {isDone && item.completed_at ? (
-          <View style={styles.completedInfo}>
-            <Icon name="check" size={14} color={COLORS.green} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.completedText}>Done · {formatDateTime(item.completed_at)}</Text>
-              {item.completion_notes ? (
-                <Text style={styles.completedNotes}>{item.completion_notes}</Text>
+              {item.lead?.lead_number ? (
+                <Text style={styles.detailLine} numberOfLines={1}>
+                  <Text style={styles.detailKey}>Lead </Text>
+                  {item.lead.lead_number}
+                </Text>
               ) : null}
             </View>
-          </View>
+
+            {isPending ? (
+              <View style={styles.actionsRow}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionPrimary]}
+                  onPress={() => Linking.openURL(`tel:${item.lead?.customer_phone}`)}
+                >
+                  <Icon name="phone" size={15} color="#fff" />
+                  <Text style={styles.actionBtnTextOn}>Call</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionGhost]}
+                  onPress={() => handleViewLead(item.lead_id)}
+                >
+                  <Text style={styles.actionGhostText}>Open</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconAction}
+                  onPress={() => handleMarkCompleted(item.id)}
+                  accessibilityLabel="Done"
+                >
+                  <Icon name="check" size={18} color="#059669" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconAction}
+                  onPress={() => handleReschedule(item.id)}
+                  accessibilityLabel="Reschedule"
+                >
+                  <Icon name="calendar-clock" size={17} color="#0369A1" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconAction}
+                  onPress={() => handleMarkMissed(item.id)}
+                  accessibilityLabel="Cancel"
+                >
+                  <Icon name="close" size={18} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {isDone && item.completed_at ? (
+              <View style={styles.completedInfo}>
+                <Icon name="check" size={14} color={COLORS.green} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.completedText}>Done · {formatDateTime(item.completed_at)}</Text>
+                  {item.completion_notes ? (
+                    <Text style={styles.completedNotes}>{item.completion_notes}</Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+          </>
         ) : null}
       </View>
     );
@@ -1084,7 +1123,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       {showReschedulePicker && Platform.OS === 'android' ? (
         <DateTimePicker
           value={rescheduleDraft}
-          mode="datetime"
+          mode={androidPickerStep}
           display="default"
           onChange={handleAndroidPickerChange}
         />
@@ -1534,9 +1573,9 @@ const styles = StyleSheet.create({
   followUpCard: {
     backgroundColor: '#fff',
     marginHorizontal: SPACING.md,
-    marginBottom: 12,
+    marginBottom: 8,
     borderRadius: 18,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: 'rgba(2, 61, 149, 0.07)',
     shadowColor: '#0F172A',
@@ -1551,9 +1590,8 @@ const styles = StyleSheet.create({
   },
   cardTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
   },
   avatar: {
     width: 42,
@@ -1590,7 +1628,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    overflow: 'hidden',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   leadMeta: {

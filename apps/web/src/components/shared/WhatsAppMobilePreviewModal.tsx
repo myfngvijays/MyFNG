@@ -2863,8 +2863,8 @@ export default function WhatsAppMobilePreviewModal({
         className={
           isWeb
             ? embedded
-              ? `flex h-full min-h-0 w-full flex-col overflow-hidden ${isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'}`
-              : 'relative mx-auto flex h-[100dvh] w-full max-w-[1200px] flex-col overflow-hidden bg-[#efeae2] shadow-2xl'
+              ? `flex h-full min-h-0 w-full flex-col overflow-hidden ${isDark ? 'bg-[#0b141a]' : 'bg-[#F0F7FF]'}`
+              : 'relative mx-auto flex h-[100dvh] w-full max-w-[1200px] flex-col overflow-hidden bg-[#F0F7FF] shadow-2xl'
             : 'w-[372px] max-w-[95vw] h-[720px] max-h-[94vh] rounded-[2.6rem] bg-[#0f1f2e] p-2.5 shadow-[0_28px_70px_rgba(0,0,0,0.55)]'
         }
         style={
@@ -2879,7 +2879,7 @@ export default function WhatsAppMobilePreviewModal({
           className={
             isWeb
               ? 'relative flex h-full min-h-0 flex-col overflow-hidden'
-              : 'relative h-full rounded-[2.1rem] bg-[#efeae2] overflow-hidden border border-black/25 flex flex-col'
+              : 'relative h-full rounded-[2.1rem] bg-[#F0F7FF] overflow-hidden border border-black/25 flex flex-col'
           }
         >
           {!isWeb ? (
@@ -2891,7 +2891,7 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
           <div
-            className={`bg-[#005c4b] text-white px-3.5 py-3 flex items-center justify-between shadow-sm ${
+            className={`bg-[#004AAD] text-white px-3.5 py-3 flex items-center justify-between shadow-sm ${
               isWeb ? '' : 'cursor-grab active:cursor-grabbing'
             }`}
             onMouseDown={isWeb ? undefined : handleDragStart}
@@ -2958,20 +2958,20 @@ export default function WhatsAppMobilePreviewModal({
               </div>
               <div className="flex items-center gap-2">
                 {Array.isArray(chatAssignment?.assigned_to_names) && chatAssignment.assigned_to_names.length > 0 ? (
-                  <span className="max-w-[140px] truncate text-[10px] font-medium text-[#128c7e]">
+                  <span className="max-w-[140px] truncate text-[10px] font-medium text-[#004AAD]">
                     {chatAssignment.assigned_to_names.join(', ')}
                   </span>
                 ) : (
                   <span className="text-[10px] text-[#667781]">Unassigned</span>
                 )}
-                <span className="text-[10px] font-semibold text-[#128c7e]">{assignmentPanelOpen ? 'Hide' : 'Open'}</span>
+                <span className="text-[10px] font-semibold text-[#004AAD]">{assignmentPanelOpen ? 'Hide' : 'Open'}</span>
               </div>
             </button>
             {assignmentPanelOpen ? (
               <div className="mt-1.5 rounded-lg border border-[#d5dbe1] bg-white p-1.5">
                 <div className="grid grid-cols-2 gap-1.5">
                   <select
-                    className="rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    className="rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] focus:border-[#004AAD] focus:bg-white focus:outline-none"
                     value={selectedAssignee1Id}
                     disabled={assignmentLoading || assignmentSaving}
                     onChange={(e) => setSelectedAssignee1Id(e.target.value)}
@@ -2984,7 +2984,7 @@ export default function WhatsAppMobilePreviewModal({
                     ))}
                   </select>
                   <select
-                    className="rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    className="rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] focus:border-[#004AAD] focus:bg-white focus:outline-none"
                     value={selectedAssignee2Id}
                     disabled={assignmentLoading || assignmentSaving}
                     onChange={(e) => setSelectedAssignee2Id(e.target.value)}
@@ -2999,7 +2999,7 @@ export default function WhatsAppMobilePreviewModal({
                 </div>
                 <div className="mt-1 flex items-center gap-1.5">
                   <input
-                    className="w-full rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    className="w-full rounded-md border border-[#d9dee3] bg-[#f8fafb] px-2 py-1 text-[10px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#004AAD] focus:bg-white focus:outline-none"
                     value={assignmentNote}
                     disabled={assignmentLoading || assignmentSaving}
                     onChange={(e) => setAssignmentNote(e.target.value)}
@@ -3007,7 +3007,7 @@ export default function WhatsAppMobilePreviewModal({
                   />
                   <button
                     type="button"
-                    className="rounded-md bg-[#25D366] px-2.5 py-1 text-[10px] font-semibold text-white disabled:opacity-60"
+                    className="rounded-md bg-[#004AAD] px-2.5 py-1 text-[10px] font-semibold text-white disabled:opacity-60"
                     disabled={assignmentLoading || assignmentSaving}
                     onClick={() => void handleSaveAssignment()}
                   >
@@ -3209,7 +3209,7 @@ export default function WhatsAppMobilePreviewModal({
             ref={messagesContainerRef}
             onScroll={handleConversationScroll}
             className={`flex-1 min-h-0 px-4 sm:px-6 py-4 space-y-2 overflow-y-auto ${
-              isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'
+              isDark ? 'bg-[#0b141a]' : 'bg-[#F0F7FF]'
             }`}
           >
             {loadingOlder ? (
@@ -3451,8 +3451,15 @@ export default function WhatsAppMobilePreviewModal({
                   : messageType === 'STICKER' ? '🗂️ Sticker'
                   : '';
 
+                const rawTextBody = String(msg.text_body || '').trim();
+                const textBody = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'STICKER'].includes(
+                  rawTextBody.toUpperCase(),
+                )
+                  ? ''
+                  : rawTextBody;
+
                 const bubbleText =
-                  String(msg.text_body || '').trim() ||
+                  textBody ||
                   (isTemplateMessage ? templateText || `Template: ${msg.template_name}` : '') ||
                   interactiveText ||
                   callEventText ||
@@ -3502,7 +3509,7 @@ export default function WhatsAppMobilePreviewModal({
                 return (
                   <div
                     key={msg.id}
-                    className={`flex items-center gap-1.5 ${isStatus ? 'justify-center' : outbound ? 'justify-end' : 'justify-start'} ${isSelected ? 'bg-[#25D366]/10 -mx-2 px-2 rounded-lg' : ''}`}
+                    className={`flex items-center gap-1.5 ${isStatus ? 'justify-center' : outbound ? 'justify-end' : 'justify-start'} ${isSelected ? 'bg-[#004AAD]/10 -mx-2 px-2 rounded-lg' : ''}`}
                     onContextMenu={(e) => {
                       if (isStatus) return;
                       e.preventDefault();
@@ -3518,7 +3525,7 @@ export default function WhatsAppMobilePreviewModal({
                         className="flex-shrink-0"
                         onClick={() => toggleMsgSelect(msgId)}
                       >
-                        <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-[#25D366] border-[#25D366]' : 'border-gray-400 bg-white'}`}>
+                        <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-[#004AAD] border-[#004AAD]' : 'border-gray-400 bg-white'}`}>
                           {isSelected ? <Check className="h-3 w-3 text-white" /> : null}
                         </div>
                       </button>
@@ -3528,7 +3535,7 @@ export default function WhatsAppMobilePreviewModal({
                         isStatus
                           ? 'bg-[#d9dfe3] text-[#54656f] text-center'
                           : outbound
-                          ? 'bg-[#d9fdd3] text-gray-900'
+                          ? 'bg-[#D6E8FF] text-gray-900'
                           : 'bg-white text-gray-900'
                       } ${selectMode && !isStatus ? 'cursor-pointer' : ''}`}
                       onClick={selectMode && !isStatus ? () => toggleMsgSelect(msgId) : undefined}
@@ -3593,7 +3600,7 @@ export default function WhatsAppMobilePreviewModal({
 
                             {(messageType === 'AUDIO' || mediaMime.startsWith('audio/')) ? (
                               <div className="mb-1 flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: outbound ? 'rgba(0,0,0,0.06)' : '#f0f2f5' }}>
-                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884]">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#004AAD]">
                                   <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" /></svg>
                                 </span>
                                 {mediaUrl ? (
@@ -3658,7 +3665,7 @@ export default function WhatsAppMobilePreviewModal({
                         {!isStatus && !selectMode ? (
                           <button
                             type="button"
-                            className="ml-1 inline-flex items-center text-[#667781] hover:text-[#25D366]"
+                            className="ml-1 inline-flex items-center text-[#667781] hover:text-[#004AAD]"
                             onClick={() => { setSelectMode(true); setSelectedMsgIds(new Set([msgId])); }}
                             aria-label="Forward message"
                             title="Forward"
@@ -3697,7 +3704,7 @@ export default function WhatsAppMobilePreviewModal({
               <button
                 type="button"
                 onClick={jumpToLatest}
-                className="pointer-events-auto rounded-full bg-[#25D366] px-3 py-1 text-[10px] font-semibold text-white shadow"
+                className="pointer-events-auto rounded-full bg-[#004AAD] px-3 py-1 text-[10px] font-semibold text-white shadow"
               >
                 {unreadCount} new message{unreadCount > 1 ? 's' : ''}
               </button>
@@ -3722,7 +3729,7 @@ export default function WhatsAppMobilePreviewModal({
                 type="button"
                 disabled={selectedMsgIds.size === 0}
                 onClick={() => setForwardPickerOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#1ebe5c] disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#004AAD] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#003A88] disabled:opacity-40"
               >
                 <Share2 className="h-4 w-4" />
                 Forward
@@ -3732,7 +3739,7 @@ export default function WhatsAppMobilePreviewModal({
 
           {forwardPickerOpen ? (
             <div className="absolute inset-0 z-50 flex flex-col bg-white rounded-[2.1rem] overflow-hidden">
-              <div className="bg-[#005c4b] text-white px-4 py-3 flex items-center gap-3">
+              <div className="bg-[#004AAD] text-white px-4 py-3 flex items-center gap-3">
                 <button type="button" onClick={() => setForwardPickerOpen(false)}>
                   <X className="h-5 w-5" />
                 </button>
@@ -3753,7 +3760,7 @@ export default function WhatsAppMobilePreviewModal({
                       type="button"
                       disabled={forwardSending}
                       onClick={handleForwardSelected}
-                      className="flex-shrink-0 rounded-full bg-[#25D366] p-1.5 text-white hover:bg-[#1ebe5c] disabled:opacity-50"
+                      className="flex-shrink-0 rounded-full bg-[#004AAD] p-1.5 text-white hover:bg-[#003A88] disabled:opacity-50"
                     >
                       {forwardSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </button>
@@ -3781,7 +3788,7 @@ export default function WhatsAppMobilePreviewModal({
                         onDoubleClick={() => { setForwardPhone(chat.phone); setTimeout(() => handleForwardSelected(), 50); }}
                         className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-gray-50 disabled:opacity-50"
                       >
-                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366]/10 text-[#25D366]">
+                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#004AAD]/10 text-[#004AAD]">
                           <MessageCircle className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
@@ -3890,7 +3897,7 @@ export default function WhatsAppMobilePreviewModal({
                     type="button"
                     onClick={() => void handleSend()}
                     disabled={sending || paymentGenerating || !textMessage.trim()}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white hover:bg-[#008f72] disabled:cursor-not-allowed disabled:bg-[#c5c9cc]"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#004AAD] text-white hover:bg-[#003A88] disabled:cursor-not-allowed disabled:bg-[#c5c9cc]"
                     title="Send frictionless message"
                   >
                     {sending || paymentGenerating ? (
@@ -3907,7 +3914,7 @@ export default function WhatsAppMobilePreviewModal({
                     setActiveType('template');
                     setTemplateStep(1);
                   }}
-                  className="mt-2.5 w-full rounded-lg px-2 py-2.5 text-center text-[13px] font-semibold text-[#008069] hover:bg-[#f0f2f5] hover:underline"
+                  className="mt-2.5 w-full rounded-lg px-2 py-2.5 text-center text-[13px] font-semibold text-[#004AAD] hover:bg-[#EEF4FF] hover:underline"
                 >
                   or Send a template
                 </button>
@@ -3932,7 +3939,7 @@ export default function WhatsAppMobilePreviewModal({
                   <button
                     type="button"
                     onClick={() => { setActiveType('text'); setShowAttachMenu(false); }}
-                    className="shrink-0 text-[11px] font-semibold text-[#128c7e]"
+                    className="shrink-0 text-[11px] font-semibold text-[#004AAD]"
                   >
                     {isTemplateOnlyMode ? '← Type message' : 'Close'}
                   </button>
@@ -3945,7 +3952,7 @@ export default function WhatsAppMobilePreviewModal({
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
                           Step 1 — Choose Template
                         </p>
-                        <span className="rounded-full bg-[#e7f7ef] px-2 py-0.5 text-[10px] font-semibold text-[#128c7e]">
+                        <span className="rounded-full bg-[#EEF4FF] px-2 py-0.5 text-[10px] font-semibold text-[#004AAD]">
                           {filteredTemplateOptions.length}/{templateOptions.length}
                         </span>
                       </div>
@@ -3969,7 +3976,7 @@ export default function WhatsAppMobilePreviewModal({
                           e.stopPropagation();
                           setTemplatePickerOpen(true);
                         }}
-                        className="w-full min-w-0 max-w-full rounded-xl border border-[#25D366]/40 bg-[#f2fcf6] px-3 py-3 text-left transition hover:bg-[#e8f8ef]"
+                        className="w-full min-w-0 max-w-full rounded-xl border border-[#004AAD]/40 bg-[#EEF4FF] px-3 py-3 text-left transition hover:bg-[#E8F1FF]"
                       >
                         {selectedTemplate ? (
                           <>
@@ -3980,7 +3987,7 @@ export default function WhatsAppMobilePreviewModal({
                             <p className="mt-0.5 truncate font-mono text-[10px] text-[#667781]">
                               {selectedTemplate.template_name}
                             </p>
-                            <p className="mt-2 text-[11px] font-semibold text-[#128c7e]">Change template →</p>
+                            <p className="mt-2 text-[11px] font-semibold text-[#004AAD]">Change template →</p>
                           </>
                         ) : (
                           <>
@@ -3994,7 +4001,7 @@ export default function WhatsAppMobilePreviewModal({
                     </div>
 
                     {selectedTemplate ? (
-                      <div className="mt-2 min-w-0 max-w-full overflow-hidden rounded-xl border border-[#d5dbe1] bg-[#efeae2] p-2.5">
+                      <div className="mt-2 min-w-0 max-w-full overflow-hidden rounded-xl border border-[#d5dbe1] bg-[#F0F7FF] p-2.5">
                         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#667781]">
                           Preview
                         </p>
@@ -4006,20 +4013,20 @@ export default function WhatsAppMobilePreviewModal({
 
                     {templateName.trim() ? (
                       <div className="mt-2 flex min-w-0 max-w-full flex-col gap-2">
-                        <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
+                        <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-[#D6E8FF] bg-[#EEF4FF] px-2.5 py-2 text-[10px] text-[#004AAD]">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                             <p className="min-w-0 truncate font-semibold">{templateTitle(selectedTemplate || { template_name: templateName })}</p>
                             <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
                               {templateCategoryMeta(selectedTemplate?.category).label}
                             </span>
                           </div>
-                          <p className="mt-0.5 truncate font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
+                          <p className="mt-0.5 truncate font-mono text-[9px] text-[#003A88]">{templateName}</p>
                         </div>
                         {visibleVarCount > 0 ? (
                           <button
                             type="button"
                             onClick={() => setTemplateStep(2)}
-                            className="w-full rounded-lg bg-[#25D366] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#1da851]"
+                            className="w-full rounded-lg bg-[#004AAD] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#003A88]"
                           >
                             Fill Variables →
                           </button>
@@ -4028,7 +4035,7 @@ export default function WhatsAppMobilePreviewModal({
                             type="button"
                             onClick={() => void handleSend()}
                             disabled={sending || paymentGenerating}
-                            className="w-full rounded-lg bg-[#25D366] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#1da851] disabled:opacity-60"
+                            className="w-full rounded-lg bg-[#004AAD] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#003A88] disabled:opacity-60"
                           >
                             {sending ? 'Sending…' : 'Send'}
                           </button>
@@ -4042,26 +4049,26 @@ export default function WhatsAppMobilePreviewModal({
                       <button
                         type="button"
                         onClick={() => setTemplateStep(1)}
-                        className="flex items-center gap-1 text-[11px] font-semibold text-[#128c7e] hover:text-[#0d6e52]"
+                        className="flex items-center gap-1 text-[11px] font-semibold text-[#004AAD] hover:text-[#003A88]"
                       >
                         ← Change Template
                       </button>
-                      <span className="rounded-full bg-[#e7f7ef] px-2 py-0.5 text-[10px] font-semibold text-[#128c7e]">
+                      <span className="rounded-full bg-[#EEF4FF] px-2 py-0.5 text-[10px] font-semibold text-[#004AAD]">
                         Step 2 of 2
                       </span>
                     </div>
 
-                    <div className="mb-3 min-w-0 max-w-full overflow-hidden rounded-lg border border-[#bdebd2] bg-[#f2fcf6] px-2.5 py-2">
+                    <div className="mb-3 min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D6E8FF] bg-[#EEF4FF] px-2.5 py-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <p className="min-w-0 truncate text-[11px] font-semibold text-[#128c7e]">
+                        <p className="min-w-0 truncate text-[11px] font-semibold text-[#004AAD]">
                           {templateTitle(selectedTemplate || { template_name: templateName })}
                         </p>
                         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
                           {templateCategoryMeta(selectedTemplate?.category).label}
                         </span>
                       </div>
-                      <p className="mt-0.5 truncate font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
-                      <p className="mt-1 break-words text-[10px] text-[#1b6f5f] whitespace-pre-wrap line-clamp-3 [overflow-wrap:anywhere]">
+                      <p className="mt-0.5 truncate font-mono text-[9px] text-[#003A88]">{templateName}</p>
+                      <p className="mt-1 break-words text-[10px] text-[#003A88] whitespace-pre-wrap line-clamp-3 [overflow-wrap:anywhere]">
                         {fillTemplateBody(selectedTemplate, templateParams)}
                       </p>
                     </div>
@@ -4078,14 +4085,14 @@ export default function WhatsAppMobilePreviewModal({
                         return (
                           <div key={idx}>
                             <label className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[#344054]">
-                              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#25D366] text-[10px] font-bold text-white">
+                              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#004AAD] text-[10px] font-bold text-white">
                                 {idx + 1}
                               </span>
                               {isServiceField ? 'Service Type' : label}
                             </label>
                             {isServiceField ? (
                               <select
-                                className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-3 py-2 text-[12px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#25D366]/30"
+                                className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-3 py-2 text-[12px] text-[#111b21] focus:border-[#004AAD] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#004AAD]/30"
                                 value={val}
                                 onChange={(e) => {
                                   setTemplateParams((prev) => {
@@ -4102,7 +4109,7 @@ export default function WhatsAppMobilePreviewModal({
                               </select>
                             ) : (
                               <input
-                                className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-3 py-2 text-[12px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#25D366]/30"
+                                className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-3 py-2 text-[12px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#004AAD] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#004AAD]/30"
                                 value={val}
                                 onChange={(e) => {
                                   setTemplateParams((prev) => {
@@ -4125,7 +4132,7 @@ export default function WhatsAppMobilePreviewModal({
                         void handleSend();
                       }}
                       disabled={sending || paymentGenerating || !templateName.trim()}
-                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#25D366] px-3 py-2.5 text-[12px] font-bold text-white hover:bg-[#1da851] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#004AAD] px-3 py-2.5 text-[12px] font-bold text-white hover:bg-[#003A88] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {sending || paymentGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       {sending || paymentGenerating ? 'Sending…' : 'Send template'}
@@ -4157,7 +4164,7 @@ export default function WhatsAppMobilePreviewModal({
                       setActiveType('text');
                       setShowAttachMenu(false);
                     }}
-                    className="text-[11px] font-semibold text-[#128c7e]"
+                    className="text-[11px] font-semibold text-[#004AAD]"
                   >
                     Back to text
                   </button>
@@ -4168,7 +4175,7 @@ export default function WhatsAppMobilePreviewModal({
                     Amount (INR)
                   </label>
                   <input
-                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#004AAD] focus:bg-white focus:outline-none"
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     placeholder="Enter amount"
@@ -4181,7 +4188,7 @@ export default function WhatsAppMobilePreviewModal({
                     Note (optional)
                   </label>
                   <input
-                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#004AAD] focus:bg-white focus:outline-none"
                     value={paymentNote}
                     onChange={(e) => setPaymentNote(e.target.value)}
                     placeholder="e.g. RSA advance fee"
@@ -4190,7 +4197,7 @@ export default function WhatsAppMobilePreviewModal({
                     Payment template
                   </label>
                   <select
-                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] focus:border-[#004AAD] focus:bg-white focus:outline-none"
                     value={selectedPaymentTemplateName}
                     onChange={(e) => setSelectedPaymentTemplateName(e.target.value)}
                   >
@@ -4211,7 +4218,7 @@ export default function WhatsAppMobilePreviewModal({
                     type="button"
                     onClick={() => void handleSend()}
                     disabled={sending || paymentGenerating}
-                    className="mt-2 w-full rounded-lg bg-[#128c7e] px-3 py-2 text-[11px] font-semibold text-white hover:bg-[#0f776b] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-2 w-full rounded-lg bg-[#004AAD] px-3 py-2 text-[11px] font-semibold text-white hover:bg-[#003A88] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {sending || paymentGenerating ? 'Generating...' : 'Generate & Send'}
                   </button>
@@ -4366,7 +4373,7 @@ export default function WhatsAppMobilePreviewModal({
                 type="button"
                 onClick={() => void handleSend()}
                 disabled={sending || paymentGenerating}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#004AAD] text-white hover:bg-[#003A88] disabled:cursor-not-allowed disabled:bg-gray-300"
                 title="Send message"
               >
                 {sending || paymentGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -4402,7 +4409,7 @@ export default function WhatsAppMobilePreviewModal({
                     setActiveType('template');
                     setTemplateStep(1);
                   }}
-                  className="mt-2 w-full rounded-lg px-2 py-2 text-center text-[12px] font-semibold text-[#128c7e] hover:bg-[#f0f2f5] hover:underline"
+                  className="mt-2 w-full rounded-lg px-2 py-2 text-center text-[12px] font-semibold text-[#004AAD] hover:bg-[#f0f2f5] hover:underline"
                 >
                   or Send a template
                 </button>
@@ -4448,7 +4455,7 @@ export default function WhatsAppMobilePreviewModal({
               <p className="text-sm font-semibold text-[#111b21]">Call info</p>
               <button
                 type="button"
-                className="text-xs font-semibold text-[#128c7e]"
+                className="text-xs font-semibold text-[#004AAD]"
                 onClick={() => setCallInfoOpen(null)}
               >
                 Close
@@ -4506,7 +4513,7 @@ export default function WhatsAppMobilePreviewModal({
                         href={`/api/whatsapp/calls/recordings/${rec.id}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="block text-[11px] font-medium text-[#128c7e] underline"
+                        className="block text-[11px] font-medium text-[#004AAD] underline"
                       >
                         Recording {rec.provider_recording_id || rec.id} ({formatDuration(rec.duration_seconds)})
                       </a>
@@ -4531,7 +4538,7 @@ export default function WhatsAppMobilePreviewModal({
               <p className="text-sm font-semibold text-[#111b21]">Message info</p>
               <button
                 type="button"
-                className="text-xs font-semibold text-[#128c7e]"
+                className="text-xs font-semibold text-[#004AAD]"
                 onClick={() => setMessageInfoOpen(null)}
               >
                 Close

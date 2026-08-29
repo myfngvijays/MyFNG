@@ -9,10 +9,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
+import { useNotifications } from '../../../context/NotificationContext';
 import CarLoading from '../../../components/CarLoading';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import TelecallerAanshBar from '../../../components/telecaller/TelecallerAanshBar';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
+import { clickToCallCustomer } from '../../../lib/clickToCall';
 import {
   CRM_DATE_PRESETS,
   resolveCrmDateRange,
@@ -23,6 +25,49 @@ import {
   leadStatusKpiColors,
   statusAccentColor,
 } from '../../../lib/telecaller/leadStatusColors';
+
+function formatReminderClock(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function formatLeadAgo(iso?: string | null): string {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+type FreshLead = {
+  id: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  city?: string | null;
+  created_at?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+};
+
+type HomeReminder = {
+  id: string;
+  scheduled_time?: string | null;
+  reason?: string | null;
+  lead_id?: string | null;
+  lead?: {
+    id?: string;
+    customer_name?: string | null;
+    customer_phone?: string | null;
+  } | null;
+};
 
 type Props = {
   onNavigate: (screen: string, params?: any) => void;
@@ -35,6 +80,9 @@ type Props = {
   onDatePresetChange?: (v: CrmDatePreset) => void;
   onCustomStartChange?: (v: string) => void;
   onCustomEndChange?: (v: string) => void;
+  /** Poll latest Fresh leads only while Home is visible. */
+  isActive?: boolean;
+  onRemindersCount?: (count: number) => void;
 };
 
 export default function CrmHomeTab({
@@ -47,6 +95,8 @@ export default function CrmHomeTab({
   onDatePresetChange,
   onCustomStartChange,
   onCustomEndChange,
+  isActive = true,
+  onRemindersCount,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,6 +106,7 @@ export default function CrmHomeTab({
   const [customEndLocal, setCustomEndLocal] = useState(istYmd());
   const [dateOpen, setDateOpen] = useState(false);
   const [aanshActive, setAanshActive] = useState(false);
+  const { unreadCount } = useNotifications();
 
   const datePreset = datePresetProp ?? datePresetLocal;
   const customStart = customStartProp ?? customStartLocal;
@@ -79,17 +130,23 @@ export default function CrmHomeTab({
       }
       const res = await apiFetch<any>(`/api/telecaller/crm/dashboard?${params.toString()}`);
       setData(res);
+      onRemindersCount?.(Number(res?.kpis?.reminders_pending || 0));
     } catch (e) {
       console.error('CRM dashboard failed', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [datePreset, customStart, customEnd]);
+  }, [datePreset, customStart, customEnd, onRemindersCount]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!isActive) return;
+    void load();
+    const id = setInterval(() => {
+      void load();
+    }, 20000);
+    return () => clearInterval(id);
+  }, [load, isActive]);
 
   if (loading && !data) {
     return (
@@ -118,6 +175,10 @@ export default function CrmHomeTab({
 
   const kpis = data?.kpis || {};
   const trend = Array.isArray(data?.trend) ? data.trend : [];
+  const freshLeads: FreshLead[] = Array.isArray(data?.fresh_leads) ? data.fresh_leads : [];
+  const reminders: HomeReminder[] = Array.isArray(data?.upcoming_reminders)
+    ? data.upcoming_reminders.slice(0, 3)
+    : [];
   const punchedIn = Boolean(data?.attendance?.is_punched_in);
   const onFloor = punchedIn;
 
@@ -170,6 +231,13 @@ export default function CrmHomeTab({
               activeOpacity={0.85}
             >
               <Ionicons name="notifications-outline" size={18} color="#0369A1" />
+              {unreadCount > 0 ? (
+                <View style={styles.remindBadge}>
+                  <Text style={styles.remindBadgeText}>
+                    {unreadCount > 99 ? '99+' : String(unreadCount)}
+                  </Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.remindBtn}
@@ -177,9 +245,11 @@ export default function CrmHomeTab({
               activeOpacity={0.85}
             >
               <Ionicons name="alarm-outline" size={18} color="#0369A1" />
-              {Number(kpis.followups_today || 0) > 0 ? (
+              {Number(kpis.reminders_pending || kpis.followups_today || 0) > 0 ? (
                 <View style={styles.remindBadge}>
-                  <Text style={styles.remindBadgeText}>{kpis.followups_today}</Text>
+                  <Text style={styles.remindBadgeText}>
+                    {kpis.reminders_pending || kpis.followups_today}
+                  </Text>
                 </View>
               ) : null}
             </TouchableOpacity>
@@ -339,6 +409,115 @@ export default function CrmHomeTab({
         })}
       </View>
 
+      <View style={styles.navyCard}>
+        <View style={styles.navyHead}>
+          <Text style={styles.navyTitle}>Fresh leads</Text>
+          <TouchableOpacity onPress={() => onNavigate('queue', { filter: 'new' })} activeOpacity={0.8}>
+            <Text style={styles.navyViewAll}>View all</Text>
+          </TouchableOpacity>
+        </View>
+        {freshLeads.length === 0 ? (
+          <Text style={styles.navyEmpty}>No fresh leads right now</Text>
+        ) : (
+          freshLeads.map((lead, idx) => {
+            const vehicle = [lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ');
+            const meta = [lead.city, vehicle].filter(Boolean).join(' · ');
+            return (
+              <View
+                key={String(lead.id)}
+                style={[styles.navyRow, idx === freshLeads.length - 1 && styles.navyRowLast]}
+              >
+                <TouchableOpacity
+                  style={styles.navyBody}
+                  onPress={() => onNavigate('TelecallerLeadDetail', { leadId: lead.id })}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.navyName} numberOfLines={1}>
+                    {String(lead.customer_name || 'Customer').trim()}
+                  </Text>
+                  <Text style={styles.navyMeta} numberOfLines={1}>
+                    {lead.customer_phone || '—'}
+                    {meta ? ` · ${meta}` : ''}
+                  </Text>
+                  <Text style={styles.navyAgo}>{formatLeadAgo(lead.created_at)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.navyCall}
+                  onPress={() =>
+                    void clickToCallCustomer({
+                      customerPhone: lead.customer_phone,
+                      leadId: lead.id,
+                    })
+                  }
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="call" size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        )}
+      </View>
+
+      <View style={styles.navyCard}>
+        <View style={styles.navyHead}>
+          <Text style={styles.navyTitle}>Upcoming reminders</Text>
+          <TouchableOpacity onPress={() => onNavigate('TelecallerFollowUps')} activeOpacity={0.8}>
+            <Text style={styles.navyViewAll}>View all</Text>
+          </TouchableOpacity>
+        </View>
+        {reminders.length === 0 ? (
+          <Text style={styles.navyEmpty}>No reminders today</Text>
+        ) : (
+          reminders.map((r, idx) => {
+            const leadId = String(r.lead_id || r.lead?.id || '');
+            const phone = r.lead?.customer_phone;
+            const overdue = r.scheduled_time ? new Date(r.scheduled_time).getTime() < Date.now() : false;
+            return (
+              <View
+                key={String(r.id)}
+                style={[styles.navyRow, idx === reminders.length - 1 && styles.navyRowLast]}
+              >
+                <TouchableOpacity
+                  style={styles.navyBody}
+                  onPress={() => {
+                    if (leadId) onNavigate('TelecallerLeadDetail', { leadId });
+                    else onNavigate('TelecallerFollowUps');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.navyName} numberOfLines={1}>
+                    {String(r.lead?.customer_name || 'Customer').trim()}
+                  </Text>
+                  <Text style={styles.navyMeta} numberOfLines={1}>
+                    {r.reason || 'Follow-up'}
+                    {phone ? ` · ${phone}` : ''}
+                  </Text>
+                  <Text style={[styles.navyAgo, overdue && { color: '#FECACA' }]}>
+                    {overdue ? 'Overdue · ' : ''}
+                    {formatReminderClock(r.scheduled_time)}
+                  </Text>
+                </TouchableOpacity>
+                {phone ? (
+                  <TouchableOpacity
+                    style={styles.navyCall}
+                    onPress={() =>
+                      void clickToCallCustomer({
+                        customerPhone: phone,
+                        leadId: leadId || null,
+                      })
+                    }
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="call" size={16} color={COLORS.primary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </View>
+
       <View style={styles.perfCard}>
         <Text style={styles.sectionTitle}>Calls in range</Text>
         <View style={styles.perfRow}>
@@ -427,6 +606,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0F2FE',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   remindBadge: {
     position: 'absolute',
@@ -435,7 +615,7 @@ const styles = StyleSheet.create({
     minWidth: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#0369A1',
+    backgroundColor: '#DC2626',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
@@ -532,6 +712,50 @@ const styles = StyleSheet.create({
   perfItem: { flex: 1, alignItems: 'center' },
   perfValue: { fontSize: 20, fontWeight: '800', color: COLORS.primary },
   perfLabel: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  navyCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 6,
+    marginBottom: 12,
+    ...SHADOWS.small,
+  },
+  navyHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  navyTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  navyViewAll: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
+  navyEmpty: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  navyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.18)',
+  },
+  navyRowLast: { borderBottomWidth: 0 },
+  navyBody: { flex: 1, minWidth: 0 },
+  navyName: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  navyMeta: { fontSize: 12, color: 'rgba(255,255,255,0.78)', marginTop: 2 },
+  navyAgo: { fontSize: 11, fontWeight: '700', color: '#BFDBFE', marginTop: 3 },
+  navyCall: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -126,6 +126,39 @@ export async function countDailyOutboundMessages(instanceId: string): Promise<nu
   return count ?? 0;
 }
 
+export async function customerRequestedHumanAgent(phone: string): Promise<boolean> {
+  const db = getAdminDb();
+  const normalized = normalizePhoneNumber(phone);
+  const last10 = normalized.slice(-10);
+  const { data } = await db
+    .from('whatsapp_chat_assignments')
+    .select('assigned_note, phone')
+    .or(`phone.eq.${normalized},phone.eq.${last10},phone.eq.91${last10}`)
+    .limit(1)
+    .maybeSingle();
+  return String(data?.assigned_note || '').includes('[CUSTOMER_HUMAN_REQUEST]');
+}
+
+export async function clearCustomerHumanRequest(phone: string): Promise<void> {
+  const db = getAdminDb();
+  const normalized = normalizePhoneNumber(phone);
+  const last10 = normalized.slice(-10);
+  const { data } = await db
+    .from('whatsapp_chat_assignments')
+    .select('phone, assigned_note')
+    .or(`phone.eq.${normalized},phone.eq.${last10},phone.eq.91${last10}`)
+    .limit(1)
+    .maybeSingle();
+  if (!data?.phone) return;
+  const nextNote = String(data.assigned_note || '')
+    .replace(/\[CUSTOMER_HUMAN_REQUEST\]\s*/g, '')
+    .trim();
+  await db
+    .from('whatsapp_chat_assignments')
+    .update({ assigned_note: nextNote || null, updated_at: new Date().toISOString() })
+    .eq('phone', data.phone);
+}
+
 export async function isChatAssignedToHuman(phone: string): Promise<boolean> {
   const db = getAdminDb();
   const normalized = normalizePhoneNumber(phone);
@@ -160,6 +193,7 @@ function isManualHumanWhatsAppOutbound(row: {
  * Assignment alone (e.g. auto-map from admin panel) should not permanently silence MISA.
  */
 export async function shouldSkipBotsForHumanAssignment(phone: string): Promise<boolean> {
+  if (await customerRequestedHumanAgent(phone)) return true;
   if (!(await isChatAssignedToHuman(phone))) return false;
 
   const db = getAdminDb();

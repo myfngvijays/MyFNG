@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   StyleSheet,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,14 +18,14 @@ import { isWhatsAppSessionWindowClosed } from '../../lib/whatsappSessionWindow';
 import TelecallerWhatsAppChat from './TelecallerWhatsAppChat';
 
 const WA = {
-  header: '#008069',
+  header: '#004AAD',
   bg: '#FFFFFF',
-  searchBg: '#F0F2F5',
+  searchBg: '#EEF4FF',
   text: '#111B21',
   meta: '#667781',
-  unread: '#25D366',
+  unread: '#004AAD',
   divider: '#E9EDEF',
-  avatarColors: ['#00A884', '#02A698', '#7D9D9C', '#6A8CAF', '#DF8569', '#BA7BCC'],
+  avatarColors: ['#004AAD', '#0A57BF', '#003A88', '#2563EB', '#1D4ED8', '#3B82F6'],
 };
 
 type InboxTab = 'open' | 'awaiting' | 'closed';
@@ -263,6 +264,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
         />
       ) : (
         <View style={styles.container}>
+          <StatusBar barStyle="light-content" backgroundColor={WA.header} />
           <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
             <TouchableOpacity style={styles.iconHit} onPress={handleClose}>
               <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -374,7 +376,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                             size={16}
                             color={
                               String(item.last_status || '').toUpperCase() === 'READ'
-                                ? '#53BDEB'
+                                ? '#004AAD'
                                 : WA.meta
                             }
                             style={{ marginRight: 2 }}
@@ -516,7 +518,7 @@ const styles = StyleSheet.create({
     backgroundColor: WA.searchBg,
   },
   tabBtnOn: {
-    backgroundColor: '#E7F8F0',
+    backgroundColor: '#E8F1FF',
   },
   tabLabel: {
     fontSize: 13,
@@ -649,7 +651,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   fabWhatsApp: {
-    backgroundColor: '#25D366',
+    backgroundColor: COLORS.primary,
   },
   badge: {
     position: 'absolute',

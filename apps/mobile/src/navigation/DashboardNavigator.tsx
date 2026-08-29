@@ -198,7 +198,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     const backSub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
     const beforeRemove = navigation?.addListener?.('beforeRemove', (e: any) => {
       const type = String(e?.data?.action?.type || '');
-      if (type !== 'GO_BACK' && type !== 'POP') return;
+      if (['NAVIGATE', 'REPLACE', 'RESET', 'PUSH', 'JUMP_TO'].includes(type)) return;
       if (handleAndroidShellBack()) {
         e.preventDefault();
       }

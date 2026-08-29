@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
-import { Calendar, Clock, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Calendar, Clock, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { formatDateTime } from "@/lib/utils";
@@ -70,6 +70,7 @@ export default function FollowUpsPage() {
   const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
   const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
   const [rangeTap, setRangeTap] = useState<'start' | 'end'>('start');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchFollowUps();
@@ -459,38 +460,25 @@ export default function FollowUpsPage() {
           ) : (
             filteredFollowUps.map((followUp) => {
               const timeStatus = getTimeStatus(followUp.scheduled_time);
+              const expanded = expandedId === followUp.id;
 
               return (
                 <div
                   key={followUp.id}
                   className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:px-4 shadow-sm hover:bg-slate-50/80 transition"
                 >
-                  <div className="flex flex-wrap items-start gap-x-3 gap-y-2 min-w-0">
+                  <button
+                    type="button"
+                    className="flex w-full min-w-0 items-center gap-3 text-left"
+                    onClick={() => setExpandedId(expanded ? null : followUp.id)}
+                  >
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                        <h3 className="text-sm sm:text-base font-bold text-[#023D95] truncate">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <h3 className="truncate text-sm font-bold text-[#023D95] sm:text-base">
                           {followUp.lead?.customer_name || 'Unknown'}
                         </h3>
-                        {followUp.lead?.lead_number ? (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-mono shrink-0">
-                            {followUp.lead.lead_number}
-                          </span>
-                        ) : null}
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${
-                            followUp.priority === 'URGENT'
-                              ? 'bg-red-100 text-red-700'
-                              : followUp.priority === 'HIGH'
-                                ? 'bg-orange-100 text-orange-700'
-                                : followUp.priority === 'LOW'
-                                  ? 'bg-gray-100 text-gray-700'
-                                  : 'bg-blue-100 text-blue-700'
-                          }`}
-                        >
-                          {followUp.priority}
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap shrink-0 ${
+                          className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                             timeStatus.color === 'red'
                               ? 'bg-red-100 text-red-700'
                               : timeStatus.color === 'orange'
@@ -503,30 +491,37 @@ export default function FollowUpsPage() {
                           {timeStatus.label}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-600 mt-0.5 truncate">
-                        {[followUp.lead?.customer_phone, followUp.telecaller?.full_name]
-                          .filter(Boolean)
-                          .join(' · ') || '—'}
+                      <p className="mt-0.5 truncate text-xs text-slate-600">
+                        {followUp.lead?.customer_phone || '—'}
                       </p>
-                      <div className="mt-1.5 flex flex-col gap-0.5 text-xs text-slate-700 min-w-0">
-                        <span className="inline-flex items-center gap-1 min-w-0">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="font-semibold text-slate-500">Type</span>
-                          <span className="truncate">{followUp.follow_up_type}</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1 min-w-0">
-                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="font-semibold text-slate-500 shrink-0">When</span>
-                          <span className="truncate">{formatDateTime(followUp.scheduled_time)}</span>
-                        </span>
-                        {followUp.reason ? (
-                          <span className="text-slate-600 min-w-0" title={followUp.reason}>
-                            <span className="font-semibold text-slate-500">Reason</span>{' '}
-                            {followUp.reason}
-                          </span>
-                        ) : null}
-                      </div>
                     </div>
+                    {expanded ? (
+                      <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                    )}
+                  </button>
+                  {expanded ? (
+                  <div className="mt-2 min-w-0 border-t border-slate-100 pt-2">
+                    <div className="mb-2 flex min-w-0 flex-col gap-0.5 text-xs text-slate-700">
+                      <span className="inline-flex min-w-0 items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <span className="font-semibold text-slate-500">Type</span>
+                        <span className="truncate">{followUp.follow_up_type}</span>
+                      </span>
+                      <span className="inline-flex min-w-0 items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <span className="shrink-0 font-semibold text-slate-500">When</span>
+                        <span className="truncate">{formatDateTime(followUp.scheduled_time)}</span>
+                      </span>
+                      {followUp.reason ? (
+                        <span className="min-w-0 text-slate-600" title={followUp.reason}>
+                          <span className="font-semibold text-slate-500">Reason</span>{' '}
+                          {followUp.reason}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
 
                     {followUp.status === 'PENDING' ? (
                       <div className="flex flex-row flex-wrap gap-1.5 shrink-0 ml-auto">
@@ -610,6 +605,8 @@ export default function FollowUpsPage() {
                       Done: {followUp.completion_notes}
                       {followUp.completed_at ? ` · ${formatDateTime(followUp.completed_at)}` : ''}
                     </p>
+                  ) : null}
+                    </div>
                   ) : null}
                 </div>
               );

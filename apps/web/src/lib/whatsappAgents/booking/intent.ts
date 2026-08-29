@@ -42,7 +42,16 @@ export function hasBookingIntent(message: string): boolean {
 
   if (NON_BOOKING_PREFIXES.some((kw) => text.includes(kw))) return false;
 
-  if (GREETING_KEYWORDS.some((kw) => text === kw || text.startsWith(`${kw} `))) return true;
+  if (isGreetingMessage(text)) return true;
 
   return BOOKING_KEYWORDS.some((kw) => text.includes(kw));
+}
+
+export function isGreetingMessage(message: string): boolean {
+  const text = String(message || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[!.,]+$/g, '');
+  if (!text) return false;
+  return GREETING_KEYWORDS.some((kw) => text === kw || text.startsWith(`${kw} `));
 }

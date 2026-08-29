@@ -307,7 +307,7 @@ export default function CrmLeadEditForm({
     vehicle_model: '',
     vehicle_variant: '',
     vehicle_year: '',
-    vehicle_fuel_type: 'PETROL',
+    vehicle_fuel_type: '',
     odometer_km: '',
     vehicle_class: '',
 
@@ -622,7 +622,7 @@ export default function CrmLeadEditForm({
         vehicle_model: leadData.vehicle_model || '',
         vehicle_variant: leadData.vehicle_variant || '',
         vehicle_year: leadData.vehicle_year?.toString() || '',
-        vehicle_fuel_type: leadData.vehicle_fuel_type || 'PETROL',
+        vehicle_fuel_type: leadData.vehicle_fuel_type || '',
         odometer_km: leadData.odometer_km?.toString() || '',
         vehicle_class: leadData.vehicle_class || meta.vehicle_class || '',
         
@@ -826,7 +826,6 @@ export default function CrmLeadEditForm({
       if (!formData.vehicle_make.trim() || !formData.vehicle_model.trim()) {
         newErrors.vehicle_make = 'Search and select car model';
       }
-      if (!formData.vehicle_fuel_type) newErrors.vehicle_fuel_type = 'Fuel type is required';
 
       if (showSecondCar) {
         const sNum = secondCar.vehicle_number.trim().toUpperCase();
@@ -1446,8 +1445,9 @@ export default function CrmLeadEditForm({
               <input type="number" name="vehicle_year" value={formData.vehicle_year} onChange={handleChange} className={fieldCls()} min="1900" max={new Date().getFullYear() + 1} />
             </div>
             <div>
-              <FieldLabel required>Fuel Type</FieldLabel>
+              <FieldLabel>Fuel Type</FieldLabel>
               <select name="vehicle_fuel_type" value={formData.vehicle_fuel_type} onChange={handleChange} className={fieldCls(Boolean(errors.vehicle_fuel_type))}>
+                <option value="">Select (optional)</option>
                 <option value="PETROL">Petrol</option>
                 <option value="DIESEL">Diesel</option>
                 <option value="CNG">CNG</option>

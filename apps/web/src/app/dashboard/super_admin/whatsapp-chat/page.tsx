@@ -1943,7 +1943,7 @@ export default function SuperAdminWhatsAppChatPage() {
                           setUnreadByPhone((prev) => ({ ...prev, [chat.phone]: 0 }));
                         }}
                         className={`w-full px-4 py-3 text-left transition-colors ${
-                          active ? 'bg-green-50' : 'hover:bg-gray-50'
+                          active ? 'bg-blue-50' : 'hover:bg-gray-50'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -1951,7 +1951,7 @@ export default function SuperAdminWhatsAppChatPage() {
                             <div className="flex items-center gap-2">
                               <div className="font-semibold text-gray-900">{formatPhone(chat.phone)}</div>
                               {(unreadByPhone[chat.phone] || 0) > 0 ? (
-                                <span className="rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                <span className="rounded-full bg-[#004AAD] px-2 py-0.5 text-[10px] font-semibold text-white">
                                   {unreadByPhone[chat.phone]}
                                 </span>
                               ) : null}
@@ -1983,7 +1983,7 @@ export default function SuperAdminWhatsAppChatPage() {
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-gray-500">Conversation</span>
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#128c7e]">
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#004AAD]">
                       Call state: {activeCallState}
                     </span>
                     {isIncomingActiveCall ? (
@@ -2023,7 +2023,7 @@ export default function SuperAdminWhatsAppChatPage() {
                       type="button"
                       onClick={() => void handleCallAction('initiate')}
                       disabled={callActionLoading !== null}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#128c7e] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f756b] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#004AAD] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#003A88] disabled:cursor-not-allowed disabled:opacity-60"
                       title="Start WhatsApp call (requires customer opt-in)"
                     >
                       {callActionLoading === 'call' ? (
@@ -2038,7 +2038,7 @@ export default function SuperAdminWhatsAppChatPage() {
               ) : null}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-[#efeae2] p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-[#F0F7FF] p-4">
               {!selectedPhone ? (
                 <div className="flex h-full items-center justify-center text-gray-600">
                   Select a chat from the center column.
@@ -2311,8 +2311,15 @@ export default function SuperAdminWhatsAppChatPage() {
                         ? '🗂️ Sticker'
                         : '';
 
+                    const rawTextBody = String(msg.text_body || '').trim();
+                    const textBody = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'STICKER'].includes(
+                      rawTextBody.toUpperCase(),
+                    )
+                      ? ''
+                      : rawTextBody;
+
                     const bubbleText =
-                      String(msg.text_body || '').trim() ||
+                      textBody ||
                       (isTemplateMessage ? templateText || `Template: ${msg.template_name}` : '') ||
                       interactiveText ||
                       callEventText ||
@@ -2331,7 +2338,7 @@ export default function SuperAdminWhatsAppChatPage() {
                       <div key={msg.id} className={`flex ${outbound ? 'justify-end' : 'justify-start'}`}>
                         <div
                           className={`max-w-[85%] rounded-xl px-3 py-2 text-sm shadow-sm ${
-                            outbound ? 'bg-[#d9fdd3] text-gray-900' : 'bg-white text-gray-900'
+                            outbound ? 'bg-[#D6E8FF] text-gray-900' : 'bg-white text-gray-900'
                           }`}
                         >
                           {outbound && actorName ? (
@@ -2450,7 +2457,7 @@ export default function SuperAdminWhatsAppChatPage() {
                                 {/* Audio */}
                                 {(msgType === 'AUDIO' || mediaMime.startsWith('audio/')) ? (
                                   <div className="mb-1 flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: outbound ? 'rgba(0,0,0,0.06)' : '#f0f2f5' }}>
-                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884]">
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#004AAD]">
                                       <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" /></svg>
                                     </span>
                                     {mediaUrl ? (
@@ -2569,7 +2576,7 @@ export default function SuperAdminWhatsAppChatPage() {
                     <button
                       type="button"
                       onClick={() => setComposerMode('text')}
-                      className="text-[11px] font-semibold text-[#128c7e]"
+                      className="text-[11px] font-semibold text-[#004AAD]"
                     >
                       Back to text
                     </button>
@@ -2578,7 +2585,7 @@ export default function SuperAdminWhatsAppChatPage() {
                     <select
                       value={selectedTemplateName}
                       onChange={(e) => setSelectedTemplateName(e.target.value)}
-                      className="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-[#128c7e]"
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-[#004AAD]"
                     >
                       <option value="">Select template</option>
                       {templateOptions.map((tpl) => (
@@ -2591,7 +2598,7 @@ export default function SuperAdminWhatsAppChatPage() {
                       value={templateParamsDraft}
                       onChange={(e) => setTemplateParamsDraft(e.target.value)}
                       placeholder="Params (comma separated)"
-                      className="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none focus:border-[#128c7e]"
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none focus:border-[#004AAD]"
                     />
                   </div>
                 </div>
@@ -2696,7 +2703,7 @@ export default function SuperAdminWhatsAppChatPage() {
                       ? 'Template mode enabled'
                       : 'Type a message'
                   }
-                  className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm outline-none ring-green-200 focus:border-green-500 focus:ring disabled:cursor-not-allowed disabled:bg-gray-100"
+                  className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm outline-none ring-blue-200 focus:border-[#004AAD] focus:ring disabled:cursor-not-allowed disabled:bg-gray-100"
                 />
                 <button
                   type="button"
@@ -2708,7 +2715,7 @@ export default function SuperAdminWhatsAppChatPage() {
                       ? !selectedTemplateName
                       : !draftMessage.trim() && !selectedMediaFile)
                   }
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#004AAD] text-white hover:bg-[#003A88] disabled:cursor-not-allowed disabled:bg-gray-300"
                   title="Send message"
                 >
                   {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -3011,7 +3018,7 @@ export default function SuperAdminWhatsAppChatPage() {
                         href={`/api/whatsapp/calls/recordings/${rec.id}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="block text-xs font-medium text-[#128c7e] hover:underline"
+                        className="block text-xs font-medium text-[#004AAD] hover:underline"
                       >
                         Recording {rec.provider_recording_id || rec.id} ({formatDuration(rec.duration_seconds)})
                       </a>

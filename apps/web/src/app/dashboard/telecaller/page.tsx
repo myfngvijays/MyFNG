@@ -27,7 +27,6 @@ import {
   Check,
   Loader2,
   CalendarDays,
-  Clock,
   MapPin,
   TrendingUp,
   LogIn,
@@ -47,6 +46,7 @@ type Kpis = {
   lost?: number;
   callbacks?: number;
   followups_today?: number;
+  reminders_pending?: number;
   overdue_callbacks?: number;
   booked?: number;
   rejected?: number;
@@ -73,11 +73,43 @@ type UpcomingReminder = {
   lead_id?: string;
   lead?: {
     id?: string;
-    lead_number?: string;
-    customer_name?: string;
-    customer_phone?: string;
+    lead_number?: string | null;
+    customer_name?: string | null;
+    customer_phone?: string | null;
   } | null;
 };
+
+type FreshLead = {
+  id: string;
+  lead_number?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  city?: string | null;
+  created_at?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+};
+
+function formatLeadAgo(iso?: string | null): string {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function formatReminderClock(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
 
 function SimpleBarChart({
   title,
@@ -140,6 +172,7 @@ export default function TelecallerCrmHomePage() {
   const [kpis, setKpis] = useState<Kpis>({});
   const [trend, setTrend] = useState<TrendRow[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminder[]>([]);
+  const [freshLeads, setFreshLeads] = useState<FreshLead[]>([]);
   const [profileName, setProfileName] = useState('Telecaller');
   const [punchedIn, setPunchedIn] = useState(false);
   const [punching, setPunching] = useState(false);
@@ -187,6 +220,7 @@ export default function TelecallerCrmHomePage() {
       setKpis(json.kpis || {});
       setTrend(Array.isArray(json.trend) ? json.trend : []);
       setUpcomingReminders(Array.isArray(json.upcoming_reminders) ? json.upcoming_reminders : []);
+      setFreshLeads(Array.isArray(json.fresh_leads) ? json.fresh_leads : []);
       setProfileName(json?.profile?.name || 'Telecaller');
       setPunchedIn(Boolean(json?.attendance?.is_punched_in));
     } catch (e) {
@@ -200,6 +234,13 @@ export default function TelecallerCrmHomePage() {
   useEffect(() => {
     setLoading(true);
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void load();
+    }, 20000);
+    return () => window.clearInterval(id);
   }, [load]);
 
   useEffect(() => {
@@ -466,6 +507,101 @@ export default function TelecallerCrmHomePage() {
               })}
             </div>
 
+            <div className="rounded-2xl bg-[#004AAD] p-3.5 sm:p-4 shadow-sm">
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <h2 className="text-[14px] font-bold text-white">Fresh leads</h2>
+                <Link href={`${base}/leads?filter=new`} className="text-xs font-bold text-white/85">
+                  View all →
+                </Link>
+              </div>
+              {freshLeads.length === 0 ? (
+                <p className="py-4 text-center text-sm text-white/75">No fresh leads right now</p>
+              ) : (
+                <ul className="divide-y divide-white/15">
+                  {freshLeads.map((lead) => {
+                    const phone = String(lead.customer_phone || '').trim();
+                    const vehicle = [lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ');
+                    const meta = [lead.city, vehicle].filter(Boolean).join(' · ');
+                    return (
+                      <li key={lead.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
+                        <Link href={`${base}/leads/${lead.id}`} className="min-w-0 flex-1 hover:opacity-90">
+                          <p className="truncate text-sm font-bold text-white">
+                            {String(lead.customer_name || 'Customer').trim()}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-white/75">
+                            {phone || '—'}
+                            {meta ? ` · ${meta}` : ''}
+                          </p>
+                          <p className="mt-0.5 text-[11px] font-bold text-blue-100">
+                            {formatLeadAgo(lead.created_at)}
+                          </p>
+                        </Link>
+                        {phone ? (
+                          <a
+                            href={`tel:${phone}`}
+                            title="Call"
+                            aria-label="Call"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#004AAD]"
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-2xl bg-[#004AAD] p-3.5 sm:p-4 shadow-sm">
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <h2 className="text-[14px] font-bold text-white">Upcoming reminders</h2>
+                <Link href={`${base}/followups`} className="text-xs font-bold text-white/85">
+                  View all →
+                </Link>
+              </div>
+              {upcomingReminders.length === 0 ? (
+                <p className="py-4 text-center text-sm text-white/75">No reminders today</p>
+              ) : (
+                <ul className="divide-y divide-white/15">
+                  {upcomingReminders.slice(0, 3).map((r) => {
+                    const overdue = r.scheduled_time
+                      ? new Date(r.scheduled_time).getTime() < Date.now()
+                      : false;
+                    const phone = String(r.lead?.customer_phone || '').trim();
+                    const leadHref = `${base}/leads/${r.lead_id || r.lead?.id || ''}`;
+                    return (
+                      <li key={r.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
+                        <Link href={leadHref} className="min-w-0 flex-1 hover:opacity-90">
+                          <p className="truncate text-sm font-bold text-white">
+                            {r.lead?.customer_name || 'Customer'}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-white/75">
+                            {r.reason || 'Follow-up'}
+                            {phone ? ` · ${phone}` : ''}
+                          </p>
+                          <p className={`mt-0.5 text-[11px] font-bold ${overdue ? 'text-red-200' : 'text-blue-100'}`}>
+                            {overdue ? 'Overdue · ' : ''}
+                            {formatReminderClock(r.scheduled_time)}
+                          </p>
+                        </Link>
+                        {phone ? (
+                          <a
+                            href={`tel:${phone}`}
+                            title="Call"
+                            aria-label="Call"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#004AAD]"
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
             {/* Quick Actions — web only, above analytics (phone order unchanged) */}
             <div>
               <h2 className="text-[14px] font-bold text-[#023D95] mb-2">Quick Actions</h2>
@@ -632,113 +768,6 @@ export default function TelecallerCrmHomePage() {
                 color="#10B981"
                 emptyHint="No bookings this week"
               />
-            </div>
-
-            {/* Upcoming reminders */}
-            <div className="rounded-2xl bg-white p-3.5 sm:p-4 shadow-sm border border-slate-100">
-              <div className="mb-2.5 flex items-center justify-between gap-2">
-                <h2 className="text-[14px] font-bold text-[#023D95] inline-flex items-center gap-1.5">
-                  <Clock className="h-4 w-4" />
-                  Upcoming reminders
-                  {Number(kpis.overdue_callbacks || 0) > 0 ? (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                      {kpis.overdue_callbacks} overdue
-                    </span>
-                  ) : null}
-                </h2>
-                <Link href={`${base}/followups`} className="text-xs font-bold text-[#004AAD]">
-                  View all →
-                </Link>
-              </div>
-              {upcomingReminders.length === 0 ? (
-                <p className="text-sm text-slate-500 py-4 text-center">No pending reminders</p>
-              ) : (
-                <ul className="space-y-2">
-                  {upcomingReminders.map((r) => {
-                    const overdue = r.scheduled_time
-                      ? new Date(r.scheduled_time).getTime() < Date.now()
-                      : false;
-                    const phone = String(r.lead?.customer_phone || '').trim();
-                    const leadHref = `${base}/leads/${r.lead_id || r.lead?.id || ''}`;
-                    return (
-                      <li
-                        key={r.id}
-                        className={`rounded-xl border px-3 py-2.5 ${
-                          overdue
-                            ? 'border-red-200 bg-red-50/70'
-                            : 'border-slate-100 bg-slate-50/50'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <Link href={leadHref} className="min-w-0 flex-1 hover:opacity-90">
-                            <p className="text-sm font-bold text-slate-900 truncate">
-                              {r.lead?.customer_name || 'Customer'}
-                              {r.lead?.lead_number ? (
-                                <span className="ml-1.5 text-[10px] font-mono text-slate-500">
-                                  {r.lead.lead_number}
-                                </span>
-                              ) : null}
-                            </p>
-                            <p className="text-xs text-slate-600 truncate mt-0.5">
-                              {r.reason || 'Follow-up'}
-                            </p>
-                            <p
-                              className={`text-[11px] font-bold mt-1 ${
-                                overdue ? 'text-red-600' : 'text-slate-500'
-                              }`}
-                            >
-                              {overdue ? 'Overdue · ' : ''}
-                              {r.scheduled_time
-                                ? new Date(r.scheduled_time).toLocaleString('en-IN', {
-                                    day: '2-digit',
-                                    month: 'short',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : '—'}
-                            </p>
-                          </Link>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {phone ? (
-                              <a
-                                href={`tel:${phone}`}
-                                title="Call"
-                                aria-label="Call"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Phone className="h-3.5 w-3.5" />
-                              </a>
-                            ) : null}
-                            {phone ? (
-                              <button
-                                type="button"
-                                title="WhatsApp"
-                                aria-label="WhatsApp"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#25D366]/15 text-[#25D366] ring-1 ring-[#25D366]/40"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  window.dispatchEvent(
-                                    new CustomEvent('myfng:open-wa-chat', {
-                                      detail: {
-                                        phone: phone.replace(/\D/g, ''),
-                                        preview: r.reason || undefined,
-                                      },
-                                    }),
-                                  );
-                                }}
-                              >
-                                <WhatsAppIcon className="h-3.5 w-3.5" />
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
             </div>
           </>
         )}

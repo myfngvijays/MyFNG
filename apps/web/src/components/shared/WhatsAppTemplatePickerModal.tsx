@@ -152,7 +152,7 @@ export default function WhatsAppTemplatePickerModal({
             type="button"
             onClick={() => setCategory(key)}
             className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-              category === key ? 'bg-[#075e54] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              category === key ? 'bg-[#004AAD] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             {label}

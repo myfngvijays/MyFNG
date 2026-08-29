@@ -72,7 +72,7 @@ function WhatsAppPhonePreview({ template }: { template: WhatsAppTemplatePreviewD
     <div className="mx-auto w-[300px] rounded-[2rem] border-[10px] border-gray-900 bg-gray-900 p-1 shadow-2xl">
       <div className="overflow-hidden rounded-[1.4rem] bg-white">
         {/* Status bar */}
-        <div className="flex items-center justify-between bg-[#008069] px-4 pb-1 pt-2 text-[10px] text-white/90">
+        <div className="flex items-center justify-between bg-[#004AAD] px-4 pb-1 pt-2 text-[10px] text-white/90">
           <span>{timeLabel}</span>
           <div className="mx-auto h-5 w-24 rounded-full bg-black/25" aria-hidden />
           <span className="flex gap-1">
@@ -81,7 +81,7 @@ function WhatsAppPhonePreview({ template }: { template: WhatsAppTemplatePreviewD
         </div>
 
         {/* WhatsApp header */}
-        <div className="flex items-center gap-3 bg-[#008069] px-3 pb-3 pt-1 text-white">
+        <div className="flex items-center gap-3 bg-[#004AAD] px-3 pb-3 pt-1 text-white">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-bold">
             M
           </div>
@@ -120,7 +120,7 @@ function WhatsAppPhonePreview({ template }: { template: WhatsAppTemplatePreviewD
           <div className="h-8 flex-1 rounded-full bg-white px-3 text-[11px] leading-8 text-gray-400">
             Type a message
           </div>
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#008069] text-xs text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#004AAD] text-xs text-white">
             ➤
           </div>
         </div>

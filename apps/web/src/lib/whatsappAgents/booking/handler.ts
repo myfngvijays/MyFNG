@@ -18,9 +18,15 @@ import {
   getActiveInstance,
   updateInstance,
 } from '../shared/instanceService';
-import { isChatAssignedToHuman, loadMemory, saveMemory, shouldSkipBotsForHumanAssignment } from '../shared/memoryService';
+import { loadMemory, saveMemory, shouldSkipBotsForHumanAssignment, customerRequestedHumanAgent, clearCustomerHumanRequest } from '../shared/memoryService';
 import { sendAgentTextMessage } from '../shared/outbound';
-import { hasBookingIntent } from './intent';
+import { hasBookingIntent, isGreetingMessage } from './intent';
+import {
+  parseMisaChoice,
+  wantsHumanHelp,
+  sendMisaOrHumanChoiceButtons,
+  MISA_CHOICE_BODY,
+} from './choiceButtons';
 import { bookingSessionId, buildBookingSystemPrompt } from './prompt';
 import { filterBookingTools } from './tools';
 
@@ -68,9 +74,14 @@ export async function shouldRouteToBookingAgent(phone: string, message: string):
   const config = await fetchAgentConfig('BOOKING');
   if (!config.enabled) return false;
 
+  if (parseMisaChoice(message) === 'misa') return true;
+  if (await customerRequestedHumanAgent(phone)) return false;
+
   if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
     return false;
   }
+
+  if (parseMisaChoice(message) || wantsHumanHelp(message) || isGreetingMessage(message)) return true;
 
   const active = await getActiveInstance('BOOKING', phone);
   if (active) return true;
@@ -99,8 +110,148 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
     }
   }
 
-  if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
+  if (await customerRequestedHumanAgent(phone) && parseMisaChoice(message) !== 'misa') {
     return { handled: false, skippedReason: 'assigned_to_human' };
+  }
+
+  if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
+    if (parseMisaChoice(message) !== 'misa') {
+      return { handled: false, skippedReason: 'assigned_to_human' };
+    }
+  }
+
+  const existing = input.dryRun ? null : await getActiveInstance('BOOKING', phone);
+  const storedChoice = String((existing?.metadata as { misa_choice?: string } | null)?.misa_choice || '');
+  const misaChoice =
+    storedChoice || ((existing?.follow_up_count || 0) > 0 ? 'misa' : '');
+  const choiceTap = parseMisaChoice(message);
+
+  const persistChoice = async (next: 'pending' | 'misa' | 'human') => {
+    if (input.dryRun) return existing;
+    const instance = await findOrCreateInstance({
+      agentType: 'BOOKING',
+      phone,
+      metadata: {
+        source: 'inbound_whatsapp',
+        profile_name: input.profileName || null,
+        misa_choice: next,
+      },
+    });
+    await updateInstance(instance.id, {
+      metadata: { ...(instance.metadata || {}), misa_choice: next },
+      last_customer_reply_at: new Date().toISOString(),
+    });
+    return instance;
+  };
+
+  if (choiceTap === 'human' || (wantsHumanHelp(message) && choiceTap !== 'misa' && misaChoice === 'misa')) {
+    // Mid-MISA “callback / human” → show buttons instead of a wrong AI reply.
+    if (choiceTap !== 'human') {
+      if (!input.dryRun) {
+        await persistChoice('pending');
+        const sentButtons = await sendMisaOrHumanChoiceButtons(phone);
+        return {
+          handled: true,
+          reply: MISA_CHOICE_BODY,
+          sent: sentButtons,
+          route: 'BOOKING_AGENT',
+          latencyMs: Date.now() - started,
+        };
+      }
+      return {
+        handled: true,
+        reply: MISA_CHOICE_BODY,
+        sent: false,
+        route: 'BOOKING_AGENT',
+        latencyMs: Date.now() - started,
+      };
+    }
+    if (!input.dryRun) {
+      await performWhatsAppHandoff({
+        phone,
+        note: 'Customer tapped Human agent on WhatsApp',
+        message,
+        profileName: input.profileName,
+        createRsaLead: false,
+      });
+      const instance = await persistChoice('human');
+      if (instance?.id) await endInstance(instance.id, 'ESCALATED');
+      const sendResult = await sendAgentTextMessage({
+        phone,
+        message: 'Done. A MyFNG team member will message you here shortly.',
+        source: 'whatsapp_booking_agent',
+        meta: { route: 'MISA_HUMAN_HANDOFF' },
+      });
+      return {
+        handled: true,
+        reply: 'Done. A MyFNG team member will message you here shortly.',
+        sent: sendResult.success,
+        route: 'BOOKING_RSA_HANDOFF',
+        latencyMs: Date.now() - started,
+      };
+    }
+    return {
+      handled: true,
+      reply: 'Done. A MyFNG team member will message you here shortly.',
+      sent: false,
+      route: 'BOOKING_RSA_HANDOFF',
+      latencyMs: Date.now() - started,
+    };
+  }
+
+  if (choiceTap === 'misa') {
+    if (!input.dryRun) await clearCustomerHumanRequest(phone);
+    const talkReply = 'Great — tell me what you need (booking, pricing, or workshop).';
+    if (!input.dryRun) {
+      await persistChoice('misa');
+      const sendResult = await sendAgentTextMessage({
+        phone,
+        message: talkReply,
+        source: 'whatsapp_booking_agent',
+        meta: { route: 'MISA_CHOICE_TALK' },
+      });
+      return {
+        handled: true,
+        reply: talkReply,
+        sent: sendResult.success,
+        route: 'BOOKING_AGENT',
+        latencyMs: Date.now() - started,
+      };
+    }
+    return {
+      handled: true,
+      reply: talkReply,
+      sent: false,
+      route: 'BOOKING_AGENT',
+      latencyMs: Date.now() - started,
+    };
+  }
+
+  const offerChoice =
+    wantsHumanHelp(message) ||
+    isGreetingMessage(message) ||
+    (!misaChoice && !hasBookingIntent(message)) ||
+    (misaChoice === 'pending' && !hasBookingIntent(message));
+
+  if (offerChoice && misaChoice !== 'misa') {
+    if (!input.dryRun) {
+      await persistChoice('pending');
+      const sentButtons = await sendMisaOrHumanChoiceButtons(phone);
+      return {
+        handled: true,
+        reply: MISA_CHOICE_BODY,
+        sent: sentButtons,
+        route: 'BOOKING_AGENT',
+        latencyMs: Date.now() - started,
+      };
+    }
+    return {
+      handled: true,
+      reply: MISA_CHOICE_BODY,
+      sent: false,
+      route: 'BOOKING_AGENT',
+      latencyMs: Date.now() - started,
+    };
   }
 
   if (isRsaRelatedMessage(message)) {

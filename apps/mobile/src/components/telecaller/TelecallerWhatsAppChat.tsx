@@ -13,18 +13,23 @@ import {
   Pressable,
   Alert,
   ScrollView,
+  Image,
+  Dimensions,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '../../lib/api';
+import { getSupabaseAccessToken } from '../../lib/supabase';
+import { ENV } from '../../config/environment';
 
 const WA = {
-  header: '#008069',
-  chatBg: '#EFEAE2',
+  header: '#004AAD',
+  chatBg: '#F0F7FF',
   bubbleIn: '#FFFFFF',
-  bubbleOut: '#D9FDD3',
-  send: '#008069',
-  composerBg: '#F0F2F5',
+  bubbleOut: '#D6E8FF',
+  send: '#004AAD',
+  composerBg: '#EEF4FF',
   meta: '#667781',
   text: '#111B21',
   divider: '#E9EDEF',
@@ -35,10 +40,13 @@ type Msg = {
   direction?: string | null;
   text_body?: string | null;
   message_type?: string | null;
+  media_url?: string | null;
+  media_mime_type?: string | null;
   media_caption?: string | null;
   template_name?: string | null;
   created_at?: string | null;
   status?: string | null;
+  payload?: Record<string, any> | null;
 };
 
 type WaTemplate = {
@@ -75,8 +83,37 @@ function normalizePhone(phone: string): string {
   return digits.length === 10 ? `91${digits}` : digits.startsWith('91') ? digits : `91${digits.slice(-10)}`;
 }
 
+function resolveMediaUrl(m: Msg): string | null {
+  const payload = m.payload && typeof m.payload === 'object' ? m.payload : {};
+  const mediaId =
+    String(
+      (payload as any)?.image?.id ||
+        (payload as any)?.sticker?.id ||
+        (payload as any)?.video?.id ||
+        (payload as any)?.messages?.[0]?.image?.id ||
+        '',
+    ).trim() || '';
+  const raw = String(m.media_url || '').trim();
+  const path = raw || (mediaId ? `/api/whatsapp/media/${encodeURIComponent(mediaId)}` : '');
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = String(ENV.API_URL || '').replace(/\/$/, '');
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+function isImageMessage(m: Msg): boolean {
+  const type = String(m.message_type || '').toUpperCase();
+  const mime = String(m.media_mime_type || '').toLowerCase();
+  return type === 'IMAGE' || type === 'STICKER' || mime.startsWith('image/');
+}
+
 function messageText(m: Msg): string {
-  const body = String(m.text_body || m.media_caption || '').trim();
+  const rawBody = String(m.text_body || '').trim();
+  const caption = String(m.media_caption || '').trim();
+  const body = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'STICKER'].includes(rawBody.toUpperCase())
+    ? ''
+    : rawBody;
+  if (isImageMessage(m)) return caption || body;
   if (body) {
     try {
       const parsed = JSON.parse(body);
@@ -218,6 +255,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
   const [selectedTemplate, setSelectedTemplate] = useState<WaTemplate | null>(null);
   const [templateParams, setTemplateParams] = useState<string[]>([]);
   const [templateSearch, setTemplateSearch] = useState('');
+  const [mediaAuth, setMediaAuth] = useState<string | undefined>();
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const normalized = normalizePhone(phone);
   // Modal often reports insets.bottom=0 — force home-indicator room on iOS.
   const bottomSafe = Math.max(insets.bottom, Platform.OS === 'ios' ? 34 : 12);
@@ -299,6 +338,12 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
     load();
     loadTemplates();
   }, [load, loadTemplates]);
+
+  useEffect(() => {
+    void getSupabaseAccessToken()
+      .then((token) => setMediaAuth(token))
+      .catch(() => undefined);
+  }, []);
 
   // Auto-refresh open chat so inbound/AI replies appear without tapping refresh.
   useEffect(() => {
@@ -428,6 +473,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
+      <StatusBar barStyle="light-content" backgroundColor={WA.header} />
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 6 }]}>
         <TouchableOpacity style={styles.iconHit} onPress={onBack} hitSlop={8}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -484,6 +530,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
             const outbound = String(item.direction || '').toUpperCase() === 'OUTBOUND';
             const body = messageText(item);
             const tpl = String(item.template_name || '').trim();
+            const showImage = isImageMessage(item);
+            const mediaUrl = showImage ? resolveMediaUrl(item) : null;
             return (
               <View style={[styles.bubbleRow, outbound ? styles.bubbleRowOut : styles.bubbleRowIn]}>
                 <View style={[styles.bubble, outbound ? styles.bubbleOut : styles.bubbleIn]}>
@@ -492,16 +540,35 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
                       {humanizeTemplateKey(tpl)}
                     </Text>
                   ) : null}
-                  <Text style={styles.bubbleText} selectable>
-                    {body}
-                  </Text>
+                  {mediaUrl ? (
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={() => setPreviewImage(mediaUrl)}
+                    >
+                      <Image
+                        source={{
+                          uri: mediaUrl,
+                          headers: mediaAuth ? { Authorization: `Bearer ${mediaAuth}` } : undefined,
+                        }}
+                        style={styles.bubbleImage}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                  ) : showImage ? (
+                    <Text style={styles.bubbleText}>📷 Photo</Text>
+                  ) : null}
+                  {body ? (
+                    <Text style={styles.bubbleText} selectable>
+                      {body}
+                    </Text>
+                  ) : null}
                   <View style={styles.metaRow}>
                     <Text style={styles.bubbleTime}>{formatBubbleTime(item.created_at)}</Text>
                     {outbound ? (
                       <Ionicons
                         name="checkmark-done"
                         size={14}
-                        color={String(item.status || '').toUpperCase() === 'READ' ? '#53BDEB' : WA.meta}
+                        color={String(item.status || '').toUpperCase() === 'READ' ? '#004AAD' : WA.meta}
                         style={{ marginLeft: 2 }}
                       />
                     ) : null}
@@ -624,6 +691,33 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
           ) : null}
         </View>
       )}
+
+      <Modal
+        visible={Boolean(previewImage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImage(null)}
+      >
+        <View style={styles.imagePreviewOverlay}>
+          <TouchableOpacity
+            style={[styles.imagePreviewClose, { top: Math.max(insets.top, 12) + 8 }]}
+            onPress={() => setPreviewImage(null)}
+            hitSlop={12}
+          >
+            <Ionicons name="close" size={26} color="#fff" />
+          </TouchableOpacity>
+          {previewImage ? (
+            <Image
+              source={{
+                uri: previewImage,
+                headers: mediaAuth ? { Authorization: `Bearer ${mediaAuth}` } : undefined,
+              }}
+              style={styles.imagePreview}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setPickerOpen(false)}>
@@ -801,6 +895,34 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   bubbleText: { fontSize: 15, color: WA.text, lineHeight: 21 },
+  bubbleImage: {
+    width: 220,
+    height: 220,
+    borderRadius: 8,
+    backgroundColor: '#D1D7DB',
+    marginBottom: 4,
+  },
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePreview: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+  },
+  imagePreviewClose: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 2,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
