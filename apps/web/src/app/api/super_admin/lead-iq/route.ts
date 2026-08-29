@@ -23,7 +23,7 @@ async function assertCrm(request: NextRequest) {
   const roleCode = String((profile?.roles as any)?.role_code || '')
     .trim()
     .toUpperCase();
-  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'TELECALLER'].includes(roleCode)) {
+  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER'].includes(roleCode)) {
     return { ok: false as const, status: 403, error: 'Forbidden', db: null as any, roleCode, userId: '' };
   }
   const { supabaseAdmin } = getSupabaseAdmin();

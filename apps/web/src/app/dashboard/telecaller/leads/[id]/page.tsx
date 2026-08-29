@@ -532,7 +532,7 @@ function LeadDetailContent() {
     }
   }
 
-  async function assignOrTransferTelecaller(toId: string, type: 'TRANSFER' | 'SHARE' = 'TRANSFER') {
+  async function assignOrTransferTelecaller(toId: string) {
     if (!toId) return;
     setAssigningTc(true);
     try {
@@ -551,8 +551,8 @@ function LeadDetailContent() {
           body: JSON.stringify({
             lead_id: leadId,
             to_telecaller_id: toId,
-            transfer_type: type,
-            reason: type === 'SHARE' ? 'Shared from lead detail' : 'Transferred from lead detail',
+            transfer_type: 'TRANSFER',
+            reason: 'Transferred from lead detail',
           }),
         });
         const json = await res.json().catch(() => ({}));
@@ -895,8 +895,8 @@ function LeadDetailContent() {
                 ) : null}
                 <button
                   type="button"
-                  title={isLeadManager ? 'Assign TC' : 'Share'}
-                  aria-label={isLeadManager ? 'Assign TC' : 'Share'}
+                  title={isLeadManager ? 'Assign TC' : 'Transfer'}
+                  aria-label={isLeadManager ? 'Assign TC' : 'Transfer'}
                   onClick={() => void openSharePanel()}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25"
                 >
@@ -1252,7 +1252,7 @@ function LeadDetailContent() {
               </div>
             </div>
 
-            <LeadIqCard leadId={leadId} />
+            {isLeadManager ? <LeadIqCard leadId={leadId} /> : null}
             <LeadTagsPanel leadId={leadId} canManage={isLeadManager} />
             <LeadTimelinePanel
               leadId={leadId}
@@ -1385,15 +1385,14 @@ function LeadDetailContent() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-3">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="font-black text-[#023D95]">{isLeadManager ? 'Assign telecaller' : 'Share / Transfer'}</h3>
+              <h3 className="font-black text-[#023D95]">{isLeadManager ? 'Assign telecaller' : 'Transfer Lead'}</h3>
               <button type="button" onClick={() => setShareOpen(false)} className="p-1 rounded-lg hover:bg-slate-100"><X className="w-5 h-5" /></button>
             </div>
             <div className="max-h-80 overflow-y-auto p-2">
               {peersLoading ? <p className="text-sm text-slate-400 text-center py-8">Loading…</p> : peers.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">No telecallers found</p> : peers.map((peer) => (
-                <button key={peer.id} type="button" disabled={assigningTc} onClick={() => void assignOrTransferTelecaller(peer.id, 'TRANSFER')} className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-indigo-50 flex items-center justify-between gap-2 disabled:opacity-50">
+                <button key={peer.id} type="button" disabled={assigningTc} onClick={() => void assignOrTransferTelecaller(peer.id)} className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-indigo-50 flex items-center justify-between gap-2 disabled:opacity-50">
                   <div>
                     <p className="font-bold text-sm text-slate-900">{peer.full_name || 'Telecaller'}</p>
-                    <p className="text-xs text-slate-500">{peer.phone || 'No phone'}</p>
                   </div>
                   <span className="text-[11px] font-bold text-indigo-700">Assign</span>
                 </button>

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  ActivityIndicator,
   AppState,
   Linking,
   Platform,
@@ -63,6 +62,7 @@ import CarPartsPriceScreen from './src/screens/smartTools/CarPartsPriceScreen';
 import CustomerRegistrationScreen from './src/screens/dashboard/customer/CustomerRegistrationScreen';
 import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
 import SplashScreen from './src/screens/SplashScreen';
+import CarLoading from './src/components/CarLoading';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 import { AppFooterProvider } from './src/context/AppFooterContext';
@@ -316,20 +316,35 @@ function AppContent() {
     void preloadPublicFaqs();
     checkUser();
 
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
-          await fetchUserProfile(session.user.id);
-        } else {
-          const hasCustomerSession = await fetchCustomerSessionProfile();
-          if (!hasCustomerSession) {
-            setUser(null);
-            setUserProfile(null);
-          }
+    // Listen for auth changes. Never await supabase inside this callback (deadlock).
+    // TOKEN_REFRESHED after idle must not wipe user — that remounts CRM and loses unsaved lead edits.
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      setTimeout(() => {
+        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          return;
         }
-      }
-    );
+        if (event === 'SIGNED_OUT') {
+          void (async () => {
+            try {
+              const { data: { session: current } } = await supabase.auth.getSession();
+              if (current?.user) return;
+              const hasCustomerSession = await fetchCustomerSessionProfile();
+              if (!hasCustomerSession) {
+                setUser(null);
+                setUserProfile(null);
+              }
+            } catch {
+              /* keep existing session on the screen */
+            }
+          })();
+          return;
+        }
+        if (session?.user) {
+          setUser((prev: any) => (prev?.id === session.user.id ? prev : session.user));
+          void fetchUserProfile(session.user.id);
+        }
+      }, 0);
+    });
 
     return () => {
       authListener?.subscription?.unsubscribe();
@@ -374,7 +389,10 @@ function AppContent() {
       }
       
       setUserProfile(data);
-      setUser({ id: userId });
+      setUser((prev: any) => {
+        if (prev?.id === userId) return prev;
+        return { id: userId };
+      });
     } catch (error) {
       if (__DEV__) console.error('Error fetching profile:', error);
     }
@@ -442,7 +460,7 @@ function AppContent() {
   if (!authReady || !updateCheckDone) {
     return (
       <View style={{ flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#004AAD" />
+        <CarLoading size="compact" label="Loading MyFNG..." />
       </View>
     );
   }
@@ -520,7 +538,7 @@ function AppContent() {
               <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
               <Stack.Screen name="CustomerOtpLogin" component={CustomerOtpLoginScreen} />
               {isCustomerSessionUser ? (
-                <Stack.Screen name="Dashboard">
+                <Stack.Screen name="Dashboard" options={{ gestureEnabled: false, animation: 'none' }}>
                   {(props) => (
                     <DashboardNavigator
                       {...props}
@@ -533,7 +551,7 @@ function AppContent() {
             </>
           ) : (
             <>
-              <Stack.Screen name="Dashboard">
+              <Stack.Screen name="Dashboard" options={{ gestureEnabled: false, animation: 'none' }}>
                 {(props) => (
                   <DashboardNavigator
                     {...props}

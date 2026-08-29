@@ -19,15 +19,15 @@ export const CRM_ACTIVITY_DATE_FILTERS = new Set([
 ]);
 
 /**
- * "Fresh" (filter id `new` / `fresh`) = pipeline NEW and not already moved to a
- * worked disposition tile. Includes incomplete booking stubs (shown as Fresh in UI).
+ * "Fresh" (filter id `new` / `fresh`) = pipeline NEW and not yet worked.
+ * Only untouched / ringing. Any saved disposition (Interested, Custom Repair, etc.)
+ * must leave this tile — do not use `.not.in(known)` which keeps unknown statuses in Fresh.
  */
 export function applyCrmNewLeadFilter(query: any) {
-  const notIn = CRM_DISPOSITION_RESULTS.join(',');
   return query
     .eq('status', 'NEW')
     .or(
-      `coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH,coupon_meta->>last_call_result.not.in.(${notIn})`,
+      'coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH,coupon_meta->>last_call_result.eq.RINGING',
     );
 }
 

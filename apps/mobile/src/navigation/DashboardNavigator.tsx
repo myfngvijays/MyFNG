@@ -1,7 +1,8 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, BackHandler } from 'react-native';
 import { COLORS } from '../constants/theme';
+import { handleAndroidShellBack } from '../lib/androidShellBack';
 
 // Import all dashboard screens
 import TelecallerDashboard from '../screens/dashboard/TelecallerDashboard';
@@ -169,9 +170,10 @@ const Stack = createNativeStackNavigator();
 interface DashboardNavigatorProps {
   userProfile: any;
   onLogout: () => void;
+  navigation?: any;
 }
 
-export default function DashboardNavigator({ userProfile, onLogout }: DashboardNavigatorProps) {
+export default function DashboardNavigator({ userProfile, onLogout, navigation }: DashboardNavigatorProps) {
   // ✅ FIX: Extract role code from various possible locations
   const roleCode = 
     userProfile?.role?.role_code ||  // From database join (roles!role_id)
@@ -183,6 +185,29 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     userProfile?.role?.role_name || 
     userProfile?.role_name || 
     'User';
+
+  React.useEffect(() => {
+    const onHardwareBack = () => {
+      if (handleAndroidShellBack()) return true;
+      if (navigation?.canGoBack?.()) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    };
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+    const beforeRemove = navigation?.addListener?.('beforeRemove', (e: any) => {
+      const type = String(e?.data?.action?.type || '');
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      if (handleAndroidShellBack()) {
+        e.preventDefault();
+      }
+    });
+    return () => {
+      backSub.remove();
+      beforeRemove?.();
+    };
+  }, [navigation]);
 
   if (__DEV__) {
     console.log('DashboardNavigator - Role Code:', roleCode);
@@ -221,7 +246,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen
           name="TelecallerDashboard"
           component={TelecallerAdvancedCRM}
-          options={{ title: 'CRM', headerShown: false }}
+          options={{ title: 'CRM', headerShown: false, gestureEnabled: false }}
         />
         <Stack.Screen
           name="TelecallerLegacyDashboard"
@@ -330,7 +355,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen
           name="LeadManagerAdvancedCRM"
           component={TelecallerAdvancedCRM}
-          options={{ title: 'Lead Manager', headerShown: false }}
+          options={{ title: 'Lead Manager', headerShown: false, gestureEnabled: false }}
         />
         <Stack.Screen
           name="LeadManagerDashboard"

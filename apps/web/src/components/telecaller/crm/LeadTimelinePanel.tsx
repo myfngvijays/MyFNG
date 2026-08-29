@@ -127,6 +127,7 @@ export default function LeadTimelinePanel({
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
+  const [activityShowAll, setActivityShowAll] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [taskForm, setTaskForm] = useState({
     follow_up_type: 'CALLBACK',
@@ -429,7 +430,7 @@ export default function LeadTimelinePanel({
                 aria-hidden
               />
               <ul className="relative space-y-2">
-              {activityFeed.map((item) => {
+              {(activityShowAll ? activityFeed : activityFeed.slice(0, 10)).map((item) => {
                 if (item.kind === 'update') {
                   const entry = item.entry;
                   const status = prettifyDisposition(entry.status || entry.previous_label || null);
@@ -469,18 +470,11 @@ export default function LeadTimelinePanel({
                             <span className="font-semibold text-gray-500">Remark:</span> {entry.remark}
                           </p>
                         ) : null}
-                        {(entry.workshop_name || entry.city || entry.pincode || entry.lost_reason) && (
+                        {entry.lost_reason ? (
                           <p className="mt-0.5 text-[9px] text-gray-500">
-                            {[
-                              entry.workshop_name ? `Workshop: ${entry.workshop_name}` : null,
-                              entry.city ? `City: ${entry.city}` : null,
-                              entry.pincode ? `Pincode: ${entry.pincode}` : null,
-                              entry.lost_reason ? `Lost reason: ${entry.lost_reason}` : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
+                            Lost reason: {entry.lost_reason}
                           </p>
-                        )}
+                        ) : null}
                       </div>
                     </li>
                   );
@@ -546,6 +540,17 @@ export default function LeadTimelinePanel({
                 );
               })}
               </ul>
+              {activityFeed.length > 10 ? (
+                <button
+                  type="button"
+                  onClick={() => setActivityShowAll((v) => !v)}
+                  className="mt-2 w-full py-1.5 text-center text-[12px] font-bold text-[#004AAD]"
+                >
+                  {activityShowAll
+                    ? 'View less'
+                    : `View more (${activityFeed.length - 10})`}
+                </button>
+              ) : null}
             </div>
           )}
         </>

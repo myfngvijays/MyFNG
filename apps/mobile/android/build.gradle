@@ -13,10 +13,14 @@ buildscript {
   }
 }
 
+apply from: "node-resolver.gradle"
+
+def nodeExecutable = ext.nodeExecutable
+
 def reactNativeAndroidDir = new File(
   providers.exec {
     workingDir(rootDir)
-    commandLine("node", "--print", "require.resolve('react-native/package.json')")
+    commandLine(nodeExecutable, "--print", "require.resolve('react-native/package.json')")
   }.standardOutput.asText.get().trim(),
   "../android"
 )

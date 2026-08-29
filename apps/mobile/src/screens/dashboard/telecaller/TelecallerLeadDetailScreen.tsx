@@ -19,7 +19,8 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
-import { supabase } from '../../../lib/supabase';
+import { supabase, withTimeout } from '../../../lib/supabase';
+import CarLoading from '../../../components/CarLoading';
 import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
@@ -410,19 +411,27 @@ export default function TelecallerLeadDetailScreen({
   navigation,
   embedded = false,
   initialEditing = true,
+  showLeadIq: showLeadIqProp,
 }: any) {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const { leadId } = route.params;
+  const roleCode = String(userProfile?.role?.role_code || '').toUpperCase();
+  const showLeadIq =
+    showLeadIqProp === true ||
+    (showLeadIqProp !== false &&
+      (roleCode === 'LEAD_MANAGER' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN'));
 
   const [lead, setLead] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
+  const [activityShowAll, setActivityShowAll] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [leadIq, setLeadIq] = useState<any>(null);
   const [leadIqRunning, setLeadIqRunning] = useState(false);
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(true);
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -680,21 +689,24 @@ export default function TelecallerLeadDetailScreen({
       Alert.alert('Missing info', 'Valid 10-digit phone required');
       return;
     }
-    if (!editForm.city_id && !editForm.city) {
-      Alert.alert('Missing info', 'City required');
-      return;
-    }
-    if (!editForm.vehicle_make || !editForm.vehicle_model) {
-      Alert.alert('Missing info', 'Select car model');
-      return;
-    }
-    if (!editForm.vehicle_fuel_type) {
-      Alert.alert('Missing info', 'Fuel type required');
-      return;
-    }
-    if (showSecondCar && (!secondCar.vehicle_make || !secondCar.vehicle_model)) {
-      Alert.alert('Missing info', 'Select second car model');
-      return;
+    const markingLost = String(activityData.result || '').toUpperCase() === 'LOST';
+    if (!markingLost) {
+      if (!editForm.city_id && !editForm.city) {
+        Alert.alert('Missing info', 'City required');
+        return;
+      }
+      if (!editForm.vehicle_make || !editForm.vehicle_model) {
+        Alert.alert('Missing info', 'Select car model');
+        return;
+      }
+      if (!editForm.vehicle_fuel_type) {
+        Alert.alert('Missing info', 'Fuel type required');
+        return;
+      }
+      if (showSecondCar && (!secondCar.vehicle_make || !secondCar.vehicle_model)) {
+        Alert.alert('Missing info', 'Select second car model');
+        return;
+      }
     }
 
     const bookingConfirmed = activityData.result === 'BOOKING_CONFIRMED';
@@ -1131,10 +1143,13 @@ export default function TelecallerLeadDetailScreen({
         hasRecording,
         sortAt: String(item.at || ''),
         title: String(item.title || 'Update'),
-        notes: String(item.body || '')
-          .replace(/\[Smartflo\]\s*/gi, '')
-          .replace(/\bSmartflo\b/gi, '')
-          .trim(),
+        notes:
+          item.kind === 'whatsapp'
+            ? ''
+            : String(item.body || '')
+                .replace(/\[Smartflo\]\s*/gi, '')
+                .replace(/\bSmartflo\b/gi, '')
+                .trim(),
         badgeColor: isCall
           ? getCallStatusColor(item?.meta?.call_status, item?.meta?.outcome)
           : COLORS.orange + '22',
@@ -1150,17 +1165,8 @@ export default function TelecallerLeadDetailScreen({
       const h = profileHistory[i] || {};
       const at = String(h.at || '').trim();
       if (!at) continue;
-      const title = String(h.summary || h.event || 'Updated').slice(0, 160);
-      const notes = [
-        h.previous_label || h.previous_status
-          ? `Before: ${h.previous_label || h.previous_status}`
-          : null,
-        h.workshop_name ? `Workshop: ${h.workshop_name}` : null,
-        [h.city, h.pincode].filter(Boolean).join(' · ') || null,
-        h.remark ? String(h.remark) : null,
-      ]
-        .filter(Boolean)
-        .join('\n');
+      const title = String(h.summary || h.event || 'Updated').slice(0, 80);
+      const notes = h.remark ? String(h.remark).trim() : '';
       pushUnique(out, {
         id: `hist-local-${i}-${at}`,
         kind: 'update',
@@ -1386,9 +1392,9 @@ export default function TelecallerLeadDetailScreen({
   useEffect(() => {
     fetchLeadDetails();
     void fetchActivityTimeline();
-    void fetchLeadIq();
+    if (showLeadIq) void fetchLeadIq();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId]);
+  }, [leadId, showLeadIq]);
 
   useEffect(() => {
     if (!lead) return;
@@ -1410,36 +1416,55 @@ export default function TelecallerLeadDetailScreen({
     })();
   }, [leadId, lead?.id]);
 
-  // Handle hardware back button
+  // Handle hardware back button — leave the screen, don't just toggle edit mode.
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (editing) {
-        cancelEditing();
+      if (showWaChat) {
+        setShowWaChat(false);
         return true;
       }
-      if (navigation?.goBack) {
-        navigation.goBack();
+      if (showStatusMenu) {
+        setShowStatusMenu(false);
         return true;
       }
-      return false;
+      if (showLostMenu) {
+        setShowLostMenu(false);
+        return true;
+      }
+      navigation?.goBack?.();
+      return true;
     });
 
     return () => backHandler.remove();
-  }, [navigation, editing]);
+  }, [navigation, showWaChat, showStatusMenu, showLostMenu]);
 
   const fetchLeadDetails = async () => {
+    let settled = false;
+    const watchdog = setTimeout(() => {
+      if (settled) return;
+      setLoading(false);
+      setRefreshing(false);
+      setLoadError((prev) => prev || 'Taking too long. Check your connection and retry.');
+    }, 12000);
     try {
+      setLoadError(null);
       // Fetch lead
-      const { data: leadData, error: leadError } = await supabase
-        .from('service_leads')
-        .select(`
+      const { data: leadData, error: leadError } = await withTimeout(
+        Promise.resolve(
+          supabase
+            .from('service_leads')
+            .select(`
           *,
           workshop:workshops(name, phone, city),
           created_by:created_by_id(full_name),
           assigned_telecaller:assigned_telecaller_id(full_name)
         `)
-        .eq('id', leadId)
-        .single();
+            .eq('id', leadId)
+            .single(),
+        ),
+        10000,
+        'Lead details',
+      );
 
       if (leadError) throw leadError;
       const safeLead = redactLeadSourceForTelecaller(leadData as Record<string, any>);
@@ -1561,7 +1586,10 @@ export default function TelecallerLeadDetailScreen({
 
     } catch (error) {
       console.error('Error fetching lead details:', error);
+      setLoadError(error instanceof Error ? error.message : 'Could not load lead');
     } finally {
+      settled = true;
+      clearTimeout(watchdog);
       setLoading(false);
       setRefreshing(false);
     }
@@ -1661,6 +1689,7 @@ export default function TelecallerLeadDetailScreen({
         total_calls: (lead?.total_calls || 0) + 1,
         coupon_meta: nextMeta,
         updated_at: new Date().toISOString(),
+        ...(selected.id !== 'RINGING' ? { is_incomplete: false } : {}),
       };
       if (selected.lead_status) {
         leadUpdate.status = selected.lead_status;
@@ -1903,11 +1932,10 @@ export default function TelecallerLeadDetailScreen({
     }
   };
 
-  if (loading) {
+  if (loading && !lead) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading lead details...</Text>
+        <CarLoading size="compact" label="Loading lead details..." />
       </View>
     );
   }
@@ -1916,7 +1944,16 @@ export default function TelecallerLeadDetailScreen({
     return (
       <View style={styles.loadingContainer}>
         <Icon name="alert-circle" size={64} color={COLORS.red} />
-        <Text style={styles.errorText}>Lead not found</Text>
+        <Text style={styles.errorText}>{loadError || 'Lead not found'}</Text>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => {
+            setLoading(true);
+            void fetchLeadDetails();
+          }}
+        >
+          <Text style={styles.buttonText}>Retry</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
           <Text style={styles.buttonText}>Go Back</Text>
         </TouchableOpacity>
@@ -1936,7 +1973,7 @@ export default function TelecallerLeadDetailScreen({
       <View style={[styles.headerBar, embedded && styles.headerBarEmbedded]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => (editing ? cancelEditing() : navigation?.goBack())}
+          onPress={() => navigation?.goBack?.()}
         >
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
@@ -2041,6 +2078,7 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
+      {showLeadIq ? (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Lead IQ</Text>
         <View style={styles.sectionContent}>
@@ -2079,6 +2117,7 @@ export default function TelecallerLeadDetailScreen({
           )}
         </View>
       </View>
+      ) : null}
 
       {/* Coupon — view only at top; in edit mode it lives under Booking confirmed → Pickup */}
       {!editing ? (
@@ -3302,7 +3341,8 @@ export default function TelecallerLeadDetailScreen({
           ) : activityItems.length === 0 ? (
             <Text style={styles.emptyText}>No activity yet</Text>
           ) : (
-            activityItems.map((item) => {
+            <>
+              {(activityShowAll ? activityItems : activityItems.slice(0, 10)).map((item) => {
               const isPlaying =
                 item.kind === 'call' &&
                 item.hasRecording &&
@@ -3350,7 +3390,20 @@ export default function TelecallerLeadDetailScreen({
                   ) : null}
                 </View>
               );
-            })
+            })}
+              {activityItems.length > 10 ? (
+                <TouchableOpacity
+                  onPress={() => setActivityShowAll((v) => !v)}
+                  style={{ paddingVertical: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
+                    {activityShowAll
+                      ? 'View less'
+                      : `View more (${activityItems.length - 10})`}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           )}
         </View>
       </View>

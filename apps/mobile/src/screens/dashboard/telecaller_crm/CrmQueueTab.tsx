@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
-  ActivityIndicator,
   Modal,
   Alert,
   Linking,
@@ -16,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
+import CarLoading from '../../../components/CarLoading';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
@@ -30,6 +30,7 @@ import {
   saveTelecallerCrmFilterPrefs,
 } from '../../../lib/crmFilterPrefs';
 import { leadStatusCardColors, leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
+import { mergeCrmStatusFilters } from '../../../lib/telecaller/crmStatusFilters';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 
 const PRIORITY_OPTIONS = [
@@ -56,19 +57,8 @@ type Props = {
 
 type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'city' | 'priority' | null;
 
-/** Match lead detail "Select status" + Lead Status / New */
-const DEFAULT_STATUS_FILTERS = [
-  { id: 'all', label: 'Lead Status' },
-  { id: 'new', label: 'Fresh' },
-  { id: 'incomplete', label: 'Fresh' },
-  { id: 'interested', label: 'Interested' },
-  { id: 'will_visit', label: 'He will visit' },
-  { id: 'callback', label: 'Follow-up' },
-  { id: 'booking_confirmed', label: 'Booking confirmed' },
-  { id: 'in_service', label: 'In Service' },
-  { id: 'service_done', label: 'Service Done' },
-  { id: 'lost', label: 'Lost' },
-];
+/** Match lead detail "Select status" — one Fresh, one Follow-up. */
+const DEFAULT_STATUS_FILTERS = mergeCrmStatusFilters([]);
 
 const LOST_REASON_FILTERS = [
   { id: '', label: 'All lost reasons' },
@@ -244,23 +234,7 @@ export default function CrmQueueTab({
         const data = await apiFetch<any>('/api/lead-manager/statuses');
         const rows = Array.isArray(data?.statuses) ? data.statuses : [];
         if (cancelled || !rows.length) return;
-        const dynamic = rows
-          .filter((r: any) => String(r.code || '').toUpperCase() !== 'RINGING')
-          .map((r: any) => ({
-            id: String(r.code || '')
-              .trim()
-              .toLowerCase(),
-            label: String(r.name || r.code),
-          }));
-        setStatusFilters([
-          { id: 'all', label: 'Lead Status' },
-          { id: 'new', label: 'Fresh' },
-          { id: 'incomplete', label: 'Fresh' },
-          ...dynamic.filter(
-            (d: { id: string }) =>
-              d.id !== 'fresh' && d.id !== 'ringing' && d.id !== 'new',
-          ),
-        ]);
+        setStatusFilters(mergeCrmStatusFilters(rows));
       } catch {
         /* keep defaults */
       }
@@ -286,7 +260,6 @@ export default function CrmQueueTab({
       setAdvFollowUp(Boolean(prefs.advFollowUp));
       setAdvHasVehicle(Boolean(prefs.advHasVehicle));
       setAdvHasCoupon(Boolean(prefs.advHasCoupon));
-      if (!onFilterChange && prefs.statusFilter) setFilter(prefs.statusFilter);
       setLocalPrefsReady(true);
     })();
     return () => {
@@ -438,7 +411,6 @@ export default function CrmQueueTab({
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
     } catch (e) {
       console.error('queue load failed', e);
-      setLeads([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -562,7 +534,7 @@ export default function CrmQueueTab({
     }
   };
 
-  const doTransfer = async (toId: string, type: 'TRANSFER' | 'SHARE') => {
+  const doTransfer = async (toId: string) => {
     if (!shareLead) return;
     setSharing(true);
     try {
@@ -572,11 +544,11 @@ export default function CrmQueueTab({
         body: JSON.stringify({
           lead_id: shareLead.id,
           to_telecaller_id: toId,
-          transfer_type: type,
-          reason: type === 'SHARE' ? 'Shared from MyFNG' : 'Transferred from MyFNG',
+          transfer_type: 'TRANSFER',
+          reason: 'Transferred from MyFNG',
         }),
       });
-      Alert.alert('Done', type === 'SHARE' ? 'Lead shared' : 'Lead transferred');
+      Alert.alert('Done', 'Lead transferred');
       setShareLead(null);
       load();
     } catch (e: any) {
@@ -881,8 +853,10 @@ export default function CrmQueueTab({
         ) : null}
       </View>
 
-      {loading ? (
-        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
+      {loading && leads.length === 0 ? (
+        <View style={{ marginTop: 36, alignItems: 'center' }}>
+          <CarLoading size="compact" label="Loading leads..." />
+        </View>
       ) : viewMode === 'chart' ? (
         <ScrollView
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100, gap: 12 }}
@@ -1098,8 +1072,8 @@ export default function CrmQueueTab({
                   style={[styles.act, styles.actOutline]}
                   onPress={() => openShare(item)}
                 >
-                  <Ionicons name="share-outline" size={14} color={COLORS.primary} />
-                  <Text style={styles.actOutlineText}>Share</Text>
+                  <Ionicons name="swap-horizontal-outline" size={14} color={COLORS.primary} />
+                  <Text style={styles.actOutlineText}>Transfer</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
@@ -1291,13 +1265,13 @@ export default function CrmQueueTab({
         </View>
       </Modal>
 
-      {/* Share / Transfer */}
+      {/* Transfer */}
       <Modal visible={!!shareLead} transparent animationType="slide" onRequestClose={() => setShareLead(null)}>
         <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShareLead(null)} />
           <View style={styles.sheet}>
             <View style={styles.sheetHead}>
-              <Text style={styles.sheetTitle}>Share / Transfer Lead</Text>
+              <Text style={styles.sheetTitle}>Transfer Lead</Text>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setShareLead(null)}>
                 <Ionicons name="close" size={18} color="#fff" />
               </TouchableOpacity>
@@ -1311,19 +1285,11 @@ export default function CrmQueueTab({
                   <View key={p.id} style={styles.peerRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.name}>{p.full_name || 'Telecaller'}</Text>
-                      <Text style={styles.meta}>{p.phone || p.email}</Text>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.miniBtn, { opacity: sharing ? 0.5 : 1 }]}
-                      disabled={sharing}
-                      onPress={() => doTransfer(p.id, 'SHARE')}
-                    >
-                      <Text style={styles.miniBtnText}>Share</Text>
-                    </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.miniBtn, styles.miniPrimary, { opacity: sharing ? 0.5 : 1 }]}
                       disabled={sharing}
-                      onPress={() => doTransfer(p.id, 'TRANSFER')}
+                      onPress={() => doTransfer(p.id)}
                     >
                       <Text style={[styles.miniBtnText, { color: '#fff' }]}>Transfer</Text>
                     </TouchableOpacity>

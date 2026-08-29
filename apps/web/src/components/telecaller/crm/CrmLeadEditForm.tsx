@@ -803,45 +803,49 @@ export default function CrmLeadEditForm({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
+    const markingLost = formData.activity_result === 'LOST';
+
     // Customer validation
     if (!formData.customer_name.trim()) newErrors.customer_name = 'Customer name is required';
     if (!formData.customer_phone.trim()) newErrors.customer_phone = 'Phone number is required';
     if (formData.customer_phone && formData.customer_phone.replace(/\D/g, '').length < 10) {
       newErrors.customer_phone = 'Please enter valid 10-digit phone number';
     }
-    if (!formData.area.trim() && !formData.flat_number.trim()) {
-      newErrors.area = 'Address (flat / area) is required';
-    }
-    if (!formData.city_id && !formData.city) newErrors.city_id = 'City is required (enter pincode)';
-    if (!formData.pincode || formData.pincode.replace(/\D/g, '').length !== 6) {
-      newErrors.pincode = '6-digit pincode required';
-    }
-
-    // Vehicle validation — NA allowed for soft leads
-    const vNum = formData.vehicle_number.trim().toUpperCase();
-    if (!vNum) newErrors.vehicle_number = 'Vehicle number is required (or NA)';
-    if (!formData.vehicle_make.trim() || !formData.vehicle_model.trim()) {
-      newErrors.vehicle_make = 'Search and select car model';
-    }
-    if (!formData.vehicle_fuel_type) newErrors.vehicle_fuel_type = 'Fuel type is required';
-
-    if (showSecondCar) {
-      const sNum = secondCar.vehicle_number.trim().toUpperCase();
-      if (!sNum) newErrors.second_vehicle_number = 'Second car number is required (or NA)';
-      if (!secondCar.vehicle_make.trim() || !secondCar.vehicle_model.trim()) {
-        newErrors.second_vehicle_make = 'Search and select second car model';
+    if (!markingLost) {
+      if (!formData.area.trim() && !formData.flat_number.trim()) {
+        newErrors.area = 'Address (flat / area) is required';
       }
-      if (sNum && sNum !== 'NA' && !validateVehicleNumber(sNum)) {
-        newErrors.second_vehicle_number = 'Enter valid second car number (e.g., MH12AB1234) or NA';
+      if (!formData.city_id && !formData.city) newErrors.city_id = 'City is required (enter pincode)';
+      if (!formData.pincode || formData.pincode.replace(/\D/g, '').length !== 6) {
+        newErrors.pincode = '6-digit pincode required';
       }
-    }
 
-    if (vNum && vNum !== 'NA' && !validateVehicleNumber(vNum)) {
-      newErrors.vehicle_number = 'Please enter valid vehicle number (e.g., MH12AB1234) or NA';
-    }
+      // Vehicle validation — NA allowed for soft leads
+      const vNum = formData.vehicle_number.trim().toUpperCase();
+      if (!vNum) newErrors.vehicle_number = 'Vehicle number is required (or NA)';
+      if (!formData.vehicle_make.trim() || !formData.vehicle_model.trim()) {
+        newErrors.vehicle_make = 'Search and select car model';
+      }
+      if (!formData.vehicle_fuel_type) newErrors.vehicle_fuel_type = 'Fuel type is required';
 
-    // Service validation
-    if (formData.service_types.length === 0) newErrors.service_types = 'Please select at least one service type';
+      if (showSecondCar) {
+        const sNum = secondCar.vehicle_number.trim().toUpperCase();
+        if (!sNum) newErrors.second_vehicle_number = 'Second car number is required (or NA)';
+        if (!secondCar.vehicle_make.trim() || !secondCar.vehicle_model.trim()) {
+          newErrors.second_vehicle_make = 'Search and select second car model';
+        }
+        if (sNum && sNum !== 'NA' && !validateVehicleNumber(sNum)) {
+          newErrors.second_vehicle_number = 'Enter valid second car number (e.g., MH12AB1234) or NA';
+        }
+      }
+
+      if (vNum && vNum !== 'NA' && !validateVehicleNumber(vNum)) {
+        newErrors.vehicle_number = 'Please enter valid vehicle number (e.g., MH12AB1234) or NA';
+      }
+
+      // Service validation
+      if (formData.service_types.length === 0) newErrors.service_types = 'Please select at least one service type';
+    }
 
     // Soft leads: date/time not mandatory. Only when marking Booking confirmed.
     if (formData.activity_result === 'BOOKING_CONFIRMED') {
@@ -1107,7 +1111,7 @@ export default function CrmLeadEditForm({
               {onShare ? (
                 <button
                   type="button"
-                  title={isLeadManager ? 'Assign TC' : 'Share'}
+                  title={isLeadManager ? 'Assign TC' : 'Transfer'}
                   onClick={onShare}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25"
                 >

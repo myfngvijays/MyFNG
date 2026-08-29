@@ -1,10 +1,12 @@
-import { supabase } from './supabase';
+import { getSupabaseAccessToken, withTimeout } from './supabase';
 import { ENV } from '../config/environment';
 import { getCustomerSessionToken } from './customerSession';
 import auth from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 
 type JsonValue = Record<string, any> | any[] | null;
+
+const FETCH_TIMEOUT_MS = 20000;
 
 export async function apiFetch<T = JsonValue>(
   path: string,
@@ -15,13 +17,7 @@ export async function apiFetch<T = JsonValue>(
   // breaks an authenticated request when another valid token exists.
   let bearerToken: string | undefined;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    bearerToken = session?.access_token;
-    // Stale/missing access token — try one refresh before failing auth
-    if (!bearerToken) {
-      const { data: refreshed } = await supabase.auth.refreshSession();
-      bearerToken = refreshed.session?.access_token;
-    }
+    bearerToken = await getSupabaseAccessToken();
   } catch {
     bearerToken = undefined;
   }
@@ -36,7 +32,9 @@ export async function apiFetch<T = JsonValue>(
   let firebaseIdToken: string | null = null;
   try {
     const firebaseUser = auth().currentUser;
-    firebaseIdToken = firebaseUser ? await firebaseUser.getIdToken() : null;
+    firebaseIdToken = firebaseUser
+      ? await withTimeout(firebaseUser.getIdToken(), 4000, 'Firebase token')
+      : null;
   } catch {
     firebaseIdToken = null;
   }
@@ -52,17 +50,23 @@ export async function apiFetch<T = JsonValue>(
   if (customerSessionToken) headers['x-customer-session'] = customerSessionToken;
   if (firebaseIdToken) headers['x-firebase-id-token'] = firebaseIdToken;
 
+  const controller = new AbortController();
+  const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   const res = await fetch(`${ENV.API_URL}${path}`, {
     ...options,
     headers,
+    signal: controller.signal,
   }).catch((err: unknown) => {
     const raw = String((err as Error)?.message || err || '');
-    if (/network request failed|failed to fetch|networkerror|timed?\s*out/i.test(raw)) {
+    const aborted = (err as { name?: string })?.name === 'AbortError';
+    if (aborted || /network request failed|failed to fetch|networkerror|timed?\s*out/i.test(raw)) {
       throw new Error(
         'Could not reach the server. Check your internet connection and try again.',
       );
     }
     throw err instanceof Error ? err : new Error(raw || 'Request failed');
+  }).finally(() => {
+    clearTimeout(fetchTimer);
   });
 
   const text = await res.text().catch(() => '');

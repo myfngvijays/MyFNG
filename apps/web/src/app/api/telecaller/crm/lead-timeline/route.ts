@@ -288,17 +288,12 @@ export async function GET(request: NextRequest) {
 
     for (const msg of waRes.data || []) {
       const dir = String((msg as any).direction || '').toUpperCase();
-      const text =
-        String((msg as any).text_body || '').trim() ||
-        String((msg as any).media_caption || '').trim() ||
-        ((msg as any).template_name ? `Template: ${(msg as any).template_name}` : null) ||
-        String((msg as any).message_type || 'Message');
       items.push({
         id: `wa-${(msg as any).id}`,
         kind: 'whatsapp',
         at: String((msg as any).created_at),
-        title: dir === 'INBOUND' ? 'WhatsApp inbound' : 'WhatsApp outbound',
-        body: text.slice(0, 280),
+        title: dir === 'INBOUND' ? 'WhatsApp received' : 'WhatsApp sent',
+        body: null,
         meta: { status: (msg as any).status, message_type: (msg as any).message_type },
       });
     }

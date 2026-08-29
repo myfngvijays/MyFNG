@@ -1,14 +1,15 @@
-# Add project specific ProGuard rules here.
-# By default, the flags in this file are appended to flags specified
-# in /usr/local/Cellar/android-sdk/24.3.3/tools/proguard/proguard-android.txt
-# You can edit the include path and order by changing the proguardFiles
-# directive in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# R8 / ProGuard — keep only what RN, payments, and reflection actually need.
+# Broad -keep on Kotlin / GMS / Firebase was capping Play obfuscation at ~29%.
+# Library AARs already ship consumer ProGuard rules; those still apply.
 
-# ---------- React Native ----------
--keep class com.facebook.react.** { *; }
+-allowaccessmodification
+-repackageclasses
+
+# Crash reports: keep line numbers, hide real source file names
+-keepattributes SourceFile,LineNumberTable,Signature,InnerClasses,EnclosingMethod,*Annotation*
+-renamesourcefileattribute SourceFile
+
+# ---------- React Native (AAR consumer rules cover NativeModule / @DoNotStrip) ----------
 -keep class com.facebook.hermes.** { *; }
 -keep class com.facebook.jni.** { *; }
 -dontwarn com.facebook.react.**
@@ -20,8 +21,7 @@
 # ---------- react-native-gesture-handler ----------
 -keep class com.swmansion.gesturehandler.** { *; }
 
-# ---------- Razorpay ----------
--keepattributes *Annotation*
+# ---------- Razorpay (official rules) ----------
 -dontwarn com.razorpay.**
 -keep class com.razorpay.** { *; }
 -optimizations !method/inlining/*
@@ -35,45 +35,36 @@
     @proguard.annotation.Keep *;
 }
 
-# ---------- Firebase / Google Play Services ----------
--keep class com.google.firebase.** { *; }
--keep class com.google.android.gms.** { *; }
--dontwarn com.google.firebase.**
--dontwarn com.google.android.gms.**
-
-# ---------- Google Maps ----------
+# ---------- Google Maps (JS/native name lookup) ----------
 -keep class com.google.android.gms.maps.** { *; }
 -keep interface com.google.android.gms.maps.** { *; }
 -dontwarn com.google.android.gms.maps.**
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
 
-# ---------- OkHttp / Okio (used by many RN libs) ----------
+# ---------- OkHttp / Okio ----------
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -dontwarn javax.annotation.**
 -keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
 
-# ---------- Supabase / GoTrue (JS client; any native helpers) ----------
+# ---------- Supabase (JS client; native helpers if present) ----------
 -dontwarn io.github.jan.supabase.**
 
-# ---------- Expo ----------
+# ---------- Expo (module registry looks up class names) ----------
 -keep class expo.modules.** { *; }
 -keep class host.exp.exponent.** { *; }
 
-# ---------- Kotlin ----------
--keep class kotlin.** { *; }
--keep class kotlinx.** { *; }
+# ---------- Microsoft Clarity ----------
+-keep class com.microsoft.clarity.** { *; }
+-dontwarn com.microsoft.clarity.**
+
+# ---------- Kotlin (do not blanket-keep stdlib — R8 can shrink/obfuscate it) ----------
 -dontwarn kotlin.**
 -dontwarn kotlinx.**
+-keep class kotlin.Metadata { *; }
 
-# ---------- Annotations / reflection ----------
--keepattributes Signature
--keepattributes InnerClasses
--keepattributes EnclosingMethod
--keepattributes SourceFile,LineNumberTable
-
-# ---------- JVM-only classes (compile-time only, not available on Android) ----------
-# KotlinPoet, JavaPoet and other code-gen libs reference javax.lang.model.* which
-# only exists on the JVM. Safe to ignore on Android runtime.
+# ---------- JVM-only classes (compile-time only, not on Android) ----------
 -dontwarn javax.lang.model.**
 -dontwarn javax.annotation.processing.**
 -dontwarn javax.tools.**

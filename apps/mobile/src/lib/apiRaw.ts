@@ -1,21 +1,16 @@
-import { supabase } from './supabase';
+import { getSupabaseAccessToken, withTimeout } from './supabase';
 import { ENV } from '../config/environment';
 import { getCustomerSessionToken } from './customerSession';
 import auth from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 
+const FETCH_TIMEOUT_MS = 20000;
+
 /** Authenticated fetch that returns raw Response (for CSV / binary). */
 export async function apiFetchRaw(path: string, options: RequestInit = {}): Promise<Response> {
   let bearerToken: string | undefined;
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    bearerToken = session?.access_token;
-    if (!bearerToken) {
-      const { data: refreshed } = await supabase.auth.refreshSession();
-      bearerToken = refreshed.session?.access_token;
-    }
+    bearerToken = await getSupabaseAccessToken();
   } catch {
     bearerToken = undefined;
   }
@@ -30,7 +25,9 @@ export async function apiFetchRaw(path: string, options: RequestInit = {}): Prom
   let firebaseIdToken: string | null = null;
   try {
     const firebaseUser = auth().currentUser;
-    firebaseIdToken = firebaseUser ? await firebaseUser.getIdToken() : null;
+    firebaseIdToken = firebaseUser
+      ? await withTimeout(firebaseUser.getIdToken(), 4000, 'Firebase token')
+      : null;
   } catch {
     firebaseIdToken = null;
   }
@@ -48,5 +45,15 @@ export async function apiFetchRaw(path: string, options: RequestInit = {}): Prom
   if (customerSessionToken) headers['x-customer-session'] = customerSessionToken;
   if (firebaseIdToken) headers['x-firebase-id-token'] = firebaseIdToken;
 
-  return fetch(`${ENV.API_URL}${path}`, { ...options, headers });
+  const controller = new AbortController();
+  const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(`${ENV.API_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(fetchTimer);
+  }
 }

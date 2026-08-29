@@ -5,15 +5,18 @@ module.exports = function (api) {
 
   return {
     presets: ['babel-preset-expo'],
-    plugins: isProduction
-      ? [
-          [
-            'transform-remove-console',
-            // Keep console.error and console.warn so real errors are still surfaced
-            // in production crash reporters; strip only noisy logs.
-            { exclude: ['error', 'warn'] },
-          ],
-        ]
-      : [],
+    plugins: [
+      require('./babel-plugin-myfng-speedometer-loading'),
+      ...(isProduction
+        ? [
+            [
+              'transform-remove-console',
+              // Keep console.error and console.warn so real errors are still surfaced
+              // in production crash reporters; strip only noisy logs.
+              { exclude: ['error', 'warn'] },
+            ],
+          ]
+        : []),
+    ],
   };
 };

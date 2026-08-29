@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { supabase, withTimeout } from '../lib/supabase';
 import { registerAndSyncFcmPushToken } from '../services/pushNotifications';
 
 interface UserProfile {
@@ -48,20 +48,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        
-        // Fetch user profile with role
-        supabase
-          .from('users_login')
-          .select(`
-            *,
-            role:roles!role_id(role_code, role_name)
-          `)
-          .eq('id', session.user.id)
-          .single()
-          .then(({ data, error }) => {
+    void withTimeout(supabase.auth.getSession(), 6000, 'Session')
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          setUser(session.user);
+
+          // Fetch user profile with role
+          void withTimeout(
+            Promise.resolve(
+              supabase
+                .from('users_login')
+                .select(`
+                  *,
+                  role:roles!role_id(role_code, role_name)
+                `)
+                .eq('id', session.user.id)
+                .single(),
+            ),
+            8000,
+            'Profile',
+          ).then(({ data, error }) => {
             if (error) {
               console.error('Error fetching user profile:', error);
               setIsLoading(false);
@@ -71,39 +77,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUserProfile(data);
             }
             setIsLoading(false);
+          }).catch(() => {
+            setIsLoading(false);
           });
-      } else {
+        } else {
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
         setIsLoading(false);
-      }
-    });
+      });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        
-        // Fetch user profile with role
-        supabase
-          .from('users_login')
-          .select(`
-            *,
-            role:roles!role_id(role_code, role_name)
-          `)
-          .eq('id', session.user.id)
-          .single()
-          .then(({ data, error }) => {
-            if (error) {
-              console.error('Error fetching user profile:', error);
-              return;
-            }
-            if (data) {
-              setUserProfile(data);
-            }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setTimeout(() => {
+        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          if (session?.user) {
+            setUser((prev) => (prev?.id === session.user.id ? prev : session.user));
+          }
+          return;
+        }
+        if (event === 'SIGNED_OUT') {
+          void supabase.auth.getSession().then(({ data: { session: current } }) => {
+            if (current?.user) return;
+            setUser(null);
+            setUserProfile(null);
           });
-      } else {
-        setUser(null);
-        setUserProfile(null);
-      }
+          return;
+        }
+        if (session?.user) {
+          setUser((prev) => (prev?.id === session.user.id ? prev : session.user));
+          supabase
+            .from('users_login')
+            .select(`
+              *,
+              role:roles!role_id(role_code, role_name)
+            `)
+            .eq('id', session.user.id)
+            .single()
+            .then(({ data, error }) => {
+              if (error) {
+                console.error('Error fetching user profile:', error);
+                return;
+              }
+              if (data) {
+                setUserProfile(data);
+              }
+            });
+        }
+      }, 0);
     });
 
     return () => {

@@ -6,10 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
+import CarLoading from '../../../components/CarLoading';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import TelecallerAanshBar from '../../../components/telecaller/TelecallerAanshBar';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
@@ -88,15 +88,30 @@ export default function CrmHomeTab({
   }, [datePreset, customStart, customEnd]);
 
   useEffect(() => {
-    setLoading(true);
     load();
   }, [load]);
 
   if (loading && !data) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.muted}>Loading MyFNG CRM...</Text>
+        <CarLoading size="compact" label="Loading MyFNG CRM..." />
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.muted}>Could not load CRM. Check your connection.</Text>
+        <TouchableOpacity
+          onPress={() => {
+            setLoading(true);
+            void load();
+          }}
+          style={{ marginTop: 16, paddingHorizontal: 20, paddingVertical: 10 }}
+        >
+          <Text style={{ color: COLORS.primary, fontWeight: '700' }}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -247,7 +262,7 @@ export default function CrmHomeTab({
 
       <View style={styles.kpiGrid}>
         {[
-          { label: 'Fresh', value: (kpis.new_leads || 0) + (kpis.incomplete || 0), statusKey: 'Fresh', filter: 'new' },
+          { label: 'Fresh', value: kpis.new_leads || 0, statusKey: 'Fresh', filter: 'new' },
           {
             label: 'Interested',
             value: kpis.interested,

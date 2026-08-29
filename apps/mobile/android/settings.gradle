@@ -1,8 +1,28 @@
 pluginManagement {
+  def nodeExecutable = {
+    def fromEnv = System.getenv("NODE_BINARY")
+    if (fromEnv && new File(fromEnv).canExecute()) return fromEnv
+    def props = new Properties()
+    def localFile = file("local.properties")
+    if (localFile.exists()) {
+      localFile.withInputStream { props.load(it) }
+      def fromLocal = props.getProperty("node.executable")
+      if (fromLocal && new File(fromLocal).canExecute()) return fromLocal
+    }
+    for (candidate in [
+      "${System.getProperty('user.home')}/nodejs/bin/node",
+      "/usr/local/bin/node",
+      "/opt/homebrew/bin/node",
+    ]) {
+      if (new File(candidate).canExecute()) return candidate
+    }
+    return "node"
+  }()
+
   def reactNativeGradlePlugin = new File(
     providers.exec {
       workingDir(rootDir)
-      commandLine("node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })")
+      commandLine(nodeExecutable, "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })")
     }.standardOutput.asText.get().trim()
   ).getParentFile().absolutePath
   includeBuild(reactNativeGradlePlugin)
@@ -10,7 +30,7 @@ pluginManagement {
   def expoPluginsPath = new File(
     providers.exec {
       workingDir(rootDir)
-      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+      commandLine(nodeExecutable, "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
     }.standardOutput.asText.get().trim(),
     "../android/expo-gradle-plugin"
   ).absolutePath

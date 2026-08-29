@@ -19,6 +19,7 @@ import {
   LOST_REASON_FILTERS,
   leadDisplayStatus,
   leadStatusCardColors,
+  mergeCrmStatusFilters,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -333,25 +334,7 @@ function TelecallerCrmLeadsContent() {
         if (!res.ok || cancelled) return;
         const rows = Array.isArray(json?.statuses) ? json.statuses : [];
         if (!rows.length) return;
-        const dynamic = rows
-          .filter((r: any) => String(r.code || '').toUpperCase() !== 'RINGING')
-          .map((r: any) => ({
-            id: String(r.code || '')
-              .trim()
-              .toLowerCase(),
-            label: String(r.name || r.code),
-          }));
-        setStatusFilters([
-          { id: 'all', label: 'All' },
-          { id: 'new', label: 'Fresh' },
-          ...dynamic.filter(
-            (d: { id: string }) =>
-              d.id !== 'fresh' &&
-              d.id !== 'ringing' &&
-              d.id !== 'new' &&
-              d.id !== 'incomplete',
-          ),
-        ]);
+        setStatusFilters(mergeCrmStatusFilters(rows, 'All'));
       } catch {
         /* keep defaults */
       }
@@ -364,7 +347,7 @@ function TelecallerCrmLeadsContent() {
   // Restore saved filters once on client (survives lead open → back)
   useEffect(() => {
     const saved = loadTelecallerCrmFilterPrefs();
-    setFilter(filterParam || saved.statusFilter || 'all');
+    setFilter(filterParam || 'all');
     setDatePreset((dateParam && dateParam) || saved.datePreset);
     setDateField(
       dateFieldParam === 'modified' || dateFieldParam === 'updated_at'
@@ -391,6 +374,11 @@ function TelecallerCrmLeadsContent() {
     setPrefsReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once on mount / URL entry
   }, []);
+
+  useEffect(() => {
+    if (!prefsReady) return;
+    setFilter(filterParam || 'all');
+  }, [filterParam, prefsReady]);
 
   const syncFiltersToUrl = useCallback(
     (next: {
@@ -827,7 +815,7 @@ function TelecallerCrmLeadsContent() {
     }
   };
 
-  const doTransfer = async (toId: string, type: 'TRANSFER' | 'SHARE') => {
+  const doTransfer = async (toId: string) => {
     if (!shareLead) return;
     setSharing(true);
     try {
@@ -837,8 +825,8 @@ function TelecallerCrmLeadsContent() {
         body: JSON.stringify({
           lead_id: shareLead.id,
           to_telecaller_id: toId,
-          transfer_type: type,
-          reason: type === 'SHARE' ? 'Shared from MyFNG' : 'Transferred from MyFNG',
+          transfer_type: 'TRANSFER',
+          reason: 'Transferred from MyFNG',
         }),
       });
       const data = await res.json();
@@ -1786,8 +1774,8 @@ function TelecallerCrmLeadsContent() {
                                 <button
                                   type="button"
                                   onClick={() => openShare(lead)}
-                                  title="Share"
-                                  aria-label="Share"
+                                  title="Transfer"
+                                  aria-label="Transfer"
                                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-600 text-white shadow-sm hover:bg-slate-700"
                                 >
                                   <Share2 className="h-3.5 w-3.5 fill-current" strokeWidth={2.5} />
@@ -1892,7 +1880,7 @@ function TelecallerCrmLeadsContent() {
                         className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-blue-50 px-2 py-2 text-xs font-bold text-[#004AAD]"
                       >
                         <Share2 className="h-3.5 w-3.5" strokeWidth={2.5} />
-                        Share
+                        Transfer
                       </button>
                     </div>
                   </div>
@@ -1952,7 +1940,7 @@ function TelecallerCrmLeadsContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[80vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-extrabold text-[#023D95]">Share / Transfer</h3>
+              <h3 className="text-lg font-extrabold text-[#023D95]">Transfer Lead</h3>
               <button type="button" onClick={() => setShareLead(null)}>
                 <X className="h-5 w-5 text-slate-400" />
               </button>
@@ -1970,22 +1958,13 @@ function TelecallerCrmLeadsContent() {
                     className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 p-3"
                   >
                     <div>
-                      <p className="text-sm font-bold text-slate-800">{p.name || p.email}</p>
-                      <p className="text-xs text-slate-500">{p.email}</p>
+                      <p className="text-sm font-bold text-slate-800">{p.name || p.email || 'Telecaller'}</p>
                     </div>
                     <div className="flex gap-1.5">
                       <button
                         type="button"
                         disabled={sharing}
-                        onClick={() => doTransfer(p.id, 'SHARE')}
-                        className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-[#004AAD]"
-                      >
-                        Share
-                      </button>
-                      <button
-                        type="button"
-                        disabled={sharing}
-                        onClick={() => doTransfer(p.id, 'TRANSFER')}
+                        onClick={() => doTransfer(p.id)}
                         className="rounded-lg bg-orange-50 px-2.5 py-1.5 text-[11px] font-bold text-orange-700"
                       >
                         Transfer

@@ -235,7 +235,7 @@ export default function TelecallerCrmHomePage() {
 
   // Same labels / filters as Leads — colors from leadStatusCardColors palette
   const kpiCards = [
-    { label: 'Fresh', value: (kpis.new_leads || 0) + (kpis.incomplete || 0), statusKey: 'Fresh', filter: 'new', href: `${base}/leads?filter=new` },
+    { label: 'Fresh', value: kpis.new_leads || 0, statusKey: 'Fresh', filter: 'new', href: `${base}/leads?filter=new` },
     {
       label: 'Interested',
       value: kpis.interested,
@@ -441,9 +441,6 @@ export default function TelecallerCrmHomePage() {
                   <Link
                     key={k.label}
                     href={k.href}
-                    onClick={() => {
-                      if (k.filter) saveTelecallerCrmFilterPrefs({ statusFilter: k.filter });
-                    }}
                     className="rounded-xl py-2.5 sm:py-3 text-center shadow-sm border transition hover:brightness-[0.98] hover:shadow"
                     style={{
                       backgroundColor: tint.cardBg,

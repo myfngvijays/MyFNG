@@ -11,12 +11,15 @@ import {
   Platform,
   Image,
   Alert,
+  BackHandler,
+  type ViewStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { apiFetch } from '../../../lib/api';
+import { setAndroidShellBackHandler } from '../../../lib/androidShellBack';
 import TelecallerWhatsAppInbox, {
   TelecallerWhatsAppFab,
 } from '../../../components/telecaller/TelecallerWhatsAppInbox';
@@ -35,6 +38,17 @@ import {
   loadTelecallerCrmFilterPrefs,
   saveTelecallerCrmFilterPrefs,
 } from '../../../lib/crmFilterPrefs';
+
+/** Keep Home / Leads mounted so idle resume does not remount into a hung spinner. */
+const HIDDEN_TAB: ViewStyle = {
+  position: 'absolute',
+  width: 0,
+  height: 0,
+  opacity: 0,
+  overflow: 'hidden',
+  left: 0,
+  top: 0,
+};
 
 const MENU_TABS = [
   { id: 'home', label: 'Home', icon: 'home-outline' as const },
@@ -67,35 +81,30 @@ type NavRow =
 /** TeleCRM-style: flat rows + expandable dropdowns (Lead Manager). */
 const LM_NAV: NavRow[] = [
   { type: 'item', id: 'home', label: 'Home', icon: 'home-outline', kind: 'tab' },
+  { type: 'item', id: 'queue', label: 'Leads', icon: 'clipboard-outline', kind: 'tab' },
   {
-    type: 'group',
-    id: 'leads_group',
-    label: 'Leads / Filters',
-    icon: 'people-outline',
-    children: [
-      { id: 'queue', label: 'All leads', icon: 'clipboard-outline', kind: 'tab' },
-      {
-        id: 'reminders',
-        label: 'Reminders',
-        icon: 'alarm-outline',
-        kind: 'stack',
-        screen: 'TelecallerFollowUps',
-      },
-      {
-        id: 'assignment',
-        label: 'Assignment',
-        icon: 'git-branch-outline',
-        kind: 'stack',
-        screen: 'LeadManagerDashboard',
-      },
-      {
-        id: 'escalations',
-        label: 'Escalations',
-        icon: 'warning-outline',
-        kind: 'stack',
-        screen: 'LeadManagerEscalations',
-      },
-    ],
+    type: 'item',
+    id: 'reminders',
+    label: 'Reminders',
+    icon: 'alarm-outline',
+    kind: 'stack',
+    screen: 'TelecallerFollowUps',
+  },
+  {
+    type: 'item',
+    id: 'assignment',
+    label: 'Assignment',
+    icon: 'git-branch-outline',
+    kind: 'stack',
+    screen: 'LeadManagerDashboard',
+  },
+  {
+    type: 'item',
+    id: 'escalations',
+    label: 'Escalations',
+    icon: 'warning-outline',
+    kind: 'stack',
+    screen: 'LeadManagerEscalations',
   },
   {
     type: 'item',
@@ -368,21 +377,14 @@ const LM_NAV: NavRow[] = [
 /** TeleCRM-style nav for Telecaller role. */
 const TC_NAV: NavRow[] = [
   { type: 'item', id: 'home', label: 'Home', icon: 'home-outline', kind: 'tab' },
+  { type: 'item', id: 'queue', label: 'Leads', icon: 'clipboard-outline', kind: 'tab' },
   {
-    type: 'group',
-    id: 'leads_group',
-    label: 'Leads / Filters',
-    icon: 'people-outline',
-    children: [
-      { id: 'queue', label: 'All leads', icon: 'clipboard-outline', kind: 'tab' },
-      {
-        id: 'reminders',
-        label: 'Reminders',
-        icon: 'alarm-outline',
-        kind: 'stack',
-        screen: 'TelecallerFollowUps',
-      },
-    ],
+    type: 'item',
+    id: 'reminders',
+    label: 'Reminders',
+    icon: 'alarm-outline',
+    kind: 'stack',
+    screen: 'TelecallerFollowUps',
   },
   {
     type: 'item',
@@ -520,6 +522,44 @@ export default function TelecallerAdvancedCRM() {
   }, [(route.params as any)?.openAddLeadPhone, stackNav]);
 
   useEffect(() => {
+    const onBack = () => {
+      if (menuOpen) {
+        setMenuOpen(false);
+        return true;
+      }
+      if (whatsAppOpen) {
+        setWhatsAppOpen(false);
+        return true;
+      }
+      if (detailLeadId) {
+        setDetailLeadId(null);
+        setDetailEditing(false);
+        return true;
+      }
+      if (bookMode) {
+        setBookMode(null);
+        setTab('home');
+        return true;
+      }
+      if (stackNav.canGoBack()) {
+        stackNav.goBack();
+        return true;
+      }
+      if (tab !== 'home') {
+        setTab('home');
+        return true;
+      }
+      return false;
+    };
+    setAndroidShellBackHandler(onBack);
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => {
+      setAndroidShellBackHandler(null);
+      sub.remove();
+    };
+  }, [menuOpen, whatsAppOpen, detailLeadId, bookMode, tab, stackNav]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       const prefs = await loadTelecallerCrmFilterPrefs();
@@ -527,7 +567,7 @@ export default function TelecallerAdvancedCRM() {
       setDatePreset(prefs.datePreset);
       setCustomStart(prefs.customStart);
       setCustomEnd(prefs.customEnd);
-      setQueueFilter(prefs.statusFilter || 'all');
+      setQueueFilter('all');
       setPrefsReady(true);
     })();
     return () => {
@@ -576,6 +616,16 @@ export default function TelecallerAdvancedCRM() {
   const persistQueueFilter = (value: string) => {
     setQueueFilter(value);
     void saveTelecallerCrmFilterPrefs({ statusFilter: value });
+  };
+
+  const goHome = () => {
+    setMenuOpen(false);
+    setWhatsAppOpen(false);
+    setDetailLeadId(null);
+    setDetailEditing(false);
+    setBookMode(null);
+    setBookPrefillPhone(null);
+    setTab('home');
   };
 
   const openLead = (leadId: string, _editing = true) => {
@@ -635,8 +685,8 @@ export default function TelecallerAdvancedCRM() {
         return;
       }
       if (screen === 'queue' || screen === 'leads' || screen === 'TelecallerLeads') {
+        setQueueFilter(params?.filter || 'all');
         setTab('queue');
-        if (params?.filter) persistQueueFilter(params.filter);
         return;
       }
       if (screen === 'book' || screen === 'createLead' || screen === 'TelecallerCreateLead') {
@@ -680,7 +730,15 @@ export default function TelecallerAdvancedCRM() {
         setDetailEditing(false);
         return;
       }
-      setTab('home');
+      if (bookMode) {
+        setBookMode(null);
+        setTab('home');
+        return;
+      }
+      if (tab !== 'home') {
+        setTab('home');
+        return;
+      }
     },
   };
 
@@ -688,6 +746,9 @@ export default function TelecallerAdvancedCRM() {
     if (id === 'engage') {
       setMenuOpen(false);
       return;
+    }
+    if (id === 'queue') {
+      setQueueFilter('all');
     }
     setDetailLeadId(null);
     setDetailEditing(false);
@@ -741,7 +802,10 @@ export default function TelecallerAdvancedCRM() {
     ]);
   };
 
-  const showQueue = prefsReady && tab === 'queue';
+  const showHome = prefsReady;
+  const showQueue = prefsReady;
+  const homeActive = tab === 'home' && !detailLeadId;
+  const queueActive = tab === 'queue' && !detailLeadId;
   const activeTitle =
     MENU_TABS.find((t) => t.id === (detailLeadId ? 'queue' : tab))?.label ||
     (isLeadManager ? 'Lead Manager' : 'Telecaller CRM');
@@ -752,7 +816,7 @@ export default function TelecallerAdvancedCRM() {
 
       {!detailLeadId ? (
         <View style={styles.topBar}>
-          <View style={styles.topSide}>
+          <View style={styles.topSide} pointerEvents="box-none">
             <TouchableOpacity
               style={styles.menuBtn}
               onPress={() => setMenuOpen(true)}
@@ -772,14 +836,9 @@ export default function TelecallerAdvancedCRM() {
           </View>
           <View style={styles.topCenter} pointerEvents="box-none">
             <TouchableOpacity
-              onPress={() => {
-                setDetailLeadId(null);
-                setDetailEditing(false);
-                setBookMode(null);
-                setWhatsAppOpen(false);
-                setTab('home');
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={goHome}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityRole="button"
               accessibilityLabel="Go to home"
             >
@@ -790,7 +849,7 @@ export default function TelecallerAdvancedCRM() {
               />
             </TouchableOpacity>
           </View>
-          <View style={styles.topSideRight}>
+          <View style={styles.topSideRight} pointerEvents="box-none">
             <TouchableOpacity
               style={styles.menuBtn}
               onPress={() => {
@@ -830,58 +889,50 @@ export default function TelecallerAdvancedCRM() {
       ) : null}
 
       <View style={styles.body}>
-        {prefsReady && tab === 'home' && !detailLeadId && (
-          <CrmHomeTab
-            {...dateProps}
-            embedInShell
-            onNavigate={(screen, params) => {
-              if (screen === 'queue') {
-                persistQueueFilter(params?.filter || 'all');
-                setTab('queue');
-                return;
-              }
-              if (screen === 'book') {
-                setBookMode(
-                  params?.mode === 'lead' ? 'lead' : params?.mode === 'book' ? 'book' : null,
-                );
-                setTab('book');
-                return;
-              }
-              if (screen === 'engage') {
-                // Engage / RSA temporarily disabled from CRM shell
-                return;
-              }
-              if (screen === 'workshops' || screen === 'workshopLocator') {
-                setTab('workshops');
-                return;
-              }
-              if (screen === 'reports' || screen === 'CrmReports' || screen === 'LeadManagerReports') {
-                stackNav.navigate('CrmReports', params);
-                return;
-              }
-              navigation.navigate(screen, params);
-            }}
-            onOpenWhatsApp={() => setWhatsAppOpen(true)}
-          />
-        )}
+        {showHome ? (
+          <View
+            style={[styles.body, homeActive ? null : HIDDEN_TAB]}
+            pointerEvents={homeActive ? 'auto' : 'none'}
+          >
+            <CrmHomeTab
+              {...dateProps}
+              embedInShell
+              onNavigate={(screen, params) => {
+                if (screen === 'queue') {
+                  setQueueFilter(params?.filter || 'all');
+                  setTab('queue');
+                  return;
+                }
+                if (screen === 'book') {
+                  setBookMode(
+                    params?.mode === 'lead' ? 'lead' : params?.mode === 'book' ? 'book' : null,
+                  );
+                  setTab('book');
+                  return;
+                }
+                if (screen === 'engage') {
+                  // Engage / RSA temporarily disabled from CRM shell
+                  return;
+                }
+                if (screen === 'workshops' || screen === 'workshopLocator') {
+                  setTab('workshops');
+                  return;
+                }
+                if (screen === 'reports' || screen === 'CrmReports' || screen === 'LeadManagerReports') {
+                  stackNav.navigate('CrmReports', params);
+                  return;
+                }
+                navigation.navigate(screen, params);
+              }}
+              onOpenWhatsApp={() => setWhatsAppOpen(true)}
+            />
+          </View>
+        ) : null}
 
         {showQueue ? (
           <View
-            style={[
-              styles.body,
-              detailLeadId
-                ? {
-                    position: 'absolute',
-                    width: 0,
-                    height: 0,
-                    opacity: 0,
-                    overflow: 'hidden',
-                    left: 0,
-                    top: 0,
-                  }
-                : null,
-            ]}
-            pointerEvents={detailLeadId ? 'none' : 'auto'}
+            style={[styles.body, queueActive ? null : HIDDEN_TAB]}
+            pointerEvents={queueActive ? 'auto' : 'none'}
           >
             <CrmQueueTab
               {...dateProps}
@@ -902,6 +953,7 @@ export default function TelecallerAdvancedCRM() {
               route={{ params: { leadId: detailLeadId } }}
               embedded
               initialEditing={detailEditing}
+              showLeadIq={isLeadManager}
             />
           </View>
         ) : null}
@@ -1189,14 +1241,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
-    zIndex: 2,
+    zIndex: 1,
   },
   topSideRight: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    zIndex: 2,
+    zIndex: 1,
   },
   topCenter: {
     position: 'absolute',
@@ -1206,7 +1258,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
+    zIndex: 4,
+    elevation: 6,
   },
   topLogo: {
     width: 108,

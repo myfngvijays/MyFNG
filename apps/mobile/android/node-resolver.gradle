@@ -1,0 +1,23 @@
+def resolveNodeExecutable = {
+  def fromEnv = System.getenv("NODE_BINARY")
+  if (fromEnv && new File(fromEnv).canExecute()) return fromEnv
+  def props = new Properties()
+  def localFile = rootProject.file("local.properties")
+  if (localFile.exists()) {
+    localFile.withInputStream { props.load(it) }
+    def fromLocal = props.getProperty("node.executable")
+    if (fromLocal && new File(fromLocal).canExecute()) return fromLocal
+  }
+  def home = System.getProperty("user.home")
+  for (candidate in [
+    "${home}/nodejs/bin/node".toString(),
+    "/usr/local/bin/node",
+    "/opt/homebrew/bin/node",
+  ]) {
+    if (new File(candidate).canExecute()) return candidate
+  }
+  return "node"
+}
+
+ext.resolveNodeExecutable = resolveNodeExecutable
+ext.nodeExecutable = resolveNodeExecutable()
