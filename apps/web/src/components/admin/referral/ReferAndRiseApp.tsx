@@ -25,6 +25,7 @@ import {
   Copy,
   ExternalLink,
   Smartphone,
+  Phone,
 } from 'lucide-react';
 import {
   DEFAULT_REFER_AND_RISE_CONFIG,
@@ -39,6 +40,7 @@ type ReferralStats = {
   pending: number;
   rejected: number;
   total_rewards_paid: number;
+  manual_references?: number;
 };
 
 type ReferralEvent = {
@@ -48,6 +50,16 @@ type ReferralEvent = {
   created_at: string;
   referrer?: { full_name?: string; phone?: string };
   referee?: { full_name?: string; phone?: string };
+};
+
+type ManualReference = {
+  lead_id: string;
+  lead_number: string | null;
+  created_at: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  referred_by: { customer_name?: string; customer_phone?: string; lead_number?: string };
+  telecaller_name: string | null;
 };
 
 type LeaderboardEntry = {
@@ -111,6 +123,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
   const [config, setConfig] = useState<ReferAndRiseConfig | null>(null);
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [events, setEvents] = useState<ReferralEvent[]>([]);
+  const [manualReferences, setManualReferences] = useState<ManualReference[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,7 +132,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [expandedMilestone, setExpandedMilestone] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity' | 'deeplinks'>(
+  const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity' | 'manual' | 'deeplinks'>(
     analyticsOnly ? 'users' : 'milestones',
   );
   const [backfilling, setBackfilling] = useState(false);
@@ -245,6 +258,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
         setCanEdit(json.can_edit === true);
         setStats(json.stats);
         setEvents(json.recent_events || []);
+        setManualReferences(json.manual_references || []);
         setLeaderboard(json.leaderboard || []);
       } else {
         setError(json.error || 'Failed to load');
@@ -485,21 +499,23 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
         )}
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <StatCard label="Total Referrals" value={stats.total_referrals} icon={<Users className="h-5 w-5 text-blue-600" />} accent="bg-blue-100" />
             <StatCard label="Rewarded" value={stats.rewarded} icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />} accent="bg-emerald-100" />
             <StatCard label="Pending" value={stats.pending} icon={<Clock className="h-5 w-5 text-amber-600" />} accent="bg-amber-100" />
             <StatCard label="Rejected" value={stats.rejected} icon={<XCircle className="h-5 w-5 text-red-600" />} accent="bg-red-100" />
             <StatCard label="Total Paid" value={`₹${stats.total_rewards_paid.toLocaleString('en-IN')}`} icon={<IndianRupee className="h-5 w-5 text-violet-600" />} accent="bg-violet-100" />
+            <StatCard label="Manual refs" value={stats.manual_references ?? manualReferences.length} icon={<Users className="h-5 w-5 text-fuchsia-600" />} accent="bg-fuchsia-100" />
           </div>
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-white/70 backdrop-blur rounded-xl p-1 border border-gray-200/50 w-fit">
+        <div className="flex flex-wrap gap-1 bg-white/70 backdrop-blur rounded-xl p-1 border border-gray-200/50 w-fit">
           {(analyticsOnly
             ? [
                 { key: 'users' as const, label: 'Users & Analytics', icon: <Users className="h-3.5 w-3.5" /> },
                 { key: 'activity' as const, label: 'Recent Activity', icon: <Clock className="h-3.5 w-3.5" /> },
+                { key: 'manual' as const, label: 'Manual', icon: <Phone className="h-3.5 w-3.5" /> },
               ]
             : [
                 { key: 'milestones' as const, label: 'Milestones & Rewards', icon: <Trophy className="h-3.5 w-3.5" /> },
@@ -507,6 +523,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                 { key: 'deeplinks' as const, label: 'Deep Links', icon: <Link2 className="h-3.5 w-3.5" /> },
                 { key: 'users' as const, label: 'Users & Analytics', icon: <Users className="h-3.5 w-3.5" /> },
                 { key: 'activity' as const, label: 'Recent Activity', icon: <Clock className="h-3.5 w-3.5" /> },
+                { key: 'manual' as const, label: 'Manual', icon: <Phone className="h-3.5 w-3.5" /> },
               ]
           ).map((tab) => (
             <button
@@ -1249,52 +1266,122 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
 
         {/* Activity Tab */}
         {activeTab === 'activity' && (
-          <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm">
-            <h2 className="text-lg font-black text-gray-900 mb-4">Recent Referral Activity</h2>
-            {events.length === 0 ? (
-              <p className="text-sm text-gray-400">No referral events yet.</p>
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm">
+              <h2 className="text-lg font-black text-gray-900 mb-1">Refer &amp; Rise (app)</h2>
+              <p className="text-xs text-gray-500 mb-4">Customer invite code / app signup referrals</p>
+              {events.length === 0 ? (
+                <p className="text-sm text-gray-400">No referral events yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                        <th className="pb-3 pr-4">Date</th>
+                        <th className="pb-3 pr-4">Referrer</th>
+                        <th className="pb-3 pr-4">Friend</th>
+                        <th className="pb-3 pr-4">Code</th>
+                        <th className="pb-3 pr-4">Status</th>
+                        {!analyticsOnly && <th className="pb-3">Action</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {events.map((ev) => (
+                        <tr key={ev.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition">
+                          <td className="py-3 pr-4 text-gray-600">
+                            {new Date(ev.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className="font-semibold text-gray-800">{ev.referrer?.full_name || 'Unknown'}</span>
+                            {ev.referrer?.phone && <span className="text-gray-400 text-xs ml-1">{ev.referrer.phone}</span>}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className="font-semibold text-gray-800">{ev.referee?.full_name || 'Unknown'}</span>
+                            {ev.referee?.phone && <span className="text-gray-400 text-xs ml-1">{ev.referee.phone}</span>}
+                          </td>
+                          <td className="py-3 pr-4 font-mono text-xs font-bold text-gray-600">{ev.referral_code}</td>
+                          <td className="py-3 pr-4"><StatusBadge status={ev.status} /></td>
+                          {!analyticsOnly && (
+                          <td className="py-3">
+                            {ev.status === 'PENDING' && (
+                              <button
+                                onClick={() => handleManualReward(ev.id)}
+                                disabled={rewardingId === ev.id}
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition"
+                              >
+                                {rewardingId === ev.id ? 'Rewarding…' : 'Mark Rewarded'}
+                              </button>
+                            )}
+                          </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Manual CRM Tab */}
+        {activeTab === 'manual' && (
+          <div className="rounded-2xl border border-violet-100 bg-white/90 backdrop-blur p-6 shadow-sm">
+            <h2 className="text-lg font-black text-gray-900 mb-1">Manual (telecaller CRM)</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Lead add pe telecaller ne “Referred by” tag kiya — app Refer &amp; Rise code nahi
+            </p>
+            {manualReferences.length === 0 ? (
+              <p className="text-sm text-gray-400">No manual CRM references yet.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
                       <th className="pb-3 pr-4">Date</th>
-                      <th className="pb-3 pr-4">Referrer</th>
-                      <th className="pb-3 pr-4">Friend</th>
-                      <th className="pb-3 pr-4">Code</th>
-                      <th className="pb-3 pr-4">Status</th>
-                      {!analyticsOnly && <th className="pb-3">Action</th>}
+                      <th className="pb-3 pr-4">New lead</th>
+                      <th className="pb-3 pr-4">Referred by (manual)</th>
+                      <th className="pb-3 pr-4">Telecaller (assignee)</th>
+                      <th className="pb-3">Lead</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {events.map((ev) => (
-                      <tr key={ev.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition">
-                        <td className="py-3 pr-4 text-gray-600">
-                          {new Date(ev.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                    {manualReferences.map((row) => (
+                      <tr key={row.lead_id} className="border-b border-gray-50 hover:bg-gray-50/50 transition">
+                        <td className="py-3 pr-4 text-gray-600 whitespace-nowrap">
+                          {row.created_at
+                            ? new Date(row.created_at).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: '2-digit',
+                              })
+                            : '—'}
                         </td>
                         <td className="py-3 pr-4">
-                          <span className="font-semibold text-gray-800">{ev.referrer?.full_name || 'Unknown'}</span>
-                          {ev.referrer?.phone && <span className="text-gray-400 text-xs ml-1">{ev.referrer.phone}</span>}
+                          <span className="font-semibold text-gray-800">{row.customer_name || 'Unknown'}</span>
+                          {row.customer_phone ? (
+                            <span className="text-gray-400 text-xs ml-1">{row.customer_phone}</span>
+                          ) : null}
                         </td>
                         <td className="py-3 pr-4">
-                          <span className="font-semibold text-gray-800">{ev.referee?.full_name || 'Unknown'}</span>
-                          {ev.referee?.phone && <span className="text-gray-400 text-xs ml-1">{ev.referee.phone}</span>}
+                          <span className="font-semibold text-violet-800">
+                            {row.referred_by?.customer_name || '—'}
+                          </span>
+                          {row.referred_by?.customer_phone ? (
+                            <span className="text-gray-400 text-xs ml-1">{row.referred_by.customer_phone}</span>
+                          ) : null}
                         </td>
-                        <td className="py-3 pr-4 font-mono text-xs font-bold text-gray-600">{ev.referral_code}</td>
-                        <td className="py-3 pr-4"><StatusBadge status={ev.status} /></td>
-                        {!analyticsOnly && (
+                        <td className="py-3 pr-4 font-semibold text-gray-800">
+                          {row.telecaller_name || '—'}
+                        </td>
                         <td className="py-3">
-                          {ev.status === 'PENDING' && (
-                            <button
-                              onClick={() => handleManualReward(ev.id)}
-                              disabled={rewardingId === ev.id}
-                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition"
-                            >
-                              {rewardingId === ev.id ? 'Rewarding…' : 'Mark Rewarded'}
-                            </button>
-                          )}
+                          <a
+                            href={`/dashboard/lead_manager/leads/${row.lead_id}`}
+                            className="font-mono text-xs font-bold text-[#023D95] hover:underline"
+                          >
+                            {row.lead_number || row.lead_id.slice(0, 8)}
+                          </a>
                         </td>
-                        )}
                       </tr>
                     ))}
                   </tbody>

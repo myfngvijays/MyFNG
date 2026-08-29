@@ -1,12 +1,5 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import DashboardLayout from '@/components/DashboardLayout';
-import ReferAndRiseApp from '@/components/admin/referral/ReferAndRiseApp';
-
-export default function LeadManagerReferralPage() {
-  return (
-    <DashboardLayout role="LEAD_MANAGER">
-      <ReferAndRiseApp mode="analytics-only" />
-    </DashboardLayout>
-  );
+export default function LeadManagerReferralRedirect() {
+  redirect('/dashboard/lead_manager/refer-and-rise');
 }

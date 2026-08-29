@@ -37,7 +37,9 @@ import {
   parseReferredBy,
   serializeReferredBy,
   referredByLabel,
+  referredByFromSearchHit,
   type CrmReferredBy,
+  type CrmReferrerSearchHit,
 } from '../../../lib/crmLeadReference';
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
@@ -457,9 +459,7 @@ export default function TelecallerLeadDetailScreen({
     { id: string; lead_number: string; customer_name: string; customer_phone: string }[]
   >([]);
   const [referrerQuery, setReferrerQuery] = useState('');
-  const [referrerHits, setReferrerHits] = useState<
-    { id: string; lead_number: string; customer_name: string; customer_phone: string }[]
-  >([]);
+  const [referrerHits, setReferrerHits] = useState<CrmReferrerSearchHit[]>([]);
   const [referrerSearching, setReferrerSearching] = useState(false);
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
@@ -2509,7 +2509,7 @@ export default function TelecallerLeadDetailScreen({
                   backgroundColor: '#fff',
                   color: '#0F172A',
                 }}
-                placeholder="Search referrer by phone or name"
+                placeholder="Search referrer — CRM lead or app customer"
                 placeholderTextColor="#94A3B8"
                 value={referrerQuery}
                 onChangeText={setReferrerQuery}
@@ -2527,12 +2527,7 @@ export default function TelecallerLeadDetailScreen({
                     borderBottomColor: '#E2E8F0',
                   }}
                   onPress={() => {
-                    setReferredBy({
-                      lead_id: hit.id,
-                      customer_name: hit.customer_name,
-                      customer_phone: hit.customer_phone,
-                      lead_number: hit.lead_number,
-                    });
+                    setReferredBy(referredByFromSearchHit(hit));
                     setReferrerQuery('');
                     setReferrerHits([]);
                   }}
@@ -2543,6 +2538,7 @@ export default function TelecallerLeadDetailScreen({
                   <Text style={{ fontSize: 12, color: '#64748B' }}>
                     {hit.customer_phone}
                     {hit.lead_number ? ` · ${hit.lead_number}` : ''}
+                    {hit.source === 'customer' ? ' · app' : ''}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -2553,7 +2549,7 @@ export default function TelecallerLeadDetailScreen({
           {referredTo.length > 0 ? (
             <View style={{ marginTop: 12 }}>
               <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', marginBottom: 6 }}>
-                REFERENCES GIVEN
+                THEY REFERRED
               </Text>
               {referredTo.map((row) => (
                 <TouchableOpacity

@@ -935,7 +935,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/lead_manager/customer-insights', icon: <Smartphone className="w-5 h-5" />, label: 'App Customers' },
         { href: '/dashboard/lead_manager/workshop-proximity', icon: <MapPin className="w-5 h-5" />, label: 'Workshop Proximity' },
         { href: '/dashboard/lead_manager/membership-customers', icon: <Crown className="w-5 h-5" />, label: 'Membership Customers' },
-        { href: '/dashboard/lead_manager/referral', icon: <Gift className="w-5 h-5" />, label: 'Refer & Rise' },
+        { href: '/dashboard/lead_manager/refer-and-rise', icon: <Gift className="w-5 h-5" />, label: 'Refer & Rise' },
         { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
         { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
         {

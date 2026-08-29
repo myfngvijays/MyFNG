@@ -990,7 +990,7 @@ function LeadDetailContent() {
                   ) : null}
                   {referredTo.length > 0 ? (
                     <div className="overflow-x-auto">
-                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5">References given</p>
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5">They referred</p>
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-left text-[11px] font-bold uppercase text-slate-400">

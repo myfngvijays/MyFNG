@@ -3,16 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Search, UserPlus, X } from 'lucide-react';
-import type { CrmReferredBy } from '@/lib/telecaller/crmLeadReference';
-import { referredByLabel } from '@/lib/telecaller/crmLeadReference';
+import type { CrmReferredBy, CrmReferrerSearchHit } from '@/lib/telecaller/crmLeadReference';
+import { referredByFromSearchHit, referredByLabel } from '@/lib/telecaller/crmLeadReference';
 
-type Hit = {
-  id: string;
-  lead_number: string;
-  customer_name: string;
-  customer_phone: string;
-  status?: string;
-};
+type Hit = CrmReferrerSearchHit;
 
 export default function CrmReferredByField({
   leadId,
@@ -71,6 +65,8 @@ export default function CrmReferredByField({
               <p className="text-sm font-bold text-slate-900">{referredByLabel(value)}</p>
               {value.lead_number ? (
                 <p className="text-[11px] text-slate-500">{value.lead_number}</p>
+              ) : value.customer_id ? (
+                <p className="text-[11px] text-slate-500">App customer</p>
               ) : null}
             </div>
             {value.lead_id ? (
@@ -97,7 +93,7 @@ export default function CrmReferredByField({
               type="text"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search referrer by phone or name"
+              placeholder="Search referrer — CRM lead or app customer"
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-[#023D95] focus:ring-2 focus:ring-[#023D95]/15"
             />
             {searching ? (
@@ -111,12 +107,7 @@ export default function CrmReferredByField({
                     type="button"
                     className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
                     onClick={() => {
-                      onChange({
-                        lead_id: hit.id,
-                        customer_name: hit.customer_name,
-                        customer_phone: hit.customer_phone,
-                        lead_number: hit.lead_number,
-                      });
+                      onChange(referredByFromSearchHit(hit));
                       setQ('');
                       setHits([]);
                     }}
@@ -128,6 +119,7 @@ export default function CrmReferredByField({
                       <span className="block text-xs text-slate-500">
                         {hit.customer_phone}
                         {hit.lead_number ? ` · ${hit.lead_number}` : ''}
+                        {hit.source === 'customer' ? ' · app' : ''}
                       </span>
                     </span>
                   </button>
@@ -141,7 +133,7 @@ export default function CrmReferredByField({
       {referredTo.length > 0 ? (
         <div>
           <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
-            References given
+            They referred
           </p>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full text-sm">

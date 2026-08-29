@@ -1092,7 +1092,7 @@ async function checkAppAssociationFiles(): Promise<HealthCheck> {
         quickFix: {
           label: 'Refer Deep Links admin',
           action: 'internal-link',
-          actionPayload: { url: '/dashboard/super_admin/referral' },
+          actionPayload: { url: '/dashboard/super_admin/refer-and-rise' },
         },
         lastChecked: new Date().toISOString(),
         details: { aasaUrl, status: aasaRes.status },

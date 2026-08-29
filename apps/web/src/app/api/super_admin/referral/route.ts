@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { getWalletLogicSettings, saveWalletLogicSettings } from '@/lib/wallet-config';
 import { DEFAULT_REFER_AND_RISE_CONFIG, normalizeReferAndRiseConfig } from '@/lib/refer-and-rise';
+import { loadCrmManualReferences } from '@/lib/crm-manual-references';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -200,6 +201,8 @@ export async function GET() {
       });
     }
 
+    const manualReferences = await loadCrmManualReferences(supabaseAdmin, { limit: 80 });
+
     return NextResponse.json({
       success: true,
       can_edit: auth.roleCode === 'SUPER_ADMIN',
@@ -219,8 +222,10 @@ export async function GET() {
         pending: pendingEvents || 0,
         rejected: rejectedEvents || 0,
         total_rewards_paid: totalRewardsPaid,
+        manual_references: manualReferences.length,
       },
       recent_events: recentEvents || [],
+      manual_references: manualReferences,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });

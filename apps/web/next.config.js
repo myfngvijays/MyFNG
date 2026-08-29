@@ -140,7 +140,9 @@ const nextConfig = {
         destination: '/dashboard/lead_manager/membership-customers',
         permanent: false,
       },
-      { source: '/dashboard/app_operations/referral', destination: '/dashboard/lead_manager/referral', permanent: false },
+      { source: '/dashboard/super_admin/referral', destination: '/dashboard/super_admin/refer-and-rise', permanent: false },
+      { source: '/dashboard/lead_manager/referral', destination: '/dashboard/lead_manager/refer-and-rise', permanent: false },
+      { source: '/dashboard/app_operations/referral', destination: '/dashboard/lead_manager/refer-and-rise', permanent: false },
       {
         source: '/dashboard/app_operations/:path*',
         destination: '/dashboard/lead_manager/:path*',

@@ -340,8 +340,8 @@ const navigationItems: NavItem[] = [
         description: 'Audit trail & CSV export',
       },
       {
-        name: 'Refer & Earn',
-        href: '/dashboard/super_admin/referral',
+        name: 'Refer & Rise',
+        href: '/dashboard/super_admin/refer-and-rise',
         icon: Gift,
         description: 'Referral rewards, friend bonus & activity',
       },
@@ -886,6 +886,7 @@ function SuperAdminLayoutInner({
       pathname?.startsWith('/dashboard/super_admin/post-booking-membership') ||
       pathname?.startsWith('/dashboard/super_admin/wallet-logic') ||
       pathname?.startsWith('/dashboard/super_admin/wallet-credits') ||
+      pathname?.startsWith('/dashboard/super_admin/refer-and-rise') ||
       pathname?.startsWith('/dashboard/super_admin/referral')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Wallet & Offers': true }));
@@ -1157,8 +1158,8 @@ function SuperAdminLayoutInner({
             </div>
           </nav>
         ) : (
-        <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
-          <div className="space-y-2">
+        <nav className="flex-1 min-h-0 overflow-y-auto py-4 px-3">
+          <div className="space-y-1">
             {navigationItems.map((item) => {
               if (item.isSection) {
                 return sidebarOpen ? (
@@ -1179,7 +1180,7 @@ function SuperAdminLayoutInner({
               if (item.children?.length) {
                 const isOpen = Boolean(openGroups[item.name]);
                 return (
-                  <div key={item.name} className="space-y-2">
+                  <div key={item.name} className="space-y-1">
                     <button
                       onClick={() => {
                         if (!sidebarOpen) {
@@ -1190,7 +1191,7 @@ function SuperAdminLayoutInner({
                         setOpenGroups((prev) => ({ ...prev, [item.name]: !prev[item.name] }));
                       }}
                       className={`
-                        w-full flex items-center gap-3 px-4 py-3 rounded-lg
+                        w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                         transition-all duration-200
                         ${
                           active
@@ -1199,20 +1200,20 @@ function SuperAdminLayoutInner({
                         }
                       `}
                     >
-                      <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
+                      <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
                       {sidebarOpen && (
-                        <div className="flex-1 text-left">
-                          <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
+                        <div className="min-w-0 flex-1 text-left">
+                          <div className={`font-semibold truncate ${active ? 'text-blue-700' : 'text-white'}`}>
                             {item.name}
                           </div>
-                          <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                          <div className={`text-xs mt-0.5 truncate ${active ? 'text-blue-600' : 'text-blue-100'}`}>
                             {item.description}
                           </div>
                         </div>
                       )}
                       {sidebarOpen ? (
                         <ChevronRight
-                          className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-90' : ''} ${
+                          className={`w-4 h-4 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''} ${
                             active ? 'text-blue-700' : 'text-white'
                           }`}
                         />
@@ -1220,7 +1221,7 @@ function SuperAdminLayoutInner({
                     </button>
 
                     {sidebarOpen && isOpen ? (
-                      <div className="ml-2 space-y-2">
+                      <div className="ml-4 border-l border-white/25 pl-2 space-y-1">
                         {item.children.map((c) => {
                           const ChildIcon = c.icon;
                           const childActive = isActive(c.href);
@@ -1229,7 +1230,7 @@ function SuperAdminLayoutInner({
                               key={c.href}
                               onClick={() => router.push(c.href)}
                               className={`
-                                w-full flex items-center gap-3 px-4 py-2.5 rounded-lg
+                                w-full flex items-center gap-2.5 px-3 py-2 rounded-lg
                                 transition-all duration-200
                                 ${
                                   childActive
@@ -1238,12 +1239,12 @@ function SuperAdminLayoutInner({
                                 }
                               `}
                             >
-                              <ChildIcon className={`w-4 h-4 flex-shrink-0 ${childActive ? 'text-blue-700' : 'text-white'}`} />
-                              <div className="flex-1 text-left">
-                                <div className={`text-sm font-semibold ${childActive ? 'text-blue-700' : 'text-white'}`}>
+                              <ChildIcon className={`w-4 h-4 shrink-0 ${childActive ? 'text-blue-700' : 'text-white'}`} />
+                              <div className="min-w-0 flex-1 text-left">
+                                <div className={`text-sm font-semibold truncate ${childActive ? 'text-blue-700' : 'text-white'}`}>
                                   {c.name}
                                 </div>
-                                <div className={`text-xs mt-0.5 ${childActive ? 'text-blue-600' : 'text-blue-100'}`}>
+                                <div className={`text-xs mt-0.5 truncate ${childActive ? 'text-blue-600' : 'text-blue-100'}`}>
                                   {c.description}
                                 </div>
                               </div>
@@ -1264,7 +1265,7 @@ function SuperAdminLayoutInner({
                     router.push(item.href);
                   }}
                   className={`
-                    w-full flex items-center gap-3 px-4 py-3 rounded-lg
+                    w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                     transition-all duration-200
                     ${
                       active
@@ -1273,14 +1274,14 @@ function SuperAdminLayoutInner({
                     }
                   `}
                 >
-                  <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
+                  <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
                   {sidebarOpen && (
-                    <div className="flex-1 text-left">
-                      <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
+                    <div className="min-w-0 flex-1 text-left">
+                      <div className={`font-semibold truncate ${active ? 'text-blue-700' : 'text-white'}`}>
                         {item.name}
                       </div>
                       <div
-                        className={`text-xs mt-0.5 ${
+                        className={`text-xs mt-0.5 truncate ${
                           active ? 'text-blue-600' : 'text-blue-100'
                         }`}
                       >
@@ -1302,7 +1303,7 @@ function SuperAdminLayoutInner({
             onClick={handleLogout}
             title="Logout"
             className={`
-              w-full flex items-center gap-3 px-4 py-3 rounded-lg
+              w-full flex items-center gap-3 px-3 py-3 rounded-lg
               bg-red-600 hover:bg-red-700 transition-colors
               text-white font-semibold shadow-lg
               ${sidebarOpen ? 'justify-start' : 'justify-center'}
@@ -1392,8 +1393,8 @@ function SuperAdminLayoutInner({
                 </div>
               </nav>
             ) : (
-            <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
-              <div className="space-y-2">
+            <nav className="flex-1 min-h-0 overflow-y-auto py-4 px-3">
+              <div className="space-y-1">
                 {navigationItems.map((item) => {
                   if (item.isSection) {
                     return (
@@ -1411,11 +1412,11 @@ function SuperAdminLayoutInner({
               if (item.children?.length) {
                 const isOpen = Boolean(openGroups[item.name]);
                 return (
-                  <div key={item.name} className="space-y-2">
+                  <div key={item.name} className="space-y-1">
                     <button
                       onClick={() => setOpenGroups((prev) => ({ ...prev, [item.name]: !prev[item.name] }))}
                       className={`
-                        w-full flex items-center gap-3 px-4 py-3 rounded-lg
+                        w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                         transition-all duration-200
                         ${
                           active
@@ -1424,20 +1425,20 @@ function SuperAdminLayoutInner({
                         }
                       `}
                     >
-                      <Icon className={`w-5 h-5 ${active ? 'text-blue-700' : 'text-white'}`} />
-                      <div className="flex-1 text-left">
-                        <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
+                      <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
+                      <div className="min-w-0 flex-1 text-left">
+                        <div className={`font-semibold truncate ${active ? 'text-blue-700' : 'text-white'}`}>
                           {item.name}
                         </div>
-                        <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                        <div className={`text-xs mt-0.5 truncate ${active ? 'text-blue-600' : 'text-blue-100'}`}>
                           {item.description}
                         </div>
                       </div>
-                      <ChevronRight className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                      <ChevronRight className={`w-4 h-4 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                     </button>
 
                     {isOpen ? (
-                      <div className="ml-2 space-y-2">
+                      <div className="ml-4 border-l border-white/25 pl-2 space-y-1">
                         {item.children.map((c) => {
                           const ChildIcon = c.icon;
                           const childActive = isActive(c.href);
@@ -1449,7 +1450,7 @@ function SuperAdminLayoutInner({
                                 setMobileMenuOpen(false);
                               }}
                               className={`
-                                w-full flex items-center gap-3 px-4 py-2.5 rounded-lg
+                                w-full flex items-center gap-2.5 px-3 py-2 rounded-lg
                                 transition-all duration-200
                                 ${
                                   childActive
@@ -1458,12 +1459,12 @@ function SuperAdminLayoutInner({
                                 }
                               `}
                             >
-                              <ChildIcon className={`w-4 h-4 ${childActive ? 'text-blue-700' : 'text-white'}`} />
-                              <div className="flex-1 text-left">
-                                <div className={`text-sm font-semibold ${childActive ? 'text-blue-700' : 'text-white'}`}>
+                              <ChildIcon className={`w-4 h-4 shrink-0 ${childActive ? 'text-blue-700' : 'text-white'}`} />
+                              <div className="min-w-0 flex-1 text-left">
+                                <div className={`text-sm font-semibold truncate ${childActive ? 'text-blue-700' : 'text-white'}`}>
                                   {c.name}
                                 </div>
-                                <div className={`text-xs mt-0.5 ${childActive ? 'text-blue-600' : 'text-blue-100'}`}>
+                                <div className={`text-xs mt-0.5 truncate ${childActive ? 'text-blue-600' : 'text-blue-100'}`}>
                                   {c.description}
                                 </div>
                               </div>
@@ -1485,7 +1486,7 @@ function SuperAdminLayoutInner({
                         setMobileMenuOpen(false);
                       }}
                       className={`
-                        w-full flex items-center gap-3 px-4 py-3 rounded-lg
+                        w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                         transition-all duration-200
                         ${
                           active
@@ -1494,13 +1495,13 @@ function SuperAdminLayoutInner({
                         }
                       `}
                     >
-                      <Icon className={`w-5 h-5 ${active ? 'text-blue-700' : 'text-white'}`} />
-                      <div className="flex-1 text-left">
-                        <div className={`font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>
+                      <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
+                      <div className="min-w-0 flex-1 text-left">
+                        <div className={`font-semibold truncate ${active ? 'text-blue-700' : 'text-white'}`}>
                           {item.name}
                         </div>
                         <div
-                          className={`text-xs mt-0.5 ${
+                          className={`text-xs mt-0.5 truncate ${
                             active ? 'text-blue-600' : 'text-blue-100'
                           }`}
                         >
@@ -1519,7 +1520,7 @@ function SuperAdminLayoutInner({
               <button
                 type="button"
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-red-600 hover:bg-red-700 transition-colors text-white font-semibold shadow-lg"
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-lg bg-red-600 hover:bg-red-700 transition-colors text-white font-semibold shadow-lg"
               >
                 <LogOut className="w-5 h-5" />
                 <span>Logout</span>

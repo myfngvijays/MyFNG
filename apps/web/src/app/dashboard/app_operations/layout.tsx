@@ -9,7 +9,7 @@ const PATH_MAP: Record<string, string> = {
   '/dashboard/app_operations/customer-insights': '/dashboard/lead_manager/customer-insights',
   '/dashboard/app_operations/workshop-proximity': '/dashboard/lead_manager/workshop-proximity',
   '/dashboard/app_operations/membership-customers': '/dashboard/lead_manager/membership-customers',
-  '/dashboard/app_operations/referral': '/dashboard/lead_manager/referral',
+  '/dashboard/app_operations/referral': '/dashboard/lead_manager/refer-and-rise',
 };
 
 export default function RetiredAppOperationsLayout() {

@@ -909,7 +909,7 @@ export function LeadManagerReferralScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [payload, setPayload] = useState<any>(null);
-  const [tab, setTab] = useState<'users' | 'activity'>('users');
+  const [tab, setTab] = useState<'users' | 'activity' | 'manual'>('users');
 
   const load = useCallback(async () => {
     try {
@@ -930,7 +930,8 @@ export function LeadManagerReferralScreen() {
   const stats = payload?.stats || {};
   const leaderboard = Array.isArray(payload?.leaderboard) ? payload.leaderboard : [];
   const events = Array.isArray(payload?.recent_events) ? payload.recent_events : [];
-  const listData = tab === 'users' ? leaderboard : events;
+  const manualRefs = Array.isArray(payload?.manual_references) ? payload.manual_references : [];
+  const listData = tab === 'users' ? leaderboard : tab === 'manual' ? manualRefs : events;
 
   return (
     <OpsShell title="Refer & Rise">
@@ -966,15 +967,23 @@ export function LeadManagerReferralScreen() {
                   activeOpacity={0.8}
                 >
                   <Ionicons name="people-outline" size={16} color={tab === 'users' ? '#fff' : '#475569'} />
-                  <Text style={[styles.refTabTxt, tab === 'users' && styles.refTabTxtOn]}>Users & Analytics</Text>
+                  <Text style={[styles.refTabTxt, tab === 'users' && styles.refTabTxtOn]}>Users</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.refTab, tab === 'activity' && styles.refTabOn]}
                   onPress={() => setTab('activity')}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="time-outline" size={16} color={tab === 'activity' ? '#fff' : '#475569'} />
-                  <Text style={[styles.refTabTxt, tab === 'activity' && styles.refTabTxtOn]}>Recent Activity</Text>
+                  <Ionicons name="phone-portrait-outline" size={16} color={tab === 'activity' ? '#fff' : '#475569'} />
+                  <Text style={[styles.refTabTxt, tab === 'activity' && styles.refTabTxtOn]}>App</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.refTab, tab === 'manual' && styles.refTabOn]}
+                  onPress={() => setTab('manual')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="call-outline" size={16} color={tab === 'manual' ? '#fff' : '#475569'} />
+                  <Text style={[styles.refTabTxt, tab === 'manual' && styles.refTabTxtOn]}>Manual</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -987,6 +996,19 @@ export function LeadManagerReferralScreen() {
                 <Text style={styles.meta}>
                   {item.total_referrals ?? 0} referrals
                   {item.total_earned != null ? ` · ₹${item.total_earned}` : item.total_rewards != null ? ` · ₹${item.total_rewards}` : ''}
+                </Text>
+              </View>
+            ) : tab === 'manual' ? (
+              <View style={[styles.card, { marginHorizontal: SPACING.md }]}>
+                <Text style={styles.name}>
+                  {item.customer_name || item.customer_phone || 'Lead'}
+                </Text>
+                <Text style={styles.meta}>
+                  Manual: {item.referred_by?.customer_name || item.referred_by?.customer_phone || '—'}
+                </Text>
+                <Text style={styles.meta}>
+                  Telecaller: {item.telecaller_name || '—'}
+                  {item.lead_number ? ` · ${item.lead_number}` : ''}
                 </Text>
               </View>
             ) : (
@@ -1006,7 +1028,11 @@ export function LeadManagerReferralScreen() {
           }
           ListEmptyComponent={
             <Text style={styles.empty}>
-              {tab === 'users' ? 'No referral leaderboard yet.' : 'No referral activity yet.'}
+              {tab === 'users'
+                ? 'No referral leaderboard yet.'
+                : tab === 'manual'
+                  ? 'No manual CRM references yet.'
+                  : 'No app referral activity yet.'}
             </Text>
           }
         />

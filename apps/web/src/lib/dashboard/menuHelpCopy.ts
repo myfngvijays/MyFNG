@@ -219,7 +219,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     title: 'Membership Customers',
     body: 'Active / expired membership customers, claims, and benefit usage.',
   },
-  '/dashboard/lead_manager/referral': {
+  '/dashboard/lead_manager/refer-and-rise': {
     title: 'Refer & Rise',
     body: 'Referral programme — leaderboard, rewards, recent referral events. Config edit Super Admin only.',
   },
@@ -458,7 +458,7 @@ export function getLeadManagerReadme(): ReadmeSection[] {
         { href: '/dashboard/lead_manager/customer-insights', ...BY_HREF['/dashboard/lead_manager/customer-insights'] },
         { href: '/dashboard/lead_manager/workshop-proximity', ...BY_HREF['/dashboard/lead_manager/workshop-proximity'] },
         { href: '/dashboard/lead_manager/membership-customers', ...BY_HREF['/dashboard/lead_manager/membership-customers'] },
-        { href: '/dashboard/lead_manager/referral', ...BY_HREF['/dashboard/lead_manager/referral'] },
+        { href: '/dashboard/lead_manager/refer-and-rise', ...BY_HREF['/dashboard/lead_manager/refer-and-rise'] },
         { href: '/dashboard/lead_manager/escalations', ...BY_HREF['/dashboard/lead_manager/escalations'] },
         { href: '/dashboard/lead_manager/team', ...BY_HREF['/dashboard/lead_manager/team'] },
         { href: '/dashboard/lead_manager/tags', ...BY_HREF['/dashboard/lead_manager/tags'] },

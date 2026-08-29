@@ -27,7 +27,9 @@ import {
   Gift,
   MessageCircle,
   ShoppingCart,
+  ExternalLink,
 } from 'lucide-react';
+import Link from 'next/link';
 import { appPlatformBadgeClass, appPlatformLabel } from '@/lib/app-platform';
 import {
   customerAccountStatusBadgeClass,
@@ -166,7 +168,7 @@ function membershipCrownClass(customer?: {
   membership_plan?: string | null;
   membership_plan_code?: string | null;
 } | null) {
-  return isPrimeMembership(customer) ? 'text-violet-600' : 'text-amber-500';
+  return isPrimeMembership(customer) ? 'text-yellow-400' : 'text-amber-500';
 }
 
 function membershipEndDate(start: Date, durationDays: number) {
@@ -181,6 +183,45 @@ function buildDefaultActivateDates(plan?: { duration_days?: number | null }) {
     start: toDateTimeLocalValue(start),
     end: toDateTimeLocalValue(membershipEndDate(start, Number(plan?.duration_days || 365))),
   };
+}
+
+function factCellClass(i: number, len: number, cols = 4) {
+  const lastRowStart = len - (len % cols || cols);
+  return [
+    'min-w-0 px-2 py-1.5',
+    (i + 1) % cols !== 0 ? 'border-r border-gray-100' : '',
+    i < lastRowStart ? 'border-b border-gray-100' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function crmLeadPath(leadId?: string | null) {
+  const id = String(leadId || '').trim();
+  if (!id || id.startsWith('customer:')) return null;
+  return `/dashboard/lead_manager/leads/${id}`;
+}
+
+function LeadOpenLink({
+  leadId,
+  children,
+  className,
+}: {
+  leadId?: string | null;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const href = crmLeadPath(leadId);
+  if (!href) return <span className={className}>{children}</span>;
+  return (
+    <Link
+      href={href}
+      className={`${className || ''} inline-flex max-w-full items-center gap-1 hover:underline underline-offset-2`}
+    >
+      <span className="min-w-0">{children}</span>
+      <ExternalLink className="h-3 w-3 shrink-0 opacity-80 mt-0.5" />
+    </Link>
+  );
 }
 
 function StatCard({
@@ -574,8 +615,11 @@ export default function CustomerInsightsApp() {
   };
 
   const customerAccountStatus = useMemo(
-    () => detail?.customer?.account_status || 'ACTIVE',
-    [detail?.customer?.account_status],
+    () =>
+      detail?.customer?.account_status ||
+      customers.find((c) => c.id === selectedId)?.account_status ||
+      'ACTIVE',
+    [customers, detail?.customer?.account_status, selectedId],
   );
 
   const handleManualExpire = async () => {
@@ -1088,13 +1132,13 @@ export default function CustomerInsightsApp() {
         {selectedId ? (
           <div className="xl:col-span-3">
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm sticky top-4 max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
-              <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-4">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <span>{selectedCustomer?.full_name || detail?.customer?.full_name || 'Customer'}</span>
+              <div className="flex flex-wrap items-start justify-between gap-2 bg-[#023D95] px-3 py-2.5">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <span className="truncate">{selectedCustomer?.full_name || detail?.customer?.full_name || 'Customer'}</span>
                     {(selectedCustomer?.has_membership || detail?.memberships?.some((m: any) => m.status === 'ACTIVE')) ? (
                       <Crown
-                        className={`h-4 w-4 shrink-0 ${membershipCrownClass({
+                        className={`h-3.5 w-3.5 shrink-0 ${membershipCrownClass({
                           membership_type:
                             selectedCustomer?.membership_type ||
                             detail?.memberships?.[0]?.plan?.membership_type,
@@ -1110,16 +1154,78 @@ export default function CustomerInsightsApp() {
                         }
                       />
                     ) : null}
+                    <span
+                      className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${customerAccountStatusBadgeClass(customerAccountStatus)}`}
+                    >
+                      {customerAccountStatusLabel(customerAccountStatus)}
+                    </span>
                   </h2>
-                  <p className="text-sm text-gray-500">{selectedCustomer?.phone || detail?.customer?.phone}</p>
+                  <p className="text-xs text-blue-100">{selectedCustomer?.phone || detail?.customer?.phone}</p>
+                  {detail?.customer?.account_status_reason ? (
+                    <p className="mt-0.5 max-w-[16rem] truncate text-[10px] text-amber-200" title={detail.customer.account_status_reason}>
+                      {detail.customer.account_status_reason}
+                      {detail.customer.account_status_changed_at
+                        ? ` · ${fmtDate(detail.customer.account_status_changed_at)}`
+                        : ''}
+                    </p>
+                  ) : null}
+                  {accountMessage ? (
+                    <p className="mt-0.5 text-[10px] font-semibold text-emerald-200">{accountMessage}</p>
+                  ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(null)}
-                  className="rounded-lg p-2 hover:bg-gray-100"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
+                  {customerAccountStatus === 'ACTIVE' ? (
+                    <>
+                      <input
+                        type="text"
+                        value={accountReason}
+                        onChange={(e) => setAccountReason(e.target.value)}
+                        disabled={accountLoading}
+                        placeholder="Reason"
+                        aria-label="Account action reason"
+                        className="w-[7.5rem] h-7 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAccountAction('deactivate')}
+                        disabled={accountLoading}
+                        title="Deactivate temporarily"
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        <ShieldOff className="h-3 w-3" />
+                        {accountLoading ? '…' : 'Deactivate'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAccountAction('ban')}
+                        disabled={accountLoading}
+                        title="Ban permanently"
+                        className="inline-flex h-7 items-center gap-1 rounded-md bg-red-600 px-2 text-[11px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        <ShieldBan className="h-3 w-3" />
+                        {accountLoading ? '…' : 'Ban'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleAccountAction('reactivate')}
+                      disabled={accountLoading}
+                      className="inline-flex h-7 items-center gap-1 rounded-md bg-emerald-600 px-2 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      <ShieldCheck className="h-3 w-3" />
+                      {accountLoading ? '…' : 'Reactivate'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(null)}
+                    className="rounded-md p-1 text-white hover:bg-white/15"
+                    aria-label="Close customer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-1 border-b border-gray-100 px-3 py-2">
@@ -1146,110 +1252,99 @@ export default function CustomerInsightsApp() {
                 ))}
               </div>
 
-              <div className="overflow-y-auto p-4 flex-1">
+              <div className="overflow-y-auto p-3 flex-1">
                 {detailLoading ? (
                   <div className="py-16 text-center text-gray-400">Loading details...</div>
                 ) : !detail ? (
                   <div className="py-16 text-center text-gray-400">Select a customer</div>
                 ) : detailTab === 'profile' ? (
-                  <div className="space-y-4 text-sm">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">Phone</div>
-                        <div className="font-semibold break-all">{detail.customer.phone || '—'}</div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">Email</div>
-                        <div className="font-semibold break-all">{detail.customer.email || '—'}</div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">App platform</div>
-                        <div className="font-semibold">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${appPlatformBadgeClass(detail.customer.app_platform || null)}`}
-                          >
-                            {appPlatformLabel(detail.customer.app_platform || null)}
-                          </span>
+                  <div className="space-y-2.5 text-sm">
+                    <div className="grid grid-cols-4 overflow-hidden rounded-xl border border-gray-100">
+                      {[
+                        { label: 'Phone', value: detail.customer.phone || '—' },
+                        { label: 'Email', value: detail.customer.email || '—' },
+                        {
+                          label: 'App platform',
+                          value: (
+                            <span
+                              className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${appPlatformBadgeClass(detail.customer.app_platform || null)}`}
+                            >
+                              {appPlatformLabel(detail.customer.app_platform || null)}
+                            </span>
+                          ),
+                        },
+                        {
+                          label: 'Push',
+                          value: (
+                            <div>
+                              <span
+                                className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${pushStatusBadgeClass(detail.customer.push_status)}`}
+                              >
+                                {pushStatusLabel(detail.customer.push_status)}
+                              </span>
+                              <div className="text-[10px] text-gray-500 leading-tight mt-0.5">
+                                {detail.customer.push_status === 'OFF'
+                                  ? 'Off in app'
+                                  : detail.customer.push_status === 'ON'
+                                    ? [
+                                        detail.customer.push_device_name,
+                                        detail.customer.push_last_seen_at
+                                          ? `seen ${fmtDate(detail.customer.push_last_seen_at)}`
+                                          : null,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(' · ') || 'Active token'
+                                    : 'No device token'}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        { label: 'Last login', value: fmtDate(detail.customer.last_login_at) },
+                        { label: 'Joined', value: fmtDate(detail.customer.created_at) },
+                        {
+                          label: 'Account',
+                          value: (
+                            <span
+                              className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${customerAccountStatusBadgeClass(customerAccountStatus)}`}
+                            >
+                              {customerAccountStatusLabel(customerAccountStatus)}
+                            </span>
+                          ),
+                        },
+                        { label: 'Loyalty', value: detail.profile?.loyalty_tier || '—' },
+                        ...(detail.profile?.gender
+                          ? [{ label: 'Gender', value: detail.profile.gender }]
+                          : []),
+                        ...(detail.profile?.dob
+                          ? [{ label: 'Date of birth', value: fmtDay(detail.profile.dob) }]
+                          : []),
+                        ...(detail.profile?.alt_phone
+                          ? [{ label: 'Alt phone', value: detail.profile.alt_phone }]
+                          : []),
+                      ].map((f, i, arr) => (
+                        <div key={f.label} className={factCellClass(i, arr.length, 4)}>
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-none">
+                            {f.label}
+                          </div>
+                          <div className="mt-0.5 text-[13px] font-semibold text-gray-900 leading-snug break-all">
+                            {f.value}
+                          </div>
                         </div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">Push notifications</div>
-                        <div className="font-semibold">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${pushStatusBadgeClass(detail.customer.push_status)}`}
-                          >
-                            {pushStatusLabel(detail.customer.push_status)}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-gray-500 mt-1">
-                          {detail.customer.push_status === 'OFF'
-                            ? 'Off in app settings'
-                            : detail.customer.push_status === 'ON'
-                              ? [
-                                  detail.customer.push_device_name,
-                                  detail.customer.push_last_seen_at
-                                    ? `seen ${fmtDate(detail.customer.push_last_seen_at)}`
-                                    : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(' · ') || 'Active token'
-                              : 'No active device token'}
-                        </div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">Last login</div>
-                        <div className="font-semibold">{fmtDate(detail.customer.last_login_at)}</div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">App installed / joined</div>
-                        <div className="font-semibold">{fmtDate(detail.customer.created_at)}</div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">Account status</div>
-                        <div className="font-semibold">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${customerAccountStatusBadgeClass(customerAccountStatus)}`}
-                          >
-                            {customerAccountStatusLabel(customerAccountStatus)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <div className="text-xs text-gray-500">Loyalty</div>
-                        <div className="font-semibold">{detail.profile?.loyalty_tier || '—'}</div>
-                      </div>
-                      {detail.profile?.gender ? (
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <div className="text-xs text-gray-500">Gender</div>
-                          <div className="font-semibold">{detail.profile.gender}</div>
-                        </div>
-                      ) : null}
-                      {detail.profile?.dob ? (
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <div className="text-xs text-gray-500">Date of birth</div>
-                          <div className="font-semibold">{fmtDay(detail.profile.dob)}</div>
-                        </div>
-                      ) : null}
-                      {detail.profile?.alt_phone ? (
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <div className="text-xs text-gray-500">Alt phone</div>
-                          <div className="font-semibold">{detail.profile.alt_phone}</div>
-                        </div>
-                      ) : null}
+                      ))}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-4 gap-1.5">
                       <button
                         type="button"
                         onClick={() => setDetailTab('wallet')}
-                        className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3 text-left hover:border-emerald-300"
+                        className="rounded-lg border border-emerald-100 bg-emerald-50/70 px-2 py-1.5 text-left hover:border-emerald-300"
                       >
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Wallet</div>
-                        <div className="font-extrabold text-emerald-900">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Wallet</div>
+                        <div className="text-sm font-extrabold text-emerald-900 leading-tight">
                           {inr(Number(detail.wallet?.spendable_balance ?? detail.wallet?.current_balance ?? 0))}
                         </div>
                         {detail.wallet?.welcome_bonus_expires_at ? (
-                          <div className="text-[11px] text-emerald-700 mt-0.5">
+                          <div className="text-[10px] text-emerald-700">
                             Welcome till {fmtDay(detail.wallet.welcome_bonus_expires_at)}
                           </div>
                         ) : null}
@@ -1257,16 +1352,16 @@ export default function CustomerInsightsApp() {
                       <button
                         type="button"
                         onClick={() => setDetailTab('membership')}
-                        className="rounded-xl border border-violet-100 bg-violet-50/70 p-3 text-left hover:border-violet-300"
+                        className="rounded-lg border border-violet-100 bg-violet-50/70 px-2 py-1.5 text-left hover:border-violet-300"
                       >
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Membership</div>
-                        <div className="font-extrabold text-violet-900">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-700">Membership</div>
+                        <div className="text-sm font-extrabold text-violet-900 leading-tight">
                           {activeMembership
                             ? activeMembership.plan?.name || 'Active'
                             : 'None'}
                         </div>
                         {activeMembership?.ends_at ? (
-                          <div className="text-[11px] text-violet-700 mt-0.5">
+                          <div className="text-[10px] text-violet-700">
                             Till {fmtDay(activeMembership.ends_at)}
                           </div>
                         ) : null}
@@ -1274,42 +1369,42 @@ export default function CustomerInsightsApp() {
                       <button
                         type="button"
                         onClick={() => setDetailTab('bookings')}
-                        className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-left hover:border-blue-300"
+                        className="rounded-lg border border-blue-100 bg-blue-50/70 px-2 py-1.5 text-left hover:border-blue-300"
                       >
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Bookings</div>
-                        <div className="font-extrabold text-blue-900">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-700">Bookings</div>
+                        <div className="text-sm font-extrabold text-blue-900 leading-tight">
                           {detail.service_bookings?.length || 0}
                         </div>
                       </button>
                       <button
                         type="button"
                         onClick={() => setDetailTab('coupons')}
-                        className="rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-left hover:border-amber-300"
+                        className="rounded-lg border border-amber-100 bg-amber-50/70 px-2 py-1.5 text-left hover:border-amber-300"
                       >
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Coupons</div>
-                        <div className="font-extrabold text-amber-900">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Coupons</div>
+                        <div className="text-sm font-extrabold text-amber-900 leading-tight">
                           {detail.coupon_assignments?.length || 0} assigned
                         </div>
                       </button>
                     </div>
 
                     <div>
-                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <MapPin className="h-4 w-4" /> Addresses
+                      <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-1.5 text-[13px]">
+                        <MapPin className="h-3.5 w-3.5" /> Addresses
                       </h3>
                       {detail.addresses?.length ? (
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {detail.addresses.map((a: any) => (
-                            <div key={a.id} className="rounded-xl border p-3">
+                            <div key={a.id} className="rounded-lg border border-gray-100 px-2.5 py-1.5">
                               <div className="flex items-center justify-between gap-2">
-                                <div className="font-bold">{a.label || 'Address'}</div>
+                                <div className="font-bold text-[13px]">{a.label || 'Address'}</div>
                                 {a.is_default ? (
-                                  <span className="text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5">
+                                  <span className="text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 px-1.5 py-0.5">
                                     Default
                                   </span>
                                 ) : null}
                               </div>
-                              <div className="text-xs text-gray-600 mt-1">{formatAddressLine(a) || '—'}</div>
+                              <div className="text-xs text-gray-600">{formatAddressLine(a) || '—'}</div>
                             </div>
                           ))}
                         </div>
@@ -1319,26 +1414,26 @@ export default function CustomerInsightsApp() {
                     </div>
 
                     <div>
-                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <Car className="h-4 w-4" /> Vehicles
+                      <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-1.5 text-[13px]">
+                        <Car className="h-3.5 w-3.5" /> Vehicles
                       </h3>
                       {detail.vehicles?.length ? (
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {detail.vehicles.map((v: any) => (
-                            <div key={v.id} className="rounded-xl border p-3">
+                            <div key={v.id} className="rounded-lg border border-gray-100 px-2.5 py-1.5">
                               <div className="flex items-center justify-between gap-2">
-                                <div className="font-bold">{v.vehicle_number}</div>
+                                <div className="font-bold text-[13px]">{v.vehicle_number}</div>
                                 {v.is_default ? (
-                                  <span className="text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5">
+                                  <span className="text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 px-1.5 py-0.5">
                                     Default
                                   </span>
                                 ) : null}
                               </div>
-                              <div className="text-xs text-gray-600 mt-1">
+                              <div className="text-xs text-gray-600">
                                 {[v.make, v.model, v.variant, v.year, v.fuel_type].filter(Boolean).join(' · ')}
                               </div>
                               {v.odometer_km != null ? (
-                                <div className="text-[11px] text-gray-500 mt-1">
+                                <div className="text-[10px] text-gray-500">
                                   Odometer {Number(v.odometer_km).toLocaleString('en-IN')} km
                                 </div>
                               ) : null}
@@ -1351,17 +1446,17 @@ export default function CustomerInsightsApp() {
                     </div>
 
                     <div>
-                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <ShoppingCart className="h-4 w-4" /> Cart / incomplete booking
+                      <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-1.5 text-[13px]">
+                        <ShoppingCart className="h-3.5 w-3.5" /> Cart / incomplete booking
                       </h3>
                       {detail.cart?.items?.length ? (
-                        <div className="rounded-xl border p-3 space-y-2">
-                          <div className="flex justify-between text-xs text-gray-500">
+                        <div className="rounded-lg border border-gray-100 px-2.5 py-1.5 space-y-1">
+                          <div className="flex justify-between text-[10px] text-gray-500">
                             <span>{detail.cart.status || 'ACTIVE'}</span>
                             <span>Updated {fmtDate(detail.cart.updated_at)}</span>
                           </div>
                           {detail.cart.items.map((item: any) => (
-                            <div key={item.id} className="flex justify-between gap-2 text-xs border-t border-gray-100 pt-2">
+                            <div key={item.id} className="flex justify-between gap-2 text-xs border-t border-gray-100 pt-1">
                               <div>
                                 <div className="font-semibold text-gray-800">{item.service_type}</div>
                                 <div className="text-gray-500">Qty {item.quantity}</div>
@@ -1370,7 +1465,7 @@ export default function CustomerInsightsApp() {
                             </div>
                           ))}
                           {Number(detail.cart.grand_total) > 0 ? (
-                            <div className="text-xs font-bold text-gray-800 pt-1">
+                            <div className="text-xs font-bold text-gray-800 pt-0.5">
                               Total {inr(Number(detail.cart.grand_total))}
                             </div>
                           ) : null}
@@ -1381,44 +1476,114 @@ export default function CustomerInsightsApp() {
                     </div>
 
                     <div>
-                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <Gift className="h-4 w-4" /> Referral
+                      <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-1.5 text-[13px]">
+                        <Gift className="h-3.5 w-3.5" /> Referral
                       </h3>
-                      {detail.referral?.code ? (
-                        <div className="rounded-xl border p-3">
-                          <div className="font-bold tracking-wide">{detail.referral.code}</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {detail.referral.active === false ? 'Inactive' : 'Active'} · used {detail.referral.usage_count || 0} time(s)
+                      <div className="space-y-2">
+                        <div className="rounded-xl bg-[#023D95] p-3 text-white shadow-sm">
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-blue-200">
+                            Manual (telecaller)
                           </div>
-                          {detail.referral_events?.length ? (
-                            <div className="text-xs text-gray-600 mt-2">
-                              {detail.referral_events.length} referral event(s)
+                          <div className="mt-1">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-blue-200/80">
+                              Referred by
                             </div>
+                            {detail.manual_referral?.referred_by ? (
+                              <LeadOpenLink
+                                leadId={detail.manual_referral.referred_by.lead_id}
+                                className="mt-0.5 text-sm font-semibold text-white"
+                              >
+                                {[
+                                  detail.manual_referral.referred_by.customer_name,
+                                  detail.manual_referral.referred_by.customer_phone,
+                                  detail.manual_referral.referred_by.lead_number,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </LeadOpenLink>
+                            ) : (
+                              <p className="mt-0.5 text-xs text-blue-100/70">
+                                No one tagged a referrer on this customer&apos;s leads
+                              </p>
+                            )}
+                          </div>
+                          {detail.manual_referral?.telecallers?.length ? (
+                            <div className="mt-0.5 text-xs text-blue-100">
+                              Telecaller:{' '}
+                              {detail.manual_referral.telecallers.map((t: any) => t.name).join(', ')}
+                            </div>
+                          ) : null}
+                          <div className="mt-1.5 space-y-0.5">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-blue-200/80">
+                              They referred
+                            </div>
+                            {detail.manual_referral?.references_given?.length ? (
+                              detail.manual_referral.references_given.map((row: any) => (
+                                <LeadOpenLink
+                                  key={row.lead_id}
+                                  leadId={row.lead_id}
+                                  className="w-full text-xs font-semibold text-white"
+                                >
+                                  {[
+                                    row.customer_name || 'Lead',
+                                    row.customer_phone || '—',
+                                    row.lead_number,
+                                    row.telecaller_name ? `TC: ${row.telecaller_name}` : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </LeadOpenLink>
+                              ))
+                            ) : (
+                              <p className="text-xs text-blue-100/70">
+                                No leads tagged as referred by this customer
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-100 px-2.5 py-1.5">
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Refer &amp; Rise (app)
+                          </div>
+                          {detail.referral?.code ? (
+                            <>
+                              <div className="font-bold tracking-wide mt-0.5 text-gray-900">{detail.referral.code}</div>
+                              <div className="text-[11px] text-gray-500">
+                                {detail.referral.active === false ? 'Inactive' : 'Active'} · used{' '}
+                                {detail.referral.usage_count || 0} time(s)
+                              </div>
+                              {detail.referral_events?.length ? (
+                                <div className="text-[11px] text-gray-600 mt-0.5">
+                                  {detail.referral_events.length} referral event(s)
+                                </div>
+                              ) : (
+                                <div className="text-[11px] text-gray-400">No app referrals yet</div>
+                              )}
+                            </>
                           ) : (
-                            <div className="text-xs text-gray-400 mt-1">No referrals yet</div>
+                            <p className="text-gray-400 text-xs mt-0.5">No referral code</p>
                           )}
                         </div>
-                      ) : (
-                        <p className="text-gray-400 text-xs">No referral code</p>
-                      )}
+                      </div>
                     </div>
 
                     <div>
-                      <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <MessageCircle className="h-4 w-4" /> WhatsApp
+                      <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-1.5 text-[13px]">
+                        <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
                       </h3>
                       {detail.whatsapp_messages?.length ? (
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {detail.whatsapp_messages.slice(0, 8).map((m: any) => (
-                            <div key={m.id} className="rounded-xl border p-3">
-                              <div className="flex justify-between gap-2 text-[11px] text-gray-500">
+                            <div key={m.id} className="rounded-lg border border-gray-100 px-2.5 py-1.5">
+                              <div className="flex justify-between gap-2 text-[10px] text-gray-500">
                                 <span className="font-bold text-gray-700">
                                   {m.direction || 'MSG'} · {m.template_name || m.message_type || 'message'}
                                 </span>
                                 <span>{m.status} · {fmtDate(m.created_at)}</span>
                               </div>
                               {m.text_body ? (
-                                <p className="text-xs text-gray-700 mt-1 whitespace-pre-line line-clamp-4">
+                                <p className="text-xs text-gray-700 mt-0.5 whitespace-pre-line line-clamp-3">
                                   {m.text_body}
                                 </p>
                               ) : null}
@@ -1432,17 +1597,17 @@ export default function CustomerInsightsApp() {
 
                     {detail.rsa_leads?.length ? (
                       <div>
-                        <h3 className="font-bold text-gray-800 mb-2">RSA leads</h3>
-                        <div className="space-y-2">
+                        <h3 className="font-bold text-gray-800 mb-1 text-[13px]">RSA leads</h3>
+                        <div className="space-y-1">
                           {detail.rsa_leads.map((r: any) => (
-                            <div key={r.id} className="rounded-xl border p-3">
+                            <div key={r.id} className="rounded-lg border border-gray-100 px-2.5 py-1.5">
                               <div className="flex justify-between gap-2">
-                                <span className="font-bold">{r.service_type || 'RSA'}</span>
-                                <span className="text-xs rounded-full bg-gray-100 px-2 py-0.5">
+                                <span className="font-bold text-[13px]">{r.service_type || 'RSA'}</span>
+                                <span className="text-[10px] rounded-full bg-gray-100 px-2 py-0.5">
                                   {r.lead_status || r.complaint_status}
                                 </span>
                               </div>
-                              <div className="text-xs text-gray-600 mt-1">
+                              <div className="text-xs text-gray-600">
                                 {[r.vehicle_number, r.vehicle_model, r.pincode].filter(Boolean).join(' · ')}
                               </div>
                             </div>
@@ -1453,7 +1618,7 @@ export default function CustomerInsightsApp() {
 
                     {detail.analytics_events?.length ? (
                       <div>
-                        <h3 className="font-bold text-gray-800 mb-2">Recent App Events</h3>
+                        <h3 className="font-bold text-gray-800 mb-1 text-[13px]">Recent App Events</h3>
                         <div className="space-y-1">
                           {(eventsExpanded
                             ? detail.analytics_events
@@ -1478,83 +1643,6 @@ export default function CustomerInsightsApp() {
                         ) : null}
                       </div>
                     ) : null}
-
-                    <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/80 p-4 space-y-3">
-                      <div>
-                        <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                          <ShieldBan className="h-4 w-4 text-red-600" />
-                          Account Access
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Deactivate temporarily or ban permanently. User turant logout ho jayega.
-                        </p>
-                      </div>
-
-                      {accountMessage ? (
-                        <div className="rounded-xl bg-emerald-100 border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800">
-                          {accountMessage}
-                        </div>
-                      ) : null}
-
-                      {detail.customer.account_status_reason ? (
-                        <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
-                          <span className="font-bold">Reason: </span>
-                          {detail.customer.account_status_reason}
-                          {detail.customer.account_status_changed_at ? (
-                            <span className="block text-amber-700 mt-1">
-                              Updated {fmtDate(detail.customer.account_status_changed_at)}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      <label className="block text-xs font-semibold text-gray-700">
-                        Reason {customerAccountStatus === 'ACTIVE' ? '(required for ban)' : '(optional)'}
-                        <input
-                          type="text"
-                          value={accountReason}
-                          onChange={(e) => setAccountReason(e.target.value)}
-                          disabled={accountLoading}
-                          placeholder="e.g. Fraud, abuse, duplicate account..."
-                          className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
-                        />
-                      </label>
-
-                      <div className="flex flex-wrap gap-2">
-                        {customerAccountStatus === 'ACTIVE' ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleAccountAction('deactivate')}
-                              disabled={accountLoading}
-                              className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-white px-4 py-2 text-sm font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
-                            >
-                              <ShieldOff className="h-4 w-4" />
-                              {accountLoading ? 'Working...' : 'Deactivate'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleAccountAction('ban')}
-                              disabled={accountLoading}
-                              className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
-                            >
-                              <ShieldBan className="h-4 w-4" />
-                              {accountLoading ? 'Working...' : 'Ban Account'}
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleAccountAction('reactivate')}
-                            disabled={accountLoading}
-                            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                          >
-                            <ShieldCheck className="h-4 w-4" />
-                            {accountLoading ? 'Working...' : 'Reactivate Account'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 ) : detailTab === 'bookings' ? (
                   <div className="space-y-3">
@@ -1577,7 +1665,17 @@ export default function CustomerInsightsApp() {
                         return (
                         <div key={b.id} className="rounded-xl border p-3 text-sm">
                           <div className="flex justify-between gap-2">
-                            <span className="font-bold">{b.lead_number || 'Lead'}</span>
+                            {crmLeadPath(b.id) ? (
+                              <Link
+                                href={crmLeadPath(b.id)!}
+                                className="font-bold text-[#023D95] hover:underline inline-flex items-center gap-1"
+                              >
+                                {b.lead_number || 'Lead'}
+                                <ExternalLink className="h-3 w-3" />
+                              </Link>
+                            ) : (
+                              <span className="font-bold">{b.lead_number || 'Lead'}</span>
+                            )}
                             <span className="text-xs rounded-full bg-gray-100 px-2 py-0.5">{b.status}</span>
                           </div>
                           <div className="font-semibold text-gray-900 mt-1">{serviceLabel}</div>
@@ -1593,6 +1691,24 @@ export default function CustomerInsightsApp() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 mt-2">
                             {b.city ? <div><span className="text-gray-400">City:</span> {b.city}</div> : null}
                             {b.booking_source_label ? <div><span className="text-gray-400">Source:</span> {b.booking_source_label}</div> : null}
+                            {b.referred_by ? (
+                              <div className="sm:col-span-2">
+                                <span className="text-violet-600">Referred by (manual):</span>{' '}
+                                <LeadOpenLink
+                                  leadId={b.referred_by.lead_id}
+                                  className="font-semibold text-[#023D95]"
+                                >
+                                  {[b.referred_by.customer_name, b.referred_by.customer_phone]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </LeadOpenLink>
+                              </div>
+                            ) : null}
+                            {b.assigned_telecaller_name ? (
+                              <div className="sm:col-span-2">
+                                <span className="text-gray-400">Telecaller:</span> {b.assigned_telecaller_name}
+                              </div>
+                            ) : null}
                           </div>
                           {pricing.original > 0 || pricing.payable > 0 ? (
                             <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-2.5 space-y-1 text-xs">

@@ -26,7 +26,9 @@ import { useAuth } from '../../../context/AuthContext';
 import {
   serializeReferredBy,
   referredByLabel,
+  referredByFromSearchHit,
   type CrmReferredBy,
+  type CrmReferrerSearchHit,
 } from '../../../lib/crmLeadReference';
 import {
   emptySecondCar,
@@ -157,9 +159,7 @@ export default function CrmBookWizard({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [referredBy, setReferredBy] = useState<CrmReferredBy | null>(null);
   const [referrerQuery, setReferrerQuery] = useState('');
-  const [referrerHits, setReferrerHits] = useState<
-    { id: string; lead_number: string; customer_name: string; customer_phone: string }[]
-  >([]);
+  const [referrerHits, setReferrerHits] = useState<CrmReferrerSearchHit[]>([]);
   const [referrerSearching, setReferrerSearching] = useState(false);
   const [showSecondCar, setShowSecondCar] = useState(false);
   const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
@@ -996,7 +996,7 @@ export default function CrmBookWizard({
               <View style={{ marginBottom: 8 }}>
                 <TextInput
                   style={styles.input}
-                  placeholder="Search referrer by phone or name"
+                  placeholder="Search referrer — CRM lead or app customer"
                   placeholderTextColor="#94A3B8"
                   value={referrerQuery}
                   onChangeText={setReferrerQuery}
@@ -1013,12 +1013,7 @@ export default function CrmBookWizard({
                       borderBottomColor: '#E2E8F0',
                     }}
                     onPress={() => {
-                      setReferredBy({
-                        lead_id: hit.id,
-                        customer_name: hit.customer_name,
-                        customer_phone: hit.customer_phone,
-                        lead_number: hit.lead_number,
-                      });
+                      setReferredBy(referredByFromSearchHit(hit));
                       setReferrerQuery('');
                       setReferrerHits([]);
                     }}
@@ -1029,6 +1024,7 @@ export default function CrmBookWizard({
                     <Text style={{ fontSize: 12, color: '#64748B' }}>
                       {hit.customer_phone}
                       {hit.lead_number ? ` · ${hit.lead_number}` : ''}
+                      {hit.source === 'customer' ? ' · app' : ''}
                     </Text>
                   </TouchableOpacity>
                 ))}

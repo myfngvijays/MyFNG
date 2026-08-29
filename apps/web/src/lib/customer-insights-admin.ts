@@ -5,6 +5,8 @@ import { syncServiceLeadMembershipPricingForAdmin, resolveAdminBookingPayableAmo
 import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
 import { resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
+import { loadCrmManualReferencesForCustomer } from './crm-manual-references';
+import { parseReferredBy } from './telecaller/crmLeadReference';
 import { MOBILE_PUSH_PLATFORM } from './push/constants';
 import {
   applyReportDateRangeFilter,
@@ -676,9 +678,27 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
       wallet_used: pricing.walletUsed,
       wallet_usage_percent: pricing.walletUsagePercent,
       coupon_discount_amount: pricing.couponDiscount,
+      referred_by: parseReferredBy(lead.coupon_meta),
     };
   });
 
+  const manualRefs = await loadCrmManualReferencesForCustomer(supabaseAdmin, {
+    leads: syncedLeads,
+    phone: customer.phone,
+    customerId,
+  });
+  const telecallerNameById = new Map(manualRefs.telecallers.map((t) => [t.id, t.name]));
+  const serviceBookingsWithTele = serviceBookings.map((lead: Record<string, unknown>) => {
+    const assigned = String(lead.assigned_telecaller_id || '').trim();
+    const createdBy = String(lead.created_by_id || '').trim();
+    return {
+      ...lead,
+      assigned_telecaller_name:
+        (assigned && telecallerNameById.get(assigned)) ||
+        (createdBy && telecallerNameById.get(createdBy)) ||
+        null,
+    };
+  });
   const walletSummary = await getWalletSummary(supabaseAdmin, customerId).catch(() => null);
   const walletTotals = await computeWalletRewardTotals(supabaseAdmin, customerId).catch(() => ({
     earned_cashback: 0,
@@ -747,6 +767,11 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     profile: profileRes?.error ? null : profileRes?.data || null,
     referral: referralRes?.error ? null : referralRes?.data || null,
     referral_events: referralEventsRes?.error ? [] : referralEventsRes?.data || [],
+    manual_referral: {
+      referred_by: manualRefs.referred_by,
+      telecallers: manualRefs.telecallers,
+      references_given: manualRefs.references_given,
+    },
     cart: cartRow
       ? {
           ...cartRow,
@@ -768,7 +793,7 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     membership_usage: usage,
     coupon_assignments: assignmentsRes.data || [],
     coupon_redemptions: redemptions,
-    service_bookings: serviceBookings,
+    service_bookings: serviceBookingsWithTele,
     chatbot_bookings: chatbotRes.data || [],
     analytics_events: eventsRes.data || [],
     push_devices: pushDevices,

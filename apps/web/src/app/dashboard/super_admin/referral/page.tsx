@@ -1,5 +1,5 @@
-import ReferAndRiseApp from '@/components/admin/referral/ReferAndRiseApp';
+import { redirect } from 'next/navigation';
 
-export default function ReferralPage() {
-  return <ReferAndRiseApp />;
+export default function ReferralRedirect() {
+  redirect('/dashboard/super_admin/refer-and-rise');
 }
