@@ -760,6 +760,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           component={WorkshopAdminDashboard}
           options={{ title: 'Dashboard' }}
         />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{ title: 'Notifications' }}
+        />
         <Stack.Screen 
           name="PendingLeads" 
           component={PendingLeadsScreen}
@@ -836,6 +841,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="WorkshopSupervisorDashboard" 
           component={WorkshopSupervisorDashboard}
           options={{ title: 'Workshop Advisor' }}
+        />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{ title: 'Notifications' }}
         />
         <Stack.Screen 
           name="SupervisorMenu" 
@@ -954,6 +964,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           component={WorkshopMechanicDashboard}
           options={{ title: 'Mechanic Dashboard' }}
         />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{ title: 'Notifications' }}
+        />
         <Stack.Screen 
           name="LeadDetail" 
           component={MechanicLeadDetailScreen}
@@ -1006,6 +1021,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="WorkshopPickupBoyDashboard" 
           component={WorkshopPickupBoyDashboard}
           options={{ title: 'Pickup Dashboard' }}
+        />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{ title: 'Notifications' }}
         />
         <Stack.Screen 
           name="PickupTasks" 

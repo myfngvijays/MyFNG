@@ -98,7 +98,7 @@ export default function WorkshopAdvisorDashboard() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-5 overflow-x-hidden">
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Dashboard"
           subtitle="Jobs, team, QC, and pickup — all in one place"
@@ -119,27 +119,27 @@ export default function WorkshopAdvisorDashboard() {
           <QuickLink href="/dashboard/workshop-advisor/performance" icon={<TrendingUp className="w-5 h-5" />} title="Performance" sub="Team metrics" onClick={router.push} />
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">Recent Jobs</h2>
+        <div className="rounded-2xl bg-[#004AAD] p-3.5 shadow-sm sm:p-4">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <h2 className="text-[14px] font-bold text-white">Recent Jobs</h2>
             <button
               type="button"
               onClick={() => router.push('/dashboard/workshop-advisor/jobs')}
-              className="text-xs font-semibold text-blue-700 hover:underline"
+              className="text-xs font-bold text-white/85"
             >
-              View all
+              View all →
             </button>
           </div>
           <div className="space-y-2">
             {loading && recentJobs.length === 0 ? (
-              <p className="text-sm text-slate-400 py-6 text-center">Loading jobs…</p>
+              <p className="text-sm text-white/70 py-6 text-center">Loading jobs…</p>
             ) : null}
             {recentJobs.map((job) => (
               <button
                 key={job.id}
                 type="button"
                 onClick={() => router.push(`/dashboard/workshop-advisor/jobs/${job.id}`)}
-                className="w-full max-w-full min-w-0 flex items-center gap-2 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 text-left overflow-hidden"
+                className="w-full max-w-full min-w-0 flex items-center gap-2 rounded-xl bg-white p-3 text-left overflow-hidden"
               >
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <p className="font-semibold text-sm truncate">{job.service_leads?.lead_number || 'Job'}</p>
@@ -167,7 +167,7 @@ export default function WorkshopAdvisorDashboard() {
               </button>
             ))}
             {!loading && recentJobs.length === 0 ? (
-              <p className="text-center text-slate-400 py-6 text-sm">No active jobs</p>
+              <p className="text-center text-white/70 py-6 text-sm">No active jobs</p>
             ) : null}
           </div>
         </div>
@@ -189,13 +189,22 @@ function StatTile({
   tone: string;
   loading: boolean;
 }) {
+  const tint = tone.includes('yellow')
+    ? 'bg-[#FFFBEB]'
+    : tone.includes('green')
+      ? 'bg-[#ECFDF5]'
+      : tone.includes('red')
+        ? 'bg-[#FEF2F2]'
+        : tone.includes('purple')
+          ? 'bg-[#F5F3FF]'
+          : 'bg-[#EFF6FF]';
   return (
-    <div className={`rounded-2xl border border-white/60 bg-gradient-to-br ${tone} p-3 shadow-sm sm:p-4`}>
+    <div className={`rounded-2xl border border-slate-200 ${tint} p-3 shadow-sm sm:p-3.5`}>
       <div className="flex items-center gap-2">
         {icon}
         <div className="min-w-0">
-          <p className="text-[11px] sm:text-xs text-slate-600">{label}</p>
-          <p className="text-xl sm:text-2xl font-bold text-slate-900">{loading ? '—' : value}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-[11px]">{label}</p>
+          <p className="text-xl font-extrabold text-[#023D95] sm:text-2xl">{loading ? '—' : value}</p>
         </div>
       </div>
     </div>

@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
   menuTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 4,
   },
   menuSubtitle: {

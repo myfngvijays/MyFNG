@@ -3,10 +3,18 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { MapPin, Clock, User, Car, Phone, Navigation, CheckCircle, PlayCircle } from 'lucide-react';
+import { MapPin, User, Car, Navigation, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import { formatDateDMY, formatTime12h } from "@/lib/utils";
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopFilterPill,
+  WorkshopEmpty,
+  WorkshopCard,
+  WorkshopStatusPill,
+} from '@/components/workshop/WorkshopUi';
 
 interface PickupTask {
   id: string;
@@ -174,18 +182,44 @@ export default function PickupTasksPage() {
 
   const getStatusBadge = (status: string, hasOtp: boolean, otpVerified: boolean) => {
     if (status === 'ACCEPTED' || status === 'ASSIGNED_TO_WORKSHOP') {
-      if (!hasOtp) return { class: 'badge-yellow', text: 'Ready to Start' };
-      if (!otpVerified) return { class: 'badge-orange', text: 'OTP Pending' };
-      return { class: 'badge-blue', text: 'In Transit' };
+      if (!hasOtp) return { tone: 'yellow' as const, text: 'Ready to Start' };
+      if (!otpVerified) return { tone: 'yellow' as const, text: 'OTP Pending' };
+      return { tone: 'blue' as const, text: 'In Transit' };
     }
-    if (status === 'ON_THE_WAY') return { class: 'badge-blue', text: 'On The Way' };
-    if (status === 'VEHICLE_IN_TRANSIT') return { class: 'badge-purple', text: 'In Transit' };
-    if (status === 'VEHICLE_DROPPED_AT_WORKSHOP') return { class: 'badge-green', text: 'At Workshop' };
-    if (status === 'IN_PROGRESS') return { class: 'badge-blue', text: 'In Progress' };
-    if (status === 'READY_FOR_DELIVERY') return { class: 'badge-green', text: 'Delivery Ready' };
-    if (status === 'COD_PENDING') return { class: 'badge-orange', text: 'COD Delivery' };
-    if (status === 'COMPLETED' || status === 'DELIVERED' || status === 'CLOSED') return { class: 'badge-green', text: 'Completed' };
-    return { class: 'badge-gray', text: status.replace(/_/g, ' ') };
+    if (status === 'ON_THE_WAY') return { tone: 'blue' as const, text: 'On The Way' };
+    if (status === 'VEHICLE_IN_TRANSIT') return { tone: 'purple' as const, text: 'In Transit' };
+    if (status === 'VEHICLE_DROPPED_AT_WORKSHOP') return { tone: 'green' as const, text: 'At Workshop' };
+    if (status === 'IN_PROGRESS') return { tone: 'blue' as const, text: 'In Progress' };
+    if (status === 'READY_FOR_DELIVERY') return { tone: 'green' as const, text: 'Delivery Ready' };
+    if (status === 'COD_PENDING') return { tone: 'yellow' as const, text: 'COD Delivery' };
+    if (status === 'COMPLETED' || status === 'DELIVERED' || status === 'CLOSED') return { tone: 'green' as const, text: 'Completed' };
+    return { tone: 'slate' as const, text: status.replace(/_/g, ' ') };
+  };
+
+  const renderSchedule = (task: PickupTask) => {
+    if (task.preferred_date) {
+      const date = new Date(task.preferred_date);
+      return (
+        <div className="text-xs sm:text-sm">
+          <div className="font-semibold text-slate-900">{formatDateDMY(date)}</div>
+          {task.preferred_time_slot && <div className="text-slate-600">{task.preferred_time_slot}</div>}
+        </div>
+      );
+    }
+    if (task.preferred_slot_start) {
+      const startDate = new Date(task.preferred_slot_start);
+      const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
+      return (
+        <div className="text-xs sm:text-sm">
+          <div className="font-semibold text-slate-900">{formatDateDMY(startDate)}</div>
+          <div className="text-slate-600">
+            {formatTime12h(startDate)}
+            {endDate && ` - ${formatTime12h(endDate)}`}
+          </div>
+        </div>
+      );
+    }
+    return <span className="text-xs text-slate-400">Not specified</span>;
   };
 
   const openGoogleMaps = async (task: PickupTask) => {
@@ -256,202 +290,164 @@ export default function PickupTasksPage() {
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">🚚 My Pickup Tasks</h1>
-          <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Vehicle pickup and delivery assignments</p>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Pickupboy / Driver"
+          title="My Pickup Tasks"
+          subtitle="Vehicle pickup and delivery assignments"
+        />
 
-        {/* Filter Tabs */}
-        <div className="card">
+        <WorkshopCard>
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'all'
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
+            <WorkshopFilterPill active={filter === 'all'} onClick={() => setFilter('all')}>
               All Active ({filterCounts.all})
-            </button>
-            <button
-              onClick={() => setFilter('scheduled')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'scheduled'
-                  ? 'bg-yellow-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
+            </WorkshopFilterPill>
+            <WorkshopFilterPill active={filter === 'scheduled'} onClick={() => setFilter('scheduled')}>
               Scheduled ({filterCounts.scheduled})
-            </button>
-            <button
-              onClick={() => setFilter('in_transit')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'in_transit'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
+            </WorkshopFilterPill>
+            <WorkshopFilterPill active={filter === 'in_transit'} onClick={() => setFilter('in_transit')}>
               In Transit ({filterCounts.in_transit})
-            </button>
-            <button
-              onClick={() => setFilter('delivery_ready')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'delivery_ready'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
+            </WorkshopFilterPill>
+            <WorkshopFilterPill active={filter === 'delivery_ready'} onClick={() => setFilter('delivery_ready')}>
               Delivery Ready ({filterCounts.delivery_ready})
-            </button>
-            <button
-              onClick={() => setFilter('completed')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'completed'
-                  ? 'bg-green-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
+            </WorkshopFilterPill>
+            <WorkshopFilterPill active={filter === 'completed'} onClick={() => setFilter('completed')}>
               Completed ({filterCounts.completed})
-            </button>
+            </WorkshopFilterPill>
           </div>
-        </div>
+        </WorkshopCard>
 
-        {/* Tasks Table */}
         {tasks.length === 0 ? (
-          <div className="card text-center py-8 sm:py-10 md:py-12">
-            <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
-            <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">No Tasks</h3>
-            <p className="text-gray-500 text-sm sm:text-base">
-              {filter === 'all' 
-                ? 'You have no active pickup tasks.' 
+          <WorkshopCard>
+            <CheckCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h3 className="text-center text-base font-semibold text-slate-700 mb-1">No Tasks</h3>
+            <WorkshopEmpty>
+              {filter === 'all'
+                ? 'You have no active pickup tasks.'
                 : `No tasks with status: ${filter}`}
-            </p>
-          </div>
+            </WorkshopEmpty>
+          </WorkshopCard>
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+          <WorkshopCard>
+            <div className="space-y-2 lg:hidden">
+              {tasks.map((task) => {
+                const statusBadge = getStatusBadge(task.status, !!task.pickup_otp, !!task.pickup_otp_verified_at);
+                return (
+                  <div key={task.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-[#004AAD]">#{task.lead_number}</p>
+                        <p className="text-xs text-slate-500 truncate">{task.customer_name} · {task.vehicle_number}</p>
+                      </div>
+                      <WorkshopStatusPill tone={statusBadge.tone}>{statusBadge.text}</WorkshopStatusPill>
+                    </div>
+                    <p className="mt-1 truncate text-xs text-slate-500">
+                      {task.address || 'Address not provided'}
+                      {task.city ? ` · ${task.city}${task.pincode ? `, ${task.pincode}` : ''}` : ''}
+                    </p>
+                    <div className="mt-1">{renderSchedule(task)}</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openGoogleMaps(task)}
+                        disabled={!task.address && !task.city}
+                        className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        <Navigation className="w-3.5 h-3.5" />
+                        Navigate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
+                        className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#004AAD] text-xs font-bold text-white"
+                      >
+                        View Details
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferred Date & Time</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Address</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Preferred Date & Time</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-slate-200">
                   {tasks.map((task) => {
                     const statusBadge = getStatusBadge(task.status, !!task.pickup_otp, !!task.pickup_otp_verified_at);
                     return (
-                      <tr key={task.id} className="hover:bg-gray-50">
-                        {/* Lead Number */}
+                      <tr key={task.id} className="hover:bg-slate-50">
                         <td className="px-4 md:px-6 py-3 md:py-4">
-                          <div className="text-sm font-medium text-blue-600">#{task.lead_number}</div>
+                          <div className="text-sm font-medium text-[#004AAD]">#{task.lead_number}</div>
                         </td>
-
-                        {/* Customer */}
                         <td className="px-4 md:px-6 py-3 md:py-4">
                           <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                            <User className="w-4 h-4 text-slate-500 flex-shrink-0" />
                             <div>
-                              <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                              <div className="text-sm font-medium text-slate-900 truncate max-w-[150px]">
                                 {task.customer_name}
                               </div>
-                              <a href={`tel:${task.customer_phone}`} className="text-xs text-brand-primary hover:underline">
+                              <a href={`tel:${task.customer_phone}`} className="text-xs text-[#004AAD] hover:underline">
                                 {task.customer_phone}
                               </a>
                             </div>
                           </div>
                         </td>
-
-                        {/* Vehicle */}
                         <td className="px-4 md:px-6 py-3 md:py-4">
                           <div className="flex items-center gap-2">
-                            <Car className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                            <Car className="w-4 h-4 text-slate-500 flex-shrink-0" />
                             <div>
-                              <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                              <div className="text-sm font-medium text-slate-900 truncate max-w-[150px]">
                                 {task.vehicle_number}
                               </div>
-                              <div className="text-xs text-gray-500 truncate max-w-[150px]">
+                              <div className="text-xs text-slate-500 truncate max-w-[150px]">
                                 {task.vehicle_make} {task.vehicle_model}
                               </div>
                             </div>
                           </div>
                         </td>
-
-                        {/* Address */}
                         <td className="px-4 md:px-6 py-3 md:py-4">
                           <div className="flex items-start gap-2">
-                            <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                            <MapPin className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
                             <div className="min-w-0">
-                              <div className="text-sm text-gray-900 truncate max-w-[200px]">
+                              <div className="text-sm text-slate-900 truncate max-w-[200px]">
                                 {task.address || 'Address not provided'}
                               </div>
                               {task.city && (
-                                <div className="text-xs text-gray-500 truncate max-w-[200px]">
+                                <div className="text-xs text-slate-500 truncate max-w-[200px]">
                                   {task.city}{task.pincode ? `, ${task.pincode}` : ''}
                                 </div>
                               )}
                             </div>
                           </div>
                         </td>
-
-                        {/* Status */}
                         <td className="px-4 md:px-6 py-3 md:py-4">
-                          <span className={statusBadge.class}>{statusBadge.text}</span>
+                          <WorkshopStatusPill tone={statusBadge.tone}>{statusBadge.text}</WorkshopStatusPill>
                         </td>
-
-                        {/* Preferred Date & Time */}
-                        <td className="px-4 md:px-6 py-3 md:py-4">
-                          {(() => {
-                            if (task.preferred_date) {
-                              const date = new Date(task.preferred_date);
-                              return (
-                                <div className="text-xs sm:text-sm">
-                                  <div className="font-semibold text-gray-900">{formatDateDMY(date)}</div>
-                                  {task.preferred_time_slot && (
-                                    <div className="text-gray-600">{task.preferred_time_slot}</div>
-                                  )}
-                                </div>
-                              );
-                            }
-                            if (task.preferred_slot_start) {
-                              const startDate = new Date(task.preferred_slot_start);
-                              const endDate = task.preferred_slot_end ? new Date(task.preferred_slot_end) : null;
-                              return (
-                                <div className="text-xs sm:text-sm">
-                                  <div className="font-semibold text-gray-900">{formatDateDMY(startDate)}</div>
-                                  <div className="text-gray-600">
-                                    {formatTime12h(startDate)}
-                                    {endDate && ` - ${formatTime12h(endDate)}`}
-                                  </div>
-                                </div>
-                              );
-                            }
-                            return <span className="text-xs text-gray-400">Not specified</span>;
-                          })()}
-                        </td>
-
-                        {/* Actions */}
+                        <td className="px-4 md:px-6 py-3 md:py-4">{renderSchedule(task)}</td>
                         <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex flex-col gap-2">
                             <button
                               onClick={() => openGoogleMaps(task)}
                               disabled={!task.address && !task.city}
-                              className="btn bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <Navigation className="w-3.5 h-3.5" />
                               Navigate
                             </button>
                             <button
                               onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                              className="btn btn-primary text-xs px-3 py-1.5"
+                              className="inline-flex items-center justify-center rounded-xl bg-[#004AAD] px-3 py-1.5 text-xs font-bold text-white"
                             >
                               View Details
                             </button>
@@ -463,9 +459,9 @@ export default function PickupTasksPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </WorkshopCard>
         )}
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

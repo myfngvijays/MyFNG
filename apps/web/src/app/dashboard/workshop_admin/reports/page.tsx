@@ -4,11 +4,17 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { 
-  BarChart3, TrendingUp, Users, Clock, Star, DollarSign,
+  BarChart3, TrendingUp, Clock, Star, DollarSign,
   CheckCircle, XCircle, AlertTriangle, Download, Calendar
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopFilterPill,
+} from '@/components/workshop/WorkshopUi';
 
 interface WorkshopMetrics {
   totalLeads: number;
@@ -165,98 +171,63 @@ export default function WorkshopReportsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg flex items-center gap-3">
-                <BarChart3 className="w-8 h-8" />
-                Workshop Performance Reports
-              </h1>
-              <p className="text-white font-medium mt-1">Track your workshop's key metrics and performance</p>
-            </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Workshop Performance Reports"
+          subtitle="Track your workshop's key metrics and performance"
+          right={
             <button
               onClick={exportReport}
-              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 transition"
+              className="inline-flex w-full min-h-11 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73] min-[900px]:w-auto"
             >
               <Download className="w-5 h-5" />
               Export
             </button>
-          </div>
-        </div>
+          }
+        />
 
-        {/* Date Range Filter */}
-        <div className="card">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Calendar className="w-5 h-5 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Period:</span>
-            {(['7d', '30d', '90d'] as const).map((range) => (
-              <button
-                key={range}
-                onClick={() => setDateRange(range)}
-                className={`px-4 py-2 rounded-lg font-medium transition ${
-                  dateRange === range
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
+          <Calendar className="w-5 h-5 text-slate-500 shrink-0" />
+          <span className="text-sm font-medium text-slate-700">Period:</span>
+          {(['7d', '30d', '90d'] as const).map((range) => (
+            <WorkshopFilterPill key={range} active={dateRange === range} onClick={() => setDateRange(range)}>
+              {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
+            </WorkshopFilterPill>
+          ))}
         </div>
 
         {metrics && (
           <>
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="w-10 h-10 text-blue-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Total Leads</p>
-                    <p className="text-3xl font-bold text-gray-800">{metrics.totalLeads}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card bg-gradient-to-br from-green-50 to-green-100">
-                <div className="flex items-center gap-3">
-                  <TrendingUp className="w-10 h-10 text-green-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Completed</p>
-                    <p className="text-3xl font-bold text-gray-800">{metrics.completedLeads}</p>
-                    <p className="text-xs text-gray-600">{conversionRate.toFixed(1)}% rate</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
-                <div className="flex items-center gap-3">
-                  <Clock className="w-10 h-10 text-yellow-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Pending</p>
-                    <p className="text-3xl font-bold text-gray-800">{metrics.pendingLeads}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card bg-gradient-to-br from-red-50 to-red-100">
-                <div className="flex items-center gap-3">
-                  <XCircle className="w-10 h-10 text-red-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Rejected</p>
-                    <p className="text-3xl font-bold text-gray-800">{metrics.rejectedLeads}</p>
-                    <p className="text-xs text-gray-600">{rejectionRate.toFixed(1)}% rate</p>
-                  </div>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <WorkshopStatTile
+                label="Total Leads"
+                value={metrics.totalLeads}
+                icon={<CheckCircle className="w-6 h-6 text-blue-600" />}
+                tone="from-blue-50 to-blue-100"
+              />
+              <WorkshopStatTile
+                label={`Completed (${conversionRate.toFixed(1)}%)`}
+                value={metrics.completedLeads}
+                icon={<TrendingUp className="w-6 h-6 text-green-600" />}
+                tone="from-green-50 to-green-100"
+              />
+              <WorkshopStatTile
+                label="Pending"
+                value={metrics.pendingLeads}
+                icon={<Clock className="w-6 h-6 text-amber-600" />}
+                tone="from-yellow-50 to-yellow-100"
+              />
+              <WorkshopStatTile
+                label={`Rejected (${rejectionRate.toFixed(1)}%)`}
+                value={metrics.rejectedLeads}
+                icon={<XCircle className="w-6 h-6 text-red-600" />}
+                tone="from-red-50 to-red-100"
+              />
             </div>
 
-            {/* Performance Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="card">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex items-center gap-3 mb-3">
                   <Clock className="w-8 h-8 text-blue-600" />
                   <div>
@@ -271,7 +242,7 @@ export default function WorkshopReportsPage() {
                 </div>
               </div>
 
-              <div className="card">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex items-center gap-3 mb-3">
                   <Star className="w-8 h-8 text-yellow-600" />
                   <div>
@@ -295,7 +266,7 @@ export default function WorkshopReportsPage() {
                 </div>
               </div>
 
-              <div className="card">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex items-center gap-3 mb-3">
                   <DollarSign className="w-8 h-8 text-green-600" />
                   <div>
@@ -311,10 +282,9 @@ export default function WorkshopReportsPage() {
               </div>
             </div>
 
-            {/* Status Breakdown */}
-            <div className="card">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <BarChart3 className="w-6 h-6 text-brand-primary" />
+                <BarChart3 className="w-6 h-6 text-[#004AAD]" />
                 Lead Status Breakdown
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -340,7 +310,7 @@ export default function WorkshopReportsPage() {
             </div>
 
             {/* Insights & Recommendations */}
-            <div className="card bg-blue-50 border-l-4 border-blue-500">
+            <div className="rounded-2xl border border-slate-200 bg-blue-50 p-4 shadow-sm sm:p-5">
               <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-blue-600" />
                 Performance Insights
@@ -365,7 +335,7 @@ export default function WorkshopReportsPage() {
             </div>
           </>
         )}
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

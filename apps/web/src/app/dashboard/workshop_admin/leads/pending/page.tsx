@@ -3,10 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { CheckCircle, XCircle, Clock, User, MapPin, Car, Phone, Mail, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, User, MapPin, Car, Phone } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import { formatDateTime } from "@/lib/utils";
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopEmpty,
+  WorkshopStatusPill,
+} from '@/components/workshop/WorkshopUi';
 
 interface PendingLead {
   id: string;
@@ -179,68 +186,48 @@ export default function PendingLeadsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">📬 Pending Lead Acceptance</h1>
-          <p className="text-white font-medium mt-1">Review and accept/reject assigned leads</p>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Pending Lead Acceptance"
+          subtitle="Review and accept or reject assigned leads"
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          <WorkshopStatTile
+            label="Awaiting Decision"
+            value={leads.length}
+            icon={<Clock className="w-6 h-6 text-amber-600" />}
+            tone="from-yellow-50 to-yellow-100"
+          />
+          <WorkshopStatTile
+            label="Requires Pickup"
+            value={leads.filter(l => l.pickup_required).length}
+            icon={<CheckCircle className="w-6 h-6 text-green-600" />}
+            tone="from-green-50 to-green-100"
+          />
+          <WorkshopStatTile
+            label="Direct Drop-off"
+            value={leads.filter(l => !l.pickup_required).length}
+            icon={<Car className="w-6 h-6 text-blue-600" />}
+            tone="from-blue-50 to-blue-100"
+          />
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
-            <div className="flex items-center gap-3">
-              <Clock className="w-10 h-10 text-yellow-600" />
-              <div>
-                <p className="text-sm text-gray-600">Awaiting Decision</p>
-                <p className="text-3xl font-bold text-gray-800">{leads.length}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="w-10 h-10 text-green-600" />
-              <div>
-                <p className="text-sm text-gray-600">Requires Pickup</p>
-                <p className="text-3xl font-bold text-gray-800">
-                  {leads.filter(l => l.pickup_required).length}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="flex items-center gap-3">
-              <Car className="w-10 h-10 text-blue-600" />
-              <div>
-                <p className="text-sm text-gray-600">Direct Drop-off</p>
-                <p className="text-3xl font-bold text-gray-800">
-                  {leads.filter(l => !l.pickup_required).length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Leads List */}
         {leads.length === 0 ? (
-          <div className="card text-center py-12">
-            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">All Caught Up!</h3>
-            <p className="text-gray-500">No pending leads awaiting your decision.</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <WorkshopEmpty>No pending leads awaiting your decision.</WorkshopEmpty>
           </div>
         ) : (
           <div className="space-y-4">
             {leads.map((lead) => (
-              <div key={lead.id} className="card hover:shadow-xl transition-shadow border-l-4 border-yellow-500">
+              <div key={lead.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  {/* Lead Info */}
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center gap-3">
-                      <span className="badge-blue text-lg">{lead.lead_number}</span>
+                      <span className="text-lg font-bold text-[#004AAD]">{lead.lead_number}</span>
                       {lead.pickup_required && (
-                        <span className="badge-yellow">🚚 Pickup Required</span>
+                        <WorkshopStatusPill tone="yellow">Pickup Required</WorkshopStatusPill>
                       )}
                     </div>
 
@@ -269,20 +256,19 @@ export default function PendingLeadsPage() {
                     </div>
 
                     {lead.estimated_amount && (
-                      <div className="text-lg font-semibold text-brand-primary">
+                      <div className="text-lg font-semibold text-[#004AAD]">
                         Estimated Amount: ₹{lead.estimated_amount}
                       </div>
                     )}
                   </div>
 
-                  {/* Action Buttons */}
                   <div className="flex flex-col gap-2 md:w-48">
                     <button
                       onClick={() => {
                         setSelectedLead(lead);
                         setShowAcceptModal(true);
                       }}
-                      className="btn-primary flex items-center justify-center gap-2"
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#023D95]"
                     >
                       <CheckCircle className="w-5 h-5" />
                       Accept Lead
@@ -292,7 +278,7 @@ export default function PendingLeadsPage() {
                         setSelectedLead(lead);
                         setShowRejectModal(true);
                       }}
-                      className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex items-center justify-center gap-2"
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700"
                     >
                       <XCircle className="w-5 h-5" />
                       Reject Lead
@@ -304,10 +290,9 @@ export default function PendingLeadsPage() {
           </div>
         )}
 
-        {/* Accept Confirmation Modal */}
         {showAcceptModal && selectedLead && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-4 text-green-600">Accept Lead</h3>
               <p className="text-gray-700 mb-4">
                 You are about to accept lead <strong>{selectedLead.lead_number}</strong> for{' '}
@@ -320,7 +305,7 @@ export default function PendingLeadsPage() {
                 <button
                   onClick={() => handleAccept(selectedLead)}
                   disabled={processing}
-                  className="btn-primary flex-1"
+                  className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#023D95] disabled:opacity-50"
                 >
                   {processing ? 'Processing...' : 'Confirm Accept'}
                 </button>
@@ -330,7 +315,7 @@ export default function PendingLeadsPage() {
                     setSelectedLead(null);
                   }}
                   disabled={processing}
-                  className="btn-secondary flex-1"
+                  className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -339,10 +324,9 @@ export default function PendingLeadsPage() {
           </div>
         )}
 
-        {/* Reject Modal */}
         {showRejectModal && selectedLead && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-4 text-red-600">Reject Lead</h3>
               <p className="text-gray-700 mb-4">
                 Lead: <strong>{selectedLead.lead_number}</strong>
@@ -386,7 +370,7 @@ export default function PendingLeadsPage() {
                 <button
                   onClick={handleReject}
                   disabled={processing || !rejectionReason}
-                  className="btn-secondary bg-red-600 hover:bg-red-700 text-white flex-1"
+                  className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
                 >
                   {processing ? 'Processing...' : 'Confirm Reject'}
                 </button>
@@ -398,7 +382,7 @@ export default function PendingLeadsPage() {
                     setRejectionNotes('');
                   }}
                   disabled={processing}
-                  className="btn-secondary flex-1"
+                  className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -406,7 +390,7 @@ export default function PendingLeadsPage() {
             </div>
           </div>
         )}
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

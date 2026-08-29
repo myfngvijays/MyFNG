@@ -6,6 +6,13 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Wrench, User, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatDateDMY } from "@/lib/utils";
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopFilterPill,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 export default function WorkshopJobsPage() {
   const router = useRouter();
@@ -116,80 +123,35 @@ export default function WorkshopJobsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Active Jobs</h1>
-          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Monitor and manage ongoing work</p>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Active Jobs"
+          subtitle="Monitor and manage ongoing work"
+        />
+
+        <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
+          <WorkshopFilterPill active={filter === 'active'} onClick={() => setFilter('active')}>
+            Active Jobs
+          </WorkshopFilterPill>
+          <WorkshopFilterPill active={filter === 'completed'} onClick={() => setFilter('completed')}>
+            Completed
+          </WorkshopFilterPill>
+          <WorkshopFilterPill active={filter === 'all'} onClick={() => setFilter('all')}>
+            All Jobs
+          </WorkshopFilterPill>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="card">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setFilter('active')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'active'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <Wrench className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
-              Active Jobs
-            </button>
-            <button
-              onClick={() => setFilter('completed')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'completed'
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
-              Completed
-            </button>
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-medium transition text-xs sm:text-sm ${
-                filter === 'all'
-                  ? 'bg-purple-100 text-purple-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              All Jobs
-            </button>
-          </div>
-        </div>
-
-        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">Total Jobs</p>
-            <p className="text-xl sm:text-2xl font-bold">{jobs.length}</p>
-          </div>
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">Accepted</p>
-            <p className="text-xl sm:text-2xl font-bold text-green-600">
-              {jobs.filter(j => j.status === 'ACCEPTED').length}
-            </p>
-          </div>
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">In Progress</p>
-            <p className="text-xl sm:text-2xl font-bold text-blue-600">
-              {jobs.filter(j => j.status === 'IN_PROGRESS').length}
-            </p>
-          </div>
-          <div className="card sm:col-span-2 lg:col-span-1">
-            <p className="text-xs sm:text-sm text-gray-600">Completed</p>
-            <p className="text-xl sm:text-2xl font-bold text-gray-600">
-              {jobs.filter(j => j.status === 'COMPLETED').length}
-            </p>
-          </div>
+          <WorkshopStatTile label="Total Jobs" value={jobs.length} icon={<Wrench className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" />
+          <WorkshopStatTile label="Accepted" value={jobs.filter(j => j.status === 'ACCEPTED').length} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" />
+          <WorkshopStatTile label="In Progress" value={jobs.filter(j => j.status === 'IN_PROGRESS').length} icon={<Clock className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" />
+          <WorkshopStatTile label="Completed" value={jobs.filter(j => j.status === 'COMPLETED').length} icon={<CheckCircle className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" />
         </div>
 
-        {/* Jobs List */}
         <div className="space-y-3 sm:space-y-4">
           {jobs.map((job) => (
-            <div key={job.id} className="card hover:shadow-lg transition">
+            <div key={job.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
                 <div className="min-w-0 flex-1">
                   <h3 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{job.lead_number}</h3>
@@ -282,7 +244,7 @@ export default function WorkshopJobsPage() {
                 </div>
                 <button 
                   onClick={() => router.push(`/dashboard/workshop_admin/leads/${job.id}`)}
-                  className="btn btn-outline text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 hover:bg-blue-50 hover:border-blue-500 transition w-full sm:w-auto"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] px-4 py-2 text-xs sm:text-sm font-bold text-white hover:bg-[#023D95] w-full sm:w-auto"
                 >
                   View Details
                 </button>
@@ -291,13 +253,12 @@ export default function WorkshopJobsPage() {
           ))}
 
           {jobs.length === 0 && (
-            <div className="card text-center py-8 sm:py-10 md:py-12">
-              <Wrench className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-              <p className="text-gray-500 text-sm sm:text-base">No jobs found in this category</p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <WorkshopEmpty>No jobs found in this category</WorkshopEmpty>
             </div>
           )}
         </div>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

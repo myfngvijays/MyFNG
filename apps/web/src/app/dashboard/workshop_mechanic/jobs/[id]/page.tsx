@@ -14,6 +14,7 @@ import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
 import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
 import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
+import { WorkshopPageHeader, WorkshopPageShell } from '@/components/workshop/WorkshopUi';
 
 interface JobDetail {
   id: string;
@@ -1468,52 +1469,53 @@ function MechanicJobDetailPageContent() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
-            <button onClick={() => router.back()} className="btn btn-outline p-1.5 sm:p-2 flex-shrink-0">
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold truncate">{job.lead_number}</h1>
-              <p className="text-gray-600 text-xs sm:text-sm">Job Details</p>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Mechanic"
+          title={job.lead_number}
+          subtitle="Job Details"
+          right={
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => router.back()}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
+              {job.mechanic_status ? (
+                <span
+                  className={`px-2 sm:px-3 py-1.5 rounded-xl font-semibold text-xs sm:text-sm ${getStatusColor(
+                    job.mechanic_status
+                  )}`}
+                  title={job.qc_status ? `QC: ${job.qc_status}` : undefined}
+                >
+                  {getMechanicStatusLabel(job.mechanic_status)}
+                </span>
+              ) : job.lead_status ? (
+                <span
+                  className={[
+                    'px-2 sm:px-3 py-1.5 rounded-xl font-semibold text-xs sm:text-sm border',
+                    getLeadStatusColor(job.lead_status).bg,
+                    getLeadStatusColor(job.lead_status).text,
+                    getLeadStatusColor(job.lead_status).border,
+                  ].join(' ')}
+                  title={job.qc_status ? `QC: ${job.qc_status}` : undefined}
+                >
+                  {getLeadStatusLabel(job.lead_status)}
+                </span>
+              ) : null}
+              {job.job_priority !== 'NORMAL' && (
+                <span className="px-2 sm:px-3 py-1.5 rounded-xl font-semibold bg-red-100 text-red-800 border border-red-300 text-xs sm:text-sm">
+                  {job.job_priority}
+                </span>
+              )}
             </div>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            {/* Show mechanic status if available; otherwise fall back to lead status */}
-            {job.mechanic_status ? (
-              <span
-                className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm ${getStatusColor(
-                  job.mechanic_status
-                )}`}
-                title={job.qc_status ? `QC: ${job.qc_status}` : undefined}
-              >
-                {getMechanicStatusLabel(job.mechanic_status)}
-              </span>
-            ) : job.lead_status ? (
-              <span
-                className={[
-                  'px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm border',
-                  getLeadStatusColor(job.lead_status).bg,
-                  getLeadStatusColor(job.lead_status).text,
-                  getLeadStatusColor(job.lead_status).border,
-                ].join(' ')}
-                title={job.qc_status ? `QC: ${job.qc_status}` : undefined}
-              >
-                {getLeadStatusLabel(job.lead_status)}
-              </span>
-            ) : null}
-            {job.job_priority !== 'NORMAL' && (
-              <span className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-lg font-semibold bg-red-100 text-red-800 border border-red-300 text-xs sm:text-sm">
-                {job.job_priority}
-              </span>
-            )}
-          </div>
-        </div>
+          }
+        />
 
         {/* SLA Timer */}
-        <div className="card bg-gradient-to-r from-orange-50 to-red-50 border-l-4 border-orange-500 p-3 sm:p-4 md:p-5">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm bg-gradient-to-r from-orange-50 to-red-50 border-l-4 border-orange-500 p-3 sm:p-4 md:p-5">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
               <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 flex-shrink-0" />
@@ -1703,7 +1705,7 @@ function MechanicJobDetailPageContent() {
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
             {/* Job Summary */}
-            <div className="card p-3 sm:p-4 md:p-5">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
               <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Job Summary</h2>
               <div className="space-y-2 sm:space-y-3">
                 <div>
@@ -1801,7 +1803,7 @@ function MechanicJobDetailPageContent() {
             </div>
 
             {/* Customer & Vehicle */}
-            <div className="card p-3 sm:p-4 md:p-5">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
               <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Customer & Vehicle</h2>
               <div className="space-y-2 sm:space-y-3">
                 <div>
@@ -1832,7 +1834,7 @@ function MechanicJobDetailPageContent() {
             </div>
 
             {/* Progress Status */}
-            <div className="card col-span-full p-3 sm:p-4 md:p-5">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm col-span-full p-3 sm:p-4 md:p-5">
               <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Progress Status</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
                 <div className="text-center p-3 sm:p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
@@ -2012,7 +2014,7 @@ function MechanicJobDetailPageContent() {
         )}
 
         {activeTab === 'checklist' && (
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-3 sm:mb-4">
               <h2 className="text-lg sm:text-xl font-bold">Checklist</h2>
             </div>
@@ -2517,7 +2519,7 @@ function MechanicJobDetailPageContent() {
         {activeTab === 'media' && (
           <div className="space-y-4 sm:space-y-5 md:space-y-6">
             {/* Category Dropdown */}
-            <div className="card p-3 sm:p-4 md:p-5">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
               <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Upload Media</h2>
               <div className="space-y-3 sm:space-y-4">
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-end">
@@ -2543,7 +2545,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* PROGRESS Category - During Service Upload */}
                 {selectedCategory === 'PROGRESS' && job && job.id && (
-                  <div className="card border-2 border-orange-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-orange-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-6 h-6 text-orange-600" />
                       Work in Progress Photos
@@ -2560,7 +2562,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* CAR SCANNING BEFORE Category */}
                 {selectedCategory === 'CAR_SCANNING_BEFORE' && (
-                  <div className="card border-2 border-sky-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-sky-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-sky-700 flex-shrink-0" />
                       Car Scanning (Before)
@@ -2587,7 +2589,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* CAR SCANNING AFTER Category */}
                 {selectedCategory === 'CAR_SCANNING_AFTER' && (
-                  <div className="card border-2 border-teal-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-teal-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-teal-700 flex-shrink-0" />
                       Car Scanning (After)
@@ -2614,7 +2616,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* CUSTOM SERVICE Category (multiple uploads) */}
                 {selectedCategory === 'CUSTOM_SERVICE' && hasCustomService && (
-                  <div className="card border-2 border-fuchsia-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-fuchsia-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-fuchsia-700 flex-shrink-0" />
                       Custom Service Photos
@@ -2641,7 +2643,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* AFTER Category - After Service Upload */}
                 {selectedCategory === 'AFTER' && job && job.id && (
-                  <div className="card border-2 border-green-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-green-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-6 h-6 text-green-700" />
                       After Service Photos
@@ -2658,7 +2660,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* EXTRA_WORK_PROOF Category */}
                 {selectedCategory === 'EXTRA_WORK_PROOF' && (
-                  <div className="card border-2 border-purple-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-purple-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0" />
                       Additional Jobs Proof
@@ -2685,7 +2687,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* DAMAGE_FOUND Category */}
                 {selectedCategory === 'DAMAGE_FOUND' && (
-                  <div className="card border-2 border-red-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-red-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0" />
                       Damage Found
@@ -2712,7 +2714,7 @@ function MechanicJobDetailPageContent() {
 
                 {/* PARTS_USED Category */}
                 {selectedCategory === 'PARTS_USED' && job && job.id && (
-                  <div className="card border-2 border-indigo-300 p-3 sm:p-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white shadow-sm border-2 border-indigo-300 p-3 sm:p-4 md:p-5">
                     <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                       <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 flex-shrink-0" />
                       Parts Used Photos
@@ -2730,7 +2732,7 @@ function MechanicJobDetailPageContent() {
             </div>
 
             {/* Media Grid */}
-            <div className="card p-3 sm:p-4 md:p-5">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
               <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Other Media ({media.length})</h2>
               <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
                 General media uploads (not used for before/after inspection validation)
@@ -2793,7 +2795,7 @@ function MechanicJobDetailPageContent() {
         )}
 
         {activeTab === 'parts' && (
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Parts Management</h2>
             <div className="space-y-2 sm:space-y-3">
               {parts.map((part) => (
@@ -2849,7 +2851,7 @@ function MechanicJobDetailPageContent() {
         )}
 
         {activeTab === 'notes' && (
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Work Notes</h2>
             <textarea
               value={workNotes}
@@ -2869,7 +2871,7 @@ function MechanicJobDetailPageContent() {
         )}
 
         {activeTab === 'supervisor-observation' && (
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-blue-600" />
               Supervisor/Advisor Observation
@@ -2901,7 +2903,7 @@ function MechanicJobDetailPageContent() {
         {activeTab === 'extra-work' && (
           <div className="space-y-4">
             {/* In-tab Additional Job Request (Checklist style) */}
-            <div id="extra-work-request-form" className="card p-3 sm:p-4 md:p-5">
+            <div id="extra-work-request-form" className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3 sm:mb-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -3170,7 +3172,7 @@ function MechanicJobDetailPageContent() {
             </div>
 
             {/* Existing requests */}
-            <div id="extra-work-requests" className="card p-3 sm:p-4 md:p-5">
+            <div id="extra-work-requests" className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
               <div className="flex items-start justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
                 <h2 className="text-lg sm:text-xl font-bold">Additional Job Requests</h2>
               </div>
@@ -3333,7 +3335,7 @@ function MechanicJobDetailPageContent() {
         )}
 
         {/* Additional Job Requests List is in "Additional Jobs" tab */}
-      </div>
+      </WorkshopPageShell>
 
       {/* Image Zoom Modal */}
       {zoomedMedia && (

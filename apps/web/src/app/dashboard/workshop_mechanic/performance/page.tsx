@@ -4,10 +4,15 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
 import {
-  TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, 
-  Award, Target, Calendar, BarChart3, Activity
+  TrendingUp, Clock, CheckCircle, XCircle,
+  Award, Target, BarChart3, Activity
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopFilterPill,
+} from '@/components/workshop/WorkshopUi';
 
 interface PerformanceMetrics {
   date: string;
@@ -133,7 +138,7 @@ export default function MechanicPerformancePage() {
     return (
       <DashboardLayout role="workshop_mechanic">
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#004AAD]"></div>
         </div>
       </DashboardLayout>
     );
@@ -141,43 +146,32 @@ export default function MechanicPerformancePage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Performance Dashboard</h1>
-            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Track your work metrics and KPIs</p>
-          </div>
-          
-          {/* Performance Grade */}
-          <div className={`px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-lg sm:rounded-xl ${performanceGrade.bgColor} border-2 border-current ${performanceGrade.color} w-full sm:w-auto`}>
-            <p className="text-xs sm:text-sm font-medium">Overall Grade</p>
-            <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{performanceGrade.grade}</p>
-            <p className="text-xs sm:text-sm">{avgPerformanceScore.toFixed(1)}%</p>
-          </div>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Mechanic"
+          title="Performance Dashboard"
+          subtitle="Track your work metrics and KPIs"
+          right={
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#004AAD]/70">Overall Grade</p>
+              <p className={`text-2xl font-extrabold ${performanceGrade.color || 'text-[#023D95]'}`}>{performanceGrade.grade}</p>
+              <p className="text-xs text-slate-500">{avgPerformanceScore.toFixed(1)}%</p>
+            </div>
+          }
+        />
 
-        {/* Period Selector */}
-        <div className="flex flex-wrap gap-2 sm:gap-3">
+        <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
           {(['today', 'week', 'month'] as const).map((period) => (
-            <button
-              key={period}
-              onClick={() => setSelectedPeriod(period)}
-              className={`px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 md:py-3 rounded-lg font-medium capitalize transition text-xs sm:text-sm ${
-                selectedPeriod === period
-                  ? 'bg-brand-primary text-white shadow-md'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
+            <WorkshopFilterPill key={period} active={selectedPeriod === period} onClick={() => setSelectedPeriod(period)}>
               {period === 'today' ? 'Today' : period === 'week' ? 'Last 7 Days' : 'Last 30 Days'}
-            </button>
+            </WorkshopFilterPill>
           ))}
         </div>
 
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
           {/* Jobs Completed */}
-          <div className="card bg-gradient-to-br from-green-50 to-green-100 p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm bg-gradient-to-br from-green-50 to-green-100 p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-2 sm:mb-3">
               <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-green-600 flex-shrink-0" />
               <span className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600">{totalCompleted}</span>
@@ -196,7 +190,7 @@ export default function MechanicPerformancePage() {
           </div>
 
           {/* SLA Success Rate */}
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-2 sm:mb-3">
               <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-blue-600 flex-shrink-0" />
               <span className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-600">{avgSLARate.toFixed(0)}%</span>
@@ -209,7 +203,7 @@ export default function MechanicPerformancePage() {
           </div>
 
           {/* Avg Repair Time */}
-          <div className="card bg-gradient-to-br from-purple-50 to-purple-100 p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm bg-gradient-to-br from-purple-50 to-purple-100 p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-2 sm:mb-3">
               <Activity className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-purple-600 flex-shrink-0" />
               <span className="text-xl sm:text-2xl md:text-3xl font-bold text-purple-600">{avgDuration.toFixed(0)}m</span>
@@ -219,7 +213,7 @@ export default function MechanicPerformancePage() {
           </div>
 
           {/* Quality Score */}
-          <div className="card bg-gradient-to-br from-orange-50 to-orange-100 p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm bg-gradient-to-br from-orange-50 to-orange-100 p-3 sm:p-4 md:p-5">
             <div className="flex items-center justify-between mb-2 sm:mb-3">
               <Award className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 text-orange-600 flex-shrink-0" />
               <span className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-600">
@@ -234,7 +228,7 @@ export default function MechanicPerformancePage() {
         {/* Detailed Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
           {/* Work Distribution */}
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
               <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
               Work Distribution
@@ -290,7 +284,7 @@ export default function MechanicPerformancePage() {
           </div>
 
           {/* Quality Control */}
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
               <Target className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
               Quality Control
@@ -349,7 +343,7 @@ export default function MechanicPerformancePage() {
         </div>
 
         {/* Additional Jobs Stats */}
-        <div className="card p-3 sm:p-4 md:p-5">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
           <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Additional Work Requests</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg">
@@ -383,7 +377,7 @@ export default function MechanicPerformancePage() {
 
         {/* Performance Trend */}
         {currentMetrics.length > 1 && (
-          <div className="card p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
             <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
               <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
               Performance Trend
@@ -419,7 +413,7 @@ export default function MechanicPerformancePage() {
 
         {/* Achievements & Goals */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-          <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 p-3 sm:p-4 md:p-5">
             <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
               <Award className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600 flex-shrink-0" />
               Achievements
@@ -452,7 +446,7 @@ export default function MechanicPerformancePage() {
             </ul>
           </div>
 
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 p-3 sm:p-4 md:p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 p-3 sm:p-4 md:p-5">
             <h3 className="font-bold text-base sm:text-lg mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
               <Target className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
               Goals & Targets
@@ -477,7 +471,7 @@ export default function MechanicPerformancePage() {
             </ul>
           </div>
         </div>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

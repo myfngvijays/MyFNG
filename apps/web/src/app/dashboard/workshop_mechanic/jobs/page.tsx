@@ -3,11 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Wrench, Clock, Camera, CheckCircle, AlertCircle } from 'lucide-react';
+import { Wrench, Clock, Camera, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 import { formatDateTime } from "@/lib/utils";
 import toast from 'react-hot-toast';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 export default function MechanicJobsPage() {
   const router = useRouter();
@@ -215,11 +221,25 @@ export default function MechanicJobsPage() {
     }
   }
 
+  const getStatusColor = (job: any) => {
+    if (job.mechanic_status === 'IN_PROGRESS') return 'bg-blue-100 text-blue-700';
+    if (job.mechanic_status === 'HOLD' || job.mechanic_status === 'ON_HOLD') return 'bg-orange-100 text-orange-700';
+    if (job.mechanic_status === 'COMPLETED') return 'bg-purple-100 text-purple-700';
+    return 'bg-green-100 text-green-700';
+  };
+
+  const getStatusLabel = (job: any) => {
+    if (job.mechanic_status === 'IN_PROGRESS') return 'In Progress';
+    if (job.mechanic_status === 'HOLD' || job.mechanic_status === 'ON_HOLD') return 'On Hold';
+    if (job.mechanic_status === 'COMPLETED') return 'Completed';
+    return 'Assigned';
+  };
+
   if (loading) {
     return (
       <DashboardLayout role="workshop_mechanic">
         <div className="flex items-center justify-center h-48 sm:h-64">
-          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-[#004AAD]"></div>
         </div>
       </DashboardLayout>
     );
@@ -227,35 +247,92 @@ export default function MechanicJobsPage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">My Jobs</h1>
-          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Manage your assigned service jobs</p>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Mechanic"
+          title="My Jobs"
+          subtitle="Manage your assigned service jobs"
+        />
 
-        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">Total Assigned</p>
-            <p className="text-xl sm:text-2xl font-bold">{jobs.length}</p>
-          </div>
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">In Progress</p>
-            <p className="text-xl sm:text-2xl font-bold text-blue-600">
-              {jobs.filter(j => j.mechanic_status === 'IN_PROGRESS').length}
-            </p>
-          </div>
-          <div className="card sm:col-span-1">
-            <p className="text-xs sm:text-sm text-gray-600">Ready to Start</p>
-            <p className="text-xl sm:text-2xl font-bold text-green-600">
-              {jobs.filter(j => j.mechanic_status === 'ASSIGNED').length}
-            </p>
-          </div>
+          <WorkshopStatTile label="Total Assigned" value={jobs.length} icon={<Wrench className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" />
+          <WorkshopStatTile label="In Progress" value={jobs.filter(j => j.mechanic_status === 'IN_PROGRESS').length} icon={<Clock className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" />
+          <WorkshopStatTile label="Ready to Start" value={jobs.filter(j => j.mechanic_status === 'ASSIGNED').length} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" />
         </div>
 
-        {/* Jobs Table */}
         {jobs.length > 0 ? (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
+          <>
+          <div className="space-y-2 lg:hidden">
+            {jobs.map((job) => (
+              <button
+                key={job.job_id || job.lead_id}
+                type="button"
+                onClick={() => {
+                  if (job.lead_id) router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
+                }}
+                className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">#{job.lead_number || 'N/A'}</p>
+                    <p className="text-xs text-slate-500 truncate">{job.customer_name || 'N/A'}</p>
+                    <p className="text-xs text-slate-500 truncate">{job.vehicle_number || 'N/A'} · {job.vehicle_make || ''} {job.vehicle_model || ''}</p>
+                  </div>
+                  {job.mechanic_status ? (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${getStatusColor(job)}`}>
+                      {getStatusLabel(job)}
+                    </span>
+                  ) : job.lead_status ? (
+                    <span className={[
+                      'px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 border',
+                      getLeadStatusColor(job.lead_status).bg,
+                      getLeadStatusColor(job.lead_status).text,
+                      getLeadStatusColor(job.lead_status).border,
+                    ].join(' ')}>
+                      {getLeadStatusLabel(job.lead_status)}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-600">
+                  {job.service_type_names?.length
+                    ? job.service_type_names.join(', ')
+                    : job.service_types?.length
+                      ? job.service_types.join(', ')
+                      : 'N/A'}
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                    <span className="inline-flex items-center gap-0.5">
+                      {job.pickup_visit_images_count > 0 ? <CheckCircle className="w-3 h-3 text-green-600" /> : <Camera className="w-3 h-3 text-gray-300" />}
+                      PV
+                    </span>
+                    <span className="inline-flex items-center gap-0.5">
+                      {job.progress_images_count > 0 ? <CheckCircle className="w-3 h-3 text-green-600" /> : <Camera className="w-3 h-3 text-gray-300" />}
+                      P
+                    </span>
+                    <span className="inline-flex items-center gap-0.5">
+                      {job.after_images_count > 0 ? <CheckCircle className="w-3 h-3 text-green-600" /> : <Camera className="w-3 h-3 text-gray-300" />}
+                      A
+                    </span>
+                  </div>
+                  {job.mechanic_status === 'ASSIGNED' ? (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (job.lead_id) updateJobStatus(job.lead_id, 'IN_PROGRESS');
+                      }}
+                      className="inline-flex min-h-9 items-center rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white"
+                    >
+                      Start
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-blue-700">View</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -412,7 +489,7 @@ export default function MechanicJobsPage() {
                         updateJobStatus(job.lead_id, 'IN_PROGRESS');
                       }
                     }}
-                                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors flex items-center justify-center gap-1"
+                                className="inline-flex items-center justify-center gap-1 rounded-xl bg-[#004AAD] px-2 py-1 text-xs font-bold text-white"
                   >
                                 <Wrench className="w-3 h-3" />
                                 Start
@@ -468,13 +545,13 @@ export default function MechanicJobsPage() {
               </table>
             </div>
           </div>
+          </>
         ) : (
-            <div className="card text-center py-12">
-              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No jobs assigned to you</p>
-            </div>
-          )}
-      </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <WorkshopEmpty>No jobs assigned to you</WorkshopEmpty>
+          </div>
+        )}
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

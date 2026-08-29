@@ -741,7 +741,7 @@ export default function QCReviewPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-5">
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title={`QC Review · ${lead.lead_number}`}
           subtitle="Review and approve completed work"
@@ -749,7 +749,7 @@ export default function QCReviewPage() {
           right={
             <button
               onClick={() => router.back()}
-              className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/25"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#012f73]"
             >
               <ArrowLeft className="w-4 h-4" />
               Back

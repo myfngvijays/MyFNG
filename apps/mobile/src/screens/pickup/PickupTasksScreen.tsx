@@ -407,19 +407,19 @@ const styles = StyleSheet.create({
     color: COLORS.gray[600],
   },
   header: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.white,
     padding: SPACING.lg,
-    paddingTop: SPACING.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
   title: {
     fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: '#023D95',
   },
   subtitle: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.white,
-    opacity: 0.9,
+    color: COLORS.gray[600],
     marginTop: SPACING.xs,
   },
   filterContainer: {
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   filterButton: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 14,
     backgroundColor: COLORS.gray[200],
   },
   filterButtonActive: {
@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
   },
   taskCard: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 14,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     shadowColor: COLORS.black,
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.sm,
+    borderRadius: 14,
     alignItems: 'center',
   },
   actionButtonText: {

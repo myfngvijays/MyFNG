@@ -10,6 +10,14 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopFilterPill,
+  WorkshopEmpty,
+  WorkshopCard,
+} from '@/components/workshop/WorkshopUi';
 
 interface HistoryTask {
   id: string;
@@ -219,11 +227,6 @@ export default function PickupBoyHistoryPage() {
     setFilteredHistory(filtered);
   }
 
-  function getTaskTypeIcon(task: HistoryTask) {
-    if (task.pickup_required) return '🚚';
-    return '📋';
-  }
-
   function getStatusBadge(status: string) {
     if (status === 'COMPLETED') {
       return (
@@ -256,183 +259,95 @@ export default function PickupBoyHistoryPage() {
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">📜 Task History</h1>
-          <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">View your completed and cancelled tasks</p>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Pickupboy / Driver"
+          title="Task History"
+          subtitle="View your completed and cancelled tasks"
+        />
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="card bg-green-50 border-l-4 border-green-500">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-gray-600">Total Completed</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600">{stats.totalCompleted}</p>
-              </div>
-              <CheckCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-500 flex-shrink-0" />
-            </div>
-          </div>
-
-          <div className="card bg-blue-50 border-l-4 border-blue-500">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-gray-600">Pickups Done</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-600">{stats.totalPickups}</p>
-              </div>
-              <Truck className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-blue-500 flex-shrink-0" />
-            </div>
-          </div>
-
-          <div className="card bg-purple-50 border-l-4 border-purple-500">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-gray-600">Deliveries Done</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-purple-600">{stats.totalDeliveries}</p>
-              </div>
-              <Navigation className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-purple-500 flex-shrink-0" />
-            </div>
-          </div>
-
-          <div className="card bg-red-50 border-l-4 border-red-500 sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-gray-600">Cancelled</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold text-red-600">{stats.totalCancelled}</p>
-              </div>
-              <XCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-red-500 flex-shrink-0" />
-            </div>
-          </div>
+          <WorkshopStatTile label="Total Completed" value={stats.totalCompleted} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" />
+          <WorkshopStatTile label="Pickups Done" value={stats.totalPickups} icon={<Truck className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" />
+          <WorkshopStatTile label="Deliveries Done" value={stats.totalDeliveries} icon={<Navigation className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" />
+          <WorkshopStatTile label="Cancelled" value={stats.totalCancelled} icon={<XCircle className="w-6 h-6 text-red-600" />} tone="from-red-50 to-red-100" />
         </div>
 
-        {/* Filters */}
-        <div className="card">
+        <WorkshopCard>
           <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
-              <span className="font-semibold text-gray-700 text-xs sm:text-sm">Filters:</span>
+              <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-slate-500 flex-shrink-0" />
+              <span className="font-semibold text-slate-700 text-xs sm:text-sm">Filters:</span>
             </div>
-
-            {/* Date Filter */}
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setDateFilter('today')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
-                  dateFilter === 'today'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setDateFilter('week')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
-                  dateFilter === 'week'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                This Week
-              </button>
-              <button
-                onClick={() => setDateFilter('month')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
-                  dateFilter === 'month'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => setDateFilter('all')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
-                  dateFilter === 'all'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All Time
-              </button>
+              <WorkshopFilterPill active={dateFilter === 'today'} onClick={() => setDateFilter('today')}>Today</WorkshopFilterPill>
+              <WorkshopFilterPill active={dateFilter === 'week'} onClick={() => setDateFilter('week')}>This Week</WorkshopFilterPill>
+              <WorkshopFilterPill active={dateFilter === 'month'} onClick={() => setDateFilter('month')}>This Month</WorkshopFilterPill>
+              <WorkshopFilterPill active={dateFilter === 'all'} onClick={() => setDateFilter('all')}>All Time</WorkshopFilterPill>
             </div>
-
-            <div className="hidden sm:block w-px h-6 sm:h-8 bg-gray-300"></div>
-
-            {/* Status Filter */}
+            <div className="hidden sm:block w-px h-6 sm:h-8 bg-slate-200"></div>
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
-                  statusFilter === 'all'
-                    ? 'bg-brand-secondary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All ({history.length})
-              </button>
-              <button
-                onClick={() => setStatusFilter('completed')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
-                  statusFilter === 'completed'
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Completed
-              </button>
-              <button
-                onClick={() => setStatusFilter('cancelled')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
-                  statusFilter === 'cancelled'
-                    ? 'bg-red-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Cancelled
-              </button>
+              <WorkshopFilterPill active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>All ({history.length})</WorkshopFilterPill>
+              <WorkshopFilterPill active={statusFilter === 'completed'} onClick={() => setStatusFilter('completed')}>Completed</WorkshopFilterPill>
+              <WorkshopFilterPill active={statusFilter === 'cancelled'} onClick={() => setStatusFilter('cancelled')}>Cancelled</WorkshopFilterPill>
             </div>
           </div>
-        </div>
+        </WorkshopCard>
 
         {/* History Table */}
         {filteredHistory.length === 0 ? (
-          <div className="card text-center py-8 sm:py-10 md:py-12">
-            <Calendar className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
-            <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">No History Found</h3>
-            <p className="text-gray-500 text-sm sm:text-base">
-              {statusFilter !== 'all' 
+          <WorkshopCard>
+            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h3 className="text-center text-base font-semibold text-slate-700 mb-1">No History Found</h3>
+            <WorkshopEmpty>
+              {statusFilter !== 'all'
                 ? `No ${statusFilter} tasks found for the selected period.`
-                : 'No tasks found for the selected period.'
-              }
-            </p>
-          </div>
+                : 'No tasks found for the selected period.'}
+            </WorkshopEmpty>
+          </WorkshopCard>
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+          <WorkshopCard>
+            <div className="space-y-2 lg:hidden">
+              {filteredHistory.map((task) => (
+                <div key={task.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-[#004AAD]">#{task.lead_number}</p>
+                      <p className="text-xs text-slate-500 truncate">{task.customer_name} · {task.vehicle_number}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{task.pickup_required ? 'Pickup & Delivery' : 'Service Task'}</p>
+                    </div>
+                    {getStatusBadge(task.status)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
+                    className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-[#004AAD] text-xs font-bold text-white"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    View Details
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed/Cancelled</th>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Customer</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Vehicle</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Address</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Completed/Cancelled</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-slate-200">
                   {filteredHistory.map((task) => (
-                    <tr key={task.id} className="hover:bg-gray-50">
-                      {/* Lead Number */}
+                    <tr key={task.id} className="hover:bg-slate-50">
                       <td className="px-4 md:px-6 py-3 md:py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="text-xl flex-shrink-0">{getTaskTypeIcon(task)}</div>
-                          <div className="text-sm font-medium text-blue-600">#{task.lead_number}</div>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-sm font-medium text-[#004AAD]">#{task.lead_number}</div>
+                        <div className="text-xs text-slate-500 mt-1">
                           {task.pickup_required ? 'Pickup & Delivery' : 'Service Task'}
                         </div>
                       </td>
@@ -527,7 +442,7 @@ export default function PickupBoyHistoryPage() {
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-medium">
                         <button
                           onClick={() => router.push(`/dashboard/workshop_pickup_boy/tasks/${task.id}`)}
-                          className="btn btn-outline text-xs px-3 py-1.5 flex items-center justify-center gap-1.5"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#004AAD] px-3 py-1.5 text-xs font-bold text-white"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           View Details
@@ -538,28 +453,27 @@ export default function PickupBoyHistoryPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </WorkshopCard>
         )}
 
-        {/* Summary Footer */}
         {filteredHistory.length > 0 && (
-          <div className="card bg-gray-50">
+          <WorkshopCard className="bg-slate-50">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <p className="text-xs sm:text-sm text-gray-600">
+              <p className="text-xs sm:text-sm text-slate-600">
                 Showing <span className="font-bold">{filteredHistory.length}</span> of{' '}
                 <span className="font-bold">{history.length}</span> total tasks
               </p>
               <button
                 onClick={() => window.print()}
-                className="btn bg-brand-primary hover:bg-brand-secondary text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2 w-full sm:w-auto"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl bg-[#004AAD] px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white"
               >
                 <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Export History
               </button>
             </div>
-          </div>
+          </WorkshopCard>
         )}
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

@@ -297,7 +297,7 @@ export default function DailyReportPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-5">
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Daily Report"
           subtitle="End of day summary and insights"
@@ -309,12 +309,12 @@ export default function DailyReportPage() {
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 max={new Date().toISOString().split('T')[0]}
-                className="rounded-xl border-0 bg-white/15 px-3 py-2 text-sm text-white placeholder-white/70"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800"
               />
               <button
                 onClick={exportReport}
                 disabled={generating || !metrics}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73] disabled:opacity-60"
               >
                 {generating ? (
                   <>

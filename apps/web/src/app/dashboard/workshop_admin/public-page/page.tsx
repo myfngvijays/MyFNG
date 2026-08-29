@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Globe, Upload, Image as ImageIcon, CheckCircle, XCircle, Star, X, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/store/authStore';
+import DashboardLayout from '@/components/DashboardLayout';
+import { WorkshopPageHeader, WorkshopPageShell } from '@/components/workshop/WorkshopUi';
 
 export default function WorkshopAdminPublicPage() {
   const router = useRouter();
@@ -329,43 +331,50 @@ export default function WorkshopAdminPublicPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
+      <DashboardLayout role="workshop_admin">
+        <div className="flex items-center justify-center h-48 sm:h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#004AAD]"></div>
+        </div>
+      </DashboardLayout>
     );
   }
 
   if (!workshop) {
     return (
-      <div className="p-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800">No workshop assigned to your account. Please contact admin.</p>
-        </div>
-      </div>
+      <DashboardLayout role="workshop_admin">
+        <WorkshopPageShell>
+          <WorkshopPageHeader eyebrow="Workshop Owner" title="Manage Public Page" subtitle="Workshop public profile" />
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            No workshop assigned to your account. Please contact admin.
+          </div>
+        </WorkshopPageShell>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Manage Public Page</h1>
-        <p className="text-gray-600 mt-1">Manage your workshop's public-facing page</p>
-        {page && page.is_published && (
-          <div className="mt-4">
+    <DashboardLayout role="workshop_admin">
+      <WorkshopPageShell>
+      <WorkshopPageHeader
+        eyebrow="Workshop Owner"
+        title="Manage Public Page"
+        subtitle="Manage your workshop's public-facing page"
+        right={
+          page && page.is_published ? (
             <a
               href={`/workshop/${page.slug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
             >
               <Globe className="w-5 h-5" />
               View Public Page
             </a>
-          </div>
-        )}
-      </div>
+          ) : null
+        }
+      />
 
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white rounded-lg shadow-md p-6">
+      <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         {/* Workshop Info */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <h3 className="font-bold text-blue-900 mb-2">Workshop: {workshop.name}</h3>
@@ -800,6 +809,7 @@ export default function WorkshopAdminPublicPage() {
           </button>
         </div>
       </form>
-    </div>
+      </WorkshopPageShell>
+    </DashboardLayout>
   );
 }

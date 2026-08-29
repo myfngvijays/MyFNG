@@ -293,15 +293,15 @@ export default function DayPlanningPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-5">
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Day Planning"
           subtitle={`Plan today's workload · ${jobs.length} jobs`}
           href="/dashboard/workshop-advisor/day-planning"
           right={
-            <div className="rounded-xl bg-white/15 px-3 py-2 text-right">
-              <p className="text-[10px] uppercase tracking-wide text-blue-100">Today</p>
-              <p className="text-sm font-bold">{formatDateDMY(new Date())}</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+              <p className="text-[10px] uppercase tracking-wide text-[#004AAD]/70">Today</p>
+              <p className="text-sm font-extrabold text-[#023D95]">{formatDateDMY(new Date())}</p>
             </div>
           }
         />

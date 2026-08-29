@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Building2, Save, Phone, Mail, MapPin } from 'lucide-react';
+import { Save, Phone, Mail, MapPin } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { WorkshopPageHeader, WorkshopPageShell } from '@/components/workshop/WorkshopUi';
 
 export default function WorkshopSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -96,17 +97,14 @@ export default function WorkshopSettingsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading flex items-center gap-1.5 sm:gap-2">
-            <Building2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 flex-shrink-0" />
-            <span>Workshop Settings</span>
-          </h1>
-          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Manage your workshop information and preferences</p>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Workshop Settings"
+          subtitle="Manage your workshop information and preferences"
+        />
 
-        {/* Workshop Info Card */}
-        <div className="card">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-5 md:mb-6">Workshop Information</h2>
           
           <div className="space-y-4 sm:space-y-5 md:space-y-6">
@@ -249,7 +247,7 @@ export default function WorkshopSettingsPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="btn btn-primary w-full sm:w-auto text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                className="inline-flex w-full sm:w-auto min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[#004AAD] px-4 py-2.5 text-xs sm:text-sm font-bold text-white hover:bg-[#023D95] disabled:opacity-50"
               >
                 <Save className="w-4 h-4 sm:w-5 sm:h-5" />
                 {saving ? 'Saving...' : 'Save Changes'}
@@ -257,7 +255,7 @@ export default function WorkshopSettingsPage() {
             </div>
           </div>
         </div>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

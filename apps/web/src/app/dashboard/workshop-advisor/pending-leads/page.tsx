@@ -243,7 +243,7 @@ export default function WorkshopSupervisorPendingLeadsPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="w-full max-w-full min-w-0 space-y-4">
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Lead Approval"
           subtitle="Accept or reject incoming leads. Accept assigns you as advisor."

@@ -3,9 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Users, Wrench, Eye, Truck, CheckCircle, AlertCircle } from 'lucide-react';
+import { Wrench, Eye, Truck, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 interface TeamMember {
   id: string;
@@ -184,25 +189,26 @@ export default function AssignTeamPage() {
   if (!lead) {
     return (
       <DashboardLayout role="workshop_admin">
-        <div className="card text-center py-12">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-700">Lead not found</h3>
-        </div>
+        <WorkshopPageShell>
+          <WorkshopPageHeader eyebrow="Workshop Owner" title="Assign Team" subtitle="Lead not found" />
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <WorkshopEmpty>Lead not found</WorkshopEmpty>
+          </div>
+        </WorkshopPageShell>
       </DashboardLayout>
     );
   }
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-6 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">👥 Assign Team Members</h1>
-          <p className="text-white font-medium mt-1">Lead: {lead.lead_number}</p>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Assign Team Members"
+          subtitle={`Lead: ${lead.lead_number}`}
+        />
 
-        {/* Lead Summary */}
-        <div className="card">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h3 className="text-lg font-semibold mb-4">Lead Details</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
@@ -227,34 +233,31 @@ export default function AssignTeamPage() {
         {/* Assignment Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Mechanic Selection */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center gap-3 mb-4">
-              <Wrench className="w-6 h-6 text-brand-primary" />
+              <Wrench className="w-6 h-6 text-[#004AAD]" />
               <h3 className="text-lg font-semibold">
                 Select Mechanic <span className="text-red-500">*</span>
               </h3>
             </div>
 
             {mechanics.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <p>No mechanics available</p>
-                <p className="text-sm mt-2">Please add mechanics to your workshop first</p>
-              </div>
+              <WorkshopEmpty>No mechanics available. Add mechanics to your workshop first.</WorkshopEmpty>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {mechanics.map((mechanic) => (
                   <div
                     key={mechanic.id}
                     onClick={() => setSelectedMechanic(mechanic.id)}
-                    className={`p-4 border-2 rounded-lg cursor-pointer transition ${
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition ${
                       selectedMechanic === mechanic.id
-                        ? 'border-brand-primary bg-blue-50'
-                        : 'border-gray-200 hover:border-brand-primary hover:bg-gray-50'
+                        ? 'border-[#004AAD] bg-blue-50'
+                        : 'border-slate-200 hover:border-[#004AAD] hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       {selectedMechanic === mechanic.id && (
-                        <CheckCircle className="w-5 h-5 text-brand-primary" />
+                        <CheckCircle className="w-5 h-5 text-[#004AAD]" />
                       )}
                       <div className="flex-1">
                         <p className="font-semibold">{mechanic.name}</p>
@@ -268,7 +271,7 @@ export default function AssignTeamPage() {
           </div>
 
           {/* Supervisor Selection (Optional) */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center gap-3 mb-4">
               <Eye className="w-6 h-6 text-purple-600" />
               <h3 className="text-lg font-semibold">
@@ -277,19 +280,17 @@ export default function AssignTeamPage() {
             </div>
 
             {supervisors.length === 0 ? (
-              <div className="text-center py-6 text-gray-500 text-sm">
-                No advisers available - Job will proceed without adviser QC
-              </div>
+              <WorkshopEmpty>No advisers available — job will proceed without adviser QC</WorkshopEmpty>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {supervisors.map((supervisor) => (
                   <div
                     key={supervisor.id}
                     onClick={() => setSelectedSupervisor(supervisor.id)}
-                    className={`p-4 border-2 rounded-lg cursor-pointer transition ${
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition ${
                       selectedSupervisor === supervisor.id
                         ? 'border-purple-600 bg-purple-50'
-                        : 'border-gray-200 hover:border-purple-600 hover:bg-gray-50'
+                        : 'border-slate-200 hover:border-purple-600 hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -309,7 +310,7 @@ export default function AssignTeamPage() {
 
           {/* Pickup Boy Selection (Conditional) */}
           {lead.pickup_required && (
-            <div className="card">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex items-center gap-3 mb-4">
                 <Truck className="w-6 h-6 text-orange-600" />
                 <h3 className="text-lg font-semibold">
@@ -318,20 +319,17 @@ export default function AssignTeamPage() {
               </div>
 
               {pickupBoys.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No pickupboys/drivers available</p>
-                  <p className="text-sm mt-2 text-red-600">Pickup is required for this lead!</p>
-                </div>
+                <WorkshopEmpty>No pickupboys/drivers available. Pickup is required for this lead.</WorkshopEmpty>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {pickupBoys.map((pickupBoy) => (
                     <div
                       key={pickupBoy.id}
                       onClick={() => setSelectedPickupBoy(pickupBoy.id)}
-                      className={`p-4 border-2 rounded-lg cursor-pointer transition ${
+                      className={`p-4 border-2 rounded-xl cursor-pointer transition ${
                         selectedPickupBoy === pickupBoy.id
                           ? 'border-orange-600 bg-orange-50'
-                          : 'border-gray-200 hover:border-orange-600 hover:bg-gray-50'
+                          : 'border-slate-200 hover:border-orange-600 hover:bg-slate-50'
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -351,7 +349,7 @@ export default function AssignTeamPage() {
           )}
 
           {/* Notes */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Additional Notes (Optional)
             </label>
@@ -369,7 +367,7 @@ export default function AssignTeamPage() {
             <button
               type="submit"
               disabled={submitting || !selectedMechanic || (lead.pickup_required && !selectedPickupBoy)}
-              className="btn-primary flex-1"
+              className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#023D95] disabled:opacity-50"
             >
               {submitting ? 'Assigning Team...' : 'Assign Team & Start Job'}
             </button>
@@ -377,13 +375,13 @@ export default function AssignTeamPage() {
               type="button"
               onClick={() => router.back()}
               disabled={submitting}
-              className="btn-secondary"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
             >
               Cancel
             </button>
           </div>
         </form>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

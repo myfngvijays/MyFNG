@@ -7,7 +7,7 @@ import { formatDateDMY, formatDateTime } from '@/lib/utils';
 import {
   User, Mail, Phone, Building2, Calendar, 
   Award, TrendingUp, Clock, Save, Camera,
-  Edit2, CheckCircle
+  Edit2, CheckCircle, X, Loader2
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
@@ -220,8 +220,8 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <DashboardLayout role="workshop_mechanic">
-        <div className="flex items-center justify-center h-48 sm:h-64">
-          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
+        <div className="flex items-center justify-center gap-2 py-20 text-slate-500">
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading…
         </div>
       </DashboardLayout>
     );
@@ -231,7 +231,7 @@ export default function ProfilePage() {
     return (
       <DashboardLayout role="workshop_mechanic">
         <div className="text-center py-8 sm:py-10 md:py-12">
-          <p className="text-gray-500 text-sm sm:text-base">Profile not found</p>
+          <p className="text-slate-500 text-sm">Profile not found</p>
         </div>
       </DashboardLayout>
     );
@@ -239,221 +239,196 @@ export default function ProfilePage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-heading">My Profile</h1>
-          <p className="text-brand-textSecondary text-xs sm:text-sm mt-0.5 sm:mt-1">Manage your profile and view performance</p>
+      <div className="mx-auto w-full max-w-3xl min-w-0 space-y-4 pb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#004AAD]/70">Workshop Mechanic</p>
+            <h1 className="text-2xl font-extrabold text-[#023D95]">My Profile</h1>
+            <p className="text-sm text-slate-500">Manage your profile and view performance</p>
+          </div>
+          {!editing ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#004AAD] px-3.5 py-2 text-sm font-bold text-white"
+            >
+              <Edit2 className="h-4 w-4" /> Edit
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-200 px-3.5 py-2 text-sm font-bold text-slate-700"
+              >
+                <X className="h-4 w-4" /> Cancel
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-          {/* Profile Card */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-5 md:p-6 space-y-4 sm:space-y-5 md:space-y-6">
-              {/* Profile Picture */}
-              <div className="flex flex-col items-center">
+        <section className="overflow-hidden rounded-2xl border border-[#004AAD]/25 shadow-lg shadow-[#004AAD]/15">
+          <div className="bg-gradient-to-br from-[#023D95] via-[#004AAD] to-[#0369A1] px-4 py-5 text-white sm:px-5 sm:py-6">
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <div className="flex shrink-0 flex-col items-center gap-2">
                 <div className="relative">
-                  <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full bg-brand-primary flex items-center justify-center text-white text-2xl sm:text-3xl md:text-4xl font-bold">
+                  <div className="flex h-[5.5rem] w-[5.5rem] items-center justify-center overflow-hidden rounded-full border-[3px] border-white/40 bg-white text-2xl font-bold text-[#004AAD]">
                     {profile.profile_image ? (
-                      <img 
-                        src={profile.profile_image} 
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={profile.profile_image}
                         alt={profile.full_name}
-                        className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full object-cover"
+                        className="h-full w-full object-cover"
                       />
                     ) : (
                       profile.full_name.charAt(0).toUpperCase()
                     )}
                   </div>
-                  <button className="absolute bottom-0 right-0 bg-brand-primary text-white p-1.5 sm:p-2 rounded-full hover:bg-brand-primaryHover">
-                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <button
+                    type="button"
+                    className="absolute bottom-0 right-0 rounded-full bg-white p-1.5 text-[#004AAD] shadow"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                <h2 className="text-lg sm:text-xl font-bold text-brand-heading mt-3 sm:mt-4">{profile.full_name}</h2>
-                <p className="text-brand-textSecondary text-xs sm:text-sm">Workshop Mechanic</p>
+                <span className="rounded-full bg-emerald-400/25 px-2.5 py-0.5 text-xs font-bold text-emerald-100 ring-1 ring-emerald-300/40">
+                  Workshop Mechanic
+                </span>
               </div>
 
-              {/* Quick Stats */}
-              <div className="border-t border-gray-200 pt-4 sm:pt-5 md:pt-6 space-y-3 sm:space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm text-gray-600">Member Since</span>
-                  <span className="text-xs sm:text-sm font-medium text-gray-900">
-                    {formatDateDMY(profile.created_at)}
-                  </span>
+              <div className="min-w-0 flex-1 space-y-3">
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                    <User className="h-3.5 w-3.5" /> Full Name
+                  </label>
+                  {editing ? (
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-sm font-semibold text-white placeholder:text-blue-100/50 focus:outline-none focus:ring-2 focus:ring-white/40"
+                      value={formData.full_name}
+                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                    />
+                  ) : (
+                    <p className="mt-0.5 text-base font-extrabold text-white">{profile.full_name || '—'}</p>
+                  )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm text-gray-600">Total Jobs</span>
-                  <span className="text-xs sm:text-sm font-medium text-gray-900">{metrics.total_jobs_completed}</span>
+
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                    <Mail className="h-3.5 w-3.5" /> Email
+                  </label>
+                  <p className="mt-0.5 break-all text-sm font-semibold text-white">{profile.email}</p>
+                  <p className="text-[11px] text-blue-100/70">Email cannot be changed</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm text-gray-600">Rating</span>
-                  <span className="text-xs sm:text-sm font-medium text-gray-900 flex items-center gap-1">
-                    ⭐ {metrics.customer_rating.toFixed(1)}
-                  </span>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                      <Phone className="h-3.5 w-3.5" /> Phone
+                    </label>
+                    {editing ? (
+                      <input
+                        type="tel"
+                        className="mt-1 w-full rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-white/40"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="Enter phone number"
+                      />
+                    ) : (
+                      <p className="mt-0.5 text-sm font-semibold text-white">{profile.phone || 'Not provided'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                      <Building2 className="h-3.5 w-3.5" /> Workshop
+                    </label>
+                    <p className="mt-0.5 text-sm font-semibold text-white">{profile.workshop_name || 'Not assigned'}</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-4 sm:space-y-5 md:space-y-6">
-            {/* Performance Overview */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-5 md:p-6">
-              <h3 className="text-base sm:text-lg font-semibold text-brand-heading mb-3 sm:mb-4">Performance Overview</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                <div className="bg-blue-50 p-3 sm:p-4 rounded-lg">
-                  <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
-                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm text-gray-600">This Month</span>
-                  </div>
-                  <p className="text-xl sm:text-2xl font-bold text-brand-heading">{metrics.jobs_this_month}</p>
-                </div>
-
-                <div className="bg-green-50 p-3 sm:p-4 rounded-lg">
-                  <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
-                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm text-gray-600">Efficiency</span>
-                  </div>
-                  <p className="text-xl sm:text-2xl font-bold text-brand-heading">{metrics.avg_efficiency}%</p>
-                </div>
-
-                <div className="bg-purple-50 p-3 sm:p-4 rounded-lg">
-                  <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
-                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm text-gray-600">On-Time</span>
-                  </div>
-                  <p className="text-xl sm:text-2xl font-bold text-brand-heading">{metrics.on_time_completion}%</p>
-                </div>
-
-                <div className="bg-orange-50 p-3 sm:p-4 rounded-lg">
-                  <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
-                    <Award className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm text-gray-600">Total Jobs</span>
-                  </div>
-                  <p className="text-xl sm:text-2xl font-bold text-brand-heading">{metrics.total_jobs_completed}</p>
-                </div>
-
-                <div className="bg-indigo-50 p-3 sm:p-4 rounded-lg">
-                  <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
-                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm text-gray-600">Work Hours</span>
-                  </div>
-                  <p className="text-xl sm:text-2xl font-bold text-brand-heading">{metrics.total_work_hours}h</p>
-                </div>
-
-                <div className="bg-pink-50 p-3 sm:p-4 rounded-lg">
-                  <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
-                    <Award className="w-4 h-4 sm:w-5 sm:h-5 text-pink-600 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm text-gray-600">Rating</span>
-                  </div>
-                  <p className="text-xl sm:text-2xl font-bold text-brand-heading">{metrics.customer_rating.toFixed(1)}/5</p>
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-3 border-t border-[#004AAD]/10 bg-[#F0F7FF] px-4 py-4 text-sm sm:px-5">
+            <div>
+              <p className="text-xs font-bold text-[#004AAD]/70">Role</p>
+              <p className="font-bold text-[#023D95]">Workshop Mechanic</p>
             </div>
+            <div>
+              <p className="text-xs font-bold text-[#004AAD]/70">Rating</p>
+              <p className="font-bold text-[#023D95]">{metrics.customer_rating.toFixed(1)}/5</p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1 text-xs font-bold text-[#004AAD]/70">
+                <Calendar className="h-3.5 w-3.5" /> Member Since
+              </p>
+              <p className="font-semibold text-[#023D95]">{formatDateDMY(profile.created_at)}</p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1 text-xs font-bold text-[#004AAD]/70">
+                <Calendar className="h-3.5 w-3.5" /> Last Login
+              </p>
+              <p className="font-semibold text-[#023D95]">
+                {profile.last_login ? formatDateTime(profile.last_login) : 'Never'}
+              </p>
+            </div>
+          </div>
+        </section>
 
-            {/* Profile Information */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-5 md:p-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
-                <h3 className="text-base sm:text-lg font-semibold text-brand-heading">Profile Information</h3>
-                {!editing ? (
-                  <button
-                    onClick={() => setEditing(true)}
-                    className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-brand-primary border border-brand-primary rounded-lg hover:bg-brand-primary hover:text-white transition-colors text-xs sm:text-sm w-full sm:w-auto"
-                  >
-                    <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    Edit
-                  </button>
-                ) : (
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    <button
-                      onClick={handleCancel}
-                      disabled={saving}
-                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 text-xs sm:text-sm"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primaryHover disabled:opacity-50 text-xs sm:text-sm"
-                    >
-                      <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      {saving ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                )}
+        <div>
+          <h3 className="mb-3 text-base font-bold text-[#023D95]">Performance Overview</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-blue-50 p-3 sm:p-4">
+              <div className="mb-1 flex items-center gap-1.5">
+                <CheckCircle className="h-4 w-4 text-blue-600" />
+                <span className="text-xs text-slate-600">This Month</span>
               </div>
-
-              <div className="space-y-3 sm:space-y-4">
-                {/* Full Name */}
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
-                    Full Name
-                  </label>
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData.full_name}
-                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                      className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                    />
-                  ) : (
-                    <p className="text-gray-900 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-50 rounded-lg">{profile.full_name}</p>
-                  )}
-                </div>
-
-                {/* Email */}
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
-                    Email
-                  </label>
-                  <p className="text-gray-900 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-50 rounded-lg">{profile.email}</p>
-                  <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Email cannot be changed</p>
-                </div>
-
-                {/* Phone */}
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
-                    Phone Number
-                  </label>
-                  {editing ? (
-                    <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                      placeholder="Enter phone number"
-                    />
-                  ) : (
-                    <p className="text-gray-900 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-50 rounded-lg">{profile.phone || 'Not provided'}</p>
-                  )}
-                </div>
-
-                {/* Workshop */}
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
-                    Workshop
-                  </label>
-                  <p className="text-gray-900 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-50 rounded-lg">{profile.workshop_name || 'Not assigned'}</p>
-                </div>
-
-                {/* Last Login */}
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                    <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline mr-1.5 sm:mr-2" />
-                    Last Login
-                  </label>
-                  <p className="text-gray-900 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-50 rounded-lg">
-                    {profile.last_login 
-                      ? formatDateTime(profile.last_login) 
-                      : 'Never'
-                    }
-                  </p>
-                </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.jobs_this_month}</p>
+            </div>
+            <div className="rounded-2xl bg-green-50 p-3 sm:p-4">
+              <div className="mb-1 flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4 text-green-600" />
+                <span className="text-xs text-slate-600">Efficiency</span>
               </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.avg_efficiency}%</p>
+            </div>
+            <div className="rounded-2xl bg-purple-50 p-3 sm:p-4">
+              <div className="mb-1 flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-purple-600" />
+                <span className="text-xs text-slate-600">On-Time</span>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.on_time_completion}%</p>
+            </div>
+            <div className="rounded-2xl bg-orange-50 p-3 sm:p-4">
+              <div className="mb-1 flex items-center gap-1.5">
+                <Award className="h-4 w-4 text-orange-600" />
+                <span className="text-xs text-slate-600">Total Jobs</span>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.total_jobs_completed}</p>
+            </div>
+            <div className="rounded-2xl bg-indigo-50 p-3 sm:p-4">
+              <div className="mb-1 flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-indigo-600" />
+                <span className="text-xs text-slate-600">Work Hours</span>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.total_work_hours}h</p>
+            </div>
+            <div className="rounded-2xl bg-pink-50 p-3 sm:p-4">
+              <div className="mb-1 flex items-center gap-1.5">
+                <Award className="h-4 w-4 text-pink-600" />
+                <span className="text-xs text-slate-600">Rating</span>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.customer_rating.toFixed(1)}/5</p>
             </div>
           </div>
         </div>

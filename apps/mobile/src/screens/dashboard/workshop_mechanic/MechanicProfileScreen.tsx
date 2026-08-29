@@ -10,7 +10,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
-  BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, FONTS } from '../../../constants/theme';
@@ -38,7 +37,7 @@ interface PerformanceMetrics {
   customer_rating: number;
 }
 
-export default function MechanicProfileScreen({ navigation }: any) {
+export default function MechanicProfileScreen({ navigation, embedInShell = false }: any) {
   const [profile, setProfile] = useState<MechanicProfile | null>(null);
   const [metrics, setMetrics] = useState<PerformanceMetrics>({
     total_jobs_completed: 0,
@@ -226,7 +225,9 @@ export default function MechanicProfileScreen({ navigation }: any) {
   if (loading) {
     return (
       <View style={styles.container}>
-        <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        {embedInShell ? null : (
+          <DashboardHeader name="Mechanic" role="Workshop Mechanic" onLogout={() => {}} />
+        )}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -237,7 +238,9 @@ export default function MechanicProfileScreen({ navigation }: any) {
   if (!profile) {
     return (
       <View style={styles.container}>
-        <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        {embedInShell ? null : (
+          <DashboardHeader name="Mechanic" role="Workshop Mechanic" onLogout={() => {}} />
+        )}
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>Profile not found</Text>
         </View>
@@ -247,14 +250,16 @@ export default function MechanicProfileScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader
-        userName={profile.full_name}
-        userRole="Workshop Mechanic"
-        onLogout={async () => {
-          await supabase.auth.signOut();
-          // Auth state change will automatically navigate to Login
-        }}
-      />
+      {embedInShell ? null : (
+        <DashboardHeader
+          name={profile.full_name}
+          role="Workshop Mechanic"
+          onLogout={async () => {
+            await supabase.auth.signOut();
+            // Auth state change will automatically navigate to Login
+          }}
+        />
+      )}
 
       <ScrollView
         style={styles.content}
@@ -402,18 +407,20 @@ export default function MechanicProfileScreen({ navigation }: any) {
         </View>
       </ScrollView>
 
-      <BottomNav
-        activeTab="profile"
-        onTabPress={(tab) => {
-          if (tab === 'dashboard') navigation.navigate('Dashboard');
-          else if (tab === 'history') navigation.navigate('JobHistory');
-        }}
-        tabs={[
-          { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
-          { id: 'history', label: 'History', icon: '📋' },
-          { id: 'profile', label: 'Profile', icon: '👤' },
-        ]}
-      />
+      {embedInShell ? null : (
+        <BottomNav
+          activeTab="profile"
+          onTabPress={(tab) => {
+            if (tab === 'dashboard') navigation.navigate('Dashboard');
+            else if (tab === 'history') navigation.navigate('JobHistory');
+          }}
+          tabs={[
+            { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
+            { id: 'history', label: 'History', icon: '📋' },
+            { id: 'profile', label: 'Profile', icon: '👤' },
+          ]}
+        />
+      )}
     </View>
   );
 }
@@ -459,7 +466,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: FONTS.family,
     fontWeight: 'bold',
-    color: COLORS.heading,
+    color: '#023D95',
     marginBottom: 4,
   },
   profileRole: {
@@ -493,7 +500,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: FONTS.family,
     fontWeight: 'bold',
-    color: COLORS.heading,
+    color: '#023D95',
   },
   section: {
     backgroundColor: COLORS.white,
@@ -510,7 +517,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: FONTS.family,
     fontWeight: 'bold',
-    color: COLORS.heading,
+    color: '#023D95',
   },
   metricsGrid: {
     flexDirection: 'row',
@@ -520,7 +527,7 @@ const styles = StyleSheet.create({
   metricCard: {
     width: '48%',
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
   },
   metricIcon: {
@@ -537,13 +544,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: FONTS.family,
     fontWeight: 'bold',
-    color: COLORS.heading,
+    color: '#023D95',
   },
   editButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: COLORS.primary,
-    borderRadius: 8,
+    borderRadius: 14,
   },
   editButtonText: {
     fontSize: 14,
@@ -572,7 +579,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: COLORS.primary,
-    borderRadius: 8,
+    borderRadius: 14,
   },
   saveButtonText: {
     fontSize: 14,

@@ -5,6 +5,13 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { PickupTracking, ServiceLead, User, PickupIncident } from '@/shared/types';
 import { formatDateTime } from "@/lib/utils";
+import DashboardLayout from '@/components/DashboardLayout';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopFilterPill,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 export default function PickupTrackingPage() {
   const router = useRouter();
@@ -132,99 +139,60 @@ export default function PickupTrackingPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-xl">Loading...</div>
-      </div>
+      <DashboardLayout role="workshop_admin">
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#004AAD]"></div>
+        </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Pickup & Drop Tracking</h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Monitor real-time pickup boy operations
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => router.push('/dashboard/workshop_admin')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                ← Back to Dashboard
-              </button>
-            </div>
-          </div>
-        </div>
+    <DashboardLayout role="workshop_admin">
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Pickup & Drop Tracking"
+          subtitle="Monitor real-time pickup boy operations"
+          right={
+            <button
+              onClick={() => router.push('/dashboard/workshop_admin')}
+              className="inline-flex w-full min-h-11 items-center justify-center rounded-xl bg-[#023D95] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73] min-[900px]:w-auto"
+            >
+              Back to Dashboard
+            </button>
+          }
+        />
 
-        {/* Tabs */}
-        <div className="flex gap-4 px-6">
-          <button
-            onClick={() => setSelectedTab('active')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 ${
-              selectedTab === 'active'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Active Pickups
-            <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
-              {pickups.filter((p) => ['PENDING', 'OTP_VERIFIED', 'PICKED', 'IN_TRANSIT'].includes(p.pickup_status)).length}
-            </span>
-          </button>
-          <button
-            onClick={() => setSelectedTab('completed')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 ${
-              selectedTab === 'completed'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
+        <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
+          <WorkshopFilterPill active={selectedTab === 'active'} onClick={() => setSelectedTab('active')}>
+            Active Pickups ({pickups.filter((p) => ['PENDING', 'OTP_VERIFIED', 'PICKED', 'IN_TRANSIT'].includes(p.pickup_status)).length})
+          </WorkshopFilterPill>
+          <WorkshopFilterPill active={selectedTab === 'completed'} onClick={() => setSelectedTab('completed')}>
             Completed
-          </button>
-          <button
-            onClick={() => setSelectedTab('incidents')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 ${
-              selectedTab === 'incidents'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Incidents
-            {incidents.length > 0 && (
-              <span className="ml-2 px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
-                {incidents.length}
-              </span>
-            )}
-          </button>
+          </WorkshopFilterPill>
+          <WorkshopFilterPill active={selectedTab === 'incidents'} onClick={() => setSelectedTab('incidents')}>
+            Incidents{incidents.length > 0 ? ` (${incidents.length})` : ''}
+          </WorkshopFilterPill>
         </div>
-      </div>
 
-      {/* Search Bar */}
-      {selectedTab !== 'incidents' && (
-        <div className="px-6 py-4 bg-white border-b border-gray-200">
-          <input
-            type="text"
-            placeholder="Search by lead number, customer name, or vehicle number..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-      )}
+        {selectedTab !== 'incidents' && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <input
+              type="text"
+              placeholder="Search by lead number, customer name, or vehicle number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#004AAD] focus:border-transparent"
+            />
+          </div>
+        )}
 
-      {/* Content */}
-      <div className="p-6">
         {selectedTab === 'incidents' ? (
-          /* Incidents List */
           <div className="space-y-4">
             {incidents.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-8 text-center">
-                <p className="text-gray-500">No open incidents</p>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <WorkshopEmpty>No open incidents</WorkshopEmpty>
               </div>
             ) : (
               incidents.map((incident) => {
@@ -232,7 +200,7 @@ export default function PickupTrackingPage() {
                 const reportedBy = incident.reported_by_user as User;
                 
                 return (
-                  <div key={incident.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div key={incident.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <div className="flex items-center gap-2 mb-2">
@@ -250,7 +218,7 @@ export default function PickupTrackingPage() {
                           Lead: {lead?.lead_number} | {lead?.vehicle_number}
                         </p>
                       </div>
-                      <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                      <button className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white hover:bg-[#023D95]">
                         View Details
                       </button>
                     </div>
@@ -293,11 +261,10 @@ export default function PickupTrackingPage() {
             )}
           </div>
         ) : (
-          /* Pickup Tracking List */
           <div className="space-y-4">
             {filteredPickups.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-8 text-center">
-                <p className="text-gray-500">No pickup tasks found</p>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <WorkshopEmpty>No pickup tasks found</WorkshopEmpty>
               </div>
             ) : (
               filteredPickups.map((tracking) => {
@@ -305,7 +272,7 @@ export default function PickupTrackingPage() {
                 const pickupBoy = tracking.pickup_assigned_to_user as User;
                 
                 return (
-                  <div key={tracking.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div key={tracking.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
@@ -368,27 +335,27 @@ export default function PickupTrackingPage() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2 mt-4">
+                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
                       <button
                         onClick={() => router.push(`/dashboard/workshop_admin/leads/${lead?.id}`)}
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+                        className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white hover:bg-[#023D95]"
                       >
                         View Lead Details
                       </button>
                       {tracking.pickup_latitude && tracking.pickup_longitude && (
                         <button
                           onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${tracking.pickup_latitude},${tracking.pickup_longitude}`, '_blank')}
-                          className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200"
+                          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
                         >
-                          🗺️ View on Map
+                          View on Map
                         </button>
                       )}
                       {pickupBoy?.phone && (
                         <button
                           onClick={() => window.open(`tel:${pickupBoy.phone}`, '_blank')}
-                          className="px-4 py-2 bg-green-100 text-green-700 text-sm font-medium rounded-lg hover:bg-green-200"
+                          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
                         >
-                          📞 Call
+                          Call
                         </button>
                       )}
                     </div>
@@ -398,8 +365,8 @@ export default function PickupTrackingPage() {
             )}
           </div>
         )}
-      </div>
-    </div>
+      </WorkshopPageShell>
+    </DashboardLayout>
   );
 }
 

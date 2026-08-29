@@ -309,7 +309,7 @@ export default function TasksListScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
+          <ActivityIndicator size="large" color="#004AAD" />
           <Text style={styles.loadingText}>Loading tasks...</Text>
         </View>
       </SafeAreaView>
@@ -385,7 +385,7 @@ export default function TasksListScreen() {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2563eb']} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#004AAD']} />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -402,7 +402,7 @@ export default function TasksListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   loadingContainer: {
     flex: 1,
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
   },
   statValue: {
@@ -478,8 +478,8 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
   },
   filterChipActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   filterText: {
     fontSize: 11,
@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
   },
   taskCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',

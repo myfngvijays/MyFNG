@@ -283,7 +283,7 @@ function SupervisorJobsContent() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-5">
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Jobs"
           subtitle="Monitor progress, assign mechanics, and run QC"
@@ -292,7 +292,7 @@ function SupervisorJobsContent() {
             <button
               onClick={() => fetchJobs(true)}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/25 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#012f73] disabled:opacity-60"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh

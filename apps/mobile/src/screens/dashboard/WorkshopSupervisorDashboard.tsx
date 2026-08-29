@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import DashboardHeader from '../../components/DashboardHeader';
-import StatCard from '../../components/StatCard';
-import LeadCard from '../../components/LeadCard';
-import BottomNav from '../../components/BottomNav';
+import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
+import {
+  ADVISOR_CRM_NAV,
+  ADVISOR_CRM_QUICK,
+} from '../../constants/workshopCrmNav';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 
-export default function WorkshopSupervisorDashboard({ navigation }: any) {
+function WorkshopAdvisorHomeScreen({ navigation }: any) {
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -178,10 +179,6 @@ export default function WorkshopSupervisorDashboard({ navigation }: any) {
     }
   }, [userProfile]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
   const handleAssignJob = (job: any) => {
     Alert.alert(
       'Assign Job',
@@ -191,25 +188,6 @@ export default function WorkshopSupervisorDashboard({ navigation }: any) {
         { text: 'Assign', onPress: () => {} },
       ]
     );
-  };
-
-  const tabs = [
-    { id: 'dashboard', label: 'Home', icon: 'home' },
-    { id: 'jobs', label: 'Jobs', icon: 'wrench' },
-    { id: 'team', label: 'Team', icon: 'account' },
-    { id: 'menu', label: 'Menu', icon: 'menu' },
-  ];
-
-  const handleTabChange = (tab: string) => {
-    setCurrentScreen(tab);
-    
-    if (tab === 'jobs') {
-      navigation.navigate('DayPlanning');
-    } else if (tab === 'team') {
-      navigation.navigate('TeamOverview');
-    } else if (tab === 'menu') {
-      navigation.navigate('SupervisorMenu');
-    }
   };
 
   const renderDashboard = () => (
@@ -224,47 +202,46 @@ export default function WorkshopSupervisorDashboard({ navigation }: any) {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Workshop Advisor Dashboard</Text>
-        <Text style={styles.subtitle}>Manage job assignments and team performance</Text>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('SupervisorAdditionalJobsMaster')}
-        >
-          <Text style={styles.actionButtonText}>Additional Jobs Master</Text>
-        </TouchableOpacity>
+      <View style={styles.hero}>
+        <Text style={styles.heroName}>{userProfile?.full_name || 'Workshop Advisor'}</Text>
+        <Text style={styles.heroMeta}>Workshop Advisor</Text>
       </View>
+      <TouchableOpacity
+        style={styles.actionButton}
+        onPress={() => navigation.navigate('SupervisorAdditionalJobsMaster')}
+      >
+        <Text style={styles.actionButtonText}>Additional Jobs Master</Text>
+      </TouchableOpacity>
 
-      {/* Stats Grid */}
       <Text style={styles.sectionTitle}>Overview</Text>
       
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { backgroundColor: '#EFF6FF' }]}>
           <Text style={styles.statValue}>{stats.totalMechanics}</Text>
-          <Text style={styles.statLabel}>👨‍🔧 Total Mechanics</Text>
+          <Text style={styles.statLabel}>Total Mechanics</Text>
         </View>
         
         <View style={[styles.statCard, { backgroundColor: '#FEF3C7' }]}>
           <Text style={styles.statValue}>{stats.activeJobs}</Text>
-          <Text style={styles.statLabel}>🔧 Active Jobs</Text>
+          <Text style={styles.statLabel}>Active Jobs</Text>
         </View>
       </View>
       
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
           <Text style={styles.statValue}>{stats.completedToday}</Text>
-          <Text style={styles.statLabel}>✅ Completed Today</Text>
+          <Text style={styles.statLabel}>Completed Today</Text>
         </View>
         
         <View style={[styles.statCard, { backgroundColor: '#E9D5FF' }]}>
           <Text style={styles.statValue}>{stats.pendingQc}</Text>
-          <Text style={styles.statLabel}>⏰ Pending QC</Text>
+          <Text style={styles.statLabel}>Pending QC</Text>
         </View>
       </View>
       
       <View style={[styles.statCard, styles.fullWidthCard, { backgroundColor: '#FEE2E2' }]}>
         <Text style={[styles.statValue, { color: '#DC2626' }]}>{stats.overdueJobs}</Text>
-        <Text style={styles.statLabel}>⚠️ Overdue Jobs</Text>
+        <Text style={styles.statLabel}>Overdue Jobs</Text>
       </View>
 
       {/* Unassigned Jobs */}
@@ -336,29 +313,26 @@ export default function WorkshopSupervisorDashboard({ navigation }: any) {
   );
 
   return (
-    <View style={styles.container}>
-      <DashboardHeader
-        name={userProfile?.full_name || 'Supervisor'}
-        role="Workshop Supervisor"
-        onLogout={handleLogout}
-      />
-      
+    <WorkshopCrmShell
+      key="advisor-crm-home"
+      title="Home"
+      userName={userProfile?.full_name}
+      userEmail={userProfile?.email}
+      roleFallback="Workshop Advisor"
+      navigation={navigation}
+      drawerItems={ADVISOR_CRM_NAV}
+      quickItems={ADVISOR_CRM_QUICK}
+      activeTab={currentScreen}
+      onTabChange={setCurrentScreen}
+    >
       {renderDashboard()}
-
-      <BottomNav 
-        activeTab={currentScreen} 
-        onTabChange={handleTabChange}
-        tabs={tabs}
-      />
-    </View>
+    </WorkshopCrmShell>
   );
 }
 
+export default WorkshopAdvisorHomeScreen;
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
   content: {
     flex: 1,
   },
@@ -366,8 +340,18 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING.xxl + SPACING.lg,
   },
-  header: {
-    marginBottom: SPACING.lg,
+  hero: {
+    marginBottom: SPACING.md,
+  },
+  heroName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  heroMeta: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.bodyText,
+    marginTop: 2,
   },
   actionButton: {
     marginTop: SPACING.sm,
@@ -379,16 +363,6 @@ const styles = StyleSheet.create({
   actionButtonText: {
     color: COLORS.white,
     fontWeight: '600',
-  },
-  title: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
-    color: COLORS.heading,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.bodyText,
-    marginTop: SPACING.xs,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.lg,

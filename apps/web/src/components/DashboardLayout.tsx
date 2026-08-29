@@ -124,7 +124,18 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
   const role = String(
     roleProp || (userProfile as any)?.role?.role_code || '',
   ).trim();
-  const isAdvisor = role.toUpperCase() === 'WORKSHOP_SUPERVISOR';
+  const roleCode = role.toUpperCase();
+  const isAdvisor = roleCode === 'WORKSHOP_SUPERVISOR';
+  const workshopRoleLabel =
+    roleCode === 'WORKSHOP_SUPERVISOR'
+      ? 'Workshop Advisor'
+      : roleCode === 'WORKSHOP_ADMIN'
+        ? 'Workshop Owner'
+        : roleCode === 'WORKSHOP_MECHANIC'
+          ? 'Workshop Mechanic'
+          : roleCode === 'WORKSHOP_PICKUP_BOY'
+            ? 'Pickupboy / Driver'
+            : null;
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     // Mobile: open/close. Default closed on small screens, open on lg+.
     try {
@@ -1154,7 +1165,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
               <div className="text-right hidden md:block min-w-0">
                 <p className="font-medium text-xs sm:text-sm truncate max-w-[120px] lg:max-w-[160px]">{userProfile?.full_name}</p>
                 <p className="text-xs text-gray-500 truncate max-w-[120px] lg:max-w-[160px]">
-                  {isAdvisor ? 'Workshop Advisor' : userProfile?.role?.role_name}
+                  {workshopRoleLabel || userProfile?.role?.role_name}
                 </p>
               </div>
               

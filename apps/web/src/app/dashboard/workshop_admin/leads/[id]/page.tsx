@@ -31,9 +31,8 @@ import {
   Car, Calendar, Package, User, FileText, XCircle, Wrench
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { WorkshopPageHeader, WorkshopPageShell } from '@/components/workshop/WorkshopUi';
 import {
-  getSLAColor,
-  getSLABackgroundColor,
   getTimeRemaining,
   formatTimeRemaining,
   getTimeSince,
@@ -364,80 +363,42 @@ export default function LeadDetailPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Back Button */}
+      <WorkshopPageShell>
         <Link
           href="/dashboard/workshop_admin/leads"
-          className="inline-flex items-center gap-2 text-brand-primary hover:underline"
+          className="inline-flex items-center gap-2 text-[#004AAD] hover:underline text-sm font-semibold"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Leads
         </Link>
 
-        {/* === SECTION 1: LEAD HEADER === */}
-        <div 
-          className="card border-l-4"
-          style={{ borderLeftColor: getSLAColor(slaStatus) }}
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl font-bold text-text-heading">{lead.lead_number}</h1>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(lead.status)}`}>
-                  {lead.status.replace('_', ' ')}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <div className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />
-                  <span>Created {getTimeSince(lead.created_at)}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="font-semibold">Priority:</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                    lead.priority === 'URGENT' ? 'bg-red-100 text-red-800' :
-                    lead.priority === 'HIGH' ? 'bg-orange-100 text-orange-800' :
-                    lead.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {lead.priority}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* SLA Indicator */}
-            <div 
-              className="px-4 py-3 rounded-lg text-center min-w-[150px]"
-              style={{ backgroundColor: getSLABackgroundColor(slaStatus) }}
-            >
-              <div className="flex items-center justify-center gap-2 mb-1">
-                {slaStatus === 'ON_TIME' && <CheckCircle className="w-5 h-5" style={{ color: getSLAColor(slaStatus) }} />}
-                {slaStatus === 'AT_RISK' && <AlertCircle className="w-5 h-5" style={{ color: getSLAColor(slaStatus) }} />}
-                {slaStatus === 'BREACHED' && <XCircle className="w-5 h-5" style={{ color: getSLAColor(slaStatus) }} />}
-                <span className="font-bold" style={{ color: getSLAColor(slaStatus) }}>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title={lead.lead_number}
+          subtitle={`Created ${getTimeSince(lead.created_at)} · Priority ${lead.priority || '—'}`}
+          right={
+            <div className="flex flex-wrap items-center gap-2 min-[900px]:justify-end">
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 whitespace-nowrap ${getStatusColor(lead.status)}`}>
+                {lead.status.replace('_', ' ')}
+              </span>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left min-[900px]:text-right">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#004AAD]/70">
                   {slaStatus.replace('_', ' ')}
-                </span>
+                </p>
+                {timeRemaining ? (
+                  <p className="text-lg font-extrabold text-[#023D95]">{formatTimeRemaining(timeRemaining)}</p>
+                ) : null}
               </div>
-              {timeRemaining && (
-                <div>
-                  <div className="text-2xl font-mono font-bold" style={{ color: getSLAColor(slaStatus) }}>
-                    {formatTimeRemaining(timeRemaining)}
-                  </div>
-                  <div className="text-xs text-gray-600 mt-1">remaining</div>
-                </div>
-              )}
             </div>
-          </div>
-        </div>
+          }
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* === SECTION 2: CUSTOMER DETAILS === */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-xl font-bold flex items-center gap-2">
-                <User className="w-5 h-5 text-brand-primary" />
+                <User className="w-5 h-5 text-[#004AAD]" />
                 Customer Details
               </h2>
               <div className="flex items-center gap-2">
@@ -584,9 +545,9 @@ export default function LeadDetailPage() {
           </div>
 
           {/* === SECTION 3: VEHICLE DETAILS === */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Car className="w-5 h-5 text-brand-primary" />
+              <Car className="w-5 h-5 text-[#004AAD]" />
               Vehicle Details
             </h2>
             
@@ -718,9 +679,9 @@ export default function LeadDetailPage() {
         </div>
 
         {/* === SECTION 4: SERVICE REQUEST === */}
-        <div className="card">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-brand-primary" />
+            <FileText className="w-5 h-5 text-[#004AAD]" />
             Service Request Details
           </h2>
 
@@ -776,9 +737,9 @@ export default function LeadDetailPage() {
         </div>
 
         {/* === SECTION 5: SCHEDULING & PICKUP === */}
-        <div className="card">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-brand-primary" />
+            <Calendar className="w-5 h-5 text-[#004AAD]" />
             Scheduling & Pickup
           </h2>
 
@@ -938,7 +899,7 @@ export default function LeadDetailPage() {
 
         {/* === SECTION 6: ADMIN ACTIONS === */}
         {lead.status === 'ASSIGNED' && (
-          <div className="card bg-gray-50">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm sm:p-5">
             <h2 className="text-xl font-bold mb-4">Admin Actions</h2>
             
             <div className="flex gap-4">
@@ -968,7 +929,7 @@ export default function LeadDetailPage() {
         )}
 
         {lead.status === 'REJECTED' && lead.rejected_reason && (
-          <div className="card bg-red-50 border-red-200">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm sm:p-5">
             <h3 className="text-lg font-bold text-red-800 mb-2">Rejection Details</h3>
             <p className="text-red-700"><strong>Reason:</strong> {lead.rejected_reason}</p>
             {lead.rejection_notes && (
@@ -985,7 +946,7 @@ export default function LeadDetailPage() {
             
             {/* Mechanic Reassignment Button - Show when mechanic is already assigned */}
             {lead.assigned_mechanic_id && lead.mechanic && (
-              <div className="card bg-yellow-50 border-yellow-200 mt-4">
+              <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 shadow-sm sm:p-5 mt-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -1038,7 +999,7 @@ export default function LeadDetailPage() {
 
         {/* QC Details Button - Show when QC is approved */}
         {lead.qc_status === 'PASSED' && lead.qc_performed_at && (
-          <div className="card bg-green-50 border-green-200">
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm sm:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-green-800 flex items-center gap-2">
@@ -1082,7 +1043,7 @@ export default function LeadDetailPage() {
 
         {/* Section 14: Service History */}
         <ServiceHistory lead={lead} />
-      </div>
+      </WorkshopPageShell>
 
 
       {/* QC Details Modal */}

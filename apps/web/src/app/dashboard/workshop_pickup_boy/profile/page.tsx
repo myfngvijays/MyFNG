@@ -6,7 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
 import {
   User, Mail, Phone, MapPin, Calendar, Truck, CheckCircle, 
-  Award, TrendingUp, Clock, Star, Edit, Save, X, Camera
+  Award, TrendingUp, Clock, Edit, Save, X, Camera
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
@@ -224,9 +224,9 @@ export default function PickupBoyProfilePage() {
   if (!profile) {
     return (
       <DashboardLayout role="workshop_pickup_boy">
-        <div className="card text-center py-8 sm:py-10 md:py-12">
-          <User className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-700">Profile not found</h3>
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <User className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-slate-700">Profile not found</h3>
         </div>
       </DashboardLayout>
     );
@@ -240,220 +240,185 @@ export default function PickupBoyProfilePage() {
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">👤 My Profile</h1>
-          <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">View and manage your profile information</p>
+      <div className="mx-auto w-full max-w-3xl min-w-0 space-y-4 pb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#004AAD]/70">Pickupboy / Driver</p>
+            <h1 className="text-2xl font-extrabold text-[#023D95]">My Profile</h1>
+            <p className="text-sm text-slate-500">View and manage your profile information</p>
+          </div>
+          {!editing ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#004AAD] px-3.5 py-2 text-sm font-bold text-white"
+            >
+              <Edit className="h-4 w-4" /> Edit
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-bold text-white"
+              >
+                <Save className="h-4 w-4" /> Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(false);
+                  setEditedProfile({
+                    full_name: profile.full_name,
+                    phone: profile.phone
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-200 px-3.5 py-2 text-sm font-bold text-slate-700"
+              >
+                <X className="h-4 w-4" /> Cancel
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Profile Card */}
-        <div className="card">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
-            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+        <section className="overflow-hidden rounded-2xl border border-[#004AAD]/25 shadow-lg shadow-[#004AAD]/15">
+          <div className="bg-gradient-to-br from-[#023D95] via-[#004AAD] to-[#0369A1] px-4 py-5 text-white sm:px-5 sm:py-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <div className="relative flex-shrink-0">
-                <div className="w-20 h-20 sm:w-22 sm:h-22 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shadow-lg">
+                <div className="flex h-[5.5rem] w-[5.5rem] items-center justify-center rounded-full border-[3px] border-white/40 bg-white/15 text-2xl font-black">
                   {profile.full_name.charAt(0).toUpperCase()}
                 </div>
-                <button className="absolute bottom-0 right-0 bg-white rounded-full p-1.5 sm:p-2 shadow-lg border-2 border-gray-200 hover:bg-gray-50 transition">
-                  <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+                <button type="button" className="absolute bottom-0 right-0 rounded-full border-2 border-white/40 bg-white p-1.5 shadow-lg">
+                  <Camera className="h-3.5 w-3.5 text-[#004AAD]" />
                 </button>
               </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-text-heading truncate">{profile.full_name}</h2>
-                <p className="text-gray-600 font-medium text-xs sm:text-sm">Pickup Boy / Driver</p>
-                <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
-                  Member since {formatDateDMY(profile.created_at)}
-                </p>
-              </div>
-            </div>
-            {!editing ? (
-              <button
-                onClick={() => setEditing(true)}
-                className="btn bg-brand-primary hover:bg-brand-secondary text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2 w-full sm:w-auto"
-              >
-                <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                Edit Profile
-              </button>
-            ) : (
-              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <button
-                  onClick={handleSaveProfile}
-                  className="btn bg-green-500 hover:bg-green-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2"
-                >
-                  <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  Save
-                </button>
-                <button
-                  onClick={() => {
-                    setEditing(false);
-                    setEditedProfile({
-                      full_name: profile.full_name,
-                      phone: profile.phone
-                    });
-                  }}
-                  className="btn bg-gray-500 hover:bg-gray-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2"
-                >
-                  <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Profile Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-            {/* Basic Info */}
-            <div className="space-y-3 sm:space-y-4">
-              <h3 className="text-base sm:text-lg font-bold text-text-heading mb-3 sm:mb-4 border-b pb-1.5 sm:pb-2">
-                Basic Information
-              </h3>
-
-              <div className="space-y-1.5 sm:space-y-2">
-                <label className="text-xs sm:text-sm font-medium text-gray-700 flex items-center gap-1.5 sm:gap-2">
-                  <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  Full Name
-                </label>
-                {editing ? (
-                  <input
-                    type="text"
-                    value={editedProfile.full_name}
-                    onChange={(e) => setEditedProfile({ ...editedProfile, full_name: e.target.value })}
-                    className="input text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                  />
-                ) : (
-                  <p className="text-text-heading font-semibold text-sm sm:text-base">{profile.full_name}</p>
-                )}
-              </div>
-
-              <div className="space-y-1.5 sm:space-y-2">
-                <label className="text-xs sm:text-sm font-medium text-gray-700 flex items-center gap-1.5 sm:gap-2">
-                  <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  Email
-                </label>
-                <p className="text-text-heading font-semibold text-sm sm:text-base">{profile.email}</p>
-                <p className="text-[10px] sm:text-xs text-gray-500">Email cannot be changed</p>
-              </div>
-
-              <div className="space-y-1.5 sm:space-y-2">
-                <label className="text-xs sm:text-sm font-medium text-gray-700 flex items-center gap-1.5 sm:gap-2">
-                  <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  Phone
-                </label>
-                {editing ? (
-                  <input
-                    type="tel"
-                    value={editedProfile.phone}
-                    onChange={(e) => setEditedProfile({ ...editedProfile, phone: e.target.value })}
-                    className="input text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                  />
-                ) : (
-                  <p className="text-text-heading font-semibold text-sm sm:text-base">{profile.phone || 'Not provided'}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Workshop Info */}
-            <div className="space-y-3 sm:space-y-4">
-              <h3 className="text-base sm:text-lg font-bold text-text-heading mb-3 sm:mb-4 border-b pb-1.5 sm:pb-2">
-                Workshop Details
-              </h3>
-
-              {profile.workshop ? (
-                <>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <label className="text-xs sm:text-sm font-medium text-gray-700 flex items-center gap-1.5 sm:gap-2">
-                      <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      Workshop Name
+              <div className="min-w-0 flex-1 space-y-3">
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                    <User className="h-3.5 w-3.5" /> Full Name
+                  </label>
+                  {editing ? (
+                    <input
+                      type="text"
+                      value={editedProfile.full_name}
+                      onChange={(e) => setEditedProfile({ ...editedProfile, full_name: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-sm font-semibold text-white placeholder:text-blue-100/50 focus:outline-none focus:ring-2 focus:ring-white/40"
+                    />
+                  ) : (
+                    <p className="mt-0.5 text-base font-extrabold text-white">{profile.full_name}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                    <Mail className="h-3.5 w-3.5" /> Email
+                  </label>
+                  <p className="mt-0.5 break-all text-sm font-semibold text-white">{profile.email}</p>
+                  <p className="text-[11px] text-blue-100/70">Email cannot be changed</p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                      <Phone className="h-3.5 w-3.5" /> Phone
                     </label>
-                    <p className="text-text-heading font-semibold text-sm sm:text-base">{profile.workshop.name}</p>
+                    {editing ? (
+                      <input
+                        type="tel"
+                        value={editedProfile.phone}
+                        onChange={(e) => setEditedProfile({ ...editedProfile, phone: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-white/40"
+                      />
+                    ) : (
+                      <p className="mt-0.5 text-sm font-semibold text-white">{profile.phone || 'Not provided'}</p>
+                    )}
                   </div>
-
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <label className="text-xs sm:text-sm font-medium text-gray-700 flex items-center gap-1.5 sm:gap-2">
-                      <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      Address
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-bold text-blue-100/90">
+                      <Truck className="h-3.5 w-3.5" /> Workshop
                     </label>
-                    <p className="text-text-heading text-sm sm:text-base">
-                      {profile.workshop.address}
-                      <br />
-                      {profile.workshop.city}
-                    </p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">{profile.workshop?.name || 'No workshop assigned'}</p>
                   </div>
-                </>
-              ) : (
-                <p className="text-gray-500 text-xs sm:text-sm">No workshop assigned</p>
-              )}
-
-              <div className="space-y-1.5 sm:space-y-2">
-                <label className="text-xs sm:text-sm font-medium text-gray-700 flex items-center gap-1.5 sm:gap-2">
-                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  Joined Date
-                </label>
-                <p className="text-text-heading font-semibold text-sm sm:text-base">
-                  {formatDateDMY(profile.created_at)}
-                </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+          <div className="grid grid-cols-2 gap-3 border-t border-[#004AAD]/10 bg-[#F0F7FF] px-4 py-4 text-sm sm:px-5">
+            <div>
+              <p className="text-xs font-bold text-[#004AAD]/70">Role</p>
+              <p className="font-bold text-[#023D95]">Pickupboy / Driver</p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1 text-xs font-bold text-[#004AAD]/70">
+                <Calendar className="h-3.5 w-3.5" /> Member Since
+              </p>
+              <p className="font-semibold text-[#023D95]">{formatDateDMY(profile.created_at)}</p>
+            </div>
+            <div className="col-span-2">
+              <p className="flex items-center gap-1 text-xs font-bold text-[#004AAD]/70">
+                <MapPin className="h-3.5 w-3.5" /> Workshop address
+              </p>
+              <p className="font-semibold text-[#023D95]">
+                {profile.workshop
+                  ? [profile.workshop.address, profile.workshop.city].filter(Boolean).join(', ')
+                  : '—'}
+              </p>
+            </div>
+          </div>
+        </section>
 
         {/* Performance Overview */}
         {metrics && (
           <>
-            {/* Overall Score */}
-            <div className="card bg-gradient-to-br from-brand-primary to-brand-secondary text-white">
+            <div className="overflow-hidden rounded-2xl border border-[#004AAD]/20 bg-gradient-to-br from-[#023D95] via-[#004AAD] to-[#0369A1] p-4 text-white shadow-sm sm:p-5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-lg sm:text-xl font-bold mb-1.5 sm:mb-2 text-yellow-300">Overall Performance Score</h3>
+                  <h3 className="text-lg sm:text-xl font-bold mb-1.5 sm:mb-2 text-white">Overall Performance Score</h3>
                   <div className="flex flex-wrap items-baseline gap-2">
                     <p className="text-3xl sm:text-4xl md:text-5xl font-bold">{overallScore}%</p>
                     <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-bold ${performanceRating.bg} ${performanceRating.color}`}>
                       {performanceRating.label}
                     </span>
                   </div>
-                  <p className="text-white/80 text-xs sm:text-sm mt-1.5 sm:mt-2">Based on last 30 days</p>
+                  <p className="text-blue-100/80 text-xs sm:text-sm mt-1.5 sm:mt-2">Based on last 30 days</p>
                 </div>
-                <Award className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 text-yellow-300 opacity-50 flex-shrink-0" />
+                <Award className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 text-white/40 flex-shrink-0" />
               </div>
             </div>
 
-            {/* Performance Metrics */}
-            <div className="card">
-              <h3 className="text-lg sm:text-xl font-bold text-text-heading mb-4 sm:mb-5 md:mb-6 flex items-center gap-1.5 sm:gap-2">
-                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <h3 className="text-lg sm:text-xl font-bold text-[#023D95] mb-4 sm:mb-5 md:mb-6 flex items-center gap-1.5 sm:gap-2">
+                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-[#004AAD] flex-shrink-0" />
                 <span>Performance Metrics (Last 30 Days)</span>
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
-                <div className="p-3 sm:p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                <div className="rounded-2xl border border-white/60 bg-gradient-to-br from-blue-50 to-blue-100 p-3 shadow-sm sm:p-4">
                   <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-                    <span className="text-xs sm:text-sm font-medium text-gray-700">Total Pickups</span>
+                    <span className="text-xs sm:text-sm font-medium text-slate-600">Total Pickups</span>
                     <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 flex-shrink-0" />
                   </div>
-                  <p className="text-2xl sm:text-3xl font-bold text-blue-600">{metrics.total_pickups}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900">{metrics.total_pickups}</p>
                   <p className="text-xs sm:text-sm text-green-600 font-medium mt-0.5 sm:mt-1">
                     {metrics.completed_pickups} completed
                   </p>
                 </div>
 
-                <div className="p-3 sm:p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+                <div className="rounded-2xl border border-white/60 bg-gradient-to-br from-purple-50 to-purple-100 p-3 shadow-sm sm:p-4">
                   <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-                    <span className="text-xs sm:text-sm font-medium text-gray-700">Total Deliveries</span>
+                    <span className="text-xs sm:text-sm font-medium text-slate-600">Total Deliveries</span>
                     <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-500 flex-shrink-0" />
                   </div>
-                  <p className="text-2xl sm:text-3xl font-bold text-purple-600">{metrics.total_drops}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900">{metrics.total_drops}</p>
                   <p className="text-xs sm:text-sm text-green-600 font-medium mt-0.5 sm:mt-1">
                     {metrics.completed_drops} completed
                   </p>
                 </div>
 
-                <div className="p-3 sm:p-4 bg-orange-50 rounded-lg border-l-4 border-orange-500 sm:col-span-2 lg:col-span-1">
+                <div className="rounded-2xl border border-white/60 bg-gradient-to-br from-amber-50 to-amber-100 p-3 shadow-sm sm:p-4 sm:col-span-2 lg:col-span-1">
                   <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-                    <span className="text-xs sm:text-sm font-medium text-gray-700">Distance Traveled</span>
+                    <span className="text-xs sm:text-sm font-medium text-slate-600">Distance Traveled</span>
                     <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-orange-500 flex-shrink-0" />
                   </div>
-                  <p className="text-2xl sm:text-3xl font-bold text-orange-600">
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900">
                     {metrics.distance_traveled.toFixed(0)} km
                   </p>
                 </div>
@@ -470,13 +435,13 @@ export default function PickupBoyProfilePage() {
                       <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600 flex-shrink-0" />
                       <span className="text-xs sm:text-sm font-medium text-gray-700">Punctuality Score</span>
                     </div>
-                    <span className="text-xs sm:text-sm font-bold text-brand-primary">
+                    <span className="text-xs sm:text-sm font-bold text-[#004AAD]">
                       {metrics.punctuality_score.toFixed(1)}%
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
+                  <div className="w-full bg-slate-200 rounded-full h-1.5 sm:h-2">
                     <div
-                      className="bg-brand-primary h-1.5 sm:h-2 rounded-full transition-all"
+                      className="bg-[#004AAD] h-1.5 sm:h-2 rounded-full transition-all"
                       style={{ width: `${metrics.punctuality_score}%` }}
                     ></div>
                   </div>
@@ -523,15 +488,15 @@ export default function PickupBoyProfilePage() {
 
               {/* Average Times */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4 sm:mt-5 md:mt-6">
-                <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
-                  <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Avg. Pickup Time</p>
-                  <p className="text-xl sm:text-2xl font-bold text-gray-800">
+                <div className="rounded-2xl bg-slate-50 p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-slate-600 mb-0.5 sm:mb-1">Avg. Pickup Time</p>
+                  <p className="text-xl sm:text-2xl font-bold text-[#023D95]">
                     {metrics.avg_pickup_time.toFixed(0)} mins
                   </p>
                 </div>
-                <div className="p-3 sm:p-4 bg-gray-50 rounded-lg">
-                  <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1">Avg. Drop Time</p>
-                  <p className="text-xl sm:text-2xl font-bold text-gray-800">
+                <div className="rounded-2xl bg-slate-50 p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-slate-600 mb-0.5 sm:mb-1">Avg. Drop Time</p>
+                  <p className="text-xl sm:text-2xl font-bold text-[#023D95]">
                     {metrics.avg_drop_time.toFixed(0)} mins
                   </p>
                 </div>
@@ -539,7 +504,7 @@ export default function PickupBoyProfilePage() {
 
               {/* Customer Complaints */}
               {metrics.customer_complaints > 0 && (
-                <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-2xl">
                   <p className="text-xs sm:text-sm text-red-800">
                     <span className="font-bold">Customer Complaints:</span> {metrics.customer_complaints}
                   </p>
@@ -550,20 +515,14 @@ export default function PickupBoyProfilePage() {
               )}
             </div>
 
-            {/* Performance Badge */}
-            <div className="card bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex items-center gap-3 sm:gap-4">
-                <div className="text-4xl sm:text-5xl md:text-6xl flex-shrink-0">
-                  {performanceRating.label === 'Excellent' && '🏆'}
-                  {performanceRating.label === 'Good' && '⭐'}
-                  {performanceRating.label === 'Average' && '👍'}
-                  {performanceRating.label === 'Needs Improvement' && '📈'}
-                </div>
+                <Award className="w-10 h-10 text-[#004AAD] flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-0.5 sm:mb-1">
-                    {performanceRating.label} Performance!
+                  <h3 className="text-lg sm:text-xl font-bold text-[#023D95] mb-0.5 sm:mb-1">
+                    {performanceRating.label} Performance
                   </h3>
-                  <p className="text-gray-600 text-xs sm:text-sm">
+                  <p className="text-slate-600 text-xs sm:text-sm">
                     {performanceRating.label === 'Excellent' && 'Outstanding work! Keep it up!'}
                     {performanceRating.label === 'Good' && 'You are doing great! Keep improving!'}
                     {performanceRating.label === 'Average' && 'Good work! Aim for higher scores!'}

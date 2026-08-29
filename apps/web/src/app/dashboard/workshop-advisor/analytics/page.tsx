@@ -41,7 +41,7 @@ export default function SupervisorAnalyticsPage() {
 
   return (
     <DashboardLayout role="workshop_supervisor">
-      <div className="w-full max-w-full min-w-0 space-y-4 sm:space-y-5">
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Analytics"
           subtitle="KPIs and team performance"
@@ -51,7 +51,7 @@ export default function SupervisorAnalyticsPage() {
               <select
                 value={days}
                 onChange={(e) => setDays(parseInt(e.target.value))}
-                className="rounded-xl border-0 bg-white/15 px-3 py-2 text-sm text-white"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800"
               >
                 <option value={7} className="text-slate-900">Last 7 days</option>
                 <option value={30} className="text-slate-900">Last 30 days</option>
@@ -59,7 +59,7 @@ export default function SupervisorAnalyticsPage() {
               </select>
               <button
                 type="button"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-800"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
               >
                 <Download className="w-4 h-4" />
                 Export

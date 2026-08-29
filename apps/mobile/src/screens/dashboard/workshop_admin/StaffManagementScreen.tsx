@@ -227,7 +227,7 @@ export default function StaffManagementScreen({ navigation }: any) {
           <Text style={styles.statLabel}>Active</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#2563eb' }]}>
+          <Text style={[styles.statValue, { color: '#004AAD' }]}>
             {stats.mechanics}
           </Text>
           <Text style={styles.statLabel}>Mechanics</Text>
@@ -270,7 +270,7 @@ export default function StaffManagementScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 16,
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -304,8 +304,8 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
   },
   filterButtonActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   filterButtonText: {
     fontSize: 13,
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2563eb',
+    color: '#004AAD',
   },
   statLabel: {
     fontSize: 11,
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   },
   staffCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#004AAD',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -430,11 +430,11 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
   },
   viewButton: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#004AAD',
   },
   editButton: {
     backgroundColor: '#8b5cf6',
@@ -448,7 +448,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     bottom: 16,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#004AAD',
     paddingHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 28,

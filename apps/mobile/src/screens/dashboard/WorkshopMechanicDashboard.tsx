@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import DashboardHeader from '../../components/DashboardHeader';
-import BottomNav from '../../components/BottomNav';
-import StatCard from '../../components/StatCard';
 import LeadCard from '../../components/LeadCard';
-import { COLORS, SPACING } from '../../constants/theme';
+import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
+import {
+  MECHANIC_CRM_NAV,
+  MECHANIC_CRM_QUICK,
+  WORKSHOP_CRM_TAB_TITLES,
+} from '../../constants/workshopCrmNav';
+import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import MechanicJobsScreen from './workshop_mechanic/MechanicJobsScreen';
 import MechanicJobHistoryScreen from './workshop_mechanic/MechanicJobHistoryScreen';
@@ -210,138 +213,100 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobRefreshTick]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
   const handleTabChange = (tab: string) => {
+    if (tab === 'performance') {
+      navigation.navigate('Performance');
+      return;
+    }
     setCurrentScreen(tab);
   };
 
-  const tabs = [
-    { id: 'dashboard', label: 'Home', icon: 'home' },
-    { id: 'jobs', label: 'Jobs', icon: 'wrench' },
-    { id: 'history', label: 'History', icon: 'history' },
-    { id: 'profile', label: 'Profile', icon: 'account' },
-  ];
+  const shell = (child: React.ReactNode) => (
+    <WorkshopCrmShell
+      title={WORKSHOP_CRM_TAB_TITLES[currentScreen] || 'Home'}
+      userName={userProfile?.full_name}
+      userEmail={userProfile?.email}
+      roleFallback="Workshop Mechanic"
+      navigation={navigation}
+      drawerItems={MECHANIC_CRM_NAV}
+      quickItems={MECHANIC_CRM_QUICK}
+      activeTab={currentScreen}
+      onTabChange={handleTabChange}
+    >
+      {child}
+    </WorkshopCrmShell>
+  );
 
-  // Render different screens based on currentScreen
   if (currentScreen === 'jobs') {
-    return (
-      <View style={styles.container}>
-        <View style={{ flex: 1 }}>
-          {React.createElement(MechanicJobsScreen as any, { navigation })}
-        </View>
-        <BottomNav
-          activeTab={currentScreen}
-          onTabChange={handleTabChange}
-          tabs={tabs}
-        />
-      </View>
-    );
+    return shell(React.createElement(MechanicJobsScreen as any, { navigation, embedInShell: true }));
   }
 
   if (currentScreen === 'history') {
-    return (
-      <View style={styles.container}>
-        <View style={{ flex: 1 }}>
-          {React.createElement(MechanicJobHistoryScreen as any, { navigation })}
-        </View>
-        <BottomNav
-          activeTab={currentScreen}
-          onTabChange={handleTabChange}
-          tabs={tabs}
-        />
-      </View>
+    return shell(
+      React.createElement(MechanicJobHistoryScreen as any, { navigation, embedInShell: true }),
     );
   }
 
   if (currentScreen === 'profile') {
-    return (
-      <View style={styles.container}>
-        <View style={{ flex: 1 }}>
-          {React.createElement(MechanicProfileScreen as any, { navigation })}
-        </View>
-        <BottomNav
-          activeTab={currentScreen}
-          onTabChange={handleTabChange}
-          tabs={tabs}
-        />
-      </View>
+    return shell(
+      React.createElement(MechanicProfileScreen as any, { navigation, embedInShell: true }),
     );
   }
 
-  // Main Dashboard Screen
-  return (
-    <View style={styles.container}>
-      <DashboardHeader
-        name={userProfile?.full_name || 'Mechanic'}
-        role="Workshop Mechanic"
-        onLogout={handleLogout}
-      />
-      
-      <ScrollView
-        style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        <Text style={styles.sectionTitle}>My Jobs</Text>
-        
-        <StatCard
-          title="Assigned Jobs"
-          value={stats.assignedJobs}
-          subtitle="Total assigned to me"
-          color={COLORS.secondary}
-        />
-        
-        <StatCard
-          title="In Progress"
-          value={stats.inProgress}
-          subtitle="Currently working on"
-          color={COLORS.warning}
-        />
-        
-        <StatCard
-          title="Completed Today"
-          value={stats.completedToday}
-          subtitle="Finished today"
-          color={COLORS.success}
-        />
+  return shell(
+    <ScrollView
+      style={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      <View style={styles.hero}>
+        <Text style={styles.heroName}>{userProfile?.full_name || 'Workshop Mechanic'}</Text>
+        <Text style={styles.heroMeta}>Jobs assigned to you</Text>
+      </View>
 
-        {myJobs.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>Active Jobs</Text>
-            {myJobs.map((job) => (
-              <TouchableOpacity
-                key={job.job_id || job.id}
-                onPress={() => navigation.navigate('LeadDetail', { leadId: job.lead_id })}
-              >
-                <LeadCard
-                  customerName={job.customer_name || 'Unknown'}
-                  vehicleModel={`${job.vehicle_make || ''} ${job.vehicle_model || 'N/A'}`.trim()}
-                  serviceType={job.service_type || 'Repair'}
-                  status={job.mechanic_status || job.status || 'pending'}
-                  date={formatDateDMY(job.assigned_at || job.created_at)}
-                />
-              </TouchableOpacity>
-            ))}
-          </>
-        )}
+      <Text style={styles.sectionTitle}>My Jobs</Text>
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { backgroundColor: '#EFF6FF' }]}>
+          <Text style={styles.statValue}>{stats.assignedJobs}</Text>
+          <Text style={styles.statLabel}>Assigned</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: '#FEF3C7' }]}>
+          <Text style={styles.statValue}>{stats.inProgress}</Text>
+          <Text style={styles.statLabel}>In Progress</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
+          <Text style={styles.statValue}>{stats.completedToday}</Text>
+          <Text style={styles.statLabel}>Done today</Text>
+        </View>
+      </View>
 
-        {myJobs.length === 0 && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No jobs assigned yet</Text>
-          </View>
-        )}
-      </ScrollView>
+      {myJobs.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Active Jobs</Text>
+          {myJobs.map((job) => (
+            <TouchableOpacity
+              key={job.job_id || job.id}
+              onPress={() => navigation.navigate('LeadDetail', { leadId: job.lead_id })}
+            >
+              <LeadCard
+                customerName={job.customer_name || 'Unknown'}
+                vehicleModel={`${job.vehicle_make || ''} ${job.vehicle_model || 'N/A'}`.trim()}
+                serviceType={job.service_type || 'Repair'}
+                status={job.mechanic_status || job.status || 'pending'}
+                date={formatDateDMY(job.assigned_at || job.created_at)}
+              />
+            </TouchableOpacity>
+          ))}
+        </>
+      )}
 
-      <BottomNav
-        activeTab={currentScreen}
-        onTabChange={handleTabChange}
-        tabs={tabs}
-      />
-    </View>
+      {myJobs.length === 0 && (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No jobs assigned yet</Text>
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
@@ -353,14 +318,49 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: SPACING.lg,
-    paddingBottom: 80, // Space for bottom nav
+    paddingBottom: SPACING.xxl,
+  },
+  hero: {
+    marginBottom: SPACING.md,
+  },
+  heroName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#023D95',
+  },
+  heroMeta: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.bodyText,
+    marginTop: 2,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: COLORS.black,
+    color: '#023D95',
     marginBottom: SPACING.md,
     marginTop: SPACING.md,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  statCard: {
+    flex: 1,
+    padding: SPACING.md,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: 'bold',
+    color: '#023D95',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.bodyText,
+    textAlign: 'center',
   },
   emptyState: {
     padding: SPACING.xxl,
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: COLORS.gray[500],
+    color: '#94a3b8',
   },
 });
 

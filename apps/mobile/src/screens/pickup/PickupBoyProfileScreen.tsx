@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import WorkshopPageBanner from '../../components/workshop/WorkshopPageBanner';
 
 export default function PickupBoyProfileScreen({ userId }: { userId?: string }) {
   const [profile, setProfile] = useState<any>(null);
@@ -125,8 +126,11 @@ export default function PickupBoyProfileScreen({ userId }: { userId?: string }) 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>My Profile</Text>
-        <Text style={styles.subtitle}>Personal information & stats</Text>
+        <WorkshopPageBanner
+          eyebrow="Pickupboy / Driver"
+          title="My Profile"
+          subtitle="Personal information & stats"
+        />
       </View>
 
       <ScrollView
@@ -144,7 +148,7 @@ export default function PickupBoyProfileScreen({ userId }: { userId?: string }) 
             </Text>
           </View>
           <Text style={styles.name}>{profile.full_name}</Text>
-          <Text style={styles.role}>{profile.role?.role_name || 'Pickup Boy'}</Text>
+          <Text style={styles.role}>Pickupboy / Driver</Text>
           {profile.workshop && (
             <Text style={styles.workshop}>
               🏭 {profile.workshop.name}, {profile.workshop.city}
@@ -251,20 +255,9 @@ const styles = StyleSheet.create({
     color: COLORS.gray[500],
   },
   header: {
-    backgroundColor: COLORS.primary,
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
-  },
-  title: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.white,
-    opacity: 0.9,
-    marginTop: SPACING.xs,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
   },
   content: {
     flex: 1,
@@ -275,7 +268,7 @@ const styles = StyleSheet.create({
   },
   profileCard: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 14,
     padding: SPACING.lg,
     alignItems: 'center',
     marginBottom: SPACING.md,
@@ -302,7 +295,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
-    color: COLORS.heading,
+    color: '#023D95',
     marginBottom: SPACING.xs,
   },
   role: {
@@ -317,7 +310,7 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 14,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     shadowColor: COLORS.black,
@@ -329,7 +322,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: 'bold',
-    color: COLORS.heading,
+    color: '#023D95',
     marginBottom: SPACING.md,
   },
   statRow: {
@@ -364,7 +357,7 @@ const styles = StyleSheet.create({
   },
   infoValue: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.heading,
+    color: '#023D95',
     fontWeight: '600',
   },
   statusBadge: {

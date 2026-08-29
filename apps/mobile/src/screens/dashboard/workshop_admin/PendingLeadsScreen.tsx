@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     marginHorizontal: SPACING.md,
-    borderRadius: 8,
+    borderRadius: 14,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.warning,
   },
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     padding: SPACING.sm,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
   },
   rejectButton: {

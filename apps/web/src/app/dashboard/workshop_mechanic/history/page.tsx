@@ -5,10 +5,17 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
 import {
-  Clock, CheckCircle, XCircle, Calendar, 
-  Filter, Search, Download, Eye
+  Clock, CheckCircle, Calendar,
+  Search, Download, Eye
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopFilterPill,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 interface JobHistoryItem {
   job_id: string;
@@ -208,7 +215,7 @@ export default function JobHistoryPage() {
     return (
       <DashboardLayout role="workshop_mechanic">
         <div className="flex items-center justify-center h-48 sm:h-64">
-          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary"></div>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-[#004AAD]"></div>
         </div>
       </DashboardLayout>
     );
@@ -216,116 +223,63 @@ export default function JobHistoryPage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-heading">Job History</h1>
-            <p className="text-brand-textSecondary text-xs sm:text-sm mt-0.5 sm:mt-1">Your completed jobs and performance</p>
-          </div>
-          <button className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-xs sm:text-sm w-full sm:w-auto">
-            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Export
-          </button>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-brand-textSecondary">Total Completed</p>
-                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{stats.total_completed}</p>
-              </div>
-              <CheckCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-500 flex-shrink-0" />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-brand-textSecondary">Total Time</p>
-                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{formatDuration(stats.total_duration)}</p>
-              </div>
-              <Clock className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-blue-500 flex-shrink-0" />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-brand-textSecondary">Avg Efficiency</p>
-                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{Math.round(stats.avg_efficiency)}%</p>
-              </div>
-              <CheckCircle className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-purple-500 flex-shrink-0" />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 sm:p-5 md:p-6 rounded-lg border border-gray-200 sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm text-brand-textSecondary">On-Time</p>
-                <p className="text-xl sm:text-2xl font-bold text-brand-heading mt-0.5 sm:mt-1">{stats.on_time_completion}%</p>
-              </div>
-              <Calendar className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-green-500 flex-shrink-0" />
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            {/* Search */}
-            <div className="relative sm:col-span-2 lg:col-span-1">
-              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-              <input
-                type="text"
-                placeholder="Search jobs..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent w-full"
-            >
-              <option value="ALL">All Status</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="READY_FOR_DELIVERY">Ready for Delivery</option>
-            </select>
-
-            {/* Date Filter */}
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent w-full"
-            >
-              <option value="ALL">All Time</option>
-              <option value="TODAY">Today</option>
-              <option value="WEEK">Last 7 Days</option>
-              <option value="MONTH">Last 30 Days</option>
-            </select>
-
-            {/* Clear Filters */}
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setStatusFilter('ALL');
-                setDateFilter('ALL');
-              }}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 w-full sm:w-auto"
-            >
-              Clear Filters
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Mechanic"
+          title="Job History"
+          subtitle="Your completed jobs and performance"
+          right={
+            <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73] min-[900px]:w-auto">
+              <Download className="w-4 h-4" />
+              Export
             </button>
+          }
+        />
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <WorkshopStatTile label="Total Completed" value={stats.total_completed} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" />
+          <WorkshopStatTile label="Total Time" value={formatDuration(stats.total_duration)} icon={<Clock className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" />
+          <WorkshopStatTile label="Avg Efficiency" value={`${Math.round(stats.avg_efficiency)}%`} icon={<CheckCircle className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" />
+          <WorkshopStatTile label="On-Time" value={`${stats.on_time_completion}%`} icon={<Calendar className="w-6 h-6 text-emerald-600" />} tone="from-emerald-50 to-emerald-100" />
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search jobs..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
+            <WorkshopFilterPill active={statusFilter === 'ALL'} onClick={() => setStatusFilter('ALL')}>All Status</WorkshopFilterPill>
+            <WorkshopFilterPill active={statusFilter === 'COMPLETED'} onClick={() => setStatusFilter('COMPLETED')}>Completed</WorkshopFilterPill>
+            <WorkshopFilterPill active={statusFilter === 'READY_FOR_DELIVERY'} onClick={() => setStatusFilter('READY_FOR_DELIVERY')}>Ready for Delivery</WorkshopFilterPill>
+          </div>
+          <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
+            <WorkshopFilterPill active={dateFilter === 'ALL'} onClick={() => setDateFilter('ALL')}>All Time</WorkshopFilterPill>
+            <WorkshopFilterPill active={dateFilter === 'TODAY'} onClick={() => setDateFilter('TODAY')}>Today</WorkshopFilterPill>
+            <WorkshopFilterPill active={dateFilter === 'WEEK'} onClick={() => setDateFilter('WEEK')}>Last 7 Days</WorkshopFilterPill>
+            <WorkshopFilterPill active={dateFilter === 'MONTH'} onClick={() => setDateFilter('MONTH')}>Last 30 Days</WorkshopFilterPill>
+            {(searchTerm || statusFilter !== 'ALL' || dateFilter !== 'ALL') && (
+              <WorkshopFilterPill
+                active={false}
+                onClick={() => {
+                  setSearchTerm('');
+                  setStatusFilter('ALL');
+                  setDateFilter('ALL');
+                }}
+              >
+                Clear
+              </WorkshopFilterPill>
+            )}
           </div>
         </div>
 
-        {/* Job History Table - Desktop */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hidden lg:block">
+        <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -359,9 +313,8 @@ export default function JobHistoryPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredJobs.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 md:px-6 py-8 sm:py-10 md:py-12 text-center text-gray-500">
-                      <XCircle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 text-gray-300" />
-                      <p className="text-sm sm:text-base">No completed jobs found</p>
+                    <td colSpan={8} className="px-4 md:px-6 py-8">
+                      <WorkshopEmpty>No completed jobs found</WorkshopEmpty>
                     </td>
                   </tr>
                 ) : (
@@ -422,13 +375,12 @@ export default function JobHistoryPage() {
         {/* Job History Cards - Mobile */}
         <div className="lg:hidden space-y-3">
           {filteredJobs.length === 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-8 sm:p-10 md:p-12 text-center">
-              <XCircle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 text-gray-300" />
-              <p className="text-sm sm:text-base text-gray-500">No completed jobs found</p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <WorkshopEmpty>No completed jobs found</WorkshopEmpty>
             </div>
           ) : (
             filteredJobs.map((job) => (
-              <div key={job.job_id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition">
+              <div key={job.job_id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-brand-heading mb-1">{job.lead_number}</div>
@@ -465,7 +417,7 @@ export default function JobHistoryPage() {
                 </div>
                 <button
                   onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
-                  className="text-brand-primary hover:text-brand-primaryHover flex items-center gap-1 text-xs sm:text-sm font-medium"
+                  className="inline-flex items-center gap-1 rounded-xl bg-[#004AAD] px-3 py-1.5 text-xs font-bold text-white"
                 >
                   <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   View Details
@@ -474,7 +426,7 @@ export default function JobHistoryPage() {
             ))
           )}
         </div>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

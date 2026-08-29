@@ -15,6 +15,13 @@ import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 import toast from 'react-hot-toast';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopFilterPill,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
 
@@ -563,109 +570,81 @@ export default function WorkshopMechanicDashboard() {
     return <span className="text-green-600">{hours}h {minutes % 60}m</span>;
   }
 
-  if (loading) {
-    return (
-      <DashboardLayout role="workshop_mechanic">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-text-body">Loading dashboard...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg mb-4 sm:mb-5 md:mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">🔧 Mechanic Dashboard</h1>
-              <p className="text-white text-sm sm:text-base font-medium mt-0.5 sm:mt-1">Your assigned jobs and tasks</p>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Mechanic"
+          title="Dashboard"
+          subtitle="Your assigned jobs and tasks"
+          right={
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left min-[900px]:text-right">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#004AAD]/70">Performance</p>
+              <p className="text-xl font-extrabold text-[#023D95]">{loading ? '—' : `${performanceStats.performance_score.toFixed(0)}%`}</p>
             </div>
-            <div className="text-left sm:text-right">
-              <p className="text-xs sm:text-sm text-white/90">Performance Score</p>
-              <p className="text-xl sm:text-2xl font-bold text-yellow-300">{performanceStats.performance_score.toFixed(0)}%</p>
-            </div>
-          </div>
-        </div>
+          }
+        />
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Calendar className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-primary flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-text-body">Assigned Today</p>
-                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.assigned_today}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="card bg-gradient-to-br from-yellow-50 to-yellow-100">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Clock className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-yellow-600 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-text-body">In Progress</p>
-                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.in_progress}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="card bg-gradient-to-br from-green-50 to-green-100">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-600 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-text-body">Completed Today</p>
-                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.completed_today}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="card bg-gradient-to-br from-orange-50 to-orange-100">
-              <div className="flex items-center gap-2 sm:gap-3">
-              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600 flex-shrink-0" />
-                <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-text-body">Need Approval</p>
-                <p className="text-xl sm:text-2xl font-bold text-text-heading">{stats.need_approval}</p>
-              </div>
-            </div>
-                </div>
-
-          <div className="card bg-gradient-to-br from-blue-50 to-blue-100 sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-secondary flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-text-body">SLA Success</p>
-                <p className="text-xl sm:text-2xl font-bold text-text-heading">{performanceStats.sla_success_rate.toFixed(0)}%</p>
-              </div>
-            </div>
-          </div>
+          <WorkshopStatTile label="Assigned Today" value={stats.assigned_today} icon={<Calendar className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" loading={loading} />
+          <WorkshopStatTile label="In Progress" value={stats.in_progress} icon={<Clock className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" loading={loading} />
+          <WorkshopStatTile label="Done Today" value={stats.completed_today} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" loading={loading} />
+          <WorkshopStatTile label="Need Approval" value={stats.need_approval} icon={<AlertTriangle className="w-6 h-6 text-orange-600" />} tone="from-orange-50 to-orange-100" loading={loading} />
+          <WorkshopStatTile label="SLA Success" value={`${performanceStats.sla_success_rate.toFixed(0)}%`} icon={<TrendingUp className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" loading={loading} />
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-2 overflow-x-auto">
+        <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
           {(['ALL', 'ASSIGNED', 'IN_PROGRESS', 'HOLD', 'COMPLETED', 'NEED_APPROVAL'] as FilterType[]).map((filter) => (
-            <button
-              key={filter}
-              onClick={() => setActiveFilter(filter)}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap flex-shrink-0 ${
-                activeFilter === filter
-                  ? 'bg-brand-primary text-white shadow-md hover:bg-brand-primary-hover'
-                  : 'bg-white text-text-body border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
+            <WorkshopFilterPill key={filter} active={activeFilter === filter} onClick={() => setActiveFilter(filter)}>
               {filter.replace('_', ' ')}
-            </button>
+            </WorkshopFilterPill>
           ))}
         </div>
 
-        {/* Jobs Table */}
-          {filteredJobs.length > 0 ? (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
+        {filteredJobs.length > 0 ? (
+          <>
+          <div className="space-y-2 lg:hidden">
+            {filteredJobs.map((job) => (
+              <button
+                key={job.id}
+                type="button"
+                onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
+                className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">#{job.lead_number}</p>
+                    <p className="text-xs text-slate-500 truncate">{job.vehicle_number} · {job.vehicle_make} {job.vehicle_model}</p>
+                  </div>
+                  {job.mechanic_status ? (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${getStatusColor(job.mechanic_status)}`}>
+                      {getMechanicStatusLabel(job.mechanic_status)}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-600">
+                  {job.service_type_names?.length ? job.service_type_names.join(', ') : 'N/A'}
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-500">{formatSLA(job.sla_remaining_minutes)}</span>
+                  {job.mechanic_status === 'ASSIGNED' ? (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void startJobFromDashboard(job.lead_id);
+                      }}
+                      className="inline-flex min-h-9 items-center rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white"
+                    >
+                      {startingLeadId === job.lead_id ? 'Starting…' : 'Start'}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-blue-700">View</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -855,62 +834,62 @@ export default function WorkshopMechanicDashboard() {
               </table>
             </div>
           </div>
+          </>
           ) : (
-            <div className="card text-center py-8 sm:py-10 md:py-12">
-              <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
-              <p className="text-gray-500 text-base sm:text-lg">No jobs found for this filter</p>
+            <div className="rounded-2xl border border-slate-200 bg-white py-10 text-center shadow-sm">
+              <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <WorkshopEmpty>No jobs found for this filter</WorkshopEmpty>
             </div>
           )}
 
-        {/* Quick Actions Guide */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card bg-blue-50 border-l-4 border-brand-primary">
-          <h3 className="font-semibold text-text-heading mb-3 flex items-center gap-2">
-            <Camera className="w-5 h-5 text-brand-primary" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+          <div className="rounded-2xl border border-slate-200 bg-blue-50/70 p-4 shadow-sm sm:p-5">
+            <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+              <Camera className="w-5 h-5 text-[#004AAD]" />
               Photo Upload Requirements
-          </h3>
-          <ul className="text-sm text-gray-700 space-y-2">
-            <li className="flex items-start gap-2">
+            </h3>
+            <ul className="text-sm text-slate-700 space-y-2">
+              <li className="flex items-start gap-2">
                 <CheckCircle className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
                 <span>Take BEFORE photos when starting work (minimum 3)</span>
-            </li>
-            <li className="flex items-start gap-2">
+              </li>
+              <li className="flex items-start gap-2">
                 <CheckCircle className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
                 <span>Document PROGRESS during repair (minimum 2)</span>
-            </li>
-            <li className="flex items-start gap-2">
+              </li>
+              <li className="flex items-start gap-2">
                 <CheckCircle className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
                 <span>Take AFTER photos upon completion (minimum 3)</span>
-            </li>
-          </ul>
+              </li>
+            </ul>
           </div>
 
-          <div className="card bg-green-50 border-l-4 border-green-500">
-            <h3 className="font-semibold text-text-heading mb-3 flex items-center gap-2">
+          <div className="rounded-2xl border border-slate-200 bg-green-50/70 p-4 shadow-sm sm:p-5">
+            <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-green-600" />
-              Today's Performance
+              Today&apos;s Performance
             </h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-text-body">Avg Repair Time:</span>
-                <span className="font-semibold text-text-heading">{performanceStats.avg_duration} min</span>
+                <span className="text-slate-600">Avg Repair Time:</span>
+                <span className="font-semibold text-slate-900">{performanceStats.avg_duration} min</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-body">Jobs Completed:</span>
-                <span className="font-semibold text-text-heading">{performanceStats.total_completed}</span>
+                <span className="text-slate-600">Jobs Completed:</span>
+                <span className="font-semibold text-slate-900">{performanceStats.total_completed}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-body">SLA Success Rate:</span>
+                <span className="text-slate-600">SLA Success Rate:</span>
                 <span className="font-semibold text-green-600">{performanceStats.sla_success_rate.toFixed(0)}%</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-body">Performance Score:</span>
-                <span className="font-semibold text-brand-primary">{performanceStats.performance_score.toFixed(0)}%</span>
+                <span className="text-slate-600">Performance Score:</span>
+                <span className="font-semibold text-[#004AAD]">{performanceStats.performance_score.toFixed(0)}%</span>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

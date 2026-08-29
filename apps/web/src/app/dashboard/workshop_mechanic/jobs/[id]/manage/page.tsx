@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
 import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
+import { WorkshopPageHeader, WorkshopPageShell, WorkshopEmpty } from '@/components/workshop/WorkshopUi';
 
 export default function ManageJobPage() {
   const router = useRouter();
@@ -235,9 +236,9 @@ export default function ManageJobPage() {
   if (!lead) {
     return (
       <DashboardLayout role="workshop_mechanic">
-        <div className="card text-center py-12">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 text-center py-12">
           <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-700">Job not found</h3>
+          <WorkshopEmpty>Job not found</WorkshopEmpty>
         </div>
       </DashboardLayout>
     );
@@ -249,46 +250,50 @@ export default function ManageJobPage() {
 
   return (
     <DashboardLayout role="workshop_mechanic">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => router.back()}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </button>
-          <div className="flex gap-2">
-            {canStart && (
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Mechanic"
+          title={lead.lead_number}
+          subtitle="Manage job"
+          right={
+            <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => setShowStartModal(true)}
-                className="btn-primary flex items-center gap-2"
+                onClick={() => router.back()}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
               >
-                <PlayCircle className="w-5 h-5" />
-                Start Job
+                <ArrowLeft className="w-4 h-4" />
+                Back
               </button>
-            )}
-            {canRequestExtraWork && (
-              <button
-                onClick={() => setShowExtraWorkModal(true)}
-                className="btn-secondary bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
-              >
-                <DollarSign className="w-5 h-5" />
-                Request Additional Job
-              </button>
-            )}
-            {canComplete && (
-              <button
-                onClick={() => setShowCompleteModal(true)}
-                className="btn-primary bg-green-600 hover:bg-green-700 flex items-center gap-2"
-              >
-                <CheckCircle className="w-5 h-5" />
-                Complete Job
-              </button>
-            )}
-          </div>
-        </div>
+              {canStart && (
+                <button
+                  onClick={() => setShowStartModal(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-bold text-[#004AAD]"
+                >
+                  <PlayCircle className="w-5 h-5" />
+                  Start Job
+                </button>
+              )}
+              {canRequestExtraWork && (
+                <button
+                  onClick={() => setShowExtraWorkModal(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold text-white"
+                >
+                  <DollarSign className="w-5 h-5" />
+                  Request Additional Job
+                </button>
+              )}
+              {canComplete && (
+                <button
+                  onClick={() => setShowCompleteModal(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-white"
+                >
+                  <CheckCircle className="w-5 h-5" />
+                  Complete Job
+                </button>
+              )}
+            </div>
+          }
+        />
 
         {/* Status Banner */}
         <div className={`p-4 rounded-lg border-l-4 ${
@@ -311,7 +316,7 @@ export default function ManageJobPage() {
         {/* Job Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Customer Info */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <User className="w-5 h-5 text-brand-primary" />
               Customer Information
@@ -335,7 +340,7 @@ export default function ManageJobPage() {
           </div>
 
           {/* Vehicle Info */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Car className="w-5 h-5 text-brand-primary" />
               Vehicle Information
@@ -367,7 +372,7 @@ export default function ManageJobPage() {
 
         {/* Problem Description */}
         {lead.problem_description && (
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <FileText className="w-5 h-5 text-brand-primary" />
               Problem Description
@@ -378,8 +383,8 @@ export default function ManageJobPage() {
 
         {/* After Service Photos - Show when job is in progress */}
         {canComplete && job && (
-          <div className="card shadow-lg border-2 border-green-200">
-            <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-4 rounded-t-lg -m-6 mb-4">
+          <div className="overflow-hidden rounded-2xl border-2 border-green-200 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-4 mb-4">
               <h3 className="text-xl font-bold flex items-center gap-2">
                 <CheckCircle className="w-6 h-6" />
                 After Service Completion (Mandatory)
@@ -389,12 +394,13 @@ export default function ManageJobPage() {
               </p>
             </div>
             
+            <div className="px-4 pb-4">
             <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 mb-4">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-yellow-800 mb-1">
-                    ⚠️ Completion Requirements:
+                    Completion Requirements:
                   </p>
                   <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
                     <li>Minimum 6 after service photos (Front, Rear, Left, Right, Engine Bay, Old Parts)</li>
@@ -414,6 +420,7 @@ export default function ManageJobPage() {
                 fetchJobDetails();
               }}
             />
+            </div>
           </div>
         )}
 
@@ -421,7 +428,7 @@ export default function ManageJobPage() {
         {['WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'INVOICE_GENERATED', 'AWAITING_PAYMENT', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'].includes(lead.status) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Pickup/Visit Photos */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Camera className="w-5 h-5 text-brand-primary" />
               Pickup/Visit Photos ({beforeImages.length})
@@ -450,7 +457,7 @@ export default function ManageJobPage() {
           </div>
 
           {/* After Images */}
-          <div className="card">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Camera className="w-5 h-5 text-green-600" />
               After Images ({afterImages.length})
@@ -482,8 +489,8 @@ export default function ManageJobPage() {
 
         {/* Pickup/Visit Photos Section - Show if job not started */}
         {canStart && job && (
-          <div className="card shadow-lg border-2 border-blue-200">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-t-lg -m-6 mb-4">
+          <div className="overflow-hidden rounded-2xl border-2 border-blue-200 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 mb-4">
               <h3 className="text-xl font-bold flex items-center gap-2">
                 <Camera className="w-6 h-6" />
                 Pickup/Visit Photos (Mandatory)
@@ -493,12 +500,13 @@ export default function ManageJobPage() {
               </p>
             </div>
             
+            <div className="px-4 pb-4">
             <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 mb-4">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-yellow-800 mb-1">
-                    ⚠️ Mandatory Requirements:
+                    Mandatory Requirements:
                   </p>
                   <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
                     <li>Minimum 6 photos required (Front, Rear, Left, Right, Dashboard, Engine Bay)</li>
@@ -517,6 +525,7 @@ export default function ManageJobPage() {
                 fetchJobDetails();
               }}
             />
+            </div>
           </div>
         )}
 
@@ -739,7 +748,7 @@ export default function ManageJobPage() {
             </div>
           </div>
         )}
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

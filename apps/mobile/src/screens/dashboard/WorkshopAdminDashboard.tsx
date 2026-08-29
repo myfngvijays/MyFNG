@@ -2,12 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
-import DashboardHeader from '../../components/DashboardHeader';
-import BottomNav from '../../components/BottomNav';
-import { AdminMetricCard, AdminSectionTitle } from '../../components/admin/AdminUi';
+import { AdminSectionTitle } from '../../components/admin/AdminUi';
 import WorkshopStaffScreen from '../workshop/WorkshopStaffScreen';
 import WorkshopLeadsScreen from '../workshop/WorkshopLeadsScreen';
 import WorkshopProfileScreen from '../workshop/WorkshopProfileScreen';
+import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
+import {
+  OWNER_CRM_NAV,
+  OWNER_CRM_QUICK,
+  WORKSHOP_CRM_TAB_TITLES,
+} from '../../constants/workshopCrmNav';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { formatDateTime } from "@/lib/dateFormat";
 
@@ -104,24 +108,8 @@ export default function WorkshopAdminDashboard() {
     }
   }, [userProfile]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  const tabs = [
-    { id: 'dashboard', label: 'Home', icon: 'home' },
-    { id: 'staff', label: 'Staff', icon: 'account' },
-    { id: 'leads', label: 'Leads', icon: 'clipboard' },
-    { id: 'profile', label: 'Workshop', icon: 'wrench' },
-    { id: 'more', label: 'More', icon: 'menu' },
-  ];
-
   const handleTabChange = (tab: string) => {
-    if (tab === 'more') {
-      navigation.navigate('WorkshopAdminMenu');
-    } else {
-      setCurrentScreen(tab);
-    }
+    setCurrentScreen(tab);
   };
 
   const renderScreen = () => {
@@ -149,50 +137,37 @@ export default function WorkshopAdminDashboard() {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Workshop Dashboard</Text>
-        <Text style={styles.subtitle}>
-          {userProfile?.workshop?.name || 'Workshop Management'}
-        </Text>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('WorkshopAdminAdditionalJobsMaster')}
-        >
-          <Text style={styles.actionButtonText}>Additional Jobs Master</Text>
-        </TouchableOpacity>
+      <View style={styles.hero}>
+        <Text style={styles.heroName}>{userProfile?.full_name || 'Workshop Owner'}</Text>
+        <Text style={styles.heroMeta}>{userProfile?.workshop?.name || 'Workshop Owner'}</Text>
       </View>
+      <TouchableOpacity
+        style={styles.actionButton}
+        onPress={() => navigation.navigate('WorkshopAdminAdditionalJobsMaster')}
+      >
+        <Text style={styles.actionButtonText}>Additional Jobs Master</Text>
+      </TouchableOpacity>
 
       <AdminSectionTitle>Overview</AdminSectionTitle>
-      <View style={styles.metricsGrid}>
-        <AdminMetricCard
-          icon="time-outline"
-          label="Pending leads"
-          value={stats.pendingLeads}
-          iconBg="#FFFBEB"
-          iconColor={COLORS.warning}
-          onPress={() => navigation.navigate('PendingLeads')}
-        />
-        <AdminMetricCard
-          icon="construct-outline"
-          label="Active jobs"
-          value={stats.activeLeads}
-          onPress={() => navigation.navigate('ActiveJobs')}
-        />
-        <AdminMetricCard
-          icon="checkmark-circle-outline"
-          label="Completed"
-          value={stats.completedLeads}
-          iconBg="#ECFDF5"
-          iconColor={COLORS.success}
-        />
-        <AdminMetricCard
-          icon="people-outline"
-          label="Staff"
-          value={stats.totalStaff}
-          iconBg="#F3F4F6"
-          iconColor={COLORS.heading}
-          onPress={() => navigation.navigate('WorkshopAdminStaffManagement')}
-        />
+      <View style={styles.statsGrid}>
+        <TouchableOpacity style={[styles.statCard, { backgroundColor: '#FEF3C7' }]} onPress={() => navigation.navigate('PendingLeads')}>
+          <Text style={styles.statValue}>{stats.pendingLeads}</Text>
+          <Text style={styles.statLabel}>Pending leads</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.statCard, { backgroundColor: '#EFF6FF' }]} onPress={() => navigation.navigate('ActiveJobs')}>
+          <Text style={styles.statValue}>{stats.activeLeads}</Text>
+          <Text style={styles.statLabel}>Active jobs</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
+          <Text style={styles.statValue}>{stats.completedLeads}</Text>
+          <Text style={styles.statLabel}>Completed</Text>
+        </View>
+        <TouchableOpacity style={[styles.statCard, { backgroundColor: '#E9D5FF' }]} onPress={() => navigation.navigate('WorkshopAdminStaffManagement')}>
+          <Text style={styles.statValue}>{stats.totalStaff}</Text>
+          <Text style={styles.statLabel}>Staff</Text>
+        </TouchableOpacity>
       </View>
 
       <AdminSectionTitle>Recent leads</AdminSectionTitle>
@@ -239,29 +214,30 @@ export default function WorkshopAdminDashboard() {
   };
 
   return (
-    <View style={styles.container}>
-      <DashboardHeader
-        name={userProfile?.full_name || 'Admin'}
-        role="Workshop Admin"
-        panelLabel="Workshop Control Panel"
-        onLogout={handleLogout}
-      />
-      
+    <WorkshopCrmShell
+      title={
+        currentScreen === 'profile'
+          ? 'Workshop'
+          : WORKSHOP_CRM_TAB_TITLES[currentScreen] || 'Home'
+      }
+      userName={userProfile?.full_name}
+      userEmail={userProfile?.email}
+      roleFallback="Workshop Owner"
+      navigation={navigation}
+      drawerItems={OWNER_CRM_NAV}
+      quickItems={OWNER_CRM_QUICK}
+      activeTab={currentScreen}
+      onTabChange={handleTabChange}
+    >
       {renderScreen()}
-
-      <BottomNav 
-        activeTab={currentScreen} 
-        onTabChange={handleTabChange}
-        tabs={tabs}
-      />
-    </View>
+    </WorkshopCrmShell>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: COLORS.background,
   },
   content: {
     flex: 1,
@@ -270,52 +246,56 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING.xxl + SPACING.lg,
   },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  hero: {
     marginBottom: SPACING.md,
   },
-  header: {
-    marginBottom: SPACING.lg,
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
+  heroName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  heroMeta: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.bodyText,
+    marginTop: 2,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  statCard: {
+    flex: 1,
+    padding: SPACING.md,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: 'bold',
+    color: COLORS.heading,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.bodyText,
+    textAlign: 'center',
   },
   actionButton: {
-    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
     backgroundColor: COLORS.primary,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 14,
     alignSelf: 'flex-start',
   },
   actionButtonText: {
     color: COLORS.white,
     fontWeight: '600',
   },
-  title: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
-    color: COLORS.heading,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.bodyText,
-    marginTop: SPACING.xs,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: 'bold',
-    color: COLORS.heading,
-    marginBottom: SPACING.md,
-    marginTop: SPACING.lg,
-  },
   card: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     borderWidth: 1,
@@ -366,7 +346,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
-    color: COLORS.gray[500],
+    color: '#94a3b8',
     padding: SPACING.lg,
   },
 });

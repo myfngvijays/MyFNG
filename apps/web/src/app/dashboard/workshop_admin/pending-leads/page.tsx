@@ -3,10 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { CheckCircle, XCircle, Clock, AlertTriangle, Phone, Car, MapPin, DollarSign, RefreshCw, Eye } from 'lucide-react';
+import { CheckCircle, XCircle, Phone, Car, MapPin, DollarSign, RefreshCw, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import { formatDateTime } from "@/lib/utils";
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 interface PendingLead {
   id: string;
@@ -246,22 +251,21 @@ export default function WorkshopAdminPendingLeadsPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        <div className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">⏰ Pending Lead Approvals</h1>
-          <p className="font-medium text-sm sm:text-base mt-0.5 sm:mt-1">Review and accept/reject incoming leads</p>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Pending Lead Approvals"
+          subtitle="Review and accept or reject incoming leads"
+        />
 
         <div className="space-y-3 sm:space-y-4">
           {leads.length === 0 ? (
-            <div className="card text-center py-8 sm:py-10 md:py-12">
-              <CheckCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-green-500 mx-auto mb-3 sm:mb-4" />
-              <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">All Caught Up!</h3>
-              <p className="text-gray-500 text-sm sm:text-base">No pending leads waiting for approval</p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <WorkshopEmpty>No pending leads waiting for approval</WorkshopEmpty>
             </div>
           ) : (
             leads.map((lead) => (
-              <div key={lead.id} className="card hover:shadow-xl transition-shadow border-l-4 border-yellow-500">
+              <div key={lead.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
                   <div className="min-w-0 flex-1">
@@ -333,10 +337,10 @@ export default function WorkshopAdminPendingLeadsPage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-200">
                   <button
                     onClick={() => router.push(`/dashboard/workshop_admin/leads/${lead.id}`)}
-                    className="btn btn-outline flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm py-2 sm:py-2.5"
+                    className="flex-1 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50"
                   >
                     <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     View Details
@@ -344,7 +348,7 @@ export default function WorkshopAdminPendingLeadsPage() {
                   <button
                     onClick={() => handleAcceptLead(lead.id)}
                     disabled={processing === lead.id}
-                    className="btn bg-green-600 hover:bg-green-700 text-white flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm py-2 sm:py-2.5"
+                    className="flex-1 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
                     {processing === lead.id ? (
                       <>
@@ -361,7 +365,7 @@ export default function WorkshopAdminPendingLeadsPage() {
                   <button
                     onClick={() => handleRejectLead(lead.id)}
                     disabled={processing === lead.id}
-                    className="btn bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm py-2 sm:py-2.5"
+                    className="flex-1 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-red-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
                   >
                     <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     Reject
@@ -371,7 +375,7 @@ export default function WorkshopAdminPendingLeadsPage() {
             ))
           )}
         </div>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

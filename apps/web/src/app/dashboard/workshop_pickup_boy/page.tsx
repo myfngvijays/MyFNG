@@ -5,15 +5,21 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Truck, MapPin, Camera, Navigation, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopEmpty,
+} from '@/components/workshop/WorkshopUi';
 
 export default function WorkshopPickupBoyDashboard() {
   const [tasks, setTasks] = useState<any[]>([]);
-  const [stats, setStats] = useState([
-    { label: 'Pickup Tasks', value: '0', icon: <Truck className="w-8 h-8" />, color: 'text-brand-primary' },
-    { label: 'Delivery Tasks', value: '0', icon: <Truck className="w-8 h-8" />, color: 'text-blue-500' },
-    { label: 'In Transit', value: '0', icon: <Navigation className="w-8 h-8" />, color: 'text-green-500' },
-    { label: 'Completed Today', value: '0', icon: <CheckCircle className="w-8 h-8" />, color: 'text-green-600' },
-  ]);
+  const [stats, setStats] = useState({
+    pickup: 0,
+    delivery: 0,
+    inTransit: 0,
+    completedToday: 0,
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -109,12 +115,12 @@ export default function WorkshopPickupBoyDashboard() {
       ).length || 0;
 
       setTasks(assignedTasks || []);
-      setStats([
-        { label: 'Pickup Tasks', value: pickupCount.toString(), icon: <Truck className="w-8 h-8" />, color: 'text-brand-primary' },
-        { label: 'Delivery Tasks', value: deliveryCount.toString(), icon: <Truck className="w-8 h-8" />, color: 'text-blue-500' },
-        { label: 'In Transit', value: inTransitCount.toString(), icon: <Navigation className="w-8 h-8" />, color: 'text-green-500' },
-        { label: 'Completed Today', value: completedToday.toString(), icon: <CheckCircle className="w-8 h-8" />, color: 'text-green-600' },
-      ]);
+      setStats({
+        pickup: pickupCount,
+        delivery: deliveryCount,
+        inTransit: inTransitCount,
+        completedToday,
+      });
       setLoading(false);
     } catch (error) {
       console.error('Error fetching pickup data:', error);
@@ -122,47 +128,63 @@ export default function WorkshopPickupBoyDashboard() {
     }
   }
 
-  if (loading) {
-    return (
-      <DashboardLayout role="workshop_pickup_boy">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-text-body">Loading dashboard...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout role="workshop_pickup_boy">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Pickup & Delivery Dashboard</h1>
-          <p className="text-text-body text-sm sm:text-base mt-1 sm:mt-2">Manage your pickup and delivery tasks</p>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Pickupboy / Driver"
+          title="Dashboard"
+          subtitle="Pickup and delivery tasks in one place"
+        />
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {stats.map((stat, index) => (
-            <div key={index} className="card">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className={`${stat.color} flex-shrink-0`}>{stat.icon}</div>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-text-body">{stat.label}</p>
-                  <p className="text-xl sm:text-2xl font-bold text-text-heading">{stat.value}</p>
-                </div>
-              </div>
-            </div>
-          ))}
+          <WorkshopStatTile label="Pickup Tasks" value={stats.pickup} icon={<Truck className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" loading={loading} />
+          <WorkshopStatTile label="Delivery Tasks" value={stats.delivery} icon={<Truck className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" loading={loading} />
+          <WorkshopStatTile label="In Transit" value={stats.inTransit} icon={<Navigation className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" loading={loading} />
+          <WorkshopStatTile label="Completed Today" value={stats.completedToday} icon={<CheckCircle className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" loading={loading} />
         </div>
 
-        {/* Active Tasks Table */}
-        <div className="card">
-          <h2 className="text-lg sm:text-xl font-semibold text-text-heading mb-3 sm:mb-4">Active Tasks</h2>
+        <div className="rounded-2xl bg-[#004AAD] p-3.5 shadow-sm sm:p-4">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <h2 className="text-[14px] font-bold text-white">Active Tasks</h2>
+            <a href="/dashboard/workshop_pickup_boy/tasks" className="text-xs font-bold text-white/85">
+              View all →
+            </a>
+          </div>
           {tasks.length > 0 ? (
-            <div className="overflow-x-auto">
+            <>
+            <div className="space-y-2 lg:hidden">
+              {tasks.map((task) => (
+                <div key={task.id} className="rounded-xl bg-white p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900">#{task.lead_number}</p>
+                      <p className="text-xs text-slate-500 truncate">{task.customer_name || 'N/A'} · {task.vehicle_number || 'N/A'}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-700 shrink-0">
+                      {String(task.status || '').replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-slate-500">{task.pickup_address || task.address || 'No address'}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <a
+                      href={`/dashboard/workshop_pickup_boy/tasks/${task.id}`}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#023D95] text-xs font-bold text-white"
+                    >
+                      View
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => { window.location.href = `/dashboard/workshop_pickup_boy/tasks/${task.id}`; }}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-emerald-600 text-xs font-bold text-white"
+                    >
+                      Details
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto rounded-xl bg-white lg:block">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -319,18 +341,18 @@ export default function WorkshopPickupBoyDashboard() {
                 </tbody>
               </table>
             </div>
+            </>
           ) : (
-            <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">No active tasks</p>
+            <p className="py-6 text-center text-sm text-white/70">No active tasks</p>
           )}
         </div>
 
-        {/* Photo Upload Guide */}
-        <div className="card bg-blue-50 border-l-4 border-brand-primary">
-          <h3 className="font-semibold text-sm sm:text-base text-text-heading mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
-            <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
+        <div className="rounded-2xl border border-slate-200 bg-blue-50/70 p-4 shadow-sm sm:p-5">
+          <h3 className="font-bold text-sm sm:text-base text-slate-900 mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+            <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-[#004AAD] flex-shrink-0" />
             Photo Guidelines
           </h3>
-          <ul className="text-xs sm:text-sm text-gray-700 space-y-1.5 sm:space-y-2">
+          <ul className="text-xs sm:text-sm text-slate-700 space-y-1.5 sm:space-y-2">
             <li className="flex items-start gap-1.5 sm:gap-2">
               <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 text-green-600 flex-shrink-0" />
               <span>Take clear photos of vehicle before pickup</span>
@@ -353,7 +375,7 @@ export default function WorkshopPickupBoyDashboard() {
             </li>
           </ul>
         </div>
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

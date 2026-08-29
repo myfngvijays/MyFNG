@@ -5,6 +5,13 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Users, Plus, Edit, Mail, Phone, CheckCircle, XCircle, Trash2, Key, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatDateTime } from "@/lib/utils";
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopStatTile,
+  WorkshopEmpty,
+  WorkshopStatusPill,
+} from '@/components/workshop/WorkshopUi';
 
 export default function WorkshopStaffPage() {
   const [staff, setStaff] = useState<any[]>([]);
@@ -377,58 +384,44 @@ export default function WorkshopStaffPage() {
 
   return (
     <DashboardLayout role="workshop_admin">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Staff Management</h1>
-            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">{workshopInfo?.name || 'Workshop'} Team</p>
-          </div>
-          <button onClick={handleOpenCreate} className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto">
-            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="hidden sm:inline">Add Staff Member</span>
-            <span className="sm:hidden">Add Staff</span>
-          </button>
-        </div>
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Workshop Owner"
+          title="Staff Management"
+          subtitle={`${workshopInfo?.name || 'Workshop'} Team`}
+          right={
+            <button
+              onClick={handleOpenCreate}
+              className="inline-flex w-full min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[#023D95] px-4 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-[#012f73] min-[900px]:w-auto"
+            >
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Add Staff Member</span>
+              <span className="sm:hidden">Add Staff</span>
+            </button>
+          }
+        />
 
-        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">Total Staff</p>
-            <p className="text-xl sm:text-2xl font-bold">{staff.length}</p>
-          </div>
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">Active</p>
-            <p className="text-xl sm:text-2xl font-bold text-green-600">
-              {staff.filter(s => s.is_active).length}
-            </p>
-          </div>
-          <div className="card">
-            <p className="text-xs sm:text-sm text-gray-600">Inactive</p>
-            <p className="text-xl sm:text-2xl font-bold text-red-600">
-              {staff.filter(s => !s.is_active).length}
-            </p>
-          </div>
-          <div className="card sm:col-span-2 lg:col-span-1">
-            <p className="text-xs sm:text-sm text-gray-600">Roles</p>
-            <p className="text-xl sm:text-2xl font-bold">{Object.keys(staffByRole).length}</p>
-          </div>
+          <WorkshopStatTile label="Total Staff" value={staff.length} icon={<Users className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" />
+          <WorkshopStatTile label="Active" value={staff.filter(s => s.is_active).length} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" />
+          <WorkshopStatTile label="Inactive" value={staff.filter(s => !s.is_active).length} icon={<XCircle className="w-6 h-6 text-red-600" />} tone="from-red-50 to-red-100" />
+          <WorkshopStatTile label="Roles" value={Object.keys(staffByRole).length} icon={<Users className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" />
         </div>
 
-        {/* Staff by Role */}
         {Object.entries(staffByRole).map(([roleCode, members]: [string, any]) => (
-          <div key={roleCode} className="card">
+          <div key={roleCode} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary flex-shrink-0" />
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-[#004AAD] flex-shrink-0" />
               <span className="truncate">{members[0]?.role_id?.role_name || roleCode}</span>
               <span className="text-xs sm:text-sm font-normal text-gray-500">({members.length})</span>
             </h2>
 
             <div className="space-y-2 sm:space-y-3">
               {members.map((member: any) => (
-                <div key={member.id} className="p-3 sm:p-4 border border-gray-200 rounded-lg hover:shadow-md transition">
+                <div key={member.id} className="p-3 sm:p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
                     <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
-                      <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full bg-brand-primary text-white flex items-center justify-center text-lg sm:text-xl font-bold flex-shrink-0">
+                      <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full bg-[#004AAD] text-white flex items-center justify-center text-lg sm:text-xl font-bold flex-shrink-0">
                         {member.full_name?.charAt(0).toUpperCase()}
                       </div>
                       
@@ -436,7 +429,7 @@ export default function WorkshopStaffPage() {
                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                           <h3 className="font-semibold text-base sm:text-lg truncate">{member.full_name}</h3>
                           {member.id === currentUserId && (
-                            <span className="text-[10px] sm:text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 rounded-full">You</span>
+                            <WorkshopStatusPill tone="blue">You</WorkshopStatusPill>
                           )}
                         </div>
                         <div className="flex flex-col gap-1 mt-1.5 sm:mt-2 text-xs sm:text-sm text-gray-600">
@@ -522,21 +515,20 @@ export default function WorkshopStaffPage() {
         ))}
 
         {staff.length === 0 && (
-          <div className="card text-center py-8 sm:py-10 md:py-12">
-            <Users className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-            <p className="text-gray-500 text-sm sm:text-base">No staff members found</p>
-            <button onClick={handleOpenCreate} className="btn btn-primary mt-3 sm:mt-4 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 text-center">
+            <WorkshopEmpty>No staff members found</WorkshopEmpty>
+            <button onClick={handleOpenCreate} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[#004AAD] px-4 py-2.5 text-xs sm:text-sm font-bold text-white hover:bg-[#023D95]">
               <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
               Add Your First Staff Member
             </button>
           </div>
         )}
-      </div>
+      </WorkshopPageShell>
 
       {/* Add/Edit Staff Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4 sm:mb-5 md:mb-6">
               <h3 className="text-lg sm:text-xl md:text-2xl font-bold">
                 {selectedStaff ? 'Edit Staff Member' : 'Add New Staff Member'}
@@ -663,18 +655,18 @@ export default function WorkshopStaffPage() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 sm:pt-5 md:pt-6 border-t">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 sm:pt-5 md:pt-6 border-t border-slate-200">
               <button
                 onClick={handleCloseModal}
                 disabled={saving}
-                className="btn btn-outline flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveStaff}
                 disabled={saving}
-                className="btn btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] px-4 py-2 text-xs sm:text-sm font-bold text-white hover:bg-[#023D95] disabled:opacity-50"
               >
                 {saving ? 'Saving...' : (selectedStaff ? 'Update Staff' : 'Add Staff')}
               </button>
@@ -686,7 +678,7 @@ export default function WorkshopStaffPage() {
       {/* Password Reset Modal */}
       {showPasswordModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-lg p-4 sm:p-5 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4 sm:mb-5 md:mb-6">
               <h3 className="text-lg sm:text-xl font-bold">Reset Password</h3>
               <button 
@@ -726,18 +718,18 @@ export default function WorkshopStaffPage() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 sm:pt-5 md:pt-6 border-t">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4 sm:mt-5 md:mt-6 pt-4 sm:pt-5 md:pt-6 border-t border-slate-200">
               <button
                 onClick={() => setShowPasswordModal(false)}
                 disabled={saving}
-                className="btn btn-outline flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleResetPassword}
                 disabled={saving}
-                className="btn btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                className="flex-1 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] px-4 py-2 text-xs sm:text-sm font-bold text-white hover:bg-[#023D95] disabled:opacity-50"
               >
                 {saving ? 'Resetting...' : 'Reset Password'}
               </button>

@@ -34,7 +34,7 @@ interface JobHistoryItem {
   efficiency_score: number | null;
 }
 
-export default function MechanicJobHistoryScreen() {
+export default function MechanicJobHistoryScreen({ embedInShell = false }: { embedInShell?: boolean }) {
   const navigation = useNavigation<any>();
   const [jobs, setJobs] = useState<JobHistoryItem[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobHistoryItem[]>([]);
@@ -50,8 +50,8 @@ export default function MechanicJobHistoryScreen() {
     on_time_completion: 0,
   });
 
-  // Handle hardware back button
   useEffect(() => {
+    if (embedInShell) return;
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (navigation?.goBack) {
         navigation.goBack();
@@ -61,7 +61,7 @@ export default function MechanicJobHistoryScreen() {
     });
 
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [embedInShell, navigation]);
 
   useEffect(() => {
     fetchJobHistory();
@@ -209,7 +209,9 @@ export default function MechanicJobHistoryScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        {embedInShell ? null : (
+          <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        )}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -219,7 +221,9 @@ export default function MechanicJobHistoryScreen() {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+      {embedInShell ? null : (
+        <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+      )}
 
       <ScrollView
         style={styles.content}
@@ -352,18 +356,20 @@ export default function MechanicJobHistoryScreen() {
         </View>
       </ScrollView>
 
-      <BottomNav
-        activeTab="history"
-        onTabPress={(tab) => {
-          if (tab === 'dashboard') navigation.navigate('Dashboard');
-          else if (tab === 'profile') navigation.navigate('Profile');
-        }}
-        tabs={[
-          { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
-          { id: 'history', label: 'History', icon: '📋' },
-          { id: 'profile', label: 'Profile', icon: '👤' },
-        ]}
-      />
+      {embedInShell ? null : (
+        <BottomNav
+          activeTab="history"
+          onTabPress={(tab) => {
+            if (tab === 'dashboard') navigation.navigate('Dashboard');
+            else if (tab === 'profile') navigation.navigate('Profile');
+          }}
+          tabs={[
+            { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
+            { id: 'history', label: 'History', icon: '📋' },
+            { id: 'profile', label: 'Profile', icon: '👤' },
+          ]}
+        />
+      )}
     </View>
   );
 }

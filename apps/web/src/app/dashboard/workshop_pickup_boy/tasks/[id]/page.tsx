@@ -11,6 +11,11 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
+import {
+  WorkshopPageHeader,
+  WorkshopPageShell,
+  WorkshopCard,
+} from '@/components/workshop/WorkshopUi';
 
 export default function PickupTaskDetailPage() {
   const router = useRouter();
@@ -374,10 +379,10 @@ export default function PickupTaskDetailPage() {
   if (!task) {
     return (
       <DashboardLayout role="workshop_pickup_boy">
-        <div className="card text-center py-8 sm:py-10 md:py-12">
+        <WorkshopCard className="text-center py-8 sm:py-10 md:py-12">
           <AlertCircle className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-red-500 mx-auto mb-2 sm:mb-3 md:mb-4" />
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-700">Task not found</h3>
-        </div>
+          <h3 className="text-lg sm:text-xl font-semibold text-slate-700">Task not found</h3>
+        </WorkshopCard>
       </DashboardLayout>
     );
   }
@@ -438,8 +443,12 @@ export default function PickupTaskDetailPage() {
 
   return (
     <DashboardLayout role="workshop_pickup_boy">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
+      <WorkshopPageShell>
+        <WorkshopPageHeader
+          eyebrow="Pickupboy / Driver"
+          title={isDeliveryTask ? 'Delivery Task' : 'Pickup Task'}
+          subtitle={`Lead #${task.lead_number}`}
+        />
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
           <button
             onClick={() => router.back()}
@@ -540,7 +549,7 @@ export default function PickupTaskDetailPage() {
         </div>
 
         {/* Status Banner */}
-        <div className={`p-3 sm:p-4 rounded-lg border-l-4 ${
+        <div className={`p-3 sm:p-4 rounded-2xl border border-slate-200 border-l-4 ${}
           task.status === 'ON_THE_WAY' ? 'bg-blue-50 border-blue-500' :
           task.status === 'VEHICLE_IN_TRANSIT' ? 'bg-purple-50 border-purple-500' :
           task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' ? 'bg-green-50 border-green-500' :
@@ -571,8 +580,8 @@ export default function PickupTaskDetailPage() {
         </div>
 
         {/* Task Details Table */}
-        <div className="card">
-          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Task Details</h3>
+        <WorkshopCard>
+          <h3 className="text-base sm:text-lg font-semibold text-[#023D95] mb-3 sm:mb-4">Task Details</h3>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <tbody className="bg-white divide-y divide-gray-200">
@@ -750,11 +759,11 @@ export default function PickupTaskDetailPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </WorkshopCard>
 
         {/* Observations Section */}
-        <div className="card">
-          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Observations</h3>
+        <WorkshopCard>
+          <h3 className="text-base sm:text-lg font-semibold text-[#023D95] mb-3 sm:mb-4">Observations</h3>
           
           {/* Pickup Boy Observation */}
           <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -807,12 +816,12 @@ export default function PickupTaskDetailPage() {
               )}
             </div>
           </div>
-        </div>
+        </WorkshopCard>
 
         {/* Pickup/Visit Photos (syncs with supervisor) */}
-        <div className="card p-3 sm:p-4 md:p-5">
+        <WorkshopCard>
           <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-            <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
+            <h3 className="text-base sm:text-lg font-semibold text-[#023D95] flex items-center gap-1.5 sm:gap-2">
               <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary flex-shrink-0" />
               Pickup/Visit Photos
             </h3>
@@ -829,7 +838,7 @@ export default function PickupTaskDetailPage() {
               fetchTaskDetails();
             }}
           />
-        </div>
+        </WorkshopCard>
 
         {/* Start Pickup Modal */}
         {showStartModal && (
@@ -1044,7 +1053,7 @@ export default function PickupTaskDetailPage() {
         )}
 
         {/* Photo upload handled inline above */}
-      </div>
+      </WorkshopPageShell>
     </DashboardLayout>
   );
 }

@@ -36,7 +36,7 @@ interface Job {
   assigned_at: string;
 }
 
-export default function MechanicJobsScreen({ navigation }: any) {
+export default function MechanicJobsScreen({ navigation, embedInShell = false }: any) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [activeFilter, setActiveFilter] = useState('ALL');
@@ -47,8 +47,8 @@ export default function MechanicJobsScreen({ navigation }: any) {
 
   const filters = ['ALL', 'ASSIGNED', 'IN_PROGRESS', 'HOLD', 'COMPLETED'];
 
-  // Handle hardware back button
   useEffect(() => {
+    if (embedInShell) return;
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (navigation?.goBack) {
         navigation.goBack();
@@ -58,7 +58,7 @@ export default function MechanicJobsScreen({ navigation }: any) {
     });
 
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [embedInShell, navigation]);
 
   useEffect(() => {
     fetchJobs();
@@ -262,7 +262,7 @@ export default function MechanicJobsScreen({ navigation }: any) {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={embedInShell ? ['bottom'] : ['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>My Jobs</Text>
         <Text style={styles.subtitle}>{filteredJobs.length} jobs</Text>
@@ -318,7 +318,7 @@ export default function MechanicJobsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 16,
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -353,8 +353,8 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
   },
   filterButtonActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   filterText: {
     fontSize: 14,
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
   },
   jobCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 16,
     shadowColor: '#000',

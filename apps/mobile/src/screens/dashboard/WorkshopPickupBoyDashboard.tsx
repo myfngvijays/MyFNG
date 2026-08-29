@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
-import DashboardHeader from '../../components/DashboardHeader';
-import StatCard from '../../components/StatCard';
-import BottomNav from '../../components/BottomNav';
+import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
+import {
+  PICKUP_CRM_NAV,
+  PICKUP_CRM_QUICK,
+  WORKSHOP_CRM_TAB_TITLES,
+} from '../../constants/workshopCrmNav';
 import PickupTasksScreen from '../pickup/PickupTasksScreen';
 import TaskHistoryScreen from '../pickup/TaskHistoryScreen';
 import PickupBoyProfileScreen from '../pickup/PickupBoyProfileScreen';
@@ -13,6 +17,7 @@ import { formatDateTime } from "@/lib/dateFormat";
 import { useNotifications } from '../../context/NotificationContext';
 
 export default function WorkshopPickupBoyDashboard() {
+  const navigation = useNavigation<any>();
   const { pickupRefreshTick } = useNotifications();
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
@@ -184,17 +189,6 @@ export default function WorkshopPickupBoyDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupRefreshTick]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  const tabs = [
-    { id: 'dashboard', label: 'Home', icon: 'home' },
-    { id: 'tasks', label: 'Tasks', icon: 'car' },
-    { id: 'history', label: 'History', icon: 'history' },
-    { id: 'profile', label: 'Profile', icon: 'account' },
-  ];
-
   const handleTabChange = (tab: string) => {
     setCurrentScreen(tab);
   };
@@ -241,41 +235,32 @@ export default function WorkshopPickupBoyDashboard() {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>My Tasks</Text>
-        <Text style={styles.subtitle}>Pickup & Delivery Management</Text>
+      <View style={styles.hero}>
+        <Text style={styles.heroName}>{userProfile?.full_name || 'Pickupboy / Driver'}</Text>
+        <Text style={styles.heroMeta}>Pickup & delivery</Text>
       </View>
 
-      {/* Stats Grid */}
       <Text style={styles.sectionTitle}>Overview</Text>
-      
-      <StatCard
-        title="Pending Tasks"
-        value={stats.pendingTasks}
-        subtitle="Awaiting action"
-        color={COLORS.warning}
-      />
-      
-      <StatCard
-        title="In Transit"
-        value={stats.inTransit}
-        subtitle="Currently on route"
-        color={COLORS.primary}
-      />
-      
-      <StatCard
-        title="Completed Today"
-        value={stats.completedToday}
-        subtitle="Finished today"
-        color={COLORS.success}
-      />
-      
-      <StatCard
-        title="Total Completed"
-        value={stats.totalCompleted}
-        subtitle="All time"
-        color={COLORS.secondary}
-      />
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { backgroundColor: '#FEF3C7' }]}>
+          <Text style={styles.statValue}>{stats.pendingTasks}</Text>
+          <Text style={styles.statLabel}>Pending</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: '#EFF6FF' }]}>
+          <Text style={styles.statValue}>{stats.inTransit}</Text>
+          <Text style={styles.statLabel}>In Transit</Text>
+        </View>
+      </View>
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
+          <Text style={styles.statValue}>{stats.completedToday}</Text>
+          <Text style={styles.statLabel}>Done today</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: '#E9D5FF' }]}>
+          <Text style={styles.statValue}>{stats.totalCompleted}</Text>
+          <Text style={styles.statLabel}>Total done</Text>
+        </View>
+      </View>
 
       {/* Recent Tasks */}
       <Text style={styles.sectionTitle}>Active Tasks</Text>
@@ -321,21 +306,19 @@ export default function WorkshopPickupBoyDashboard() {
   );
 
   return (
-    <View style={styles.container}>
-      <DashboardHeader
-        name={userProfile?.full_name || 'Pickup Boy'}
-        role="Workshop Pickup Boy"
-        onLogout={handleLogout}
-      />
-      
+    <WorkshopCrmShell
+      title={WORKSHOP_CRM_TAB_TITLES[currentScreen] || 'Home'}
+      userName={userProfile?.full_name}
+      userEmail={userProfile?.email}
+      roleFallback="Pickupboy / Driver"
+      navigation={navigation}
+      drawerItems={PICKUP_CRM_NAV}
+      quickItems={PICKUP_CRM_QUICK}
+      activeTab={currentScreen}
+      onTabChange={handleTabChange}
+    >
       {renderScreen()}
-
-      <BottomNav 
-        activeTab={currentScreen} 
-        onTabChange={handleTabChange}
-        tabs={tabs}
-      />
-    </View>
+    </WorkshopCrmShell>
   );
 }
 
@@ -351,18 +334,40 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING.xxl + SPACING.lg,
   },
-  header: {
-    marginBottom: SPACING.lg,
+  hero: {
+    marginBottom: SPACING.md,
   },
-  title: {
+  heroName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  heroMeta: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.bodyText,
+    marginTop: 2,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  statCard: {
+    flex: 1,
+    padding: SPACING.md,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  statValue: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
     color: COLORS.heading,
+    marginBottom: 4,
   },
-  subtitle: {
+  statLabel: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.bodyText,
-    marginTop: SPACING.xs,
+    textAlign: 'center',
   },
   sectionTitle: {
     fontSize: FONT_SIZES.lg,
@@ -373,7 +378,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 14,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     shadowColor: COLORS.black,
@@ -427,7 +432,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
-    color: COLORS.gray[500],
+    color: '#94a3b8',
     padding: SPACING.lg,
   },
 });
