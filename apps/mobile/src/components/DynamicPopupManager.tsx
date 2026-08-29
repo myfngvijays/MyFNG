@@ -34,7 +34,16 @@ type Props = {
   screen: string;
   /** When true, do not open — avoids stacking with welcome/soft-update Modals (iOS touch ghost). */
   paused?: boolean;
+  /** Home already has WelcomeBonusGuestModal — skip the CMS copy of that login offer. */
+  skipGuestLoginPopups?: boolean;
 };
+
+function isGuestLoginPopup(p: AppPopup): boolean {
+  if (p.show_for === 'GUEST_ONLY' && p.primary_button_action === 'LOGIN') return true;
+  const title = (p.title || '').toLowerCase();
+  const body = (p.body || '').toLowerCase();
+  return title.includes('login to get') && body.includes('welcome bonus');
+}
 
 const DISMISSED_EVER_KEY = 'app_popups_dismissed_ever';
 const DISMISSED_SESSION = new Set<string>();
@@ -85,7 +94,11 @@ const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
   'message-square': 'chatbubble',
 };
 
-export default function DynamicPopupManager({ screen, paused = false }: Props) {
+export default function DynamicPopupManager({
+  screen,
+  paused = false,
+  skipGuestLoginPopups = false,
+}: Props) {
   const [popup, setPopup] = useState<AppPopup | null>(null);
   const [visible, setVisible] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
@@ -106,6 +119,7 @@ export default function DynamicPopupManager({ screen, paused = false }: Props) {
 
       if (p.show_for === 'GUEST_ONLY' && isLoggedIn) continue;
       if (p.show_for === 'LOGGED_IN_ONLY' && !isLoggedIn) continue;
+      if (skipGuestLoginPopups && isGuestLoginPopup(p)) continue;
 
       if (p.display_rule === 'ONCE_EVER' && dismissedEver.has(p.id)) continue;
       if (p.display_rule === 'ONCE_PER_SESSION' && DISMISSED_SESSION.has(p.id)) continue;
@@ -115,7 +129,7 @@ export default function DynamicPopupManager({ screen, paused = false }: Props) {
       setTimeout(() => setPendingOpen(true), 2200);
       return;
     }
-  }, [screen]);
+  }, [screen, skipGuestLoginPopups]);
 
   useEffect(() => {
     checkPopups();
@@ -123,9 +137,14 @@ export default function DynamicPopupManager({ screen, paused = false }: Props) {
 
   useEffect(() => {
     if (!pendingOpen || !popup || paused || visible) return;
+    if (skipGuestLoginPopups && isGuestLoginPopup(popup)) {
+      setPendingOpen(false);
+      setPopup(null);
+      return;
+    }
     setVisible(true);
     setPendingOpen(false);
-  }, [pendingOpen, popup, paused, visible]);
+  }, [pendingOpen, popup, paused, visible, skipGuestLoginPopups]);
 
   const dismiss = async () => {
     if (!popup) return;

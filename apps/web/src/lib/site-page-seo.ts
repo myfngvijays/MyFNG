@@ -414,7 +414,7 @@ export async function listSitePageSitemapEntries(): Promise<Array<{ path: string
       const path = normalizePagePath(brand.pagePath);
       if (!byPath.has(path)) byPath.set(path, { path });
     }
-    for (const path of ['/privacy-policy', '/terms-and-conditions']) {
+    for (const path of ['/privacy-policy', '/privacy-notice', '/data-rights', '/terms-and-conditions']) {
       if (!byPath.has(path)) byPath.set(path, { path });
     }
 

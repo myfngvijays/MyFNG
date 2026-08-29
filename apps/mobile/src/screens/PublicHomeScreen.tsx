@@ -1205,6 +1205,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
         <DynamicPopupManager
           screen="HOME"
           paused={guestWelcomeVisible || creditedWelcomeVisible}
+          skipGuestLoginPopups
         />
 
       </View>
