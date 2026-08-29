@@ -556,7 +556,99 @@ export async function applyWebhookToDialSession(
   };
 }
 
-export function publicDialSessionPayload(row: DialSessionRow) {
+export type DialLeadSummary = {
+  id: string;
+  lead_number: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  vehicle_number: string | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  city: string | null;
+  status: string | null;
+};
+
+export async function loadDialLeadSummary(leadId?: string | null): Promise<DialLeadSummary | null> {
+  const id = String(leadId || '').trim();
+  if (!id) return null;
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return null;
+  const { data } = await supabaseAdmin
+    .from('service_leads')
+    .select(
+      'id, lead_number, customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, city, status',
+    )
+    .eq('id', id)
+    .maybeSingle();
+  if (!data?.id) return null;
+  return data as DialLeadSummary;
+}
+
+async function lookupLeadByPhone(opts: {
+  phone?: string | null;
+  telecallerId?: string | null;
+}): Promise<DialLeadSummary | null> {
+  const phone = digitsLast10(opts.phone);
+  if (!phone) return null;
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return null;
+
+  let q = supabaseAdmin
+    .from('service_leads')
+    .select(
+      'id, lead_number, customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, city, status, assigned_telecaller_id, updated_at',
+    )
+    .or(`customer_phone.eq.${phone},customer_phone.eq.91${phone},customer_phone.eq.+91${phone}`)
+    .order('updated_at', { ascending: false })
+    .limit(8);
+
+  const { data } = await q;
+  const rows = (data || []) as Array<DialLeadSummary & { assigned_telecaller_id?: string | null }>;
+  if (!rows.length) return null;
+  const telecallerId = String(opts.telecallerId || '').trim();
+  if (telecallerId) {
+    const mine = rows.find((r) => String(r.assigned_telecaller_id || '') === telecallerId);
+    if (mine) return mine;
+  }
+  return rows[0];
+}
+
+export async function resolveLeadForDialSession(
+  session: DialSessionRow,
+): Promise<DialLeadSummary | null> {
+  const fromId = await loadDialLeadSummary(session.lead_id);
+  if (fromId) return fromId;
+  return lookupLeadByPhone({
+    phone: session.customer_phone,
+    telecallerId: session.telecaller_id,
+  });
+}
+
+export async function getActiveDialSessionForTelecaller(
+  telecallerId: string,
+): Promise<DialSessionRow | null> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  const id = String(telecallerId || '').trim();
+  if (!supabaseAdmin || !id) return null;
+
+  const since = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+  const { data } = await supabaseAdmin
+    .from('smartflo_dial_sessions')
+    .select('*')
+    .eq('telecaller_id', id)
+    .in('status', ['INITIATED', 'RINGING', 'ANSWERED'])
+    .gte('started_at', since)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (data as DialSessionRow) || null;
+}
+
+export function publicDialSessionPayload(
+  row: DialSessionRow,
+  lead?: DialLeadSummary | null,
+) {
   const status = String(row.status || '').toUpperCase() as DialSessionStatus;
   let elapsed_seconds: number | null = null;
   if (status === 'ANSWERED' && row.answered_at) {
@@ -575,12 +667,14 @@ export function publicDialSessionPayload(row: DialSessionRow) {
     );
   }
 
+  const resolvedLeadId = row.lead_id || lead?.id || null;
+
   return {
     id: row.id,
     status,
     agent_phone: row.agent_phone,
     customer_phone: row.customer_phone,
-    lead_id: row.lead_id || null,
+    lead_id: resolvedLeadId,
     started_at: row.started_at,
     answered_at: row.answered_at || null,
     ended_at: row.ended_at || null,
@@ -588,5 +682,18 @@ export function publicDialSessionPayload(row: DialSessionRow) {
     elapsed_seconds,
     last_event: row.last_event || null,
     error_message: row.error_message || null,
+    lead: lead
+      ? {
+          id: lead.id,
+          lead_number: lead.lead_number || null,
+          customer_name: lead.customer_name || null,
+          customer_phone: lead.customer_phone || null,
+          vehicle_number: lead.vehicle_number || null,
+          vehicle_make: lead.vehicle_make || null,
+          vehicle_model: lead.vehicle_model || null,
+          city: lead.city || null,
+          status: lead.status || null,
+        }
+      : null,
   };
 }

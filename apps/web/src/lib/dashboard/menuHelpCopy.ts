@@ -43,16 +43,17 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/telecaller/dialer': {
     title: 'Dialer',
     body:
-      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.',
+      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.\n\nFresh auto-dial / click-to-call pe phone ring hote hi CRM popup dikhata hai kaunsi lead hai (DID number se dhundne ki zaroorat nahi).',
     tips: [
       'Click to Call setup me aapka from-number set hona chahiye.',
       'Agar number pe pehle se lead hai to call log us lead pe attach ho sakta hai.',
+      'Ring aate hi Open lead dabao — phone pe DID dikhega, lead CRM mein khulegi.',
     ],
   },
   '/dashboard/lead_manager/dialer': {
     title: 'Dialer',
     body:
-      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.',
+      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.\n\nRing aate hi popup dikhata hai kaunsi lead hai.',
   },
   '/dashboard/lead_manager/click-to-call': {
     title: 'Click to Call',
@@ -328,6 +329,63 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     body:
       'Poora menu guide — har item kya hai aur kya karta hai.\n\nHar page pe title ke paas sirf ek i hota hai usi page ke liye.',
   },
+  '/dashboard/workshop-advisor': {
+    title: 'Dashboard',
+    body: 'Aaj ke mechanics, active jobs, QC, aur overdue ka snapshot. Recent jobs se seedha job khol sakte ho.',
+  },
+  '/dashboard/workshop-advisor/chat': {
+    title: 'Chat',
+    body: 'Workshop team chat — owner, mechanics, pickup ke saath messages.',
+  },
+  '/dashboard/workshop-advisor/pending-leads': {
+    title: 'Lead Approval',
+    body: 'Workshop ko aaye naye leads accept / reject. Accept ke baad mechanic ya pickup assign karo.',
+    tips: ['Pehle yahan se lead lo, phir Day Planning / Jobs se assign karo.'],
+  },
+  '/dashboard/workshop-advisor/day-planning': {
+    title: 'Day Planning',
+    body: 'Aaj ke jobs plan karo — kis mechanic ko kya dena hai, sequence set karo.',
+  },
+  '/dashboard/workshop-advisor/jobs': {
+    title: 'Jobs',
+    body: 'Saari workshop jobs — status, mechanic, SLA. Filter se assigned / in progress / hold dekho.',
+  },
+  '/dashboard/workshop-advisor/qc-queue': {
+    title: 'QC Queue',
+    body: 'Mechanic ne complete kiya ho to quality check yahan. Approve / reject with notes.',
+  },
+  '/dashboard/workshop-advisor/extra-work': {
+    title: 'Extra Jobs',
+    body: 'Inspection ke baad extra work / extra charges approve ya reject.',
+  },
+  '/dashboard/workshop-advisor/pickup-delivery': {
+    title: 'Pickup',
+    body: 'Car pickup aur delivery tracking — OTP, location, drop complete.',
+  },
+  '/dashboard/workshop-advisor/additional-jobs-master': {
+    title: 'Jobs Master',
+    body: 'Workshop ke extra-job names aur labour rates. Mechanic isi list se extra job add karta hai.',
+  },
+  '/dashboard/workshop-advisor/team-overview': {
+    title: 'Team',
+    body: 'Mechanics aur pickup boys — kaun free hai, kaun job pe hai.',
+  },
+  '/dashboard/workshop-advisor/daily-report': {
+    title: 'Daily Report',
+    body: 'End-of-day summary — completed, pending, issues.',
+  },
+  '/dashboard/workshop-advisor/analytics': {
+    title: 'Analytics',
+    body: 'Workshop performance charts — jobs, SLA, team load.',
+  },
+  '/dashboard/workshop-advisor/profile': {
+    title: 'Profile',
+    body: 'Apna naam, phone, aur workshop details. Email change nahi hota.',
+  },
+  '/dashboard/workshop-advisor/readme': {
+    title: 'ReadMe',
+    body: 'Har menu kya karta hai — short guide. Page title ke paas i se bhi wahi help khulti hai.',
+  },
 };
 
 const BY_ACTION: Record<string, MenuHelpEntry> = {
@@ -446,6 +504,46 @@ export function getLeadManagerReadme(): ReadmeSection[] {
 }
 
 /** Ordered ReadMe sections for Telecaller sidebar menus + header tools. */
+export function getWorkshopAdvisorReadme(): ReadmeSection[] {
+  return [
+    {
+      heading: 'Header',
+      items: [{ ...HEADER.notifications }],
+    },
+    {
+      heading: 'Main menu',
+      items: [
+        { href: '/dashboard/workshop-advisor', ...BY_HREF['/dashboard/workshop-advisor'] },
+        { href: '/dashboard/workshop-advisor/chat', ...BY_HREF['/dashboard/workshop-advisor/chat'] },
+        { href: '/dashboard/workshop-advisor/pending-leads', ...BY_HREF['/dashboard/workshop-advisor/pending-leads'] },
+        { href: '/dashboard/workshop-advisor/day-planning', ...BY_HREF['/dashboard/workshop-advisor/day-planning'] },
+        { href: '/dashboard/workshop-advisor/jobs', ...BY_HREF['/dashboard/workshop-advisor/jobs'] },
+        { href: '/dashboard/workshop-advisor/qc-queue', ...BY_HREF['/dashboard/workshop-advisor/qc-queue'] },
+        { href: '/dashboard/workshop-advisor/extra-work', ...BY_HREF['/dashboard/workshop-advisor/extra-work'] },
+        { href: '/dashboard/workshop-advisor/pickup-delivery', ...BY_HREF['/dashboard/workshop-advisor/pickup-delivery'] },
+        {
+          href: '/dashboard/workshop-advisor/additional-jobs-master',
+          ...BY_HREF['/dashboard/workshop-advisor/additional-jobs-master'],
+        },
+        { href: '/dashboard/workshop-advisor/team-overview', ...BY_HREF['/dashboard/workshop-advisor/team-overview'] },
+        { href: '/dashboard/workshop-advisor/daily-report', ...BY_HREF['/dashboard/workshop-advisor/daily-report'] },
+        { href: '/dashboard/workshop-advisor/analytics', ...BY_HREF['/dashboard/workshop-advisor/analytics'] },
+        { href: '/dashboard/workshop-advisor/profile', ...BY_HREF['/dashboard/workshop-advisor/profile'] },
+      ],
+    },
+    {
+      heading: 'Help',
+      items: [
+        {
+          href: '/dashboard/workshop-advisor/readme',
+          title: 'ReadMe',
+          body: 'Yahi page — poori menu dictionary.',
+        },
+      ],
+    },
+  ];
+}
+
 export function getTelecallerReadme(): ReadmeSection[] {
   return [
     {

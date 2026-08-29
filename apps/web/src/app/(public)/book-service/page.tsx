@@ -16,6 +16,10 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { isPremiumLuxuryClass, PREMIUM_LUXURY_PRICING_MESSAGE } from '@/lib/vehicleClassPricing';
+import ConsentCheckboxes, {
+  requiredConsentsGranted,
+  type ConsentMap,
+} from '@/components/dpdp/ConsentCheckboxes';
 
 interface BookingFormData {
   city: any | null;
@@ -121,6 +125,8 @@ export default function BookServicePage() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [bookingConsent, setBookingConsent] = useState<ConsentMap>({});
+  const [consentError, setConsentError] = useState('');
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const steps = [
@@ -944,6 +950,12 @@ export default function BookServicePage() {
   };
 
   const sendOtpToWhatsApp = async () => {
+    if (!requiredConsentsGranted(bookingConsent, ['service'])) {
+      setConsentError('Please tick service delivery consent to continue.');
+      toast.error('Please accept service consent to send OTP');
+      return;
+    }
+    setConsentError('');
     if (!isValidIndianMobile(formData.customerPhone)) {
       toast.error('Please enter a valid Indian mobile number');
       return;
@@ -1284,6 +1296,20 @@ export default function BookServicePage() {
           }
         : undefined,
     };
+
+    void fetch('/api/public/dpdp/consent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'book-service',
+        subject_name: formData.customerName,
+        subject_phone: formData.customerPhone,
+        consents: [
+          { purpose: 'service', granted: Boolean(bookingConsent.service) },
+          { purpose: 'marketing', granted: Boolean(bookingConsent.marketing) },
+        ],
+      }),
+    }).catch(() => undefined);
 
     const response = await fetch('/api/public/bookings/create', {
       method: 'POST',
@@ -1629,7 +1655,7 @@ export default function BookServicePage() {
   const canProceed = currentStep === 0 
     ? formData.city !== null && formData.carModel !== null
     : currentStep === 1
-    ? isValidIndianMobile(formData.customerPhone) && otpVerified
+    ? isValidIndianMobile(formData.customerPhone) && otpVerified && requiredConsentsGranted(bookingConsent, ['service'])
     : currentStep === 2
     ? formData.selectedServices.length > 0
     : currentStep === 3
@@ -2242,11 +2268,22 @@ export default function BookServicePage() {
                       )}
                     </div>
 
+                    <ConsentCheckboxes
+                      value={bookingConsent}
+                      onChange={(next) => {
+                        setBookingConsent(next);
+                        setConsentError('');
+                      }}
+                      purposes={['service', 'marketing']}
+                      requiredPurposes={['service']}
+                      error={consentError}
+                    />
+
                     {!otpSent ? (
                       <button
                         type="button"
                         onClick={() => void sendOtpToWhatsApp()}
-                        disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading}
+                        disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading || !requiredConsentsGranted(bookingConsent, ['service'])}
                         className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {otpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

@@ -261,7 +261,7 @@ export async function POST(
       }
     }
 
-    const actionUrlAdmin = `/dashboard/workshop_supervisor/pickup-delivery`;
+    const actionUrlAdmin = `/dashboard/workshop-advisor/pickup-delivery`;
     const actionUrlPickupBoy = `/dashboard/workshop_pickup_boy/tasks/${leadId}`;
 
     if (deviationDetected) {

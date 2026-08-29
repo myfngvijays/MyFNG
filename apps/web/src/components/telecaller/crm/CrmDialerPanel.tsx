@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -23,6 +23,7 @@ import { requestClickToCall, normalizeClickToCallPhone } from '@/lib/telecaller/
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { formatDateTimeIST } from '@/lib/utils';
 import { CallRecordingCardRow } from '@/components/telecaller/CallRecordingPlayer';
+import { LeadBrainStrip } from '@/components/telecaller/crm/LeadBrainCard';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'] as const;
 
@@ -194,7 +195,7 @@ function buildDaySections(rows: HistoryRow[]): { title: string; data: HistoryRow
 
 export default function CrmDialerPanel() {
   const pathname = usePathname();
-  const { base } = getCrmDashboardBase(pathname);
+  const { base, isLeadManager } = getCrmDashboardBase(pathname);
   const [tab, setTab] = useState<DialerTab>('keypad');
   const [digits, setDigits] = useState('');
   const [calling, setCalling] = useState(false);
@@ -207,6 +208,7 @@ export default function CrmDialerPanel() {
   const [missedCount, setMissedCount] = useState(0);
   const [historyGroup, setHistoryGroup] = useState<ContactGroup | null>(null);
   const [digitBump, setDigitBump] = useState(0);
+  const dismissedSessionIds = useRef<Set<string>>(new Set());
 
   const display = useMemo(() => {
     const d = digits.replace(/\D/g, '');
@@ -395,9 +397,47 @@ export default function CrmDialerPanel() {
   }, [activeCall?.phase, activeCall?.answeredAt]);
 
   const dismissCall = useCallback(() => {
-    setActiveCall(null);
+    setActiveCall((prev) => {
+      if (prev?.sessionId) dismissedSessionIds.current.add(prev.sessionId);
+      return null;
+    });
     setElapsedSec(0);
   }, []);
+
+  useEffect(() => {
+    if (activeCall) return;
+    let cancelled = false;
+    const adopt = async () => {
+      try {
+        const res = await fetch('/api/telecaller/crm/dial-session?active=1', {
+          cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+        const s = json?.session;
+        if (cancelled || !res.ok || !s?.id) return;
+        const st = String(s.status || '').toUpperCase();
+        if (!['INITIATED', 'RINGING', 'ANSWERED'].includes(st)) return;
+        if (dismissedSessionIds.current.has(String(s.id))) return;
+        setActiveCall({
+          to: String(s.customer_phone || ''),
+          name: s.lead?.customer_name || null,
+          leadId: s.lead_id || s.lead?.id || null,
+          phase: st === 'ANSWERED' ? 'connected' : 'ringing',
+          sessionId: String(s.id),
+          answeredAt: s.answered_at ? new Date(s.answered_at).getTime() : null,
+        });
+        if (typeof s.elapsed_seconds === 'number') setElapsedSec(s.elapsed_seconds);
+      } catch {
+        /* ignore */
+      }
+    };
+    void adopt();
+    const id = setInterval(adopt, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [activeCall]);
 
   const append = useCallback(
     (ch: string) => {
@@ -960,6 +1000,11 @@ export default function CrmDialerPanel() {
                 {activeCall.name ? (
                   <p className="text-center font-mono text-sm text-slate-500">{activeCall.to}</p>
                 ) : null}
+                {isLeadManager && activeCall.leadId ? (
+                  <div className="mt-3">
+                    <LeadBrainStrip leadId={activeCall.leadId} />
+                  </div>
+                ) : null}
                 <div className="mt-5 space-y-2">
                   {activeCall.leadId ? (
                     <Link
@@ -1014,6 +1059,11 @@ export default function CrmDialerPanel() {
                 </p>
                 {activeCall.name ? (
                   <p className="text-center font-mono text-sm text-slate-500">{activeCall.to}</p>
+                ) : null}
+                {isLeadManager && activeCall.leadId ? (
+                  <div className="mt-3">
+                    <LeadBrainStrip leadId={activeCall.leadId} />
+                  </div>
                 ) : null}
                 <div className="mt-5 space-y-2">
                   {activeCall.leadId ? (

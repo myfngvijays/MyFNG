@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, Suspense, useRef, useMemo, type CSSProperties } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import MlScoreBadge from '@/components/telecaller/crm/MlScoreBadge';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
@@ -72,6 +73,7 @@ const BOOKING_COUPON_OPTIONS = [
 const LEADS_TABLE_COLUMNS = [
   { key: 'leadNumber', label: 'Lead #', onByDefault: false, locked: false },
   { key: 'status', label: 'Status', onByDefault: true, locked: false },
+  { key: 'mlScore', label: 'ML', onByDefault: true, locked: false },
   { key: 'customer', label: 'Customer', onByDefault: true, locked: false },
   { key: 'phone', label: 'Phone', onByDefault: true, locked: false },
   { key: 'message', label: 'Message', onByDefault: true, locked: false },
@@ -276,6 +278,7 @@ function TelecallerCrmLeadsContent() {
   const showCol = (key: LeadsColumnKey) => {
     if (key === 'assignee' && !isLeadManager) return false;
     if (key === 'source' && !isLeadManager) return false;
+    if (key === 'mlScore' && !isLeadManager) return false;
     return Boolean(visibleColumns[key]);
   };
 
@@ -291,6 +294,7 @@ function TelecallerCrmLeadsContent() {
   /** Tight widths for Status / Customer / Phone so badge ↔ name gap isn't huge. */
   const colWidthStyle = (key: LeadsColumnKey): CSSProperties => {
     if (key === 'status') return { width: '5.25rem', minWidth: '5.25rem', maxWidth: '5.75rem' };
+    if (key === 'mlScore') return { width: '3.5rem', minWidth: '3.25rem', maxWidth: '3.75rem' };
     if (key === 'phone') return { width: '6.75rem', minWidth: '6.5rem', maxWidth: '7.25rem' };
     if (key === 'customer') return { width: '8.25rem', minWidth: '7.5rem', maxWidth: '10rem' };
     return { width: dataColWidthPct };
@@ -927,7 +931,8 @@ function TelecallerCrmLeadsContent() {
                     <div className="max-h-72 space-y-0.5 overflow-y-auto">
                       {LEADS_TABLE_COLUMNS.filter(
                         (c) =>
-                          (c.key !== 'assignee' && c.key !== 'source') || isLeadManager,
+                          (c.key !== 'assignee' && c.key !== 'source' && c.key !== 'mlScore') ||
+                          isLeadManager,
                       ).map((col) => (
                         <label
                           key={col.key}
@@ -1508,6 +1513,11 @@ function TelecallerCrmLeadsContent() {
                           Status
                         </th>
                       ) : null}
+                      {showCol('mlScore') && isLeadManager ? (
+                        <th className="px-1.5 py-2 truncate" style={colWidthStyle('mlScore')}>
+                          ML
+                        </th>
+                      ) : null}
                       {showCol('customer') ? (
                         <th className="px-1.5 py-2 whitespace-normal" style={colWidthStyle('customer')}>
                           Customer
@@ -1634,6 +1644,15 @@ function TelecallerCrmLeadsContent() {
                               >
                                 {statusLabel}
                               </span>
+                            </td>
+                          ) : null}
+                          {showCol('mlScore') && isLeadManager ? (
+                            <td className="px-1.5 py-2" style={colWidthStyle('mlScore')}>
+                              <MlScoreBadge
+                                compact
+                                score={lead.ml_score?.conversion_score}
+                                temperature={lead.ml_score?.temperature}
+                              />
                             </td>
                           ) : null}
                           {showCol('customer') ? (
@@ -1826,6 +1845,13 @@ function TelecallerCrmLeadsContent() {
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {isLeadManager ? (
+                          <MlScoreBadge
+                            compact
+                            score={lead.ml_score?.conversion_score}
+                            temperature={lead.ml_score?.temperature}
+                          />
+                        ) : null}
                         <span
                           className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
                           style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}

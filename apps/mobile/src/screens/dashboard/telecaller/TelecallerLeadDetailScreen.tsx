@@ -24,6 +24,7 @@ import CarLoading from '../../../components/CarLoading';
 import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
+import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
 import { parseIds } from '../../../lib/parseIds';
 import {
   emptySecondCar,
@@ -420,6 +421,7 @@ export default function TelecallerLeadDetailScreen({
     showLeadIqProp === true ||
     (showLeadIqProp !== false &&
       (roleCode === 'LEAD_MANAGER' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN'));
+  const canSeeMlDl = showLeadIq;
 
   const [lead, setLead] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
@@ -2011,6 +2013,13 @@ export default function TelecallerLeadDetailScreen({
                 </Text>
               </View>
             </View>
+
+      {canSeeMlDl ? (
+        <LeadBrainCard
+          leadId={leadId}
+          onOpenSimilar={(id) => navigation?.navigate?.('TelecallerLeadDetail', { leadId: id })}
+        />
+      ) : null}
 
       {/* Quick Actions */}
       <View style={styles.quickActions}>

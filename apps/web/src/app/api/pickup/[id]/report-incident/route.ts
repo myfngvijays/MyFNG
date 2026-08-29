@@ -133,7 +133,7 @@ export async function POST(
           priority: priority as any,
           leadId,
           leadNumber,
-          actionUrl: `/dashboard/workshop_supervisor/pickup-delivery`,
+          actionUrl: `/dashboard/workshop-advisor/pickup-delivery`,
           metadata: {
             incident_id: incident.id,
             incident_type,

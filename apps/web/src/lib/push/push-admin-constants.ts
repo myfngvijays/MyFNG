@@ -5,7 +5,7 @@ export const PUSH_ROLE_OPTIONS = [
   { value: 'SUB_ADMIN', label: 'Sub Admin', description: 'Sub admin users' },
   { value: 'TELECALLER', label: 'Telecaller', description: 'Telecaller agents' },
   { value: 'WORKSHOP_ADMIN', label: 'Workshop Owner', description: 'Workshop owners/admins' },
-  { value: 'WORKSHOP_SUPERVISOR', label: 'Workshop Adviser', description: 'Workshop advisers' },
+  { value: 'WORKSHOP_SUPERVISOR', label: 'Workshop Advisor', description: 'Workshop advisors' },
   { value: 'WORKSHOP_MECHANIC', label: 'Workshop Mechanic', description: 'Workshop mechanics' },
   { value: 'WORKSHOP_PICKUP_BOY', label: 'Pickup Boy', description: 'Pickup/delivery drivers' },
   { value: 'LEAD_MANAGER', label: 'Lead Manager', description: 'Lead managers' },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assertCronAuth } from '@/lib/cron/assertCronAuth';
 import { syncSmartfloRecordings } from '@/lib/telecaller/smartfloCdr';
 import { sweepCallIqWorkflow } from '@/lib/telecaller/callIqWorkflow';
+import { scoreOpenLeads } from '@/lib/telecaller/leadMlScore';
 import {
   getSmartfloRecordingsCronSettings,
   markSmartfloRecordingsCronRun,
@@ -66,6 +67,13 @@ async function handle(req: NextRequest) {
       }))
     : { scanned: 0, ran: 0, skipped: 0 };
 
+  const mlSweep = result.ok
+    ? await scoreOpenLeads(25).catch((e) => ({
+        scored: 0,
+        warning: e?.message || 'ml sweep failed',
+      }))
+    : { scored: 0 };
+
   const summary = result.ok
     ? `fetched=${result.fetched} with_recording=${result.with_recording} matched=${result.matched} call_iq=${iqSweep.ran}`
     : result.error || 'sync failed';
@@ -81,6 +89,7 @@ async function handle(req: NextRequest) {
       interval_minutes: settings.interval_minutes,
       hours_back: hoursBack,
       call_iq_sweep: iqSweep,
+      ml_score_sweep: mlSweep,
       timestamp: new Date().toISOString(),
     },
     { status: result.ok ? 200 : 502 },

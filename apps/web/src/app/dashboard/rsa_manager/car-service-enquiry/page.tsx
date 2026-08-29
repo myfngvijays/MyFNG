@@ -88,7 +88,7 @@ export default function RSAManagerCarServiceEnquiryPage() {
 
   return (
     <DashboardLayout role="rsa_manager">
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="w-full min-w-0 max-w-7xl mx-auto">
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm sm:text-base font-bold text-text-heading">Create Car Service Enquiry</h2>

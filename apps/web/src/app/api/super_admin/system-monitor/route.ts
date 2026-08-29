@@ -1391,6 +1391,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/notifications?task=followup_reminder',
     '/api/cron/smartflo-recordings',
     '/api/cron/auto-dial-fresh-hours',
+    '/api/cron/crm-ml-dl',
   ];
 
   if (!cronSecret) {
@@ -2277,6 +2278,136 @@ async function checkCallIntelligence(): Promise<HealthCheck> {
   }
 }
 
+async function checkCrmMlDl(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return {
+        name: 'CRM ML + DL',
+        category: 'AI',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Admin DB client unavailable',
+        reason: 'Cannot verify telecaller_lead_scores / telecaller_call_dl.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const scoresProbe = await supabaseAdmin
+      .from('telecaller_lead_scores')
+      .select('lead_id', { count: 'exact', head: true })
+      .limit(1);
+    const dlProbe = await supabaseAdmin
+      .from('telecaller_call_dl')
+      .select('call_log_id', { count: 'exact', head: true })
+      .limit(1);
+    const embedProbe = await supabaseAdmin
+      .from('telecaller_lead_embeddings')
+      .select('lead_id', { count: 'exact', head: true })
+      .limit(1);
+
+    const missingRel = (err: { message?: string; code?: string } | null) =>
+      Boolean(
+        err &&
+          (/does not exist|schema cache|relation/i.test(err.message || '') ||
+            err.code === '42P01' ||
+            err.code === 'PGRST205'),
+      );
+
+    if (missingRel(scoresProbe.error) || missingRel(dlProbe.error) || missingRel(embedProbe.error)) {
+      return {
+        name: 'CRM ML + DL',
+        category: 'AI',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Migration pending: CRM ML + DL tables',
+        reason: 'Run database/354_crm_ml_dl_insights.sql so lead scores, voice transcripts, and similar-lead embeddings persist.',
+        lastChecked: new Date().toISOString(),
+        quickFix: {
+          label: 'Open telecaller leads',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/telecaller/leads' },
+        },
+        details: {
+          migration: 'database/354_crm_ml_dl_insights.sql',
+          scores: missingRel(scoresProbe.error) ? 'missing' : 'ok',
+          call_dl: missingRel(dlProbe.error) ? 'missing' : 'ok',
+          embeddings: missingRel(embedProbe.error) ? 'missing' : 'ok',
+        },
+      };
+    }
+
+    const openAiReady = Boolean(process.env.OPENAI_API_KEY?.trim());
+    const autoOn = String(process.env.CRM_DL_AUTO_TRANSCRIBE || '1').trim() !== '0';
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const recents = await supabaseAdmin
+      .from('telecaller_call_logs')
+      .select('id', { count: 'exact', head: true })
+      .not('call_recording_url', 'is', null)
+      .gte('call_duration', 20)
+      .not('lead_id', 'is', null)
+      .gte('created_at', since);
+
+    const dlRecent = await supabaseAdmin
+      .from('telecaller_call_dl')
+      .select('call_log_id', { count: 'exact', head: true })
+      .gte('processed_at', since)
+      .not('transcript', 'is', null);
+
+    const recordings48h = typeof recents.count === 'number' ? recents.count : 0;
+    const transcribed48h = typeof dlRecent.count === 'number' ? dlRecent.count : 0;
+    const overdue = Math.max(0, recordings48h - transcribed48h);
+
+    let status: 'healthy' | 'degraded' | 'down' = 'healthy';
+    let message = 'ML scores + DL voice pipeline ready';
+    let reason = `${typeof scoresProbe.count === 'number' ? scoresProbe.count : 0} lead scores. Cron /api/cron/crm-ml-dl every 10m.`;
+    if (!openAiReady) {
+      status = 'degraded';
+      message = 'ML scores work; DL voice needs OpenAI';
+      reason = 'OPENAI_API_KEY missing — conversion score still runs, Whisper/emotion/similar leads will not.';
+    } else if (autoOn && overdue >= 12) {
+      status = 'degraded';
+      message = 'DL transcripts falling behind';
+      reason = `${overdue} recordings (last 48h, ≥20s) without a stored transcript. Check cron /api/cron/crm-ml-dl and OpenAI quota.`;
+    }
+
+    return {
+      name: 'CRM ML + DL',
+      category: 'AI',
+      status,
+      responseTime: Date.now() - start,
+      message,
+      reason,
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'Open telecaller leads',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/telecaller/leads' },
+      },
+      details: {
+        migration: 'database/354_crm_ml_dl_insights.sql',
+        cron: '/api/cron/crm-ml-dl',
+        openai: openAiReady,
+        auto_transcribe: autoOn,
+        scores: scoresProbe.count ?? 0,
+        transcripts_48h: transcribed48h,
+        recordings_48h: recordings48h,
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'CRM ML + DL',
+      category: 'AI',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'CRM ML + DL check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function countActiveInstances(
   client: any,
   agentType: string,
@@ -2506,6 +2637,7 @@ function calculateHealthScore(checks: HealthCheck[]): number {
     'Third Party': 4,
     'Background Jobs': 4,
     Security: 3,
+    Compliance: 5,
   };
 
   let totalWeight = 0;
@@ -3034,6 +3166,61 @@ async function checkMcpRemote(): Promise<HealthCheck> {
   }
 }
 
+async function checkDpdpCompliance(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'DPDP consent & rights',
+      category: 'Compliance',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: configError || 'Cannot verify DPDP tables',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+  try {
+    const [consents, rights] = await Promise.all([
+      client.from('dpdp_consent_records').select('id', { count: 'exact', head: true }),
+      client.from('data_rights_requests').select('id', { count: 'exact', head: true }),
+    ]);
+    const responseTime = Date.now() - start;
+    if (consents.error || rights.error) {
+      return {
+        name: 'DPDP consent & rights',
+        category: 'Compliance',
+        status: 'down',
+        responseTime,
+        message: consents.error?.message || rights.error?.message || 'Tables missing',
+        reason: 'Run database/356_dpdp_consent_and_rights.sql so consent and data-rights requests persist.',
+        lastChecked: new Date().toISOString(),
+        quickFix: { label: 'Open Privacy Notice', action: 'internal-link', actionPayload: { href: '/privacy-notice' } },
+      };
+    }
+    return {
+      name: 'DPDP consent & rights',
+      category: 'Compliance',
+      status: 'healthy',
+      responseTime,
+      message: `Consent log ${consents.count || 0} · rights requests ${rights.count || 0}`,
+      reason: 'dpdp_consent_records and data_rights_requests are available.',
+      lastChecked: new Date().toISOString(),
+      details: { consents: consents.count || 0, rights: rights.count || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'DPDP consent & rights',
+      category: 'Compliance',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -3074,6 +3261,8 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkSmartfloRecordings(),
     checkSmartfloDialSessions(),
     checkCallIntelligence(),
+    checkCrmMlDl(),
+    checkDpdpCompliance(),
   ]);
 }
 

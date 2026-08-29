@@ -186,7 +186,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
           <div className="flex items-center gap-2">
             <h3 
               className="text-lg font-semibold text-text-heading hover:text-brand-primary cursor-pointer"
-              onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}`)}
+              onClick={() => router.push(`/dashboard/workshop-advisor/jobs/${job.id}`)}
             >
               {job.lead_number}
             </h3>
@@ -296,7 +296,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
       {/* Quick Actions */}
       <div className="flex items-center gap-2 pt-3 border-t border-gray-200">
         <button
-          onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}`)}
+          onClick={() => router.push(`/dashboard/workshop-advisor/jobs/${job.id}`)}
           className="btn btn-outline text-sm"
         >
           View Details
@@ -318,7 +318,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
         {/* QC Review Button - Show when status is COMPLETED or WORK_COMPLETED */}
         {(job.status === 'COMPLETED' || job.status === 'WORK_COMPLETED') && (
           <button
-            onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
+            onClick={() => router.push(`/dashboard/workshop-advisor/jobs/${job.id}/review`)}
             className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex items-center gap-2"
           >
             <Eye className="w-4 h-4" />
@@ -329,7 +329,7 @@ export default function JobCard({ job, onQuickAction }: JobCardProps) {
         {/* QC Review Button - Also show for QC_PENDING status */}
         {job.status === 'QC_PENDING' && job.qc_status === 'PENDING' && (
           <button
-            onClick={() => router.push(`/dashboard/workshop_supervisor/jobs/${job.id}/review`)}
+            onClick={() => router.push(`/dashboard/workshop-advisor/jobs/${job.id}/review`)}
             className="btn bg-purple-600 hover:bg-purple-700 text-white text-sm flex items-center gap-2"
           >
             <Eye className="w-4 h-4" />

@@ -121,7 +121,7 @@ export default function CustomerDashboard() {
   return (
     <DashboardLayout role="customer">
       <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6 mb-4 sm:mb-5 md:mb-6">
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg mb-4 sm:mb-5 md:mb-6">
           <h1 className="text-2xl sm:text-2.5xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">🚗 My Dashboard</h1>
           <p className="text-white font-medium text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Track your vehicle services</p>
         </div>

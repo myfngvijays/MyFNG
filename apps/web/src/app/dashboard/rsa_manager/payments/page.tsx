@@ -453,7 +453,7 @@ export default function RSAManagerPaymentsPage() {
 
   return (
     <DashboardLayout role="rsa_manager">
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
+      <div className="w-full min-w-0 max-w-7xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
         <div className="bg-gradient-to-r from-emerald-600 to-green-500 text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6">
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white drop-shadow-lg">Payment</h1>
           <p className="text-white/90 font-medium text-xs sm:text-sm md:text-base mt-1">

@@ -282,7 +282,7 @@ export async function POST(
           priority: 'MEDIUM',
           leadId,
           leadNumber,
-          actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+          actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`,
         });
       }
 

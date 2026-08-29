@@ -30,6 +30,12 @@ export function canCreateCrmBooking(role: unknown): boolean {
   return code === 'TELECALLER' || code === 'LEAD_MANAGER' || code === 'SUPER_ADMIN';
 }
 
+/** ML / DL Lead Brain — Lead Manager + admin only. Telecaller must not see scores. */
+export function canSeeCrmMlDl(role: unknown): boolean {
+  const code = normalizeRoleCode(role);
+  return code === 'LEAD_MANAGER' || code === 'SUPER_ADMIN' || code === 'SUB_ADMIN';
+}
+
 export type CrmDashboardBase = {
   base: '/dashboard/telecaller' | '/dashboard/lead_manager';
   layoutRole: 'telecaller' | 'lead_manager';

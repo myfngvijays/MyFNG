@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import {
+  getActiveDialSessionForTelecaller,
   getDialSession,
   publicDialSessionPayload,
   refreshDialSessionFromSmartflo,
+  resolveLeadForDialSession,
 } from '@/lib/telecaller/smartfloDialSessions';
 
 export const dynamic = 'force-dynamic';
@@ -12,8 +14,8 @@ export const runtime = 'nodejs';
 
 /**
  * GET /api/telecaller/crm/dial-session?id=<uuid>
- * Live Smartflo click-to-call status for dialer overlay (poll every ~2s).
- * Also refreshes from Smartflo live_calls so UI advances without webhooks.
+ * GET /api/telecaller/crm/dial-session?active=1
+ * Live Smartflo click-to-call status + lead (so telecaller knows who is ringing).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -36,26 +38,50 @@ export async function GET(request: NextRequest) {
     }
 
     const id = String(request.nextUrl.searchParams.get('id') || '').trim();
-    if (!id) {
-      return NextResponse.json({ error: 'id required' }, { status: 400 });
-    }
-
-    const row = await getDialSession(id);
-    if (!row) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-    }
-
+    const wantActive = request.nextUrl.searchParams.get('active') === '1';
     const profileId = String((profile as any)?.id || user.id || '');
     const isAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN' || roleCode === 'LEAD_MANAGER';
+
+    if (!id && !wantActive) {
+      return NextResponse.json({ error: 'id or active=1 required' }, { status: 400 });
+    }
+
+    let row = id ? await getDialSession(id) : null;
+    if (!row && wantActive && profileId) {
+      row = await getActiveDialSessionForTelecaller(profileId);
+    }
+    if (!row) {
+      if (id && !wantActive) {
+        return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, session: null });
+    }
+
     if (!isAdmin && row.telecaller_id && row.telecaller_id !== profileId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const fresh = await refreshDialSessionFromSmartflo(row);
+    const lead = await resolveLeadForDialSession(fresh);
+    if (lead?.id && !fresh.lead_id) {
+      try {
+        const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+        const { supabaseAdmin } = getSupabaseAdmin();
+        if (supabaseAdmin) {
+          await supabaseAdmin
+            .from('smartflo_dial_sessions')
+            .update({ lead_id: lead.id, updated_at: new Date().toISOString() })
+            .eq('id', fresh.id);
+          fresh.lead_id = lead.id;
+        }
+      } catch {
+        /* non-blocking */
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      session: publicDialSessionPayload(fresh),
+      session: publicDialSessionPayload(fresh, lead),
     });
   } catch (e: any) {
     return NextResponse.json(

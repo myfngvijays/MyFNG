@@ -104,6 +104,7 @@ const categoryIcons: Record<string, any> = {
   'Third Party': Globe,
   'Background Jobs': Clock,
   Security: Lock,
+  Compliance: Shield,
 };
 
 const statusConfig = {

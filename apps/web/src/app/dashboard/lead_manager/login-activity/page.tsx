@@ -75,7 +75,7 @@ export default function LeadManagerLoginActivityPage() {
 
   return (
     <DashboardLayout role="LEAD_MANAGER">
-      <div className="mx-auto max-w-6xl space-y-4 px-4 py-6 sm:px-6">
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-black text-[#023D95]">

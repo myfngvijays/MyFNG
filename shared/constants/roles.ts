@@ -36,7 +36,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.AUDITOR]: 'Auditor',
   [UserRole.ACCOUNTS_TEAM]: 'Accounts Team',
   [UserRole.WORKSHOP_ADMIN]: 'Workshop Owner',
-  [UserRole.WORKSHOP_SUPERVISOR]: 'Workshop Adviser',
+  [UserRole.WORKSHOP_SUPERVISOR]: 'Workshop Advisor',
   [UserRole.WORKSHOP_MECHANIC]: 'Workshop Mechanic',
   [UserRole.WORKSHOP_PICKUP_BOY]: 'Pickupboy/Driver',
   [UserRole.COMPANY_MECHANIC_RSA]: 'Company Mechanic (RSA)',

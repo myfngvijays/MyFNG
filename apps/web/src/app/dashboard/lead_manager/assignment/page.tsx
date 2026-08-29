@@ -257,7 +257,7 @@ function LeadManagerLeadsContent() {
 
   return (
     <DashboardLayout role="lead_manager">
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="w-full min-w-0 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-4 sm:mb-5 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">

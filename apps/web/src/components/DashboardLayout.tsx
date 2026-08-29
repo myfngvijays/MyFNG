@@ -54,6 +54,8 @@ import NotificationBell from '@/components/NotificationBell';
 import ReminderHeaderIcon from '@/components/ReminderHeaderIcon';
 import WhatsAppWebWorkspace from '@/components/shared/WhatsAppWebWorkspace';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
+import { dashboardRolesMatch, getRoleDashboardHome } from '@/lib/dashboard/roleHome';
+import IncomingClickToCallBanner from '@/components/telecaller/crm/IncomingClickToCallBanner';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 const AANSH_OPTIONAL_SKIP_KEY = 'myfng:aansh_optional_skip';
@@ -122,6 +124,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
   const role = String(
     roleProp || (userProfile as any)?.role?.role_code || '',
   ).trim();
+  const isAdvisor = role.toUpperCase() === 'WORKSHOP_SUPERVISOR';
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     // Mobile: open/close. Default closed on small screens, open on lg+.
     try {
@@ -130,11 +133,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       return true;
     }
   });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    // Desktop: start collapsed and expand on hover.
-    return true;
-  });
-  const [loading, setLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [loading, setLoading] = useState(() => !useAuthStore.getState().userProfile);
 
   const eligibleForAansh = role && ['TELECALLER', 'RSA_MANAGER', 'LEAD_MANAGER'].includes(role.toUpperCase());
   const [aanshAvailable, setAanshAvailable] = useState<{ aansh_id: number; system_name: string | null }[]>([]);
@@ -200,6 +200,22 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
     // Leads / other pages must not stay hidden under WhatsApp overlay
     setWaWorkspaceOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (String(role || '').toUpperCase() !== 'WORKSHOP_SUPERVISOR') return;
+    [
+      '/dashboard/workshop-advisor',
+      '/dashboard/workshop-advisor/pending-leads',
+      '/dashboard/workshop-advisor/day-planning',
+      '/dashboard/workshop-advisor/jobs',
+      '/dashboard/workshop-advisor/qc-queue',
+      '/dashboard/workshop-advisor/extra-work',
+      '/dashboard/workshop-advisor/pickup-delivery',
+      '/dashboard/workshop-advisor/team-overview',
+      '/dashboard/workshop-advisor/profile',
+      '/dashboard/workshop-advisor/readme',
+    ].forEach((href) => router.prefetch(href));
+  }, [role, router]);
 
   useEffect(() => {
     const onResize = () => {
@@ -646,11 +662,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           if (
             !superAdminOverride &&
             !retiredAppOpsAsLeadManager &&
-            normalizedUserRole !== normalizedRole &&
+            !dashboardRolesMatch(roleProp, roleCode) &&
             normalizedRole !== 'sub_admin' &&
             normalizedRole !== 'subadmin'
           ) {
-            router.push(`/dashboard/${String(roleCode).toLowerCase()}`);
+            router.push(getRoleDashboardHome(roleCode));
           }
         }
       } else {
@@ -842,19 +858,20 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/workshop_admin/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
       ],
       'WORKSHOP_SUPERVISOR': [
-        { href: '/dashboard/workshop_supervisor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-        { href: '/dashboard/workshop_supervisor/chat', icon: <MessageSquare className="w-5 h-5" />, label: 'Chat' },
-        { href: '/dashboard/workshop_supervisor/pending-leads', icon: <Clock className="w-5 h-5" />, label: 'Pending Lead Approval' },
-        { href: '/dashboard/workshop_supervisor/day-planning', icon: <Calendar className="w-5 h-5" />, label: 'Day Planning' },
-        { href: '/dashboard/workshop_supervisor/jobs', icon: <Wrench className="w-5 h-5" />, label: 'Manage Jobs' },
-        { href: '/dashboard/workshop_supervisor/qc-queue', icon: <CheckCircle className="w-5 h-5" />, label: 'QC Queue' },
-        { href: '/dashboard/workshop_supervisor/extra-work', icon: <DollarSign className="w-5 h-5" />, label: 'Additional Jobs Approval' },
-        { href: '/dashboard/workshop_supervisor/pickup-delivery', icon: <Truck className="w-5 h-5" />, label: 'Pickup & Delivery' },
-        { href: '/dashboard/workshop_supervisor/additional-jobs-master', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Additional Jobs Master' },
-        { href: '/dashboard/workshop_supervisor/team-overview', icon: <Users className="w-5 h-5" />, label: 'Team Overview' },
-        { href: '/dashboard/workshop_supervisor/daily-report', icon: <FileText className="w-5 h-5" />, label: 'Daily Report' },
-        { href: '/dashboard/workshop_supervisor/analytics', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics' },
-        { href: '/dashboard/workshop_supervisor/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+        { href: '/dashboard/workshop-advisor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/workshop-advisor/chat', icon: <MessageSquare className="w-5 h-5" />, label: 'Chat' },
+        { href: '/dashboard/workshop-advisor/pending-leads', icon: <Clock className="w-5 h-5" />, label: 'Lead Approval' },
+        { href: '/dashboard/workshop-advisor/day-planning', icon: <Calendar className="w-5 h-5" />, label: 'Day Planning' },
+        { href: '/dashboard/workshop-advisor/jobs', icon: <Wrench className="w-5 h-5" />, label: 'Jobs' },
+        { href: '/dashboard/workshop-advisor/qc-queue', icon: <CheckCircle className="w-5 h-5" />, label: 'QC Queue' },
+        { href: '/dashboard/workshop-advisor/extra-work', icon: <DollarSign className="w-5 h-5" />, label: 'Extra Jobs' },
+        { href: '/dashboard/workshop-advisor/pickup-delivery', icon: <Truck className="w-5 h-5" />, label: 'Pickup' },
+        { href: '/dashboard/workshop-advisor/additional-jobs-master', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Jobs Master' },
+        { href: '/dashboard/workshop-advisor/team-overview', icon: <Users className="w-5 h-5" />, label: 'Team' },
+        { href: '/dashboard/workshop-advisor/daily-report', icon: <FileText className="w-5 h-5" />, label: 'Daily Report' },
+        { href: '/dashboard/workshop-advisor/analytics', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics' },
+        { href: '/dashboard/workshop-advisor/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
+        { href: '/dashboard/workshop-advisor/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
       ],
       'WORKSHOP_MECHANIC': [
         { href: '/dashboard/workshop_mechanic', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -1110,7 +1127,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
               {sidebarOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
 
-            <Link href={`/dashboard/${String(role || 'lead_manager').toLowerCase()}`} className="flex items-center min-w-0">
+            <Link href={getRoleDashboardHome(role || 'lead_manager')} className="flex items-center min-w-0">
               <img
                 src="/logo.png"
                 alt="MyFNG"
@@ -1134,9 +1151,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             <NotificationBell />
             
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <div className="text-right hidden md:block">
-                <p className="font-medium text-xs sm:text-sm truncate max-w-[120px]">{userProfile?.full_name}</p>
-                <p className="text-xs text-gray-500 truncate max-w-[120px]">{userProfile?.role?.role_name}</p>
+              <div className="text-right hidden md:block min-w-0">
+                <p className="font-medium text-xs sm:text-sm truncate max-w-[120px] lg:max-w-[160px]">{userProfile?.full_name}</p>
+                <p className="text-xs text-gray-500 truncate max-w-[120px] lg:max-w-[160px]">
+                  {isAdvisor ? 'Workshop Advisor' : userProfile?.role?.role_name}
+                </p>
               </div>
               
               <button
@@ -1155,7 +1174,6 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       {/* Sidebar — overlay on mobile/WebView; docked on lg+ */}
       <aside
         onMouseEnter={() => {
-          // Keep icon-rail while WhatsApp is open so the inbox isn't covered by expanded labels
           if (waWorkspaceOpen) return;
           if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(false);
         }}
@@ -1205,7 +1223,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                       title={sidebarCollapsed ? item.label : undefined}
                     >
                       <span className="flex-shrink-0">{item.icon}</span>
-                      <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>{item.label}</span>
+                      <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} min-w-0 leading-snug break-words`}>{item.label}</span>
                     </div>
                     <div className={`${sidebarCollapsed ? 'lg:hidden' : ''} ml-4 sm:ml-5 space-y-1`}>
                       {item.children.map((child) => (
@@ -1256,7 +1274,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                     }`}
                   >
                     <span className="flex-shrink-0">{item.icon}</span>
-                    <span className={`${waWorkspaceOpen || sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>
+                    <span className={`${waWorkspaceOpen || sidebarCollapsed ? 'lg:hidden' : ''} min-w-0 leading-snug break-words`}>
                       {item.label}
                     </span>
                     {waUnreadCount > 0 ? (
@@ -1305,12 +1323,12 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         </div>
       </aside>
 
-      {/* Main Content — fixed icon-rail margin on desktop; expanded labels overlay (no content shift) */}
+      {/* Main: padding (not margin) so width:100% is not clipped on the right */}
       <main
-        className="admin-main ml-0 lg:ml-20 min-h-[100dvh] pb-[env(safe-area-inset-bottom)]"
+        className="admin-main min-h-[100dvh] w-full max-w-full pb-[env(safe-area-inset-bottom)] lg:pl-20"
         style={{ paddingTop: headerHeightPx }}
       >
-        <div className="admin-page">{children}</div>
+        <div className="admin-page dashboard-page">{children}</div>
       </main>
 
       {/* Overlay */}
@@ -1415,6 +1433,10 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           />
         </>
       ) : null}
+
+      {['TELECALLER', 'LEAD_MANAGER'].includes(role.toUpperCase()) ? (
+        <IncomingClickToCallBanner />
+      ) : null}
     </div>
   );
 }
@@ -1449,7 +1471,7 @@ function NavLink({
       } ${collapsed ? 'lg:justify-center lg:px-0' : ''}`}
     >
       <span className="flex-shrink-0">{icon}</span>
-      <span className={`${collapsed ? 'lg:hidden' : ''} truncate`}>{children}</span>
+      <span className={`${collapsed ? 'lg:hidden' : ''} min-w-0 leading-snug break-words`}>{children}</span>
     </Link>
   );
 }

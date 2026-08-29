@@ -71,6 +71,7 @@ import JobMonitoringScreen from '../screens/dashboard/workshop_supervisor/JobMon
 import JobDetailScreen from '../screens/dashboard/workshop_supervisor/JobDetailScreen';
 import MechanicAssignmentScreen from '../screens/dashboard/workshop_supervisor/MechanicAssignmentScreen';
 import SupervisorMenuScreen from '../screens/dashboard/workshop_supervisor/SupervisorMenuScreen';
+import AdvisorReadMeScreen from '../screens/dashboard/workshop_supervisor/AdvisorReadMeScreen';
 
 // CSE screens
 import ComplaintsManagementScreen from '../screens/dashboard/cse/ComplaintsManagementScreen';
@@ -174,6 +175,7 @@ interface DashboardNavigatorProps {
 }
 
 export default function DashboardNavigator({ userProfile, onLogout, navigation }: DashboardNavigatorProps) {
+  const crmStackRef = React.useRef<any>(null);
   // ✅ FIX: Extract role code from various possible locations
   const roleCode = 
     userProfile?.role?.role_code ||  // From database join (roles!role_id)
@@ -241,8 +243,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
 
   // Telecaller Navigation
   if (roleCode === 'TELECALLER') {
+    const IncomingCallLeadOverlay =
+      require('../components/telecaller/IncomingCallLeadOverlay').default;
     return (
-      <Stack.Navigator screenOptions={screenOptions}>
+      <View style={{ flex: 1 }}>
+      <Stack.Navigator ref={crmStackRef} screenOptions={screenOptions}>
         <Stack.Screen
           name="TelecallerDashboard"
           component={TelecallerAdvancedCRM}
@@ -344,14 +349,22 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           options={{ title: 'Dialer', headerShown: false }}
         />
       </Stack.Navigator>
+      <IncomingCallLeadOverlay
+        leadScreen="TelecallerLeadDetail"
+        onOpenLead={(leadId) => crmStackRef.current?.navigate('TelecallerLeadDetail', { leadId })}
+      />
+      </View>
     );
   }
 
   // Lead Manager Navigation — CRM shell + ops screens
   if (roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
     const TelecallerAdvancedCRM = require('../screens/dashboard/telecaller_crm/TelecallerAdvancedCRM').default;
+    const IncomingCallLeadOverlay =
+      require('../components/telecaller/IncomingCallLeadOverlay').default;
     return (
-      <Stack.Navigator screenOptions={screenOptions}>
+      <View style={{ flex: 1 }}>
+      <Stack.Navigator ref={crmStackRef} screenOptions={screenOptions}>
         <Stack.Screen
           name="LeadManagerAdvancedCRM"
           component={TelecallerAdvancedCRM}
@@ -548,6 +561,12 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           options={{ title: 'Notifications' }}
         />
       </Stack.Navigator>
+      <IncomingCallLeadOverlay
+        leadScreen="TelecallerLeadDetail"
+        showMlInsights
+        onOpenLead={(leadId) => crmStackRef.current?.navigate('TelecallerLeadDetail', { leadId })}
+      />
+      </View>
     );
   }
 
@@ -816,7 +835,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         <Stack.Screen 
           name="WorkshopSupervisorDashboard" 
           component={WorkshopSupervisorDashboard}
-          options={{ title: 'Supervisor Dashboard' }}
+          options={{ title: 'Workshop Advisor' }}
         />
         <Stack.Screen 
           name="SupervisorMenu" 
@@ -892,6 +911,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="SupervisorProfile" 
           component={SupervisorProfileScreen}
           options={{ title: 'My Profile' }}
+        />
+        <Stack.Screen
+          name="AdvisorReadMe"
+          component={AdvisorReadMeScreen}
+          options={{ title: 'ReadMe' }}
         />
         <Stack.Screen
           name="SupervisorAdditionalJobsMaster"

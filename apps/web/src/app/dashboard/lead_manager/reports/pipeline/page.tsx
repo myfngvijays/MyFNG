@@ -139,7 +139,7 @@ export default function LeadManagerPipelineReportsPage() {
 
   return (
     <DashboardLayout role="lead_manager">
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="w-full min-w-0 max-w-7xl mx-auto">
         {/* Header */}
         <div className="bg-[#023D95] text-white p-4 sm:p-5 md:p-6 rounded-2xl shadow-lg mb-4 sm:mb-5 md:mb-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">

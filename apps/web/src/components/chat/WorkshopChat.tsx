@@ -141,25 +141,22 @@ export default function WorkshopChat() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Workshop Chat</h1>
-          <p className="text-sm text-gray-600">
-            Guided steps + buttons. Active lead: <span className="font-medium">{session.activeLeadId || '—'}</span>
-          </p>
-        </div>
+    <div className="flex min-w-0 w-full max-w-full flex-col">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-sm text-slate-600">
+          Active lead: <span className="font-semibold text-slate-900">{session.activeLeadId || '—'}</span>
+        </p>
         <button
           onClick={onReset}
-          className="px-3 py-2 rounded-lg text-sm bg-gray-100 hover:bg-gray-200 text-gray-800"
+          className="inline-flex min-h-10 shrink-0 items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           type="button"
         >
           Reset
         </button>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-        <div className="h-[520px] overflow-y-auto p-4 space-y-3">
+      <div className="flex min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm h-[min(calc(100dvh-13.5rem),720px)] sm:h-[min(calc(100dvh-12rem),720px)]">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
           {messages.map((m) => (
             <div key={m.id} className={m.from === 'user' ? 'flex justify-end' : 'flex justify-start'}>
               <div
@@ -185,13 +182,13 @@ export default function WorkshopChat() {
         </div>
 
         {buttons.length > 0 && (
-          <div className="border-t border-gray-200 p-3 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 border-t border-gray-200 p-3">
             {buttons.map((b) => (
               <button
                 key={b.id}
                 type="button"
                 onClick={() => onButton(b)}
-                className={`px-3 py-2 rounded-lg text-sm transition ${btnClass(b.variant)}`}
+                className={`min-h-11 rounded-xl px-3 py-2 text-sm transition ${btnClass(b.variant)}`}
               >
                 {b.label}
               </button>
@@ -199,7 +196,7 @@ export default function WorkshopChat() {
           </div>
         )}
 
-        <div className="border-t border-gray-200 p-3 flex gap-2">
+        <div className="flex gap-2 border-t border-gray-200 p-3">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -207,13 +204,13 @@ export default function WorkshopChat() {
               if (e.key === 'Enter') onSend();
             }}
             placeholder="Type here (reason/notes/search)..."
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+            className="min-h-11 min-w-0 flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
             disabled={loading}
           />
           <button
             onClick={onSend}
             disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+            className="min-h-11 shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             type="button"
           >
             Send

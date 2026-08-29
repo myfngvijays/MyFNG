@@ -10,6 +10,7 @@ import {
   redactLeadSourceForTelecaller,
 } from '@/lib/telecaller/redactLeadSource';
 import {
+  canSeeCrmMlDl,
   crmSeesAllLeads,
   isTelecallerCrmRole,
   normalizeRoleCode,
@@ -391,9 +392,38 @@ export async function GET(request: NextRequest) {
     const filteredTotal = bookingFilterOn ? scoped.length : typeof count === 'number' ? count : scoped.length;
     const paged = bookingFilterOn ? scoped.slice(rangeFrom, rangeFrom + pageSize) : scoped;
 
+    const scoreByLead = new Map<
+      string,
+      { conversion_score: number; temperature: string; ghost_risk: number; best_call_label: string | null }
+    >();
+    try {
+      const scoreIds = canSeeCrmMlDl(roleCode) ? paged.map((r: any) => r.id).filter(Boolean) : [];
+      if (scoreIds.length) {
+        const { data: scoreRows } = await db
+          .from('telecaller_lead_scores')
+          .select('lead_id, conversion_score, temperature, ghost_risk, best_call_label')
+          .in('lead_id', scoreIds);
+        for (const row of scoreRows || []) {
+          scoreByLead.set(String(row.lead_id), {
+            conversion_score: Number(row.conversion_score) || 0,
+            temperature: String(row.temperature || 'warm'),
+            ghost_risk: Number(row.ghost_risk) || 0,
+            best_call_label: row.best_call_label || null,
+          });
+        }
+      }
+    } catch {
+      /* table may be missing until 354 */
+    }
+
+    const leadsWithScores = paged.map((row: any) => {
+      const ml = scoreByLead.get(String(row.id));
+      return ml ? { ...row, ml_score: ml } : row;
+    });
+
     return NextResponse.json({
       success: true,
-      leads: paged,
+      leads: leadsWithScores,
       total: filteredTotal,
       page,
       page_size: pageSize,

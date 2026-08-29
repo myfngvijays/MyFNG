@@ -24,7 +24,7 @@ const AVAILABLE_ROLES = [
   { code: 'LEAD_MANAGER', name: 'Lead Manager', icon: 'account-tie', color: COLORS.purple },
   { code: 'TELECALLER', name: 'Telecaller', icon: 'phone', color: COLORS.blue },
   { code: 'WORKSHOP_ADMIN', name: 'Workshop Owner', icon: 'store', color: COLORS.orange },
-  { code: 'WORKSHOP_SUPERVISOR', name: 'Workshop Adviser', icon: 'account-supervisor', color: COLORS.indigo },
+  { code: 'WORKSHOP_SUPERVISOR', name: 'Workshop Advisor', icon: 'account-supervisor', color: COLORS.indigo },
   { code: 'WORKSHOP_MECHANIC', name: 'Workshop Mechanic', icon: 'wrench', color: COLORS.teal },
   { code: 'WORKSHOP_PICKUP_BOY', name: 'Pickupboy/Driver', icon: 'car-pickup', color: COLORS.green },
   { code: 'RSA_MANAGER', name: 'RSA Manager', icon: 'car-emergency', color: COLORS.red },
@@ -46,6 +46,7 @@ export default function UserRoleManagementScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('active');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -341,6 +342,12 @@ export default function UserRoleManagementScreen({ navigation }: any) {
     );
   };
 
+  const visibleUsers = users.filter((u) => {
+    if (filterStatus === 'active') return !!u.is_active;
+    if (filterStatus === 'inactive') return !u.is_active;
+    return true;
+  });
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -384,7 +391,10 @@ export default function UserRoleManagementScreen({ navigation }: any) {
       >
         <TouchableOpacity
           style={[styles.filterChip, filterRole === 'all' && styles.filterChipActive]}
-          onPress={() => setFilterRole('all')}
+          onPress={() => {
+            setFilterRole('all');
+            setFilterStatus('active');
+          }}
         >
           <Text style={[styles.filterChipText, filterRole === 'all' && styles.filterChipTextActive]}>
             All Roles
@@ -395,7 +405,10 @@ export default function UserRoleManagementScreen({ navigation }: any) {
           <TouchableOpacity
             key={role.code}
             style={[styles.filterChip, filterRole === role.code && styles.filterChipActive]}
-            onPress={() => setFilterRole(role.code)}
+            onPress={() => {
+              setFilterRole(role.code);
+              setFilterStatus('active');
+            }}
           >
             <Icon
               name={role.icon}
@@ -412,14 +425,46 @@ export default function UserRoleManagementScreen({ navigation }: any) {
         ))}
       </ScrollView>
 
-      {/* Count */}
+      {/* Count + status radios */}
       <View style={styles.countBar}>
-        <Text style={styles.countText}>{users.length} user(s) found</Text>
+        <Text style={styles.countText}>
+          {visibleUsers.length} of {users.length} user(s)
+        </Text>
+        <View style={styles.statusToggleRow}>
+          {([
+            { key: 'all', label: 'All' },
+            { key: 'active', label: 'Active' },
+            { key: 'inactive', label: 'Inactive' },
+          ] as const).map((opt) => (
+            <TouchableOpacity
+              key={opt.key}
+              onPress={() => setFilterStatus(opt.key)}
+              style={styles.statusRadioItem}
+              hitSlop={8}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: filterStatus === opt.key }}
+            >
+              <View style={[styles.statusRadioOuter, filterStatus === opt.key && styles.statusRadioOuterOn]}>
+                {filterStatus === opt.key ? <View style={styles.statusRadioInner} /> : null}
+              </View>
+              <Text
+                style={[
+                  styles.statusLabel,
+                  filterStatus === opt.key && opt.key === 'all' && styles.statusLabelAll,
+                  filterStatus === opt.key && opt.key === 'active' && styles.statusLabelActive,
+                  filterStatus === opt.key && opt.key === 'inactive' && styles.statusLabelInactive,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {/* Users List */}
       <FlatList
-        data={users}
+        data={visibleUsers}
         renderItem={renderUserCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -686,10 +731,57 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     backgroundColor: '#fff',
     marginTop: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   countText: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    flexShrink: 1,
+  },
+  statusToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  statusRadioItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statusRadioOuter: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: '#9CA3AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusRadioOuterOn: {
+    borderColor: '#2563EB',
+  },
+  statusRadioInner: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#2563EB',
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  statusLabelAll: {
+    color: '#1F2937',
+  },
+  statusLabelActive: {
+    color: '#059669',
+  },
+  statusLabelInactive: {
+    color: '#DC2626',
   },
   listContent: {
     padding: SPACING.md,

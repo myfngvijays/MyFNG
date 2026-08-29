@@ -258,9 +258,9 @@ export default function RSAMechanicsPage() {
 
   return (
     <DashboardLayout role="rsa_manager">
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="w-full min-w-0 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6 mb-6 sm:mb-7 md:mb-8">
+        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg mb-6 sm:mb-7 md:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white drop-shadow-lg">Company Mechanics</h1>

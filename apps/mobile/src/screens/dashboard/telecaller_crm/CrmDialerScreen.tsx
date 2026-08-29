@@ -19,8 +19,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { apiFetch } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
+import { LeadBrainStrip } from '../../../components/telecaller/LeadBrainCard';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'] as const;
 type Tab = 'keypad' | 'recents' | 'missed';
@@ -215,6 +217,10 @@ function buildDaySections(rows: HistoryRow[]): { title: string; data: HistoryRow
 export default function CrmDialerScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { role } = useAuth();
+  const canSeeMlDl = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+    String(role || '').toUpperCase(),
+  );
   const leadDetailScreen = 'TelecallerLeadDetail';
   const [tab, setTab] = useState<Tab>('keypad');
   const [digits, setDigits] = useState('');
@@ -229,6 +235,7 @@ export default function CrmDialerScreen() {
   const [historyGroup, setHistoryGroup] = useState<ContactGroup | null>(null);
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const pulse = useRef(new Animated.Value(1)).current;
+  const dismissedSessionIds = useRef<Set<string>>(new Set());
 
   const display = useMemo(() => {
     const d = digits.replace(/\D/g, '');
@@ -370,9 +377,44 @@ export default function CrmDialerScreen() {
   }, [activeCall?.phase, activeCall?.answeredAt]);
 
   const dismissCall = useCallback(() => {
-    setActiveCall(null);
+    setActiveCall((prev) => {
+      if (prev?.sessionId) dismissedSessionIds.current.add(prev.sessionId);
+      return null;
+    });
     setElapsedSec(0);
   }, []);
+
+  useEffect(() => {
+    if (activeCall) return;
+    let cancelled = false;
+    const adopt = async () => {
+      try {
+        const data = await apiFetch<any>('/api/telecaller/crm/dial-session?active=1');
+        const s = data?.session;
+        if (cancelled || !s?.id) return;
+        const st = String(s.status || '').toUpperCase();
+        if (!['INITIATED', 'RINGING', 'ANSWERED'].includes(st)) return;
+        if (dismissedSessionIds.current.has(String(s.id))) return;
+        setActiveCall({
+          to: String(s.customer_phone || ''),
+          name: s.lead?.customer_name || null,
+          leadId: s.lead_id || s.lead?.id || null,
+          phase: st === 'ANSWERED' ? 'connected' : 'ringing',
+          sessionId: String(s.id),
+          answeredAt: s.answered_at ? new Date(s.answered_at).getTime() : null,
+        });
+        if (typeof s.elapsed_seconds === 'number') setElapsedSec(s.elapsed_seconds);
+      } catch {
+        /* ignore */
+      }
+    };
+    void adopt();
+    const id = setInterval(adopt, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [activeCall]);
 
   const loadHistory = useCallback(async () => {
     if (tab === 'keypad') return;
@@ -1037,6 +1079,7 @@ export default function CrmDialerScreen() {
                 {activeCall.name ? (
                   <Text style={styles.ringPhone}>{activeCall.to}</Text>
                 ) : null}
+                {canSeeMlDl && activeCall.leadId ? <LeadBrainStrip leadId={activeCall.leadId} /> : null}
                 <View style={styles.ringActions}>
                   {activeCall.leadId ? (
                     <TouchableOpacity
@@ -1072,6 +1115,7 @@ export default function CrmDialerScreen() {
                 {activeCall.name ? (
                   <Text style={styles.ringPhone}>{activeCall.to}</Text>
                 ) : null}
+                {canSeeMlDl && activeCall.leadId ? <LeadBrainStrip leadId={activeCall.leadId} /> : null}
                 <View style={styles.ringActions}>
                   {activeCall.leadId ? (
                     <TouchableOpacity

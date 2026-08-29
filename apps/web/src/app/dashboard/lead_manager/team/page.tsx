@@ -213,7 +213,7 @@ export default function LeadManagerTeamPage() {
 
   return (
     <DashboardLayout role="lead_manager">
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-4">
+      <div className="w-full min-w-0 max-w-5xl mx-auto space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-extrabold text-[#023D95] flex items-center gap-2">

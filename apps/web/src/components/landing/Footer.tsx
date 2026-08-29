@@ -163,6 +163,8 @@ export default function Footer() {
                   { href: '/blogs', label: 'Our Blogs' },
                   { href: '/contact-us', label: 'Contact Us' },
                   { href: '/privacy-policy', label: 'Privacy Policy' },
+                  { href: '/privacy-notice', label: 'Privacy Notice (DPDP)' },
+                  { href: '/data-rights', label: 'Data Rights' },
                   { href: '/terms-and-conditions', label: 'Terms & Conditions' },
                   { href: '/workshop-locator', label: 'Workshop Locator' },
                   { href: '/car-loan', label: 'Car Loan' },
@@ -421,7 +423,23 @@ export default function Footer() {
           </div>
 
           {/* Copyright */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-5 border-t border-white/[0.08] mt-5 text-[11px] text-[#aaa]">
+          <div className="py-4 border-t border-white/[0.08] mt-5 text-[11px] text-white/90 space-y-1">
+            <p className="font-semibold text-white">Grievance &amp; Data Protection Officer</p>
+            <p>
+              Nitish Jha ·{' '}
+              <a className="underline hover:text-white" href="mailto:cs-reply@myfng.in">
+                cs-reply@myfng.in
+              </a>
+              {' · '}
+              <a className="underline hover:text-white" href="tel:+919152307030">
+                +91-9152307030
+              </a>
+            </p>
+            <p className="text-white/75">
+              A/309, Centrum Business Square, Road No. 16, Wagle Industrial Estate, Thane (West), Maharashtra 400604
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-5 border-t border-white/[0.08] text-[11px] text-[#aaa]">
             <span>© {new Date().getFullYear()} My FNG Autocare Private Limited. All Rights Reserved.</span>
             <a
               href="/login"

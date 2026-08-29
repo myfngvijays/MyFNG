@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { apiFetch } from '../../../lib/api';
+import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
 
@@ -579,6 +580,11 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
             <Text style={styles.quickActionText}>Escalate</Text>
           </TouchableOpacity>
         </View>
+
+        <LeadBrainCard
+          leadId={leadId}
+          onOpenSimilar={(id) => navigation.navigate('LeadManagerLeadDetail', { leadId: id })}
+        />
 
         {/* Customer Section */}
         <View style={styles.section}>

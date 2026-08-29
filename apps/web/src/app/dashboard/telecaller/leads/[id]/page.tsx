@@ -16,6 +16,7 @@ import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
 import LeadIqCard from '@/components/admin/LeadIqCard';
+import LeadBrainCard from '@/components/telecaller/crm/LeadBrainCard';
 import {
   leadDisplayStatus,
 } from '@/lib/telecaller/leadDisplayStatus';
@@ -616,6 +617,7 @@ function LeadDetailContent() {
   return wrap(
     <>
       <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-5 pb-8">
+        {isLeadManager ? <LeadBrainCard leadId={leadId} basePath={base} /> : null}
         {editing ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
             <div className="lg:col-span-2 min-w-0">

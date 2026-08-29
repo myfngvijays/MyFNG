@@ -733,7 +733,7 @@ export async function POST(
             priority: isFullPayment ? 'HIGH' : 'MEDIUM',
             leadId: invoice.lead_id,
             leadNumber,
-            actionUrl: `/dashboard/workshop_supervisor/jobs/${invoice.lead_id}`,
+            actionUrl: `/dashboard/workshop-advisor/jobs/${invoice.lead_id}`,
             metadata: { invoice_id: invoiceId, payment_mode, paid_amount: paidAmount, is_cod },
           });
         }

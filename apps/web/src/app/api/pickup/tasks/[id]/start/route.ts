@@ -183,7 +183,7 @@ export async function POST(
           leadId,
           leadNumber,
           relatedUserName: pickupBoyName,
-          actionUrl: `/dashboard/workshop_supervisor/jobs/${leadId}`,
+          actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`,
         });
       }
 
