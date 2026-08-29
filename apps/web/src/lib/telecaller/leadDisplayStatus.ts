@@ -3,6 +3,7 @@
 export const LEAD_STATUS_FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'new', label: 'Fresh' },
+  { id: 'ringing', label: 'Ringing' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
   { id: 'callback', label: 'Follow-up' },
@@ -20,6 +21,7 @@ export function mergeCrmStatusFilters(
   const out: Array<{ id: string; label: string }> = [
     { id: 'all', label: allLabel },
     { id: 'new', label: 'Fresh' },
+    { id: 'ringing', label: 'Ringing' },
     { id: 'interested', label: 'Interested' },
     { id: 'will_visit', label: 'He will visit' },
     { id: 'callback', label: 'Follow-up' },

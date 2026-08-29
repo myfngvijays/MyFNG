@@ -18,7 +18,8 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 import { supabase } from '../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
-import MapView, { Marker, Callout, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import { WebView } from 'react-native-webview';
 import { trackEvent } from '../lib/trackEvent';
 import { workshopPublicPageAddress, isMyFngBrandedWorkshop } from '../lib/workshopDisplay';
 import { ENV } from '../config/environment';
@@ -102,13 +103,9 @@ function workshopCenterName(w: WorkshopRow) {
   return null;
 }
 
-const { height: SCREEN_H } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const MAP_W = Math.max(1, SCREEN_W - SPACING.md * 2);
 const MAP_H = Math.max(240, Math.min(360, Math.round(SCREEN_H * 0.42)));
-
-const GOOGLE_MAPS_API_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-  process.env.GOOGLE_MAPS_API_KEY ||
-  '';
 
 const SEARCH_LOCATION_PRESETS: Record<string, { lat: number; lng: number; label: string }> = {
   mumbai: { lat: 19.076, lng: 72.8777, label: 'Mumbai' },
@@ -158,6 +155,61 @@ function resolveSearchRegion(query: string): Region | null {
     latitudeDelta: 0.12,
     longitudeDelta: 0.12,
   };
+}
+
+function buildOsmMapHtml(opts: {
+  center: { lat: number; lng: number; zoom?: number };
+  points: Array<{ id: string; lat: number; lng: number; title: string }>;
+}) {
+  const payload = JSON.stringify({
+    center: opts.center,
+    points: opts.points,
+  }).replace(/</g, '\\u003c');
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    html,body,#map{margin:0;padding:0;height:100%;width:100%;background:#e8f1fa}
+    .leaflet-control-attribution{font-size:9px}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const data = ${payload};
+    const map = L.map('map', { zoomControl: true }).setView(
+      [data.center.lat, data.center.lng],
+      data.center.zoom || 12
+    );
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+    const bounds = [];
+    data.points.forEach(function (p) {
+      const marker = L.marker([p.lat, p.lng]);
+      marker.bindPopup(String(p.title || 'Workshop'));
+      marker.on('click', function () {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ id: p.id }));
+        }
+      });
+      marker.addTo(map);
+      bounds.push([p.lat, p.lng]);
+    });
+    if (bounds.length > 1) {
+      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
+    }
+    window.panTo = function (lat, lng) {
+      map.setView([lat, lng], 15);
+    };
+  </script>
+</body>
+</html>`;
 }
 
 function cityFallbackRegion(city?: string): Region {
@@ -241,6 +293,9 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(initialUserLoc);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const mapRef = useRef<MapView | null>(null);
+  const webMapRef = useRef<WebView | null>(null);
+  const mapRegionRef = useRef<Region | null>(null);
+  const [mapLayoutW, setMapLayoutW] = useState(MAP_W);
 
   const canRenderNativeMap = useMemo(() => {
     // In Expo Go, AIRMap may not be available -> MapView crashes with "AIRMap not found".
@@ -251,7 +306,8 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
       return false;
     }
   }, []);
-  const canRenderMap = canRenderNativeMap;
+  const useWebMap = Platform.OS === 'android';
+  const canRenderMap = useWebMap || canRenderNativeMap;
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -307,21 +363,78 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
     return cityFallbackRegion(city);
   }, [userLoc, mappable, city]);
 
-  const useGoogleMapsProvider = Platform.OS === 'android' && GOOGLE_MAPS_API_KEY.length > 10;
+  mapRegionRef.current = mapRegion;
+  const mappableRef = useRef(mappable);
+  mappableRef.current = mappable;
+
+  const osmHtml = useMemo(() => {
+    const points = mappable.slice(0, 40).map((w) => ({
+      id: String(w.id),
+      lat: Number(w.latitude),
+      lng: Number(w.longitude),
+      title: String(w.workshop_name || w.name || 'Workshop').slice(0, 80),
+    }));
+    const first = points[0];
+    return buildOsmMapHtml({
+      center: first
+        ? { lat: first.lat, lng: first.lng, zoom: 12 }
+        : { lat: mapRegion.latitude, lng: mapRegion.longitude, zoom: 12 },
+      points,
+    });
+    // Don't depend on GPS jitter or the WebView remounts and goes blank.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mappable
+      .slice(0, 40)
+      .map((w) => `${w.id}:${w.latitude}:${w.longitude}`)
+      .join('|'),
+  ]);
+
+  function panWebMap(lat: number, lng: number) {
+    webMapRef.current?.injectJavaScript(`window.panTo && window.panTo(${lat},${lng}); true;`);
+  }
+
+  function kickMapTiles() {
+    const map = mapRef.current;
+    const region = mapRegionRef.current;
+    if (!map || !region) return;
+    const coords = mappableRef.current
+      .slice(0, 16)
+      .map((w) => ({ latitude: Number(w.latitude), longitude: Number(w.longitude) }))
+      .filter((c) => Number.isFinite(c.latitude) && Number.isFinite(c.longitude));
+    if (coords.length >= 2) {
+      map.fitToCoordinates(coords, {
+        edgePadding: { top: 56, right: 40, bottom: 56, left: 40 },
+        animated: false,
+      });
+      return;
+    }
+    map.animateToRegion(
+      { ...region, latitudeDelta: region.latitudeDelta * 1.01, longitudeDelta: region.longitudeDelta * 1.01 },
+      1,
+    );
+  }
 
   useEffect(() => {
     const searchRegion = resolveSearchRegion(query);
-    if (!canRenderMap || !searchRegion || !mapRef.current) return;
+    if (!searchRegion) return;
+    if (useWebMap) {
+      panWebMap(searchRegion.latitude, searchRegion.longitude);
+      return;
+    }
+    if (!canRenderNativeMap || !mapRef.current) return;
     mapRef.current.animateToRegion(searchRegion, 450);
-  }, [query, canRenderMap]);
+  }, [query, canRenderNativeMap, useWebMap]);
 
   useEffect(() => {
-    // Smoothly re-center when location or dataset changes
-    if (!canRenderMap) return;
-    if (!mapRef.current) return;
     if (resolveSearchRegion(query)) return;
+    if (useWebMap) {
+      panWebMap(mapRegion.latitude, mapRegion.longitude);
+      return;
+    }
+    if (!canRenderNativeMap || !mapRef.current) return;
     mapRef.current.animateToRegion(mapRegion, 450);
-  }, [mapRegion, canRenderMap, query]);
+  }, [mapRegion, canRenderNativeMap, query, useWebMap]);
 
   async function fetchWorkshops() {
     try {
@@ -456,10 +569,14 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
             const next = isExpanded ? null : String(item.id);
             setExpandedId(next);
             if (canRenderMap && typeof item.latitude === 'number' && typeof item.longitude === 'number') {
-              mapRef.current?.animateToRegion(
-                { latitude: item.latitude, longitude: item.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 },
-                450
-              );
+              if (useWebMap) {
+                panWebMap(item.latitude, item.longitude);
+              } else {
+                mapRef.current?.animateToRegion(
+                  { latitude: item.latitude, longitude: item.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 },
+                  450
+                );
+              }
             }
           }}
         >
@@ -556,44 +673,68 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
           </TouchableOpacity>
         </View>
 
-        <View style={styles.mapWrap}>
-          {canRenderMap ? (
+        <View
+          style={styles.mapWrap}
+          collapsable={false}
+          onLayout={(e) => {
+            const w = Math.round(e.nativeEvent.layout.width);
+            if (w > 0 && w !== mapLayoutW) setMapLayoutW(w);
+          }}
+        >
+          {useWebMap && mapLayoutW > 0 ? (
+            <WebView
+              ref={webMapRef}
+              originWhitelist={['*']}
+              source={{ html: osmHtml, baseUrl: 'https://local' }}
+              style={{ width: mapLayoutW, height: MAP_H, backgroundColor: '#E8F1FA' }}
+              scrollEnabled={false}
+              javaScriptEnabled
+              domStorageEnabled
+              mixedContentMode="always"
+              setSupportMultipleWindows={false}
+              androidLayerType="hardware"
+              onLoadEnd={() => {
+                if (userLoc) panWebMap(userLoc.lat, userLoc.lng);
+              }}
+              onMessage={(event) => {
+                try {
+                  const parsed = JSON.parse(String(event.nativeEvent.data || '{}'));
+                  if (parsed?.id) setExpandedId(String(parsed.id));
+                } catch {
+                  /* ignore */
+                }
+              }}
+            />
+          ) : canRenderNativeMap && mapLayoutW > 0 ? (
             <MapView
               ref={(r) => {
                 mapRef.current = r;
               }}
-              style={styles.map}
+              style={{ width: mapLayoutW, height: MAP_H }}
               initialRegion={mapRegion}
-              provider={useGoogleMapsProvider ? PROVIDER_GOOGLE : undefined}
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
+              loadingEnabled
+              loadingBackgroundColor="#E8F1FA"
+              loadingIndicatorColor={COLORS.primary}
               showsUserLocation={!!userLoc}
               showsMyLocationButton={false}
               showsCompass={false}
               rotateEnabled={false}
+              toolbarEnabled={false}
+              moveOnMarkerPress={false}
+              onMapReady={kickMapTiles}
             >
               {mappable.map((w) => (
                 <Marker
                   key={String(w.id)}
                   coordinate={{ latitude: w.latitude, longitude: w.longitude }}
+                  title={String(w.workshop_name || w.name || 'Workshop')}
+                  description={String(w.city || '')}
+                  pinColor="#E11D48"
+                  tracksViewChanges={false}
                   onPress={() => setExpandedId(String(w.id))}
-                >
-                  <View style={styles.markerContainer}>
-                    <View style={styles.markerLabel}>
-                      <Text style={styles.markerLabelText} numberOfLines={1}>
-                        {w.workshop_name || w.name}
-                      </Text>
-                      <Text style={styles.markerLabelSub} numberOfLines={1}>
-                        {w.city || ''}
-                      </Text>
-                    </View>
-                    <View style={styles.markerArrow} />
-                    <View style={styles.pinWrap}>
-                      <View style={styles.pinInner}>
-                        <Ionicons name="location" size={18} color="#fff" />
-                      </View>
-                      <View style={styles.pinStem} />
-                    </View>
-                  </View>
-                </Marker>
+                />
               ))}
             </MapView>
           ) : (
@@ -731,15 +872,12 @@ const styles = StyleSheet.create({
   mapWrap: {
     marginHorizontal: SPACING.md,
     marginBottom: 10,
+    height: MAP_H,
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: COLORS.white,
+    backgroundColor: '#E8F1FA',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
-  },
-  map: {
-    width: '100%',
-    height: MAP_H,
   },
   mapFallback: {
     width: '100%',

@@ -93,6 +93,7 @@ function leadDisplayStatus(lead: any): string {
       SERVICE_DONE: 'Service Done',
       LOST: 'Lost',
       FRESH: 'Fresh',
+      RINGING: 'Ringing',
     };
     if (result && mapResultEarly[result] && result !== 'FRESH') return mapResultEarly[result];
     return 'Fresh';

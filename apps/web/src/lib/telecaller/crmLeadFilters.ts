@@ -13,6 +13,7 @@ export type CrmDispositionResult = (typeof CRM_DISPOSITION_RESULTS)[number];
 
 /** Filters that should use last_call_at for date range (activity day, not lead created day). */
 export const CRM_ACTIVITY_DATE_FILTERS = new Set([
+  'ringing',
   'interested',
   'will_visit',
   'callback',
@@ -20,14 +21,13 @@ export const CRM_ACTIVITY_DATE_FILTERS = new Set([
 
 /**
  * "Fresh" (filter id `new` / `fresh`) = pipeline NEW and not yet worked.
- * Only untouched / ringing. Any saved disposition (Interested, Custom Repair, etc.)
- * must leave this tile — do not use `.not.in(known)` which keeps unknown statuses in Fresh.
+ * Ringing is its own filter — do not fold it into Fresh.
  */
 export function applyCrmNewLeadFilter(query: any) {
   return query
     .eq('status', 'NEW')
     .or(
-      'coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH,coupon_meta->>last_call_result.eq.RINGING',
+      'coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH',
     );
 }
 

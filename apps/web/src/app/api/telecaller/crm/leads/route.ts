@@ -153,6 +153,8 @@ export async function GET(request: NextRequest) {
 
     if (filter === 'new' || filter === 'fresh') {
       query = applyCrmNewLeadFilter(query);
+    } else if (filter === 'ringing') {
+      query = query.filter('coupon_meta->>last_call_result', 'eq', 'RINGING');
     } else if (filter === 'interested') {
       query = query.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
     } else if (filter === 'will_visit') {
@@ -213,7 +215,9 @@ export async function GET(request: NextRequest) {
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
       retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
       if (filter === 'new' || filter === 'fresh') retry = applyCrmNewLeadFilter(retry);
-      else if (filter === 'interested') {
+      else if (filter === 'ringing') {
+        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'RINGING');
+      } else if (filter === 'interested') {
         retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
       } else if (filter === 'will_visit') {
         retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT');
