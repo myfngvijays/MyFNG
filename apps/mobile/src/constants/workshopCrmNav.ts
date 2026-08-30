@@ -11,7 +11,7 @@ export type WorkshopCrmNavItem = {
 
 export const ADVISOR_CRM_QUICK: WorkshopCrmNavItem[] = [
   { id: 'pending', label: 'Leads', icon: 'time-outline', kind: 'stack', screen: 'PendingLeads' },
-  { id: 'planning', label: 'Planning', icon: 'calendar-outline', kind: 'stack', screen: 'DayPlanning' },
+  { id: 'assign', label: 'Assign', icon: 'person-add-outline', kind: 'stack', screen: 'MechanicAssignment' },
   { id: 'qc', label: 'QC', icon: 'checkmark-circle-outline', kind: 'stack', screen: 'QCCheck' },
 ];
 

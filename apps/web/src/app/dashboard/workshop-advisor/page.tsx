@@ -6,7 +6,17 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useAdvisorSession } from '@/lib/dashboard/useAdvisorSession';
 import { AdvisorPageHeader } from '@/components/advisor/AdvisorPageHeader';
-import { Users, Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp } from 'lucide-react';
+import {
+  Users,
+  Wrench,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+  Car,
+  Banknote,
+  CalendarDays,
+  UserPlus,
+} from 'lucide-react';
 
 type JobRow = {
   id: string;
@@ -26,6 +36,9 @@ export default function WorkshopAdvisorDashboard() {
     completed_today: 0,
     pending_qc: 0,
     overdue_jobs: 0,
+    pending_leads: 0,
+    unassigned: 0,
+    pickup_active: 0,
   });
   const [recentJobs, setRecentJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +57,7 @@ export default function WorkshopAdvisorDashboard() {
       today.setHours(0, 0, 0, 0);
       const todayIso = today.toISOString();
 
-      const [mechanicsRes, jobsRes, qcRes] = await Promise.all([
+      const [mechanicsRes, jobsRes, qcRes, pendingRes, unassignedRes, pickupRes] = await Promise.all([
         supabase
           .from('users_login')
           .select('id, role:role_id(role_code)', { count: 'exact' })
@@ -63,6 +76,22 @@ export default function WorkshopAdvisorDashboard() {
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
           .eq('qc_status', 'PENDING'),
+        supabase
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('workshop_id', workshopId)
+          .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED']),
+        supabase
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('workshop_id', workshopId)
+          .eq('status', 'ACCEPTED')
+          .is('assigned_mechanic_id', null),
+        supabase
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('workshop_id', workshopId)
+          .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE']),
       ]);
 
       if (cancelled) return;
@@ -86,6 +115,9 @@ export default function WorkshopAdvisorDashboard() {
         overdue_jobs: workshopJobs.filter(
           (job) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
         ).length,
+        pending_leads: pendingRes.count || 0,
+        unassigned: unassignedRes.count || 0,
+        pickup_active: pickupRes.count || 0,
       });
       setLoading(false);
     }
@@ -105,18 +137,24 @@ export default function WorkshopAdvisorDashboard() {
           href="/dashboard/workshop-advisor"
         />
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          <StatTile label="Mechanics" value={stats.total_mechanics} icon={<Users className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" loading={loading} />
-          <StatTile label="Active Jobs" value={stats.active_jobs} icon={<Wrench className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" loading={loading} />
-          <StatTile label="Done Today" value={stats.completed_today} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" loading={loading} />
-          <StatTile label="Pending QC" value={stats.pending_qc} icon={<Clock className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" loading={loading} />
-          <StatTile label="Overdue" value={stats.overdue_jobs} icon={<AlertTriangle className="w-6 h-6 text-red-600" />} tone="from-red-50 to-red-100" loading={loading} />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <StatTile label="Mechanics" value={stats.total_mechanics} accent="#004AAD" icon={<Users className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/team-overview" onClick={router.push} />
+          <StatTile label="Active Jobs" value={stats.active_jobs} accent="#D97706" icon={<Wrench className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/jobs" onClick={router.push} />
+          <StatTile label="To Assign" value={stats.unassigned} accent="#EA580C" icon={<UserPlus className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/job-assignments" onClick={router.push} />
+          <StatTile label="Pending Leads" value={stats.pending_leads} accent="#0284C7" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/pending-leads" onClick={router.push} />
+          <StatTile label="Done Today" value={stats.completed_today} accent="#059669" icon={<CheckCircle className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/daily-report" onClick={router.push} />
+          <StatTile label="Pending QC" value={stats.pending_qc} accent="#6D28D9" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/qc-queue" onClick={router.push} />
+          <StatTile label="Pickup Active" value={stats.pickup_active} accent="#4338CA" icon={<Car className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/pickup-delivery" onClick={router.push} />
+          <StatTile label="Overdue" value={stats.overdue_jobs} accent="#DC2626" icon={<AlertTriangle className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/jobs" onClick={router.push} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <QuickLink href="/dashboard/workshop-advisor/job-assignments" icon={<Wrench className="w-5 h-5" />} title="Job Assignments" sub="Assign and monitor jobs" onClick={router.push} />
-          <QuickLink href="/dashboard/workshop-advisor/team-overview" icon={<Users className="w-5 h-5" />} title="Team" sub="Who is free / on a job" onClick={router.push} />
-          <QuickLink href="/dashboard/workshop-advisor/performance" icon={<TrendingUp className="w-5 h-5" />} title="Performance" sub="Team metrics" onClick={router.push} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <QuickLink href="/dashboard/workshop-advisor/pending-leads" icon={<Clock className="w-5 h-5" />} title="Pending Leads" sub="Accept incoming jobs" onClick={router.push} />
+          <QuickLink href="/dashboard/workshop-advisor/job-assignments" icon={<Wrench className="w-5 h-5" />} title="Assign Mechanic" sub="Assign and monitor jobs" onClick={router.push} />
+          <QuickLink href="/dashboard/workshop-advisor/qc-queue" icon={<CheckCircle className="w-5 h-5" />} title="QC Queue" sub="Approve completed work" onClick={router.push} />
+          <QuickLink href="/dashboard/workshop-advisor/pickup-delivery" icon={<Car className="w-5 h-5" />} title="Pickup & Delivery" sub="Track pickup boys" onClick={router.push} />
+          <QuickLink href="/dashboard/workshop-advisor/extra-work" icon={<Banknote className="w-5 h-5" />} title="Extra Jobs" sub="Approve additional work" onClick={router.push} />
+          <QuickLink href="/dashboard/workshop-advisor/day-planning" icon={<CalendarDays className="w-5 h-5" />} title="Day Planning" sub="Plan today's jobs" onClick={router.push} />
         </div>
 
         <div className="rounded-2xl bg-[#004AAD] p-3.5 shadow-sm sm:p-4">
@@ -180,35 +218,37 @@ function StatTile({
   label,
   value,
   icon,
-  tone,
+  accent,
   loading,
+  href,
+  onClick,
 }: {
   label: string;
   value: number;
   icon: ReactNode;
-  tone: string;
+  accent: string;
   loading: boolean;
+  href?: string;
+  onClick?: (href: string) => void;
 }) {
-  const tint = tone.includes('yellow')
-    ? 'bg-[#FFFBEB]'
-    : tone.includes('green')
-      ? 'bg-[#ECFDF5]'
-      : tone.includes('red')
-        ? 'bg-[#FEF2F2]'
-        : tone.includes('purple')
-          ? 'bg-[#F5F3FF]'
-          : 'bg-[#EFF6FF]';
-  return (
-    <div className={`rounded-2xl border border-slate-200 ${tint} p-3 shadow-sm sm:p-3.5`}>
-      <div className="flex items-center gap-2">
-        {icon}
-        <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-[11px]">{label}</p>
-          <p className="text-xl font-extrabold text-[#023D95] sm:text-2xl">{loading ? '—' : value}</p>
-        </div>
+  const inner = (
+    <div className="flex items-center gap-2">
+      <span className="shrink-0" style={{ color: accent }}>{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-[11px]">{label}</p>
+        <p className="text-xl font-extrabold sm:text-2xl" style={{ color: accent }}>{loading ? '—' : value}</p>
       </div>
     </div>
   );
+  const className = 'rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-3.5 w-full text-left border-l-4';
+  if (href && onClick) {
+    return (
+      <button type="button" className={className} style={{ borderLeftColor: accent }} onClick={() => onClick(href)}>
+        {inner}
+      </button>
+    );
+  }
+  return <div className={className} style={{ borderLeftColor: accent }}>{inner}</div>;
 }
 
 function QuickLink({

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
-import { useNavigation } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
 
 interface Job {
   id: string;
@@ -41,6 +41,9 @@ interface Mechanic {
 }
 
 export default function MechanicAssignmentScreen({ navigation }: any) {
+  const route = useRoute<any>();
+  const preselectLeadId = route.params?.leadId as string | undefined;
+  const didPreselect = useRef(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [mechanics, setMechanics] = useState<Mechanic[]>([]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -265,6 +268,14 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
     setSelectedJob(job);
     setShowMechanicModal(true);
   }
+
+  useEffect(() => {
+    if (!preselectLeadId || didPreselect.current || jobs.length === 0) return;
+    const match = jobs.find((job) => job.lead_id === preselectLeadId || job.id === preselectLeadId);
+    if (!match) return;
+    didPreselect.current = true;
+    openMechanicModal(match);
+  }, [jobs, preselectLeadId]);
 
   function onRefresh() {
     setRefreshing(true);
