@@ -229,12 +229,12 @@ export default function LeadsListScreen() {
   const renderLeadCard = ({ item }: { item: Lead }) => (
     <TouchableOpacity
       style={styles.leadCard}
-      onPress={() => navigation.navigate('LeadDetail' as never, { leadId: item.id } as never)}
+      onPress={() => navigation.navigate('WorkshopAdminLeadDetail' as never, { leadId: item.id } as never)}
     >
       <View style={styles.leadHeader}>
         <View>
-          <Text style={styles.leadNumber}>#{item.lead_number}</Text>
-          <Text style={styles.customerName}>{item.customer_name}</Text>
+          <Text style={styles.leadNumber} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
+          <Text style={styles.customerName}>{item.vehicle_number}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
           <Text style={styles.statusText}>{item.status}</Text>

@@ -19,6 +19,7 @@ import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { apiFetch } from '../lib/api';
 import { ENV } from '../config/environment';
+import { isLikelyNetworkError, staffLoginNetworkMessage } from '../lib/networkError';
 import { setCustomerSessionToken } from '../lib/customerSession';
 import { registerCustomerFcmPushToken } from '../services/pushNotifications';
 import { loadWalletRules } from '../lib/wallet';
@@ -463,7 +464,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       console.error('Login error:', error);
       Alert.alert(
         'Login Failed',
-        error.message || 'Invalid email or password'
+        isLikelyNetworkError(error)
+          ? staffLoginNetworkMessage()
+          : error.message || 'Invalid email or password',
       );
     } finally {
       setLoading(false);

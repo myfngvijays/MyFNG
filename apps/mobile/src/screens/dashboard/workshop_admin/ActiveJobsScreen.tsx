@@ -14,7 +14,7 @@ import { supabase } from '../../../lib/supabase';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
-export default function ActiveJobsScreen() {
+export default function ActiveJobsScreen({ hideChrome = false }: { hideChrome?: boolean }) {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -82,7 +82,9 @@ export default function ActiveJobsScreen() {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Active Jobs" onBack={() => navigation.goBack()} />
+      {hideChrome ? null : (
+        <DashboardHeader title="Active Jobs" onBack={() => navigation.goBack()} />
+      )}
       
       <ScrollView
         style={styles.scrollView}
@@ -100,7 +102,7 @@ export default function ActiveJobsScreen() {
               onPress={() => navigation.navigate('WorkshopAdminLeadDetail', { leadId: job.id })}
             >
               <View style={styles.jobHeader}>
-                <Text style={styles.jobNumber}>{job.lead_number}</Text>
+                <Text style={styles.jobNumber} numberOfLines={1}>{job.customer_name || 'Customer'}</Text>
                 <View
                   style={[
                     styles.statusBadge,
@@ -111,7 +113,7 @@ export default function ActiveJobsScreen() {
                 </View>
               </View>
               
-              <Text style={styles.customerName}>{job.customer_name}</Text>
+              <Text style={styles.customerName}>{job.vehicle_number || 'Vehicle'}</Text>
               {job.mechanic && (
                 <Text style={styles.mechanic}>Mechanic: {job.mechanic.full_name}</Text>
               )}

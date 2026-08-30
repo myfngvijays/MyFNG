@@ -29,7 +29,6 @@ export default function AdvisorReadMeScreen() {
       style={styles.container}
       contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
     >
-      <Text style={styles.title}>ReadMe</Text>
       <Text style={styles.sub}>Har menu kya karta hai — short guide.</Text>
       {SECTIONS.map((section) => (
         <View key={section.heading} style={styles.section}>

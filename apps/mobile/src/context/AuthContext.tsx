@@ -1,12 +1,23 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, withTimeout } from '../lib/supabase';
 import { registerAndSyncFcmPushToken } from '../services/pushNotifications';
+
+function normalizeProfile(data: any) {
+  if (!data) return data;
+  const joined = [data.first_name, data.last_name]
+    .map((s: any) => String(s || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  return { ...data, full_name: joined || data.full_name };
+}
 
 interface UserProfile {
   id: string;
   email: string;
   full_name?: string;
+  first_name?: string;
+  last_name?: string;
   role?: {
     role_code: string;
     role_name: string;
@@ -14,6 +25,7 @@ interface UserProfile {
   phone?: string;
   department?: string | null;
   created_at?: string;
+  workshop_id?: string | null;
   workshop?: {
     id: string;
     name?: string;
@@ -27,6 +39,7 @@ interface AuthContextType {
   isLoading: boolean;
   setUser: (user: User | null) => void;
   setUserProfile: (profile: UserProfile | null) => void;
+  refreshUserProfile: () => Promise<UserProfile | null>;
   logout: () => void;
 }
 
@@ -74,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               return;
             }
             if (data) {
-              setUserProfile(data);
+              setUserProfile(normalizeProfile(data));
             }
             setIsLoading(false);
           }).catch(() => {
@@ -121,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return;
               }
               if (data) {
-                setUserProfile(data);
+                setUserProfile(normalizeProfile(data));
               }
             });
         }
@@ -131,6 +144,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
+  }, []);
+
+  const refreshUserProfile = useCallback(async () => {
+    const {
+      data: { user: current },
+    } = await supabase.auth.getUser();
+    if (!current) return null;
+    const { data, error } = await supabase
+      .from('users_login')
+      .select(
+        `
+        *,
+        role:roles!role_id(role_code, role_name),
+        workshop:workshops!workshop_id(id, name)
+      `,
+      )
+      .eq('id', current.id)
+      .maybeSingle();
+    if (error || !data) return null;
+    const next = normalizeProfile(data);
+    setUserProfile(next);
+    return next;
   }, []);
 
   const logout = async () => {
@@ -166,6 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         setUser,
         setUserProfile,
+        refreshUserProfile,
         logout,
       }}
     >

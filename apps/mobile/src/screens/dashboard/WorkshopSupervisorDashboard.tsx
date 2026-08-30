@@ -18,6 +18,9 @@ import {
 } from '../../constants/workshopCrmNav';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { formatDateTime } from '@/lib/dateFormat';
+import { useAuth } from '../../context/AuthContext';
+import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
+import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -31,6 +34,7 @@ type QuickAction = {
 };
 
 function WorkshopAdvisorHomeScreen({ navigation }: any) {
+  const { userProfile: authProfile, refreshUserProfile } = useAuth();
   const [userProfile, setUserProfile] = useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -48,15 +52,16 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const workshopIdRef = useRef<string | null>(null);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
 
   const fetchDashboardData = useCallback(async () => {
     const workshopId = workshopIdRef.current;
     if (!workshopId) return;
 
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayIso = today.toISOString();
+      const range = resolveCrmDateRange(datePreset, customStart, customEnd);
 
       const [mechanicsRes, leadsRes, jobsRes, extraRes] = await Promise.all([
         supabase
@@ -117,10 +122,9 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE'].includes(lead.pickup_status),
       ).length;
 
-      const completedToday = workshopJobs.filter((job: any) => {
-        if (!job.completed_at) return false;
-        return new Date(job.completed_at) >= new Date(todayIso);
-      }).length;
+      const completedInRange = workshopJobs.filter((job: any) =>
+        isoInRange(job.completed_at, range.start, range.end, range.allTime),
+      ).length;
 
       const overdueJobs = workshopJobs.filter(
         (job: any) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
@@ -129,7 +133,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
       setStats({
         totalMechanics: onlyMechanics.length,
         activeJobs: activeJobsList.length,
-        completedToday,
+        completedToday: completedInRange,
         pendingQc: Math.max(pendingQcFromLeads, pendingQcFromJobs),
         overdueJobs,
         pendingLeads,
@@ -143,24 +147,38 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
     } catch {
       /* keep last good snapshot */
     }
+  }, [datePreset, customStart, customEnd]);
+
+  const loadProfile = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from('users_login')
+      .select('*, role:role_id(role_code, role_name), workshop:workshops!workshop_id(id, name)')
+      .eq('id', user.id)
+      .single();
+    if (!data) return;
+    workshopIdRef.current = data.workshop_id || null;
+    const joined = [data.first_name, data.last_name]
+      .map((s: any) => String(s || '').trim())
+      .filter(Boolean)
+      .join(' ');
+    setUserProfile({ ...data, full_name: joined || data.full_name });
   }, []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase
-        .from('users_login')
-        .select('*, role:role_id(role_code), workshop:workshops!workshop_id(name)')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (data) {
-            workshopIdRef.current = data.workshop_id || null;
-            setUserProfile(data);
-          }
-        });
-    });
-  }, []);
+    void loadProfile();
+  }, [loadProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshUserProfile();
+      void loadProfile();
+      if (workshopIdRef.current) fetchDashboardData();
+    }, [loadProfile, fetchDashboardData, refreshUserProfile]),
+  );
 
   useEffect(() => {
     if (!userProfile?.workshop_id) return;
@@ -186,14 +204,9 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
     };
   }, [userProfile?.workshop_id, fetchDashboardData]);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (workshopIdRef.current) fetchDashboardData();
-    }, [fetchDashboardData]),
-  );
-
   const onRefresh = async () => {
     setRefreshing(true);
+    await loadProfile();
     await fetchDashboardData();
     setRefreshing(false);
   };
@@ -271,6 +284,13 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
     return { bg: '#FEF3C7', fg: '#B45309' };
   };
 
+  const homeName =
+    [authProfile?.first_name, authProfile?.last_name].filter(Boolean).join(' ').trim() ||
+    authProfile?.full_name ||
+    [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim() ||
+    userProfile?.full_name ||
+    'Workshop Advisor';
+
   const renderDashboard = () => (
     <ScrollView
       style={styles.content}
@@ -281,11 +301,20 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.hero}>
-        <Text style={styles.heroName}>{userProfile?.full_name || 'Workshop Advisor'}</Text>
+        <Text style={styles.heroName}>{homeName}</Text>
         <Text style={styles.heroMeta}>
           {userProfile?.workshop?.name || 'Workshop Advisor'}
         </Text>
       </View>
+
+      <WorkshopDateFilter
+        preset={datePreset}
+        customStart={customStart}
+        customEnd={customEnd}
+        onPreset={setDatePreset}
+        onCustomStart={setCustomStart}
+        onCustomEnd={setCustomEnd}
+      />
 
       <Text style={[styles.sectionTitle, styles.sectionTitleFirst]}>Overview</Text>
       <View style={styles.statsWrap}>
@@ -294,7 +323,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
           { key: 'active', label: 'Active Jobs', value: stats.activeJobs, accent: '#D97706', screen: 'JobMonitoring' },
           { key: 'assign', label: 'To Assign', value: stats.unassigned, accent: '#EA580C', screen: 'MechanicAssignment' },
           { key: 'leads', label: 'Pending Leads', value: stats.pendingLeads, accent: '#0284C7', screen: 'PendingLeads' },
-          { key: 'done', label: 'Done Today', value: stats.completedToday, accent: '#059669', screen: 'DailyReport' },
+          { key: 'done', label: 'Completed', value: stats.completedToday, accent: '#059669', screen: 'DailyReport' },
           { key: 'qc', label: 'Pending QC', value: stats.pendingQc, accent: '#6D28D9', screen: 'QCCheck' },
           { key: 'pickup', label: 'Pickup Active', value: stats.pickupActive, accent: '#4338CA', screen: 'PickupDeliveryTracking' },
           { key: 'overdue', label: 'Overdue', value: stats.overdueJobs, accent: '#DC2626', screen: 'JobMonitoring' },
@@ -429,8 +458,8 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
     <WorkshopCrmShell
       key="advisor-crm-home"
       title="Home"
-      userName={userProfile?.full_name}
-      userEmail={userProfile?.email}
+      userName={homeName}
+      userEmail={authProfile?.email || userProfile?.email}
       roleFallback="Workshop Advisor"
       navigation={navigation}
       drawerItems={ADVISOR_CRM_NAV}

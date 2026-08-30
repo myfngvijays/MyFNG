@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
+import { AC, ADVISOR_ROLES, advisorRoleStyle } from '../../../components/workshop/advisorCrmUi';
 
 export default function TeamOverviewScreen() {
   const navigation = useNavigation();
@@ -75,7 +76,7 @@ export default function TeamOverviewScreen() {
 
     // Subscribe to real-time updates for team members
     const channel = supabase
-      .channel('team_members_changes')
+      .channel(`team_members_changes-${wid}`)
       .on(
         'postgres_changes',
         {
@@ -162,28 +163,31 @@ export default function TeamOverviewScreen() {
       console.log('📊 Found', jobs?.length || 0, 'jobs today');
 
       // Calculate stats for each member
-      const enrichedMembers = members?.map(member => {
-        if (member.role?.role_code === 'WORKSHOP_MECHANIC') {
-          const memberJobs = jobs?.filter(j => j.mechanic_id === member.id) || [];
-          
-          // ✅ FIX: Use mechanic_status instead of status
-          const activeJobs = memberJobs.filter(j => 
-            ['ASSIGNED', 'IN_PROGRESS', 'HOLD'].includes(j.mechanic_status)
-          );
-          const completedJobs = memberJobs.filter(j => 
-            j.mechanic_status === 'COMPLETED'
-          );
+      const roleRank = (code?: string) => {
+        const idx = ADVISOR_ROLES.findIndex((r) => r.code === code);
+        return idx === -1 ? 99 : idx;
+      };
 
-          return {
-            ...member,
-            activeJobs: activeJobs.length,
-            completedToday: completedJobs.length,
-            totalJobs: memberJobs.length,
-            status: activeJobs.length > 0 ? 'WORKING' : 'AVAILABLE',
-          };
-        }
-        return member;
-      }) || [];
+      const enrichedMembers = (members || [])
+        .map((member) => {
+          if (member.role?.role_code === 'WORKSHOP_MECHANIC') {
+            const memberJobs = jobs?.filter((j) => j.mechanic_id === member.id) || [];
+            const activeJobs = memberJobs.filter((j) =>
+              ['ASSIGNED', 'IN_PROGRESS', 'HOLD'].includes(j.mechanic_status)
+            );
+            const completedJobs = memberJobs.filter((j) => j.mechanic_status === 'COMPLETED');
+
+            return {
+              ...member,
+              activeJobs: activeJobs.length,
+              completedToday: completedJobs.length,
+              totalJobs: memberJobs.length,
+              status: activeJobs.length > 0 ? 'WORKING' : 'AVAILABLE',
+            };
+          }
+          return { ...member, status: member.status || 'OFFLINE' };
+        })
+        .sort((a, b) => roleRank(a.role?.role_code) - roleRank(b.role?.role_code));
 
       setTeamMembers(enrichedMembers);
 
@@ -265,16 +269,13 @@ export default function TeamOverviewScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={AC.page}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
       }
     >
       {/* Header Stats */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Team Overview</Text>
-        <Text style={styles.headerSubtitle}>Real-time team status & performance</Text>
-      </View>
+      <Text style={AC.sub}>Real-time team status & performance</Text>
 
       {/* Stats Cards */}
       <View style={styles.statsGrid}>
@@ -303,77 +304,53 @@ export default function TeamOverviewScreen() {
         </View>
       </View>
 
-      {/* Team Members List */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Team Members ({teamMembers.length})</Text>
+      <View style={styles.roleLegend}>
+        {ADVISOR_ROLES.map((role) => (
+          <View key={role.code} style={[styles.roleLegendChip, { backgroundColor: role.color }]}>
+            <Text style={styles.roleLegendTxt}>{role.label}</Text>
+          </View>
+        ))}
+      </View>
 
-        {teamMembers.map((member) => (
-          <TouchableOpacity
+      <Text style={AC.section}>Team Members ({teamMembers.length})</Text>
+      {teamMembers.map((member) => {
+        const role = advisorRoleStyle(member.role?.role_code);
+        const statusColor = getStatusColor(member.status || 'OFFLINE');
+        return (
+          <View
             key={member.id}
-            style={styles.memberCard}
-            onPress={() => {
-              // Navigate to member detail
-              console.log('View member detail:', member.id);
-            }}
+            style={[styles.roleCard, { borderLeftColor: role.color }]}
           >
-            <View style={styles.memberHeader}>
-              <View style={styles.memberInfo}>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberAvatarText}>
-                    {getRoleIcon(member.role?.role_code)}
-                  </Text>
-                </View>
-                <View style={styles.memberDetails}>
-                  <Text style={styles.memberName}>{member.full_name}</Text>
-                  <Text style={styles.memberRole}>{member.role?.role_name}</Text>
-                  <Text style={styles.memberPhone}>{member.phone}</Text>
-                </View>
-              </View>
-
-              <View style={styles.memberStatus}>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(member.status || 'OFFLINE') }]}>
-                  <Text style={styles.statusText}>
-                    {getStatusIcon(member.status || 'OFFLINE')} {member.status || 'OFFLINE'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {member.role?.role_code === 'WORKSHOP_MECHANIC' && (
-              <View style={styles.memberStats}>
-                <View style={styles.memberStatItem}>
-                  <Text style={styles.memberStatValue}>{member.activeJobs || 0}</Text>
-                  <Text style={styles.memberStatLabel}>Active</Text>
-                </View>
-                <View style={styles.memberStatItem}>
-                  <Text style={styles.memberStatValue}>{member.completedToday || 0}</Text>
-                  <Text style={styles.memberStatLabel}>Completed</Text>
-                </View>
-                <View style={styles.memberStatItem}>
-                  <Text style={styles.memberStatValue}>{member.totalJobs || 0}</Text>
-                  <Text style={styles.memberStatLabel}>Total Today</Text>
-                </View>
-              </View>
-            )}
-
-            {member.last_login && (
-              <View style={styles.lastSeen}>
-                <Ionicons name="time-outline" size={12} color={COLORS.gray[500]} />
-                <Text style={styles.lastSeenText}>
-                  Last seen: {formatDateTime(member.last_login)}
+            <View style={styles.roleCardTop}>
+              <View style={[styles.roleAvatar, { backgroundColor: role.color }]}>
+                <Text style={styles.roleAvatarTxt}>
+                  {(member.full_name || '?').charAt(0).toUpperCase()}
                 </Text>
               </View>
-            )}
-          </TouchableOpacity>
-        ))}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={AC.name} numberOfLines={1}>
+                  {member.full_name}
+                </Text>
+                <Text style={[AC.meta, { color: role.color, fontWeight: '700' }]}>{role.label}</Text>
+              </View>
+              <View style={[AC.statusPill, { backgroundColor: statusColor }]}>
+                <Text style={AC.statusPillTxt}>{member.status || 'OFFLINE'}</Text>
+              </View>
+            </View>
+            {member.role?.role_code === 'WORKSHOP_MECHANIC' ? (
+              <Text style={AC.meta}>
+                Active {member.activeJobs || 0} · Done {member.completedToday || 0} · Today {member.totalJobs || 0}
+              </Text>
+            ) : null}
+          </View>
+        );
+      })}
 
         {teamMembers.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="alert-circle-outline" size={48} color={COLORS.gray[300]} />
-            <Text style={styles.emptyText}>No team members found</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No team members found</Text>
           </View>
         )}
-      </View>
 
       <View style={{ height: SPACING.xl }} />
     </ScrollView>
@@ -383,13 +360,13 @@ export default function TeamOverviewScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray[50],
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.gray[50],
+    backgroundColor: COLORS.background,
   },
   loadingText: {
     marginTop: SPACING.md,
@@ -397,10 +374,9 @@ const styles = StyleSheet.create({
     fontSize: SIZES.md,
   },
   header: {
-    padding: SPACING.lg,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
+    paddingHorizontal: SPACING.md,
+    paddingTop: 8,
+    paddingBottom: 0,
   },
   headerTitle: {
     fontSize: SIZES.xxl,
@@ -415,15 +391,17 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: SPACING.md,
-    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   statCard: {
-    flex: 1,
-    minWidth: '45%',
+    width: '48.5%',
     backgroundColor: COLORS.white,
-    padding: SPACING.md,
-    borderRadius: SIZES.sm,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     borderLeftWidth: 4,
     shadowColor: COLORS.black,
     shadowOffset: { width: 0, height: 2 },
@@ -453,7 +431,7 @@ const styles = StyleSheet.create({
   },
   memberCard: {
     backgroundColor: COLORS.white,
-    borderRadius: SIZES.sm,
+    borderRadius: 14,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     borderWidth: 1,
@@ -558,5 +536,44 @@ const styles = StyleSheet.create({
     color: COLORS.gray[500],
     marginTop: SPACING.md,
   },
+  roleLegend: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 6,
+    marginBottom: 8,
+  },
+  roleLegendChip: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  roleLegendTxt: { color: '#fff', fontWeight: '800', fontSize: 11 },
+  roleCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderLeftWidth: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  roleCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  roleAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleAvatarTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
 

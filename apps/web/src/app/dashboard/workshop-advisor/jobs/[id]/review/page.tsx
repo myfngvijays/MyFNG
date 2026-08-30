@@ -971,7 +971,7 @@ export default function QCReviewPage() {
                     onClick={() => setActivePhotoTab('scanning')}
                     className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
                       activePhotoTab === 'scanning'
-                        ? 'bg-white shadow text-purple-700'
+                        ? 'bg-white shadow text-[#004AAD]'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
                   >
@@ -993,7 +993,7 @@ export default function QCReviewPage() {
                     onClick={() => setActivePhotoTab('custom')}
                     className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition ${
                       activePhotoTab === 'custom'
-                        ? 'bg-white shadow text-fuchsia-700'
+                        ? 'bg-white shadow text-[#004AAD]'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
                   >
@@ -1130,9 +1130,9 @@ export default function QCReviewPage() {
               <div className="card">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Camera className="w-4 h-4 text-purple-700" />
+                    <Camera className="w-4 h-4 text-[#004AAD]" />
                     <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">Car Scanning Photos</h3>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F0F7FF] text-[#004AAD] border border-blue-200">
                       {carScanningPhotos.length}
                     </span>
                   </div>
@@ -1140,7 +1140,7 @@ export default function QCReviewPage() {
                     <button
                       type="button"
                       onClick={() => setShowAllCarScanningPhotos((v) => !v)}
-                      className="text-xs font-semibold text-purple-700 hover:underline whitespace-nowrap"
+                      className="text-xs font-semibold text-[#004AAD] hover:underline whitespace-nowrap"
                     >
                       {showAllCarScanningPhotos ? 'Show less' : 'Show all'}
                     </button>
@@ -1250,9 +1250,9 @@ export default function QCReviewPage() {
               <div className="card">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Camera className="w-4 h-4 text-fuchsia-700" />
+                    <Camera className="w-4 h-4 text-[#004AAD]" />
                     <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">Custom Service Photos</h3>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F0F7FF] text-[#004AAD] border border-blue-200">
                       {customServicePhotos.length}
                     </span>
                   </div>
@@ -1260,7 +1260,7 @@ export default function QCReviewPage() {
                     <button
                       type="button"
                       onClick={() => setShowAllCustomServicePhotos((v) => !v)}
-                      className="text-xs font-semibold text-fuchsia-700 hover:underline whitespace-nowrap"
+                      className="text-xs font-semibold text-[#004AAD] hover:underline whitespace-nowrap"
                     >
                       {showAllCustomServicePhotos ? 'Show less' : 'Show all'}
                     </button>

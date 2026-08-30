@@ -207,7 +207,7 @@ export default function JobAssignmentScreen({ navigation }: any) {
       <View style={styles.leadCard}>
         <View style={styles.leadHeader}>
           <View style={styles.leadInfo}>
-            <Text style={styles.leadNumber}>{item.lead_number}</Text>
+            <Text style={styles.leadNumber} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
             <Text style={styles.customerName}>{item.customer_name}</Text>
             {item.priority && item.priority !== 'NORMAL' && (
               <View
@@ -322,11 +322,11 @@ export default function JobAssignmentScreen({ navigation }: any) {
 
             {selectedLead && (
               <View style={styles.selectedLeadInfo}>
-                <Text style={styles.selectedLeadNumber}>
-                  {selectedLead.lead_number}
+                <Text style={styles.selectedLeadNumber} numberOfLines={1}>
+                  {selectedLead.customer_name || 'Customer'}
                 </Text>
                 <Text style={styles.selectedLeadCustomer}>
-                  {selectedLead.customer_name}
+                  {selectedLead.vehicle_number}
                 </Text>
                 {selectedLead.pickup_required && (
                   <Text style={styles.selectedLeadBadge}>Pickup Required</Text>

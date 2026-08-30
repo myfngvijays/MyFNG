@@ -11,9 +11,10 @@ import {
   Alert,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useRoute } from '@react-navigation/native';
+import { AC } from '../../../components/workshop/advisorCrmUi';
+import GlossyButton from '../../../components/workshop/GlossyButton';
 
 interface Job {
   id: string;
@@ -33,11 +34,27 @@ interface Job {
 interface Mechanic {
   id: string;
   full_name: string;
+  first_name?: string;
+  last_name?: string;
   is_active: boolean;
   active_jobs_count: number;
   avg_completion_time?: number;
   quality_score?: number;
   total_jobs_completed?: number;
+}
+
+function mechanicDisplayName(m: { first_name?: string; last_name?: string; full_name?: string }) {
+  const joined = [m.first_name, m.last_name]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  return joined || String(m.full_name || '').trim() || 'Mechanic';
+}
+
+function workloadAccent(count: number) {
+  if (count >= 5) return '#DC2626';
+  if (count >= 3) return '#D97706';
+  return '#059669';
 }
 
 export default function MechanicAssignmentScreen({ navigation }: any) {
@@ -157,7 +174,9 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
 
           return {
             id: mech.id,
-            full_name: mech.full_name,
+            full_name: mechanicDisplayName(mech),
+            first_name: mech.first_name,
+            last_name: mech.last_name,
             is_active: mech.is_active,
             active_jobs_count: count || 0,
             avg_completion_time: metrics?.avg_completion_hours,
@@ -290,7 +309,7 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
       case 'HIGH':
         return '#f97316';
       default:
-        return '#3b82f6';
+        return '#004AAD';
     }
   }
 
@@ -302,68 +321,33 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
 
   function renderJob({ item }: { item: Job }) {
     const hasAssignment = item.assigned_mechanic_name;
+    const priorityColor = getPriorityColor(item.priority);
 
     return (
-      <View style={styles.jobCard}>
-        <View style={styles.jobHeader}>
-          <View style={styles.jobInfo}>
-            <Text style={styles.leadNumber}>{item.lead_number}</Text>
-            <Text style={styles.customerName}>{item.customer_name}</Text>
-            {item.priority !== 'NORMAL' && (
-              <View
-                style={[
-                  styles.priorityBadge,
-                  { backgroundColor: getPriorityColor(item.priority) },
-                ]}
-              >
-                <Text style={styles.priorityText}>{item.priority}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.jobDetails}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Vehicle:</Text>
-            <Text style={styles.detailValue}>
-              {item.vehicle_number} - {item.vehicle_make} {item.vehicle_model}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Service:</Text>
-            <Text style={styles.detailValue}>
-              {item.service_types?.join(', ')}
-            </Text>
-          </View>
-          {item.estimated_hours && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Est. Time:</Text>
-              <Text style={styles.detailValue}>
-                {item.estimated_hours} hours
-              </Text>
-            </View>
-          )}
-          {hasAssignment && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Mechanic:</Text>
-              <Text style={[styles.detailValue, { color: '#8b5cf6' }]}>
-                {item.assigned_mechanic_name}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.assignButton,
-            !!hasAssignment && styles.reassignButton,
-          ]}
-          onPress={() => openMechanicModal(item)}
-        >
-          <Text style={styles.assignButtonText}>
-            {hasAssignment ? '🔄 Reassign Mechanic' : '👨‍🔧 Assign Mechanic'}
+      <View style={AC.listCard}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <Text style={AC.name} numberOfLines={1}>
+            {item.customer_name || 'Customer'}
           </Text>
-        </TouchableOpacity>
+          {item.priority && item.priority !== 'NORMAL' ? (
+            <View style={[AC.statusPill, { backgroundColor: priorityColor }]}>
+              <Text style={AC.statusPillTxt}>{item.priority}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={AC.meta} numberOfLines={2}>
+          {[item.vehicle_number, item.vehicle_make, item.vehicle_model].filter(Boolean).join(' · ')}
+        </Text>
+        <Text style={[AC.meta, { color: hasAssignment ? '#059669' : '#EA580C', fontWeight: '700' }]}>
+          {hasAssignment ? `Mechanic: ${item.assigned_mechanic_name}` : 'Unassigned'}
+        </Text>
+        <View style={AC.btnRow}>
+          <GlossyButton
+            label={hasAssignment ? 'Reassign' : 'Assign mechanic'}
+            color={hasAssignment ? '#F59E0B' : '#004AAD'}
+            onPress={() => openMechanicModal(item)}
+          />
+        </View>
       </View>
     );
   }
@@ -442,78 +426,59 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
   const availableMechanicsCount = mechanics.filter((m) => m.active_jobs_count < 3).length;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Mechanic Assignment</Text>
-        <Text style={styles.subtitle}>
-          {unassignedCount} jobs need assignment
-        </Text>
-      </View>
+    <View style={AC.page}>
+      <Text style={AC.sub}>{unassignedCount} jobs need assignment</Text>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{jobs.length}</Text>
-          <Text style={styles.statLabel}>Total Jobs</Text>
+      <View style={AC.kpiRow}>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#004AAD' }]}>{jobs.length}</Text>
+          <Text style={AC.kpiLab}>Total</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#f59e0b' }]}>
-            {unassignedCount}
-          </Text>
-          <Text style={styles.statLabel}>Unassigned</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#F59E0B' }]}>{unassignedCount}</Text>
+          <Text style={AC.kpiLab}>Unassigned</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#8b5cf6' }]}>
-            {mechanics.length}
-          </Text>
-          <Text style={styles.statLabel}>Mechanics</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#023D95' }]}>{mechanics.length}</Text>
+          <Text style={AC.kpiLab}>Mechanics</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#10b981' }]}>
-            {availableMechanicsCount}
-          </Text>
-          <Text style={styles.statLabel}>Available</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#10B981' }]}>{availableMechanicsCount}</Text>
+          <Text style={AC.kpiLab}>Available</Text>
         </View>
       </View>
 
-      {/* Quick Mechanic Overview */}
-      <View style={styles.mechanicsOverview}>
-        <Text style={styles.overviewTitle}>Mechanics Workload</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.mechanicsScroll}
-        >
-          {mechanics.map((mech) => (
-            <View key={mech.id} style={styles.quickMechanicCard}>
-              <Text style={styles.quickMechanicName}>
-                {mech.full_name.split(' ')[0]}
-              </Text>
-              <Text
-                style={[
-                  styles.quickMechanicJobs,
-                  { color: getWorkloadColor(mech.active_jobs_count) },
-                ]}
-              >
-                {mech.active_jobs_count} jobs
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
+      {mechanics.length > 0 ? (
+        <>
+          <Text style={AC.section}>Mechanics workload</Text>
+          <View style={styles.workGrid}>
+            {mechanics.map((mech) => {
+              const accent = workloadAccent(mech.active_jobs_count);
+              const count = mech.active_jobs_count;
+              return (
+                <View key={mech.id} style={[styles.workTile, { borderLeftColor: accent }]}>
+                  <Text style={styles.workName} numberOfLines={2}>
+                    {mechanicDisplayName(mech)}
+                  </Text>
+                  <Text style={[styles.workJobs, { color: accent }]}>
+                    {count === 0 ? 'Free' : `${count} active job${count === 1 ? '' : 's'}`}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
 
-      {/* Jobs List */}
       <FlatList
         data={jobs}
         keyExtractor={(item) => item.id}
         renderItem={renderJob}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.listContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#004AAD']} />}
+        contentContainerStyle={{ paddingBottom: 32 }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No jobs available</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No jobs available</Text>
           </View>
         }
       />
@@ -531,17 +496,28 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
 
             {selectedJob && (
               <View style={styles.selectedJobInfo}>
-                <Text style={styles.selectedJobNumber}>
-                  {selectedJob.lead_number}
-                </Text>
-                <Text style={styles.selectedJobCustomer}>
-                  {selectedJob.customer_name} - {selectedJob.vehicle_number}
-                </Text>
-                {selectedJob.estimated_hours && (
-                  <Text style={styles.selectedJobTime}>
-                    Estimated: {selectedJob.estimated_hours} hours
-                  </Text>
-                )}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={styles.leadAvatar}>
+                    <Text style={styles.leadAvatarTxt}>
+                      {(selectedJob.customer_name || 'C').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.selectedJobNumber}>
+                      {selectedJob.customer_name || 'Customer'}
+                    </Text>
+                    <Text style={styles.selectedJobCustomer}>
+                      {[selectedJob.vehicle_number, selectedJob.vehicle_make, selectedJob.vehicle_model]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                    {selectedJob.estimated_hours ? (
+                      <Text style={styles.selectedJobTime}>
+                        Estimated: {selectedJob.estimated_hours} hours
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
               </View>
             )}
 
@@ -560,26 +536,54 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
               )}
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => {
-                setShowMechanicModal(false);
-                setSelectedJob(null);
-              }}
-            >
-              <Text style={styles.modalCloseText}>Cancel</Text>
-            </TouchableOpacity>
+            <View style={{ marginTop: 12 }}>
+              <GlossyButton
+                label="Cancel"
+                color="#64748B"
+                onPress={() => {
+                  setShowMechanicModal(false);
+                  setSelectedJob(null);
+                }}
+              />
+            </View>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  workGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    gap: 8,
+    marginBottom: 12,
+  },
+  workTile: {
+    width: '47.5%',
+    flexGrow: 1,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderLeftWidth: 4,
+    minHeight: 72,
+  },
+  workName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#023D95',
+  },
+  workJobs: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 16,
@@ -590,7 +594,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -617,7 +621,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2563eb',
+    color: '#004AAD',
   },
   statLabel: {
     fontSize: 11,
@@ -635,7 +639,7 @@ const styles = StyleSheet.create({
   overviewTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 8,
   },
   mechanicsScroll: {
@@ -652,7 +656,7 @@ const styles = StyleSheet.create({
   quickMechanicName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#023D95',
   },
   quickMechanicJobs: {
     fontSize: 12,
@@ -664,7 +668,7 @@ const styles = StyleSheet.create({
   },
   jobCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
@@ -682,7 +686,7 @@ const styles = StyleSheet.create({
   leadNumber: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   customerName: {
     fontSize: 16,
@@ -715,10 +719,10 @@ const styles = StyleSheet.create({
   detailValue: {
     flex: 1,
     fontSize: 13,
-    color: '#111827',
+    color: '#023D95',
   },
   assignButton: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -756,19 +760,30 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 16,
   },
   selectedJobInfo: {
-    backgroundColor: '#f3f4f6',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: '#EAF2FF',
+    padding: 14,
+    borderRadius: 14,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,74,173,0.15)',
   },
+  leadAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#004AAD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leadAvatarTxt: { color: '#fff', fontSize: 18, fontWeight: '800' },
   selectedJobNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   selectedJobCustomer: {
     fontSize: 14,
@@ -777,7 +792,7 @@ const styles = StyleSheet.create({
   },
   selectedJobTime: {
     fontSize: 13,
-    color: '#8b5cf6',
+    color: '#004AAD',
     marginTop: 4,
   },
   mechanicsList: {
@@ -800,7 +815,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -816,7 +831,7 @@ const styles = StyleSheet.create({
   mechanicName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 4,
   },
   mechanicStats: {
@@ -849,7 +864,7 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#8b5cf6',
+    color: '#004AAD',
   },
   metricLabel: {
     fontSize: 11,

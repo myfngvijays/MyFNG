@@ -8,17 +8,37 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
-import { useAuth } from '../../../context/AuthContext';
-import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { COLORS, SIZES, SPACING, SHADOWS } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
+import { AC } from '../../../components/workshop/advisorCrmUi';
+
+type MechanicRow = {
+  id: string;
+  name: string;
+  assigned: number;
+  completed: number;
+  active: number;
+};
+
+type IssueRow = { type: string; count: number; description: string };
 
 export default function DailyReportScreen() {
   const navigation = useNavigation();
-  const { userProfile } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
-  const [report, setReport] = useState({ completed: 0, pending: 0, qcPassed: 0, revenue: 0 });
+  const [report, setReport] = useState({
+    total: 0,
+    completed: 0,
+    pending: 0,
+    overdue: 0,
+    rejected: 0,
+    qcPassed: 0,
+    extraPending: 0,
+    pickupActive: 0,
+  });
+  const [mechanics, setMechanics] = useState<MechanicRow[]>([]);
+  const [issues, setIssues] = useState<IssueRow[]>([]);
+  const [insights, setInsights] = useState<string[]>([]);
 
-  // Handle hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (navigation?.goBack) {
@@ -33,22 +53,18 @@ export default function DailyReportScreen() {
 
   useEffect(() => {
     fetchDailyReport();
-    
-    // Setup realtime subscription
+
     const channel = supabase
-      .channel('daily-report-updates')
+      .channel(`daily-report-updates-${Date.now()}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'mechanic_jobs'
+        table: 'mechanic_jobs',
       }, () => {
-        console.log('Daily Report: Real-time update received');
         fetchDailyReport();
       })
-      .subscribe((status) => {
-        console.log('Daily report subscription status:', status);
-      });
-    
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
     };
@@ -56,20 +72,132 @@ export default function DailyReportScreen() {
 
   const fetchDailyReport = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const workshopId = (userProfile as any)?.workshop_id || userProfile?.workshop?.id;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userProfile } = await supabase
+        .from('users_login')
+        .select('workshop_id')
+        .eq('email', user.email)
+        .single();
+
+      const workshopId = userProfile?.workshop_id;
       if (!workshopId) return;
-      const { data } = await supabase
-        .from('mechanic_jobs')
-        .select('*')
+
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const startIso = startOfDay.toISOString();
+
+      const { data: leads } = await supabase
+        .from('service_leads')
+        .select('id, status, sla_deadline, assigned_mechanic_id, created_at, updated_at')
         .eq('workshop_id', workshopId)
-        .gte('created_at', today);
+        .gte('created_at', startIso);
+
+      const { data: jobs } = await supabase
+        .from('mechanic_jobs')
+        .select('id, mechanic_id, mechanic_status, sla_expires_at, assigned_at, completed_at, service_leads!inner(workshop_id)')
+        .eq('service_leads.workshop_id', workshopId)
+        .gte('assigned_at', startIso);
+
+      const jobsToUse = jobs || [];
+      const leadsToUse = leads || [];
+      const leadIds = leadsToUse.map((l) => l.id);
+
+      const completedFromJobs = jobsToUse.filter((j) => j.mechanic_status === 'COMPLETED').length;
+      const pendingFromJobs = jobsToUse.filter((j) =>
+        ['ASSIGNED', 'IN_PROGRESS', 'HOLD'].includes(j.mechanic_status)
+      ).length;
+      const completed = jobsToUse.length
+        ? completedFromJobs
+        : leadsToUse.filter((j) => ['COMPLETED', 'CLOSED'].includes(j.status)).length;
+      const pending = jobsToUse.length
+        ? pendingFromJobs
+        : leadsToUse.filter((j) => ['IN_PROGRESS', 'ASSIGNED', 'ACCEPTED'].includes(j.status)).length;
+      const overdueFromJobs = jobsToUse.filter((j) => {
+        if (!j.sla_expires_at || j.mechanic_status === 'COMPLETED') return false;
+        return new Date(j.sla_expires_at) < new Date();
+      }).length;
+      const overdue = jobsToUse.length
+        ? overdueFromJobs
+        : leadsToUse.filter((j) => {
+            if (!j.sla_deadline || ['COMPLETED', 'CLOSED'].includes(j.status)) return false;
+            return new Date(j.sla_deadline) < new Date();
+          }).length;
+      const rejected = leadsToUse.filter((j) => ['REJECTED', 'SENT_BACK'].includes(j.status)).length;
+      const total = Math.max(leadsToUse.length, jobsToUse.length);
+
+      let qcPassed = 0;
+      if (leadIds.length > 0) {
+        const { data: qc } = await supabase
+          .from('qc_checks')
+          .select('lead_id, qc_status')
+          .in('lead_id', leadIds)
+          .eq('qc_status', 'PASSED');
+        qcPassed = qc?.length || 0;
+      }
+
+      const { count: extraPending } = await supabase
+        .from('lead_extra_charges')
+        .select('id, service_leads!inner(workshop_id)', { count: 'exact', head: true })
+        .eq('service_leads.workshop_id', workshopId)
+        .eq('status', 'PENDING');
+
+      const { count: pickupActive } = await supabase
+        .from('service_leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('workshop_id', workshopId)
+        .eq('pickup_required', true)
+        .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE']);
+
+      const { data: mechanicUsers } = await supabase
+        .from('users_login')
+        .select('id, full_name, role:role_id(role_code)')
+        .eq('workshop_id', workshopId)
+        .eq('is_active', true);
+
+      const mechanicRows: MechanicRow[] = (mechanicUsers || [])
+        .filter((m: any) => {
+          const role = Array.isArray(m.role) ? m.role[0] : m.role;
+          return role?.role_code === 'WORKSHOP_MECHANIC';
+        })
+        .map((m: any) => {
+          const mine = jobsToUse.filter((j) => j.mechanic_id === m.id);
+          return {
+            id: m.id,
+            name: m.full_name,
+            assigned: mine.length,
+            completed: mine.filter((j) => j.mechanic_status === 'COMPLETED').length,
+            active: mine.filter((j) => ['ASSIGNED', 'IN_PROGRESS'].includes(j.mechanic_status)).length,
+          };
+        });
+
+      const nextIssues: IssueRow[] = [
+        { type: 'Overdue jobs', count: overdue, description: 'SLA already passed' },
+        { type: 'Pending extra jobs', count: extraPending || 0, description: 'Waiting for advisor decision' },
+        { type: 'Active pickups', count: pickupActive || 0, description: 'Vehicles still in transit' },
+        { type: 'Rejected / sent back', count: rejected, description: 'Need follow-up today' },
+      ];
+
+      const nextInsights: string[] = [];
+      if (overdue > 0) nextInsights.push(`${overdue} job(s) overdue — check mechanic workload.`);
+      if ((extraPending || 0) > 0) nextInsights.push(`${extraPending} extra job request(s) still pending.`);
+      if (total > 0 && completed < total * 0.5) nextInsights.push('Completion rate is low for today. Review hold / unassigned work.');
+      if (nextInsights.length === 0) nextInsights.push('All clear for now. Keep the floor moving.');
+
       setReport({
-        completed: data?.filter(j => j.status === 'COMPLETED').length || 0,
-        pending: data?.filter(j => j.status === 'PENDING').length || 0,
-        qcPassed: data?.filter(j => j.status === 'QC_APPROVED').length || 0,
-        revenue: 0,
+        total,
+        completed,
+        pending,
+        overdue,
+        rejected,
+        qcPassed,
+        extraPending: extraPending || 0,
+        pickupActive: pickupActive || 0,
       });
+      setMechanics(mechanicRows);
+      setIssues(nextIssues.filter((i) => i.count > 0));
+      setInsights(nextInsights);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -77,29 +205,108 @@ export default function DailyReportScreen() {
     }
   };
 
+  const kpis = [
+    { label: 'Total', value: report.total, color: '#004AAD', icon: 'briefcase-outline' as const },
+    { label: 'Completed', value: report.completed, color: '#10B981', icon: 'checkmark-circle' as const },
+    { label: 'Pending', value: report.pending, color: '#F59E0B', icon: 'time' as const },
+    { label: 'Overdue', value: report.overdue, color: '#EF4444', icon: 'alert-circle' as const },
+    { label: 'QC Passed', value: report.qcPassed, color: '#0284C7', icon: 'shield-checkmark' as const },
+    { label: 'Extra pending', value: report.extraPending, color: '#7C3AED', icon: 'add-circle' as const },
+  ];
+
   return (
-    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDailyReport(); }} />}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Daily Report</Text>
-        <Text style={styles.date}>{formatDateDMY(new Date().toISOString())}</Text>
+    <ScrollView
+      style={AC.page}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            fetchDailyReport();
+          }}
+        />
+      }
+    >
+      <Text style={AC.sub}>{formatDateDMY(new Date().toISOString())} · end of day snapshot</Text>
+
+      <View style={AC.kpiRow}>
+        {kpis.map((kpi) => (
+          <View key={kpi.label} style={AC.kpiWide}>
+            <Ionicons name={kpi.icon} size={18} color={kpi.color} />
+            <Text style={[AC.kpiVal, { color: kpi.color }]}>{kpi.value}</Text>
+            <Text style={AC.kpiLab}>{kpi.label}</Text>
+          </View>
+        ))}
       </View>
-      <View style={styles.grid}>
-        <View style={styles.card}><Ionicons name="checkmark-circle" size={32} color={COLORS.success} /><Text style={styles.value}>{report.completed}</Text><Text style={styles.label}>Completed</Text></View>
-        <View style={styles.card}><Ionicons name="time" size={32} color={COLORS.warning} /><Text style={styles.value}>{report.pending}</Text><Text style={styles.label}>Pending</Text></View>
-        <View style={styles.card}><Ionicons name="shield-checkmark" size={32} color={COLORS.info} /><Text style={styles.value}>{report.qcPassed}</Text><Text style={styles.label}>QC Passed</Text></View>
-      </View>
+
+      <Text style={AC.section}>Mechanic performance today</Text>
+      {mechanics.length === 0 ? (
+        <View style={AC.whiteCard}>
+          <Text style={AC.meta}>No mechanics on this workshop yet.</Text>
+        </View>
+      ) : (
+        mechanics.map((m) => (
+          <View key={m.id} style={AC.listCard}>
+            <Text style={AC.name}>{m.name}</Text>
+            <Text style={AC.meta}>
+              Assigned {m.assigned} · Completed {m.completed} · Active {m.active}
+            </Text>
+          </View>
+        ))
+      )}
+
+      {issues.length > 0 ? (
+        <>
+          <Text style={AC.section}>Needs attention</Text>
+          {issues.map((issue) => (
+            <View key={issue.type} style={AC.listCard}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={AC.name}>{issue.type}</Text>
+                  <Text style={AC.meta}>{issue.description}</Text>
+                </View>
+                <Text style={[AC.kpiVal, { color: '#EA580C' }]}>{issue.count}</Text>
+              </View>
+            </View>
+          ))}
+        </>
+      ) : null}
+
+      <Text style={AC.section}>Insights</Text>
+      {insights.map((line) => (
+        <View key={line} style={AC.whiteCard}>
+          <Text style={AC.meta}>{line}</Text>
+        </View>
+      ))}
+
+      <View style={{ height: SPACING.xl }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.gray[50] },
-  header: { padding: SPACING.lg, backgroundColor: COLORS.white },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { paddingHorizontal: SPACING.md, paddingTop: 8, paddingBottom: 4 },
   title: { fontSize: SIZES.xxl, fontWeight: 'bold' },
-  date: { fontSize: SIZES.sm, color: COLORS.gray[600], marginTop: SPACING.xs },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', padding: SPACING.md, gap: SPACING.md },
-  card: { flex: 1, minWidth: '45%', backgroundColor: COLORS.white, padding: SPACING.md, borderRadius: SIZES.sm, alignItems: 'center' },
-  value: { fontSize: SIZES.xxl, fontWeight: 'bold', marginTop: SPACING.sm },
-  label: { fontSize: SIZES.sm, color: COLORS.gray[600], marginTop: SPACING.xs },
+  date: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    justifyContent: 'space-between',
+    rowGap: 10,
+  },
+  card: {
+    width: '48.5%',
+    backgroundColor: COLORS.white,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderLeftWidth: 4,
+    ...SHADOWS.small,
+  },
+  value: { fontSize: 26, fontWeight: '800', marginTop: 8, color: COLORS.textHeading },
+  label: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 2 },
 });
-

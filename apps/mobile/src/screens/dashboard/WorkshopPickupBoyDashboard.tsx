@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
 import {
@@ -11,14 +11,18 @@ import {
 import PickupTasksScreen from '../pickup/PickupTasksScreen';
 import TaskHistoryScreen from '../pickup/TaskHistoryScreen';
 import PickupBoyProfileScreen from '../pickup/PickupBoyProfileScreen';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { formatDateTime } from "@/lib/dateFormat";
 import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
+import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
 
 export default function WorkshopPickupBoyDashboard() {
   const navigation = useNavigation<any>();
   const { pickupRefreshTick } = useNotifications();
+  const { userProfile: authProfile, refreshUserProfile } = useAuth();
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -29,6 +33,10 @@ export default function WorkshopPickupBoyDashboard() {
   });
   const [recentTasks, setRecentTasks] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
+  const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
 
   // ✅ FIX: Fetch user profile from users_login by email (like web)
   React.useEffect(() => {
@@ -39,7 +47,7 @@ export default function WorkshopPickupBoyDashboard() {
 
         const { data: profileData, error } = await supabase
           .from('users_login')
-          .select('id, full_name, email')
+          .select('id, full_name, first_name, last_name, email')
           .eq('email', user.email)
           .single();
 
@@ -106,11 +114,12 @@ export default function WorkshopPickupBoyDashboard() {
         t.pickup_status === 'IN_TRANSIT' || t.pickup_status === 'PICKED_UP'
       ) || [];
 
-      // Completed today
+      // Completed in selected range
       const completedToday = allTasks?.filter(t => {
-        if (!t.pickup_status || t.pickup_status !== 'PICKED_UP') return false;
-        // Check if completed today (you might need to check a completed_at field)
-        return true; // Simplified - adjust based on your schema
+        const stamp = t.delivered_at || t.completed_at || t.updated_at;
+        const done = t.pickup_status === 'DELIVERED' || t.pickup_status === 'PICKED_UP' || t.status === 'DELIVERED_TO_CUSTOMER' || t.status === 'CLOSED';
+        if (!done) return false;
+        return isoInRange(stamp, dateRange.start, dateRange.end, dateRange.allTime);
       }) || [];
 
       // Total completed
@@ -187,7 +196,20 @@ export default function WorkshopPickupBoyDashboard() {
       fetchDashboardData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickupRefreshTick]);
+  }, [pickupRefreshTick, datePreset, customStart, customEnd]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshUserProfile();
+    }, [refreshUserProfile]),
+  );
+
+  const homeName =
+    [authProfile?.first_name, authProfile?.last_name].filter(Boolean).join(' ').trim() ||
+    authProfile?.full_name ||
+    [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim() ||
+    userProfile?.full_name ||
+    'Pickupboy / Driver';
 
   const handleTabChange = (tab: string) => {
     setCurrentScreen(tab);
@@ -236,69 +258,69 @@ export default function WorkshopPickupBoyDashboard() {
       }
     >
       <View style={styles.hero}>
-        <Text style={styles.heroName}>{userProfile?.full_name || 'Pickupboy / Driver'}</Text>
+        <Text style={styles.heroName}>{homeName}</Text>
         <Text style={styles.heroMeta}>Pickup & delivery</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Overview</Text>
+      <WorkshopDateFilter
+        preset={datePreset}
+        customStart={customStart}
+        customEnd={customEnd}
+        onPreset={setDatePreset}
+        onCustomStart={setCustomStart}
+        onCustomEnd={setCustomEnd}
+      />
+
+      <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Overview</Text>
       <View style={styles.statsGrid}>
-        <View style={[styles.statCard, { backgroundColor: '#FEF3C7' }]}>
-          <Text style={styles.statValue}>{stats.pendingTasks}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#D97706' }]}>
+          <Text style={[styles.statValue, { color: '#D97706' }]}>{stats.pendingTasks}</Text>
           <Text style={styles.statLabel}>Pending</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#EFF6FF' }]}>
-          <Text style={styles.statValue}>{stats.inTransit}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#004AAD' }]}>
+          <Text style={[styles.statValue, { color: '#004AAD' }]}>{stats.inTransit}</Text>
           <Text style={styles.statLabel}>In Transit</Text>
         </View>
-      </View>
-      <View style={styles.statsGrid}>
-        <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
-          <Text style={styles.statValue}>{stats.completedToday}</Text>
-          <Text style={styles.statLabel}>Done today</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#059669' }]}>
+          <Text style={[styles.statValue, { color: '#059669' }]}>{stats.completedToday}</Text>
+          <Text style={styles.statLabel}>Completed</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#E9D5FF' }]}>
-          <Text style={styles.statValue}>{stats.totalCompleted}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#EA580C' }]}>
+          <Text style={[styles.statValue, { color: '#EA580C' }]}>{stats.totalCompleted}</Text>
           <Text style={styles.statLabel}>Total done</Text>
         </View>
       </View>
 
-      {/* Recent Tasks */}
       <Text style={styles.sectionTitle}>Active Tasks</Text>
       {recentTasks.length > 0 ? (
-        <View style={styles.card}>
-          {recentTasks.map((task, index) => (
-            <View key={task.id || index} style={styles.taskItem}>
-              <View style={styles.taskHeader}>
-                <Text style={styles.taskType}>
-                  {getTaskTypeIcon(task)} {task.pickup_required ? 'PICKUP' : 'DELIVERY'}
-                </Text>
-                <View style={[
-                  styles.statusBadge,
-                  { backgroundColor: getStatusColor(task.pickup_status || task.status) }
-                ]}>
-                  <Text style={styles.statusText}>{task.pickup_status || task.status}</Text>
-                </View>
-              </View>
-              
-              <Text style={styles.taskCustomer}>
+        recentTasks.map((task, index) => (
+          <TouchableOpacity
+            key={task.id || index}
+            style={styles.jobCard}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('PickupJobDetail', { taskId: task.id, leadId: task.id })}
+          >
+            <View style={styles.jobHeader}>
+              <Text style={styles.jobName} numberOfLines={1}>
                 {task.customer_name || 'Customer'}
               </Text>
-              <Text style={styles.taskDetail}>
-                📍 {task.customer_address || task.address || 'Address not available'}
-              </Text>
-              {task.customer_phone && (
-                <Text style={styles.taskDetail}>📞 {task.customer_phone}</Text>
-              )}
-              {task.preferred_date && (
-                <Text style={styles.taskTime}>
-                  ⏰ {formatDateTime(task.preferred_date)}
-                </Text>
-              )}
+              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.pickup_status || task.status) }]}>
+                <Text style={styles.statusText}>{String(task.pickup_status || task.status || '').replace(/_/g, ' ')}</Text>
+              </View>
             </View>
-          ))}
-        </View>
+            <Text style={styles.taskType}>
+              {getTaskTypeIcon(task)} {task.pickup_required ? 'PICKUP' : 'DELIVERY'}
+            </Text>
+            <Text style={styles.taskDetail}>
+              {task.customer_address || task.address || 'Address not available'}
+            </Text>
+            {task.preferred_date ? (
+              <Text style={styles.taskTime}>{formatDateTime(task.preferred_date)}</Text>
+            ) : null}
+          </TouchableOpacity>
+        ))
       ) : (
-        <View style={styles.card}>
+        <View style={styles.jobCard}>
           <Text style={styles.emptyText}>No active tasks at the moment</Text>
         </View>
       )}
@@ -308,7 +330,7 @@ export default function WorkshopPickupBoyDashboard() {
   return (
     <WorkshopCrmShell
       title={WORKSHOP_CRM_TAB_TITLES[currentScreen] || 'Home'}
-      userName={userProfile?.full_name}
+      userName={homeName}
       userEmail={userProfile?.email}
       roleFallback="Pickupboy / Driver"
       navigation={navigation}
@@ -349,25 +371,51 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
   statCard: {
-    flex: 1,
-    padding: SPACING.md,
-    borderRadius: 14,
+    width: '47.5%',
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    borderLeftWidth: 4,
     alignItems: 'center',
+    ...SHADOWS.small,
   },
   statValue: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '800',
     color: COLORS.heading,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statLabel: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.bodyText,
     textAlign: 'center',
+    fontWeight: '600',
+  },
+  jobCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.small,
+  },
+  jobHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  jobName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.heading,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.lg,

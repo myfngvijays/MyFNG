@@ -73,21 +73,51 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { full_name, phone, profile_image, department } = body;
+    const { full_name, phone, profile_image, department, first_name, last_name } = body;
 
-    // Update profile
-    const { data: updatedProfile, error } = await supabase
+    const first = String(first_name || '').trim();
+    const last = String(last_name || '').trim();
+    const joined =
+      [first, last].filter(Boolean).join(' ') || String(full_name || '').trim();
+
+    const basePatch: Record<string, unknown> = {
+      full_name: joined || undefined,
+      phone: phone || undefined,
+      profile_image: profile_image || undefined,
+      department: department || undefined,
+      updated_at: new Date().toISOString(),
+    };
+
+    let updatedProfile: any = null;
+    let error: any = null;
+
+    const withNames = { ...basePatch };
+    if (first) withNames.first_name = first;
+    if (last || first) withNames.last_name = last;
+
+    const firstTry = await supabase
       .from('users_login')
-      .update({
-        full_name: full_name || undefined,
-        phone: phone || undefined,
-        profile_image: profile_image || undefined,
-        department: department || undefined,
-        updated_at: new Date().toISOString(),
-      })
+      .update(withNames)
       .eq('id', user.id)
       .select()
       .single();
+
+    if (
+      firstTry.error &&
+      /column|first_name|last_name/i.test(firstTry.error.message || '')
+    ) {
+      const retry = await supabase
+        .from('users_login')
+        .update(basePatch)
+        .eq('id', user.id)
+        .select()
+        .single();
+      updatedProfile = retry.data;
+      error = retry.error;
+    } else {
+      updatedProfile = firstTry.data;
+      error = firstTry.error;
+    }
 
     if (error || !updatedProfile) {
       console.error('Error updating profile:', error);

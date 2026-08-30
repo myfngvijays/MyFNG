@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../../lib/supabase';
-import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function SupervisorPerformanceScreen() {
@@ -81,7 +80,6 @@ export default function SupervisorPerformanceScreen() {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Performance" onBack={() => navigation.goBack()} />
       
       <ScrollView
         style={styles.scrollView}

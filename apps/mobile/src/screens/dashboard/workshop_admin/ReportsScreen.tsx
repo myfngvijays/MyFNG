@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
-export default function ReportsScreen() {
+export default function ReportsScreen({ hideChrome = false }: { hideChrome?: boolean }) {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -219,11 +219,14 @@ export default function ReportsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2563eb']} />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Reports & Analytics</Text>
-          <Text style={styles.subtitle}>Performance metrics</Text>
-        </View>
+        {hideChrome ? (
+          <Text style={styles.subtitleOnly}>Performance metrics</Text>
+        ) : (
+          <View style={styles.header}>
+            <Text style={styles.title}>Reports & Analytics</Text>
+            <Text style={styles.subtitle}>Performance metrics</Text>
+          </View>
+        )}
 
         {/* Period Selector */}
         <View style={styles.periodContainer}>
@@ -371,6 +374,14 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 24,
+  },
+  subtitleOnly: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   header: {
     padding: 20,

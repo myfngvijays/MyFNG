@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../../constants/theme';
 
 export default function SupervisorMenuScreen({ navigation }: any) {
@@ -32,14 +31,14 @@ export default function SupervisorMenuScreen({ navigation }: any) {
       title: '📅 Day Planning',
       subtitle: 'Plan jobs & assign mechanics',
       screen: 'DayPlanning',
-      color: '#8b5cf6',
+      color: '#004AAD',
     },
     {
       id: 'job-monitoring',
       title: '🔧 Job Monitoring',
       subtitle: 'Track all jobs in progress',
       screen: 'JobMonitoring',
-      color: '#3b82f6',
+      color: '#004AAD',
     },
     {
       id: 'qc-queue',
@@ -67,7 +66,7 @@ export default function SupervisorMenuScreen({ navigation }: any) {
       title: '🧰 Mechanic Assignment',
       subtitle: 'Assign mechanics to jobs',
       screen: 'MechanicAssignment',
-      color: '#6366f1',
+      color: '#004AAD',
     },
     {
       id: 'team-overview',
@@ -81,7 +80,7 @@ export default function SupervisorMenuScreen({ navigation }: any) {
       title: '📊 Team Performance',
       subtitle: 'Performance metrics',
       screen: 'TeamPerformance',
-      color: '#8b5cf6',
+      color: '#004AAD',
     },
     {
       id: 'pickup-delivery',
@@ -95,7 +94,7 @@ export default function SupervisorMenuScreen({ navigation }: any) {
       title: '📋 Daily Report',
       subtitle: 'End of day summary',
       screen: 'DailyReport',
-      color: '#6366f1',
+      color: '#004AAD',
     },
     {
       id: 'analytics',
@@ -125,11 +124,7 @@ export default function SupervisorMenuScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Workshop Advisor</Text>
-        <Text style={styles.subtitle}>Choose a feature</Text>
-      </View>
+    <View style={styles.container}>
 
       <ScrollView contentContainerStyle={[styles.scrollContent, twoCol && styles.scrollGrid]}>
         {menuItems.map((item) => (
@@ -148,14 +143,14 @@ export default function SupervisorMenuScreen({ navigation }: any) {
           </TouchableOpacity>
         ))}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 20,

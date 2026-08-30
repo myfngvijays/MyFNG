@@ -12,9 +12,9 @@ import {
   Alert,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
+import { AC } from '../../../components/workshop/advisorCrmUi';
 
 interface JobMonitor {
   id: string;
@@ -267,7 +267,7 @@ export default function JobMonitoringScreen() {
   function getStatusColor(status: string) {
     switch (status) {
       case 'IN_PROGRESS':
-        return '#3b82f6';
+        return '#004AAD';
       case 'ASSIGNED':
         return '#6b7280';
       case 'HOLD':
@@ -285,7 +285,7 @@ export default function JobMonitoringScreen() {
       case 'HIGH':
         return '#f97316';
       default:
-        return '#3b82f6';
+        return '#004AAD';
     }
   }
 
@@ -309,174 +309,47 @@ export default function JobMonitoringScreen() {
   }
 
   function renderJob({ item }: { item: JobMonitor }) {
-    const slaColor = getSLAColor(item.sla_remaining_minutes);
     const isAtRisk = item.sla_remaining_minutes < 120 && item.sla_remaining_minutes > 0;
     const isOverdue = item.sla_remaining_minutes < 0;
 
     return (
-      <View
-        style={[
-          styles.jobCard,
-          isOverdue && styles.jobCardOverdue,
-          isAtRisk && styles.jobCardAtRisk,
-        ]}
-      >
-        {/* Alert Banner */}
-        {(isOverdue || isAtRisk || item.mechanic_status === 'HOLD') && (
-          <View
-            style={[
-              styles.alertBanner,
-              { backgroundColor: isOverdue ? '#fee2e2' : isAtRisk ? '#fef3c7' : '#fef3c7' },
-            ]}
-          >
-            <Text
-              style={[
-                styles.alertText,
-                { color: isOverdue ? '#991b1b' : isAtRisk ? '#92400e' : '#92400e' },
-              ]}
-            >
-              {isOverdue
-                ? '🚨 SLA OVERDUE'
-                : isAtRisk
-                ? '⚠️ SLA AT RISK'
-                : '⏸️ JOB ON HOLD'}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.jobHeader}>
-          <View style={styles.jobInfo}>
-            <Text style={styles.leadNumber}>{item.lead_number}</Text>
-            <Text style={styles.customerName}>{item.customer_name}</Text>
-            <View style={styles.badges}>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: getStatusColor(item.mechanic_status) },
-                ]}
-              >
-                <Text style={styles.statusText}>{item.mechanic_status}</Text>
-              </View>
-              {item.job_priority !== 'NORMAL' && (
-                <View
-                  style={[
-                    styles.priorityBadge,
-                    { backgroundColor: getPriorityColor(item.job_priority) },
-                  ]}
-                >
-                  <Text style={styles.priorityText}>{item.job_priority}</Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* SLA Timer */}
-          <View style={styles.slaContainer}>
-            <Text style={styles.slaLabel}>SLA</Text>
-            <Text style={[styles.slaTime, { color: slaColor }]}>
-              {formatSLA(item.sla_remaining_minutes)}
-            </Text>
-          </View>
+      <View style={AC.navy}>
+        <View style={AC.navyRow}>
+          <Text style={AC.navyName} numberOfLines={1}>
+            {item.customer_name || 'Customer'}
+          </Text>
+          <Text style={isOverdue || isAtRisk ? AC.navySla : AC.navySlaOk}>
+            {formatSLA(item.sla_remaining_minutes)}
+          </Text>
         </View>
-
-        <View style={styles.jobDetails}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Vehicle:</Text>
-            <Text style={styles.detailValue}>{item.vehicle_number}</Text>
+        <Text style={AC.navyMeta} numberOfLines={1}>
+          {item.vehicle_number}
+          {item.mechanic_name ? ` · ${item.mechanic_name}` : ''}
+        </Text>
+        <Text style={AC.navyMeta}>{formatDateTime(item.assigned_at)}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 }}>
+          <View style={AC.navyBadge}>
+            <Text style={AC.navyBadgeTxt}>{item.mechanic_status}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Mechanic:</Text>
-            <Text style={styles.detailValue}>{item.mechanic_name}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Assigned:</Text>
-            <Text style={styles.detailValue}>
-              {formatDateTime(item.assigned_at)}
-            </Text>
-          </View>
-          {item.started_at && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Started:</Text>
-              <Text style={styles.detailValue}>
-                {formatDateTime(item.started_at)}
-              </Text>
+          {isOverdue ? (
+            <View style={AC.navyBadge}>
+              <Text style={AC.navyBadgeTxt}>SLA OVERDUE</Text>
             </View>
-          )}
+          ) : isAtRisk ? (
+            <View style={AC.navyBadge}>
+              <Text style={AC.navyBadgeTxt}>AT RISK</Text>
+            </View>
+          ) : null}
         </View>
-
-        {/* Progress Indicators */}
-        <View style={styles.progressContainer}>
-          <View style={styles.progressItem}>
-            <View
-              style={[
-                styles.progressIcon,
-                { backgroundColor: item.checklist_progress > 0 ? '#10b981' : '#e5e7eb' },
-              ]}
-            >
-              <Text style={styles.progressIconText}>
-                {item.checklist_progress > 0 ? '✓' : '○'}
-              </Text>
-            </View>
-            <Text style={styles.progressLabel}>
-              Checklist {item.checklist_progress}%
-            </Text>
-          </View>
-
-          <View style={styles.progressItem}>
-            <View
-              style={[
-                styles.progressIcon,
-                { backgroundColor: item.images_uploaded ? '#10b981' : '#e5e7eb' },
-              ]}
-            >
-              <Text style={styles.progressIconText}>
-                {item.images_uploaded ? '✓' : '○'}
-              </Text>
-            </View>
-            <Text style={styles.progressLabel}>Photos</Text>
-          </View>
-
-          <View style={styles.progressItem}>
-            <View
-              style={[
-                styles.progressIcon,
-                { backgroundColor: item.parts_assigned ? '#10b981' : '#e5e7eb' },
-              ]}
-            >
-              <Text style={styles.progressIconText}>
-                {item.parts_assigned ? '✓' : '○'}
-              </Text>
-            </View>
-            <Text style={styles.progressLabel}>Parts</Text>
-          </View>
-        </View>
-
-        {/* Progress Bar */}
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressBarFill,
-              { width: `${item.checklist_progress}%`, backgroundColor: slaColor },
-            ]}
-          />
-        </View>
-
-        <View style={styles.actions}>
+        <View style={AC.navyBtnRow}>
           <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() =>
-              navigation.navigate('JobDetail', { jobId: item.id })
-            }
+            style={AC.navyBtn}
+            onPress={() => navigation.navigate('JobDetail', { jobId: item.id })}
           >
-            <Text style={styles.actionButtonText}>View Details</Text>
+            <Text style={AC.navyBtnTxt}>View Details</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.contactButton]}
-            onPress={() => {
-              // Handle contact mechanic
-            }}
-          >
-            <Text style={styles.actionButtonText}>Contact Mechanic</Text>
+          <TouchableOpacity style={AC.navyBtnGhost}>
+            <Text style={AC.navyBtnGhostTxt}>Contact</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -493,90 +366,66 @@ export default function JobMonitoringScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Job Monitoring</Text>
-        <Text style={styles.subtitle}>
-          {stats.active} active • {stats.atRisk + stats.overdue} need attention
-        </Text>
-      </View>
+    <View style={AC.page}>
+      <Text style={AC.sub}>
+        {stats.active} active · {stats.atRisk + stats.overdue} need attention
+      </Text>
 
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#3b82f6' }]}>
-            {stats.active}
-          </Text>
-          <Text style={styles.statLabel}>Active</Text>
+      <View style={AC.kpiRow}>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#004AAD' }]}>{stats.active}</Text>
+          <Text style={AC.kpiLab}>Active</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#6b7280' }]}>
-            {stats.assigned}
-          </Text>
-          <Text style={styles.statLabel}>Assigned</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#023D95' }]}>{stats.assigned}</Text>
+          <Text style={AC.kpiLab}>Assigned</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#f59e0b' }]}>
-            {stats.hold}
-          </Text>
-          <Text style={styles.statLabel}>On Hold</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#F59E0B' }]}>{stats.hold}</Text>
+          <Text style={AC.kpiLab}>On Hold</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#ef4444' }]}>
-            {stats.overdue}
-          </Text>
-          <Text style={styles.statLabel}>Overdue</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#EF4444' }]}>{stats.overdue}</Text>
+          <Text style={AC.kpiLab}>Overdue</Text>
         </View>
       </View>
 
-      {/* Filters */}
-      <View style={styles.filterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View style={AC.chipWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
           {['ACTIVE', 'ASSIGNED', 'HOLD', 'AT_RISK', 'OVERDUE', 'ALL'].map((f) => (
             <TouchableOpacity
               key={f}
-              style={[
-                styles.filterButton,
-                filter === f && styles.filterButtonActive,
-              ]}
+              style={[AC.chip, filter === f && AC.chipOn]}
               onPress={() => setFilter(f)}
             >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  filter === f && styles.filterButtonTextActive,
-                ]}
-              >
-                {f}
-              </Text>
+              <Text style={[AC.chipTxt, filter === f && AC.chipTxtOn]}>{f.replace('_', ' ')}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* Jobs List */}
       <FlatList
         data={filteredJobs}
         keyExtractor={(item) => item.id}
         renderItem={renderJob}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#004AAD']} />
         }
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={{ paddingBottom: 32 }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No jobs to monitor</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No jobs to monitor</Text>
           </View>
         }
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 16,
@@ -587,7 +436,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -631,13 +480,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginRight: 8,
     borderRadius: 20,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#d1d5db',
   },
   filterButtonActive: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   filterButtonText: {
     fontSize: 13,
@@ -652,7 +501,7 @@ const styles = StyleSheet.create({
   },
   jobCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
@@ -691,7 +540,7 @@ const styles = StyleSheet.create({
   leadNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   customerName: {
     fontSize: 14,
@@ -749,7 +598,7 @@ const styles = StyleSheet.create({
   detailValue: {
     flex: 1,
     fontSize: 12,
-    color: '#111827',
+    color: '#023D95',
   },
   progressContainer: {
     flexDirection: 'row',
@@ -793,13 +642,18 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
   },
   contactButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#004AAD',
+  },
+  contactButtonText: {
+    color: '#004AAD',
   },
   actionButtonText: {
     color: '#fff',

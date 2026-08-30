@@ -53,10 +53,11 @@ interface ChecklistItem {
   completed_at?: string;
 }
 
-export default function MechanicJobDetailScreen() {
+export default function MechanicJobDetailScreen({ hideChrome = false }: { hideChrome?: boolean }) {
   const navigation = useNavigation<any>();
   const route = useRoute();
-  const { jobId } = route.params as { jobId: string };
+  const params = (route.params || {}) as { jobId?: string; leadId?: string };
+  const jobId = params.jobId || params.leadId;
   const [job, setJob] = useState<JobDetail | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [workNotes, setWorkNotes] = useState('');
@@ -333,7 +334,7 @@ export default function MechanicJobDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563eb" />
         </View>
@@ -343,7 +344,7 @@ export default function MechanicJobDetailScreen() {
 
   if (!job) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Job not found</Text>
           <TouchableOpacity
@@ -364,13 +365,15 @@ export default function MechanicJobDetailScreen() {
                          job.after_images_count >= job.min_after_images;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.leadNumber}>{job.lead_number}</Text>
+        {hideChrome ? <View style={{ width: 48 }} /> : (
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.backButton}>← Back</Text>
+          </TouchableOpacity>
+        )}
+        <Text style={styles.leadNumber} numberOfLines={1}>{job.customer_name || 'Job'}</Text>
         <View style={styles.statusBadge}>
           <Text style={styles.statusText}>{job.mechanic_status}</Text>
         </View>

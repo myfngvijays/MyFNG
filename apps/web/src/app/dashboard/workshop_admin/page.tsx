@@ -186,26 +186,26 @@ export default function WorkshopAdminDashboard() {
           </button>
         </div>
 
-        <div className="rounded-2xl bg-[#004AAD] p-3.5 shadow-sm sm:p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4">
           <div className="mb-2.5 flex items-center justify-between gap-2">
-            <h2 className="text-[14px] font-bold text-white">Pending Lead Approvals</h2>
+            <h2 className="text-[14px] font-bold text-[#023D95]">Pending Lead Approvals</h2>
             <button
               type="button"
               onClick={() => router.push('/dashboard/workshop_admin/pending-leads')}
-              className="text-xs font-bold text-white/85"
+              className="text-xs font-bold text-[#004AAD]"
             >
               View all →
             </button>
           </div>
           <div className="space-y-2">
             {loading && pendingLeads.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/70">Loading leads…</p>
+              <p className="py-6 text-center text-sm text-slate-500">Loading leads…</p>
             ) : null}
             {pendingLeads.map((lead) => (
               <LeadApprovalCard key={lead.id} lead={lead} />
             ))}
             {!loading && pendingLeads.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/70">No pending leads</p>
+              <p className="py-6 text-center text-sm text-slate-500">No pending leads</p>
             ) : null}
           </div>
         </div>
@@ -222,8 +222,8 @@ export default function WorkshopAdminDashboard() {
             {activeJobs.map((job) => (
               <JobCard
                 key={job.id}
-                jobNumber={job.lead_number}
-                customer={job.customer_name}
+                jobNumber={job.customer_name || 'Customer'}
+                customer={job.vehicle_number || job.customer_name}
                 vehicle={`${job.vehicle_make || ''} ${job.vehicle_model || ''}`.trim() || job.vehicle_number}
                 mechanic={job.assigned_to_id?.full_name || 'Not assigned'}
                 status={job.status}
@@ -264,14 +264,14 @@ function LeadApprovalCard({ lead }: { lead: PendingLead }) {
       <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
         <div className="flex-1 min-w-0 w-full sm:w-auto">
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
-            <p className="font-semibold text-base sm:text-lg text-slate-900 truncate">{lead.lead_number || 'N/A'}</p>
+            <p className="font-semibold text-base sm:text-lg text-[#023D95] truncate">{lead.customer_name || 'Customer'}</p>
             <span className="text-[10px] sm:text-xs text-gray-500 whitespace-nowrap">{formatDate(lead.created_at)}</span>
           </div>
           
           {/* Customer Info */}
           <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
             <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
-            <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{lead.customer_name || 'N/A'}</p>
+            <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{lead.vehicle_number || 'N/A'}</p>
           </div>
           
           {/* Phone */}

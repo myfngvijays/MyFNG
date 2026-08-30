@@ -14,7 +14,8 @@ import {
 import DashboardHeader from '../../../components/DashboardHeader';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
-import { COLORS, SPACING, SIZES } from '../../../constants/theme';
+import { COLORS, SPACING, SIZES, SHADOWS } from '../../../constants/theme';
+import GlossyButton from '../../../components/workshop/GlossyButton';
 
 type Mode = 'SUPER_ADMIN' | 'WORKSHOP_ADMIN' | 'WORKSHOP_SUPERVISOR';
 type Item = {
@@ -37,9 +38,11 @@ type WorkshopOption = { id: string; name: string };
 export default function AdditionalJobsMasterScreen({
   mode,
   navigation,
+  hideChrome,
 }: {
   mode: Mode;
   navigation: any;
+  hideChrome?: boolean;
 }) {
   const { userProfile } = useAuth();
   const isSuperAdmin = mode === 'SUPER_ADMIN';
@@ -250,7 +253,12 @@ export default function AdditionalJobsMasterScreen({
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>{item.name}</Text>
-        <Switch value={item.is_active !== false} onValueChange={() => toggleActive(item)} />
+        <Switch
+          value={item.is_active !== false}
+          onValueChange={() => toggleActive(item)}
+          trackColor={{ false: COLORS.gray[300], true: COLORS.primary }}
+          thumbColor="#fff"
+        />
       </View>
       <Text style={styles.cardMeta}>Category: {item.category || 'N/A'}</Text>
       <Text style={styles.cardMeta}>HSN/SAC: {item.hsn_sac_code || 'N/A'}</Text>
@@ -262,16 +270,16 @@ export default function AdditionalJobsMasterScreen({
         <Text style={styles.cardMeta}>Workshop: {item.workshop?.name || 'Global'}</Text>
       )}
       <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => openEdit(item)}>
-          <Text style={styles.actionText}>Edit</Text>
-        </TouchableOpacity>
+        <GlossyButton label="Edit" color="#004AAD" onPress={() => openEdit(item)} />
       </View>
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Additional Jobs Master" onBack={() => navigation.goBack()} />
+      {hideChrome ? null : (
+        <DashboardHeader title="Additional Jobs Master" onBack={() => navigation.goBack()} />
+      )}
       <View style={styles.body}>
         <View style={styles.searchRow}>
           <TextInput
@@ -287,12 +295,12 @@ export default function AdditionalJobsMasterScreen({
         </View>
 
         <View style={styles.filters}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 28 }}>
             <TouchableOpacity
               style={[styles.filterBtn, selectedCategory === '' && styles.filterBtnActive]}
               onPress={() => setSelectedCategory('')}
             >
-              <Text style={styles.filterText}>All</Text>
+              <Text style={[styles.filterText, selectedCategory === '' && styles.filterTextActive]}>All</Text>
             </TouchableOpacity>
             {categories.map((c) => (
               <TouchableOpacity
@@ -300,7 +308,7 @@ export default function AdditionalJobsMasterScreen({
                 style={[styles.filterBtn, selectedCategory === c && styles.filterBtnActive]}
                 onPress={() => setSelectedCategory(c)}
               >
-                <Text style={styles.filterText}>{c}</Text>
+                <Text style={[styles.filterText, selectedCategory === c && styles.filterTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -314,13 +322,15 @@ export default function AdditionalJobsMasterScreen({
                 style={[styles.filterBtn, selectedWorkshopId === '' && styles.filterBtnActive]}
                 onPress={() => setSelectedWorkshopId('')}
               >
-                <Text style={styles.filterText}>All</Text>
+                <Text style={[styles.filterText, selectedWorkshopId === '' && styles.filterTextActive]}>All</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.filterBtn, selectedWorkshopId === 'GLOBAL' && styles.filterBtnActive]}
                 onPress={() => setSelectedWorkshopId('GLOBAL')}
               >
-                <Text style={styles.filterText}>Global</Text>
+                <Text style={[styles.filterText, selectedWorkshopId === 'GLOBAL' && styles.filterTextActive]}>
+                  Global
+                </Text>
               </TouchableOpacity>
               {workshops.map((w) => (
                 <TouchableOpacity
@@ -328,7 +338,9 @@ export default function AdditionalJobsMasterScreen({
                   style={[styles.filterBtn, selectedWorkshopId === w.id && styles.filterBtnActive]}
                   onPress={() => setSelectedWorkshopId(w.id)}
                 >
-                  <Text style={styles.filterText}>{w.name}</Text>
+                  <Text style={[styles.filterText, selectedWorkshopId === w.id && styles.filterTextActive]}>
+                    {w.name}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -336,9 +348,19 @@ export default function AdditionalJobsMasterScreen({
         ) : (
           <View style={styles.toggleRow}>
             <Text style={styles.toggleLabel}>Include Global</Text>
-            <Switch value={includeGlobal} onValueChange={setIncludeGlobal} />
+            <Switch
+              value={includeGlobal}
+              onValueChange={setIncludeGlobal}
+              trackColor={{ false: COLORS.gray[300], true: COLORS.primary }}
+              thumbColor="#fff"
+            />
             <Text style={styles.toggleLabel}>Include Inactive</Text>
-            <Switch value={includeInactive} onValueChange={setIncludeInactive} />
+            <Switch
+              value={includeInactive}
+              onValueChange={setIncludeInactive}
+              trackColor={{ false: COLORS.gray[300], true: COLORS.primary }}
+              thumbColor="#fff"
+            />
           </View>
         )}
 
@@ -403,17 +425,23 @@ export default function AdditionalJobsMasterScreen({
               <TextInput style={styles.input} keyboardType="numeric" value={form.tax_rate} onChangeText={(v) => setForm((p) => ({ ...p, tax_rate: v }))} />
               <View style={styles.switchRow}>
                 <Text style={styles.label}>Active</Text>
-                <Switch value={form.is_active} onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))} />
+                <Switch
+                  value={form.is_active}
+                  onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
+                  trackColor={{ false: COLORS.gray[300], true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
               </View>
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => setShowModal(false)}>
-                <Text style={styles.secondaryText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryBtn} onPress={saveItem} disabled={saving}>
-                <Text style={styles.primaryText}>{saving ? 'Saving...' : 'Save'}</Text>
-              </TouchableOpacity>
+              <GlossyButton label="Cancel" color="#64748B" onPress={() => setShowModal(false)} />
+              <GlossyButton
+                label={saving ? 'Saving...' : 'Save'}
+                color="#10B981"
+                onPress={saveItem}
+                disabled={saving}
+              />
             </View>
           </View>
         </View>
@@ -453,10 +481,12 @@ const styles = StyleSheet.create({
     marginRight: SPACING.xs,
     backgroundColor: COLORS.white,
   },
-  filterBtnActive: { backgroundColor: COLORS.primary },
-  filterText: { color: COLORS.text, fontSize: 12 },
+  filterBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterText: { color: COLORS.text, fontSize: 12, fontWeight: '600' },
+  filterTextActive: { color: COLORS.white },
   toggleRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: SPACING.sm,
     marginTop: SPACING.sm,
@@ -466,10 +496,11 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.white,
     padding: SPACING.md,
-    borderRadius: 8,
+    borderRadius: 14,
     marginBottom: SPACING.sm,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.primary,
+    ...SHADOWS.small,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitle: { fontSize: SIZES.md, fontWeight: '700', color: COLORS.textHeading },
@@ -493,7 +524,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.sm },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: SPACING.sm, marginTop: SPACING.sm },
+  modalActions: { flexDirection: 'row', gap: 8, marginTop: SPACING.md },
   secondaryBtn: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 8, backgroundColor: COLORS.border },
   secondaryText: { color: COLORS.text, fontWeight: '600' },
 });

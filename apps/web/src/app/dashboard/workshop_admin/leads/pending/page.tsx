@@ -225,7 +225,7 @@ export default function PendingLeadsPage() {
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div className="flex-1 space-y-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-[#004AAD]">{lead.lead_number}</span>
+                      <span className="text-lg font-bold text-[#023D95]">{lead.customer_name || 'Customer'}</span>
                       {lead.pickup_required && (
                         <WorkshopStatusPill tone="yellow">Pickup Required</WorkshopStatusPill>
                       )}

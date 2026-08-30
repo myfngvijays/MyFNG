@@ -184,15 +184,15 @@ export default function PerformancePage() {
             <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1">Per job</p>
           </div>
 
-          <div className="card bg-gradient-to-br from-purple-50 to-purple-100 p-3 sm:p-4 md:p-5 sm:col-span-2 lg:col-span-1">
+          <div className="card bg-gradient-to-br from-[#F0F7FF] to-blue-50 p-3 sm:p-4 md:p-5 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-600 flex-shrink-0" />
+              <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-[#004AAD] flex-shrink-0" />
               <span className={`text-[10px] sm:text-xs ${stats.sla_compliance_rate >= 80 ? 'text-green-600' : 'text-red-600'}`}>
                 {stats.sla_compliance_rate >= 80 ? '↑' : '↓'}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-gray-600">SLA Compliance</p>
-            <p className="text-2xl sm:text-3xl font-bold text-purple-600">{stats.sla_compliance_rate}%</p>
+            <p className="text-2xl sm:text-3xl font-bold text-[#004AAD]">{stats.sla_compliance_rate}%</p>
             <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1">On-time completion</p>
           </div>
         </div>

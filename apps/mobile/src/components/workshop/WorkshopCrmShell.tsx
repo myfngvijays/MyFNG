@@ -27,6 +27,9 @@ type Props = {
   roleFallback: string;
   navigation: any;
   homeTabId?: string;
+  homeScreen?: string;
+  /** When false, Android back only closes the drawer and then pops the stack. Default true. */
+  trapBackToHome?: boolean;
   drawerItems: WorkshopCrmNavItem[];
   quickItems?: WorkshopCrmNavItem[];
   activeTab?: string;
@@ -41,6 +44,8 @@ export default function WorkshopCrmShell({
   roleFallback,
   navigation,
   homeTabId = 'dashboard',
+  homeScreen,
+  trapBackToHome = true,
   drawerItems,
   quickItems,
   activeTab = 'dashboard',
@@ -59,6 +64,15 @@ export default function WorkshopCrmShell({
 
   const goHome = useCallback(() => {
     setMenuOpen(false);
+    if (homeScreen) {
+      try {
+        if (navigation?.canGoBack?.()) navigation.popToTop?.();
+        else navigation.navigate(homeScreen);
+      } catch {
+        navigation?.navigate?.(homeScreen);
+      }
+      return;
+    }
     if (onTabChange) {
       onTabChange(homeTabId);
       return;
@@ -66,14 +80,20 @@ export default function WorkshopCrmShell({
     if (navigation?.canGoBack?.()) {
       navigation.popToTop?.();
     }
-  }, [homeTabId, navigation, onTabChange]);
+  }, [homeScreen, homeTabId, navigation, onTabChange]);
 
   const runNav = useCallback(
     (item: WorkshopCrmNavItem) => {
       setMenuOpen(false);
       if (item.kind === 'tab') {
-        onTabChange?.(item.id);
-        return;
+        if (item.id === homeTabId) {
+          goHome();
+          return;
+        }
+        if (onTabChange) {
+          onTabChange(item.id);
+          return;
+        }
       }
       if (item.screen) {
         try {
@@ -81,10 +101,30 @@ export default function WorkshopCrmShell({
         } catch {
           /* screen missing from this stack */
         }
+        return;
+      }
+      if (item.kind === 'tab' && homeScreen) {
+        goHome();
       }
     },
-    [navigation, onTabChange],
+    [goHome, homeScreen, homeTabId, navigation, onTabChange],
   );
+
+  const goProfile = useCallback(() => {
+    const profileItem =
+      drawerItems.find((i) => i.id === 'profile' || i.id === 'me') ||
+      quickItems?.find((i) => i.id === 'profile' || i.id === 'me');
+    if (profileItem) {
+      runNav(profileItem);
+      return;
+    }
+    setMenuOpen(false);
+    try {
+      navigation.navigate('Profile');
+    } catch {
+      /* ignore */
+    }
+  }, [drawerItems, navigation, quickItems, runNav]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Logout', 'Logout karna hai?', [
@@ -105,12 +145,12 @@ export default function WorkshopCrmShell({
       setMenuOpen(false);
       return true;
     }
-    if (onTabChange && activeTab !== homeTabId) {
+    if (trapBackToHome && onTabChange && activeTab !== homeTabId) {
       onTabChange(homeTabId);
       return true;
     }
     return false;
-  }, [activeTab, homeTabId, menuOpen, onTabChange]);
+  }, [activeTab, homeTabId, menuOpen, onTabChange, trapBackToHome]);
 
   useEffect(() => {
     setAndroidShellBackHandler(consumeInnerBack);
@@ -137,9 +177,6 @@ export default function WorkshopCrmShell({
           >
             <Ionicons name="menu" size={26} color={COLORS.primary} />
           </TouchableOpacity>
-          <Text style={[styles.topTitle, isHome && styles.topTitleHome]} numberOfLines={1}>
-            {title}
-          </Text>
         </View>
         <View style={styles.topCenter} pointerEvents="box-none">
           <TouchableOpacity
@@ -190,6 +227,14 @@ export default function WorkshopCrmShell({
         </View>
       </View>
 
+      {!isHome ? (
+        <View style={styles.pageTitleRow}>
+          <Text style={styles.pageTitle} numberOfLines={1}>
+            {title}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.body}>{children}</View>
 
       <Modal
@@ -204,21 +249,33 @@ export default function WorkshopCrmShell({
           <View style={styles.drawerPanel}>
             <View style={styles.drawerSafe}>
               <View style={[styles.tcHeader, { paddingTop: drawerTopPad }]}>
-                <View style={styles.tcAvatar}>
+                <TouchableOpacity
+                  style={styles.tcAvatar}
+                  onPress={goProfile}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open profile"
+                >
                   <Image
                     source={require('../../../assets/profile-default.png')}
                     style={styles.tcAvatarLogo}
                     resizeMode="cover"
                   />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1, minWidth: 0 }}
+                  onPress={goProfile}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open profile"
+                >
                   <Text style={styles.tcName} numberOfLines={1}>
                     {displayName}
                   </Text>
                   <Text style={styles.tcEmail} numberOfLines={1}>
                     {displayEmail}
                   </Text>
-                </View>
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setMenuOpen(false)}
                   hitSlop={12}
@@ -250,7 +307,7 @@ export default function WorkshopCrmShell({
                 keyboardShouldPersistTaps="handled"
               >
                 {drawerItems.map((row) => {
-                  const active = row.kind === 'tab' && activeTab === row.id;
+                  const active = activeTab === row.id;
                   return (
                     <TouchableOpacity
                       key={`${row.kind}-${row.id}-${row.screen || ''}`}
@@ -358,16 +415,16 @@ const styles = StyleSheet.create({
     width: 108,
     height: 32,
   },
-  topTitle: {
-    flexShrink: 1,
-    fontSize: 15,
+  pageTitleRow: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+    backgroundColor: COLORS.background,
+  },
+  pageTitle: {
+    fontSize: 18,
     fontWeight: '800',
     color: COLORS.textHeading,
-    textAlign: 'left',
-    maxWidth: 96,
-  },
-  topTitleHome: {
-    color: COLORS.primary,
   },
   drawerRoot: {
     flex: 1,

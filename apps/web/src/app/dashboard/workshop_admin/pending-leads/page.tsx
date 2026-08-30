@@ -269,7 +269,7 @@ export default function WorkshopAdminPendingLeadsPage() {
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-brand-primary truncate">{lead.lead_number}</h3>
+                    <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-[#023D95] truncate">{lead.customer_name || 'Customer'}</h3>
                     <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
                       Created: {formatDateTime(lead.created_at)}
                     </p>

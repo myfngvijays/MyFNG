@@ -92,7 +92,7 @@ export default function SupervisorAnalyticsPage() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
             <div className="flex items-center gap-2 sm:gap-3">
-              <Clock className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-purple-600 flex-shrink-0" />
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-[#004AAD] flex-shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600">Avg Time</p>
                 <p className="text-lg sm:text-xl md:text-2xl font-bold">{kpis.avgCompletionTime}h</p>

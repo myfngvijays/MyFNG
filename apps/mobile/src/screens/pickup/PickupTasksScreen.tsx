@@ -11,11 +11,14 @@ import {
   ActivityIndicator,
   Linking
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { AC } from '../../components/workshop/advisorCrmUi';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export default function PickupTasksScreen({ userId }: { userId?: string }) {
+  const navigation = useNavigation<any>();
   const [tasks, setTasks] = useState<any[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<any[]>([]);
   const [filter, setFilter] = useState('all'); // all, pickup, delivery, assigned, in_transit
@@ -236,33 +239,23 @@ export default function PickupTasksScreen({ userId }: { userId?: string }) {
 
   const renderTask = ({ item }: { item: any }) => {
     const taskInfo = `${item.customer_name}\n${item.task_type}`;
-    const address = item.task_type === 'PICKUP' ? item.pickup_address : item.delivery_address;
+    const address = item.customer_address || item.pickup_address || item.delivery_address;
     
     return (
-      <View style={styles.taskCard}>
+      <TouchableOpacity
+        style={AC.listCard}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('PickupJobDetail', { taskId: item.id, leadId: item.id })}
+      >
         <View style={styles.taskHeader}>
-          <View style={styles.taskTypeContainer}>
-            <Text style={styles.taskTypeIcon}>{getTaskTypeIcon(item.task_type)}</Text>
-            <View style={[
-              styles.taskTypeBadge,
-              { backgroundColor: getTaskTypeColor(item.task_type) + '20' }
-            ]}>
-              <Text style={[
-                styles.taskTypeText,
-                { color: getTaskTypeColor(item.task_type) }
-              ]}>
-                {item.task_type}
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-            <Text style={styles.statusText}>{item.status}</Text>
+          <Text style={AC.name} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
+          <View style={[AC.statusPill, { backgroundColor: getStatusColor(item.status) }]}>
+            <Text style={AC.statusPillTxt}>{String(item.status || '').replace(/_/g, ' ')}</Text>
           </View>
         </View>
 
         <View style={styles.taskBody}>
-          <Text style={styles.customerName}>{item.customer_name}</Text>
-          
+          <Text style={AC.meta}>{item.task_type}{item.vehicle_number ? ` · ${item.vehicle_number}` : ''}</Text>
           {address && (
             <TouchableOpacity 
               style={styles.addressContainer}
@@ -319,7 +312,7 @@ export default function PickupTasksScreen({ userId }: { userId?: string }) {
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -333,41 +326,41 @@ export default function PickupTasksScreen({ userId }: { userId?: string }) {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>My Tasks</Text>
-        <Text style={styles.subtitle}>Pickup & Delivery assignments</Text>
+    <View style={AC.page}>
+      <Text style={AC.sub}>Pickup & delivery assignments</Text>
+      <View style={AC.chipWrap}>
+        <FlatList
+          horizontal
+          data={['all', 'pickup', 'delivery', 'assigned', 'in_transit']}
+          keyExtractor={(item) => item}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingRight: 16 }}
+          renderItem={({ item: status }) => (
+            <TouchableOpacity
+              style={[AC.chip, filter === status && AC.chipOn]}
+              onPress={() => setFilter(status)}
+            >
+              <Text style={[AC.chipTxt, filter === status && AC.chipTxtOn]}>
+                {status === 'all' ? 'All' :
+                 status === 'in_transit' ? 'In Transit' :
+                 status.charAt(0).toUpperCase() + status.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
       </View>
 
-      {/* Filter Buttons */}
-      <View style={styles.filterContainer}>
-        {['all', 'pickup', 'delivery', 'assigned', 'in_transit'].map((status) => (
-          <TouchableOpacity
-            key={status}
-            style={[styles.filterButton, filter === status && styles.filterButtonActive]}
-            onPress={() => setFilter(status)}
-          >
-            <Text style={[styles.filterText, filter === status && styles.filterTextActive]}>
-              {status === 'all' ? 'All' : 
-               status === 'in_transit' ? 'In Transit' : 
-               status.charAt(0).toUpperCase() + status.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Stats */}
       <View style={styles.statsRow}>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>{tasks.length}</Text>
+        <View style={[styles.statBox, { borderLeftColor: '#004AAD' }]}>
+          <Text style={[styles.statValue, { color: '#004AAD' }]}>{tasks.length}</Text>
           <Text style={styles.statLabel}>Total</Text>
         </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>{tasks.filter(t => t.status === 'ASSIGNED').length}</Text>
+        <View style={[styles.statBox, { borderLeftColor: '#D97706' }]}>
+          <Text style={[styles.statValue, { color: '#D97706' }]}>{tasks.filter(t => t.status === 'ASSIGNED').length}</Text>
           <Text style={styles.statLabel}>Pending</Text>
         </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>{tasks.filter(t => t.status === 'IN_TRANSIT').length}</Text>
+        <View style={[styles.statBox, { borderLeftColor: '#059669' }]}>
+          <Text style={[styles.statValue, { color: '#059669' }]}>{tasks.filter(t => t.status === 'IN_TRANSIT').length}</Text>
           <Text style={styles.statLabel}>Active</Text>
         </View>
       </View>
@@ -455,14 +448,10 @@ const styles = StyleSheet.create({
   statBox: {
     flex: 1,
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 14,
     padding: SPACING.sm,
     alignItems: 'center',
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderLeftWidth: 4,
   },
   statValue: {
     fontSize: FONT_SIZES.lg,

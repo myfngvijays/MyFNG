@@ -267,7 +267,7 @@ export default function WorkshopSupervisorPendingLeadsPage() {
                     <p className="text-[11px] text-slate-500">{formatDateTime(lead.created_at)}</p>
                   </div>
                   {lead.pickup_required ? (
-                    <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-800">Pickup</span>
+                    <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-[#023D95]">Pickup</span>
                   ) : null}
                 </div>
                 <p className="mt-2 truncate text-sm font-semibold text-slate-900">{lead.customer_name}</p>
@@ -329,7 +329,7 @@ export default function WorkshopSupervisorPendingLeadsPage() {
                             {formatDateTime(lead.created_at)}
                           </span>
                           {lead.pickup_required && (
-                            <span className="inline-block mt-1 px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-[10px] font-semibold w-fit">
+                            <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-[#023D95] rounded-full text-[10px] font-semibold w-fit">
                               🚗 Pickup
                             </span>
                           )}

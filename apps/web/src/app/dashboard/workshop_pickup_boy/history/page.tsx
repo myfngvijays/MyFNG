@@ -312,7 +312,7 @@ export default function PickupBoyHistoryPage() {
                 <div key={task.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-[#004AAD]">#{task.lead_number}</p>
+                      <p className="text-sm font-bold text-[#023D95]">{task.customer_name || 'Customer'}</p>
                       <p className="text-xs text-slate-500 truncate">{task.customer_name} · {task.vehicle_number}</p>
                       <p className="text-[10px] text-slate-400 mt-0.5">{task.pickup_required ? 'Pickup & Delivery' : 'Service Task'}</p>
                     </div>
@@ -346,7 +346,7 @@ export default function PickupBoyHistoryPage() {
                   {filteredHistory.map((task) => (
                     <tr key={task.id} className="hover:bg-slate-50">
                       <td className="px-4 md:px-6 py-3 md:py-4">
-                        <div className="text-sm font-medium text-[#004AAD]">#{task.lead_number}</div>
+                        <div className="text-sm font-medium text-[#023D95]">{task.customer_name || 'Customer'}</div>
                         <div className="text-xs text-slate-500 mt-1">
                           {task.pickup_required ? 'Pickup & Delivery' : 'Service Task'}
                         </div>

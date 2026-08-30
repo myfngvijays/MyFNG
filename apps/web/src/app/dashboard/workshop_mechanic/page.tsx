@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from "@/lib/utils";
@@ -22,6 +22,8 @@ import {
   WorkshopFilterPill,
   WorkshopEmpty,
 } from '@/components/workshop/WorkshopUi';
+import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
+import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
 
 type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
 
@@ -49,6 +51,7 @@ interface JobCardData {
   has_parts_assigned: boolean;
   checklist_completed: boolean;
   assigned_at: string;
+  completed_at?: string;
 }
 
 export default function WorkshopMechanicDashboard() {
@@ -71,6 +74,21 @@ export default function WorkshopMechanicDashboard() {
     performance_score: 0
   });
   const [loading, setLoading] = useState(true);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
+  const assignedInRange = useMemo(
+    () => jobs.filter((j) => isoInRange(j.assigned_at, dateRange.start, dateRange.end, dateRange.allTime)).length,
+    [jobs, dateRange.start, dateRange.end, dateRange.allTime],
+  );
+  const completedInRange = useMemo(
+    () => jobs.filter((j) => isoInRange(j.completed_at, dateRange.start, dateRange.end, dateRange.allTime)).length,
+    [jobs, dateRange.start, dateRange.end, dateRange.allTime],
+  );
 
   useEffect(() => {
     fetchMechanicData();
@@ -578,17 +596,29 @@ export default function WorkshopMechanicDashboard() {
           title="Dashboard"
           subtitle="Your assigned jobs and tasks"
           right={
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left min-[900px]:text-right">
+            <a href="/dashboard/workshop_mechanic/performance" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left min-[900px]:text-right block">
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#004AAD]/70">Performance</p>
               <p className="text-xl font-extrabold text-[#023D95]">{loading ? '—' : `${performanceStats.performance_score.toFixed(0)}%`}</p>
-            </div>
+              <p className="text-[10px] font-semibold text-[#004AAD]">View details</p>
+            </a>
           }
         />
 
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onChange={({ datePreset: next, customStart: s, customEnd: e }) => {
+            setDatePreset(next);
+            setCustomStart(s);
+            setCustomEnd(e);
+          }}
+        />
+
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          <WorkshopStatTile label="Assigned Today" value={stats.assigned_today} icon={<Calendar className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" loading={loading} />
+          <WorkshopStatTile label="Assigned" value={assignedInRange} icon={<Calendar className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" loading={loading} />
           <WorkshopStatTile label="In Progress" value={stats.in_progress} icon={<Clock className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" loading={loading} />
-          <WorkshopStatTile label="Done Today" value={stats.completed_today} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" loading={loading} />
+          <WorkshopStatTile label="Completed" value={completedInRange} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" loading={loading} />
           <WorkshopStatTile label="Need Approval" value={stats.need_approval} icon={<AlertTriangle className="w-6 h-6 text-orange-600" />} tone="from-orange-50 to-orange-100" loading={loading} />
           <WorkshopStatTile label="SLA Success" value={`${performanceStats.sla_success_rate.toFixed(0)}%`} icon={<TrendingUp className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" loading={loading} />
         </div>
@@ -613,7 +643,7 @@ export default function WorkshopMechanicDashboard() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">#{job.lead_number}</p>
+                    <p className="text-sm font-bold text-[#023D95] truncate">{job.customer_name || 'Customer'}</p>
                     <p className="text-xs text-slate-500 truncate">{job.vehicle_number} · {job.vehicle_make} {job.vehicle_model}</p>
                   </div>
                   {job.mechanic_status ? (
@@ -649,7 +679,7 @@ export default function WorkshopMechanicDashboard() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                     <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
                     <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
                     <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -668,7 +698,7 @@ export default function WorkshopMechanicDashboard() {
                       {/* Lead Number */}
                       <td className="px-4 md:px-6 py-3 md:py-4">
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs sm:text-sm font-medium text-gray-900">#{job.lead_number}</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">{job.customer_name || 'Customer'}</span>
                           <div className="flex flex-wrap gap-1">
                             {job.job_priority !== 'NORMAL' && (
                               <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${getPriorityColor(job.job_priority)}`}>

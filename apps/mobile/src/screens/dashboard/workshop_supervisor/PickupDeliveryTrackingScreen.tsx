@@ -7,8 +7,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
-import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { COLORS, SIZES, SPACING, SHADOWS } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
+import { AC } from '../../../components/workshop/advisorCrmUi';
 
 export default function PickupDeliveryTrackingScreen() {
   const navigation = useNavigation<any>();
@@ -68,7 +69,7 @@ export default function PickupDeliveryTrackingScreen() {
 
   const setupRealtimeSubscription = (wid: string) => {
     const channel = supabase
-      .channel('pickup_tracking_updates')
+      .channel(`pickup_tracking_updates-${Date.now()}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
@@ -155,7 +156,7 @@ export default function PickupDeliveryTrackingScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={AC.page}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -167,10 +168,7 @@ export default function PickupDeliveryTrackingScreen() {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Pickup & Delivery Tracking</Text>
-        <Text style={styles.subtitle}>{tasks.length} Active Tasks</Text>
-      </View>
+      <Text style={AC.sub}>{tasks.length} active tasks</Text>
       
       {loading ? (
         <View style={styles.emptyContainer}>
@@ -182,19 +180,17 @@ export default function PickupDeliveryTrackingScreen() {
         </View>
       ) : (
         tasks.map(task => (
-          <View key={task.id} style={styles.card}>
-            <View style={styles.row}>
-              <Ionicons name="car" size={24} color={COLORS.primary} />
-              <View style={styles.info}>
-                <Text style={styles.leadNo}>{task.lead_number}</Text>
-                <Text style={styles.vehicle}>{task.vehicle_number}</Text>
-                <Text style={styles.customer}>{task.customer_name}</Text>
-                <Text style={styles.boy}>👤 {task.pickup_boy?.full_name || 'Unassigned'}</Text>
-              </View>
-              <View style={[styles.badge, { backgroundColor: getStatusColor(task.pickup_status) }]}>
-                <Text style={styles.badgeText}>{task.pickup_status}</Text>
+          <View key={task.id} style={AC.listCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <Text style={AC.name} numberOfLines={1}>
+                {task.customer_name || 'Customer'}
+              </Text>
+              <View style={[AC.statusPill, { backgroundColor: getStatusColor(task.pickup_status) }]}>
+                <Text style={AC.statusPillTxt}>{task.pickup_status}</Text>
               </View>
             </View>
+            <Text style={AC.meta}>{task.vehicle_number}</Text>
+            <Text style={AC.meta}>{task.pickup_boy?.full_name || 'Unassigned'}</Text>
           </View>
         ))
       )}
@@ -203,19 +199,26 @@ export default function PickupDeliveryTrackingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.gray[50] },
-  header: { padding: SPACING.lg, backgroundColor: COLORS.white },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { paddingHorizontal: SPACING.md, paddingTop: 8, paddingBottom: 4 },
   title: { fontSize: SIZES.xxl, fontWeight: 'bold' },
-  subtitle: { fontSize: SIZES.sm, color: COLORS.gray[600], marginTop: SPACING.xs },
+  subtitle: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
   emptyContainer: { padding: SPACING.xl, alignItems: 'center' },
   emptyText: { fontSize: SIZES.md, color: COLORS.gray[500] },
-  card: { backgroundColor: COLORS.white, margin: SPACING.md, padding: SPACING.md, borderRadius: SIZES.sm },
+  card: {
+    backgroundColor: COLORS.white,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    padding: SPACING.md,
+    borderRadius: 14,
+    ...SHADOWS.small,
+  },
   row: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  info: { flex: 1 },
-  leadNo: { fontSize: SIZES.md, fontWeight: 'bold' },
-  vehicle: { fontSize: SIZES.sm, color: COLORS.gray[600] },
+  info: { flex: 1, minWidth: 0 },
+  leadNo: { fontSize: 16, fontWeight: '800', color: COLORS.textHeading },
+  vehicle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
   customer: { fontSize: SIZES.sm, color: COLORS.gray[700], marginTop: 2 },
-  boy: { fontSize: SIZES.xs, color: COLORS.gray[500], marginTop: 4 },
-  badge: { paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: SIZES.xs },
-  badgeText: { color: COLORS.white, fontSize: SIZES.xs, fontWeight: '600' },
+  boy: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
+  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
+  badgeText: { color: COLORS.white, fontSize: 10, fontWeight: '800' },
 });

@@ -1599,7 +1599,7 @@ export default function SupervisorJobDetailPage() {
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       'NEW': 'bg-blue-100 text-blue-700',
-      'ASSIGNED': 'bg-purple-100 text-purple-700',
+      'ASSIGNED': 'bg-blue-100 text-[#004AAD]',
       'IN_PROGRESS': 'bg-green-100 text-green-700',
       'MECHANIC_WORKING': 'bg-green-100 text-green-700',
       'VEHICLE_DROPPED_AT_WORKSHOP': 'bg-blue-100 text-blue-700',
@@ -1619,7 +1619,7 @@ export default function SupervisorJobDetailPage() {
       'ON_HOLD': 'bg-orange-100 text-orange-700', // Support both for backward compatibility
       'COMPLETED': 'bg-teal-100 text-teal-700',
       'READY_FOR_DELIVERY': 'bg-indigo-100 text-indigo-700',
-      'DELIVERED': 'bg-purple-100 text-purple-700',
+      'DELIVERED': 'bg-blue-100 text-[#004AAD]',
     };
     return colors[status] || 'bg-gray-100 text-gray-700';
   };
@@ -3272,9 +3272,9 @@ export default function SupervisorJobDetailPage() {
 
         {/* Mechanic Uploaded Photos Section */}
         {activeTab === 'photos' && (lead as any)?.mechanic_job_photos && (lead as any).mechanic_job_photos.length > 0 && (
-          <div className="card border-2 border-purple-300">
+          <div className="card border-2 border-blue-300">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Camera className="w-6 h-6 text-purple-600" />
+              <Camera className="w-6 h-6 text-[#004AAD]" />
               Mechanic Uploaded Photos ({(lead as any).mechanic_job_photos.length})
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
@@ -3317,18 +3317,18 @@ export default function SupervisorJobDetailPage() {
           <>
             {/* QC Pending - Show QC Checklist */}
             {['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
-          <div className="card bg-purple-50 border-purple-200">
+          <div className="card bg-[#F0F7FF] border-blue-200">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex-1 min-w-0">
                 <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#004AAD]" />
                   Quality Control Required
                 </h3>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">This job is ready for quality inspection</p>
               </div>
               <button
                 onClick={() => setShowQC(true)}
-                className="btn bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
+                className="btn bg-[#004AAD] hover:bg-[#003A88] text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
               >
                 Perform QC
               </button>
@@ -3459,7 +3459,7 @@ export default function SupervisorJobDetailPage() {
               <div className="card">
                 <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
                   <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
-                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#004AAD]" />
                     Advisor Checklist Points
                   </h3>
                   {advisorQcData.reviewed_at && (
@@ -3632,11 +3632,11 @@ export default function SupervisorJobDetailPage() {
 
         {/* Section 9: QC Section - Also in Workflow tab for backward compatibility */}
         {activeTab === 'workflow' && ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING' && !showQC && (
-          <div className="card bg-purple-50 border-purple-200">
+          <div className="card bg-[#F0F7FF] border-blue-200">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex-1 min-w-0">
                 <h3 className="text-base sm:text-lg font-semibold flex items-center gap-1.5 sm:gap-2">
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#004AAD]" />
                   Quality Control Required
                 </h3>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">This job is ready for quality inspection</p>
@@ -3646,7 +3646,7 @@ export default function SupervisorJobDetailPage() {
                   setActiveTab('qc');
                   setShowQC(true);
                 }}
-                className="btn bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
+                className="btn bg-[#004AAD] hover:bg-[#003A88] text-white text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 self-start sm:self-auto"
               >
                 Go to QC Tab
               </button>
@@ -3721,7 +3721,7 @@ export default function SupervisorJobDetailPage() {
                     return { key: 'STATUS', label: 'Status', Icon: CheckCircle, wrapClass: 'bg-blue-100', iconClass: 'text-blue-700', pillClass: 'bg-blue-100 text-blue-800' };
                   }
                   if (resolved === 'AUDIT') {
-                    return { key: 'AUDIT', label: 'QC / Audit', Icon: CheckCircle, wrapClass: 'bg-purple-100', iconClass: 'text-purple-700', pillClass: 'bg-purple-100 text-purple-800' };
+                    return { key: 'AUDIT', label: 'QC / Audit', Icon: CheckCircle, wrapClass: 'bg-blue-100', iconClass: 'text-[#004AAD]', pillClass: 'bg-blue-100 text-[#023D95]' };
                   }
                   if (resolved === 'SLA') {
                     return { key: 'SLA', label: 'SLA', Icon: AlertTriangle, wrapClass: 'bg-red-100', iconClass: 'text-red-700', pillClass: 'bg-red-100 text-red-800' };

@@ -44,7 +44,7 @@ interface JobDetail {
   pickup_status: string;
 }
 
-export default function MechanicLeadDetailScreen({ route }: any) {
+export default function MechanicLeadDetailScreen({ route, hideChrome = false }: any) {
   const navigation = useNavigation();
   const { leadId } = route.params;
   const [job, setJob] = useState<JobDetail | null>(null);
@@ -272,7 +272,9 @@ export default function MechanicLeadDetailScreen({ route }: any) {
   if (loading) {
     return (
       <View style={styles.container}>
-        <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        {hideChrome ? null : (
+          <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        )}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -283,7 +285,9 @@ export default function MechanicLeadDetailScreen({ route }: any) {
   if (!job) {
     return (
       <View style={styles.container}>
-        <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        {hideChrome ? null : (
+          <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+        )}
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>Job not found</Text>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -296,9 +300,11 @@ export default function MechanicLeadDetailScreen({ route }: any) {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+      {hideChrome ? null : (
+        <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
+      )}
 
-      <ScrollView
+      <ScrollView>
         style={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >

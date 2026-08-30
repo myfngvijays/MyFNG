@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Truck, MapPin, Camera, Navigation, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -11,6 +11,8 @@ import {
   WorkshopStatTile,
   WorkshopEmpty,
 } from '@/components/workshop/WorkshopUi';
+import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
+import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
 
 export default function WorkshopPickupBoyDashboard() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -21,11 +23,17 @@ export default function WorkshopPickupBoyDashboard() {
     completedToday: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
 
   useEffect(() => {
     fetchPickupData();
 
-    // Setup real-time subscription
     const supabase = createClient();
     const channel = supabase
       .channel('pickup-boy-dashboard')
@@ -36,8 +44,7 @@ export default function WorkshopPickupBoyDashboard() {
           schema: 'public',
           table: 'service_leads'
         },
-        (payload) => {
-          console.log('Dashboard updated:', payload);
+        () => {
           fetchPickupData();
         }
       )
@@ -46,7 +53,8 @@ export default function WorkshopPickupBoyDashboard() {
     return () => {
       channel.unsubscribe();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datePreset, customStart, customEnd]);
 
   async function fetchPickupData() {
     const supabase = createClient();
@@ -105,13 +113,9 @@ export default function WorkshopPickupBoyDashboard() {
         t.status === 'IN_PROGRESS'
       ).length || 0;
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
       const completedToday = allTasks?.filter(t => 
         (t.status === 'DELIVERED_TO_CUSTOMER' || t.status === 'DELIVERED' || t.status === 'CLOSED') && 
-        (t.delivered_at || t.completed_at) &&
-        new Date(t.delivered_at || t.completed_at) >= today
+        isoInRange(t.delivered_at || t.completed_at, dateRange.start, dateRange.end, dateRange.allTime)
       ).length || 0;
 
       setTasks(assignedTasks || []);
@@ -137,17 +141,28 @@ export default function WorkshopPickupBoyDashboard() {
           subtitle="Pickup and delivery tasks in one place"
         />
 
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onChange={({ datePreset: next, customStart: s, customEnd: e }) => {
+            setDatePreset(next);
+            setCustomStart(s);
+            setCustomEnd(e);
+          }}
+        />
+
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <WorkshopStatTile label="Pickup Tasks" value={stats.pickup} icon={<Truck className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" loading={loading} />
           <WorkshopStatTile label="Delivery Tasks" value={stats.delivery} icon={<Truck className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" loading={loading} />
           <WorkshopStatTile label="In Transit" value={stats.inTransit} icon={<Navigation className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" loading={loading} />
-          <WorkshopStatTile label="Completed Today" value={stats.completedToday} icon={<CheckCircle className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" loading={loading} />
+          <WorkshopStatTile label="Completed" value={stats.completedToday} icon={<CheckCircle className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" loading={loading} />
         </div>
 
-        <div className="rounded-2xl bg-[#004AAD] p-3.5 shadow-sm sm:p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4">
           <div className="mb-2.5 flex items-center justify-between gap-2">
-            <h2 className="text-[14px] font-bold text-white">Active Tasks</h2>
-            <a href="/dashboard/workshop_pickup_boy/tasks" className="text-xs font-bold text-white/85">
+            <h2 className="text-[14px] font-bold text-[#023D95]">Active Tasks</h2>
+            <a href="/dashboard/workshop_pickup_boy/tasks" className="text-xs font-bold text-[#004AAD]">
               View all →
             </a>
           </div>
@@ -158,8 +173,8 @@ export default function WorkshopPickupBoyDashboard() {
                 <div key={task.id} className="rounded-xl bg-white p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-900">#{task.lead_number}</p>
-                      <p className="text-xs text-slate-500 truncate">{task.customer_name || 'N/A'} · {task.vehicle_number || 'N/A'}</p>
+                      <p className="text-sm font-bold text-[#023D95]">{task.customer_name || 'Customer'}</p>
+                      <p className="text-xs text-slate-500 truncate">{task.vehicle_number || 'N/A'}</p>
                     </div>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-700 shrink-0">
                       {String(task.status || '').replace(/_/g, ' ')}
@@ -188,7 +203,7 @@ export default function WorkshopPickupBoyDashboard() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead #</th>
+                    <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                     <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                     <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
                     <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
@@ -274,7 +289,7 @@ export default function WorkshopPickupBoyDashboard() {
                       <tr key={task.id} className="hover:bg-gray-50">
                         {/* Lead # */}
                         <td className="px-4 md:px-6 py-3 md:py-4">
-                          <span className="text-xs sm:text-sm font-medium text-gray-900">#{task.lead_number}</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-900">{task.customer_name || 'Customer'}</span>
                         </td>
 
                         {/* Customer */}

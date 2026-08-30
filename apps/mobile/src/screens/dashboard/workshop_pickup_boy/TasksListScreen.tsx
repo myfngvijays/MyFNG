@@ -32,7 +32,7 @@ interface PickupTask {
 
 type FilterValue = 'ALL' | 'SCHEDULED' | 'IN_TRANSIT' | 'DELIVERY_READY' | 'COMPLETED' | 'FAILED';
 
-export default function TasksListScreen() {
+export default function TasksListScreen({ hideChrome = false }: { hideChrome?: boolean }) {
   const navigation = useNavigation<any>();
   const { pickupRefreshTick } = useNotifications();
   const [tasks, setTasks] = useState<PickupTask[]>([]);
@@ -248,9 +248,9 @@ export default function TasksListScreen() {
     >
       <View style={styles.taskHeader}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.leadNumber}>#{item.lead_number}</Text>
-          <Text style={styles.customerName}>{item.customer_name}</Text>
-          <Text style={styles.vehicle}>{item.vehicle_number}</Text>
+          <Text style={styles.leadNumber} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
+          <Text style={styles.customerName}>{item.vehicle_number}</Text>
+          <Text style={styles.vehicle}>{item.customer_address}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
           <Text style={styles.statusText}>{item.status}</Text>
@@ -307,7 +307,7 @@ export default function TasksListScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#004AAD" />
           <Text style={styles.loadingText}>Loading tasks...</Text>
@@ -317,29 +317,32 @@ export default function TasksListScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>My Tasks</Text>
-        <Text style={styles.subtitle}>{filteredTasks.length} tasks</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
+      {hideChrome ? (
+        <Text style={styles.subtitleOnly}>{filteredTasks.length} tasks</Text>
+      ) : (
+        <View style={styles.header}>
+          <Text style={styles.title}>My Tasks</Text>
+          <Text style={styles.subtitle}>{filteredTasks.length} tasks</Text>
+        </View>
+      )}
 
       {/* Stats Cards */}
       <View style={styles.statsContainer}>
-        <View style={[styles.statCard, { backgroundColor: '#fef3c7' }]}>
-          <Text style={styles.statValue}>{stats.pending}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#D97706' }]}>
+          <Text style={[styles.statValue, { color: '#D97706' }]}>{stats.pending}</Text>
           <Text style={styles.statLabel}>Pending</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#dbeafe' }]}>
-          <Text style={styles.statValue}>{stats.inTransit}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#004AAD' }]}>
+          <Text style={[styles.statValue, { color: '#004AAD' }]}>{stats.inTransit}</Text>
           <Text style={styles.statLabel}>In Transit</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#d1fae5' }]}>
-          <Text style={styles.statValue}>{stats.completed}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#059669' }]}>
+          <Text style={[styles.statValue, { color: '#059669' }]}>{stats.completed}</Text>
           <Text style={styles.statLabel}>Completed</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#fee2e2' }]}>
-          <Text style={styles.statValue}>{stats.failed}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#DC2626' }]}>
+          <Text style={[styles.statValue, { color: '#DC2626' }]}>{stats.failed}</Text>
           <Text style={styles.statLabel}>Failed</Text>
         </View>
       </View>
@@ -414,6 +417,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6b7280',
   },
+  subtitleOnly: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
   header: {
     padding: 20,
     backgroundColor: '#fff',
@@ -440,6 +451,8 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 14,
     alignItems: 'center',
+    backgroundColor: '#fff',
+    borderLeftWidth: 4,
   },
   statValue: {
     fontSize: 24,

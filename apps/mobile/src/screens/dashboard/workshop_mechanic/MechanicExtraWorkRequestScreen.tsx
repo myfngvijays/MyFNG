@@ -21,7 +21,7 @@ const CATEGORIES = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-export default function MechanicExtraWorkRequestScreen() {
+export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: { hideChrome?: boolean }) {
   const navigation = useNavigation<any>();
   const route = useRoute();
   const { leadId } = route.params as { leadId: string };
@@ -70,7 +70,7 @@ export default function MechanicExtraWorkRequestScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>← Back</Text>

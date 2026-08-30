@@ -34,7 +34,13 @@ interface JobHistoryItem {
   efficiency_score: number | null;
 }
 
-export default function MechanicJobHistoryScreen({ embedInShell = false }: { embedInShell?: boolean }) {
+export default function MechanicJobHistoryScreen({
+  embedInShell = false,
+  hideChrome = false,
+}: {
+  embedInShell?: boolean;
+  hideChrome?: boolean;
+}) {
   const navigation = useNavigation<any>();
   const [jobs, setJobs] = useState<JobHistoryItem[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobHistoryItem[]>([]);
@@ -51,7 +57,7 @@ export default function MechanicJobHistoryScreen({ embedInShell = false }: { emb
   });
 
   useEffect(() => {
-    if (embedInShell) return;
+    if (embedInShell || hideChrome) return;
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (navigation?.goBack) {
         navigation.goBack();
@@ -209,7 +215,7 @@ export default function MechanicJobHistoryScreen({ embedInShell = false }: { emb
   if (loading) {
     return (
       <View style={styles.container}>
-        {embedInShell ? null : (
+        {embedInShell || hideChrome ? null : (
           <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
         )}
         <View style={styles.loadingContainer}>
@@ -221,7 +227,7 @@ export default function MechanicJobHistoryScreen({ embedInShell = false }: { emb
 
   return (
     <View style={styles.container}>
-      {embedInShell ? null : (
+      {embedInShell || hideChrome ? null : (
         <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
       )}
 
@@ -229,32 +235,24 @@ export default function MechanicJobHistoryScreen({ embedInShell = false }: { emb
         style={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Job History</Text>
-          <Text style={styles.subtitle}>Your completed jobs and performance</Text>
-        </View>
+        <Text style={styles.subtitle}>Your completed jobs and performance</Text>
 
-        {/* Stats Cards */}
         <View style={styles.statsGrid}>
-          <View style={[styles.statCard, { backgroundColor: '#DBEAFE' }]}>
+          <View style={[styles.statCard, { borderLeftColor: '#004AAD' }]}>
+            <Text style={[styles.statValue, { color: '#004AAD' }]}>{stats.total_completed}</Text>
             <Text style={styles.statLabel}>Completed</Text>
-            <Text style={styles.statValue}>{stats.total_completed}</Text>
           </View>
-
-          <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
+          <View style={[styles.statCard, { borderLeftColor: '#059669' }]}>
+            <Text style={[styles.statValue, { color: '#059669' }]}>{formatDuration(stats.total_duration)}</Text>
             <Text style={styles.statLabel}>Total Time</Text>
-            <Text style={styles.statValue}>{formatDuration(stats.total_duration)}</Text>
           </View>
-
-          <View style={[styles.statCard, { backgroundColor: '#E9D5FF' }]}>
+          <View style={[styles.statCard, { borderLeftColor: '#0284C7' }]}>
+            <Text style={[styles.statValue, { color: '#0284C7' }]}>{Math.round(stats.avg_efficiency)}%</Text>
             <Text style={styles.statLabel}>Efficiency</Text>
-            <Text style={styles.statValue}>{Math.round(stats.avg_efficiency)}%</Text>
           </View>
-
-          <View style={[styles.statCard, { backgroundColor: '#FEF3C7' }]}>
+          <View style={[styles.statCard, { borderLeftColor: '#D97706' }]}>
+            <Text style={[styles.statValue, { color: '#D97706' }]}>{stats.on_time_completion}%</Text>
             <Text style={styles.statLabel}>On-Time</Text>
-            <Text style={styles.statValue}>{stats.on_time_completion}%</Text>
           </View>
         </View>
 
@@ -312,10 +310,12 @@ export default function MechanicJobHistoryScreen({ embedInShell = false }: { emb
               <TouchableOpacity
                 key={job.job_id}
                 style={styles.jobCard}
-                onPress={() => navigation.navigate('JobDetail', { leadId: job.lead_id })}
+                onPress={() => navigation.navigate('JobDetail', { jobId: job.lead_id, leadId: job.lead_id })}
               >
                 <View style={styles.jobHeader}>
-                  <Text style={styles.jobNumber}>{job.lead_number}</Text>
+                  <Text style={styles.jobNumber} numberOfLines={1}>
+                    {job.customer_name || 'Customer'}
+                  </Text>
                   <View style={styles.badges}>
                     <View style={[styles.badge, { backgroundColor: getStatusColor(job.mechanic_status) + '20' }]}>
                       <Text style={[styles.badgeText, { color: getStatusColor(job.mechanic_status) }]}>
@@ -325,7 +325,6 @@ export default function MechanicJobHistoryScreen({ embedInShell = false }: { emb
                   </View>
                 </View>
 
-                <Text style={styles.customerName}>{job.customer_name}</Text>
                 <Text style={styles.vehicleInfo}>
                   {job.vehicle_number} • {job.vehicle_make} {job.vehicle_model}
                 </Text>
@@ -356,11 +355,11 @@ export default function MechanicJobHistoryScreen({ embedInShell = false }: { emb
         </View>
       </ScrollView>
 
-      {embedInShell ? null : (
+      {embedInShell || hideChrome ? null : (
         <BottomNav
           activeTab="history"
           onTabPress={(tab) => {
-            if (tab === 'dashboard') navigation.navigate('Dashboard');
+            if (tab === 'dashboard') navigation.navigate('MechanicDashboard');
             else if (tab === 'profile') navigation.navigate('Profile');
           }}
           tabs={[
@@ -398,33 +397,39 @@ const styles = StyleSheet.create({
     color: COLORS.heading,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: FONTS.family,
+    fontWeight: '600',
     color: COLORS.textSecondary,
-    marginTop: 4,
+    marginBottom: 10,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 16,
   },
   statCard: {
-    flex: 1,
-    minWidth: '47%',
-    padding: 16,
-    borderRadius: 12,
+    width: '48%',
+    flexGrow: 1,
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderLeftWidth: 4,
+    alignItems: 'center',
   },
   statLabel: {
     fontSize: 12,
     fontFamily: FONTS.family,
+    fontWeight: '600',
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginTop: 2,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: FONTS.family,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: COLORS.heading,
   },
   searchContainer: {
@@ -479,11 +484,11 @@ const styles = StyleSheet.create({
   },
   jobCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
   },
   jobHeader: {
     flexDirection: 'row',

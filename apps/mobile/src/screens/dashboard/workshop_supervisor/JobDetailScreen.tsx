@@ -10,7 +10,6 @@ import {
   Alert,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
@@ -162,7 +161,7 @@ export default function JobDetailScreen() {
   const getStatusColor = (status: string) => {
     const colors: any = {
       ASSIGNED: '#f59e0b',
-      IN_PROGRESS: '#3b82f6',
+      IN_PROGRESS: '#004AAD',
       COMPLETED: '#10b981',
       HOLD: '#ef4444',
     };
@@ -171,23 +170,23 @@ export default function JobDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
+          <ActivityIndicator size="large" color="#004AAD" />
           <Text style={styles.loadingText}>Loading job details...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!job) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>❌</Text>
           <Text style={styles.errorText}>Job not found</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -195,13 +194,12 @@ export default function JobDetailScreen() {
   const progress = calculateProgress();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.leadNumber}>#{job.lead_id.lead_number}</Text>
-            <Text style={styles.customerName}>{job.lead_id.customer_name}</Text>
+            <Text style={styles.leadNumber}>{job.lead_id.customer_name || 'Customer'}</Text>
             <Text style={styles.vehicle}>{job.lead_id.vehicle_number}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(job.status) }]}>
@@ -333,7 +331,7 @@ export default function JobDetailScreen() {
           </TouchableOpacity>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -347,7 +345,7 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => (
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   loadingContainer: {
     flex: 1,
@@ -391,7 +389,7 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 2,
   },
   vehicle: {
@@ -425,7 +423,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 12,
   },
   progressCard: {
@@ -442,7 +440,7 @@ const styles = StyleSheet.create({
   progressPercent: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#8b5cf6',
+    color: '#004AAD',
     marginBottom: 12,
   },
   progressBarBg: {
@@ -455,7 +453,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     borderRadius: 6,
   },
   progressText: {
@@ -485,7 +483,7 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#023D95',
     flex: 2,
     textAlign: 'right',
   },
@@ -510,7 +508,7 @@ const styles = StyleSheet.create({
   },
   checklistText: {
     fontSize: 13,
-    color: '#111827',
+    color: '#023D95',
     flex: 1,
   },
   checklistTextCompleted: {
@@ -537,7 +535,7 @@ const styles = StyleSheet.create({
   chargeTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 4,
   },
   chargeDesc: {
@@ -558,7 +556,7 @@ const styles = StyleSheet.create({
   chargeAmount: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginLeft: 12,
   },
   notesCard: {
@@ -573,7 +571,7 @@ const styles = StyleSheet.create({
   },
   notesText: {
     fontSize: 13,
-    color: '#111827',
+    color: '#023D95',
     lineHeight: 20,
   },
   actionBar: {
@@ -592,7 +590,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   actionButton: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',

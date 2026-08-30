@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
@@ -17,6 +17,8 @@ import {
   CalendarDays,
   UserPlus,
 } from 'lucide-react';
+import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
+import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
 
 type JobRow = {
   id: string;
@@ -42,6 +44,13 @@ export default function WorkshopAdvisorDashboard() {
   });
   const [recentJobs, setRecentJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
 
   useEffect(() => {
     if (!workshopId) {
@@ -53,11 +62,7 @@ export default function WorkshopAdvisorDashboard() {
     const supabase = createClient();
 
     async function load() {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayIso = today.toISOString();
-
-      const [mechanicsRes, jobsRes, qcRes, pendingRes, unassignedRes, pickupRes] = await Promise.all([
+      const [mechanicsRes, jobsRes, qcRes, pendingRes, unassignedRes, pickupRes, doneRes] = await Promise.all([
         supabase
           .from('users_login')
           .select('id, role:role_id(role_code)', { count: 'exact' })
@@ -92,6 +97,13 @@ export default function WorkshopAdvisorDashboard() {
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
           .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE']),
+        supabase
+          .from('mechanic_jobs')
+          .select('id, completed_at, mechanic:mechanic_id(workshop_id)')
+          .not('completed_at', 'is', null)
+          .gte('completed_at', dateRange.allTime ? '2020-01-01' : dateRange.start)
+          .lte('completed_at', dateRange.end)
+          .limit(400),
       ]);
 
       if (cancelled) return;
@@ -107,10 +119,11 @@ export default function WorkshopAdvisorDashboard() {
       setStats({
         total_mechanics: mechanics.length,
         active_jobs: workshopJobs.length,
-        completed_today: workshopJobs.filter((job) => {
-          if (!job.completed_at) return false;
-          return new Date(job.completed_at) >= new Date(todayIso);
-        }).length,
+        completed_today: ((doneRes.data || []) as any[]).filter(
+          (job) =>
+            job.mechanic?.workshop_id === workshopId &&
+            isoInRange(job.completed_at, dateRange.start, dateRange.end, dateRange.allTime),
+        ).length,
         pending_qc: qcRes.count || 0,
         overdue_jobs: workshopJobs.filter(
           (job) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
@@ -126,7 +139,7 @@ export default function WorkshopAdvisorDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [workshopId, ready]);
+  }, [workshopId, ready, dateRange.start, dateRange.end, dateRange.allTime]);
 
   return (
     <DashboardLayout role="workshop_supervisor">
@@ -137,12 +150,23 @@ export default function WorkshopAdvisorDashboard() {
           href="/dashboard/workshop-advisor"
         />
 
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onChange={({ datePreset: next, customStart: s, customEnd: e }) => {
+            setDatePreset(next);
+            setCustomStart(s);
+            setCustomEnd(e);
+          }}
+        />
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatTile label="Mechanics" value={stats.total_mechanics} accent="#004AAD" icon={<Users className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/team-overview" onClick={router.push} />
           <StatTile label="Active Jobs" value={stats.active_jobs} accent="#D97706" icon={<Wrench className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/jobs" onClick={router.push} />
           <StatTile label="To Assign" value={stats.unassigned} accent="#EA580C" icon={<UserPlus className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/job-assignments" onClick={router.push} />
           <StatTile label="Pending Leads" value={stats.pending_leads} accent="#0284C7" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/pending-leads" onClick={router.push} />
-          <StatTile label="Done Today" value={stats.completed_today} accent="#059669" icon={<CheckCircle className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/daily-report" onClick={router.push} />
+          <StatTile label="Completed" value={stats.completed_today} accent="#059669" icon={<CheckCircle className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/daily-report" onClick={router.push} />
           <StatTile label="Pending QC" value={stats.pending_qc} accent="#6D28D9" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/qc-queue" onClick={router.push} />
           <StatTile label="Pickup Active" value={stats.pickup_active} accent="#4338CA" icon={<Car className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/pickup-delivery" onClick={router.push} />
           <StatTile label="Overdue" value={stats.overdue_jobs} accent="#DC2626" icon={<AlertTriangle className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/jobs" onClick={router.push} />

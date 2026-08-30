@@ -867,6 +867,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/workshop_admin/jobs', icon: <Wrench className="w-5 h-5" />, label: 'Active Jobs' },
         { href: '/dashboard/workshop_admin/additional-jobs-master', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Additional Jobs Master' },
         { href: '/dashboard/workshop_admin/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
+        { href: '/dashboard/workshop_admin/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
       'WORKSHOP_SUPERVISOR': [
         { href: '/dashboard/workshop-advisor', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -889,6 +890,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/workshop_mechanic/chat', icon: <MessageSquare className="w-5 h-5" />, label: 'Chat' },
         { href: '/dashboard/workshop_mechanic/jobs', icon: <Wrench className="w-5 h-5" />, label: 'My Jobs' },
         { href: '/dashboard/workshop_mechanic/history', icon: <ClipboardList className="w-5 h-5" />, label: 'Job History' },
+        { href: '/dashboard/workshop_mechanic/performance', icon: <TrendingUp className="w-5 h-5" />, label: 'Performance' },
         { href: '/dashboard/workshop_mechanic/profile', icon: <Users className="w-5 h-5" />, label: 'Profile' },
       ],
       'WORKSHOP_PICKUP_BOY': [

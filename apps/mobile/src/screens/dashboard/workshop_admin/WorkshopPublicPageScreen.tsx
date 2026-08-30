@@ -52,7 +52,7 @@ type PublicPage = {
   is_featured: boolean;
 };
 
-export default function WorkshopPublicPageScreen({ navigation }: any) {
+export default function WorkshopPublicPageScreen({ navigation, hideChrome = false }: any) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
@@ -340,7 +340,9 @@ export default function WorkshopPublicPageScreen({ navigation }: any) {
   if (!workshop) {
     return (
       <View style={styles.container}>
-        <DashboardHeader title="Public Page" onBack={() => navigation.goBack()} />
+        {hideChrome ? null : (
+          <DashboardHeader title="Public Page" onBack={() => navigation.goBack()} />
+        )}
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>No workshop assigned to your account.</Text>
         </View>
@@ -352,7 +354,9 @@ export default function WorkshopPublicPageScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Public Page" onBack={() => navigation.goBack()} />
+      {hideChrome ? null : (
+        <DashboardHeader title="Public Page" onBack={() => navigation.goBack()} />
+      )}
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerCard}>
           <Text style={styles.headerTitle}>{workshop.name || 'Workshop'}</Text>

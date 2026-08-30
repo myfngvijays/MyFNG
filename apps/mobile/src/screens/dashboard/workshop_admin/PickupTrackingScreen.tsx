@@ -175,7 +175,7 @@ export default function PickupTrackingScreen() {
     <View style={styles.pickupCard}>
       <View style={styles.cardHeader}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.leadNumber}>#{item.lead_number}</Text>
+          <Text style={styles.leadNumber} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
           <Text style={styles.customerName}>{item.customer_name}</Text>
           <Text style={styles.vehicle}>{item.vehicle_number}</Text>
         </View>

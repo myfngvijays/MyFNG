@@ -22,6 +22,7 @@ import * as Location from 'expo-location';
 import { useNotifications } from '../../../context/NotificationContext';
 
 export default function PickupJobDetailScreen(props: any) {
+  const hideChrome = !!(props as any)?.hideChrome;
   const navigation = useNavigation();
   const { pickupRefreshTick } = useNotifications();
   const route = (props as any)?.route;
@@ -484,12 +485,14 @@ export default function PickupJobDetailScreen(props: any) {
   if (!leadId || !lead) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Loading...</Text>
-        </View>
+        {hideChrome ? null : (
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onBack} style={styles.backButton}>
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Loading...</Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -504,13 +507,14 @@ export default function PickupJobDetailScreen(props: any) {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{deliveryMode ? 'Delivery Details' : 'Pickup Details'}</Text>
-      </View>
+      {hideChrome ? null : (
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{deliveryMode ? 'Delivery Details' : 'Pickup Details'}</Text>
+        </View>
+      )}
 
       <ScrollView
         style={styles.content}

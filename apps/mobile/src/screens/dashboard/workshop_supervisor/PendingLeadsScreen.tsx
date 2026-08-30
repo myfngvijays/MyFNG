@@ -9,9 +9,7 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
-  BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
@@ -43,19 +41,6 @@ export default function PendingLeadsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
-
-  // Handle hardware back button
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (navigation?.goBack) {
-        navigation.goBack();
-        return true;
-      }
-      return false;
-    });
-
-    return () => backHandler.remove();
-  }, [navigation]);
 
   useEffect(() => {
     fetchPendingLeads();
@@ -274,28 +259,16 @@ export default function PendingLeadsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Pending Leads</Text>
-        </View>
+      <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>⏰ Pending Leads</Text>
-      </View>
+    <View style={styles.container}>
 
       <ScrollView
         style={styles.scrollView}
@@ -315,7 +288,7 @@ export default function PendingLeadsScreen() {
               {/* Header */}
               <View style={styles.leadHeader}>
                 <View>
-                  <Text style={styles.leadNumber}>{lead.lead_number}</Text>
+                  <Text style={styles.leadNumber}>{lead.customer_name || 'Customer'}</Text>
                   <Text style={styles.leadDate}>
                     Created: {formatDateTime(lead.created_at)}
                   </Text>
@@ -420,7 +393,7 @@ export default function PendingLeadsScreen() {
           ))
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -569,7 +542,7 @@ const styles = StyleSheet.create({
   },
   pickupText: {
     fontSize: FONT_SIZES.xs,
-    color: '#7c3aed',
+    color: '#004AAD',
     fontWeight: '600',
   },
   serviceCard: {

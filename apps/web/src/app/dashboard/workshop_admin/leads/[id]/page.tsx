@@ -374,7 +374,7 @@ export default function LeadDetailPage() {
 
         <WorkshopPageHeader
           eyebrow="Workshop Owner"
-          title={lead.lead_number}
+          title={lead.customer_name || 'Customer'}
           subtitle={`Created ${getTimeSince(lead.created_at)} · Priority ${lead.priority || '—'}`}
           right={
             <div className="flex flex-wrap items-center gap-2 min-[900px]:justify-end">

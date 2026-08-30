@@ -13,10 +13,10 @@ import {
   Alert,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
+import { AC } from '../../../components/workshop/advisorCrmUi';
 
 interface JobWithPriority {
   id: string;
@@ -56,23 +56,22 @@ export default function DayPlanningScreen() {
 
   useEffect(() => {
     fetchData();
-    setupRealtimeSubscription();
   }, [sortBy, showOnlyUnassigned]);
 
-  function setupRealtimeSubscription() {
+  useEffect(() => {
     const channel = supabase
-      .channel('day-planning-updates')
+      .channel(`day-planning-updates-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'service_leads' },
-        () => fetchData()
+        () => fetchData(),
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }
+  }, []);
 
   async function fetchData() {
     try {
@@ -258,7 +257,7 @@ export default function DayPlanningScreen() {
     const colors: Record<string, string> = {
       URGENT: '#ef4444',
       HIGH: '#f97316',
-      NORMAL: '#3b82f6',
+      NORMAL: '#004AAD',
       LOW: '#6b7280',
     };
     return colors[priority] || colors.NORMAL;
@@ -274,75 +273,30 @@ export default function DayPlanningScreen() {
 
   function renderJob({ item }: { item: JobWithPriority }) {
     const isSelected = selectedJobs.has(item.id);
+    const serviceLabel = String(item.service_type || '').trim();
+    const showService = serviceLabel && !/^[0-9a-f-]{20,}$/i.test(serviceLabel);
 
     return (
       <TouchableOpacity
-        style={[styles.jobCard, isSelected && styles.jobCardSelected]}
+        style={[AC.navy, isSelected && { borderWidth: 2, borderColor: '#FDE68A' }]}
         onPress={() => toggleJobSelection(item.id)}
+        activeOpacity={0.9}
       >
-        <View style={styles.jobCardHeader}>
-          <View style={styles.checkboxContainer}>
-            <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-              {isSelected && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-          </View>
-          <View style={styles.jobMainInfo}>
-            <View style={styles.jobTitleRow}>
-              <Text style={styles.leadNumber}>#{item.lead_number}</Text>
-              <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) }]}>
-                <Text style={styles.priorityText}>{item.priority}</Text>
-              </View>
-            </View>
-            <Text style={styles.customerName}>{item.customer_name}</Text>
-            <Text style={styles.vehicleNumber}>{item.vehicle_number}</Text>
-            
-            {/* Tags */}
-            <View style={styles.tagsRow}>
-              {item.is_vip_customer && (
-                <View style={styles.vipTag}>
-                  <Text style={styles.vipText}>VIP</Text>
-                </View>
-              )}
-              {item.is_repeat_complaint && (
-                <View style={styles.repeatTag}>
-                  <Text style={styles.repeatText}>REPEAT</Text>
-                </View>
-              )}
-            </View>
+        <View style={AC.navyRow}>
+          <Text style={AC.navyName} numberOfLines={1}>
+            {isSelected ? '✓ ' : ''}
+            {item.customer_name || 'Customer'}
+          </Text>
+          <View style={AC.navyBadge}>
+            <Text style={AC.navyBadgeTxt}>{item.priority}</Text>
           </View>
         </View>
-
-        <View style={styles.jobDetails}>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Service:</Text>
-            <Text style={styles.detailValue}>{item.service_type}</Text>
-          </View>
-          
-          {item.estimated_duration && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Duration:</Text>
-              <Text style={styles.detailValue}>{item.estimated_duration} min</Text>
-            </View>
-          )}
-
-          {item.sla_remaining_minutes !== null && (
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>SLA:</Text>
-              <Text style={[styles.detailValue, { color: getSLAColor(item.sla_remaining_minutes) }]}>
-                {item.sla_remaining_minutes < 0
-                  ? `OVERDUE ${Math.abs(item.sla_remaining_minutes)} min`
-                  : `${Math.floor(item.sla_remaining_minutes / 60)}h ${item.sla_remaining_minutes % 60}m`}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Mechanic:</Text>
-            <Text style={styles.detailValue}>
-              {item.assigned_mechanic ? item.assigned_mechanic.full_name : '❌ UNASSIGNED'}
-            </Text>
-          </View>
-        </View>
+        <Text style={AC.navyMeta}>{item.vehicle_number}</Text>
+        {showService ? <Text style={AC.navyMeta}>{serviceLabel}</Text> : null}
+        <Text style={AC.navyMeta}>
+          {item.assigned_mechanic?.full_name || 'Unassigned'}
+          {item.estimated_duration ? ` · ${item.estimated_duration} min` : ''}
+        </Text>
       </TouchableOpacity>
     );
   }
@@ -352,97 +306,88 @@ export default function DayPlanningScreen() {
   const repeatJobs = jobs.filter(j => j.is_repeat_complaint);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>📅 Day Planning</Text>
-        <Text style={styles.subtitle}>
-          {formatDateDMY(new Date().toISOString())}
-        </Text>
-        <Text style={styles.jobCount}>{jobs.length} jobs to manage</Text>
-      </View>
+    <View style={AC.page}>
+      <Text style={AC.sub}>
+        {formatDateDMY(new Date().toISOString())} · {jobs.length} jobs to manage
+      </Text>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <View style={[styles.statCard, { backgroundColor: '#fef2f2' }]}>
-          <Text style={[styles.statValue, { color: '#ef4444' }]}>{urgentJobs.length}</Text>
-          <Text style={styles.statLabel}>⚠️ Urgent</Text>
+      <View style={AC.kpiRow}>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#EF4444' }]}>{urgentJobs.length}</Text>
+          <Text style={AC.kpiLab}>Urgent</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#fefce8' }]}>
-          <Text style={[styles.statValue, { color: '#eab308' }]}>{vipJobs.length}</Text>
-          <Text style={styles.statLabel}>⭐ VIP</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#D97706' }]}>{vipJobs.length}</Text>
+          <Text style={AC.kpiLab}>VIP</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#fff7ed' }]}>
-          <Text style={[styles.statValue, { color: '#f97316' }]}>{repeatJobs.length}</Text>
-          <Text style={styles.statLabel}>🔄 Repeat</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#EA580C' }]}>{repeatJobs.length}</Text>
+          <Text style={AC.kpiLab}>Repeat</Text>
         </View>
-        <View style={[styles.statCard, { backgroundColor: '#eff6ff' }]}>
-          <Text style={[styles.statValue, { color: '#3b82f6' }]}>{selectedJobs.size}</Text>
-          <Text style={styles.statLabel}>✓ Selected</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#004AAD' }]}>{selectedJobs.size}</Text>
+          <Text style={AC.kpiLab}>Selected</Text>
         </View>
       </View>
 
-      {/* Controls */}
-      <View style={styles.controls}>
-        <View style={styles.controlRow}>
-          <Text style={styles.controlLabel}>Sort by:</Text>
-          <View style={styles.sortButtons}>
-            {(['priority', 'sla', 'duration'] as const).map((sort) => (
-              <TouchableOpacity
-                key={sort}
-                style={[styles.sortButton, sortBy === sort && styles.sortButtonActive]}
-                onPress={() => setSortBy(sort)}
-              >
-                <Text style={[styles.sortButtonText, sortBy === sort && styles.sortButtonTextActive]}>
-                  {sort === 'priority' ? 'Priority' : sort === 'sla' ? 'SLA' : 'Duration'}
+      <View style={AC.chipWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {(['priority', 'sla', 'duration'] as const).map((sort) => (
+            <TouchableOpacity
+              key={sort}
+              style={[AC.chip, sortBy === sort && AC.chipOn]}
+              onPress={() => setSortBy(sort)}
+            >
+              <Text style={[AC.chipTxt, sortBy === sort && AC.chipTxtOn]}>
+                {sort === 'priority' ? 'Priority' : sort === 'sla' ? 'SLA' : 'Duration'}
               </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={() => setShowOnlyUnassigned(!showOnlyUnassigned)}
-        >
-          <View style={[styles.filterCheckbox, showOnlyUnassigned && styles.filterCheckboxActive]}>
-            {showOnlyUnassigned && <Text style={styles.filterCheckmark}>✓</Text>}
-          </View>
-          <Text style={styles.filterText}>Show only unassigned</Text>
-        </TouchableOpacity>
-
-        {selectedJobs.size > 0 && (
-          <View style={styles.actionBar}>
-            <Text style={styles.actionBarText}>{selectedJobs.size} job(s) selected</Text>
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={styles.clearButton}
-                onPress={() => setSelectedJobs(new Set())}
-              >
-                <Text style={styles.clearButtonText}>Clear</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.assignButton}
-                onPress={() => setShowMechanicModal(true)}
-              >
-                <Text style={styles.assignButtonText}>Assign to Mechanic</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
-      {/* Jobs List */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 10, gap: 8 }}
+        onPress={() => setShowOnlyUnassigned(!showOnlyUnassigned)}
+      >
+        <View
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 6,
+            borderWidth: 2,
+            borderColor: '#004AAD',
+            backgroundColor: showOnlyUnassigned ? '#004AAD' : '#fff',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {showOnlyUnassigned ? <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>✓</Text> : null}
+        </View>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: '#023D95' }}>Show only unassigned</Text>
+      </TouchableOpacity>
+
+      {selectedJobs.size > 0 && (
+        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10 }}>
+          <TouchableOpacity style={[AC.navyBtnGhost, { flex: 1, backgroundColor: '#fff' }]} onPress={() => setSelectedJobs(new Set())}>
+            <Text style={[AC.navyBtnTxt, { color: '#023D95' }]}>Clear</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={AC.navyBtn} onPress={() => setShowMechanicModal(true)}>
+            <Text style={AC.navyBtnTxt}>Assign mechanic</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <FlatList
         data={jobs}
         keyExtractor={(item) => item.id}
         renderItem={renderJob}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={styles.listContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#004AAD']} />}
+        contentContainerStyle={{ paddingBottom: 32 }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>✅ All Clear!</Text>
-            <Text style={styles.emptySubtext}>No jobs requiring planning</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>All clear</Text>
+            <Text style={AC.emptySub}>No jobs requiring planning</Text>
           </View>
         }
       />
@@ -502,14 +447,14 @@ export default function DayPlanningScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 16,
@@ -520,7 +465,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -583,8 +528,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sortButtonActive: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   sortButtonText: {
     fontSize: 12,
@@ -609,8 +554,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterCheckboxActive: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   filterCheckmark: {
     color: '#fff',
@@ -657,7 +602,7 @@ const styles = StyleSheet.create({
     flex: 2,
     paddingVertical: 8,
     borderRadius: 6,
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     alignItems: 'center',
   },
   assignButtonText: {
@@ -670,15 +615,15 @@ const styles = StyleSheet.create({
   },
   jobCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
     marginBottom: 12,
     borderWidth: 2,
     borderColor: '#e5e7eb',
   },
   jobCardSelected: {
-    borderColor: '#8b5cf6',
-    backgroundColor: '#faf5ff',
+    borderColor: '#004AAD',
+    backgroundColor: '#EAF2FF',
   },
   jobCardHeader: {
     flexDirection: 'row',
@@ -697,8 +642,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checkboxSelected: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   checkmark: {
     color: '#fff',
@@ -732,7 +677,7 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 2,
   },
   vehicleNumber: {
@@ -783,7 +728,7 @@ const styles = StyleSheet.create({
   detailValue: {
     flex: 1,
     fontSize: 12,
-    color: '#111827',
+    color: '#023D95',
     fontWeight: '500',
   },
   emptyContainer: {
@@ -793,7 +738,7 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 8,
   },
   emptySubtext: {
@@ -815,7 +760,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 4,
   },
   modalSubtitle: {
@@ -856,7 +801,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -868,7 +813,7 @@ const styles = StyleSheet.create({
   mechanicName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   mechanicJobs: {
     fontSize: 12,
@@ -876,7 +821,7 @@ const styles = StyleSheet.create({
   },
   assignArrow: {
     fontSize: 24,
-    color: '#8b5cf6',
+    color: '#004AAD',
   },
   modalCloseButton: {
     paddingVertical: 14,

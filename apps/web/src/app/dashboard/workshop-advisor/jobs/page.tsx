@@ -362,7 +362,7 @@ function SupervisorJobsContent() {
                     <button
                       type="button"
                       onClick={() => { window.location.href = `/dashboard/workshop-advisor/jobs/${job.id}/review`; }}
-                      className="inline-flex min-h-11 items-center justify-center rounded-xl bg-purple-600 text-xs font-bold text-white"
+                      className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#004AAD] text-xs font-bold text-white"
                     >
                       QC Review
                     </button>
@@ -414,14 +414,14 @@ function SupervisorJobsContent() {
                         case 'NEW': return 'bg-blue-100 text-blue-700';
                         case 'INCOMPLETE': return 'bg-yellow-100 text-yellow-700';
                         case 'VALIDATED': return 'bg-cyan-100 text-cyan-700';
-                        case 'ASSIGNED_TO_WORKSHOP': return 'bg-purple-100 text-purple-700';
+                        case 'ASSIGNED_TO_WORKSHOP': return 'bg-blue-100 text-[#004AAD]';
                         case 'ACCEPTED': return 'bg-indigo-100 text-indigo-700';
                         case 'IN_PROGRESS': return 'bg-green-100 text-green-700';
                         case 'HOLD':
                         case 'ON_HOLD': return 'bg-orange-100 text-orange-700';
                         case 'COMPLETED':
                         case 'WORK_COMPLETED': return 'bg-teal-100 text-teal-700';
-                        case 'QC_PENDING': return 'bg-purple-100 text-purple-700';
+                        case 'QC_PENDING': return 'bg-blue-100 text-[#004AAD]';
                         case 'READY_FOR_DELIVERY': return 'bg-emerald-100 text-emerald-700';
                         case 'DELIVERED': return 'bg-lime-100 text-lime-700';
                         case 'CANCELLED': return 'bg-red-100 text-red-700';
@@ -514,7 +514,7 @@ function SupervisorJobsContent() {
                               {getStatusDisplay()}
                             </span>
                             {job.qc_status === 'PENDING' && (job.status === 'COMPLETED' || job.status === 'QC_PENDING' || job.status === 'WORK_COMPLETED') && (
-                              <span className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-700 rounded w-fit">
+                              <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-[#004AAD] rounded w-fit">
                                 QC Required
                               </span>
                             )}
@@ -612,7 +612,7 @@ function SupervisorJobsContent() {
                             {(job.status === 'COMPLETED' || job.status === 'WORK_COMPLETED' || job.status === 'QC_PENDING') && job.qc_status === 'PENDING' && (
                               <button
                                 onClick={() => window.location.href = `/dashboard/workshop-advisor/jobs/${job.id}/review`}
-                                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded font-medium transition-colors"
+                                className="px-2 py-1 bg-[#004AAD] hover:bg-[#003A88] text-white text-xs rounded font-medium transition-colors"
                               >
                                 QC Review
                               </button>

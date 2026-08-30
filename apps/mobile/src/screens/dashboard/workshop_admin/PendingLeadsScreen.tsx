@@ -17,7 +17,7 @@ import { supabase } from '../../../lib/supabase';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
-export default function PendingLeadsScreen() {
+export default function PendingLeadsScreen({ hideChrome = false }: { hideChrome?: boolean }) {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -191,7 +191,9 @@ export default function PendingLeadsScreen() {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Pending Leads" onBack={() => navigation.goBack()} />
+      {hideChrome ? null : (
+        <DashboardHeader title="Pending Leads" onBack={() => navigation.goBack()} />
+      )}
       
       <ScrollView
         style={styles.scrollView}
@@ -205,14 +207,15 @@ export default function PendingLeadsScreen() {
           leads.map((lead, index) => (
             <View key={lead.id || index} style={styles.leadCard}>
               <View style={styles.leadHeader}>
-                <Text style={styles.leadNumber}>{lead.lead_number}</Text>
+                <Text style={styles.leadNumber} numberOfLines={1}>{lead.customer_name || 'Customer'}</Text>
                 <Text style={styles.leadDate}>
                   {formatDateDMY(lead.created_at)}
                 </Text>
               </View>
               
-              <Text style={styles.customerName}>{lead.customer_name}</Text>
-              <Text style={styles.customerPhone}>{lead.customer_phone}</Text>
+              {lead.customer_phone ? (
+                <Text style={styles.customerPhone}>{lead.customer_phone}</Text>
+              ) : null}
               {lead.vehicle_number && (
                 <Text style={styles.vehicleNumber}>Vehicle: {lead.vehicle_number}</Text>
               )}

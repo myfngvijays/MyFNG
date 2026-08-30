@@ -201,7 +201,7 @@ export default function LeadDetailScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.leadNumber}>#{lead.lead_number}</Text>
+            <Text style={styles.leadNumber} numberOfLines={1}>{lead.customer_name || 'Customer'}</Text>
             <Text style={styles.customerName}>{lead.customer_name}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(lead.status) }]}>

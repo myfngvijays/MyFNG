@@ -610,13 +610,13 @@ export default function PickupDeliveryCoordinationPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4 shadow-sm sm:col-span-2 lg:col-span-1">
+          <div className="rounded-2xl border border-blue-200 bg-[#F0F7FF] p-4 shadow-sm sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-sm text-gray-600">Active Pickup Boys</p>
-                <p className="text-2xl sm:text-3xl font-bold text-purple-600">{pickupBoys.length}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-[#004AAD]">{pickupBoys.length}</p>
               </div>
-              <User className="w-7 h-7 sm:w-8 sm:h-8 text-purple-600 flex-shrink-0" />
+              <User className="w-7 h-7 sm:w-8 sm:h-8 text-[#004AAD] flex-shrink-0" />
             </div>
           </div>
         </div>

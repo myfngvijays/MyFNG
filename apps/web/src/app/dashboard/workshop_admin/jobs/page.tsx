@@ -154,7 +154,7 @@ export default function WorkshopJobsPage() {
             <div key={job.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{job.lead_number}</h3>
+                  <h3 className="text-lg sm:text-xl font-bold text-[#023D95] truncate">{job.customer_name || 'Customer'}</h3>
                   <p className="text-sm sm:text-base md:text-lg text-gray-700 truncate">
                     {job.service_type_names || job.service_type}
                   </p>

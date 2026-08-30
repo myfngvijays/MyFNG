@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { formatDateDMY } from "@/lib/dateFormat";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,576 +6,321 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  BackHandler,
+  TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
+import { supabase } from '../../../lib/supabase';
+import { formatDateDMY } from '../../../lib/dateFormat';
+import { AC } from '../../../components/workshop/advisorCrmUi';
+import { COLORS } from '../../../constants/theme';
+import WorkshopDateFilter, { isoInRange } from '../../../components/workshop/WorkshopDateFilter';
+import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../../lib/crmDateRange';
 
-export default function PerformanceScreen() {
-  const navigation = useNavigation();
+function statusOf(job: any) {
+  return String(job.mechanic_status || job.status || '').toUpperCase();
+}
+
+function isDone(job: any) {
+  const s = statusOf(job);
+  return s === 'COMPLETED' || s === 'READY_FOR_DELIVERY';
+}
+
+export default function PerformanceScreen({ hideChrome = false }: { hideChrome?: boolean }) {
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
+  const [jobs, setJobs] = useState<any[]>([]);
 
-  const [metrics, setMetrics] = useState({
-    totalJobs: 0,
-    completedJobs: 0,
-    avgCompletionTime: 0,
-    qualityScore: 0,
-    onTimeDelivery: 0,
-    customerRating: 0,
-    thisMonth: 0,
-    thisWeek: 0,
-    today: 0,
-  });
-
-  const [recentJobs, setRecentJobs] = useState<Array<any>>([]);
-
-  // Handle hardware back button
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (navigation?.goBack) {
-        navigation.goBack();
-        return true;
-      }
-      return false;
-    });
-
-    return () => backHandler.remove();
-  }, [navigation]);
-
-  useEffect(() => {
-    fetchUserId();
-  }, []);
-
-  useEffect(() => {
-    if (userId) {
-      fetchPerformanceData();
-    }
-  }, [userId]);
-
-  const fetchUserId = async () => {
+  const fetchPerformanceData = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: userProfile } = await supabase
         .from('users_login')
         .select('id')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
+      const mechanicId = userProfile?.id || user.id;
+      if (!mechanicId) return;
 
-      if (userProfile?.id) {
-        setUserId(userProfile.id);
-      }
-    } catch (error) {
-      console.error('Error fetching user ID:', error);
-    }
-  };
-
-  const fetchPerformanceData = async () => {
-    try {
-      setLoading(true);
-
-      if (!userId) return;
-
-      // Fetch mechanic jobs
-      const { data: jobs, error } = await supabase
+      const { data, error } = await supabase
         .from('mechanic_jobs')
-        .select('*')
-        .eq('mechanic_id', userId)
-        .order('created_at', { ascending: false });
+        .select(
+          `
+          id, lead_id, mechanic_status, status, assigned_at, started_at, completed_at, created_at,
+          estimated_completion_time, actual_work_duration, efficiency_score,
+          service_leads:lead_id (customer_name, vehicle_number, vehicle_make, vehicle_model)
+        `,
+        )
+        .eq('mechanic_id', mechanicId)
+        .order('assigned_at', { ascending: false })
+        .limit(200);
 
       if (error) throw error;
-
-      const totalJobs = jobs?.length || 0;
-      const completedJobs = jobs?.filter(j => j.status === 'COMPLETED').length || 0;
-
-      // Calculate avg completion time
-      const completedWithTime = jobs?.filter(j => 
-        j.status === 'COMPLETED' && j.started_at && j.completed_at
-      ) || [];
-      
-      let avgCompletionTime = 0;
-      if (completedWithTime.length > 0) {
-        const totalTime = completedWithTime.reduce((sum, j) => {
-          const start = new Date(j.started_at).getTime();
-          const end = new Date(j.completed_at).getTime();
-          return sum + (end - start);
-        }, 0);
-        avgCompletionTime = totalTime / completedWithTime.length / (1000 * 60 * 60); // hours
-      }
-
-      // Calculate on-time delivery
-      const onTimeJobs = completedWithTime.filter(j => {
-        if (!j.estimated_completion_time) return true;
-        const completedAt = new Date(j.completed_at).getTime();
-        const estimatedAt = new Date(j.estimated_completion_time).getTime();
-        return completedAt <= estimatedAt;
-      }).length;
-
-      const onTimeDelivery = completedWithTime.length > 0 
-        ? (onTimeJobs / completedWithTime.length * 100) 
-        : 0;
-
-      // Period-based counts
-      const now = new Date();
-      const todayStart = new Date(now.setHours(0, 0, 0, 0));
-      const weekStart = new Date(now.setDate(now.getDate() - now.getDay()));
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-      const today = completedWithTime.filter(j => 
-        new Date(j.completed_at) >= todayStart
-      ).length;
-
-      const thisWeek = completedWithTime.filter(j => 
-        new Date(j.completed_at) >= weekStart
-      ).length;
-
-      const thisMonth = completedWithTime.filter(j => 
-        new Date(j.completed_at) >= monthStart
-      ).length;
-
-      setMetrics({
-        totalJobs,
-        completedJobs,
-        avgCompletionTime,
-        qualityScore: 92, // Mock
-        onTimeDelivery,
-        customerRating: 4.5, // Mock
-        thisMonth,
-        thisWeek,
-        today,
-      });
-
-      setRecentJobs(jobs?.slice(0, 5) || []);
-
+      setJobs(data || []);
     } catch (error) {
       console.error('Error fetching performance data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
-  const onRefresh = () => {
-    setRefreshing(true);
+  useEffect(() => {
     fetchPerformanceData();
-  };
+  }, [fetchPerformanceData]);
+
+  const metrics = useMemo(() => {
+    const range = resolveCrmDateRange(datePreset, customStart, customEnd);
+    const scoped = jobs.filter((j) =>
+      isoInRange(
+        j.completed_at || j.started_at || j.assigned_at || j.created_at,
+        range.start,
+        range.end,
+        range.allTime,
+      ),
+    );
+    const completed = scoped.filter(isDone);
+    const inProgress = scoped.filter((j) => statusOf(j) === 'IN_PROGRESS').length;
+    const onHold = scoped.filter((j) => {
+      const s = statusOf(j);
+      return s === 'HOLD' || s === 'WAITING_APPROVAL';
+    }).length;
+
+    const withTime = completed.filter((j) => j.started_at && j.completed_at);
+    let avgHours = 0;
+    if (withTime.length > 0) {
+      const totalMs = withTime.reduce((sum, j) => {
+        const start = new Date(j.started_at).getTime();
+        const end = new Date(j.completed_at).getTime();
+        return sum + Math.max(0, end - start);
+      }, 0);
+      avgHours = totalMs / withTime.length / (1000 * 60 * 60);
+    } else {
+      const mins = completed.reduce((sum, j) => sum + (Number(j.actual_work_duration) || 0), 0);
+      avgHours = completed.length ? mins / completed.length / 60 : 0;
+    }
+
+    const onTimeJobs = withTime.filter((j) => {
+      if (!j.estimated_completion_time) return (Number(j.efficiency_score) || 0) >= 80;
+      return new Date(j.completed_at).getTime() <= new Date(j.estimated_completion_time).getTime();
+    }).length;
+    const onTime = withTime.length > 0 ? (onTimeJobs / withTime.length) * 100 : 0;
+    const completionRate = scoped.length > 0 ? (completed.length / scoped.length) * 100 : 0;
+    const quality =
+      completed.length > 0
+        ? completed.reduce((sum, j) => sum + (Number(j.efficiency_score) || 0), 0) / completed.length
+        : 0;
+    const overall = Math.round((completionRate * 0.4 + onTime * 0.3 + quality * 0.3) || 0);
+
+    return {
+      assigned: scoped.length,
+      completed: completed.length,
+      inProgress,
+      onHold,
+      avgHours,
+      onTime,
+      completionRate,
+      quality,
+      overall: Math.min(100, overall),
+      recent: scoped.slice(0, 8),
+    };
+  }, [jobs, datePreset, customStart, customEnd]);
+
+  const grade =
+    metrics.overall >= 90
+      ? { label: 'Excellent', color: '#059669' }
+      : metrics.overall >= 75
+        ? { label: 'Good', color: '#0284C7' }
+        : metrics.overall >= 60
+          ? { label: 'Average', color: '#D97706' }
+          : { label: 'Needs work', color: '#DC2626' };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
+      <View style={AC.page}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#004AAD" />
           <Text style={styles.loadingText}>Loading performance...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={AC.page}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.scroll}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2563eb']} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchPerformanceData();
+            }}
+            colors={['#004AAD']}
+          />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>My Performance</Text>
-          <Text style={styles.subtitle}>Track your work metrics</Text>
+        {hideChrome ? <Text style={AC.sub}>Your jobs, SLA, and quality for the selected dates</Text> : null}
+
+        <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+          <WorkshopDateFilter
+            preset={datePreset}
+            customStart={customStart}
+            customEnd={customEnd}
+            onPreset={setDatePreset}
+            onCustomStart={setCustomStart}
+            onCustomEnd={setCustomEnd}
+          />
         </View>
 
-        {/* Overall Score Card */}
-        <View style={styles.section}>
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreLabel}>Overall Score</Text>
-            <Text style={styles.scoreValue}>{metrics.qualityScore}%</Text>
-            <Text style={styles.scoreSubtext}>Excellent Performance! 🎯</Text>
-          </View>
+        <View style={[styles.scoreCard, { borderLeftColor: grade.color }]}>
+          <Text style={styles.scoreLabel}>Overall score</Text>
+          <Text style={[styles.scoreValue, { color: grade.color }]}>{metrics.overall}%</Text>
+          <Text style={styles.scoreSub}>{grade.label} · based on completion, on-time, and quality</Text>
         </View>
 
-        {/* Key Metrics */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Key Metrics</Text>
-          <View style={styles.metricsGrid}>
-            <MetricCard icon="📊" label="Total Jobs" value={metrics.totalJobs.toString()} />
-            <MetricCard icon="✅" label="Completed" value={metrics.completedJobs.toString()} />
-            <MetricCard icon="⏱️" label="Avg Time" value={`${metrics.avgCompletionTime.toFixed(1)}h`} />
-            <MetricCard icon="⭐" label="Rating" value={metrics.customerRating.toFixed(1)} />
-          </View>
+        <Text style={AC.section}>Key metrics</Text>
+        <View style={styles.grid}>
+          {[
+            { label: 'Assigned', value: metrics.assigned, accent: '#004AAD' },
+            { label: 'Completed', value: metrics.completed, accent: '#059669' },
+            { label: 'In progress', value: metrics.inProgress, accent: '#D97706' },
+            { label: 'On hold', value: metrics.onHold, accent: '#EA580C' },
+            { label: 'Avg time', value: `${metrics.avgHours.toFixed(1)}h`, accent: '#0284C7' },
+            { label: 'On-time', value: `${Math.round(metrics.onTime)}%`, accent: '#6D28D9' },
+          ].map((tile) => (
+            <View key={tile.label} style={[AC.kpiWide, styles.tile, { borderLeftColor: tile.accent }]}>
+              <Text style={[AC.kpiVal, { color: tile.accent }]}>{tile.value}</Text>
+              <Text style={AC.kpiLab}>{tile.label}</Text>
+            </View>
+          ))}
         </View>
 
-        {/* Performance Indicators */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Performance Indicators</Text>
-          <View style={styles.card}>
-            <ProgressBar 
-              label="Quality Score" 
-              value={metrics.qualityScore} 
-              color="#10b981" 
-            />
-            <ProgressBar 
-              label="On-Time Delivery" 
-              value={metrics.onTimeDelivery} 
-              color="#3b82f6" 
-            />
-            <ProgressBar 
-              label="Completion Rate" 
-              value={metrics.totalJobs > 0 ? (metrics.completedJobs / metrics.totalJobs * 100) : 0} 
-              color="#8b5cf6" 
-            />
-          </View>
+        <Text style={AC.section}>Indicators</Text>
+        <View style={AC.whiteCard}>
+          <ProgressRow label="Completion rate" value={metrics.completionRate} color="#004AAD" />
+          <ProgressRow label="On-time delivery" value={metrics.onTime} color="#059669" />
+          <ProgressRow label="Quality score" value={metrics.quality} color="#0284C7" />
         </View>
 
-        {/* Period Stats */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Period Statistics</Text>
-          <View style={styles.periodCard}>
-            <PeriodStat icon="📅" label="Today" value={metrics.today} />
-            <PeriodStat icon="📆" label="This Week" value={metrics.thisWeek} />
-            <PeriodStat icon="📊" label="This Month" value={metrics.thisMonth} />
-          </View>
+        <View style={styles.sectionHead}>
+          <Text style={[AC.section, { paddingHorizontal: 0, marginTop: 0 }]}>Recent jobs</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('MechanicJobs')}>
+            <Text style={styles.viewAll}>View jobs</Text>
+          </TouchableOpacity>
         </View>
-
-        {/* Recent Jobs */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Jobs</Text>
-          <View style={styles.card}>
-            {recentJobs.length > 0 ? (
-              recentJobs.map((job, index) => (
-                <JobRow key={index} job={job} />
-              ))
-            ) : (
-              <Text style={styles.emptyText}>No recent jobs</Text>
-            )}
+        {metrics.recent.length === 0 ? (
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No jobs in this period</Text>
+            <Text style={AC.emptySub}>Change the date filter or wait for new assignments</Text>
           </View>
-        </View>
-
-        {/* Achievements */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Achievements 🏆</Text>
-          <View style={styles.achievementsCard}>
-            {metrics.qualityScore >= 90 && (
-              <Achievement icon="🌟" title="Quality Master" desc="90%+ Quality Score" />
-            )}
-            {metrics.completedJobs >= 50 && (
-              <Achievement icon="💪" title="Job Master" desc="50+ Jobs Completed" />
-            )}
-            {metrics.onTimeDelivery >= 80 && (
-              <Achievement icon="⏰" title="Time Keeper" desc="80%+ On-Time Delivery" />
-            )}
-          </View>
-        </View>
+        ) : (
+          metrics.recent.map((job) => {
+            const lead = Array.isArray(job.service_leads) ? job.service_leads[0] : job.service_leads;
+            const status = statusOf(job).replace(/_/g, ' ') || 'ASSIGNED';
+            return (
+              <TouchableOpacity
+                key={job.id}
+                style={AC.listCard}
+                onPress={() =>
+                  navigation.navigate('JobDetail', { jobId: job.lead_id, leadId: job.lead_id })
+                }
+                activeOpacity={0.8}
+              >
+                <View style={styles.jobRow}>
+                  <Text style={[AC.name, { flex: 1 }]} numberOfLines={1}>
+                    {lead?.customer_name || 'Customer'}
+                  </Text>
+                  <View style={[AC.statusPill, { backgroundColor: statusColor(statusOf(job)) }]}>
+                    <Text style={AC.statusPillTxt}>{status}</Text>
+                  </View>
+                </View>
+                <Text style={AC.meta}>
+                  {[lead?.vehicle_number, `${lead?.vehicle_make || ''} ${lead?.vehicle_model || ''}`.trim()]
+                    .filter(Boolean)
+                    .join(' · ') || 'Vehicle'}
+                </Text>
+                <Text style={AC.meta}>{formatDateDMY(job.completed_at || job.assigned_at || job.created_at)}</Text>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
-const MetricCard = ({ icon, label, value }: { icon: string; label: string; value: string }) => (
-  <View style={styles.metricCard}>
-    <Text style={styles.metricIcon}>{icon}</Text>
-    <Text style={styles.metricValue}>{value}</Text>
-    <Text style={styles.metricLabel}>{label}</Text>
-  </View>
-);
-
-const ProgressBar = ({ label, value, color }: { label: string; value: number; color: string }) => (
-  <View style={styles.progressContainer}>
-    <View style={styles.progressHeader}>
-      <Text style={styles.progressLabel}>{label}</Text>
-      <Text style={[styles.progressValue, { color }]}>{value.toFixed(0)}%</Text>
+function ProgressRow({ label, value, color }: { label: string; value: number; color: string }) {
+  const pct = Math.max(0, Math.min(100, value || 0));
+  return (
+    <View style={styles.progressBlock}>
+      <View style={styles.progressHead}>
+        <Text style={styles.progressLabel}>{label}</Text>
+        <Text style={[styles.progressVal, { color }]}>{pct.toFixed(0)}%</Text>
+      </View>
+      <View style={styles.progressBg}>
+        <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: color }]} />
+      </View>
     </View>
-    <View style={styles.progressBarBg}>
-      <View style={[styles.progressBarFill, { width: `${value}%`, backgroundColor: color }]} />
-    </View>
-  </View>
-);
+  );
+}
 
-const PeriodStat = ({ icon, label, value }: { icon: string; label: string; value: number }) => (
-  <View style={styles.periodStat}>
-    <Text style={styles.periodIcon}>{icon}</Text>
-    <Text style={styles.periodValue}>{value}</Text>
-    <Text style={styles.periodLabel}>{label}</Text>
-  </View>
-);
-
-const JobRow = ({ job }: { job: any }) => (
-  <View style={styles.jobRow}>
-    <View style={styles.jobInfo}>
-      <Text style={styles.jobTitle}>Job #{job.id.slice(0, 8)}</Text>
-      <Text style={styles.jobDate}>
-        {formatDateDMY(job.created_at)}
-      </Text>
-    </View>
-    <View style={[styles.jobStatus, { backgroundColor: getStatusColor(job.status) }]}>
-      <Text style={styles.jobStatusText}>{job.status}</Text>
-    </View>
-  </View>
-);
-
-const Achievement = ({ icon, title, desc }: { icon: string; title: string; desc: string }) => (
-  <View style={styles.achievement}>
-    <Text style={styles.achievementIcon}>{icon}</Text>
-    <View style={styles.achievementInfo}>
-      <Text style={styles.achievementTitle}>{title}</Text>
-      <Text style={styles.achievementDesc}>{desc}</Text>
-    </View>
-  </View>
-);
-
-const getStatusColor = (status: string) => {
-  const colors: any = {
-    ASSIGNED: '#f59e0b',
-    IN_PROGRESS: '#3b82f6',
-    COMPLETED: '#10b981',
-    HOLD: '#ef4444',
-  };
-  return colors[status] || '#6b7280';
-};
+function statusColor(status: string) {
+  if (status === 'COMPLETED' || status === 'READY_FOR_DELIVERY') return '#059669';
+  if (status === 'IN_PROGRESS') return '#0284C7';
+  if (status === 'HOLD' || status === 'WAITING_APPROVAL') return '#D97706';
+  if (status === 'ASSIGNED') return '#004AAD';
+  return '#64748B';
+}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f3f4f6',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#6b7280',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  section: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 12,
-  },
+  scroll: { paddingBottom: 32 },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { marginTop: 12, fontSize: 15, color: COLORS.textSecondary, fontWeight: '600' },
   scoreCard: {
+    marginHorizontal: 16,
+    marginBottom: 8,
     backgroundColor: '#fff',
-    padding: 24,
-    borderRadius: 12,
+    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderLeftWidth: 4,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  scoreLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  scoreValue: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#10b981',
-    marginVertical: 8,
-  },
-  scoreSubtext: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  metricsGrid: {
+  scoreLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
+  scoreValue: { fontSize: 40, fontWeight: '800', marginVertical: 2 },
+  scoreSub: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, textAlign: 'center' },
+  grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-  },
-  metricCard: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  metricIcon: {
-    fontSize: 32,
+    paddingHorizontal: 16,
+    justifyContent: 'space-between',
+    rowGap: 8,
     marginBottom: 8,
   },
-  metricValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  progressContainer: {
-    gap: 6,
-  },
-  progressHeader: {
+  tile: { width: '48.5%', marginHorizontal: 0, borderLeftWidth: 4 },
+  sectionHead: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  progressLabel: {
-    fontSize: 13,
-    color: '#111827',
-    fontWeight: '500',
-  },
-  progressValue: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  periodCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  periodStat: {
-    flex: 1,
     alignItems: 'center',
-  },
-  periodIcon: {
-    fontSize: 32,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginTop: 8,
     marginBottom: 8,
   },
-  periodValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  periodLabel: {
-    fontSize: 11,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  jobRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  jobInfo: {
-    flex: 1,
-  },
-  jobTitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#111827',
-  },
-  jobDate: {
-    fontSize: 11,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  jobStatus: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  jobStatusText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  emptyText: {
-    fontSize: 13,
-    color: '#6b7280',
-    textAlign: 'center',
-    paddingVertical: 20,
-  },
-  achievementsCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  achievement: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#fef3c7',
-    borderRadius: 8,
-  },
-  achievementIcon: {
-    fontSize: 32,
-    marginRight: 12,
-  },
-  achievementInfo: {
-    flex: 1,
-  },
-  achievementTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  achievementDesc: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 2,
-  },
+  viewAll: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  jobRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressBlock: { marginBottom: 12 },
+  progressHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  progressLabel: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  progressVal: { fontSize: 13, fontWeight: '800' },
+  progressBg: { height: 8, borderRadius: 4, backgroundColor: '#E2E8F0', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 4 },
 });
-

@@ -86,7 +86,7 @@ export default function TeamPerformanceScreen() {
 
   const setupRealtimeSubscription = (wid: string) => {
     const channel = supabase
-      .channel('performance_updates')
+      .channel(`performance_updates-${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -231,7 +231,6 @@ export default function TeamPerformanceScreen() {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Team Performance</Text>
         <Text style={styles.headerSubtitle}>Last 30 days analytics</Text>
       </View>
 
@@ -305,13 +304,12 @@ export default function TeamPerformanceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray[50],
+    backgroundColor: COLORS.background,
   },
   header: {
-    padding: SPACING.lg,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
+    paddingHorizontal: SPACING.md,
+    paddingTop: 8,
+    paddingBottom: 0,
   },
   headerTitle: {
     fontSize: SIZES.xxl,
@@ -335,14 +333,14 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.md,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   statCard: {
-    flex: 1,
-    minWidth: '45%',
+    width: '48.5%',
     backgroundColor: COLORS.white,
     padding: SPACING.md,
-    borderRadius: SIZES.sm,
+    borderRadius: 14,
     alignItems: 'center',
     shadowColor: COLORS.black,
     shadowOffset: { width: 0, height: 2 },

@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../../lib/supabase';
-import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function SupervisorJobsScreen() {
@@ -93,7 +92,6 @@ export default function SupervisorJobsScreen() {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Jobs" onBack={() => navigation.goBack()} />
       
       <View style={styles.filterContainer}>
         {(['all', 'assigned', 'in_progress', 'completed'] as const).map((f) => (
@@ -131,7 +129,7 @@ export default function SupervisorJobsScreen() {
               onPress={() => navigation.navigate('JobDetail', { jobId: job.id })}
             >
               <View style={styles.jobHeader}>
-                <Text style={styles.jobNumber}>{job.lead_number}</Text>
+                <Text style={styles.jobNumber}>{job.customer_name || 'Customer'}</Text>
                 <View
                   style={[
                     styles.statusBadge,
@@ -216,7 +214,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     marginHorizontal: SPACING.md,
-    borderRadius: 8,
+    borderRadius: 14,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.primary,
   },

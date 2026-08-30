@@ -322,7 +322,7 @@ export default function JobHistoryPage() {
                     <tr key={job.job_id} className="hover:bg-gray-50">
                       <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-xs sm:text-sm font-medium text-brand-heading">{job.lead_number}</div>
+                          <div className="text-xs sm:text-sm font-medium text-brand-heading">{job.customer_name || 'Customer'}</div>
                           <div className="text-xs sm:text-sm text-gray-500">{job.customer_name}</div>
                         </div>
                       </td>
@@ -383,7 +383,7 @@ export default function JobHistoryPage() {
               <div key={job.job_id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-brand-heading mb-1">{job.lead_number}</div>
+                    <div className="text-sm font-medium text-brand-heading mb-1">{job.customer_name || 'Customer'}</div>
                     <div className="text-sm text-gray-900 font-semibold truncate">{job.customer_name}</div>
                   </div>
                   <div className="flex flex-col gap-1 flex-shrink-0">

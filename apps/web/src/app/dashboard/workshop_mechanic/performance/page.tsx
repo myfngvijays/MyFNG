@@ -11,8 +11,10 @@ import { createClient } from '@/lib/supabase/client';
 import {
   WorkshopPageHeader,
   WorkshopPageShell,
-  WorkshopFilterPill,
+  WorkshopStatTile,
 } from '@/components/workshop/WorkshopUi';
+import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
+import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
 
 interface PerformanceMetrics {
   date: string;
@@ -37,7 +39,11 @@ export default function MechanicPerformancePage() {
   const [todayMetrics, setTodayMetrics] = useState<PerformanceMetrics | null>(null);
   const [weeklyMetrics, setWeeklyMetrics] = useState<PerformanceMetrics[]>([]);
   const [monthlyMetrics, setMonthlyMetrics] = useState<PerformanceMetrics[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('today');
+  const [allMetrics, setAllMetrics] = useState<PerformanceMetrics[]>([]);
+  const [jobRows, setJobRows] = useState<any[]>([]);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -93,6 +99,21 @@ export default function MechanicPerformancePage() {
 
       setMonthlyMetrics(monthlyData || []);
 
+      const { data: allData } = await supabase
+        .from('mechanic_performance_metrics')
+        .select('*')
+        .eq('mechanic_id', userProfile.id)
+        .order('date', { ascending: false })
+        .limit(365);
+      setAllMetrics(allData || []);
+
+      const { data: jobs } = await supabase
+        .from('mechanic_jobs')
+        .select('mechanic_status, assigned_at, started_at, completed_at, created_at, estimated_completion_time, actual_work_duration, efficiency_score')
+        .eq('mechanic_id', userProfile.id)
+        .limit(300);
+      setJobRows(jobs || []);
+
       setLoading(false);
     } catch (error) {
       console.error('Error fetching performance data:', error);
@@ -118,17 +139,68 @@ export default function MechanicPerformancePage() {
     return { grade: 'D', color: 'text-red-600', bgColor: 'bg-red-100' };
   }
 
-  const currentMetrics = selectedPeriod === 'today' && todayMetrics
-    ? [todayMetrics]
-    : selectedPeriod === 'week'
-    ? weeklyMetrics
-    : monthlyMetrics;
+  const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
+  const currentMetrics =
+    datePreset === 'today' && todayMetrics
+      ? [todayMetrics]
+      : datePreset === 'last_7_days'
+        ? weeklyMetrics
+        : datePreset === 'all_time'
+          ? allMetrics
+          : monthlyMetrics;
 
-  const avgPerformanceScore = calculateAverage(currentMetrics, 'performance_score');
-  const avgSLARate = calculateAverage(currentMetrics, 'sla_success_rate');
-  const totalCompleted = calculateSum(currentMetrics, 'total_jobs_completed');
-  const totalAssigned = calculateSum(currentMetrics, 'total_jobs_assigned');
-  const avgDuration = calculateAverage(currentMetrics, 'avg_repair_duration');
+  const scopedJobs = jobRows.filter((j: any) =>
+    isoInRange(
+      j.completed_at || j.started_at || j.assigned_at || j.created_at,
+      dateRange.start,
+      dateRange.end,
+      dateRange.allTime,
+    ),
+  );
+  const doneJobs = scopedJobs.filter((j: any) =>
+    ['COMPLETED', 'READY_FOR_DELIVERY'].includes(String(j.mechanic_status || '').toUpperCase()),
+  );
+  const timedJobs = doneJobs.filter((j: any) => j.started_at && j.completed_at);
+  const jobOnTime = timedJobs.filter((j: any) => {
+    if (!j.estimated_completion_time) return (Number(j.efficiency_score) || 0) >= 80;
+    return new Date(j.completed_at).getTime() <= new Date(j.estimated_completion_time).getTime();
+  }).length;
+  const jobFallback = {
+    assigned: scopedJobs.length,
+    completed: doneJobs.length,
+    inProgress: scopedJobs.filter((j: any) => String(j.mechanic_status).toUpperCase() === 'IN_PROGRESS').length,
+    onHold: scopedJobs.filter((j: any) =>
+      ['HOLD', 'WAITING_APPROVAL'].includes(String(j.mechanic_status).toUpperCase()),
+    ).length,
+    avgHours: timedJobs.length
+      ? timedJobs.reduce(
+          (sum: number, j: any) =>
+            sum + (new Date(j.completed_at).getTime() - new Date(j.started_at).getTime()),
+          0,
+        ) /
+        timedJobs.length /
+        3600000
+      : 0,
+    onTime: timedJobs.length ? (jobOnTime / timedJobs.length) * 100 : 0,
+    quality: doneJobs.length
+      ? doneJobs.reduce((s: number, j: any) => s + (Number(j.efficiency_score) || 0), 0) / doneJobs.length
+      : 0,
+  };
+
+  const jobOverall =
+    jobFallback.assigned > 0
+      ? Math.round(
+          (jobFallback.completed / jobFallback.assigned) * 100 * 0.4 +
+            jobFallback.onTime * 0.3 +
+            jobFallback.quality * 0.3,
+        )
+      : 0;
+  const metricsEmpty = currentMetrics.length === 0;
+  const avgPerformanceScore = metricsEmpty ? jobOverall : calculateAverage(currentMetrics, 'performance_score');
+  const avgSLARate = metricsEmpty ? jobFallback.onTime : calculateAverage(currentMetrics, 'sla_success_rate');
+  const totalCompleted = metricsEmpty ? jobFallback.completed : calculateSum(currentMetrics, 'total_jobs_completed');
+  const totalAssigned = metricsEmpty ? jobFallback.assigned : calculateSum(currentMetrics, 'total_jobs_assigned');
+  const avgDuration = metricsEmpty ? jobFallback.avgHours * 60 : calculateAverage(currentMetrics, 'avg_repair_duration');
   const totalReworks = calculateSum(currentMetrics, 'rework_count');
 
   const performanceGrade = getPerformanceGrade(avgPerformanceScore);
@@ -160,13 +232,36 @@ export default function MechanicPerformancePage() {
           }
         />
 
-        <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
-          {(['today', 'week', 'month'] as const).map((period) => (
-            <WorkshopFilterPill key={period} active={selectedPeriod === period} onClick={() => setSelectedPeriod(period)}>
-              {period === 'today' ? 'Today' : period === 'week' ? 'Last 7 Days' : 'Last 30 Days'}
-            </WorkshopFilterPill>
-          ))}
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onChange={({ datePreset: next, customStart: s, customEnd: e }) => {
+            setDatePreset(next);
+            setCustomStart(s);
+            setCustomEnd(e);
+          }}
+        />
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <WorkshopStatTile label="Jobs completed" value={totalCompleted} tone="from-green-50" />
+          <WorkshopStatTile label="Assigned" value={totalAssigned} tone="from-blue-50" />
+          <WorkshopStatTile label="SLA / On-time" value={`${avgSLARate.toFixed(0)}%`} />
+          <WorkshopStatTile
+            label="Avg repair"
+            value={avgDuration >= 60 ? `${(avgDuration / 60).toFixed(1)}h` : `${avgDuration.toFixed(0)}m`}
+            tone="from-purple-50"
+          />
         </div>
+
+        {metricsEmpty ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <WorkshopStatTile label="In progress" value={jobFallback.inProgress} tone="from-yellow-50" />
+            <WorkshopStatTile label="On hold" value={jobFallback.onHold} tone="from-orange-50" />
+            <WorkshopStatTile label="Quality" value={`${jobFallback.quality.toFixed(0)}%`} tone="from-green-50" />
+            <WorkshopStatTile label="Overall" value={`${jobOverall}%`} />
+          </div>
+        ) : null}
 
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">

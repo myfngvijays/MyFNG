@@ -47,7 +47,7 @@ const REQUIRED_PHOTOS = [
   { type: 'BEFORE_TYRE', label: 'Tyres (Optional)', required: false },
 ];
 
-export default function BeforeInspectionScreen({ route }: Props) {
+export default function BeforeInspectionScreen({ route, hideChrome = false }: Props & { hideChrome?: boolean }) {
   const navigation = useNavigation();
   const { jobId, leadId } = route.params;
   const { user } = useAuth();
@@ -379,7 +379,7 @@ export default function BeforeInspectionScreen({ route }: Props) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading...</Text>
@@ -389,7 +389,7 @@ export default function BeforeInspectionScreen({ route }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>

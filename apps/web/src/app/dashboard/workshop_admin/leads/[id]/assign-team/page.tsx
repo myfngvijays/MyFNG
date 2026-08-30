@@ -205,7 +205,7 @@ export default function AssignTeamPage() {
         <WorkshopPageHeader
           eyebrow="Workshop Owner"
           title="Assign Team Members"
-          subtitle={`Lead: ${lead.lead_number}`}
+          subtitle={lead.customer_name || 'Assign team'}
         />
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">

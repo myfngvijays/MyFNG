@@ -132,7 +132,7 @@ export default function LeadCard({ lead, onAccept, onReject, onView }: LeadCardP
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-lg font-bold text-gray-900">{lead.lead_number}</h3>
+            <h3 className="text-lg font-bold text-[#023D95]">{lead.customer_name || 'Customer'}</h3>
             <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(lead.status)}`}>
               {lead.status.replace('_', ' ')}
             </span>
@@ -166,7 +166,7 @@ export default function LeadCard({ lead, onAccept, onReject, onView }: LeadCardP
 
       {/* Customer Info */}
       <div className="mb-3 pb-3 border-b border-gray-100">
-        <p className="font-semibold text-gray-900 mb-1">{lead.customer_name}</p>
+        <p className="font-semibold text-gray-900 mb-1">{lead.vehicle_number || lead.customer_phone || '—'}</p>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Phone className="w-4 h-4" />
           {phoneVisible ? (

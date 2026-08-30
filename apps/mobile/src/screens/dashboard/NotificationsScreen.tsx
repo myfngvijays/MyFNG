@@ -21,7 +21,7 @@ import { COLORS, SIZES, SPACING } from '../../constants/theme';
 
 type NotifFilter = 'all' | 'unread' | 'reminders';
 
-export default function NotificationsScreen({ navigation }: any) {
+export default function NotificationsScreen({ navigation, hideChrome }: any) {
   const {
     notifications,
     unreadCount,
@@ -222,7 +222,19 @@ export default function NotificationsScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={hideChrome ? ['left', 'right'] : ['top', 'left', 'right']}>
+      {hideChrome ? (
+        unreadCount > 0 ? (
+          <View style={styles.header}>
+            <View style={{ width: 36 }} />
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.markAll}>
+              <Ionicons name="checkmark-done" size={18} color={COLORS.primary} />
+              <Text style={styles.markAllText}>Mark all</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null
+      ) : (
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation?.goBack?.()}
@@ -241,6 +253,7 @@ export default function NotificationsScreen({ navigation }: any) {
           <View style={{ width: 72 }} />
         )}
       </View>
+      )}
 
       <View style={styles.filters}>
         {(

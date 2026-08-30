@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { createClient } from '@/lib/supabase/client';
 import { useAdvisorSession } from '@/lib/dashboard/useAdvisorSession';
-import { formatDateDMY } from '@/lib/utils';
+import { formatDateDMY, formatDateTime } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 import {
   User,
   Mail,
@@ -16,6 +16,7 @@ import {
   X,
   Loader2,
   MapPin,
+  History,
 } from 'lucide-react';
 
 function splitFullName(full: string): { first_name: string; last_name: string } {
@@ -43,11 +44,43 @@ export default function AdvisorProfilePage() {
     last_name: splitFullName(sessionProfile?.full_name || '').last_name,
     phone: sessionProfile?.phone || '',
   });
+  const [loginTotal, setLoginTotal] = useState(0);
+  const [loginRecent, setLoginRecent] = useState<any[]>([]);
+  const [loginLoading, setLoginLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoginLoading(true);
+      try {
+        const res = await fetch('/api/profile/login-history');
+        const data = await res.json();
+        if (cancelled || !res.ok) return;
+        setLoginTotal(Number(data.total || 0));
+        setLoginRecent(Array.isArray(data.recent) ? data.recent : []);
+      } catch {
+        if (!cancelled) {
+          setLoginTotal(0);
+          setLoginRecent([]);
+        }
+      } finally {
+        if (!cancelled) setLoginLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!sessionProfile) return;
     setProfile(sessionProfile);
-    const parts = splitFullName(sessionProfile.full_name || '');
+    const parts = sessionProfile.first_name || sessionProfile.last_name
+      ? {
+          first_name: String(sessionProfile.first_name || '').trim(),
+          last_name: String(sessionProfile.last_name || '').trim(),
+        }
+      : splitFullName(sessionProfile.full_name || '');
     setFormData({
       first_name: parts.first_name,
       last_name: parts.last_name,
@@ -58,24 +91,39 @@ export default function AdvisorProfilePage() {
   async function handleSave() {
     if (!profile?.id) return;
     setSaving(true);
-    const supabase = createClient();
     const fullName = joinName(formData.first_name, formData.last_name);
-    const { error } = await supabase
-      .from('users_login')
-      .update({
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: fullName,
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          phone: formData.phone,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data?.error || 'Failed to update profile');
+        return;
+      }
+      const next = data.profile || { ...profile, full_name: fullName, phone: formData.phone };
+      setProfile(next);
+      useAuthStore.getState().setUserProfile({
+        ...sessionProfile,
+        ...next,
         full_name: fullName,
+        first_name: formData.first_name,
+        last_name: formData.last_name,
         phone: formData.phone,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', profile.id);
-
-    setSaving(false);
-    if (error) {
+      });
+      setIsEditing(false);
+    } catch {
       alert('Failed to update profile');
-      return;
+    } finally {
+      setSaving(false);
     }
-    setProfile({ ...profile, full_name: fullName, phone: formData.phone });
-    setIsEditing(false);
   }
 
   const workshop = profile?.workshop;
@@ -139,6 +187,7 @@ export default function AdvisorProfilePage() {
             <Loader2 className="h-5 w-5 animate-spin" /> Loading…
           </div>
         ) : (
+          <>
           <section className="overflow-hidden rounded-2xl border border-[#004AAD]/25 shadow-lg shadow-[#004AAD]/15">
             <div className="bg-gradient-to-br from-[#023D95] via-[#004AAD] to-[#0369A1] px-4 py-5 text-white sm:px-5 sm:py-6">
               <div className="flex flex-col gap-4 sm:flex-row">
@@ -253,6 +302,42 @@ export default function AdvisorProfilePage() {
               </div>
             </div>
           </section>
+          <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-base font-bold text-[#023D95]">
+                <History className="h-4 w-4" /> Login History
+              </h2>
+              <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#004AAD]">
+                {loginLoading ? '…' : `${loginTotal} total`}
+              </span>
+            </div>
+            {loginLoading ? (
+              <p className="text-sm text-slate-500">Loading…</p>
+            ) : loginRecent.length === 0 ? (
+              <p className="text-sm text-slate-500">No login history yet. Sign in again to start recording.</p>
+            ) : (
+              <ul className="space-y-2">
+                {loginRecent.slice(0, 20).map((row) => (
+                  <li
+                    key={row.id}
+                    className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm"
+                  >
+                    <p className="font-semibold text-slate-900">{formatDateTime(row.logged_in_at)}</p>
+                    <p className="text-xs text-slate-500">
+                      {[
+                        String(row.platform || 'web').replace(/_/g, ' '),
+                        row.location_label || row.city,
+                        row.device_label,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          </>
         )}
       </div>
     </DashboardLayout>

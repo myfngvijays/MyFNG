@@ -14,9 +14,10 @@ import {
   Image,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
+import { AC } from '../../../components/workshop/advisorCrmUi';
+import GlossyButton from '../../../components/workshop/GlossyButton';
 
 interface ExtraWorkRequest {
   id: string;
@@ -296,76 +297,36 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
   }
 
   function renderRequest({ item }: { item: ExtraWorkRequest }) {
+    const statusColor =
+      item.status === 'APPROVED' ? '#10B981' : item.status === 'REJECTED' ? '#EF4444' : '#F59E0B';
     return (
-      <View style={styles.requestCard}>
-        <View style={styles.requestHeader}>
-          <View style={styles.requestInfo}>
-            <Text style={styles.leadNumber}>{item.lead_number}</Text>
-            <Text style={styles.customerName}>{item.customer_name}</Text>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(item.status) },
-              ]}
-            >
-              <Text style={styles.statusText}>{item.status}</Text>
-            </View>
-          </View>
-          <View style={styles.costContainer}>
-            <Text style={styles.costLabel}>Cost</Text>
-            <Text style={styles.costValue}>₹{item.amount}</Text>
+      <View style={AC.listCard}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <Text style={AC.name} numberOfLines={1}>
+            {item.customer_name || 'Customer'}
+          </Text>
+          <Text style={[AC.name, { color: '#004AAD' }]}>₹{item.amount}</Text>
+        </View>
+        <Text style={AC.meta} numberOfLines={1}>
+          {item.vehicle_number}
+          {item.mechanic_name ? ` · ${item.mechanic_name}` : ''}
+        </Text>
+        <Text style={AC.meta}>{formatDateTime(item.created_at)}</Text>
+        {item.description ? (
+          <Text style={AC.meta} numberOfLines={2}>
+            {item.description}
+          </Text>
+        ) : null}
+        <View style={{ flexDirection: 'row', marginTop: 8 }}>
+          <View style={[AC.statusPill, { backgroundColor: statusColor }]}>
+            <Text style={AC.statusPillTxt}>{item.status}</Text>
           </View>
         </View>
-
-        <View style={styles.requestDetails}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Vehicle:</Text>
-            <Text style={styles.detailValue}>{item.vehicle_number}</Text>
+        {item.status === 'PENDING' ? (
+          <View style={AC.btnRow}>
+            <GlossyButton label="Review" color="#004AAD" onPress={() => openApprovalModal(item)} />
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Mechanic:</Text>
-            <Text style={styles.detailValue}>{item.mechanic_name}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Requested:</Text>
-            <Text style={styles.detailValue}>
-              {formatDateTime(item.created_at)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.workDescription}>
-          <Text style={styles.workTitle}>Description:</Text>
-          <Text style={styles.workText}>{item.description}</Text>
-          <Text style={styles.workTitle}>Reason:</Text>
-          <Text style={styles.workText}>{item.reason}</Text>
-        </View>
-
-        {item.image_url && (
-          <View style={styles.imagesContainer}>
-            <Text style={styles.imagesLabel}>📷 Proof image attached</Text>
-          </View>
-        )}
-
-        {item.status === 'PENDING' && (
-          <TouchableOpacity
-            style={styles.reviewButton}
-            onPress={() => openApprovalModal(item)}
-          >
-            <Text style={styles.reviewButtonText}>
-              👁️ Review & Decide
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={styles.viewDetailsButton}
-          onPress={() =>
-            navigation.navigate('ExtraWorkDetail', { requestId: item.id })
-          }
-        >
-          <Text style={styles.viewDetailsText}>View Full Details →</Text>
-        </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
@@ -380,77 +341,51 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Additional Jobs Approval</Text>
-        <Text style={styles.subtitle}>{stats.pending} pending requests</Text>
-      </View>
+    <View style={AC.page}>
+      <Text style={AC.sub}>{stats.pending} pending requests</Text>
 
-      {/* Filter Buttons */}
-      <View style={styles.filterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View style={AC.chipWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
           {['PENDING', 'APPROVED', 'REJECTED', 'ALL'].map((f) => (
             <TouchableOpacity
               key={f}
-              style={[
-                styles.filterButton,
-                filter === f && styles.filterButtonActive,
-              ]}
+              style={[AC.chip, filter === f && AC.chipOn]}
               onPress={() => setFilter(f)}
             >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  filter === f && styles.filterButtonTextActive,
-                ]}
-              >
-                {f}
-              </Text>
+              <Text style={[AC.chipTxt, filter === f && AC.chipTxtOn]}>{f}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#f59e0b' }]}>
-            {stats.pending}
-          </Text>
-          <Text style={styles.statLabel}>Pending</Text>
+      <View style={AC.kpiRow}>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#F59E0B' }]}>{stats.pending}</Text>
+          <Text style={AC.kpiLab}>Pending</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#10b981' }]}>
-            {stats.approved}
-          </Text>
-          <Text style={styles.statLabel}>Approved</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#10B981' }]}>{stats.approved}</Text>
+          <Text style={AC.kpiLab}>Approved</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#ef4444' }]}>
-            {stats.rejected}
-          </Text>
-          <Text style={styles.statLabel}>Rejected</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#EF4444' }]}>{stats.rejected}</Text>
+          <Text style={AC.kpiLab}>Rejected</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#8b5cf6', fontSize: 16 }]}>
-            ₹{stats.totalCost}
-          </Text>
-          <Text style={styles.statLabel}>Total Value</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#004AAD', fontSize: 14 }]}>₹{stats.totalCost}</Text>
+          <Text style={AC.kpiLab}>Value</Text>
         </View>
       </View>
 
-      {/* Requests List */}
       <FlatList
         data={filteredRequests}
         keyExtractor={(item) => item.id}
         renderItem={renderRequest}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.listContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#004AAD']} />}
+        contentContainerStyle={{ paddingBottom: 32 }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No additional job requests</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No additional job requests</Text>
           </View>
         }
       />
@@ -469,43 +404,45 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
               {selectedRequest && (
                 <>
-                  <View style={styles.selectedRequestInfo}>
-                    <Text style={styles.selectedRequestNumber}>
-                      {selectedRequest.lead_number}
-                    </Text>
-                    <Text style={styles.selectedRequestCustomer}>
-                      {selectedRequest.customer_name} - {selectedRequest.vehicle_number}
-                    </Text>
-                    <Text style={styles.selectedRequestMechanic}>
-                      Requested by: {selectedRequest.mechanic_name}
-                    </Text>
+                  <View style={styles.leadViewCard}>
+                    <View style={styles.leadViewTop}>
+                      <View style={styles.leadAvatar}>
+                        <Text style={styles.leadAvatarTxt}>
+                          {(selectedRequest.customer_name || 'C').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.leadViewName}>
+                          {selectedRequest.customer_name || 'Customer'}
+                        </Text>
+                        <Text style={styles.leadViewMeta}>{selectedRequest.vehicle_number}</Text>
+                        <Text style={styles.leadViewMeta}>
+                          Requested by {selectedRequest.mechanic_name || 'mechanic'}
+                        </Text>
+                      </View>
+                      <Text style={styles.leadViewCost}>₹{selectedRequest.amount}</Text>
+                    </View>
                   </View>
 
-                  {/* Work Details */}
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Description</Text>
                     <Text style={styles.sectionContent}>
-                      {selectedRequest.description}
+                      {selectedRequest.description || '—'}
                     </Text>
                   </View>
 
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Reason</Text>
                     <Text style={styles.sectionContent}>
-                      {selectedRequest.reason}
+                      {selectedRequest.reason || '—'}
                     </Text>
                   </View>
 
-                  {/* Cost Adjustment */}
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Cost Details</Text>
+                    <Text style={styles.sectionTitle}>Approved cost</Text>
                     <View style={styles.costAdjustment}>
-                      <Text style={styles.estimatedCostLabel}>
-                        Estimated by Mechanic:
-                      </Text>
-                      <Text style={styles.estimatedCostValue}>
-                        ₹{selectedRequest.amount}
-                      </Text>
+                      <Text style={styles.estimatedCostLabel}>Mechanic estimate</Text>
+                      <Text style={styles.estimatedCostValue}>₹{selectedRequest.amount}</Text>
                     </View>
                     <TextInput
                       style={styles.costInput}
@@ -517,12 +454,11 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
                     />
                   </View>
 
-                  {/* Supervisor Notes */}
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Your Notes (Optional)</Text>
+                    <Text style={styles.sectionTitle}>Your notes (optional)</Text>
                     <TextInput
                       style={styles.notesInput}
-                      placeholder="Add your observations or instructions..."
+                      placeholder="Add observations or instructions..."
                       placeholderTextColor="#9ca3af"
                       multiline
                       numberOfLines={3}
@@ -531,51 +467,42 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
                     />
                   </View>
 
-                  {/* Action Buttons */}
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.approveButton]}
+                  <View style={styles.glossyRow}>
+                    <GlossyButton
+                      label="Approve"
+                      color="#10B981"
                       onPress={() => handleApproval('APPROVE')}
-                    >
-                      <Text style={styles.actionButtonText}>
-                        ✅ Approve
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.rejectButton]}
+                    />
+                    <GlossyButton
+                      label="Reject"
+                      color="#EF4444"
                       onPress={() => handleApproval('REJECT')}
-                    >
-                      <Text style={styles.actionButtonText}>
-                        ❌ Reject
-                      </Text>
-                    </TouchableOpacity>
+                    />
+                    <GlossyButton
+                      label="Cancel"
+                      color="#64748B"
+                      onPress={() => {
+                        setShowApprovalModal(false);
+                        setSelectedRequest(null);
+                        setApprovalNotes('');
+                        setAdjustedCost('');
+                      }}
+                    />
                   </View>
                 </>
               )}
-
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => {
-                  setShowApprovalModal(false);
-                  setSelectedRequest(null);
-                  setApprovalNotes('');
-                  setAdjustedCost('');
-                }}
-              >
-                <Text style={styles.modalCloseText}>Cancel</Text>
-              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 16,
@@ -586,7 +513,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -604,13 +531,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginRight: 8,
     borderRadius: 20,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#d1d5db',
   },
   filterButtonActive: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   filterButtonText: {
     fontSize: 13,
@@ -651,7 +578,7 @@ const styles = StyleSheet.create({
   },
   requestCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
@@ -672,7 +599,7 @@ const styles = StyleSheet.create({
   leadNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   customerName: {
     fontSize: 14,
@@ -700,7 +627,7 @@ const styles = StyleSheet.create({
   costValue: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#8b5cf6',
+    color: '#004AAD',
   },
   requestDetails: {
     marginBottom: 12,
@@ -717,7 +644,7 @@ const styles = StyleSheet.create({
   detailValue: {
     flex: 1,
     fontSize: 13,
-    color: '#111827',
+    color: '#023D95',
   },
   workDescription: {
     backgroundColor: '#f9fafb',
@@ -728,7 +655,7 @@ const styles = StyleSheet.create({
   workTitle: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginTop: 8,
     marginBottom: 4,
   },
@@ -742,11 +669,11 @@ const styles = StyleSheet.create({
   },
   imagesLabel: {
     fontSize: 13,
-    color: '#8b5cf6',
+    color: '#004AAD',
     fontWeight: '600',
   },
   reviewButton: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -763,7 +690,7 @@ const styles = StyleSheet.create({
   },
   viewDetailsText: {
     fontSize: 13,
-    color: '#8b5cf6',
+    color: '#004AAD',
     fontWeight: '600',
   },
   emptyContainer: {
@@ -789,13 +716,35 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 16,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#023D95',
+    marginBottom: 14,
   },
+  leadViewCard: {
+    backgroundColor: '#EAF2FF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0,74,173,0.15)',
+  },
+  leadViewTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  leadAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#004AAD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leadAvatarTxt: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  leadViewName: { fontSize: 16, fontWeight: '800', color: '#023D95' },
+  leadViewMeta: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  leadViewCost: { fontSize: 18, fontWeight: '800', color: '#004AAD' },
+  glossyRow: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 8 },
   selectedRequestInfo: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#EAF2FF',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
@@ -803,7 +752,7 @@ const styles = StyleSheet.create({
   selectedRequestNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   selectedRequestCustomer: {
     fontSize: 14,
@@ -812,7 +761,7 @@ const styles = StyleSheet.create({
   },
   selectedRequestMechanic: {
     fontSize: 13,
-    color: '#8b5cf6',
+    color: '#004AAD',
     marginTop: 4,
   },
   section: {
@@ -821,7 +770,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 8,
   },
   sectionContent: {
@@ -852,11 +801,11 @@ const styles = StyleSheet.create({
   },
   costInput: {
     borderWidth: 2,
-    borderColor: '#8b5cf6',
+    borderColor: '#004AAD',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    color: '#111827',
+    color: '#023D95',
     fontWeight: 'bold',
   },
   notesInput: {
@@ -865,7 +814,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
-    color: '#111827',
+    color: '#023D95',
     minHeight: 80,
     textAlignVertical: 'top',
   },

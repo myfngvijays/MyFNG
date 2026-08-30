@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { formatDateDMY } from "@/lib/dateFormat";
 import {
   View,
   Text,
@@ -7,14 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Dimensions,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
-
-const { width } = Dimensions.get('window');
+import { AC } from '../../../components/workshop/advisorCrmUi';
 
 interface Analytics {
   totalJobs: number;
@@ -385,7 +381,7 @@ export default function SupervisorAnalyticsScreen() {
       const assigned = jobs?.length || 0;
 
       stats.push({
-        date: formatDateDMY(date),
+        date: `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`,
         completed,
         assigned,
       });
@@ -412,13 +408,9 @@ export default function SupervisorAnalyticsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Analytics Dashboard</Text>
-        <Text style={styles.subtitle}>Team performance overview</Text>
-      </View>
+    <View style={styles.container}>
+      <Text style={AC.sub}>Team performance overview</Text>
 
-      {/* Period Selector */}
       <View style={styles.periodContainer}>
         {(['TODAY', 'WEEK', 'MONTH'] as const).map((p) => (
           <TouchableOpacity
@@ -448,7 +440,7 @@ export default function SupervisorAnalyticsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Key Metrics</Text>
           <View style={styles.metricsGrid}>
-            {renderMetricCard('Total Jobs', analytics.totalJobs, 'jobs', '#3b82f6')}
+            {renderMetricCard('Total Jobs', analytics.totalJobs, 'jobs', '#004AAD')}
             {renderMetricCard('Completed', analytics.completedJobs, 'jobs', '#10b981')}
             {renderMetricCard('Active', analytics.activeJobs, 'jobs', '#f59e0b')}
             {renderMetricCard('Overdue', analytics.overdueJobs, 'jobs', '#ef4444')}
@@ -459,9 +451,9 @@ export default function SupervisorAnalyticsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Performance</Text>
           <View style={styles.metricsGrid}>
-            {renderMetricCard('Avg Completion', analytics.avgCompletionTime, 'hours', '#8b5cf6')}
+            {renderMetricCard('Avg Completion', analytics.avgCompletionTime, 'hours', '#004AAD')}
             {renderMetricCard('QC Pass Rate', analytics.qcPassRate, '', '#10b981', true)}
-            {renderMetricCard('Team Efficiency', analytics.teamEfficiency, '', '#3b82f6', true)}
+            {renderMetricCard('Team Efficiency', analytics.teamEfficiency, '', '#004AAD', true)}
             {renderMetricCard('SLA Compliance', analytics.slaCompliance, '', '#10b981', true)}
           </View>
         </View>
@@ -482,25 +474,27 @@ export default function SupervisorAnalyticsScreen() {
                       style={[
                         styles.bar,
                         styles.assignedBar,
-                        { height: assignedHeight },
+                        { height: Math.max(assignedHeight, 4) },
                       ]}
                     />
                     <View
                       style={[
                         styles.bar,
                         styles.completedBar,
-                        { height: completedHeight },
+                        { height: Math.max(completedHeight, 4) },
                       ]}
                     />
                   </View>
-                  <Text style={styles.barLabel}>{stat.date}</Text>
+                  <Text style={styles.barLabel} numberOfLines={1}>
+                    {stat.date}
+                  </Text>
                 </View>
               );
             })}
           </View>
           <View style={styles.legend}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: '#3b82f6' }]} />
+              <View style={[styles.legendColor, { backgroundColor: '#004AAD' }]} />
               <Text style={styles.legendText}>Assigned</Text>
             </View>
             <View style={styles.legendItem}>
@@ -543,7 +537,7 @@ export default function SupervisorAnalyticsScreen() {
                 </View>
                 <View style={styles.mechanicMetric}>
                   <Text style={styles.mechanicMetricLabel}>Efficiency</Text>
-                  <Text style={[styles.mechanicMetricValue, { color: '#3b82f6' }]}>
+                  <Text style={[styles.mechanicMetricValue, { color: '#004AAD' }]}>
                     {Math.round(mech.efficiency)}%
                   </Text>
                 </View>
@@ -588,7 +582,7 @@ export default function SupervisorAnalyticsScreen() {
                 <View
                   style={[
                     styles.progressBarFill,
-                    { width: `${analytics.extraWorkApprovalRate}%`, backgroundColor: '#8b5cf6' },
+                    { width: `${analytics.extraWorkApprovalRate}%`, backgroundColor: '#004AAD' },
                   ]}
                 />
               </View>
@@ -599,48 +593,33 @@ export default function SupervisorAnalyticsScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
-  },
-  header: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+    backgroundColor: '#F0F7FF',
   },
   periodContainer: {
     flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
     gap: 8,
   },
   periodButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
     alignItems: 'center',
   },
   periodButtonActive: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   periodButtonText: {
     fontSize: 14,
@@ -659,24 +638,25 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 12,
   },
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   metricCard: {
-    width: (width - 44) / 2,
+    width: '48.5%',
     backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
+    padding: 14,
+    borderRadius: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   metricLabel: {
     fontSize: 13,
@@ -694,36 +674,40 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderRadius: 14,
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'flex-end',
-    height: 180,
+    height: 196,
   },
   barGroup: {
+    flex: 1,
     alignItems: 'center',
-    gap: 8,
+    minWidth: 0,
+    gap: 6,
   },
   bars: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 4,
+    gap: 3,
+    height: 120,
   },
   bar: {
-    width: 12,
+    width: 8,
     borderRadius: 4,
     minHeight: 4,
   },
   assignedBar: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#004AAD',
   },
   completedBar: {
     backgroundColor: '#10b981',
   },
   barLabel: {
-    fontSize: 11,
-    color: '#6b7280',
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
   },
   legend: {
     flexDirection: 'row',
@@ -765,7 +749,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -781,7 +765,7 @@ const styles = StyleSheet.create({
   mechanicName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   mechanicStats: {
     fontSize: 13,
@@ -803,7 +787,7 @@ const styles = StyleSheet.create({
   mechanicMetricValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#8b5cf6',
+    color: '#004AAD',
   },
   qualityCard: {
     backgroundColor: '#fff',
@@ -817,7 +801,7 @@ const styles = StyleSheet.create({
   qualityLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: '#023D95',
   },
   progressBarContainer: {
     height: 8,
@@ -832,7 +816,7 @@ const styles = StyleSheet.create({
   qualityValue: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#8b5cf6',
+    color: '#004AAD',
     textAlign: 'right',
   },
 });

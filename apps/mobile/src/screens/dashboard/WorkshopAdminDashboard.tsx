@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
-import { AdminSectionTitle } from '../../components/admin/AdminUi';
 import WorkshopStaffScreen from '../workshop/WorkshopStaffScreen';
 import WorkshopLeadsScreen from '../workshop/WorkshopLeadsScreen';
 import WorkshopProfileScreen from '../workshop/WorkshopProfileScreen';
@@ -12,11 +11,13 @@ import {
   OWNER_CRM_QUICK,
   WORKSHOP_CRM_TAB_TITLES,
 } from '../../constants/workshopCrmNav';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { formatDateTime } from "@/lib/dateFormat";
+import { useAuth } from '../../context/AuthContext';
 
 export default function WorkshopAdminDashboard() {
   const navigation = useNavigation<any>();
+  const { userProfile: authProfile, refreshUserProfile } = useAuth();
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [stats, setStats] = useState({
@@ -108,7 +109,24 @@ export default function WorkshopAdminDashboard() {
     }
   }, [userProfile]);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshUserProfile();
+    }, [refreshUserProfile]),
+  );
+
+  const homeName =
+    [authProfile?.first_name, authProfile?.last_name].filter(Boolean).join(' ').trim() ||
+    authProfile?.full_name ||
+    [userProfile?.first_name, userProfile?.last_name].filter(Boolean).join(' ').trim() ||
+    userProfile?.full_name ||
+    'Workshop Owner';
+
   const handleTabChange = (tab: string) => {
+    if (tab === 'me') {
+      navigation.navigate('OwnerProfile');
+      return;
+    }
     setCurrentScreen(tab);
   };
 
@@ -138,67 +156,62 @@ export default function WorkshopAdminDashboard() {
       }
     >
       <View style={styles.hero}>
-        <Text style={styles.heroName}>{userProfile?.full_name || 'Workshop Owner'}</Text>
+        <Text style={styles.heroName}>{homeName}</Text>
         <Text style={styles.heroMeta}>{userProfile?.workshop?.name || 'Workshop Owner'}</Text>
       </View>
-      <TouchableOpacity
-        style={styles.actionButton}
-        onPress={() => navigation.navigate('WorkshopAdminAdditionalJobsMaster')}
-      >
-        <Text style={styles.actionButtonText}>Additional Jobs Master</Text>
-      </TouchableOpacity>
 
-      <AdminSectionTitle>Overview</AdminSectionTitle>
+      <Text style={styles.sectionTitle}>Overview</Text>
       <View style={styles.statsGrid}>
-        <TouchableOpacity style={[styles.statCard, { backgroundColor: '#FEF3C7' }]} onPress={() => navigation.navigate('PendingLeads')}>
-          <Text style={styles.statValue}>{stats.pendingLeads}</Text>
+        <TouchableOpacity style={[styles.statCard, { borderLeftColor: '#D97706' }]} onPress={() => navigation.navigate('PendingLeads')}>
+          <Text style={[styles.statValue, { color: '#D97706' }]}>{stats.pendingLeads}</Text>
           <Text style={styles.statLabel}>Pending leads</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.statCard, { backgroundColor: '#EFF6FF' }]} onPress={() => navigation.navigate('ActiveJobs')}>
-          <Text style={styles.statValue}>{stats.activeLeads}</Text>
+        <TouchableOpacity style={[styles.statCard, { borderLeftColor: '#004AAD' }]} onPress={() => navigation.navigate('ActiveJobs')}>
+          <Text style={[styles.statValue, { color: '#004AAD' }]}>{stats.activeLeads}</Text>
           <Text style={styles.statLabel}>Active jobs</Text>
         </TouchableOpacity>
-      </View>
-      <View style={styles.statsGrid}>
-        <View style={[styles.statCard, { backgroundColor: '#D1FAE5' }]}>
-          <Text style={styles.statValue}>{stats.completedLeads}</Text>
+        <View style={[styles.statCard, { borderLeftColor: '#059669' }]}>
+          <Text style={[styles.statValue, { color: '#059669' }]}>{stats.completedLeads}</Text>
           <Text style={styles.statLabel}>Completed</Text>
         </View>
-        <TouchableOpacity style={[styles.statCard, { backgroundColor: '#E9D5FF' }]} onPress={() => navigation.navigate('WorkshopAdminStaffManagement')}>
-          <Text style={styles.statValue}>{stats.totalStaff}</Text>
+        <TouchableOpacity style={[styles.statCard, { borderLeftColor: '#6D28D9' }]} onPress={() => navigation.navigate('WorkshopAdminStaffManagement')}>
+          <Text style={[styles.statValue, { color: '#6D28D9' }]}>{stats.totalStaff}</Text>
           <Text style={styles.statLabel}>Staff</Text>
         </TouchableOpacity>
       </View>
 
-      <AdminSectionTitle>Recent leads</AdminSectionTitle>
-      <View style={styles.card}>
-        {recentActivities.length > 0 ? (
-          recentActivities.map((activity, index) => (
-            <View key={index} style={styles.activityItem}>
-              <View style={styles.activityDot} />
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>
-                  {activity.customer_name || 'Customer'}
+      <Text style={styles.sectionTitle}>Recent leads</Text>
+      {recentActivities.length > 0 ? (
+        recentActivities.map((activity, index) => (
+          <TouchableOpacity
+            key={activity.id || index}
+            style={styles.jobCard}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('WorkshopAdminLeadDetail', { leadId: activity.id })}
+          >
+            <View style={styles.jobHeader}>
+              <Text style={styles.jobName} numberOfLines={1}>
+                {activity.customer_name || 'Customer'}
+              </Text>
+              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(activity.lead_status || activity.status) }]}>
+                <Text style={styles.statusText}>
+                  {String(activity.lead_status || activity.status || '').replace(/_/g, ' ')}
                 </Text>
-                <Text style={styles.activityDescription}>
-                  {activity.vehicle_make} {activity.vehicle_model} - {activity.lead_type}
-                </Text>
-                <Text style={styles.activityTime}>
-                  {formatDateTime(activity.created_at)}
-                </Text>
-              </View>
-              <View style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(activity.lead_status) }
-              ]}>
-                <Text style={styles.statusText}>{activity.lead_status}</Text>
               </View>
             </View>
-          ))
-        ) : (
+            <Text style={styles.jobMeta}>
+              {[activity.vehicle_number, `${activity.vehicle_make || ''} ${activity.vehicle_model || ''}`.trim()]
+                .filter(Boolean)
+                .join(' · ') || 'Vehicle'}
+            </Text>
+            <Text style={styles.jobMeta}>{formatDateTime(activity.created_at)}</Text>
+          </TouchableOpacity>
+        ))
+      ) : (
+        <View style={styles.jobCard}>
           <Text style={styles.emptyText}>No recent activities</Text>
-        )}
-      </View>
+        </View>
+      )}
     </ScrollView>
   );
 
@@ -220,7 +233,7 @@ export default function WorkshopAdminDashboard() {
           ? 'Workshop'
           : WORKSHOP_CRM_TAB_TITLES[currentScreen] || 'Home'
       }
-      userName={userProfile?.full_name}
+      userName={homeName}
       userEmail={userProfile?.email}
       roleFallback="Workshop Owner"
       navigation={navigation}
@@ -259,39 +272,64 @@ const styles = StyleSheet.create({
     color: COLORS.bodyText,
     marginTop: 2,
   },
+  sectionTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
   statsGrid: {
     flexDirection: 'row',
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
   statCard: {
-    flex: 1,
-    padding: SPACING.md,
-    borderRadius: 14,
+    width: '47.5%',
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    borderLeftWidth: 4,
     alignItems: 'center',
+    ...SHADOWS.small,
   },
   statValue: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '800',
     color: COLORS.heading,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statLabel: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.bodyText,
     textAlign: 'center',
-  },
-  actionButton: {
-    marginBottom: SPACING.md,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    alignSelf: 'flex-start',
-  },
-  actionButtonText: {
-    color: COLORS.white,
     fontWeight: '600',
+  },
+  jobCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.small,
+  },
+  jobHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  jobName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  jobMeta: {
+    fontSize: 13,
+    color: COLORS.bodyText,
+    marginTop: 4,
   },
   card: {
     backgroundColor: COLORS.white,

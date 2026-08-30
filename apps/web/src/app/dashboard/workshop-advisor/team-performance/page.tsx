@@ -265,9 +265,9 @@ export default function TeamPerformancePage() {
             </div>
           </div>
 
-          <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
+          <div className="card bg-gradient-to-br from-[#F0F7FF] to-blue-50">
             <div className="flex items-center gap-3">
-              <Star className="w-10 h-10 text-purple-600" />
+              <Star className="w-10 h-10 text-[#004AAD]" />
               <div>
                 <p className="text-sm text-gray-600">Avg Quality</p>
                 <p className="text-3xl font-bold text-gray-800">

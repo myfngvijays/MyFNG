@@ -13,6 +13,9 @@ import SuperAdminDashboard from '../screens/dashboard/SuperAdminDashboard';
 import CSEDashboardScreen from '../screens/dashboard/cse/CSEDashboardScreen';
 import AuditorDashboardScreen from '../screens/dashboard/auditor/AuditorDashboardScreen';
 import WorkshopAdminDashboard from '../screens/dashboard/WorkshopAdminDashboard';
+import { withAdvisorShell, AdvisorPageShell } from '../components/workshop/AdvisorPageShell';
+import { withMechanicShell, withPickupShell, withOwnerShell, WorkshopRoleShell } from '../components/workshop/WorkshopRoleShell';
+import { OWNER_CRM_NAV, OWNER_CRM_QUICK } from '../constants/workshopCrmNav';
 import WorkshopSupervisorDashboard from '../screens/dashboard/WorkshopSupervisorDashboard';
 import WorkshopMechanicDashboard from '../screens/dashboard/WorkshopMechanicDashboard';
 import WorkshopPickupBoyDashboard from '../screens/dashboard/WorkshopPickupBoyDashboard';
@@ -72,6 +75,8 @@ import JobDetailScreen from '../screens/dashboard/workshop_supervisor/JobDetailS
 import MechanicAssignmentScreen from '../screens/dashboard/workshop_supervisor/MechanicAssignmentScreen';
 import SupervisorMenuScreen from '../screens/dashboard/workshop_supervisor/SupervisorMenuScreen';
 import AdvisorReadMeScreen from '../screens/dashboard/workshop_supervisor/AdvisorReadMeScreen';
+import SupervisorPerformanceScreen from '../screens/dashboard/workshop_supervisor/SupervisorPerformanceScreen';
+import SupervisorJobsScreen from '../screens/dashboard/workshop_supervisor/SupervisorJobsScreen';
 
 // CSE screens
 import ComplaintsManagementScreen from '../screens/dashboard/cse/ComplaintsManagementScreen';
@@ -167,6 +172,26 @@ import FinancePayoutScreen from '../screens/dashboard/superadmin/FinancePayoutSc
 import FraudDetectionScreen from '../screens/dashboard/superadmin/FraudDetectionScreen';
 
 const Stack = createNativeStackNavigator();
+
+const AdvisorNotifications = withAdvisorShell(NotificationsScreen, 'Notifications');
+const AdvisorSupervisorMenu = withAdvisorShell(SupervisorMenuScreen, 'SupervisorMenu');
+const AdvisorSupervisorJobs = withAdvisorShell(SupervisorJobsScreen, 'SupervisorJobs');
+const AdvisorDayPlanning = withAdvisorShell(DayPlanningScreen, 'DayPlanning');
+const AdvisorJobMonitoring = withAdvisorShell(JobMonitoringScreen, 'JobMonitoring');
+const AdvisorQCCheck = withAdvisorShell(QCCheckScreen, 'QCCheck');
+const AdvisorQCReview = withAdvisorShell(QCReviewScreen, 'QCReview');
+const AdvisorPendingLeads = withAdvisorShell(PendingLeadsScreen, 'PendingLeads');
+const AdvisorExtraWork = withAdvisorShell(ExtraWorkApprovalScreen, 'ExtraWorkApproval');
+const AdvisorTeamOverview = withAdvisorShell(TeamOverviewScreen, 'TeamOverview');
+const AdvisorTeamPerformance = withAdvisorShell(TeamPerformanceScreen, 'TeamPerformance');
+const AdvisorDailyReport = withAdvisorShell(DailyReportScreen, 'DailyReport');
+const AdvisorPickupTracking = withAdvisorShell(PickupDeliveryTrackingScreen, 'PickupDeliveryTracking');
+const AdvisorAnalytics = withAdvisorShell(SupervisorAnalyticsScreen, 'SupervisorAnalytics');
+const AdvisorPerformance = withAdvisorShell(SupervisorPerformanceScreen, 'SupervisorPerformance');
+const AdvisorProfile = withAdvisorShell(SupervisorProfileScreen, 'SupervisorProfile');
+const AdvisorReadMe = withAdvisorShell(AdvisorReadMeScreen, 'AdvisorReadMe');
+const AdvisorJobDetail = withAdvisorShell(JobDetailScreen, 'JobDetail');
+const AdvisorMechanicAssignment = withAdvisorShell(MechanicAssignmentScreen, 'MechanicAssignment');
 
 interface DashboardNavigatorProps {
   userProfile: any;
@@ -752,6 +777,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
   if (roleCode === 'WORKSHOP_ADMIN') {
     const PendingLeadsScreen = require('../screens/dashboard/workshop_admin/PendingLeadsScreen').default;
     const ActiveJobsScreen = require('../screens/dashboard/workshop_admin/ActiveJobsScreen').default;
+    const OwnerProfileScreen = require('../screens/dashboard/workshop_admin/OwnerProfileScreen').default;
     
     return (
       <Stack.Navigator screenOptions={screenOptions}>
@@ -762,69 +788,86 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         />
         <Stack.Screen
           name="Notifications"
-          component={NotificationsScreen}
+          component={withOwnerShell(NotificationsScreen, 'Notifications')}
           options={{ title: 'Notifications' }}
         />
         <Stack.Screen 
           name="PendingLeads" 
-          component={PendingLeadsScreen}
+          component={withOwnerShell(PendingLeadsScreen, 'PendingLeads')}
           options={{ title: 'Pending Leads' }}
         />
         <Stack.Screen 
           name="WorkshopAdminLeadsList" 
-          component={WorkshopAdminLeadsListScreen}
+          component={withOwnerShell(WorkshopAdminLeadsListScreen, 'WorkshopAdminLeadsList')}
           options={{ title: 'All Leads' }}
         />
         <Stack.Screen 
           name="WorkshopAdminLeadDetail" 
-          component={WorkshopAdminLeadDetailScreen}
-          options={{ title: 'Lead Details' }}
+          component={withOwnerShell(WorkshopAdminLeadDetailScreen, 'WorkshopAdminLeadDetail')}
+          options={{ title: 'Job Details' }}
         />
         <Stack.Screen 
           name="ActiveJobs" 
-          component={ActiveJobsScreen}
+          component={withOwnerShell(ActiveJobsScreen, 'ActiveJobs')}
           options={{ title: 'Active Jobs' }}
         />
         <Stack.Screen 
           name="WorkshopAdminStaffManagement" 
-          component={WorkshopAdminStaffManagementScreen}
+          component={withOwnerShell(WorkshopAdminStaffManagementScreen, 'WorkshopAdminStaffManagement')}
           options={{ title: 'Staff Management' }}
         />
         <Stack.Screen 
           name="WorkshopAdminJobAssignment" 
-          component={WorkshopAdminJobAssignmentScreen}
+          component={withOwnerShell(WorkshopAdminJobAssignmentScreen, 'WorkshopAdminJobAssignment')}
           options={{ title: 'Job Assignment' }}
         />
         <Stack.Screen 
           name="WorkshopAdminPickupTracking" 
-          component={WorkshopAdminPickupTrackingScreen}
+          component={withOwnerShell(WorkshopAdminPickupTrackingScreen, 'WorkshopAdminPickupTracking')}
           options={{ title: 'Pickup Tracking' }}
         />
         <Stack.Screen 
           name="WorkshopAdminReports" 
-          component={WorkshopAdminReportsScreen}
+          component={withOwnerShell(WorkshopAdminReportsScreen, 'WorkshopAdminReports')}
           options={{ title: 'Reports' }}
         />
         <Stack.Screen 
           name="WorkshopAdminSettings" 
-          component={WorkshopAdminSettingsScreen}
+          component={withOwnerShell(WorkshopAdminSettingsScreen, 'WorkshopAdminSettings')}
           options={{ title: 'Settings' }}
         />
         <Stack.Screen
           name="WorkshopAdminMenu"
-          component={WorkshopAdminMenuScreen}
+          component={withOwnerShell(WorkshopAdminMenuScreen, 'WorkshopAdminMenu')}
           options={{ title: 'Admin Menu' }}
         />
         <Stack.Screen
           name="WorkshopAdminPublicPage"
-          component={WorkshopAdminPublicPageScreen}
+          component={withOwnerShell(WorkshopAdminPublicPageScreen, 'WorkshopAdminPublicPage')}
           options={{ title: 'Public Page' }}
+        />
+        <Stack.Screen
+          name="OwnerProfile"
+          component={withOwnerShell(OwnerProfileScreen, 'OwnerProfile')}
+          options={{ title: 'My Profile' }}
         />
         <Stack.Screen
           name="WorkshopAdminAdditionalJobsMaster"
           options={{ title: 'Additional Jobs Master' }}
         >
-          {(props) => <AdditionalJobsMasterScreen {...props} mode="WORKSHOP_ADMIN" />}
+          {(props) => (
+            <WorkshopRoleShell
+              title="Jobs Master"
+              navId="master"
+              navigation={props.navigation}
+              drawerItems={OWNER_CRM_NAV}
+              quickItems={OWNER_CRM_QUICK}
+              homeScreen="WorkshopAdminDashboard"
+              roleFallback="Workshop Owner"
+            >
+              <AdditionalJobsMasterScreen {...props} mode="WORKSHOP_ADMIN" hideChrome />
+            </WorkshopRoleShell>
+          )}
         </Stack.Screen>
       </Stack.Navigator>
     );
@@ -832,9 +875,6 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
 
   // Workshop Supervisor Navigation
   if (roleCode === 'WORKSHOP_SUPERVISOR') {
-    const SupervisorPerformanceScreen = require('../screens/dashboard/workshop_supervisor/SupervisorPerformanceScreen').default;
-    const SupervisorJobsScreen = require('../screens/dashboard/workshop_supervisor/SupervisorJobsScreen').default;
-    
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -844,103 +884,107 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         />
         <Stack.Screen
           name="Notifications"
-          component={NotificationsScreen}
+          component={AdvisorNotifications}
           options={{ title: 'Notifications' }}
         />
         <Stack.Screen 
           name="SupervisorMenu" 
-          component={SupervisorMenuScreen}
+          component={AdvisorSupervisorMenu}
           options={{ title: 'All Features' }}
         />
         <Stack.Screen 
           name="SupervisorJobs" 
-          component={SupervisorJobsScreen}
+          component={AdvisorSupervisorJobs}
           options={{ title: 'Jobs' }}
         />
         <Stack.Screen 
           name="DayPlanning" 
-          component={DayPlanningScreen}
+          component={AdvisorDayPlanning}
           options={{ title: 'Day Planning' }}
         />
         <Stack.Screen 
           name="JobMonitoring" 
-          component={JobMonitoringScreen}
+          component={AdvisorJobMonitoring}
           options={{ title: 'Job Monitoring' }}
         />
         <Stack.Screen 
           name="QCCheck" 
-          component={QCCheckScreen}
+          component={AdvisorQCCheck}
           options={{ title: 'QC Queue' }}
         />
         <Stack.Screen 
           name="QCReview" 
-          component={QCReviewScreen}
+          component={AdvisorQCReview}
           options={{ title: 'QC Review' }}
         />
         <Stack.Screen 
           name="PendingLeads" 
-          component={PendingLeadsScreen}
+          component={AdvisorPendingLeads}
           options={{ title: 'Pending Leads' }}
         />
         <Stack.Screen 
           name="ExtraWorkApproval" 
-          component={ExtraWorkApprovalScreen}
+          component={AdvisorExtraWork}
           options={{ title: 'Additional Jobs Approval' }}
         />
         <Stack.Screen 
           name="TeamOverview" 
-          component={TeamOverviewScreen}
+          component={AdvisorTeamOverview}
           options={{ title: 'Team Overview' }}
         />
         <Stack.Screen 
           name="TeamPerformance" 
-          component={TeamPerformanceScreen}
+          component={AdvisorTeamPerformance}
           options={{ title: 'Team Performance' }}
         />
         <Stack.Screen 
           name="DailyReport" 
-          component={DailyReportScreen}
+          component={AdvisorDailyReport}
           options={{ title: 'Daily Report' }}
         />
         <Stack.Screen 
           name="PickupDeliveryTracking" 
-          component={PickupDeliveryTrackingScreen}
+          component={AdvisorPickupTracking}
           options={{ title: 'Pickup & Delivery' }}
         />
         <Stack.Screen 
           name="SupervisorAnalytics" 
-          component={SupervisorAnalyticsScreen}
+          component={AdvisorAnalytics}
           options={{ title: 'Analytics' }}
         />
         <Stack.Screen 
           name="SupervisorPerformance" 
-          component={SupervisorPerformanceScreen}
+          component={AdvisorPerformance}
           options={{ title: 'Performance' }}
         />
         <Stack.Screen 
           name="SupervisorProfile" 
-          component={SupervisorProfileScreen}
+          component={AdvisorProfile}
           options={{ title: 'My Profile' }}
         />
         <Stack.Screen
           name="AdvisorReadMe"
-          component={AdvisorReadMeScreen}
+          component={AdvisorReadMe}
           options={{ title: 'ReadMe' }}
         />
         <Stack.Screen
           name="SupervisorAdditionalJobsMaster"
           options={{ title: 'Additional Jobs Master' }}
         >
-          {(props) => <AdditionalJobsMasterScreen {...props} mode="WORKSHOP_SUPERVISOR" />}
+          {(props) => (
+            <AdvisorPageShell title="Jobs Master" navId="master" navigation={props.navigation}>
+              <AdditionalJobsMasterScreen {...props} mode="WORKSHOP_SUPERVISOR" hideChrome />
+            </AdvisorPageShell>
+          )}
         </Stack.Screen>
         <Stack.Screen 
           name="JobDetail" 
-          component={JobDetailScreen}
+          component={AdvisorJobDetail}
           options={{ title: 'Job Details' }}
         />
         <Stack.Screen 
           name="MechanicAssignment" 
-          component={MechanicAssignmentScreen}
+          component={AdvisorMechanicAssignment}
           options={{ title: 'Assign Mechanic' }}
         />
       </Stack.Navigator>
@@ -949,6 +993,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
 
   // Workshop Mechanic Navigation
   if (roleCode === 'WORKSHOP_MECHANIC') {
+    const MechanicJobsScreen = require('../screens/dashboard/workshop_mechanic/MechanicJobsScreen').default;
     const MechanicJobHistoryScreen = require('../screens/dashboard/workshop_mechanic/MechanicJobHistoryScreen').default;
     const MechanicProfileScreen = require('../screens/dashboard/workshop_mechanic/MechanicProfileScreen').default;
     const MechanicLeadDetailScreen = require('../screens/dashboard/workshop_mechanic/MechanicLeadDetailScreen').default;
@@ -956,7 +1001,8 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     const BeforeInspectionScreen = require('../screens/dashboard/workshop_mechanic/BeforeInspectionScreen').default;
     const MechanicExtraWorkRequestScreen = require('../screens/dashboard/workshop_mechanic/MechanicExtraWorkRequestScreen').default;
     const PerformanceScreen = require('../screens/dashboard/workshop_mechanic/PerformanceScreen').default;
-    
+    const AfterServicePhotoScreen = require('../screens/dashboard/workshop_mechanic/AfterServicePhotoScreen').default;
+
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -966,47 +1012,52 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         />
         <Stack.Screen
           name="Notifications"
-          component={NotificationsScreen}
+          component={withMechanicShell(NotificationsScreen, 'Notifications')}
           options={{ title: 'Notifications' }}
         />
         <Stack.Screen 
           name="LeadDetail" 
-          component={MechanicLeadDetailScreen}
-          options={{ title: 'Lead Details' }}
+          component={withMechanicShell(MechanicLeadDetailScreen, 'LeadDetail')}
+          options={{ title: 'Job Details' }}
         />
         <Stack.Screen 
           name="JobDetail" 
-          component={MechanicJobDetailScreen}
+          component={withMechanicShell(MechanicJobDetailScreen, 'JobDetail')}
           options={{ title: 'Job Details' }}
         />
         <Stack.Screen 
           name="BeforeInspection" 
-          component={BeforeInspectionScreen}
+          component={withMechanicShell(BeforeInspectionScreen, 'BeforeInspection')}
           options={{ title: 'Before Inspection' }}
         />
         <Stack.Screen 
           name="AfterServicePhotos" 
-          component={require('../screens/dashboard/workshop_mechanic/AfterServicePhotoScreen').default}
+          component={withMechanicShell(AfterServicePhotoScreen, 'AfterServicePhotos')}
           options={{ title: 'After Service Photos' }}
         />
         <Stack.Screen
           name="MechanicExtraWorkRequest"
-          component={MechanicExtraWorkRequestScreen}
+          component={withMechanicShell(MechanicExtraWorkRequestScreen, 'MechanicExtraWorkRequest')}
           options={{ title: 'Additional Job Request' }}
+        />
+        <Stack.Screen
+          name="MechanicJobs"
+          component={withMechanicShell(MechanicJobsScreen, 'MechanicJobs')}
+          options={{ title: 'Jobs' }}
         />
         <Stack.Screen 
           name="JobHistory" 
-          component={MechanicJobHistoryScreen}
+          component={withMechanicShell(MechanicJobHistoryScreen, 'JobHistory')}
           options={{ title: 'Job History' }}
         />
         <Stack.Screen 
           name="Performance" 
-          component={PerformanceScreen}
+          component={withMechanicShell(PerformanceScreen, 'Performance')}
           options={{ title: 'Performance' }}
         />
         <Stack.Screen 
           name="Profile" 
-          component={MechanicProfileScreen}
+          component={withMechanicShell(MechanicProfileScreen, 'Profile')}
           options={{ title: 'My Profile' }}
         />
       </Stack.Navigator>
@@ -1015,6 +1066,14 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
 
   // Workshop Pickup Boy Navigation
   if (roleCode === 'WORKSHOP_PICKUP_BOY') {
+    const PickupTasksScreen = require('../screens/dashboard/workshop_pickup_boy/TasksListScreen').default;
+    const PickupJobDetailScreen = require('../screens/dashboard/workshop_pickup_boy/PickupJobDetailScreen').default;
+    const PickupOtpScreen = require('../screens/dashboard/workshop_pickup_boy/PickupOtpWrapperScreen').default;
+    const PickupPhotoUploadScreen = require('../screens/dashboard/workshop_pickup_boy/PickupPhotoUploadWrapperScreen').default;
+    const PickupIncidentScreen = require('../screens/dashboard/workshop_pickup_boy/PickupIncidentWrapperScreen').default;
+    const PickupBoyProfileScreen = require('../screens/pickup/PickupBoyProfileScreen').default;
+    const TaskHistoryScreen = require('../screens/pickup/TaskHistoryScreen').default;
+
     return (
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen 
@@ -1024,42 +1083,42 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         />
         <Stack.Screen
           name="Notifications"
-          component={NotificationsScreen}
+          component={withPickupShell(NotificationsScreen, 'Notifications')}
           options={{ title: 'Notifications' }}
         />
         <Stack.Screen 
           name="PickupTasks" 
-          component={require('../screens/dashboard/workshop_pickup_boy/TasksListScreen').default}
+          component={withPickupShell(PickupTasksScreen, 'PickupTasks')}
           options={{ title: 'My Tasks' }}
         />
         <Stack.Screen 
           name="PickupJobDetail" 
-          component={require('../screens/dashboard/workshop_pickup_boy/PickupJobDetailScreen').default}
+          component={withPickupShell(PickupJobDetailScreen, 'PickupJobDetail')}
           options={{ title: 'Task Details' }}
         />
         <Stack.Screen
           name="PickupOtp"
-          component={require('../screens/dashboard/workshop_pickup_boy/PickupOtpWrapperScreen').default}
+          component={withPickupShell(PickupOtpScreen, 'PickupOtp')}
           options={{ title: 'Verify OTP' }}
         />
         <Stack.Screen 
           name="PickupPhotoUpload"
-          component={require('../screens/dashboard/workshop_pickup_boy/PickupPhotoUploadWrapperScreen').default}
+          component={withPickupShell(PickupPhotoUploadScreen, 'PickupPhotoUpload')}
           options={{ title: 'Upload Photos' }}
         />
         <Stack.Screen
           name="PickupIncident"
-          component={require('../screens/dashboard/workshop_pickup_boy/PickupIncidentWrapperScreen').default}
+          component={withPickupShell(PickupIncidentScreen, 'PickupIncident')}
           options={{ title: 'Report Incident' }}
         />
         <Stack.Screen 
           name="PickupBoyProfile" 
-          component={require('../screens/pickup/PickupBoyProfileScreen').default}
+          component={withPickupShell(PickupBoyProfileScreen, 'PickupBoyProfile')}
           options={{ title: 'My Profile' }}
         />
         <Stack.Screen 
           name="TaskHistory" 
-          component={require('../screens/pickup/TaskHistoryScreen').default}
+          component={withPickupShell(TaskHistoryScreen, 'TaskHistory')}
           options={{ title: 'Task History' }}
         />
       </Stack.Navigator>

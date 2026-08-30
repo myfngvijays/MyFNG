@@ -14,9 +14,9 @@ import {
   Image,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
+import { AC } from '../../../components/workshop/advisorCrmUi';
 
 interface QCJob {
   id: string;
@@ -326,86 +326,43 @@ export default function QCCheckScreen({ navigation }: any) {
 
   function renderJob({ item }: { item: QCJob }) {
     return (
-      <View style={styles.jobCard}>
-        <View style={styles.jobHeader}>
-          <View style={styles.jobInfo}>
-            <Text style={styles.leadNumber}>{item.lead_number}</Text>
-            <Text style={styles.customerName}>{item.customer_name}</Text>
-            {item.qc_status && (
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: getStatusColor(item.qc_status) },
-                ]}
-              >
-                <Text style={styles.statusText}>{item.qc_status}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.jobDetails}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Vehicle:</Text>
-            <Text style={styles.detailValue}>
-              {item.vehicle_number} - {item.vehicle_make} {item.vehicle_model}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Mechanic:</Text>
-            <Text style={styles.detailValue}>{item.mechanic_name}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Service:</Text>
-            <Text style={styles.detailValue}>{item.service_types?.join(', ')}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Completed:</Text>
-            <Text style={styles.detailValue}>
-              {formatDateTime(item.completed_at)}
-            </Text>
-          </View>
-        </View>
-
-        {/* QC Indicators */}
-        <View style={styles.qcIndicators}>
-          <View style={styles.indicator}>
-            <Text style={styles.indicatorIcon}>
-              {item.checklist_completed ? '✅' : '⚠️'}
-            </Text>
-            <Text style={styles.indicatorText}>
-              {item.checklist_completed ? 'Checklist Done' : 'Incomplete'}
-            </Text>
-          </View>
-          <View style={styles.indicator}>
-            <Text style={styles.indicatorIcon}>📷</Text>
-            <Text style={styles.indicatorText}>
-              {item.before_images_count}/{item.after_images_count} Images
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.qcButton,
-            !!item.qc_status && styles.qcButtonDisabled,
-          ]}
-          onPress={() => openQCModal(item)}
-          disabled={!!item.qc_status}
-        >
-          <Text style={styles.qcButtonText}>
-            {item.qc_status ? '✓ QC Done' : '🔍 Start QC Check'}
+      <View style={AC.navy}>
+        <View style={AC.navyRow}>
+          <Text style={AC.navyName} numberOfLines={1}>
+            {item.customer_name || 'Customer'}
           </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.viewDetailsButton}
-          onPress={() =>
-            navigation.navigate('QCReview', { jobId: item.lead_id || item.id })
-          }
-        >
-          <Text style={styles.viewDetailsText}>Review QC →</Text>
-        </TouchableOpacity>
+          {item.qc_status ? (
+            <View style={AC.navyBadge}>
+              <Text style={AC.navyBadgeTxt}>{item.qc_status}</Text>
+            </View>
+          ) : (
+            <View style={AC.navyBadge}>
+              <Text style={AC.navyBadgeTxt}>PENDING</Text>
+            </View>
+          )}
+        </View>
+        <Text style={AC.navyMeta} numberOfLines={1}>
+          {item.vehicle_number}
+          {item.mechanic_name ? ` · ${item.mechanic_name}` : ''}
+        </Text>
+        {item.completed_at ? (
+          <Text style={AC.navyMeta}>{formatDateTime(item.completed_at)}</Text>
+        ) : null}
+        <View style={AC.navyBtnRow}>
+          <TouchableOpacity
+            style={AC.navyBtn}
+            onPress={() => openQCModal(item)}
+            disabled={!!item.qc_status}
+          >
+            <Text style={AC.navyBtnTxt}>{item.qc_status ? 'QC done' : 'Start QC'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={AC.navyBtnGhost}
+            onPress={() => navigation.navigate('QCReview', { jobId: item.lead_id || item.id })}
+          >
+            <Text style={AC.navyBtnGhostTxt}>Review</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -418,77 +375,51 @@ export default function QCCheckScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Quality Control</Text>
-        <Text style={styles.subtitle}>{stats.pending} jobs pending QC</Text>
-      </View>
+    <View style={AC.page}>
+      <Text style={AC.sub}>{stats.pending} jobs pending QC</Text>
 
-      {/* Filter Buttons */}
-      <View style={styles.filterContainer}>
+      <View style={AC.chipWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {['PENDING', 'PASSED', 'FAILED', 'REWORK', 'ALL'].map((f) => (
             <TouchableOpacity
               key={f}
-              style={[
-                styles.filterButton,
-                filter === f && styles.filterButtonActive,
-              ]}
+              style={[AC.chip, filter === f && AC.chipOn]}
               onPress={() => setFilter(f)}
             >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  filter === f && styles.filterButtonTextActive,
-                ]}
-              >
-                {f}
-              </Text>
+              <Text style={[AC.chipTxt, filter === f && AC.chipTxtOn]}>{f}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#6b7280' }]}>
-            {stats.pending}
-          </Text>
-          <Text style={styles.statLabel}>Pending</Text>
+      <View style={AC.kpiRow}>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#004AAD' }]}>{stats.pending}</Text>
+          <Text style={AC.kpiLab}>Pending</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#10b981' }]}>
-            {stats.passed}
-          </Text>
-          <Text style={styles.statLabel}>Passed</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#10B981' }]}>{stats.passed}</Text>
+          <Text style={AC.kpiLab}>Passed</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#ef4444' }]}>
-            {stats.failed}
-          </Text>
-          <Text style={styles.statLabel}>Failed</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#EF4444' }]}>{stats.failed}</Text>
+          <Text style={AC.kpiLab}>Failed</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#f59e0b' }]}>
-            {stats.rework}
-          </Text>
-          <Text style={styles.statLabel}>Rework</Text>
+        <View style={AC.kpi}>
+          <Text style={[AC.kpiVal, { color: '#F59E0B' }]}>{stats.rework}</Text>
+          <Text style={AC.kpiLab}>Rework</Text>
         </View>
       </View>
 
-      {/* Jobs List */}
       <FlatList
         data={filteredJobs}
         keyExtractor={(item) => item.id}
         renderItem={renderJob}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.listContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#004AAD']} />}
+        contentContainerStyle={{ paddingBottom: 32 }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No jobs for QC</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No jobs for QC</Text>
           </View>
         }
       />
@@ -508,10 +439,10 @@ export default function QCCheckScreen({ navigation }: any) {
               {selectedJob && (
                 <View style={styles.selectedJobInfo}>
                   <Text style={styles.selectedJobNumber}>
-                    {selectedJob.lead_number}
+                    {selectedJob.customer_name || 'Customer'}
                   </Text>
                   <Text style={styles.selectedJobCustomer}>
-                    {selectedJob.customer_name} - {selectedJob.vehicle_number}
+                    {selectedJob.vehicle_number}
                   </Text>
                   <Text style={styles.selectedJobMechanic}>
                     Mechanic: {selectedJob.mechanic_name}
@@ -640,14 +571,14 @@ export default function QCCheckScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F0F7FF',
   },
   header: {
     padding: 16,
@@ -658,7 +589,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   subtitle: {
     fontSize: 14,
@@ -676,13 +607,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginRight: 8,
     borderRadius: 20,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#d1d5db',
   },
   filterButtonActive: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
+    borderColor: '#004AAD',
   },
   filterButtonText: {
     fontSize: 13,
@@ -723,7 +654,7 @@ const styles = StyleSheet.create({
   },
   jobCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
@@ -741,7 +672,7 @@ const styles = StyleSheet.create({
   leadNumber: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   customerName: {
     fontSize: 16,
@@ -774,7 +705,7 @@ const styles = StyleSheet.create({
   detailValue: {
     flex: 1,
     fontSize: 13,
-    color: '#111827',
+    color: '#023D95',
   },
   qcIndicators: {
     flexDirection: 'row',
@@ -794,7 +725,7 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   qcButton: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -814,7 +745,7 @@ const styles = StyleSheet.create({
   },
   viewDetailsText: {
     fontSize: 13,
-    color: '#8b5cf6',
+    color: '#004AAD',
     fontWeight: '600',
   },
   emptyContainer: {
@@ -842,11 +773,11 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 16,
   },
   selectedJobInfo: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#EAF2FF',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
@@ -854,7 +785,7 @@ const styles = StyleSheet.create({
   selectedJobNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
   },
   selectedJobCustomer: {
     fontSize: 14,
@@ -863,7 +794,7 @@ const styles = StyleSheet.create({
   },
   selectedJobMechanic: {
     fontSize: 13,
-    color: '#8b5cf6',
+    color: '#004AAD',
     marginTop: 4,
   },
   section: {
@@ -872,7 +803,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#023D95',
     marginBottom: 12,
   },
   checklistItem: {
@@ -891,7 +822,7 @@ const styles = StyleSheet.create({
   },
   checklistItemName: {
     fontSize: 14,
-    color: '#111827',
+    color: '#023D95',
     fontWeight: '500',
   },
   checklistItemNotes: {
@@ -938,12 +869,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
-    color: '#111827',
+    color: '#023D95',
     minHeight: 100,
     textAlignVertical: 'top',
   },
   submitButton: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#004AAD',
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',

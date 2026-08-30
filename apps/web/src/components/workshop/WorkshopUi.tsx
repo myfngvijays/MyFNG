@@ -32,26 +32,29 @@ export function WorkshopStatTile({
   tone?: string;
   loading?: boolean;
 }) {
-  const tint =
+  const accent =
     tone?.includes('yellow') || tone?.includes('amber')
-      ? 'bg-[#FFFBEB]'
+      ? '#D97706'
       : tone?.includes('green')
-        ? 'bg-[#ECFDF5]'
-        : tone?.includes('red') || tone?.includes('orange')
-          ? 'bg-[#FEF2F2]'
-          : tone?.includes('purple')
-            ? 'bg-[#F5F3FF]'
-            : tone?.includes('blue')
-              ? 'bg-[#EFF6FF]'
-              : 'bg-white';
+        ? '#059669'
+        : tone?.includes('red')
+          ? '#DC2626'
+          : tone?.includes('orange')
+            ? '#EA580C'
+            : tone?.includes('purple')
+              ? '#6D28D9'
+              : '#004AAD';
 
   return (
-    <div className={`rounded-2xl border border-slate-200 ${tint} p-3 shadow-sm sm:p-3.5`}>
+    <div
+      className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-3.5 border-l-4"
+      style={{ borderLeftColor: accent }}
+    >
       <div className="flex items-center gap-2">
         {icon}
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-[11px]">{label}</p>
-          <p className="text-xl font-extrabold text-[#023D95] sm:text-2xl">{loading ? '—' : value}</p>
+          <p className="text-xl font-extrabold sm:text-2xl" style={{ color: accent }}>{loading ? '—' : value}</p>
         </div>
       </div>
     </div>

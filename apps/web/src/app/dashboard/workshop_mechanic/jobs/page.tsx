@@ -19,6 +19,7 @@ export default function MechanicJobsPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED'>('ALL');
 
   useEffect(() => {
     fetchJobs();
@@ -235,6 +236,12 @@ export default function MechanicJobsPage() {
     return 'Assigned';
   };
 
+  const filteredJobs = jobs.filter((j) => {
+    if (filter === 'ALL') return true;
+    if (filter === 'HOLD') return j.mechanic_status === 'HOLD' || j.mechanic_status === 'ON_HOLD' || j.mechanic_status === 'WAITING_APPROVAL';
+    return j.mechanic_status === filter;
+  });
+
   if (loading) {
     return (
       <DashboardLayout role="workshop_mechanic">
@@ -252,18 +259,32 @@ export default function MechanicJobsPage() {
           eyebrow="Workshop Mechanic"
           title="My Jobs"
           subtitle="Manage your assigned service jobs"
+          right={
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as typeof filter)}
+              className="w-full min-[900px]:w-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-[#023D95] shadow-sm"
+            >
+              {(['ALL', 'ASSIGNED', 'IN_PROGRESS', 'HOLD', 'COMPLETED'] as const).map((id) => (
+                <option key={id} value={id}>
+                  {id === 'IN_PROGRESS' ? 'In progress' : id === 'ALL' ? 'All' : id.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
+          }
         />
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-          <WorkshopStatTile label="Total Assigned" value={jobs.length} icon={<Wrench className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <WorkshopStatTile label="All jobs" value={jobs.length} icon={<Wrench className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" />
+          <WorkshopStatTile label="Assigned" value={jobs.filter(j => j.mechanic_status === 'ASSIGNED').length} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" />
           <WorkshopStatTile label="In Progress" value={jobs.filter(j => j.mechanic_status === 'IN_PROGRESS').length} icon={<Clock className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" />
-          <WorkshopStatTile label="Ready to Start" value={jobs.filter(j => j.mechanic_status === 'ASSIGNED').length} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" />
+          <WorkshopStatTile label="Completed" value={jobs.filter(j => j.mechanic_status === 'COMPLETED').length} tone="from-purple-50" />
         </div>
 
-        {jobs.length > 0 ? (
+        {filteredJobs.length > 0 ? (
           <>
           <div className="space-y-2 lg:hidden">
-            {jobs.map((job) => (
+            {filteredJobs.map((job) => (
               <button
                 key={job.job_id || job.lead_id}
                 type="button"
@@ -274,9 +295,12 @@ export default function MechanicJobsPage() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">#{job.lead_number || 'N/A'}</p>
-                    <p className="text-xs text-slate-500 truncate">{job.customer_name || 'N/A'}</p>
-                    <p className="text-xs text-slate-500 truncate">{job.vehicle_number || 'N/A'} · {job.vehicle_make || ''} {job.vehicle_model || ''}</p>
+                    <p className="text-sm font-bold text-[#023D95] truncate">{job.customer_name || 'Customer'}</p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {[job.vehicle_number, `${job.vehicle_make || ''} ${job.vehicle_model || ''}`.trim()]
+                        .filter(Boolean)
+                        .join(' · ') || 'Vehicle'}
+                    </p>
                   </div>
                   {job.mechanic_status ? (
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${getStatusColor(job)}`}>
@@ -347,7 +371,7 @@ export default function MechanicJobsPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {jobs.map((job) => {
+                  {filteredJobs.map((job) => {
                     const getStatusColor = () => {
                       if (job.mechanic_status === 'IN_PROGRESS') return 'bg-blue-100 text-blue-700';
                       if (job.mechanic_status === 'HOLD' || job.mechanic_status === 'ON_HOLD') return 'bg-orange-100 text-orange-700';
@@ -548,7 +572,7 @@ export default function MechanicJobsPage() {
           </>
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <WorkshopEmpty>No jobs assigned to you</WorkshopEmpty>
+            <WorkshopEmpty>{jobs.length ? 'No jobs in this filter' : 'No jobs assigned to you'}</WorkshopEmpty>
           </div>
         )}
       </WorkshopPageShell>

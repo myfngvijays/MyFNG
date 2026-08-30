@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { AC } from '../../components/workshop/advisorCrmUi';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export default function TaskHistoryScreen({ userId }: { userId?: string }) {
@@ -173,18 +174,14 @@ export default function TaskHistoryScreen({ userId }: { userId?: string }) {
   };
 
   const renderTask = ({ item }: { item: any }) => (
-    <View style={styles.taskCard}>
+    <View style={AC.listCard}>
       <View style={styles.taskHeader}>
-        <View style={styles.taskTypeContainer}>
-          <Text style={styles.taskTypeIcon}>{getTaskTypeIcon(item.task_type)}</Text>
-          <Text style={styles.taskType}>{item.task_type}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{item.status}</Text>
+        <Text style={AC.name} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
+        <View style={[AC.statusPill, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={AC.statusPillTxt}>{String(item.status || '').replace(/_/g, ' ')}</Text>
         </View>
       </View>
-
-      <Text style={styles.customerName}>{item.customer_name}</Text>
+      <Text style={AC.meta}>{getTaskTypeIcon(item.task_type)} {item.task_type}</Text>
       
       {item.pickup_address && (
         <Text style={styles.taskDetail}>📍 Pickup: {item.pickup_address}</Text>
@@ -211,21 +208,16 @@ export default function TaskHistoryScreen({ userId }: { userId?: string }) {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Task History</Text>
-        <Text style={styles.subtitle}>Completed & cancelled tasks</Text>
-      </View>
-
-      {/* Filter Buttons */}
-      <View style={styles.filterContainer}>
+    <View style={AC.page}>
+      <Text style={AC.sub}>Completed & cancelled tasks</Text>
+      <View style={[AC.chipWrap, { flexDirection: 'row', flexWrap: 'wrap' }]}>
         {['all', 'completed', 'cancelled'].map((status) => (
           <TouchableOpacity
             key={status}
-            style={[styles.filterButton, filter === status && styles.filterButtonActive]}
+            style={[AC.chip, filter === status && AC.chipOn]}
             onPress={() => setFilter(status)}
           >
-            <Text style={[styles.filterText, filter === status && styles.filterTextActive]}>
+            <Text style={[AC.chipTxt, filter === status && AC.chipTxtOn]}>
               {status.charAt(0).toUpperCase() + status.slice(1)}
             </Text>
           </TouchableOpacity>

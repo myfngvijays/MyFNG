@@ -47,7 +47,7 @@ const REQUIRED_AFTER_PHOTOS = [
   { type: 'AFTER_ODOMETER', label: 'Final Odometer Reading', required: true },
 ];
 
-export default function AfterServicePhotoScreen({ route }: Props) {
+export default function AfterServicePhotoScreen({ route, hideChrome = false }: Props & { hideChrome?: boolean }) {
   const navigation = useNavigation();
   const { jobId, leadId } = route.params;
   const { user } = useAuth();
@@ -357,7 +357,7 @@ export default function AfterServicePhotoScreen({ route }: Props) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading...</Text>
@@ -367,7 +367,7 @@ export default function AfterServicePhotoScreen({ route }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
