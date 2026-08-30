@@ -42,6 +42,7 @@ export default function SupervisorJobsScreen() {
         .from('service_leads')
         .select('*, mechanic:users_login(full_name)')
         .eq('workshop_id', userProfile.workshop_id)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (filter === 'assigned') {

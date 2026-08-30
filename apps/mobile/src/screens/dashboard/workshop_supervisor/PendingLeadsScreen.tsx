@@ -92,6 +92,7 @@ export default function PendingLeadsScreen() {
         .select('*')
         .eq('workshop_id', userProfile.workshop_id)
         .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'])
+        .is('deleted_at', null)
         .order('created_at', { ascending: true });
 
       if (error) {

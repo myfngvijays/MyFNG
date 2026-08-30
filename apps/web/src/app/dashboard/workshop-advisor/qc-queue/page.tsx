@@ -137,6 +137,7 @@ export default function QCQueuePage() {
         .eq('workshop_id', userProfile.workshop_id)
         .or('status.eq.WORK_COMPLETED,mechanic_completed_at.not.is.null')
         .or('qc_status.is.null,qc_status.eq.PENDING')
+        .is('deleted_at', null)
         .not('status', 'eq', 'REJECTED')
         .not('status', 'eq', 'CANCELLED')
         .not('status', 'eq', 'CLOSED')

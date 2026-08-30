@@ -124,6 +124,7 @@ export default function PickupDeliveryTrackingScreen() {
         `)
         .eq('workshop_id', workshopIdToUse)
         .eq('pickup_required', true)
+        .is('deleted_at', null)
         .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE'])
         .order('created_at', { ascending: false });
 

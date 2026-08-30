@@ -82,6 +82,7 @@ export default function WorkshopSupervisorPendingLeadsPage() {
         .select('*')
         .eq('workshop_id', workshop)
         .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'])
+        .is('deleted_at', null)
         .order('created_at', { ascending: false }); // Latest first
 
       if (error) {

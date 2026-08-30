@@ -76,17 +76,20 @@ export default function JobAssignmentsPage() {
         .from('mechanic_jobs')
         .select(`
           *,
-          service_leads:lead_id(
+          service_leads:lead_id!inner(
             lead_number, 
             customer_name, 
             customer_phone,
             vehicle_number,
             vehicle_make,
             vehicle_model,
-            problem_description
+            problem_description,
+            deleted_at
           ),
           mechanic:mechanic_id(full_name, email)
         `)
+        .is('service_leads.deleted_at', null)
+        .not('mechanic_status', 'eq', 'CANCELLED')
         .order('assigned_at', { ascending: false });
 
       // Fetch mechanics

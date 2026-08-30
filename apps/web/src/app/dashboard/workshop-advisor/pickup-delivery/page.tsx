@@ -190,7 +190,8 @@ export default function PickupDeliveryCoordinationPage() {
           mechanic:assigned_mechanic_id(id, full_name)
         `)
         .eq('workshop_id', wid)
-        .eq('pickup_required', true);
+        .eq('pickup_required', true)
+        .is('deleted_at', null);
 
       const { data: jobsData } = await query.order('created_at', { ascending: false });
 

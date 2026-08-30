@@ -74,12 +74,13 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
             'id, lead_number, customer_name, vehicle_number, status, assigned_mechanic_id, qc_status, pickup_status, created_at',
           )
           .eq('workshop_id', workshopId)
+          .is('deleted_at', null)
           .order('created_at', { ascending: false }),
         supabase
           .from('mechanic_jobs')
           .select(
             `id, mechanic_status, completed_at, sla_remaining_minutes, qc_status, assigned_at,
-             service_leads:lead_id(id, lead_number, customer_name, vehicle_number, workshop_id, created_at),
+             service_leads:lead_id(id, lead_number, customer_name, vehicle_number, workshop_id, created_at, deleted_at),
              mechanic:mechanic_id(full_name, workshop_id)`,
           )
           .order('assigned_at', { ascending: false })
@@ -97,7 +98,9 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
 
       const leadsData = leadsRes.data || [];
       const workshopJobs =
-        jobsRes.data?.filter((job: any) => job.service_leads?.workshop_id === workshopId) || [];
+        jobsRes.data?.filter(
+          (job: any) => job.service_leads?.workshop_id === workshopId && !job.service_leads?.deleted_at,
+        ) || [];
 
       const activeJobsList = workshopJobs.filter((job: any) =>
         ['ASSIGNED', 'IN_PROGRESS', 'HOLD'].includes(job.mechanic_status),

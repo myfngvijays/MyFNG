@@ -358,7 +358,8 @@ export default function ExtraWorkApprovalsPage() {
             vehicle_fuel_type,
             model_id,
             workshop_id,
-            customer_public_enabled
+            customer_public_enabled,
+            deleted_at
           )
         `;
 
@@ -380,7 +381,8 @@ export default function ExtraWorkApprovalsPage() {
             vehicle_fuel_type,
             model_id,
             workshop_id,
-            customer_public_enabled
+            customer_public_enabled,
+            deleted_at
           )
         `;
 
@@ -389,6 +391,7 @@ export default function ExtraWorkApprovalsPage() {
         .select(fullSelect)
         .eq('service_leads.workshop_id', userProfile.workshop_id)
         .in('status', ['PENDING', 'APPROVED', 'REJECTED'])
+        .is('service_leads.deleted_at', null)
         .order('is_urgent', { ascending: false })
         .order('created_at', { ascending: false });
 
@@ -401,6 +404,7 @@ export default function ExtraWorkApprovalsPage() {
           .select(legacySelect)
           .eq('service_leads.workshop_id', userProfile.workshop_id)
           .in('status', ['PENDING', 'APPROVED', 'REJECTED'])
+          .is('service_leads.deleted_at', null)
           .order('is_urgent', { ascending: false })
           .order('created_at', { ascending: false });
         extraWork = fallback.data as any;

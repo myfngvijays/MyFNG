@@ -89,6 +89,7 @@ export default function DailyReportPage() {
           mechanic:assigned_mechanic_id(id, full_name)
         `)
         .eq('workshop_id', userProfile.workshop_id)
+        .is('deleted_at', null)
         .gte('created_at', startOfDay.toISOString())
         .lte('created_at', endOfDay.toISOString());
 
@@ -135,6 +136,7 @@ export default function DailyReportPage() {
             .from('service_leads')
             .select('id, status, created_at, updated_at')
             .eq('assigned_mechanic_id', mechanic.id)
+            .is('deleted_at', null)
             .gte('created_at', startOfDay.toISOString())
             .lte('created_at', endOfDay.toISOString());
 
@@ -180,6 +182,7 @@ export default function DailyReportPage() {
         .from('service_leads')
         .select('supervisor_send_back_notes')
         .eq('workshop_id', userProfile.workshop_id)
+        .is('deleted_at', null)
         .eq('status', 'SENT_BACK')
         .gte('updated_at', startOfDay.toISOString())
         .lte('updated_at', endOfDay.toISOString());

@@ -38,18 +38,21 @@ export async function GET(request: Request) {
       .from('service_leads')
       .select('*')
       .eq('workshop_id', workshopId)
+      .is('deleted_at', null)
       .gte('created_at', startDate.toISOString());
 
     const { count: totalJobs } = await supabase
       .from('service_leads')
       .select('*', { count: 'exact', head: true })
       .eq('workshop_id', workshopId)
+      .is('deleted_at', null)
       .gte('created_at', startDate.toISOString());
 
     const { count: completedJobs } = await supabase
       .from('service_leads')
       .select('*', { count: 'exact', head: true })
       .eq('workshop_id', workshopId)
+      .is('deleted_at', null)
       .eq('status', 'COMPLETED')
       .gte('updated_at', startDate.toISOString());
 
@@ -57,6 +60,7 @@ export async function GET(request: Request) {
       .from('service_leads')
       .select('*', { count: 'exact', head: true })
       .eq('workshop_id', workshopId)
+      .is('deleted_at', null)
       .eq('sla_status', 'BREACHED')
       .gte('created_at', startDate.toISOString());
 

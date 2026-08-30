@@ -124,6 +124,7 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
         .select('*')
         .eq('workshop_id', workshopId)
         .in('status', ['ACCEPTED', 'IN_PROGRESS'])
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       const formattedJobs = leads?.map((lead: any) => ({

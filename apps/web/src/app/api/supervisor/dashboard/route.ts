@@ -107,6 +107,7 @@ export async function GET(request: Request) {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .gte('created_at', today.toISOString());
       metrics.totalJobsToday = totalToday || 0;
 
@@ -115,6 +116,7 @@ export async function GET(request: Request) {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .eq('status', 'ASSIGNED');
       metrics.assignedJobs = assigned || 0;
 
@@ -123,6 +125,7 @@ export async function GET(request: Request) {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .eq('status', 'IN_PROGRESS');
       metrics.inProgressJobs = inProgress || 0;
 
@@ -131,6 +134,7 @@ export async function GET(request: Request) {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .eq('status', 'HOLD');
       metrics.jobsOnHold = onHold || 0;
 
@@ -139,6 +143,7 @@ export async function GET(request: Request) {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .eq('status', 'COMPLETED')
         .eq('qc_status', 'PENDING');
       metrics.jobsAwaitingQC = awaitingQC || 0;
@@ -148,6 +153,7 @@ export async function GET(request: Request) {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .eq('pickup_required', true)
         .in('pickup_status', ['PENDING', 'ASSIGNED']);
       metrics.pendingPickups = pickups || 0;
@@ -156,7 +162,8 @@ export async function GET(request: Request) {
       const { data: workshopLeads } = await supabase
         .from('service_leads')
         .select('id')
-        .eq('workshop_id', workshopId);
+        .eq('workshop_id', workshopId)
+        .is('deleted_at', null);
       
       const workshopLeadIds = workshopLeads?.map(l => l.id) || [];
       
@@ -176,6 +183,7 @@ export async function GET(request: Request) {
         .from('service_leads')
         .select('*', { count: 'exact', head: true })
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .in('sla_status', ['AT_RISK', 'BREACHED'])
         .not('status', 'in', '(REJECTED,CLOSED,CANCELLED)');
       metrics.slaAtRiskJobs = slaRisk || 0;
@@ -202,6 +210,7 @@ export async function GET(request: Request) {
           .from('service_leads')
           .select('*', { count: 'exact', head: true })
           .eq('assigned_mechanic_id', mechanic.id)
+          .is('deleted_at', null)
           .in('status', ['ASSIGNED', 'IN_PROGRESS']);
 
         // Completed today
@@ -212,6 +221,7 @@ export async function GET(request: Request) {
           .from('service_leads')
           .select('*', { count: 'exact', head: true })
           .eq('assigned_mechanic_id', mechanic.id)
+          .is('deleted_at', null)
           .eq('status', 'COMPLETED')
           .gte('updated_at', todayStart.toISOString());
 
@@ -229,6 +239,7 @@ export async function GET(request: Request) {
           .from('service_leads')
           .select('*', { count: 'exact', head: true })
           .eq('assigned_mechanic_id', mechanic.id)
+          .is('deleted_at', null)
           .eq('status', 'COMPLETED')
           .gte('updated_at', sevenDaysAgo.toISOString());
 

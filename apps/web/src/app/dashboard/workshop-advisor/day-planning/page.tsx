@@ -104,7 +104,8 @@ export default function DayPlanningPage() {
           mechanic:assigned_mechanic_id(id, full_name, profile_image)
         `)
         .eq('workshop_id', userProfile.workshop_id)
-        .in('status', ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'HOLD']);
+        .in('status', ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'HOLD'])
+        .is('deleted_at', null);
 
       if (showOnlyUnassigned) {
         query = query.is('assigned_mechanic_id', null);

@@ -92,6 +92,7 @@ export default function DailyReportScreen() {
         .from('service_leads')
         .select('id, status, sla_deadline, assigned_mechanic_id, created_at, updated_at')
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .gte('created_at', startIso);
 
       const { data: jobs } = await supabase

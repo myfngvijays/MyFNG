@@ -138,6 +138,7 @@ export default function QCCheckScreen({ navigation }: any) {
         .eq('workshop_id', workshopId)
         .eq('status', 'COMPLETED')
         .eq('qc_status', 'PENDING')
+        .is('deleted_at', null)
         .order('mechanic_completed_at', { ascending: true });
 
       if (error) {

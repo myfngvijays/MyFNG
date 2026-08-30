@@ -111,6 +111,7 @@ export async function GET(request: Request) {
         qc_status
       `, { count: 'exact' })
       .eq('workshop_id', workshopId)
+      .is('deleted_at', null)
       .not('status', 'in', '(REJECTED,CANCELLED)');
 
     // Apply filters

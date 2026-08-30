@@ -117,6 +117,7 @@ export default function JobMonitoringScreen() {
           )
         `)
         .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
         .not('status', 'in', '(REJECTED,CANCELLED,CLOSED)')
         .order('created_at', { ascending: false });
 

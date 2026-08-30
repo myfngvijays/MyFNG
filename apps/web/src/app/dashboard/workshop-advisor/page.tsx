@@ -71,7 +71,7 @@ export default function WorkshopAdvisorDashboard() {
         supabase
           .from('mechanic_jobs')
           .select(
-            'id, mechanic_status, completed_at, sla_remaining_minutes, service_leads:lead_id(lead_number, customer_name), mechanic:mechanic_id(full_name, workshop_id)',
+            'id, mechanic_status, completed_at, sla_remaining_minutes, service_leads:lead_id(lead_number, customer_name, workshop_id, deleted_at), mechanic:mechanic_id(full_name, workshop_id)',
           )
           .in('mechanic_status', ['ASSIGNED', 'IN_PROGRESS', 'HOLD'])
           .order('assigned_at', { ascending: false })
@@ -80,23 +80,27 @@ export default function WorkshopAdvisorDashboard() {
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
-          .eq('qc_status', 'PENDING'),
+          .eq('qc_status', 'PENDING')
+          .is('deleted_at', null),
         supabase
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
-          .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED']),
+          .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'])
+          .is('deleted_at', null),
         supabase
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
           .eq('status', 'ACCEPTED')
-          .is('assigned_mechanic_id', null),
+          .is('assigned_mechanic_id', null)
+          .is('deleted_at', null),
         supabase
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
-          .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE']),
+          .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE'])
+          .is('deleted_at', null),
         supabase
           .from('mechanic_jobs')
           .select('id, completed_at, mechanic:mechanic_id(workshop_id)')
@@ -112,7 +116,7 @@ export default function WorkshopAdvisorDashboard() {
         (u: any) => u.role?.role_code === 'WORKSHOP_MECHANIC',
       );
       const workshopJobs = (jobsRes.data || []).filter(
-        (job: any) => job.mechanic?.workshop_id === workshopId,
+        (job: any) => job.mechanic?.workshop_id === workshopId && !job.service_leads?.deleted_at,
       ) as JobRow[];
 
       setRecentJobs(workshopJobs.slice(0, 8));

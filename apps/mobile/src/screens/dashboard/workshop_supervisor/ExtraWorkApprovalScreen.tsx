@@ -122,11 +122,13 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
             lead_number,
             customer_name,
             vehicle_number,
-            workshop_id
+            workshop_id,
+            deleted_at
           )
         `)
         .eq('service_leads.workshop_id', workshopId)
         .eq('status', 'PENDING')
+        .is('service_leads.deleted_at', null)
         .order('is_urgent', { ascending: false })
         .order('created_at', { ascending: true });
 
