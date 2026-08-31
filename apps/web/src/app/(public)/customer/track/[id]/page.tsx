@@ -40,6 +40,8 @@ export default function TrackLeadPage() {
   const [media, setMedia] = useState<any[]>([]);
   const [extraWork, setExtraWork] = useState<any[]>([]);
   const [pricingItems, setPricingItems] = useState<any[]>([]);
+  const [pickupTracking, setPickupTracking] = useState<any>(null);
+  const [liveLocation, setLiveLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [decisionByRequestId, setDecisionByRequestId] = useState<Record<string, 'OEM' | 'OES'>>({});
@@ -89,6 +91,8 @@ export default function TrackLeadPage() {
       setMedia(data.media || []);
       setExtraWork(data.extra_work || []);
       setPricingItems(data.pricing_items || []);
+      setPickupTracking(data.pickup_tracking || null);
+      setLiveLocation(data.live_location || null);
       setLoadError(null);
     } catch (error) {
       console.error('Error fetching lead:', error);
@@ -99,6 +103,25 @@ export default function TrackLeadPage() {
   }
 
   // Note: Public page intentionally hides live status/progress per requirements.
+
+  const pickupStatusLabel = (() => {
+    const s = String(pickupTracking?.pickup_status || lead?.pickup_status || lead?.status || '').toUpperCase();
+    if (s === 'ON_THE_WAY') return 'Pickup partner is on the way';
+    if (s === 'OTP_VERIFIED') return 'Vehicle handover verified — photos in progress';
+    if (s === 'VEHICLE_IN_TRANSIT') return 'Your vehicle is on the way to the workshop';
+    if (s === 'VEHICLE_DROPPED_AT_WORKSHOP') return 'Vehicle has arrived at the workshop';
+    if (s === 'OUT_FOR_DELIVERY') return 'Vehicle is out for delivery';
+    if (s === 'DELIVERED') return 'Vehicle delivered';
+    return null;
+  })();
+
+  const showLiveMap = Boolean(
+    liveLocation?.latitude &&
+      liveLocation?.longitude &&
+      ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'OTP_VERIFIED', 'OUT_FOR_DELIVERY'].includes(
+        String(pickupTracking?.pickup_status || lead?.pickup_status || lead?.status || '').toUpperCase()
+      )
+  );
 
   if (loading) {
     return (
@@ -321,6 +344,35 @@ export default function TrackLeadPage() {
               </div>
             </div>
           </div>
+
+          {(pickupStatusLabel || showLiveMap) && (
+            <div className="px-5 sm:px-6 pb-4">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                <div className="flex items-center gap-2 text-blue-900 font-semibold">
+                  <MapPin className="w-4 h-4" />
+                  Live pickup update
+                </div>
+                {pickupStatusLabel && (
+                  <p className="mt-2 text-sm text-blue-800">{pickupStatusLabel}</p>
+                )}
+                {showLiveMap && (
+                  <div className="mt-3">
+                    <a
+                      href={`https://www.google.com/maps?q=${liveLocation.latitude},${liveLocation.longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium text-[#004AAD] underline"
+                    >
+                      View pickup partner location on map
+                    </a>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Last updated: {formatDateTime(liveLocation.created_at)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Party details */}
           <div className="p-5 sm:p-6">

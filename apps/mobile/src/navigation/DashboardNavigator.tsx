@@ -1071,6 +1071,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     const PickupOtpScreen = require('../screens/dashboard/workshop_pickup_boy/PickupOtpWrapperScreen').default;
     const PickupPhotoUploadScreen = require('../screens/dashboard/workshop_pickup_boy/PickupPhotoUploadWrapperScreen').default;
     const PickupIncidentScreen = require('../screens/dashboard/workshop_pickup_boy/PickupIncidentWrapperScreen').default;
+    const PickupInAppNavigateScreen = require('../screens/dashboard/workshop_pickup_boy/PickupInAppNavigateScreen').default;
     const PickupBoyProfileScreen = require('../screens/pickup/PickupBoyProfileScreen').default;
     const TaskHistoryScreen = require('../screens/pickup/TaskHistoryScreen').default;
 
@@ -1110,6 +1111,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="PickupIncident"
           component={withPickupShell(PickupIncidentScreen, 'PickupIncident')}
           options={{ title: 'Report Incident' }}
+        />
+        <Stack.Screen
+          name="PickupInAppNavigate"
+          component={withPickupShell(PickupInAppNavigateScreen, 'PickupInAppNavigate')}
+          options={{ title: 'Directions' }}
         />
         <Stack.Screen 
           name="PickupBoyProfile" 

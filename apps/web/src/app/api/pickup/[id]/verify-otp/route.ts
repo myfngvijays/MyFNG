@@ -163,6 +163,29 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update tracking', details: updateError.message }, { status: 500 });
     }
 
+    // Keep service_leads in sync (mobile legacy flow reads lead status for arrived/assign gates)
+    if (otp_type === 'PICKUP') {
+      const leadUpdate: Record<string, string> = {
+        pickup_otp_verified_at: nowIso,
+        pickup_status: 'OTP_VERIFIED',
+        updated_at: nowIso,
+      };
+      // Preserve ON_THE_WAY until photos + mark-picked; do not regress if already in transit
+      const { data: currentLead } = await supabase
+        .from('service_leads')
+        .select('status, pickup_status')
+        .eq('id', leadId)
+        .maybeSingle();
+      const curStatus = String(currentLead?.status || '').toUpperCase();
+      const curPickup = String(currentLead?.pickup_status || '').toUpperCase();
+      if (!['VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP'].includes(curStatus)) {
+        if (!['VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP'].includes(curPickup)) {
+          leadUpdate.status = curStatus === 'ON_THE_WAY' ? 'ON_THE_WAY' : 'ACCEPTED';
+        }
+      }
+      await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
+    }
+
     // Create activity log
     await supabase.from('lead_activities').insert({
       lead_id: leadId,

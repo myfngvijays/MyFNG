@@ -11,7 +11,6 @@ import {
   RefreshControl,
   BackHandler,
   TouchableOpacity,
-  Modal,
   Alert,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
@@ -19,18 +18,17 @@ import { apiFetch } from '../../../lib/api';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
-
-function staffName(u: any) {
-  const joined = [u.first_name, u.last_name].map((s) => String(s || '').trim()).filter(Boolean).join(' ');
-  return joined || String(u.full_name || '').trim() || 'Pickup';
-}
+import { isActivePickupBoyTask, isActiveDeliveryBoyTask } from '../../../lib/pickupTaskFlow';
+import { fetchWorkshopPickupBoys, type PickupBoyOption } from '../../../lib/fetchWorkshopPickupBoys';
+import PickupAssignModal from '../../../components/workshop/PickupAssignModal';
 
 export default function PickupDeliveryTrackingScreen() {
   const navigation = useNavigation<any>();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<any[]>([]);
-  const [pickupBoys, setPickupBoys] = useState<any[]>([]);
+  const [pickupBoys, setPickupBoys] = useState<PickupBoyOption[]>([]);
+  const [pickupBoysLoading, setPickupBoysLoading] = useState(false);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const [assignTask, setAssignTask] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
@@ -51,10 +49,14 @@ export default function PickupDeliveryTrackingScreen() {
   }, [navigation, assignTask]);
 
   useEffect(() => {
-    initializeScreen();
+    let cleanup: (() => void) | undefined;
+    void initializeScreen().then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
   }, []);
 
-  const initializeScreen = async () => {
+  const initializeScreen = async (): Promise<(() => void) | undefined> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -75,10 +77,11 @@ export default function PickupDeliveryTrackingScreen() {
 
       setWorkshopId(userProfile.workshop_id);
       await fetchTasks(userProfile.workshop_id);
-      setupRealtimeSubscription(userProfile.workshop_id);
+      return setupRealtimeSubscription(userProfile.workshop_id);
     } catch (error) {
       console.error('Error initializing screen:', error);
       setLoading(false);
+      return undefined;
     }
   };
 
@@ -111,7 +114,7 @@ export default function PickupDeliveryTrackingScreen() {
         return;
       }
 
-      const [{ data, error }, { data: staff }] = await Promise.all([
+      const [{ data, error }] = await Promise.all([
         supabase
           .from('service_leads')
           .select(`
@@ -123,6 +126,7 @@ export default function PickupDeliveryTrackingScreen() {
             vehicle_model,
             pickup_required,
             pickup_status,
+            status,
             assigned_pickup_boy_id,
             pickup_boy:assigned_pickup_boy_id(
               id,
@@ -134,11 +138,6 @@ export default function PickupDeliveryTrackingScreen() {
           .is('deleted_at', null)
           .not('status', 'in', '(REJECTED,CANCELLED)')
           .order('created_at', { ascending: false }),
-        supabase
-          .from('users_login')
-          .select('id, full_name, first_name, last_name, is_active, role:role_id(role_code)')
-          .eq('workshop_id', workshopIdToUse)
-          .eq('is_active', true),
       ]);
 
       if (error) {
@@ -147,21 +146,11 @@ export default function PickupDeliveryTrackingScreen() {
         return;
       }
 
-      const openPickup = (data || []).filter((t: any) => {
-        const st = String(t.pickup_status || 'PENDING').toUpperCase();
-        return ![
-          'VEHICLE_DROPPED_AT_WORKSHOP',
-          'PICKED_UP',
-          'PICKUP_COMPLETED',
-          'DELIVERED',
-          'DROPPED',
-        ].includes(st);
-      });
+      const openPickup = (data || []).filter(
+        (t: any) => isActivePickupBoyTask(t) || isActiveDeliveryBoyTask(t),
+      );
 
       setTasks(openPickup);
-      setPickupBoys(
-        (staff || []).filter((u: any) => u.role?.role_code === 'WORKSHOP_PICKUP_BOY'),
-      );
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -169,6 +158,17 @@ export default function PickupDeliveryTrackingScreen() {
       setLoading(false);
     }
   };
+
+  async function openAssignModal(task: any) {
+    setAssignTask(task);
+    if (!workshopId) return;
+    setPickupBoysLoading(true);
+    try {
+      setPickupBoys(await fetchWorkshopPickupBoys(workshopId));
+    } finally {
+      setPickupBoysLoading(false);
+    }
+  }
 
   async function assignPickupBoy(pickupBoyId: string, pickupBoyName: string) {
     if (!assignTask) return;
@@ -253,7 +253,7 @@ export default function PickupDeliveryTrackingScreen() {
                 {task.pickup_boy?.full_name || 'Unassigned'}
               </Text>
               {unassigned ? (
-                <TouchableOpacity style={styles.assignBtn} onPress={() => setAssignTask(task)}>
+                <TouchableOpacity style={styles.assignBtn} onPress={() => openAssignModal(task)}>
                   <Text style={styles.assignBtnTxt}>Assign pickup</Text>
                 </TouchableOpacity>
               ) : null}
@@ -262,30 +262,15 @@ export default function PickupDeliveryTrackingScreen() {
         })
       )}
 
-      <Modal visible={!!assignTask} transparent animationType="slide" onRequestClose={() => setAssignTask(null)}>
-        <View style={styles.modalWrap}>
-          <View style={styles.modalCard}>
-            <Text style={AC.name}>Assign pickup</Text>
-            <Text style={[AC.meta, { marginBottom: 12 }]}>{assignTask?.customer_name}</Text>
-            {pickupBoys.map((boy) => (
-              <TouchableOpacity
-                key={boy.id}
-                style={styles.boyRow}
-                disabled={saving}
-                onPress={() => assignPickupBoy(boy.id, staffName(boy))}
-              >
-                <Text style={styles.boyName}>{staffName(boy)}</Text>
-              </TouchableOpacity>
-            ))}
-            {pickupBoys.length === 0 ? (
-              <Text style={styles.emptyText}>No pickup boys in this workshop</Text>
-            ) : null}
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setAssignTask(null)} disabled={saving}>
-              <Text style={styles.cancelTxt}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <PickupAssignModal
+        visible={!!assignTask}
+        leadLabel={assignTask?.customer_name}
+        pickupBoys={pickupBoys}
+        loading={pickupBoysLoading}
+        saving={saving}
+        onSelect={(boy) => assignPickupBoy(boy.id, boy.full_name)}
+        onClose={() => setAssignTask(null)}
+      />
     </ScrollView>
   );
 }

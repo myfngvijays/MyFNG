@@ -14,6 +14,7 @@ import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
 import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
 import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
+import { sortServiceChecklistItems } from '@/lib/workshop/serviceChecklistOrder';
 import { WorkshopPageHeader, WorkshopPageShell } from '@/components/workshop/WorkshopUi';
 
 interface JobDetail {
@@ -821,7 +822,7 @@ function MechanicJobDetailPageContent() {
             }
           }
           
-          setChecklist(items);
+          setChecklist(sortServiceChecklistItems(items));
           
           
           // Auto-set active category to first incomplete category
@@ -907,7 +908,7 @@ function MechanicJobDetailPageContent() {
                     }
                     
                     if (items && items.length > 0) {
-                      setChecklist(items);
+                      setChecklist(sortServiceChecklistItems(items));
                       
                       // REMOVED: Auto-set active category
                       // User requirement: Initially ALL categories should be open (no blur)
@@ -2027,7 +2028,8 @@ function MechanicJobDetailPageContent() {
             ) : (
               /* Group by category if categories exist */
               (() => {
-                const hasCategories = checklist.some(item => item.category);
+                const displayChecklist = sortServiceChecklistItems(checklist);
+                const hasCategories = false;
                 
                 return hasCategories ? (
               <div className="space-y-4">
@@ -2371,6 +2373,7 @@ function MechanicJobDetailPageContent() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-2 w-10 text-xs font-semibold text-gray-500">#</th>
                         <th className="text-left py-2 px-2 w-12">✓</th>
                         <th className="text-left py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700">Point Name</th>
                         <th className="text-left py-2 px-3 font-semibold text-xs sm:text-sm text-gray-700">Remark</th>
@@ -2378,7 +2381,7 @@ function MechanicJobDetailPageContent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {checklist.map((item) => {
+                      {displayChecklist.map((item, index) => {
                         // No categories - no blur logic needed
                         // Mechanic can freely work on any item
                         return (
@@ -2388,6 +2391,7 @@ function MechanicJobDetailPageContent() {
                             item.status === 'COMPLETED' ? 'bg-green-50/30' : ''
                           }`}
                         >
+                          <td className="py-2 sm:py-3 px-2 text-xs font-bold text-slate-400">{index + 1}</td>
                           <td className="py-2 sm:py-3 px-2">
                             <input
                               type="checkbox"
@@ -2449,7 +2453,7 @@ function MechanicJobDetailPageContent() {
 
               {/* Mobile Cards View - No Categories */}
               <div className="lg:hidden space-y-2 sm:space-y-3">
-                {checklist.map((item) => (
+                {displayChecklist.map((item, index) => (
                   <div 
                     key={item.id}
                     className={`border rounded-lg p-2.5 sm:p-3 transition ${
@@ -2457,6 +2461,7 @@ function MechanicJobDetailPageContent() {
                     }`}
                   >
                     <div className="flex items-start gap-2 sm:gap-3">
+                      <span className="mt-1 w-5 text-xs font-bold text-slate-400">{index + 1}</span>
                       <input
                         type="checkbox"
                         id={`checklist-item-${item.id}`}

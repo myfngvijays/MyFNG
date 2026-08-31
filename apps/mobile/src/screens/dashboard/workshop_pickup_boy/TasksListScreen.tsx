@@ -17,6 +17,13 @@ import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useNotifications } from '../../../context/NotificationContext';
+import {
+  isActivePickupBoyTask,
+  isActiveDeliveryBoyTask,
+  isPickupInTransit,
+  isPickupScheduled,
+  isPickupLegComplete,
+} from '../../../lib/pickupTaskFlow';
 
 interface PickupTask {
   id: string;
@@ -151,7 +158,11 @@ export default function TasksListScreen({ hideChrome = false }: { hideChrome?: b
         throw error;
       }
 
-      const formattedTasks = (data || []).map(item => ({
+      const openRows = (data || []).filter(
+        (item) => isActivePickupBoyTask(item) || isActiveDeliveryBoyTask(item),
+      );
+
+      const formattedTasks = openRows.map(item => ({
         id: item.id,
         lead_number: item.lead_number,
         customer_name: item.customer_name,
@@ -165,12 +176,19 @@ export default function TasksListScreen({ hideChrome = false }: { hideChrome?: b
 
       setTasks(formattedTasks);
 
-      // Calculate stats (mirror web buckets)
-      const pending = formattedTasks.filter(t => ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP'].includes(t.status)).length;
-      const inTransit = formattedTasks.filter(t => ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(t.status)).length;
-      const deliveryReady = formattedTasks.filter(t => ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(t.status)).length;
-      const completed = formattedTasks.filter(t => ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED'].includes(t.status)).length;
-      const failed = formattedTasks.filter(t => ['FAILED', 'FAILED_PICKUP'].includes(t.status)).length;
+      // Calculate stats from open tasks only
+      const pending = formattedTasks.filter((t) => isPickupScheduled(t)).length;
+      const inTransit = formattedTasks.filter((t) => isPickupInTransit(t)).length;
+      const deliveryReady = formattedTasks.filter((t) =>
+        ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(String(t.status || '').toUpperCase()),
+      ).length;
+      const completed = (data || []).filter((t) =>
+        isPickupLegComplete(t) ||
+        ['DELIVERED', 'DELIVERED_TO_CUSTOMER', 'CLOSED'].includes(String(t.status || '').toUpperCase()),
+      ).length;
+      const failed = (data || []).filter((t) =>
+        ['FAILED', 'FAILED_PICKUP'].includes(String(t.status || '').toUpperCase()),
+      ).length;
 
       setStats({ pending, inTransit, deliveryReady, completed, failed });
     } catch (error) {
@@ -186,9 +204,9 @@ export default function TasksListScreen({ hideChrome = false }: { hideChrome?: b
 
     // Apply status filter
     if (activeFilter === 'SCHEDULED') {
-      filtered = filtered.filter(task => ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP'].includes(task.status));
+      filtered = filtered.filter((task) => isPickupScheduled(task));
     } else if (activeFilter === 'IN_TRANSIT') {
-      filtered = filtered.filter(task => ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(task.status));
+      filtered = filtered.filter((task) => isPickupInTransit(task));
     } else if (activeFilter === 'DELIVERY_READY') {
       filtered = filtered.filter(task => ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(task.status));
     } else if (activeFilter === 'COMPLETED') {

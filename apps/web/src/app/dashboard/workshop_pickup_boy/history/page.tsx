@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY, formatDateTime } from '@/lib/utils';
 import {
@@ -47,6 +47,7 @@ interface HistoryTask {
 
 export default function PickupBoyHistoryPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [history, setHistory] = useState<HistoryTask[]>([]);
   const [filteredHistory, setFilteredHistory] = useState<HistoryTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +59,13 @@ export default function PickupBoyHistoryPage() {
     totalPickups: 0,
     totalDeliveries: 0
   });
+
+  useEffect(() => {
+    const q = searchParams.get('filter');
+    if (q === 'completed' || q === 'cancelled' || q === 'all') {
+      setStatusFilter(q);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchHistory();

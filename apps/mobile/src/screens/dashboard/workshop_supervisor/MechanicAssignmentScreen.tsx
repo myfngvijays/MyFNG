@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,11 @@ import {
   ScrollView,
   Alert,
   BackHandler,
+  Pressable,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
-import { useRoute } from '@react-navigation/native';
+import { ENV } from '../../../config/environment';
+import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import GlossyButton from '../../../components/workshop/GlossyButton';
 import { isReadyForMechanicAssign } from '../../../lib/workshopJobFlow';
@@ -69,9 +71,18 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Handle hardware back button
+  function closeMechanicModal() {
+    setShowMechanicModal(false);
+    setSelectedJob(null);
+  }
+
+  // Handle hardware back button — close modal first, then leave screen
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showMechanicModal) {
+        closeMechanicModal();
+        return true;
+      }
       if (navigation?.goBack) {
         navigation.goBack();
         return true;
@@ -80,12 +91,15 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
     });
 
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [navigation, showMechanicModal]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, []),
+  );
 
   useEffect(() => {
-    fetchData();
-    
-    // Setup realtime subscription
     const channel = supabase
       .channel('mechanic-assignment-updates')
       .on('postgres_changes', {
@@ -129,7 +143,14 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
         .order('created_at', { ascending: false });
 
       const formattedJobs = (leads || [])
-        .filter((lead: any) => isReadyForMechanicAssign(lead))
+        .filter((lead: any) => {
+          if (lead.assigned_mechanic_id) return false;
+          const status = String(lead.status || '').toUpperCase();
+          if (['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(status)) {
+            return false;
+          }
+          return isReadyForMechanicAssign(lead);
+        })
         .map((lead: any) => ({
         id: lead.id,
         lead_id: lead.id,
@@ -149,16 +170,12 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
       // Fetch mechanics with their workload
       const { data: mechanicsData } = await supabase
         .from('users_login')
-        .select(`
-          *,
-          role:role_id (role_code)
-        `)
+        .select('id, first_name, last_name, full_name, is_active, role:role_id(role_code)')
         .eq('workshop_id', workshopId)
         .eq('is_active', true);
 
-      const filteredMechanics = mechanicsData?.filter(
-        (u) => u.role?.role_code === 'WORKSHOP_MECHANIC'
-      ) || [];
+      const filteredMechanics =
+        mechanicsData?.filter((u: any) => u.role?.role_code === 'WORKSHOP_MECHANIC') || [];
 
       // Get workload for each mechanic
       const mechanicsWithWorkload = await Promise.all(
@@ -207,83 +224,57 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
     if (!selectedJob) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-
-      // Check if already assigned
-      const { data: existing } = await supabase
-        .from('mechanic_jobs')
-        .select('id')
-        .eq('lead_id', selectedJob.lead_id)
-        .single();
-
-      if (existing) {
-        // Update existing assignment
-        await supabase
-          .from('mechanic_jobs')
-          .update({
-            mechanic_id: mechanicId,
-            assigned_by: userProfile?.id,
-            mechanic_status: 'ASSIGNED',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
-      } else {
-        // Create new assignment
-        await supabase
-          .from('mechanic_jobs')
-          .insert({
-            lead_id: selectedJob.lead_id,
-            mechanic_id: mechanicId,
-            assigned_by: userProfile?.id,
-            mechanic_status: 'ASSIGNED',
-            job_priority: selectedJob.priority,
-          });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        Alert.alert('Error', 'Not authenticated');
+        return;
       }
 
-      // Update lead status
-      await supabase
-        .from('service_leads')
-        .update({
-          assigned_to_id: mechanicId,
-          status: 'IN_PROGRESS',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedJob.lead_id);
+      const response = await fetch(
+        `${ENV.API_URL}/api/leads/${selectedJob.lead_id}/assign-mechanic`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+            'x-mobile-client': 'true',
+          },
+          body: JSON.stringify({
+            mechanic_id: mechanicId,
+            notes: `Assigned via mobile advisor app to ${mechanicName}`,
+          }),
+        }
+      );
 
-      // Log supervisor action
-      await supabase
-        .from('supervisor_actions')
-        .insert({
-          supervisor_id: userProfile?.id,
-          lead_id: selectedJob.lead_id,
-          action_type: 'MECHANIC_ASSIGNED',
-          action_description: `Assigned to mechanic: ${mechanicName}`,
-        });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || result?.details || 'Failed to assign mechanic');
+      }
 
       Alert.alert(
         'Success',
-        `Job assigned to ${mechanicName} successfully!`,
+        `${selectedJob.customer_name || 'Job'} assigned to ${mechanicName}. Ab ye Active Jobs / Job Monitoring mein dikhega.`,
         [
           {
-            text: 'OK',
+            text: 'Job Monitoring',
             onPress: () => {
-              setShowMechanicModal(false);
-              setSelectedJob(null);
-              fetchData();
+              closeMechanicModal();
+              navigation.navigate('JobMonitoring');
             },
           },
-        ]
+          {
+            text: 'Dashboard',
+            onPress: () => {
+              closeMechanicModal();
+              if (navigation.canGoBack?.()) navigation.goBack();
+              else navigation.navigate('WorkshopSupervisorDashboard');
+            },
+          },
+        ],
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning mechanic:', error);
-      Alert.alert('Error', 'Failed to assign mechanic. Please try again.');
+      Alert.alert('Error', error?.message || 'Failed to assign mechanic. Please try again.');
     }
   }
 
@@ -482,7 +473,27 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
         contentContainerStyle={{ paddingBottom: 32 }}
         ListEmptyComponent={
           <View style={AC.empty}>
-            <Text style={AC.emptyTxt}>No jobs available</Text>
+            <Text style={AC.emptyTxt}>No jobs waiting for mechanic</Text>
+            <Text style={styles.emptyHint}>
+              Jo leads assign ho chuki hain, wo dashboard par Active Jobs ya Job Monitoring mein dikhti hain.
+            </Text>
+            <View style={{ marginTop: 16, width: '100%' }}>
+              <GlossyButton
+                label="Job Monitoring"
+                color="#004AAD"
+                onPress={() => navigation.navigate('JobMonitoring')}
+              />
+            </View>
+            <View style={{ marginTop: 10, width: '100%' }}>
+              <GlossyButton
+                label="Back to Dashboard"
+                color="#64748B"
+                onPress={() => {
+                  if (navigation.canGoBack?.()) navigation.goBack();
+                  else navigation.navigate('WorkshopSupervisorDashboard');
+                }}
+              />
+            </View>
           </View>
         }
       />
@@ -492,14 +503,25 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
         visible={showMechanicModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowMechanicModal(false)}
+        onRequestClose={closeMechanicModal}
       >
         <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={closeMechanicModal} />
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Mechanic</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Mechanic</Text>
+              <TouchableOpacity
+                onPress={closeMechanicModal}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel="Close"
+              >
+                <Text style={styles.modalCloseIcon}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
             {selectedJob && (
               <View style={styles.selectedJobInfo}>
+                <Text style={styles.selectedJobLabel}>Job to assign</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={styles.leadAvatar}>
                     <Text style={styles.leadAvatarTxt}>
@@ -511,7 +533,7 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
                       {selectedJob.customer_name || 'Customer'}
                     </Text>
                     <Text style={styles.selectedJobCustomer}>
-                      {[selectedJob.vehicle_number, selectedJob.vehicle_make, selectedJob.vehicle_model]
+                      {[selectedJob.lead_number, selectedJob.vehicle_number, selectedJob.vehicle_make, selectedJob.vehicle_model]
                         .filter(Boolean)
                         .join(' · ')}
                     </Text>
@@ -525,14 +547,13 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
               </View>
             )}
 
+            <Text style={styles.mechanicsSectionLabel}>Choose a mechanic</Text>
+
             <ScrollView style={styles.mechanicsList}>
               {mechanics.length > 0 ? (
-                <FlatList
-                  data={mechanics}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderMechanic}
-                  scrollEnabled={false}
-                />
+                mechanics.map((item) => (
+                  <View key={item.id}>{renderMechanic({ item })}</View>
+                ))
               ) : (
                 <Text style={styles.noMechanicsText}>
                   No mechanics available
@@ -544,10 +565,7 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
               <GlossyButton
                 label="Cancel"
                 color="#64748B"
-                onPress={() => {
-                  setShowMechanicModal(false);
-                  setSelectedJob(null);
-                }}
+                onPress={closeMechanicModal}
               />
             </View>
           </View>
@@ -584,6 +602,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 4,
+  },
+  emptyHint: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+    paddingHorizontal: 12,
   },
   container: {
     flex: 1,
@@ -754,6 +780,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
@@ -761,19 +790,44 @@ const styles = StyleSheet.create({
     padding: 20,
     maxHeight: '80%',
   },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#023D95',
-    marginBottom: 16,
+  },
+  modalCloseIcon: {
+    fontSize: 22,
+    color: '#64748B',
+    fontWeight: '600',
+    paddingHorizontal: 4,
   },
   selectedJobInfo: {
-    backgroundColor: '#EAF2FF',
+    backgroundColor: '#FFF7ED',
     padding: 14,
     borderRadius: 14,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0,74,173,0.15)',
+    borderColor: '#FDBA74',
+  },
+  selectedJobLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#C2410C',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  mechanicsSectionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 10,
   },
   leadAvatar: {
     width: 44,

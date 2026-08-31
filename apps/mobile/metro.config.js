@@ -22,5 +22,21 @@ config.resolver.extraNodeModules = {
   '@': path.resolve(projectRoot, 'src'),
 };
 
+const pushNotificationStub = path.resolve(projectRoot, 'src/shims/PushNotificationIOS.js');
+
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    moduleName.includes('PushNotificationIOS/PushNotificationIOS') ||
+    moduleName.endsWith('/PushNotificationIOS')
+  ) {
+    return { type: 'sourceFile', filePath: pushNotificationStub };
+  }
+  if (originalResolveRequest) {
+    return originalResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;
 

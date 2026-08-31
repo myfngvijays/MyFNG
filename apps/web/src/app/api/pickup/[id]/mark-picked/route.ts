@@ -1,106 +1,171 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyPickupBoy, notifyWorkshopRoles } from '@/lib/notifications';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { isDummyPickupLead } from '@/lib/workshop/pickupPhotos';
 
 export const dynamic = 'force-dynamic';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
 /**
  * POST /api/pickup/[id]/mark-picked
- * Mark vehicle as picked
+ * Mark vehicle as picked (in transit to workshop)
  */
 export async function POST(
   request: NextRequest,
-  { params: paramsPromise }: { params: Promise<{ id: string }> }
+  { params: paramsPromise }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const supabase = await createClientFromRequest(request);
     const params = await paramsPromise;
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
+    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Server misconfigured', details: adminErr }, { status: 500 });
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users_login')
+      .select('id, roles!inner(role_code)')
+      .eq('id', user.id)
+      .single();
 
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    if (profileError || !userProfile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    const roleCode = (userProfile.roles as { role_code?: string } | null)?.role_code;
+    if (roleCode !== 'WORKSHOP_PICKUP_BOY') {
+      return NextResponse.json({ error: 'Forbidden: Pickup Boy only' }, { status: 403 });
     }
 
     const leadId = params.id;
-    const body = await request.json();
-    const { notes, latitude, longitude } = body;
+    const body = await request.json().catch(() => ({}));
+    const { notes, latitude, longitude } = body || {};
 
-    // Observation gating (per-lead). Backwards compatible if column not yet migrated.
+    const { data: lead, error: leadError } = await supabase
+      .from('service_leads')
+      .select('*')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
+    if (lead.assigned_pickup_boy_id && lead.assigned_pickup_boy_id !== userProfile.id) {
+      return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
+    }
+
+    const isDummyLead = isDummyPickupLead(lead);
+
     try {
-      let obsRequired = false;
-      let obsText: string | null = null;
-      const { data: leadObs, error: leadObsError } = await supabase
-        .from('service_leads')
-        .select('id, pickup_observation, pickup_observation_required')
-        .eq('id', leadId)
-        .single();
-
-      if (!leadObsError && leadObs) {
-        obsRequired = !!(leadObs as any).pickup_observation_required;
-        obsText = (leadObs as any).pickup_observation || null;
-      }
-
+      const obsRequired = !!(lead as { pickup_observation_required?: boolean }).pickup_observation_required;
+      const obsText = (lead as { pickup_observation?: string | null }).pickup_observation || null;
       if (obsRequired && !String(obsText || '').trim()) {
         return NextResponse.json(
           { error: 'Observation report pending', hint: 'Submit observation report to continue' },
-          { status: 400 }
+          { status: 400 },
         );
       }
     } catch {
-      // If column doesn't exist yet, treat as not required.
+      // column may not exist
     }
 
-    // Check if minimum photos are uploaded
-    const { count: photoCount, error: photoCountError } = await supabase
+    const { count: photoCount, error: photoCountError } = await supabaseAdmin
       .from('vehicle_condition_photos')
       .select('*', { count: 'exact', head: true })
       .eq('lead_id', leadId)
       .like('photo_type', 'PICKUP_%');
 
     if (photoCountError) {
-      return NextResponse.json({ error: 'Failed to check photos' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to check photos', details: photoCountError.message }, { status: 500 });
     }
 
-    if ((photoCount || 0) < 4) {
-      return NextResponse.json({ 
-        error: 'Minimum 4 pickup photos required',
-        required_photos: ['PICKUP_FRONT', 'PICKUP_LEFT', 'PICKUP_RIGHT', 'PICKUP_INTERIOR']
-      }, { status: 400 });
+    if (!isDummyLead && (photoCount || 0) < 4) {
+      return NextResponse.json(
+        {
+          error: 'Minimum 4 pickup photos required',
+          required_photos: ['PICKUP_FRONT', 'PICKUP_LEFT', 'PICKUP_RIGHT', 'PICKUP_INTERIOR'],
+        },
+        { status: 400 },
+      );
     }
 
-    // Update pickup tracking - Mark as picked and start driving to workshop
-    const { data: updated, error: updateError } = await supabase
+    const now = new Date().toISOString();
+
+    // pickup_tracking.pickup_status is a Postgres ENUM — older DBs may lack VEHICLE_IN_TRANSIT.
+    // Use PICKED on tracking; service_leads (varchar) keeps VEHICLE_IN_TRANSIT for advisor UI.
+    const trackingPickupStatus = 'PICKED';
+
+    const { error: upsertTrackingError } = await supabaseAdmin.from('pickup_tracking').upsert(
+      {
+        lead_id: leadId,
+        pickup_required: true,
+        pickup_assigned_to: userProfile.id,
+        pickup_status: trackingPickupStatus,
+        pickup_picked_time: now,
+        pickup_in_transit_at: now,
+        pickup_notes: notes || null,
+        pickup_address: lead.pickup_address || lead.customer_address || lead.address,
+        pickup_latitude: lead.pickup_latitude || lead.customer_lat,
+        pickup_longitude: lead.pickup_longitude || lead.customer_lng,
+        updated_at: now,
+      } as Record<string, unknown>,
+      { onConflict: 'lead_id' },
+    );
+
+    if (upsertTrackingError) {
+      return NextResponse.json(
+        { error: 'Failed to mark as picked', details: upsertTrackingError.message },
+        { status: 500 },
+      );
+    }
+
+    const { data: updated, error: updateError } = await supabaseAdmin
       .from('pickup_tracking')
       .update({
-        pickup_status: 'VEHICLE_IN_TRANSIT',      // ✨ NEW: Vehicle in transit to workshop
-        pickup_picked_time: new Date().toISOString(),
-        pickup_in_transit_at: new Date().toISOString(), // ✨ NEW: When started driving to workshop
-        pickup_notes: notes,
-        updated_at: new Date().toISOString(),
+        pickup_status: trackingPickupStatus,
+        pickup_picked_time: now,
+        pickup_in_transit_at: now,
+        pickup_notes: notes || null,
+        updated_at: now,
       })
       .eq('lead_id', leadId)
       .select()
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: 'Failed to mark as picked', details: updateError.message }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to mark as picked', details: updateError.message },
+        { status: 500 },
+      );
     }
 
-    // Log location
+    const { error: leadUpdateError } = await supabaseAdmin
+      .from('service_leads')
+      .update({
+        status: 'VEHICLE_IN_TRANSIT',
+        pickup_status: 'VEHICLE_IN_TRANSIT',
+        updated_at: now,
+      })
+      .eq('id', leadId);
+
+    if (leadUpdateError) {
+      return NextResponse.json(
+        { error: 'Failed to update lead status', details: leadUpdateError.message },
+        { status: 500 },
+      );
+    }
+
     if (latitude && longitude) {
-      await supabase.from('pickup_location_tracking').insert({
+      await supabaseAdmin.from('pickup_location_tracking').insert({
         lead_id: leadId,
         pickup_boy_id: user.id,
         latitude,
@@ -109,39 +174,38 @@ export async function POST(
       });
     }
 
-    // Create activity log
-    await supabase.from('lead_activities').insert({
+    await supabaseAdmin.from('lead_activities').insert({
       lead_id: leadId,
       user_id: user.id,
       activity_type: 'VEHICLE_PICKED',
       description: 'Vehicle picked up by pickup boy',
-      metadata: { notes, latitude, longitude },
+      metadata: { notes, latitude, longitude, dummy: isDummyLead },
     });
 
-    // Notifications (final)
-    try {
-      const { data: fullLead } = await supabase
-        .from('service_leads')
-        .select('id, lead_number, workshop_id')
-        .eq('id', leadId)
-        .maybeSingle();
+    await supabaseAdmin.from('lead_events').insert({
+      lead_id: leadId,
+      event_type: 'VEHICLE_IN_TRANSIT',
+      event_description: 'Your vehicle is on the way to the workshop.',
+      created_by: user.id,
+    } as Record<string, unknown>);
 
-      const leadNumber = (fullLead as any)?.lead_number || leadId;
+    try {
+      const leadNumber = lead.lead_number || leadId;
 
       await notifyPickupBoy({
         pickupBoyId: user.id,
         type: 'PICKUP_COMPLETED',
-        title: 'Pickup completed',
-        message: `Lead ${leadNumber}: Pickup completed. Proceed to workshop and mark vehicle arrived.`,
+        title: 'Vehicle marked as picked',
+        message: `Lead ${leadNumber}: Vehicle picked up. Drive to workshop and tap Mark Arrived when you reach.`,
         priority: 'MEDIUM',
         leadId,
         leadNumber,
-        metadata: { kind: 'PICKUP_COMPLETED' },
+        metadata: { kind: 'VEHICLE_PICKED' },
       });
 
-      if ((fullLead as any)?.workshop_id) {
+      if (lead.workshop_id) {
         await notifyWorkshopRoles({
-          workshopId: (fullLead as any).workshop_id,
+          workshopId: lead.workshop_id,
           roleCodes: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR'],
           type: 'PICKUP_COMPLETED',
           title: 'Vehicle picked up',
@@ -162,12 +226,9 @@ export async function POST(
       data: updated,
       message: 'Vehicle marked as picked successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
     console.error('Error marking as picked:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error', details: message }, { status: 500 });
   }
 }
-

@@ -14,6 +14,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import { COLORS, SHADOWS } from '../../../constants/theme';
+import { fetchMechanicJobs } from '../../../lib/mechanicJobs';
+import { isMechanicJobInProgress, resolveMechanicDisplayStatus } from '../../../lib/mechanicJobStatus';
 
 interface Job {
   id: string;
@@ -23,6 +25,9 @@ interface Job {
   vehicle_make: string;
   vehicle_model: string;
   service_types: string[];
+  display_status?: string;
+  checklist_done?: number;
+  checklist_total?: number;
   mechanic_status: string;
   job_priority: string;
   sla_remaining_minutes: number;
@@ -66,25 +71,30 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
   const fetchJobs = useCallback(async () => {
     try {
       const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (!authUser) return;
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
 
-      const { data: profile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', authUser.email)
-        .maybeSingle();
-      const mechanicId = profile?.id || user?.id || authUser.id;
-      if (!mechanicId) return;
+      let rows: Job[] = [];
 
-      const { data, error } = await supabase
-        .from('mechanic_dashboard')
-        .select('*')
-        .eq('mechanic_id', mechanicId)
-        .order('assigned_at', { ascending: false });
+      try {
+        rows = (await fetchMechanicJobs(session.access_token)) as Job[];
+      } catch (apiError) {
+        console.warn('Mechanic jobs API failed, trying direct query:', apiError);
 
-      if (error) {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (!authUser) return;
+
+        const { data: profile } = await supabase
+          .from('users_login')
+          .select('id')
+          .ilike('email', authUser.email || '')
+          .maybeSingle();
+        const mechanicId = profile?.id || user?.id || authUser.id;
+        if (!mechanicId) return;
+
         const { data: fallback } = await supabase
           .from('mechanic_jobs')
           .select(
@@ -97,7 +107,7 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
           )
           .eq('mechanic_id', mechanicId)
           .order('assigned_at', { ascending: false });
-        const mapped = (fallback || []).map((row: any) => {
+        rows = (fallback || []).map((row: any) => {
           const lead = Array.isArray(row.service_leads) ? row.service_leads[0] : row.service_leads;
           return {
             id: row.id,
@@ -118,11 +128,18 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
             assigned_at: row.assigned_at,
           } as Job;
         });
-        setJobs(mapped);
-        return;
       }
 
-      setJobs((data || []) as Job[]);
+      setJobs(
+        (rows || []).map((row) => {
+          const done = Number((row as any).checklist_done ?? 0);
+          const total = Number((row as any).checklist_total ?? 0);
+          const displayStatus =
+            (row as any).display_status ||
+            resolveMechanicDisplayStatus(row.mechanic_status, done, total);
+          return { ...row, display_status: displayStatus, checklist_done: done, checklist_total: total };
+        }),
+      );
     } catch (error) {
       console.error('Error fetching jobs:', error);
     } finally {
@@ -166,14 +183,18 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
         jobs.filter((job) => job.mechanic_status === 'HOLD' || job.mechanic_status === 'WAITING_APPROVAL'),
       );
     } else {
-      setFilteredJobs(jobs.filter((job) => job.mechanic_status === activeFilter));
+      setFilteredJobs(
+        jobs.filter((job) => (job.display_status || job.mechanic_status) === activeFilter),
+      );
     }
   }, [activeFilter, jobs]);
 
   const counts: Record<string, number> = {
     ALL: jobs.length,
-    ASSIGNED: jobs.filter((j) => j.mechanic_status === 'ASSIGNED').length,
-    IN_PROGRESS: jobs.filter((j) => j.mechanic_status === 'IN_PROGRESS').length,
+    ASSIGNED: jobs.filter((j) => (j.display_status || j.mechanic_status) === 'ASSIGNED').length,
+    IN_PROGRESS: jobs.filter((j) =>
+      isMechanicJobInProgress(j.mechanic_status, j.checklist_done, j.checklist_total),
+    ).length,
     HOLD: jobs.filter((j) => j.mechanic_status === 'HOLD' || j.mechanic_status === 'WAITING_APPROVAL').length,
     NEED_APPROVAL: jobs.filter((j) => j.has_pending_extra_work).length,
     COMPLETED: jobs.filter((j) => j.mechanic_status === 'COMPLETED').length,
@@ -227,9 +248,9 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
           <Text style={[AC.name, { flex: 1 }]} numberOfLines={1}>
             {item.customer_name || 'Customer'}
           </Text>
-          <View style={[AC.statusPill, { backgroundColor: getStatusColor(item.mechanic_status) }]}>
+          <View style={[AC.statusPill, { backgroundColor: getStatusColor(item.display_status || item.mechanic_status) }]}>
             <Text style={AC.statusPillTxt}>
-              {String(item.mechanic_status || 'ASSIGNED').replace(/_/g, ' ')}
+              {String(item.display_status || item.mechanic_status || 'ASSIGNED').replace(/_/g, ' ')}
             </Text>
           </View>
         </View>

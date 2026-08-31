@@ -109,6 +109,7 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
           'PICKUP_NAV_REMINDER',
           'OTP_VERIFIED',
           'PICKUP_COMPLETED',
+          'PICKUP_ARRIVED',
           'HANDOVER_PENDING',
           'DELIVERY_ASSIGNED',
           'DELIVERY_COMPLETED',

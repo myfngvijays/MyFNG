@@ -1,147 +1,200 @@
-import React, { useEffect, useState } from 'react';
-import { formatDateTime } from "@/lib/dateFormat";
+import React, { useEffect, useMemo, useState } from 'react';
+import { formatDateTime } from '@/lib/dateFormat';
 import {
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
-  Alert, 
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Alert,
   RefreshControl,
   ActivityIndicator,
-  Linking
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { AC } from '../../components/workshop/advisorCrmUi';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import PickupLeadCard from '../../components/workshop/PickupLeadCard';
+import PickupFilterDropdown from '../../components/workshop/PickupFilterDropdown';
+import {
+  isActivePickupBoyTask,
+  isActiveDeliveryBoyTask,
+  isPickupInTransit,
+  isPickupScheduled,
+  formatPickupStatusLabel,
+} from '../../lib/pickupTaskFlow';
 
-export default function PickupTasksScreen({ userId }: { userId?: string }) {
+type TaskFilter = 'all' | 'pickup' | 'delivery' | 'assigned' | 'in_transit';
+
+const FILTER_LABELS: Record<TaskFilter, string> = {
+  all: 'All tasks',
+  pickup: 'Pickup',
+  delivery: 'Delivery',
+  assigned: 'Assigned',
+  in_transit: 'In transit',
+};
+
+function statusColor(rawStatus: string) {
+  const s = String(rawStatus || '').toUpperCase();
+  if (['ASSIGNED', 'NOT_ASSIGNED', 'PENDING', 'ACCEPTED'].includes(s)) return '#D97706';
+  if (['IN_TRANSIT', 'VEHICLE_IN_TRANSIT', 'ON_THE_WAY', 'OTP_VERIFIED', 'PICKED', 'PICKED_UP'].includes(s)) {
+    return COLORS.primary;
+  }
+  if (s === 'READY_FOR_DELIVERY' || s === 'COD_PENDING') return '#0284C7';
+  return COLORS.gray[500];
+}
+
+export default function PickupTasksScreen({
+  userId,
+  initialFilter = 'all',
+}: {
+  userId?: string;
+  initialFilter?: string;
+}) {
   const navigation = useNavigation<any>();
   const [tasks, setTasks] = useState<any[]>([]);
-  const [filteredTasks, setFilteredTasks] = useState<any[]>([]);
-  const [filter, setFilter] = useState('all'); // all, pickup, delivery, assigned, in_transit
+  const [filter, setFilter] = useState<TaskFilter>(
+    (['all', 'pickup', 'delivery', 'assigned', 'in_transit'].includes(initialFilter)
+      ? initialFilter
+      : 'all') as TaskFilter,
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [resolvedUserId, setResolvedUserId] = useState<string | undefined>(userId);
 
   useEffect(() => {
-    let channel: RealtimeChannel | null = null;
+    if (['all', 'pickup', 'delivery', 'assigned', 'in_transit'].includes(initialFilter)) {
+      setFilter(initialFilter as TaskFilter);
+    }
+  }, [initialFilter]);
 
-    const setupDataAndRealtime = async () => {
-      await fetchTasks();
-
-      // ✅ FIX: Setup realtime subscription (like web)
-      const pickupBoyId = userId || await fetchUserId();
-      if (!pickupBoyId) return;
-
-      channel = supabase
-        .channel('pickup-tasks-screen')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'service_leads'
-          },
-            (payload) => {
-              fetchTasks();
-            }
-          )
-          .subscribe();
-    };
-
-    setupDataAndRealtime();
-    
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
-    };
+  useEffect(() => {
+    setResolvedUserId(userId);
   }, [userId]);
 
   useEffect(() => {
-    filterTasks();
-  }, [filter, tasks]);
+    void bootstrap();
+  }, [resolvedUserId]);
 
-  // ✅ FIX: Fetch user ID by email if not provided
+  const bootstrap = async () => {
+    let id = resolvedUserId;
+    if (!id) {
+      id = (await fetchUserId()) || undefined;
+      if (id) setResolvedUserId(id);
+    }
+    if (id) await fetchTasks(id);
+  };
+
+  useEffect(() => {
+    if (!resolvedUserId) return;
+
+    const channel = supabase
+      .channel(`pickup-tasks-${resolvedUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_leads',
+          filter: `assigned_pickup_boy_id=eq.${resolvedUserId}`,
+        },
+        () => {
+          void fetchTasks(resolvedUserId);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [resolvedUserId]);
+
   const fetchUserId = async () => {
     if (userId) return userId;
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return null;
-
       const { data: userProfile } = await supabase
         .from('users_login')
         .select('id')
         .eq('email', user.email)
         .single();
-
       return userProfile?.id || null;
-    } catch (error) {
+    } catch {
       return null;
     }
   };
 
-  const fetchTasks = async () => {
-    const pickupBoyId = userId || await fetchUserId();
-    if (!pickupBoyId) return;
+  const fetchTasks = async (pickupBoyId?: string) => {
+    const id = pickupBoyId || resolvedUserId;
+    if (!id) return;
 
     try {
       setLoading(true);
-
-      // ✅ FIX: Fetch from service_leads table (like web)
       const { data, error } = await supabase
         .from('service_leads')
         .select('*')
-        .eq('assigned_pickup_boy_id', pickupBoyId)
-        .eq('pickup_required', true)
+        .eq('assigned_pickup_boy_id', id)
         .not('status', 'in', '(REJECTED,CANCELLED)')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      // ✅ FIX: Format tasks for display
-      const formattedTasks = (data || []).map(item => ({
-        id: item.id,
-        lead_number: item.lead_number,
-        customer_name: item.customer_name,
-        customer_phone: item.customer_phone,
-        customer_address: item.customer_address || item.address,
-        vehicle_number: item.vehicle_number,
-        vehicle_make: item.vehicle_make,
-        vehicle_model: item.vehicle_model,
-        task_type: item.pickup_required ? 'PICKUP' : 'DELIVERY',
-        status: item.pickup_status || item.status,
-        scheduled_time: item.preferred_date || item.created_at,
-        pickup_status: item.pickup_status,
-        created_at: item.created_at,
-      }));
+      const openRows = (data || []).filter(
+        (item) => isActivePickupBoyTask(item) || isActiveDeliveryBoyTask(item),
+      );
 
-      setTasks(formattedTasks);
-    } catch (error) {
+      setTasks(
+        openRows.map((item) => {
+          const rawStatus = String(item.pickup_status || item.status || 'ASSIGNED').toUpperCase();
+          const isDelivery =
+            !item.pickup_required ||
+            item.status === 'READY_FOR_DELIVERY' ||
+            item.status === 'COD_PENDING';
+          return {
+            id: item.id,
+            lead_number: item.lead_number,
+            customer_name: item.customer_name,
+            customer_phone: item.customer_phone,
+            customer_address: item.customer_address || item.address,
+            vehicle_number: item.vehicle_number,
+            vehicle_make: item.vehicle_make,
+            vehicle_model: item.vehicle_model,
+            task_type: isDelivery ? 'DELIVERY' : 'PICKUP',
+            rawStatus,
+            statusLabel: formatPickupStatusLabel(rawStatus),
+            scheduled_time: item.preferred_date || item.created_at,
+            isScheduled: isPickupScheduled(item),
+            isInTransit: isPickupInTransit(item),
+          };
+        }),
+      );
+    } catch {
       Alert.alert('Error', 'Failed to load tasks');
     } finally {
       setLoading(false);
     }
   };
 
-  const filterTasks = () => {
-    if (filter === 'all') {
-      setFilteredTasks(tasks);
-    } else if (filter === 'pickup') {
-      setFilteredTasks(tasks.filter(t => t.task_type === 'PICKUP' || t.task_type === 'BOTH'));
-    } else if (filter === 'delivery') {
-      setFilteredTasks(tasks.filter(t => t.task_type === 'DELIVERY' || t.task_type === 'BOTH'));
-    } else if (filter === 'assigned') {
-      setFilteredTasks(tasks.filter(t => t.status === 'ASSIGNED'));
-    } else if (filter === 'in_transit') {
-      setFilteredTasks(tasks.filter(t => t.status === 'IN_TRANSIT'));
-    }
-  };
+  const filteredTasks = useMemo(() => {
+    if (filter === 'pickup') return tasks.filter((t) => t.task_type === 'PICKUP');
+    if (filter === 'delivery') return tasks.filter((t) => t.task_type === 'DELIVERY');
+    if (filter === 'assigned') return tasks.filter((t) => t.isScheduled);
+    if (filter === 'in_transit') return tasks.filter((t) => t.isInTransit);
+    return tasks;
+  }, [filter, tasks]);
+
+  const filterOptions = useMemo(
+    () => [
+      { key: 'all', label: 'All', count: tasks.length },
+      { key: 'pickup', label: 'Pickup', count: tasks.filter((t) => t.task_type === 'PICKUP').length },
+      { key: 'delivery', label: 'Delivery', count: tasks.filter((t) => t.task_type === 'DELIVERY').length },
+      { key: 'assigned', label: 'Assigned', count: tasks.filter((t) => t.isScheduled).length },
+      { key: 'in_transit', label: 'In transit', count: tasks.filter((t) => t.isInTransit).length },
+    ],
+    [tasks],
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -149,172 +202,24 @@ export default function PickupTasksScreen({ userId }: { userId?: string }) {
     setRefreshing(false);
   };
 
-  const updateTaskStatus = async (taskId: string, newStatus: string) => {
-    try {
-      // ✅ FIX: Update service_leads table (like web)
-      const updates: any = {
-        updated_at: new Date().toISOString()
-      };
-
-      // Map status to pickup_status
-      if (newStatus === 'IN_TRANSIT') {
-        updates.pickup_status = 'IN_TRANSIT';
-      } else if (newStatus === 'COMPLETED') {
-        updates.pickup_status = 'PICKED_UP';
-        updates.pickup_completed_at = new Date().toISOString();
-      } else {
-        updates.pickup_status = newStatus;
+  const renderTask = ({ item }: { item: any }) => (
+    <PickupLeadCard
+      leadNumber={item.lead_number}
+      customerName={item.customer_name}
+      customerPhone={item.customer_phone}
+      vehicleNumber={item.vehicle_number}
+      vehicleMake={item.vehicle_make}
+      vehicleModel={item.vehicle_model}
+      taskType={item.task_type}
+      statusLabel={item.statusLabel}
+      statusColor={statusColor(item.rawStatus)}
+      address={item.customer_address}
+      footerText={
+        item.scheduled_time ? `Scheduled · ${formatDateTime(item.scheduled_time)}` : undefined
       }
-
-      const { error } = await supabase
-        .from('service_leads')
-        .update(updates)
-        .eq('id', taskId);
-
-      if (error) {
-        throw error;
-      }
-
-      Alert.alert('Success', `Task ${newStatus.toLowerCase()} successfully`);
-      fetchTasks();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update task');
-    }
-  };
-
-  const confirmAction = (taskId: string, action: string, taskInfo: string) => {
-    const actionText = action === 'IN_TRANSIT' ? 'Start' : 'Complete';
-    Alert.alert(
-      `${actionText} Task`,
-      `Are you sure you want to ${actionText.toLowerCase()} this task?\n\n${taskInfo}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: actionText,
-          onPress: () => updateTaskStatus(taskId, action)
-        }
-      ]
-    );
-  };
-
-  const openMaps = (address: string) => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Could not open maps');
-    });
-  };
-
-  const callCustomer = (phone: string) => {
-    Linking.openURL(`tel:${phone}`).catch(() => {
-      Alert.alert('Error', 'Could not make call');
-    });
-  };
-
-  const getTaskTypeIcon = (type: string) => {
-    switch (type) {
-      case 'PICKUP': return '📦';
-      case 'DELIVERY': return '🚚';
-      case 'BOTH': return '🔄';
-      default: return '📋';
-    }
-  };
-
-  const getTaskTypeColor = (type: string) => {
-    switch (type) {
-      case 'PICKUP': return COLORS.primary;
-      case 'DELIVERY': return COLORS.secondary;
-      case 'BOTH': return COLORS.accent;
-      default: return COLORS.gray[500];
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ASSIGNED': return COLORS.warning;
-      case 'IN_TRANSIT': return COLORS.primary;
-      case 'COMPLETED': return COLORS.success;
-      default: return COLORS.gray[500];
-    }
-  };
-
-  const renderTask = ({ item }: { item: any }) => {
-    const taskInfo = `${item.customer_name}\n${item.task_type}`;
-    const address = item.customer_address || item.pickup_address || item.delivery_address;
-    
-    return (
-      <TouchableOpacity
-        style={AC.listCard}
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate('PickupJobDetail', { taskId: item.id, leadId: item.id })}
-      >
-        <View style={styles.taskHeader}>
-          <Text style={AC.name} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
-          <View style={[AC.statusPill, { backgroundColor: getStatusColor(item.status) }]}>
-            <Text style={AC.statusPillTxt}>{String(item.status || '').replace(/_/g, ' ')}</Text>
-          </View>
-        </View>
-
-        <View style={styles.taskBody}>
-          <Text style={AC.meta}>{item.task_type}{item.vehicle_number ? ` · ${item.vehicle_number}` : ''}</Text>
-          {address && (
-            <TouchableOpacity 
-              style={styles.addressContainer}
-              onPress={() => openMaps(address)}
-            >
-              <Text style={styles.taskDetail}>📍 {address}</Text>
-              <Text style={styles.directionsText}>Get Directions →</Text>
-            </TouchableOpacity>
-          )}
-          
-          {item.customer_phone && (
-            <TouchableOpacity onPress={() => callCustomer(item.customer_phone)}>
-              <Text style={[styles.taskDetail, styles.phoneLink]}>
-                📞 {item.customer_phone} (Tap to call)
-              </Text>
-            </TouchableOpacity>
-          )}
-          
-          {item.vehicle_details && (
-            <Text style={styles.taskDetail}>🚗 {item.vehicle_details}</Text>
-          )}
-          
-          {item.scheduled_time && (
-            <Text style={styles.taskTime}>
-              ⏰ Scheduled: {formatDateTime(item.scheduled_time)}
-            </Text>
-          )}
-          
-          {item.notes && (
-            <View style={styles.notesContainer}>
-              <Text style={styles.notesLabel}>📝 Notes:</Text>
-              <Text style={styles.notesText}>{item.notes}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          {item.status === 'ASSIGNED' && (
-            <TouchableOpacity 
-              style={[styles.actionButton, { backgroundColor: COLORS.success }]}
-              onPress={() => confirmAction(item.id, 'IN_TRANSIT', taskInfo)}
-            >
-              <Text style={styles.actionButtonText}>▶️ Start Task</Text>
-            </TouchableOpacity>
-          )}
-          
-          {item.status === 'IN_TRANSIT' && (
-            <TouchableOpacity 
-              style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-              onPress={() => confirmAction(item.id, 'COMPLETED', taskInfo)}
-            >
-              <Text style={styles.actionButtonText}>✓ Complete Task</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
+      onPress={() => navigation.navigate('PickupJobDetail', { taskId: item.id, leadId: item.id })}
+    />
+  );
 
   if (loading) {
     return (
@@ -327,55 +232,27 @@ export default function PickupTasksScreen({ userId }: { userId?: string }) {
 
   return (
     <View style={AC.page}>
-      <Text style={AC.sub}>Pickup & delivery assignments</Text>
-      <View style={AC.chipWrap}>
-        <FlatList
-          horizontal
-          data={['all', 'pickup', 'delivery', 'assigned', 'in_transit']}
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingRight: 16 }}
-          renderItem={({ item: status }) => (
-            <TouchableOpacity
-              style={[AC.chip, filter === status && AC.chipOn]}
-              onPress={() => setFilter(status)}
-            >
-              <Text style={[AC.chipTxt, filter === status && AC.chipTxtOn]}>
-                {status === 'all' ? 'All' :
-                 status === 'in_transit' ? 'In Transit' :
-                 status.charAt(0).toUpperCase() + status.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
-      </View>
+      <Text style={AC.sub}>Active pickup & delivery jobs assigned to you</Text>
 
-      <View style={styles.statsRow}>
-        <View style={[styles.statBox, { borderLeftColor: '#004AAD' }]}>
-          <Text style={[styles.statValue, { color: '#004AAD' }]}>{tasks.length}</Text>
-          <Text style={styles.statLabel}>Total</Text>
-        </View>
-        <View style={[styles.statBox, { borderLeftColor: '#D97706' }]}>
-          <Text style={[styles.statValue, { color: '#D97706' }]}>{tasks.filter(t => t.status === 'ASSIGNED').length}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </View>
-        <View style={[styles.statBox, { borderLeftColor: '#059669' }]}>
-          <Text style={[styles.statValue, { color: '#059669' }]}>{tasks.filter(t => t.status === 'IN_TRANSIT').length}</Text>
-          <Text style={styles.statLabel}>Active</Text>
-        </View>
-      </View>
+      <PickupFilterDropdown
+        activeKey={filter}
+        options={filterOptions}
+        onChange={(key) => setFilter(key as TaskFilter)}
+        summary={`${filteredTasks.length} ${FILTER_LABELS[filter].toLowerCase()}`}
+      />
 
       <FlatList
         data={filteredTasks}
         renderItem={renderTask}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No tasks found</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No {FILTER_LABELS[filter].toLowerCase()}</Text>
+            <Text style={AC.emptySub}>Finished jobs appear in History tab</Text>
           </View>
         }
       />
@@ -384,10 +261,6 @@ export default function PickupTasksScreen({ userId }: { userId?: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -396,189 +269,12 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.gray[600],
-  },
-  header: {
-    backgroundColor: COLORS.white,
-    padding: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  title: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: 'bold',
-    color: '#023D95',
-  },
-  subtitle: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.gray[600],
-    marginTop: SPACING.xs,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    padding: SPACING.md,
-    gap: SPACING.sm,
-    flexWrap: 'wrap',
-  },
-  filterButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 14,
-    backgroundColor: COLORS.gray[200],
-  },
-  filterButtonActive: {
-    backgroundColor: COLORS.primary,
-  },
-  filterText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray[700],
-    fontWeight: '500',
-  },
-  filterTextActive: {
-    color: COLORS.white,
     fontWeight: '600',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: SPACING.sm,
-    alignItems: 'center',
-    borderLeftWidth: 4,
-  },
-  statValue: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-  },
-  statLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.gray[600],
-    marginTop: 2,
+    color: COLORS.textSecondary,
   },
   listContainer: {
-    padding: SPACING.lg,
     paddingBottom: SPACING.xxl + SPACING.lg,
-  },
-  taskCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  taskTypeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  taskTypeIcon: {
-    fontSize: 24,
-  },
-  taskTypeBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  taskTypeText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600',
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  statusText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.white,
-    fontWeight: '600',
-  },
-  taskBody: {
-    marginBottom: SPACING.sm,
-  },
-  customerName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: 'bold',
-    color: COLORS.heading,
-    marginBottom: SPACING.xs,
-  },
-  addressContainer: {
-    marginBottom: SPACING.xs,
-  },
-  taskDetail: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray[600],
-    marginBottom: 4,
-  },
-  directionsText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.primary,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  phoneLink: {
-    color: COLORS.primary,
-    textDecorationLine: 'underline',
-  },
-  taskTime: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.gray[400],
-    marginTop: SPACING.xs,
-  },
-  notesContainer: {
-    backgroundColor: COLORS.gray[100],
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.sm,
-    marginTop: SPACING.xs,
-  },
-  notesLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600',
-    color: COLORS.gray[700],
-    marginBottom: 4,
-  },
-  notesText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray[600],
-  },
-  actionButtons: {
-    marginTop: SPACING.sm,
-  },
-  actionButton: {
-    paddingVertical: SPACING.sm,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    padding: SPACING.xxl,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.gray[500],
+    paddingTop: 4,
   },
 });
-

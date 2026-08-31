@@ -1,7 +1,31 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+
+async function resolveWorkshopUser(supabase: Awaited<ReturnType<typeof createClient>>, authUser: { id: string; email?: string | null }) {
+  const select = 'id, workshop_id, roles!inner(role_code)';
+
+  const { data: byId } = await supabase
+    .from('users_login')
+    .select(select)
+    .eq('id', authUser.id)
+    .maybeSingle();
+
+  if (byId?.workshop_id) return byId;
+
+  const email = String(authUser.email || '').trim();
+  if (!email) return byId;
+
+  const { data: byEmail } = await supabase
+    .from('users_login')
+    .select(select)
+    .ilike('email', email)
+    .maybeSingle();
+
+  return byEmail || byId;
+}
 
 export async function GET() {
   try {
@@ -16,14 +40,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Resolve user's workshop
-    const { data: me, error: meErr } = await supabase
-      .from('users_login')
-      .select('id, workshop_id, roles!inner(role_code)')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (meErr || !me) {
+    const me = await resolveWorkshopUser(supabase, user);
+    if (!me) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
@@ -42,8 +60,13 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Workshop staff list (active)
-    const { data: staffRows, error: staffErr } = await supabase
+    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+    const db = supabaseAdmin || supabase;
+    if (adminErr) {
+      console.warn('[workshop/staff] admin client unavailable, using session client');
+    }
+
+    const { data: staffRows, error: staffErr } = await db
       .from('users_login')
       .select('id, full_name, email, is_active, roles!inner(role_code)')
       .eq('workshop_id', workshopId)

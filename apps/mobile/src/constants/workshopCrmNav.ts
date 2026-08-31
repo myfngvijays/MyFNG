@@ -142,6 +142,7 @@ export const PICKUP_SHELL_BY_SCREEN: Record<string, { title: string; id: string 
   PickupOtp: { title: 'Verify OTP', id: 'tasks' },
   PickupPhotoUpload: { title: 'Photos', id: 'tasks' },
   PickupIncident: { title: 'Incident', id: 'tasks' },
+  PickupInAppNavigate: { title: 'Directions', id: 'tasks' },
   PickupBoyProfile: { title: 'Profile', id: 'profile' },
   TaskHistory: { title: 'History', id: 'history' },
   Notifications: { title: 'Notifications', id: 'dashboard' },

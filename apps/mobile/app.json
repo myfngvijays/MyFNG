@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "39",
+      "buildNumber": "40",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:myfng.in",
@@ -39,6 +39,7 @@
         ],
         "NSPhotoLibraryUsageDescription": "MyFNG needs access to your photo library so you can attach existing photos of your vehicle for service requests, complaints, and inspection records.",
         "NSPhotoLibraryAddUsageDescription": "MyFNG needs permission to save photos to your library, such as service invoices, inspection reports, and vehicle documentation.",
+        "NSMicrophoneUsageDescription": "MyFNG uses the microphone so pickup staff can record voice notes for vehicle damage descriptions.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "com.myfng.app",
@@ -68,6 +69,7 @@
       "permissions": [
         "CAMERA",
         "READ_CONTACTS",
+        "RECORD_AUDIO",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
@@ -118,7 +120,8 @@
         {
           "contactsPermission": "Allow MyFNG to access your contacts to invite friends via Refer & Rise."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "owner": "myfngvijays",
     "extra": {

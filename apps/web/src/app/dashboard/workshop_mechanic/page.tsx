@@ -23,7 +23,7 @@ import {
   WorkshopEmpty,
 } from '@/components/workshop/WorkshopUi';
 import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
-import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
+import { isMechanicJobInProgress, resolveMechanicDisplayStatus } from '@/lib/workshop/mechanicJobStatus';
 
 type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
 
@@ -224,6 +224,44 @@ export default function WorkshopMechanicDashboard() {
 
       if (jobsError) {
         console.error('Error fetching mechanic jobs:', jobsError);
+      }
+
+      // Fallback via API when RLS blocks direct client reads (auth.uid vs users_login.id)
+      if (!mechanicJobs?.length) {
+        try {
+          const res = await fetch('/api/mechanic/jobs');
+          const json = await res.json().catch(() => ({}));
+          if (res.ok && Array.isArray(json.jobs) && json.jobs.length > 0) {
+            setJobs(json.jobs);
+            setStats({
+              assigned_today: json.jobs.filter((j: any) => {
+                if (!j.assigned_at) return false;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const d = new Date(j.assigned_at);
+                d.setHours(0, 0, 0, 0);
+                return d.getTime() === today.getTime();
+              }).length,
+              in_progress: json.jobs.filter((j: any) =>
+                isMechanicJobInProgress(j.mechanic_status, j.checklist_done, j.checklist_total),
+              ).length,
+              pending_pickups: 0,
+              completed_today: json.jobs.filter((j: any) => {
+                if (!j.completed_at) return false;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const d = new Date(j.completed_at);
+                d.setHours(0, 0, 0, 0);
+                return d.getTime() === today.getTime();
+              }).length,
+              need_approval: json.jobs.filter((j: any) => j.has_pending_extra_work).length,
+            });
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Mechanic jobs API fallback failed:', e);
+        }
       }
 
       // Fetch service names for all leads
@@ -434,10 +472,44 @@ export default function WorkshopMechanicDashboard() {
         } catch (err) {
           console.error('Error fetching additional job/parts:', err);
         }
+
+        try {
+          const { data: checklistRows } = await supabase
+            .from('service_checklists')
+            .select('lead_id, completed_items, total_items')
+            .in('lead_id', leadIds)
+            .eq('mechanic_id', userProfile.id);
+
+          const checklistMap = new Map<string, { done: number; total: number }>();
+          (checklistRows || []).forEach((row: any) => {
+            checklistMap.set(row.lead_id, {
+              done: Number(row.completed_items) || 0,
+              total: Number(row.total_items) || 0,
+            });
+          });
+          dashboardData.forEach((job: any) => {
+            const c = checklistMap.get(job.lead_id);
+            if (c) {
+              job.checklist_done = c.done;
+              job.checklist_total = c.total;
+            }
+          });
+        } catch (err) {
+          console.error('Error fetching checklist stats:', err);
+        }
       }
 
       // Set jobs data
-      setJobs(dashboardData);
+      const enriched = dashboardData.map((job: any) => ({
+        ...job,
+        display_status: resolveMechanicDisplayStatus(
+          job.mechanic_status,
+          job.checklist_done,
+          job.checklist_total,
+        ),
+      }));
+
+      setJobs(enriched);
 
       // Calculate stats from the fetched data
       const today = new Date();
@@ -450,8 +522,8 @@ export default function WorkshopMechanicDashboard() {
         return assignedDate.getTime() === today.getTime();
       }).length;
 
-      const inProgress = dashboardData.filter((job: any) => 
-        job.mechanic_status === 'IN_PROGRESS'
+      const inProgress = enriched.filter((job: any) =>
+        isMechanicJobInProgress(job.mechanic_status, job.checklist_done, job.checklist_total),
       ).length;
 
       const completedToday = dashboardData.filter((job: any) => {

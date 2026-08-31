@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { AC } from '../../components/workshop/advisorCrmUi';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
@@ -12,12 +13,21 @@ import PickupTasksScreen from '../pickup/PickupTasksScreen';
 import TaskHistoryScreen from '../pickup/TaskHistoryScreen';
 import PickupBoyProfileScreen from '../pickup/PickupBoyProfileScreen';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { formatDateTime } from "@/lib/dateFormat";
+import { formatDateTime } from '@/lib/dateFormat';
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
+import PickupLeadCard from '../../components/workshop/PickupLeadCard';
+import {
+  isActivePickupBoyTask,
+  isActiveDeliveryBoyTask,
+  isPickupLegComplete,
+  isHistoryTaskCompleted,
+  classifyPickupBoyDashboardTask,
+  formatPickupStatusLabel,
+  getPickupHistoryCompletedAt,
+} from '../../lib/pickupTaskFlow';
 
 export default function WorkshopPickupBoyDashboard() {
   const navigation = useNavigation<any>();
@@ -25,13 +35,17 @@ export default function WorkshopPickupBoyDashboard() {
   const { userProfile: authProfile, refreshUserProfile } = useAuth();
   const [userProfile, setUserProfile] = React.useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
+  const [tasksInitialFilter, setTasksInitialFilter] = useState('all');
+  const [historyInitialFilter, setHistoryInitialFilter] = useState('all');
   const [stats, setStats] = useState({
     pendingTasks: 0,
     inTransit: 0,
     completedToday: 0,
     totalCompleted: 0,
   });
-  const [recentTasks, setRecentTasks] = useState<any[]>([]);
+  const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
+  const [ongoingTasks, setOngoingTasks] = useState<any[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
   const [customStart, setCustomStart] = useState(istYmd());
@@ -67,23 +81,21 @@ export default function WorkshopPickupBoyDashboard() {
   }, []);
 
   const fetchDashboardData = async () => {
-    // ✅ FIX: Get user profile if not set
-    let pickupBoyId = userProfile?.id;
-    
+    let pickupBoyId = authProfile?.id || userProfile?.id;
+
     if (!pickupBoyId) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: profileData } = await supabase
         .from('users_login')
-        .select('id')
+        .select('id, full_name, first_name, last_name, email')
         .eq('email', user.email)
         .single();
 
-      if (!profileData) {
-        return;
-      }
+      if (!profileData) return;
       pickupBoyId = profileData.id;
+      setUserProfile((prev: any) => prev?.id ? prev : profileData);
     }
 
     try {
@@ -98,42 +110,34 @@ export default function WorkshopPickupBoyDashboard() {
         return;
       }
 
-      // ✅ FIX: Calculate stats from service_leads data (like web)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const openTasks = (allTasks || []).filter(
+        (t) => isActivePickupBoyTask(t) || isActiveDeliveryBoyTask(t),
+      );
 
-      // Pending tasks (pickup required, not started)
-      const pendingTasks = allTasks?.filter(t => 
-        t.pickup_required && 
-        (t.status === 'ACCEPTED' || t.status === 'ASSIGNED_TO_WORKSHOP') &&
-        (!t.pickup_status || t.pickup_status === 'NOT_ASSIGNED')
-      ) || [];
+      const upcoming = openTasks.filter((t) => classifyPickupBoyDashboardTask(t) === 'upcoming');
+      const ongoing = openTasks.filter((t) => classifyPickupBoyDashboardTask(t) === 'ongoing');
 
-      // In transit tasks
-      const inTransitTasks = allTasks?.filter(t => 
-        t.pickup_status === 'IN_TRANSIT' || t.pickup_status === 'PICKED_UP'
-      ) || [];
+      const completed =
+        allTasks?.filter((t) => {
+          if (!isHistoryTaskCompleted(t)) return false;
+          const stamp = getPickupHistoryCompletedAt(t);
+          return isoInRange(stamp, dateRange.start, dateRange.end, dateRange.allTime);
+        }) || [];
 
-      // Completed in selected range
-      const completedToday = allTasks?.filter(t => {
-        const stamp = t.delivered_at || t.completed_at || t.updated_at;
-        const done = t.pickup_status === 'DELIVERED' || t.pickup_status === 'PICKED_UP' || t.status === 'DELIVERED_TO_CUSTOMER' || t.status === 'CLOSED';
-        if (!done) return false;
-        return isoInRange(stamp, dateRange.start, dateRange.end, dateRange.allTime);
-      }) || [];
+      const pendingTasks = upcoming;
+      const inTransitTasks = ongoing;
 
-      // Total completed
-      const totalCompleted = allTasks?.filter(t => 
-        t.pickup_status === 'PICKED_UP' || t.pickup_status === 'DELIVERED'
-      ) || [];
+      const completedToday = completed;
 
-      // Recent active tasks
-      const recentTasks = allTasks
-        ?.filter(t => 
-          t.pickup_required && 
-          (t.pickup_status === 'ASSIGNED' || t.pickup_status === 'IN_TRANSIT' || t.pickup_status === 'PICKED_UP')
-        )
-        .slice(0, 5) || [];
+      const totalCompleted =
+        allTasks?.filter(
+          (t) =>
+            isPickupLegComplete(t) ||
+            isHistoryTaskCompleted(t) ||
+            t.status === 'DELIVERED' ||
+            t.status === 'DELIVERED_TO_CUSTOMER' ||
+            t.status === 'CLOSED',
+        ) || [];
 
       setStats({
         pendingTasks: pendingTasks.length,
@@ -142,7 +146,9 @@ export default function WorkshopPickupBoyDashboard() {
         totalCompleted: totalCompleted.length,
       });
 
-      setRecentTasks(recentTasks);
+      setUpcomingTasks(upcoming);
+      setOngoingTasks(ongoing);
+      setCompletedTasks(completed);
     } catch (error) {
       // Error handled silently
     }
@@ -154,46 +160,44 @@ export default function WorkshopPickupBoyDashboard() {
     setRefreshing(false);
   };
 
+  const pickupBoyId = authProfile?.id || userProfile?.id;
+
   useEffect(() => {
-    if (userProfile?.id) {
-      fetchDashboardData();
-
-      // ✅ FIX: Setup realtime subscription (like web)
-      let channel: RealtimeChannel;
-
-      const setupRealtimeSubscription = async () => {
-        if (!userProfile?.id) return;
-
-        channel = supabase
-          .channel('pickup-boy-dashboard')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'service_leads'
-            },
-            (payload) => {
-              fetchDashboardData();
-            }
-          )
-          .subscribe();
-      };
-
-      setupRealtimeSubscription();
-
-      return () => {
-        if (channel) {
-          supabase.removeChannel(channel);
-        }
-      };
+    if (authProfile?.id && !userProfile?.id) {
+      setUserProfile(authProfile);
     }
-  }, [userProfile]);
+  }, [authProfile?.id]);
 
-  // If a pickup-impacting notification arrives, refetch dashboard counts.
   useEffect(() => {
-    if (userProfile?.id) {
-      fetchDashboardData();
+    if (!pickupBoyId) return;
+
+    void fetchDashboardData();
+
+    const channel = supabase
+      .channel(`pickup-boy-dashboard-${pickupBoyId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_leads',
+          filter: `assigned_pickup_boy_id=eq.${pickupBoyId}`,
+        },
+        () => {
+          void fetchDashboardData();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupBoyId]);
+
+  useEffect(() => {
+    if (pickupBoyId) {
+      void fetchDashboardData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupRefreshTick, datePreset, customStart, customEnd]);
@@ -201,7 +205,8 @@ export default function WorkshopPickupBoyDashboard() {
   useFocusEffect(
     React.useCallback(() => {
       void refreshUserProfile();
-    }, [refreshUserProfile]),
+      void fetchDashboardData();
+    }, [refreshUserProfile, pickupBoyId, datePreset, customStart, customEnd]),
   );
 
   const homeName =
@@ -215,12 +220,32 @@ export default function WorkshopPickupBoyDashboard() {
     setCurrentScreen(tab);
   };
 
+  const openTasks = (filter = 'all') => {
+    setTasksInitialFilter(filter);
+    setCurrentScreen('tasks');
+  };
+
+  const openHistory = (filter = 'all') => {
+    setHistoryInitialFilter(filter);
+    setCurrentScreen('history');
+  };
+
   const renderScreen = () => {
     switch (currentScreen) {
       case 'tasks':
-        return <PickupTasksScreen userId={userProfile?.id} />;
+        return (
+          <PickupTasksScreen
+            userId={authProfile?.id || userProfile?.id}
+            initialFilter={tasksInitialFilter}
+          />
+        );
       case 'history':
-        return <TaskHistoryScreen userId={userProfile?.id} />;
+        return (
+          <TaskHistoryScreen
+            userId={authProfile?.id || userProfile?.id}
+            initialFilter={historyInitialFilter}
+          />
+        );
       case 'profile':
         return <PickupBoyProfileScreen userId={userProfile?.id} />;
       default:
@@ -228,22 +253,99 @@ export default function WorkshopPickupBoyDashboard() {
     }
   };
 
-  const getTaskTypeIcon = (task: any) => {
-    if (task.pickup_required) return '📦';
-    return '🚚';
-  };
-
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (String(status || '').toUpperCase()) {
       case 'ASSIGNED':
-      case 'NOT_ASSIGNED': return COLORS.warning;
+      case 'NOT_ASSIGNED':
+      case 'PENDING':
+      case 'ACCEPTED':
+        return '#D97706';
       case 'IN_TRANSIT':
-      case 'PICKED_UP': return COLORS.primary;
-      case 'DELIVERED': return COLORS.success;
-      case 'CANCELLED': return COLORS.danger;
-      default: return COLORS.gray[500];
+      case 'PICKED_UP':
+      case 'ON_THE_WAY':
+      case 'VEHICLE_IN_TRANSIT':
+      case 'OTP_VERIFIED':
+      case 'PICKED':
+        return COLORS.primary;
+      case 'VEHICLE_DROPPED_AT_WORKSHOP':
+      case 'ARRIVED_AT_WORKSHOP':
+      case 'DROPPED':
+      case 'DELIVERED':
+      case 'DELIVERED_TO_CUSTOMER':
+        return COLORS.success;
+      case 'CANCELLED':
+      case 'FAILED_PICKUP':
+        return COLORS.danger;
+      default:
+        return COLORS.gray[500];
     }
   };
+
+  const freshLeads = [...ongoingTasks, ...upcomingTasks];
+  const recentCompleted = completedTasks.slice(0, 3);
+
+  const renderTaskCard = (task: any, index: number, isCompleted = false) => {
+    const address = task.customer_address || task.pickup_address || task.address;
+    const status = String(task.pickup_status || task.status || 'ASSIGNED');
+    const isDelivery =
+      !task.pickup_required ||
+      task.status === 'READY_FOR_DELIVERY' ||
+      task.status === 'COD_PENDING';
+    const taskType = isDelivery ? 'DELIVERY' : 'PICKUP';
+    const completedAt = getPickupHistoryCompletedAt(task);
+
+    return (
+      <PickupLeadCard
+        key={task.id || index}
+        leadNumber={task.lead_number}
+        customerName={task.customer_name}
+        customerPhone={task.customer_phone}
+        vehicleNumber={task.vehicle_number}
+        vehicleMake={task.vehicle_make}
+        vehicleModel={task.vehicle_model}
+        taskType={taskType as 'PICKUP' | 'DELIVERY'}
+        statusLabel={formatPickupStatusLabel(status)}
+        statusColor={getStatusColor(status)}
+        address={address}
+        footerText={
+          isCompleted && completedAt
+            ? `Completed · ${formatDateTime(completedAt)}`
+            : task.preferred_date
+              ? `Scheduled · ${formatDateTime(task.preferred_date)}`
+              : undefined
+        }
+        onPress={() =>
+          navigation.navigate('PickupJobDetail', { taskId: task.id, leadId: task.id })
+        }
+      />
+    );
+  };
+
+  const renderJobSection = (
+    title: string,
+    tasks: any[],
+    emptyTitle: string,
+    emptySub: string,
+    onViewAll: () => void,
+    isCompleted = false,
+  ) => (
+    <View style={styles.jobSection}>
+      <View style={styles.sectionRow}>
+        <Text style={styles.jobSectionTitle}>{title}</Text>
+        <TouchableOpacity onPress={onViewAll}>
+          <Text style={styles.seeAllLink}>View all</Text>
+        </TouchableOpacity>
+      </View>
+      {tasks.length > 0 ? (
+        tasks.map((task, index) => renderTaskCard(task, index, isCompleted))
+      ) : (
+        <View style={styles.sectionEmpty}>
+          <Text style={styles.sectionEmptyTxt}>{emptyTitle}</Text>
+          <Text style={styles.sectionEmptySub}>{emptySub}</Text>
+        </View>
+      )}
+    </View>
+  );
 
   const renderDashboard = () => (
     <ScrollView
@@ -273,56 +375,55 @@ export default function WorkshopPickupBoyDashboard() {
 
       <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Overview</Text>
       <View style={styles.statsGrid}>
-        <View style={[styles.statCard, { borderLeftColor: '#D97706' }]}>
+        <TouchableOpacity
+          style={[styles.statCard, { borderLeftColor: '#D97706' }]}
+          activeOpacity={0.85}
+          onPress={() => openTasks('assigned')}
+        >
           <Text style={[styles.statValue, { color: '#D97706' }]}>{stats.pendingTasks}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </View>
-        <View style={[styles.statCard, { borderLeftColor: '#004AAD' }]}>
+          <Text style={styles.statLabel}>Upcoming</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.statCard, { borderLeftColor: '#004AAD' }]}
+          activeOpacity={0.85}
+          onPress={() => openTasks('in_transit')}
+        >
           <Text style={[styles.statValue, { color: '#004AAD' }]}>{stats.inTransit}</Text>
-          <Text style={styles.statLabel}>In Transit</Text>
-        </View>
-        <View style={[styles.statCard, { borderLeftColor: '#059669' }]}>
+          <Text style={styles.statLabel}>Ongoing</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.statCard, { borderLeftColor: '#059669' }]}
+          activeOpacity={0.85}
+          onPress={() => openHistory('completed')}
+        >
           <Text style={[styles.statValue, { color: '#059669' }]}>{stats.completedToday}</Text>
           <Text style={styles.statLabel}>Completed</Text>
-        </View>
-        <View style={[styles.statCard, { borderLeftColor: '#EA580C' }]}>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.statCard, { borderLeftColor: '#EA580C' }]}
+          activeOpacity={0.85}
+          onPress={() => openHistory('all')}
+        >
           <Text style={[styles.statValue, { color: '#EA580C' }]}>{stats.totalCompleted}</Text>
           <Text style={styles.statLabel}>Total done</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>Active Tasks</Text>
-      {recentTasks.length > 0 ? (
-        recentTasks.map((task, index) => (
-          <TouchableOpacity
-            key={task.id || index}
-            style={styles.jobCard}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('PickupJobDetail', { taskId: task.id, leadId: task.id })}
-          >
-            <View style={styles.jobHeader}>
-              <Text style={styles.jobName} numberOfLines={1}>
-                {task.customer_name || 'Customer'}
-              </Text>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.pickup_status || task.status) }]}>
-                <Text style={styles.statusText}>{String(task.pickup_status || task.status || '').replace(/_/g, ' ')}</Text>
-              </View>
-            </View>
-            <Text style={styles.taskType}>
-              {getTaskTypeIcon(task)} {task.pickup_required ? 'PICKUP' : 'DELIVERY'}
-            </Text>
-            <Text style={styles.taskDetail}>
-              {task.customer_address || task.address || 'Address not available'}
-            </Text>
-            {task.preferred_date ? (
-              <Text style={styles.taskTime}>{formatDateTime(task.preferred_date)}</Text>
-            ) : null}
-          </TouchableOpacity>
-        ))
-      ) : (
-        <View style={styles.jobCard}>
-          <Text style={styles.emptyText}>No active tasks at the moment</Text>
-        </View>
+      {renderJobSection(
+        'Fresh leads — to do',
+        freshLeads,
+        'No pending jobs',
+        'New pickup/delivery assignments will show here',
+        () => openTasks('all'),
+      )}
+
+      {renderJobSection(
+        'Recently completed',
+        recentCompleted,
+        'No completed jobs',
+        'Finished jobs for selected date range appear here',
+        () => openHistory('completed'),
+        true,
       )}
     </ScrollView>
   );
@@ -397,25 +498,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
   },
-  jobCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    ...SHADOWS.small,
-  },
-  jobHeader: {
+  taskHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
     marginBottom: 4,
   },
-  jobName: {
-    flex: 1,
-    fontSize: 16,
+  addressRow: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+  },
+  directionsLink: {
+    fontSize: 12,
     fontWeight: '800',
-    color: COLORS.heading,
+    color: COLORS.primary,
+    marginTop: 2,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.lg,
@@ -423,6 +523,48 @@ const styles = StyleSheet.create({
     color: COLORS.heading,
     marginBottom: SPACING.md,
     marginTop: SPACING.lg,
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+    paddingHorizontal: 0,
+  },
+  jobSection: {
+    marginTop: SPACING.md,
+  },
+  jobSectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.textHeading,
+    flex: 1,
+  },
+  sectionEmpty: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    marginHorizontal: 16,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    alignItems: 'center',
+    ...SHADOWS.small,
+  },
+  sectionEmptyTxt: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.textHeading,
+  },
+  sectionEmptySub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  seeAllLink: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   card: {
     backgroundColor: COLORS.white,

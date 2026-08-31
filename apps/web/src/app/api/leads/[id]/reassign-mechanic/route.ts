@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { mapLeadPriorityToJobPriority } from '@/lib/workshop/jobPriority';
 
 /**
  * POST /api/leads/[id]/reassign-mechanic
@@ -196,7 +198,7 @@ export async function POST(
           mechanic_id: mechanic_id,
           assigned_by: user.id,
           mechanic_status: 'ASSIGNED',
-          job_priority: lead.priority || 'NORMAL',
+          job_priority: mapLeadPriorityToJobPriority(lead.priority),
           assigned_at: now,
           work_notes: notes || null
         });

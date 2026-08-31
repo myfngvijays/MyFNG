@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { MapPin, User, Car, Navigation, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -15,6 +15,13 @@ import {
   WorkshopCard,
   WorkshopStatusPill,
 } from '@/components/workshop/WorkshopUi';
+import {
+  isActivePickupBoyTask,
+  isActiveDeliveryBoyTask,
+  isPickupInTransit,
+  isPickupScheduled,
+  isPickupLegComplete,
+} from '@/lib/workshop/pickupTaskFlow';
 
 interface PickupTask {
   id: string;
@@ -38,6 +45,7 @@ interface PickupTask {
 
 export default function PickupTasksPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<PickupTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'in_transit' | 'delivery_ready' | 'completed'>('all');
@@ -48,6 +56,13 @@ export default function PickupTasksPage() {
     delivery_ready: 0,
     completed: 0
   });
+
+  useEffect(() => {
+    const q = searchParams.get('filter');
+    if (q === 'scheduled' || q === 'in_transit' || q === 'delivery_ready' || q === 'completed' || q === 'all') {
+      setFilter(q);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchTasks();
@@ -97,38 +112,13 @@ export default function PickupTasksPage() {
         return;
       }
 
-      // Build query based on filter
-      let query = supabase
+      // Fetch all assigned leads once; filter open tasks client-side
+      const { data: allRows, error } = await supabase
         .from('service_leads')
         .select('*')
         .eq('assigned_pickup_boy_id', userProfile.id)
         .not('status', 'in', '(REJECTED,CANCELLED)')
         .order('created_at', { ascending: false });
-
-      if (filter === 'scheduled') {
-        query = query.in('status', ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP']);
-      } else if (filter === 'in_transit') {
-        query = query.in('status', ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS']);
-      } else if (filter === 'delivery_ready') {
-        // After billing/payment: ready to return vehicle to customer
-        query = query.in('status', ['READY_FOR_DELIVERY', 'COD_PENDING']);
-      } else if (filter === 'completed') {
-        query = query.in('status', ['COMPLETED', 'DELIVERED_TO_CUSTOMER', 'DELIVERED', 'CLOSED']);
-      } else {
-        // All active tasks (assigned but not completed)
-        query = query.in('status', [
-          'ACCEPTED', 
-          'ASSIGNED_TO_WORKSHOP', 
-          'ON_THE_WAY',
-          'VEHICLE_IN_TRANSIT',
-          'VEHICLE_DROPPED_AT_WORKSHOP',
-          'IN_PROGRESS',
-          'READY_FOR_DELIVERY',
-          'COD_PENDING'
-        ]);
-      }
-
-      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching tasks:', error);
@@ -136,41 +126,39 @@ export default function PickupTasksPage() {
         return;
       }
 
-      setTasks(data || []);
+      const openTasks = (allRows || []).filter(
+        (t) => isActivePickupBoyTask(t) || isActiveDeliveryBoyTask(t),
+      );
 
-      // Fetch counts for all filters
-      const allTasksQuery = supabase
-        .from('service_leads')
-        .select('status', { count: 'exact', head: true })
-        .eq('assigned_pickup_boy_id', userProfile.id)
-        .not('status', 'in', '(REJECTED,CANCELLED)');
+      let visible = openTasks;
+      if (filter === 'scheduled') {
+        visible = openTasks.filter((t) => isPickupScheduled(t));
+      } else if (filter === 'in_transit') {
+        visible = openTasks.filter((t) => isPickupInTransit(t));
+      } else if (filter === 'delivery_ready') {
+        visible = openTasks.filter((t) => isActiveDeliveryBoyTask(t));
+      } else if (filter === 'completed') {
+        visible = (allRows || []).filter(
+          (t) =>
+            isPickupLegComplete(t) ||
+            ['DELIVERED', 'DELIVERED_TO_CUSTOMER', 'CLOSED', 'COMPLETED'].includes(String(t.status || '').toUpperCase()),
+        );
+      }
 
-      // Get all tasks for counting
-      const { data: allTasksData } = await supabase
-        .from('service_leads')
-        .select('status')
-        .eq('assigned_pickup_boy_id', userProfile.id)
-        .not('status', 'in', '(REJECTED,CANCELLED)');
+      setTasks(visible);
 
-      if (allTasksData) {
-        const counts = {
-          all: allTasksData.filter(t => 
-            ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP', 'ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'COD_PENDING'].includes(t.status)
+      if (allRows) {
+        setFilterCounts({
+          all: openTasks.length,
+          scheduled: openTasks.filter((t) => isPickupScheduled(t)).length,
+          in_transit: openTasks.filter((t) => isPickupInTransit(t)).length,
+          delivery_ready: openTasks.filter((t) => isActiveDeliveryBoyTask(t)).length,
+          completed: allRows.filter(
+            (t) =>
+              isPickupLegComplete(t) ||
+              ['DELIVERED', 'DELIVERED_TO_CUSTOMER', 'CLOSED', 'COMPLETED'].includes(String(t.status || '').toUpperCase()),
           ).length,
-          scheduled: allTasksData.filter(t => 
-            ['ACCEPTED', 'ASSIGNED_TO_WORKSHOP'].includes(t.status)
-          ).length,
-          in_transit: allTasksData.filter(t => 
-            ['ON_THE_WAY', 'VEHICLE_IN_TRANSIT', 'VEHICLE_DROPPED_AT_WORKSHOP', 'IN_PROGRESS'].includes(t.status)
-          ).length,
-          delivery_ready: allTasksData.filter(t =>
-            ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(t.status)
-          ).length,
-          completed: allTasksData.filter(t => 
-            ['COMPLETED', 'DELIVERED', 'CLOSED'].includes(t.status)
-          ).length
-        };
-        setFilterCounts(counts);
+        });
       }
     } catch (error) {
       console.error('Error:', error);

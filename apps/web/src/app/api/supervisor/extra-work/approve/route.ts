@@ -259,6 +259,23 @@ export async function POST(request: NextRequest) {
       console.warn('Extra work approval notifications failed (non-blocking):', e);
     }
 
+    // Resume mechanic work after extra-work approval (job was ON_HOLD)
+    try {
+      await updater
+        .from('mechanic_jobs')
+        .update({ mechanic_status: 'IN_PROGRESS', updated_at: now })
+        .eq('lead_id', reqRow.lead_id)
+        .in('mechanic_status', ['HOLD', 'WAITING_APPROVAL']);
+
+      await updater
+        .from('service_leads')
+        .update({ status: 'IN_PROGRESS', updated_at: now })
+        .eq('id', reqRow.lead_id)
+        .eq('status', 'ON_HOLD');
+    } catch (e) {
+      console.warn('Resume mechanic after extra-work approval failed (non-blocking):', e);
+    }
+
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: 'Internal server error', details: e?.message || String(e) }, { status: 500 });

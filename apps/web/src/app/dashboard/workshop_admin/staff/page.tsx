@@ -87,6 +87,7 @@ export default function WorkshopStaffPage() {
           role_id:roles(id, role_name, role_code)
         `)
         .eq('workshop_id', workshopId)
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       setStaff(staffData || []);
@@ -331,11 +332,10 @@ export default function WorkshopStaffPage() {
     const supabase = createClient();
 
     try {
-      // Instead of deleting, we deactivate the user
       const { error } = await supabase
         .from('users_login')
         .update({ 
-          is_active: false, 
+          is_active: false,
           updated_at: new Date().toISOString() 
         })
         .eq('id', member.id);

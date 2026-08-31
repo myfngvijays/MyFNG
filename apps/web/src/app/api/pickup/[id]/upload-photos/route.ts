@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { mirrorPickupPhotoToLeadMedia } from '@/lib/workshop/pickupPhotos';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,17 @@ export async function POST(
 
     if (photoError) {
       return NextResponse.json({ error: 'Failed to save photo record', details: photoError.message }, { status: 500 });
+    }
+
+    // Mirror mobile PICKUP_* photos into lead_media as BEFORE_* for unified arrival gates
+    if (String(photoType).toUpperCase().startsWith('PICKUP_')) {
+      await mirrorPickupPhotoToLeadMedia(supabase, {
+        leadId,
+        photoType,
+        photoUrl,
+        uploadedBy: user.id,
+        fileName: file.name,
+      });
     }
 
     // Create activity log

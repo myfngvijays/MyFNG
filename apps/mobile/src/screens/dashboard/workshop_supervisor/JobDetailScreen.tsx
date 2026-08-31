@@ -11,6 +11,8 @@ import {
   BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
+import { ENV } from '../../../config/environment';
+import { parseServiceChecklistItems } from '../../../lib/serviceChecklist';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
 interface JobDetail {
@@ -35,9 +37,12 @@ interface JobDetail {
 export default function JobDetailScreen() {
   const route = useRoute();
   const navigation = useNavigation<any>();
-  const { jobId } = route.params as { jobId: string };
+  const params = route.params as { jobId?: string; leadId?: string };
+  const lookupId = params.leadId || params.jobId;
 
   const [job, setJob] = useState<JobDetail | null>(null);
+  const [mechanicJobId, setMechanicJobId] = useState<string | null>(null);
+  const [assignedMechanicId, setAssignedMechanicId] = useState<string | null>(null);
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [extraCharges, setExtraCharges] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,33 +61,31 @@ export default function JobDetailScreen() {
   }, [navigation]);
 
   useEffect(() => {
-    if (jobId) {
+    if (lookupId) {
       fetchJobDetail();
     }
-  }, [jobId]);
+  }, [lookupId]);
 
   useEffect(() => {
-    if (!jobId || !job?.lead_id?.id) return;
+    if (!lookupId || !job?.lead_id?.id) return;
       
     // Setup realtime subscription after job is loaded
       const channel = supabase
-        .channel(`job-detail-${jobId}`)
+        .channel(`job-detail-${lookupId}`)
         .on('postgres_changes', {
           event: '*',
           schema: 'public',
           table: 'mechanic_jobs',
-          filter: `id=eq.${jobId}`
+          filter: mechanicJobId ? `id=eq.${mechanicJobId}` : `lead_id=eq.${lookupId}`,
         }, () => {
-          console.log('Job Detail: Real-time update received');
           fetchJobDetail();
         })
         .on('postgres_changes', {
           event: '*',
           schema: 'public',
-          table: 'mechanic_checklist_items',
-          filter: `job_id=eq.${jobId}`
+          table: 'service_checklists',
+          filter: `lead_id=eq.${lookupId}`,
         }, () => {
-          console.log('Checklist: Real-time update received');
           fetchJobDetail();
         })
       .on('postgres_changes', {
@@ -101,40 +104,158 @@ export default function JobDetailScreen() {
       return () => {
         supabase.removeChannel(channel);
       };
-  }, [jobId, job?.lead_id?.id]);
+  }, [lookupId, job?.lead_id?.id, mechanicJobId]);
+
+  async function loadServiceChecklist(leadId: string, mechanicId: string | null) {
+    if (!mechanicId) {
+      setChecklistItems([]);
+      return;
+    }
+
+    let { data: checklistData } = await supabase
+      .from('service_checklists')
+      .select('checklist_items')
+      .eq('lead_id', leadId)
+      .eq('mechanic_id', mechanicId)
+      .maybeSingle();
+
+    let items = parseServiceChecklistItems(checklistData?.checklist_items);
+    if (items.length === 0) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const response = await fetch(`${ENV.API_URL}/api/leads/${leadId}/ensure-checklist`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'x-mobile-client': 'true',
+            },
+          });
+          const result = await response.json().catch(() => ({}));
+          if (response.ok) {
+            if (Array.isArray(result.items) && result.items.length > 0) {
+              items = result.items;
+            } else {
+              const { data: refreshed } = await supabase
+                .from('service_checklists')
+                .select('checklist_items')
+                .eq('lead_id', leadId)
+                .eq('mechanic_id', mechanicId)
+                .maybeSingle();
+              items = parseServiceChecklistItems(refreshed?.checklist_items);
+            }
+          } else {
+            console.warn('ensure-checklist response:', result?.error || response.status);
+          }
+        }
+      } catch (e) {
+        console.warn('ensure-checklist failed:', e);
+      }
+    }
+
+    if (items.length === 0 && checklistData?.checklist_items) {
+      items = parseServiceChecklistItems(checklistData.checklist_items);
+    }
+
+    setChecklistItems(items);
+  }
 
   const fetchJobDetail = async () => {
+    if (!lookupId) return;
     try {
       setLoading(true);
 
-      // Fetch job details
-      const { data: jobData, error: jobError } = await supabase
+      let jobData: any = null;
+
+      const byLead = await supabase
         .from('mechanic_jobs')
-        .select('*, lead_id(id, lead_number, customer_name, vehicle_number, service_type, estimated_amount), mechanic_id(full_name)')
-        .eq('id', jobId)
-        .single();
+        .select(
+          '*, lead_id(id, lead_number, customer_name, vehicle_number, service_type, estimated_amount), mechanic:mechanic_id(id, full_name)',
+        )
+        .eq('lead_id', lookupId)
+        .maybeSingle();
+      jobData = byLead.data;
 
-      if (jobError) throw jobError;
-      setJob(jobData);
+      if (!jobData) {
+        const byId = await supabase
+          .from('mechanic_jobs')
+          .select(
+            '*, lead_id(id, lead_number, customer_name, vehicle_number, service_type, estimated_amount), mechanic:mechanic_id(id, full_name)',
+          )
+          .eq('id', lookupId)
+          .maybeSingle();
+        jobData = byId.data;
+      }
 
-      // Fetch checklist items
-      const { data: checklistData } = await supabase
-        .from('mechanic_checklist_items')
-        .select('*')
-        .eq('job_id', jobId)
-        .order('created_at', { ascending: true });
+      if (jobData) {
+        const mechanicUuid = jobData.mechanic_id as string;
+        setMechanicJobId(jobData.id);
+        setAssignedMechanicId(mechanicUuid || jobData.mechanic?.id || null);
+        setJob({
+          ...jobData,
+          mechanic_id: jobData.mechanic || { full_name: 'Unassigned' },
+          status: jobData.mechanic_status || jobData.status || 'ASSIGNED',
+        });
+        const leadRef = jobData.lead_id?.id || lookupId;
+        await loadServiceChecklist(leadRef, mechanicUuid || jobData.mechanic?.id || null);
+        const { data: chargesData } = await supabase
+          .from('lead_extra_charges')
+          .select('*')
+          .eq('lead_id', leadRef)
+          .order('created_at', { ascending: false });
+        setExtraCharges(chargesData || []);
+        return;
+      }
 
-      setChecklistItems(checklistData || []);
+      const { data: lead, error: leadError } = await supabase
+        .from('service_leads')
+        .select(
+          'id, lead_number, customer_name, vehicle_number, service_type, estimated_amount, status, priority, assigned_mechanic_id, mechanic:assigned_mechanic_id(full_name)',
+        )
+        .eq('id', lookupId)
+        .is('deleted_at', null)
+        .maybeSingle();
 
-      // Fetch extra charges
+      if (leadError || !lead) {
+        setJob(null);
+        return;
+      }
+
+      setMechanicJobId(null);
+      setAssignedMechanicId(lead.assigned_mechanic_id || null);
+      let mechanicStatus = 'UNASSIGNED';
+      if (lead.assigned_mechanic_id) {
+        const st = String(lead.status || '').toUpperCase();
+        if (st === 'IN_PROGRESS') mechanicStatus = 'IN_PROGRESS';
+        else if (st === 'COMPLETED') mechanicStatus = 'COMPLETED';
+        else mechanicStatus = 'ASSIGNED';
+      }
+
+      setJob({
+        id: lead.id,
+        lead_id: {
+          id: lead.id,
+          lead_number: lead.lead_number,
+          customer_name: lead.customer_name,
+          vehicle_number: lead.vehicle_number,
+          service_type: lead.service_type,
+          estimated_amount: lead.estimated_amount,
+        },
+        mechanic_id: { full_name: (lead as any).mechanic?.full_name || 'Unassigned' },
+        status: mechanicStatus,
+        priority: lead.priority || 'NORMAL',
+        estimated_completion_time: '',
+        started_at: '',
+        completed_at: '',
+        work_notes: '',
+      });
+      await loadServiceChecklist(lead.id, lead.assigned_mechanic_id || null);
       const { data: chargesData } = await supabase
         .from('lead_extra_charges')
         .select('*')
-        .eq('lead_id', jobData.lead_id.id)
+        .eq('lead_id', lead.id)
         .order('created_at', { ascending: false });
-
       setExtraCharges(chargesData || []);
-
     } catch (error) {
       console.error('Error fetching job detail:', error);
       Alert.alert('Error', 'Failed to load job details');
@@ -259,12 +380,12 @@ export default function JobDetailScreen() {
         </View>
 
         {/* Checklist */}
-        {checklistItems.length > 0 && (
+        {checklistItems.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Checklist ({checklistItems.length})</Text>
             <View style={styles.checklistCard}>
               {checklistItems.map((item, index) => (
-                <View key={index} style={styles.checklistItem}>
+                <View key={item.id || index} style={styles.checklistItem}>
                   <Text style={styles.checklistIcon}>
                     {item.is_completed ? '✅' : '○'}
                   </Text>
@@ -278,7 +399,16 @@ export default function JobDetailScreen() {
               ))}
             </View>
           </View>
-        )}
+        ) : assignedMechanicId && job.status !== 'UNASSIGNED' ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Service Checklist</Text>
+            <View style={styles.infoCard}>
+              <Text style={styles.progressText}>
+                General Service ke points load ho rahe hain… screen refresh karein ya thodi der baad dubara kholen.
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         {/* Extra Charges */}
         {extraCharges.length > 0 && (

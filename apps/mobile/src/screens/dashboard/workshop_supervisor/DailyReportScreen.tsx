@@ -22,6 +22,14 @@ type MechanicRow = {
 
 type IssueRow = { type: string; count: number; description: string };
 
+type PickupRow = {
+  id: string;
+  name: string;
+  assigned: number;
+  completed: number;
+  active: number;
+};
+
 export default function DailyReportScreen() {
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
@@ -36,6 +44,7 @@ export default function DailyReportScreen() {
     pickupActive: 0,
   });
   const [mechanics, setMechanics] = useState<MechanicRow[]>([]);
+  const [pickupBoys, setPickupBoys] = useState<PickupRow[]>([]);
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [insights, setInsights] = useState<string[]>([]);
 
@@ -90,7 +99,9 @@ export default function DailyReportScreen() {
 
       const { data: leads } = await supabase
         .from('service_leads')
-        .select('id, status, sla_deadline, assigned_mechanic_id, created_at, updated_at')
+        .select(
+          'id, status, sla_deadline, sla_expires_at, assigned_mechanic_id, assigned_pickup_boy_id, pickup_status, pickup_required, created_at, updated_at',
+        )
         .eq('workshop_id', workshopId)
         .is('deleted_at', null)
         .gte('created_at', startIso);
@@ -163,13 +174,55 @@ export default function DailyReportScreen() {
           return role?.role_code === 'WORKSHOP_MECHANIC';
         })
         .map((m: any) => {
-          const mine = jobsToUse.filter((j) => j.mechanic_id === m.id);
+          const mineFromJobs = jobsToUse.filter((j) => j.mechanic_id === m.id);
+          const mineFromLeads = leadsToUse.filter((l) => l.assigned_mechanic_id === m.id);
+          const assigned = mineFromJobs.length || mineFromLeads.length;
+          const completed =
+            mineFromJobs.filter((j) => j.mechanic_status === 'COMPLETED').length ||
+            mineFromLeads.filter((l) => ['COMPLETED', 'CLOSED'].includes(l.status)).length;
+          const active =
+            mineFromJobs.filter((j) => ['ASSIGNED', 'IN_PROGRESS'].includes(j.mechanic_status)).length ||
+            mineFromLeads.filter((l) =>
+              ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED'].includes(String(l.status || '')),
+            ).length;
+          return {
+            id: m.id,
+            name: m.full_name,
+            assigned,
+            completed,
+            active,
+          };
+        });
+
+      const { data: pickupUsers } = await supabase
+        .from('users_login')
+        .select('id, full_name, role:role_id(role_code)')
+        .eq('workshop_id', workshopId)
+        .eq('is_active', true);
+
+      const pickupRows: PickupRow[] = (pickupUsers || [])
+        .filter((m: any) => {
+          const role = Array.isArray(m.role) ? m.role[0] : m.role;
+          return role?.role_code === 'WORKSHOP_PICKUP_BOY';
+        })
+        .map((m: any) => {
+          const mine = leadsToUse.filter((l) => l.assigned_pickup_boy_id === m.id);
+          const completed = mine.filter((l) =>
+            ['VEHICLE_DROPPED_AT_WORKSHOP', 'PICKUP_COMPLETED', 'DROPPED'].includes(
+              String(l.pickup_status || '').toUpperCase(),
+            ),
+          ).length;
+          const active = mine.filter((l) =>
+            ['ASSIGNED', 'ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT', 'PICKED'].includes(
+              String(l.pickup_status || '').toUpperCase(),
+            ),
+          ).length;
           return {
             id: m.id,
             name: m.full_name,
             assigned: mine.length,
-            completed: mine.filter((j) => j.mechanic_status === 'COMPLETED').length,
-            active: mine.filter((j) => ['ASSIGNED', 'IN_PROGRESS'].includes(j.mechanic_status)).length,
+            completed,
+            active,
           };
         });
 
@@ -197,6 +250,7 @@ export default function DailyReportScreen() {
         pickupActive: pickupActive || 0,
       });
       setMechanics(mechanicRows);
+      setPickupBoys(pickupRows);
       setIssues(nextIssues.filter((i) => i.count > 0));
       setInsights(nextInsights);
     } catch (error) {
@@ -251,6 +305,22 @@ export default function DailyReportScreen() {
             <Text style={AC.name}>{m.name}</Text>
             <Text style={AC.meta}>
               Assigned {m.assigned} · Completed {m.completed} · Active {m.active}
+            </Text>
+          </View>
+        ))
+      )}
+
+      <Text style={AC.section}>Pickup performance today</Text>
+      {pickupBoys.length === 0 ? (
+        <View style={AC.whiteCard}>
+          <Text style={AC.meta}>No pickup boys on this workshop yet.</Text>
+        </View>
+      ) : (
+        pickupBoys.map((p) => (
+          <View key={p.id} style={[AC.listCard, { borderLeftColor: '#EA580C', borderLeftWidth: 4 }]}>
+            <Text style={AC.name}>{p.name}</Text>
+            <Text style={AC.meta}>
+              Assigned {p.assigned} · Completed {p.completed} · Active {p.active}
             </Text>
           </View>
         ))

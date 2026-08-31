@@ -108,6 +108,17 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to start job' }, { status: 500 });
     }
 
+    // Sync mechanic_jobs so mechanic app list shows IN_PROGRESS
+    await supabase
+      .from('mechanic_jobs')
+      .update({
+        mechanic_status: 'IN_PROGRESS',
+        started_at: now,
+        updated_at: now,
+      })
+      .eq('lead_id', leadId)
+      .eq('mechanic_id', userProfile.id);
+
     // Log writes (best-effort) - run in parallel to reduce latency
     void Promise.allSettled([
       supabase.from('lead_status_history').insert({

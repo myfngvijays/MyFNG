@@ -323,18 +323,19 @@ export default function AfterServicePhotoScreen({ route, hideChrome = false }: P
           .eq('lead_id', leadId);
       }
 
-      // Complete the job
+      // Complete the job via canonical API (sets WORK_COMPLETED + qc_status + notifications)
+      const session = (await supabase.auth.getSession()).data.session;
       const response = await fetch(
-        `${ENV.API_URL}/api/mechanic/jobs/${leadId}/status`,
+        `${ENV.API_URL}/api/mechanic/jobs/${leadId}/complete`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            Authorization: `Bearer ${session?.access_token}`,
           },
           body: JSON.stringify({
-            status: 'COMPLETED',
             notes: 'Job completed with all after service photos',
+            work_summary: workNotes.trim() || undefined,
           }),
         }
       );

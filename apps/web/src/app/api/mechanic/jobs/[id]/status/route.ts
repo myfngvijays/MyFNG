@@ -2,6 +2,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
+import { createNotification, notifyReadyForQC, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -292,7 +293,7 @@ export async function POST(
     // Get current lead status for history
     const { data: currentLead } = await supabase
       .from('service_leads')
-      .select('status')
+      .select('status, lead_number, workshop_id, assigned_supervisor_id, assigned_mechanic_id')
       .eq('id', leadId)
       .single();
 
@@ -305,9 +306,17 @@ export async function POST(
         .update({
           status: 'WORK_COMPLETED',
           mechanic_completed_at: now,
+          qc_status: 'PENDING',
           updated_at: now
         })
         .eq('id', leadId);
+
+      await supabase
+        .from('mechanic_assignments')
+        .update({ status: 'COMPLETED', completed_at: now })
+        .eq('lead_id', leadId)
+        .eq('mechanic_id', userProfile.id)
+        .eq('status', 'ACTIVE');
 
       // Create status history
       await supabase
@@ -321,6 +330,47 @@ export async function POST(
           reason: 'Mechanic completed the job',
           notes: notes || 'Job completed by mechanic'
         });
+
+      try {
+        const leadNumber = (currentLead as any)?.lead_number || leadId;
+        await notifyReadyForQC(
+          leadId,
+          leadNumber,
+          (currentLead as any)?.assigned_supervisor_id,
+          (currentLead as any)?.workshop_id
+        );
+        await createNotification({
+          userId: userProfile.id,
+          type: 'JOB_COMPLETED',
+          title: 'Job submitted for QC',
+          message: `Your work on lead ${leadNumber} has been submitted for quality check.`,
+          priority: 'MEDIUM',
+          leadId,
+          leadNumber,
+        });
+        if ((currentLead as any)?.workshop_id) {
+          await notifyWorkshopRoles({
+            workshopId: (currentLead as any).workshop_id,
+            roleCodes: ['WORKSHOP_ADMIN'],
+            type: 'JOB_COMPLETED',
+            title: 'Job completed',
+            message: `Mechanic completed work on lead ${leadNumber}. Awaiting QC.`,
+            priority: 'LOW',
+            leadId,
+            leadNumber,
+          });
+        }
+        await notifyTelecallerForLead({
+          leadId,
+          leadNumber,
+          type: 'JOB_COMPLETED',
+          title: 'Job completed',
+          message: `Work completed for lead ${leadNumber}. Awaiting quality check.`,
+          priority: 'MEDIUM',
+        });
+      } catch (e) {
+        console.warn('Mechanic complete notifications failed (non-blocking):', e);
+      }
     } else if (status === 'HOLD') {
       // Update service_leads to ON_HOLD when mechanic puts job on hold
       await supabase

@@ -60,6 +60,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         subservice_ids,
         pickup_required,
         pickup_address,
+        pickup_status,
         assigned_supervisor_id,
         final_amount,
         workshop:workshops!workshop_id(name, address, city, phone)
@@ -92,6 +93,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         subservice_ids,
         pickup_required,
         pickup_address,
+        pickup_status,
         assigned_supervisor_id,
         final_amount,
         workshop:workshops!workshop_id(name, address, city, phone)
@@ -113,6 +115,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         problem_description,
         pickup_required,
         pickup_address,
+        pickup_status,
         assigned_supervisor_id,
         final_amount,
         workshop:workshops!workshop_id(name, address, phone)
@@ -462,6 +465,32 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       // ignore
     }
 
+    // Pickup live tracking (customer public page)
+    let pickupTracking: any = null;
+    let liveLocation: any = null;
+    try {
+      const { data: tracking } = await reader
+        .from('pickup_tracking')
+        .select('pickup_status, drop_status, pickup_on_the_way_at, pickup_in_transit_at, pickup_arrival_time')
+        .eq('lead_id', leadId)
+        .maybeSingle();
+      pickupTracking = tracking;
+    } catch {
+      pickupTracking = null;
+    }
+
+    try {
+      const { data: locRows } = await reader
+        .from('pickup_location_tracking')
+        .select('latitude, longitude, status, created_at')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      liveLocation = locRows?.[0] || null;
+    } catch {
+      liveLocation = null;
+    }
+
     return NextResponse.json(
       {
         lead,
@@ -469,6 +498,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         media: media || [],
         extra_work: extraWork || [],
         pricing_items: pricingItems || [],
+        pickup_tracking: pickupTracking || null,
+        live_location: liveLocation || null,
       },
       { status: 200 }
     );

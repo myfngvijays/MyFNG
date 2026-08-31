@@ -6,11 +6,13 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { supabase } from '../../lib/supabase';
+import { apiFetch } from '../../lib/api';
 import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
 import {
   ADVISOR_CRM_NAV,
@@ -21,7 +23,9 @@ import { formatDateTime } from '@/lib/dateFormat';
 import { useAuth } from '../../context/AuthContext';
 import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
-import { isReadyForMechanicAssign, isWaitingPickupAssign } from '../../lib/workshopJobFlow';
+import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc } from '../../lib/workshopJobFlow';
+import { fetchWorkshopPickupBoys, type PickupBoyOption } from '../../lib/fetchWorkshopPickupBoys';
+import PickupAssignModal from '../../components/workshop/PickupAssignModal';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -58,6 +62,10 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
   const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
   const [customStart, setCustomStart] = useState(istYmd());
   const [customEnd, setCustomEnd] = useState(istYmd());
+  const [assignPickupJob, setAssignPickupJob] = useState<any | null>(null);
+  const [pickupBoys, setPickupBoys] = useState<PickupBoyOption[]>([]);
+  const [pickupBoysLoading, setPickupBoysLoading] = useState(false);
+  const [assignSaving, setAssignSaving] = useState(false);
 
   const fetchDashboardData = useCallback(async () => {
     const workshopId = workshopIdRef.current;
@@ -70,11 +78,14 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         supabase
           .from('users_login')
           .select('id, role:role_id(role_code)')
-          .eq('workshop_id', workshopId),
+          .eq('workshop_id', workshopId)
+          .eq('is_active', true),
         supabase
           .from('service_leads')
           .select(
-            'id, lead_number, customer_name, vehicle_number, status, assigned_mechanic_id, assigned_pickup_boy_id, qc_status, pickup_status, pickup_required, created_at',
+            `id, lead_number, customer_name, vehicle_number, status, assigned_mechanic_id, assigned_pickup_boy_id,
+             qc_status, pickup_status, pickup_required, mechanic_completed_at, created_at, updated_at,
+             mechanic:assigned_mechanic_id(full_name)`,
           )
           .eq('workshop_id', workshopId)
           .is('deleted_at', null)
@@ -105,19 +116,46 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
           (job: any) => job.service_leads?.workshop_id === workshopId && !job.service_leads?.deleted_at,
         ) || [];
 
-      const activeJobsList = workshopJobs.filter((job: any) =>
-        ['ASSIGNED', 'IN_PROGRESS', 'HOLD'].includes(job.mechanic_status),
-      );
+      const activeFromLeads = leadsData.filter((lead: any) => {
+        if (!lead.assigned_mechanic_id) return false;
+        const status = String(lead.status || '').toUpperCase();
+        return !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED', 'COMPLETED', 'DELIVERED'].includes(
+          status,
+        );
+      });
+
+      const activeJobsList = activeFromLeads.map((lead: any) => {
+              const status = String(lead.status || '').toUpperCase();
+              let mechanicStatus = 'ASSIGNED';
+              if (status === 'IN_PROGRESS') mechanicStatus = 'IN_PROGRESS';
+              return {
+                id: lead.id,
+                mechanic_status: mechanicStatus,
+                assigned_at: lead.updated_at || lead.created_at,
+                service_leads: {
+                  id: lead.id,
+                  lead_number: lead.lead_number,
+                  customer_name: lead.customer_name,
+                  vehicle_number: lead.vehicle_number,
+                  created_at: lead.created_at,
+                },
+                mechanic: { full_name: lead.mechanic?.full_name },
+              };
+            });
 
       const pickupWaitingList = leadsData.filter((lead: any) => isWaitingPickupAssign(lead));
+      const pickupInProgressList = leadsData.filter((lead: any) => isPickupInProgress(lead));
       const mechanicWaitingList = leadsData.filter(
         (lead: any) =>
           !lead.assigned_mechanic_id &&
           isReadyForMechanicAssign(lead) &&
-          ['ACCEPTED', 'VEHICLE_DROPPED_AT_WORKSHOP'].includes(lead.status),
+          !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(
+            String(lead.status || '').toUpperCase(),
+          ),
       );
       const unassignedJobsList = [
         ...pickupWaitingList.map((lead: any) => ({ ...lead, assignKind: 'pickup' as const })),
+        ...pickupInProgressList.map((lead: any) => ({ ...lead, assignKind: 'pickup_track' as const })),
         ...mechanicWaitingList.map((lead: any) => ({ ...lead, assignKind: 'mechanic' as const })),
       ];
 
@@ -125,15 +163,10 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'].includes(lead.status),
       ).length;
 
-      const pendingQcFromLeads = leadsData.filter(
-        (lead: any) => lead.qc_status === 'PENDING',
-      ).length;
-      const pendingQcFromJobs = workshopJobs.filter(
-        (job: any) => job.mechanic_status === 'COMPLETED' && !job.qc_status,
-      ).length;
+      const pendingQc = leadsData.filter((lead: any) => isPendingQc(lead)).length;
 
       const pickupActive = leadsData.filter((lead: any) =>
-        ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE'].includes(lead.pickup_status),
+        ['ASSIGNED', 'ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT'].includes(lead.pickup_status),
       ).length;
 
       const completedInRange = workshopJobs.filter((job: any) =>
@@ -148,12 +181,12 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         totalMechanics: onlyMechanics.length,
         activeJobs: activeJobsList.length,
         completedToday: completedInRange,
-        pendingQc: Math.max(pendingQcFromLeads, pendingQcFromJobs),
+        pendingQc,
         overdueJobs,
         pendingLeads,
         extraJobs: extraRes.count || 0,
         pickupActive,
-        unassigned: unassignedJobsList.length,
+        unassigned: pickupWaitingList.length + mechanicWaitingList.length,
         pickupWaiting: pickupWaitingList.length,
         mechanicUnassigned: mechanicWaitingList.length,
       });
@@ -233,6 +266,37 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
       else navigation.navigate(screen);
     } catch {
       /* screen missing */
+    }
+  };
+
+  const openAssignPickup = async (job: any) => {
+    const wid = workshopIdRef.current;
+    if (!wid) return;
+    setAssignPickupJob(job);
+    setPickupBoysLoading(true);
+    try {
+      setPickupBoys(await fetchWorkshopPickupBoys(wid));
+    } finally {
+      setPickupBoysLoading(false);
+    }
+  };
+
+  const assignPickupFromHome = async (boy: PickupBoyOption) => {
+    if (!assignPickupJob?.id) return;
+    try {
+      setAssignSaving(true);
+      await apiFetch(`/api/workshop/leads/${assignPickupJob.id}/assign-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickup_boy_id: boy.id }),
+      });
+      setAssignPickupJob(null);
+      await fetchDashboardData();
+      Alert.alert('Assigned', `Pickup assigned to ${boy.full_name}`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to assign pickup');
+    } finally {
+      setAssignSaving(false);
     }
   };
 
@@ -373,6 +437,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
       {unassignedJobs.length > 0 ? (
         unassignedJobs.map((job) => {
           const pickup = job.assignKind === 'pickup';
+          const pickupTrack = job.assignKind === 'pickup_track';
           return (
           <View key={`${job.assignKind}-${job.id}`} style={styles.jobCard}>
             <View style={styles.jobHeader}>
@@ -380,9 +445,14 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
                 {job.customer_name || 'Customer'}
               </Text>
               <View style={styles.urgentBadge}>
-                <Text style={styles.urgentText}>{pickup ? 'PICKUP' : 'MECHANIC'}</Text>
+                <Text style={styles.urgentText}>
+                  {pickup ? 'PICKUP' : pickupTrack ? 'IN PICKUP' : 'MECHANIC'}
+                </Text>
               </View>
             </View>
+            {job.lead_number ? (
+              <Text style={styles.jobMeta} numberOfLines={1}>{job.lead_number}</Text>
+            ) : null}
             {job.vehicle_number ? (
               <Text style={styles.jobMeta} numberOfLines={1}>{job.vehicle_number}</Text>
             ) : null}
@@ -393,13 +463,15 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
               style={styles.assignButton}
               onPress={() =>
                 pickup
-                  ? go('PickupDeliveryTracking')
-                  : go('MechanicAssignment', { leadId: job.id })
+                  ? openAssignPickup(job)
+                  : pickupTrack
+                    ? go('PickupDeliveryTracking')
+                    : go('MechanicAssignment', { leadId: job.id })
               }
             >
-              <Ionicons name="person-add" size={16} color={COLORS.white} />
+              <Ionicons name={pickupTrack ? 'navigate' : 'person-add'} size={16} color={COLORS.white} />
               <Text style={styles.assignButtonText}>
-                {pickup ? 'Assign pickup' : 'Assign Mechanic'}
+                {pickup ? 'Assign pickup' : pickupTrack ? 'Track pickup' : 'Assign Mechanic'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -424,7 +496,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
             <TouchableOpacity
               key={job.id}
               style={styles.jobCard}
-              onPress={() => go('JobDetail', { jobId: job.id })}
+              onPress={() => go('JobDetail', { leadId: job.id })}
               activeOpacity={0.8}
             >
               <View style={styles.jobHeader}>
@@ -488,20 +560,31 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
   );
 
   return (
-    <WorkshopCrmShell
-      key="advisor-crm-home"
-      title="Home"
-      userName={homeName}
-      userEmail={authProfile?.email || userProfile?.email}
-      roleFallback="Workshop Advisor"
-      navigation={navigation}
-      drawerItems={ADVISOR_CRM_NAV}
-      quickItems={ADVISOR_CRM_QUICK}
-      activeTab={currentScreen}
-      onTabChange={setCurrentScreen}
-    >
-      {renderDashboard()}
-    </WorkshopCrmShell>
+    <>
+      <WorkshopCrmShell
+        key="advisor-crm-home"
+        title="Home"
+        userName={homeName}
+        userEmail={authProfile?.email || userProfile?.email}
+        roleFallback="Workshop Advisor"
+        navigation={navigation}
+        drawerItems={ADVISOR_CRM_NAV}
+        quickItems={ADVISOR_CRM_QUICK}
+        activeTab={currentScreen}
+        onTabChange={setCurrentScreen}
+      >
+        {renderDashboard()}
+      </WorkshopCrmShell>
+      <PickupAssignModal
+        visible={!!assignPickupJob}
+        leadLabel={assignPickupJob?.customer_name}
+        pickupBoys={pickupBoys}
+        loading={pickupBoysLoading}
+        saving={assignSaving}
+        onSelect={assignPickupFromHome}
+        onClose={() => setAssignPickupJob(null)}
+      />
+    </>
   );
 }
 

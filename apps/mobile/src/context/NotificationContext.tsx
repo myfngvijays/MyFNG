@@ -209,8 +209,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 'PICKUP_OBSERVATION_PENDING',
                 'PICKUP_DOCUMENTS_REQUIRED',
                 'SOS_ACTIVATED',
+                'SYSTEM_ALERT',
               ]);
-              const isPickupImpacting = Boolean(leadId) && (pickupTypes.has(type) || String(kind || '').startsWith('PICKUP_'));
+              const pickupKind = String(kind || '');
+              const isPickupImpacting =
+                Boolean(leadId) &&
+                (pickupTypes.has(type) ||
+                  pickupKind.startsWith('PICKUP_') ||
+                  pickupKind.startsWith('DROP_') ||
+                  pickupKind === 'VEHICLE_PICKED');
               if (isPickupImpacting) setPickupRefreshTick((t) => t + 1);
             } catch {
               // ignore

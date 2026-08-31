@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, FONTS } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { useNavigation } from '@react-navigation/native';
 
@@ -206,23 +207,26 @@ export default function MechanicLeadDetailScreen({ route, hideChrome = false }: 
           onPress: async () => {
             setProcessing(true);
             try {
-              const now = new Date().toISOString();
-              const { error } = await supabase
-                .from('mechanic_jobs')
-                .update({
-                  mechanic_status: 'COMPLETED',
-                  completed_at: now,
-                  updated_at: now,
-                })
-                .eq('id', job.id);
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session?.access_token) throw new Error('Not authenticated');
 
-              if (error) throw error;
+              const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${job.lead_id}/complete`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${session.access_token}`,
+                  'x-mobile-client': 'true',
+                },
+                body: JSON.stringify({ notes: 'Job completed from mobile' }),
+              });
+              const result = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(result?.error || 'Failed to complete job');
 
               Alert.alert('Success', 'Job completed successfully!');
               navigation.goBack();
-            } catch (error) {
+            } catch (error: any) {
               console.error('Error completing job:', error);
-              Alert.alert('Error', 'Failed to complete job');
+              Alert.alert('Error', error?.message || 'Failed to complete job');
             } finally {
               setProcessing(false);
             }

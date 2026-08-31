@@ -17,6 +17,7 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
+import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
 
 interface QCJob {
   id: string;
@@ -136,9 +137,14 @@ export default function QCCheckScreen({ navigation }: any) {
           assigned_mechanic_id
         `)
         .eq('workshop_id', workshopId)
-        .eq('status', 'COMPLETED')
-        .eq('qc_status', 'PENDING')
+        .or('status.eq.WORK_COMPLETED,mechanic_completed_at.not.is.null')
+        .or('qc_status.is.null,qc_status.eq.PENDING')
         .is('deleted_at', null)
+        .not('status', 'eq', 'REJECTED')
+        .not('status', 'eq', 'CANCELLED')
+        .not('status', 'eq', 'CLOSED')
+        .not('status', 'eq', 'QC_APPROVED')
+        .not('status', 'eq', 'REWORK_REQUIRED')
         .order('mechanic_completed_at', { ascending: true });
 
       if (error) {
@@ -377,40 +383,24 @@ export default function QCCheckScreen({ navigation }: any) {
 
   return (
     <View style={AC.page}>
-      <Text style={AC.sub}>{stats.pending} jobs pending QC</Text>
-
-      <View style={AC.chipWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {['PENDING', 'PASSED', 'FAILED', 'REWORK', 'ALL'].map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[AC.chip, filter === f && AC.chipOn]}
-              onPress={() => setFilter(f)}
-            >
-              <Text style={[AC.chipTxt, filter === f && AC.chipTxtOn]}>{f}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={AC.kpiRow}>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#004AAD' }]}>{stats.pending}</Text>
-          <Text style={AC.kpiLab}>Pending</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#10B981' }]}>{stats.passed}</Text>
-          <Text style={AC.kpiLab}>Passed</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#EF4444' }]}>{stats.failed}</Text>
-          <Text style={AC.kpiLab}>Failed</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#F59E0B' }]}>{stats.rework}</Text>
-          <Text style={AC.kpiLab}>Rework</Text>
-        </View>
-      </View>
+      <AdvisorFilterBar
+        subtitle={`${stats.pending} jobs pending QC`}
+        kpis={[
+          { label: 'Pending', value: stats.pending, color: '#004AAD' },
+          { label: 'Passed', value: stats.passed, color: '#10B981' },
+          { label: 'Failed', value: stats.failed, color: '#EF4444' },
+          { label: 'Rework', value: stats.rework, color: '#F59E0B' },
+        ]}
+        chips={[
+          { key: 'PENDING', label: 'PENDING' },
+          { key: 'PASSED', label: 'PASSED' },
+          { key: 'FAILED', label: 'FAILED' },
+          { key: 'REWORK', label: 'REWORK' },
+          { key: 'ALL', label: 'ALL' },
+        ]}
+        activeChip={filter}
+        onChip={setFilter}
+      />
 
       <FlatList
         data={filteredJobs}

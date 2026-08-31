@@ -10,11 +10,13 @@ import {
   ActivityIndicator,
   Image,
   BackHandler,
+  Linking,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { takeGpsStampedPhoto } from '../../../lib/gpsPhotoStamp';
 import * as Location from 'expo-location';
 import { supabase } from '../../../lib/supabase';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../../constants/theme';
+import { AC } from '../../../components/workshop/advisorCrmUi';
 import { ENV } from '../../../config/environment';
 import type { IncidentType } from '../../../../../shared/types';
 
@@ -22,9 +24,10 @@ interface Props {
   leadId: string;
   onBack: () => void;
   onSuccess: () => void;
+  hideChrome?: boolean;
 }
 
-export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Props) {
+export default function IncidentReportScreen({ leadId, onBack, onSuccess, hideChrome = false }: Props) {
   // Handle hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -43,6 +46,62 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
   const [locationAddress, setLocationAddress] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [advisorName, setAdvisorName] = useState('');
+  const [advisorPhone, setAdvisorPhone] = useState('');
+
+  useEffect(() => {
+    const loadAdvisor = async () => {
+      try {
+        const { data: lead } = await supabase
+          .from('service_leads')
+          .select('assigned_supervisor_id, workshop_id')
+          .eq('id', leadId)
+          .maybeSingle();
+
+        if (lead?.assigned_supervisor_id) {
+          const { data: advisor } = await supabase
+            .from('users_login')
+            .select('full_name, phone')
+            .eq('id', lead.assigned_supervisor_id)
+            .maybeSingle();
+          if (advisor?.phone) {
+            setAdvisorPhone(String(advisor.phone));
+            setAdvisorName(String(advisor.full_name || 'Advisor'));
+            return;
+          }
+        }
+
+        if (lead?.workshop_id) {
+          const { data: staff } = await supabase
+            .from('users_login')
+            .select('full_name, phone, role:roles!role_id(role_code)')
+            .eq('workshop_id', lead.workshop_id)
+            .eq('is_active', true);
+
+          const advisor = (staff || []).find(
+            (s: any) => s?.role?.role_code === 'WORKSHOP_SUPERVISOR' && s?.phone,
+          );
+          if (advisor) {
+            setAdvisorPhone(String(advisor.phone));
+            setAdvisorName(String(advisor.full_name || 'Advisor'));
+          }
+        }
+      } catch {
+        // best-effort
+      }
+    };
+    void loadAdvisor();
+  }, [leadId]);
+
+  const callAdvisor = () => {
+    if (!advisorPhone) {
+      Alert.alert('No number', 'Advisor contact not available.');
+      return;
+    }
+    Linking.openURL(`tel:${advisorPhone}`).catch(() =>
+      Alert.alert('Error', 'Could not start call'),
+    );
+  };
 
   const incidentTypes: { type: IncidentType; label: string; icon: string }[] = [
     { type: 'WRONG_CUSTOMER', label: 'Wrong Customer', icon: '👤' },
@@ -58,19 +117,11 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
 
   const takePhoto = async () => {
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-      setPhotos([...photos, result.assets[0].uri]);
+      const stampedUri = await takeGpsStampedPhoto();
+      if (stampedUri) setPhotos([...photos, stampedUri]);
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to take photo');
     }
-  } catch (error) {
-    Alert.alert('Error', 'Failed to take photo');
-  }
   };
 
   const removePhoto = (index: number) => {
@@ -164,15 +215,27 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Report Incident</Text>
-      </View>
+      {!hideChrome && (
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Report Incident</Text>
+        </View>
+      )}
 
-      <ScrollView style={styles.content}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {hideChrome ? (
+          <TouchableOpacity onPress={onBack} style={styles.shellBack}>
+            <Text style={styles.shellBackTxt}>← Back</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {/* Warning */}
         <View style={styles.warningCard}>
           <Text style={styles.warningIcon}>⚠️</Text>
@@ -182,7 +245,7 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
         </View>
 
         {/* Incident Type */}
-        <View style={styles.card}>
+        <View style={AC.whiteCard}>
           <Text style={styles.sectionTitle}>Select Incident Type</Text>
           <View style={styles.typeGrid}>
             {incidentTypes.map((type) => (
@@ -193,6 +256,7 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
                   incidentType === type.type && styles.typeCardSelected,
                 ]}
                 onPress={() => setIncidentType(type.type)}
+                activeOpacity={0.85}
               >
                 <Text style={styles.typeIcon}>{type.icon}</Text>
                 <Text
@@ -209,7 +273,7 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
         </View>
 
         {/* Severity */}
-        <View style={styles.card}>
+        <View style={AC.whiteCard}>
           <Text style={styles.sectionTitle}>Severity Level</Text>
           <View style={styles.severityRow}>
             {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const).map((level) => (
@@ -236,7 +300,7 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
         </View>
 
         {/* Description */}
-        <View style={styles.card}>
+        <View style={AC.whiteCard}>
           <Text style={styles.sectionTitle}>Description *</Text>
           <TextInput
             style={styles.textArea}
@@ -250,7 +314,7 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
         </View>
 
         {/* Location */}
-        <View style={styles.card}>
+        <View style={AC.whiteCard}>
           <Text style={styles.sectionTitle}>Location Address (Optional)</Text>
           <TextInput
             style={styles.input}
@@ -262,10 +326,10 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
         </View>
 
         {/* Photos */}
-        <View style={styles.card}>
+        <View style={AC.whiteCard}>
           <Text style={styles.sectionTitle}>Photos (Optional)</Text>
           <Text style={styles.helperText}>
-            Take photos of the incident for documentation
+            Camera opens with GPS stamp — location, coordinates, date & time on photo
           </Text>
 
           <View style={styles.photoGrid}>
@@ -310,13 +374,21 @@ export default function IncidentReportScreen({ leadId, onBack, onSuccess }: Prop
         <View style={styles.emergencyCard}>
           <Text style={styles.emergencyTitle}>🆘 Emergency Contact</Text>
           <Text style={styles.emergencyText}>
-            For urgent safety issues, contact:
+            For urgent safety issues, contact your service advisor:
           </Text>
-          <Text style={styles.emergencyPhone}>Admin: +91 XXXX-XXXX-XX</Text>
-          <Text style={styles.emergencyPhone}>Supervisor: +91 XXXX-XXXX-XX</Text>
+          {advisorPhone ? (
+            <TouchableOpacity onPress={callAdvisor} activeOpacity={0.85}>
+              <Text style={styles.emergencyPhone}>
+                Advisor{advisorName ? ` (${advisorName})` : ''}: {advisorPhone}
+              </Text>
+              <Text style={styles.tapCall}>Tap to call →</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.emergencyText}>Advisor number loading…</Text>
+          )}
         </View>
 
-        <View style={{ height: SPACING.xxl }} />
+        <View style={{ height: SPACING.xxl + 32 }} />
       </ScrollView>
     </View>
   );
@@ -361,17 +433,30 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: SPACING.md,
+  },
+  scrollContent: {
+    paddingBottom: SPACING.xxl + 24,
+  },
+  shellBack: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  shellBackTxt: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.primary,
+    fontWeight: '800',
   },
   warningCard: {
-    backgroundColor: COLORS.danger + '20',
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.danger + '15',
+    borderRadius: 14,
     padding: SPACING.md,
-    marginBottom: SPACING.md,
+    marginHorizontal: 16,
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     borderLeftWidth: 4,
     borderLeftColor: COLORS.danger,
+    ...SHADOWS.small,
   },
   warningIcon: {
     fontSize: 24,
@@ -403,28 +488,34 @@ const styles = StyleSheet.create({
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.sm,
+    justifyContent: 'space-between',
+    rowGap: SPACING.sm,
   },
   typeCard: {
-    width: '48%',
-    padding: SPACING.md,
+    width: '31.5%',
+    minHeight: 92,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: 4,
     borderWidth: 2,
-    borderColor: COLORS.gray[300],
-    borderRadius: BORDER_RADIUS.md,
+    borderColor: COLORS.gray[200],
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
   },
   typeCardSelected: {
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primary + '10',
   },
   typeIcon: {
-    fontSize: 32,
-    marginBottom: SPACING.xs,
+    fontSize: 26,
+    marginBottom: 4,
   },
   typeLabel: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: 10,
     color: COLORS.bodyText,
     textAlign: 'center',
+    fontWeight: '700',
   },
   typeLabelSelected: {
     color: COLORS.primary,
@@ -432,11 +523,13 @@ const styles = StyleSheet.create({
   },
   severityRow: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    gap: 6,
   },
   severityButton: {
     flex: 1,
-    padding: SPACING.sm,
+    minWidth: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
     borderWidth: 1,
     borderColor: COLORS.gray[300],
     borderRadius: BORDER_RADIUS.sm,
@@ -446,9 +539,9 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   severityText: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: 10,
     color: COLORS.bodyText,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   severityTextSelected: {
     color: COLORS.white,
@@ -527,11 +620,13 @@ const styles = StyleSheet.create({
     color: COLORS.gray[500],
   },
   submitButton: {
+    marginHorizontal: 16,
     padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: 12,
     backgroundColor: COLORS.danger,
     alignItems: 'center',
     marginBottom: SPACING.md,
+    ...SHADOWS.small,
   },
   submitButtonDisabled: {
     backgroundColor: COLORS.gray[300],
@@ -542,12 +637,14 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   emergencyCard: {
-    backgroundColor: COLORS.danger + '10',
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 14,
     padding: SPACING.md,
+    marginHorizontal: 16,
     marginBottom: SPACING.md,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.danger,
+    ...SHADOWS.small,
   },
   emergencyTitle: {
     fontSize: FONT_SIZES.md,
@@ -561,10 +658,16 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   emergencyPhone: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     color: COLORS.danger,
-    fontWeight: '600',
-    marginVertical: 2,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  tapCall: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.primary,
+    fontWeight: '700',
+    marginTop: 4,
   },
 });
 

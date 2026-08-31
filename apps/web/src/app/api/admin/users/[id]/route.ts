@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
+import { deleteStaffUserById } from '@/lib/admin/deleteStaffUser';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -142,5 +143,53 @@ export async function PATCH(
   } catch (error: any) {
     console.error('[admin/users][PATCH]', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}
+
+/** DELETE: permanently remove user (users_login + auth). SUPER_ADMIN only. */
+export async function DELETE(
+  request: NextRequest,
+  { params: paramsPromise }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const params = await paramsPromise;
+    const gate = await requireSuperAdmin(request);
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    const { admin, error: adminErr } = getAdminClient();
+    if (!admin) return NextResponse.json({ error: adminErr }, { status: 500 });
+
+    const targetUserId = String(params?.id || '').trim();
+    if (!targetUserId) return NextResponse.json({ error: 'Missing user id' }, { status: 400 });
+    if (targetUserId === gate.userId) {
+      return NextResponse.json({ error: 'You cannot delete your own account' }, { status: 400 });
+    }
+
+    const { data: existing, error: existingErr } = await admin
+      .from('users_login')
+      .select('id, email, full_name, role:roles!role_id(role_code)')
+      .eq('id', targetUserId)
+      .maybeSingle();
+
+    if (existingErr || !existing) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const roleCode = String((existing.role as any)?.role_code || '').toUpperCase();
+    if (roleCode === 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Super Admin accounts cannot be deleted here' }, { status: 400 });
+    }
+
+    await deleteStaffUserById(admin, targetUserId);
+
+    return NextResponse.json({
+      ok: true,
+      deletedId: targetUserId,
+      email: existing.email,
+      full_name: existing.full_name,
+    });
+  } catch (error: any) {
+    console.error('[admin/users][DELETE]', error);
+    return NextResponse.json({ error: error.message || 'Failed to delete user' }, { status: 500 });
   }
 }

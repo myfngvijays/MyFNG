@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
-import { AC } from '../../../components/workshop/advisorCrmUi';
+import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
 
 interface Analytics {
   totalJobs: number;
@@ -147,34 +147,32 @@ export default function SupervisorAnalyticsScreen() {
 
       console.log('📊 Found', jobs?.length || 0, 'jobs in period');
 
-      // ✅ FIX: Determine which jobs to use first
       let jobsToUse = jobs || [];
-      
-      if (!jobs || jobs.length === 0) {
-        console.log('⚠️ No jobs found in this period - trying ALL jobs...');
-        
-        // Fetch ALL jobs if no jobs in period
-        const { data: allJobs, error: allJobsError } = await supabase
-          .from('mechanic_jobs')
-          .select(`
-            *,
-            service_leads!inner (workshop_id)
-          `)
-          .eq('service_leads.workshop_id', workshopId);
-        
-        if (allJobsError) {
-          console.error('❌ Error fetching all jobs:', allJobsError);
-        }
-        
-        console.log('📊 Total jobs (all time):', allJobs?.length || 0);
-        
-        if (!allJobs || allJobs.length === 0) {
-          setLoading(false);
-          setRefreshing(false);
-          return;
-        }
-        
-        jobsToUse = allJobs;
+
+      // Fallback: workshop activity from service_leads when mechanic_jobs RLS/rows missing
+      if (!jobsToUse.length) {
+        const { data: leadRows } = await supabase
+          .from('service_leads')
+          .select('id, status, assigned_mechanic_id, created_at, updated_at, sla_expires_at, sla_deadline')
+          .eq('workshop_id', workshopId)
+          .is('deleted_at', null)
+          .gte('created_at', startDate.toISOString());
+
+        const openLeads = (leadRows || []).filter((l) =>
+          !['REJECTED', 'CANCELLED', 'CLOSED'].includes(String(l.status || '').toUpperCase()),
+        );
+        jobsToUse = openLeads.map((l) => ({
+          lead_id: l.id,
+          mechanic_status:
+            l.status === 'IN_PROGRESS'
+              ? 'IN_PROGRESS'
+              : l.assigned_mechanic_id
+                ? 'ASSIGNED'
+                : 'UNASSIGNED',
+          assigned_at: l.created_at,
+          sla_expires_at: l.sla_expires_at || l.sla_deadline,
+          completed_at: ['COMPLETED', 'CLOSED'].includes(String(l.status || '')) ? l.updated_at : null,
+        })) as any[];
       }
 
       // ✅ FIX: Fetch QC checks separately using lead_id from jobsToUse
@@ -409,26 +407,27 @@ export default function SupervisorAnalyticsScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={AC.sub}>Team performance overview</Text>
-
-      <View style={styles.periodContainer}>
-        {(['TODAY', 'WEEK', 'MONTH'] as const).map((p) => (
-          <TouchableOpacity
-            key={p}
-            style={[styles.periodButton, period === p && styles.periodButtonActive]}
-            onPress={() => setPeriod(p)}
-          >
-            <Text
-              style={[
-                styles.periodButtonText,
-                period === p && styles.periodButtonTextActive,
-              ]}
-            >
-              {p}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.hero}>
+        <Text style={styles.heroTitle}>Workshop Analytics</Text>
+        <Text style={styles.heroSub}>Team performance · quality · SLA</Text>
       </View>
+
+      <AdvisorFilterBar
+        subtitle={`${analytics.totalJobs} jobs in ${period.toLowerCase()}`}
+        kpis={[
+          { label: 'Total', value: analytics.totalJobs, color: '#004AAD' },
+          { label: 'Completed', value: analytics.completedJobs, color: '#10B981' },
+          { label: 'Active', value: analytics.activeJobs, color: '#F59E0B' },
+          { label: 'Overdue', value: analytics.overdueJobs, color: '#EF4444' },
+        ]}
+        chips={[
+          { key: 'TODAY', label: 'TODAY' },
+          { key: 'WEEK', label: 'WEEK' },
+          { key: 'MONTH', label: 'MONTH' },
+        ]}
+        activeChip={period}
+        onChip={(p) => setPeriod(p as 'TODAY' | 'WEEK' | 'MONTH')}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -436,25 +435,14 @@ export default function SupervisorAnalyticsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Key Metrics */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Key Metrics</Text>
-          <View style={styles.metricsGrid}>
-            {renderMetricCard('Total Jobs', analytics.totalJobs, 'jobs', '#004AAD')}
-            {renderMetricCard('Completed', analytics.completedJobs, 'jobs', '#10b981')}
-            {renderMetricCard('Active', analytics.activeJobs, 'jobs', '#f59e0b')}
-            {renderMetricCard('Overdue', analytics.overdueJobs, 'jobs', '#ef4444')}
-          </View>
-        </View>
-
         {/* Performance Metrics */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Performance</Text>
           <View style={styles.metricsGrid}>
             {renderMetricCard('Avg Completion', analytics.avgCompletionTime, 'hours', '#004AAD')}
-            {renderMetricCard('QC Pass Rate', analytics.qcPassRate, '', '#10b981', true)}
+            {renderMetricCard('QC Pass Rate', analytics.qcPassRate, '', '#10B981', true)}
             {renderMetricCard('Team Efficiency', analytics.teamEfficiency, '', '#004AAD', true)}
-            {renderMetricCard('SLA Compliance', analytics.slaCompliance, '', '#10b981', true)}
+            {renderMetricCard('SLA Compliance', analytics.slaCompliance, '', '#10B981', true)}
           </View>
         </View>
 
@@ -507,7 +495,12 @@ export default function SupervisorAnalyticsScreen() {
         {/* Mechanic Performance */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Mechanic Performance</Text>
-          {mechanicPerformance.map((mech) => (
+          {mechanicPerformance.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyCardText}>No mechanic activity in this period yet.</Text>
+            </View>
+          ) : (
+            mechanicPerformance.map((mech) => (
             <View key={mech.id} style={styles.mechanicCard}>
               <View style={styles.mechanicHeader}>
                 <View style={styles.mechanicAvatar}>
@@ -543,7 +536,8 @@ export default function SupervisorAnalyticsScreen() {
                 </View>
               </View>
             </View>
-          ))}
+          ))
+          )}
         </View>
 
         {/* Quality Metrics */}
@@ -602,6 +596,38 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F0F7FF',
   },
+  hero: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 4,
+    backgroundColor: '#004AAD',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  heroSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.82)',
+    marginTop: 4,
+  },
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  emptyCardText: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+  },
   periodContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -652,11 +678,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 14,
     borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#023D95',
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,74,173,0.06)',
   },
   metricLabel: {
     fontSize: 13,

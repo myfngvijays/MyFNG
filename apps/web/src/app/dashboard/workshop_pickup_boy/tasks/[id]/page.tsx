@@ -154,48 +154,20 @@ export default function PickupTaskDetailPage() {
 
   async function handleStartPickup() {
     setProcessing(true);
-    const supabase = createClient();
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Fixed OTP for testing (bypass mode)
-      const otp = '123456';
-
-      // Update lead status - don't change status if already ON_THE_WAY
-      const updateData: any = {
-          pickup_otp: otp,
-          updated_at: new Date().toISOString()
-      };
-
-      // Only update status if not already ON_THE_WAY
-      if (task.status !== 'ON_THE_WAY') {
-        updateData.status = 'ACCEPTED';
+      const response = await fetch(`/api/pickup/${taskId}/navigate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.details || 'Failed to start pickup');
       }
 
-      const { error: updateError } = await supabase
-        .from('service_leads')
-        .update(updateData)
-        .eq('id', taskId);
-
-      if (updateError) throw updateError;
-
-      // Create lead event (don't fail request if this fails)
-      try {
-        await supabase.from('lead_events').insert({
-          lead_id: taskId,
-          event_type: 'PICKUP_STARTED',
-          event_description: `Pickup boy started pickup process. OTP sent to customer.`,
-          created_by: user.id,
-        });
-      } catch (eventError) {
-        // Log but don't fail the request
-        console.error('Error creating lead event (non-critical):', eventError);
-      }
-
-      toast.success(`✅ Pickup started! OTP: ${otp} (testing mode)`);
-      console.log('🔐 Testing OTP:', otp);
+      const otp = data.otp || '123456';
+      toast.success(`✅ Pickup started! OTP: ${otp}`);
       setShowStartModal(false);
       setShowOTPModal(true);
       fetchTaskDetails();

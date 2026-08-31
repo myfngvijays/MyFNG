@@ -242,7 +242,7 @@ export async function POST(
       await supabase.from('lead_events').insert({
         lead_id: leadId,
         event_type: 'PICKUP_STARTED',
-        event_description: `Pickup boy started navigation. OTP generated: ${otp} (testing mode)`,
+        event_description: 'Pickup partner is on the way to your location.',
         created_by: userProfile.id,
       });
     } catch (eventError) {

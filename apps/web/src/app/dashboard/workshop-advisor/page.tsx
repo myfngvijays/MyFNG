@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
-import { isReadyForMechanicAssign, isWaitingPickupAssign } from '@/lib/workshop/jobFlow';
+import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc } from '@/lib/workshop/jobFlow';
 
 type JobRow = {
   id: string;
@@ -44,8 +44,9 @@ export default function WorkshopAdvisorDashboard() {
     pickup_active: 0,
   });
   const [needsAssign, setNeedsAssign] = useState<
-    { id: string; customer_name?: string; vehicle_number?: string; kind: 'pickup' | 'mechanic' }[]
+    { id: string; customer_name?: string; vehicle_number?: string; lead_number?: string; kind: 'pickup' | 'pickup_track' | 'mechanic' }[]
   >([]);
+  const [recentJobs, setRecentJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
   const [customStart, setCustomStart] = useState(istYmd());
@@ -83,7 +84,8 @@ export default function WorkshopAdvisorDashboard() {
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
-          .eq('qc_status', 'PENDING')
+          .eq('status', 'WORK_COMPLETED')
+          .or('qc_status.is.null,qc_status.eq.PENDING')
           .is('deleted_at', null),
         supabase
           .from('service_leads')
@@ -94,16 +96,17 @@ export default function WorkshopAdvisorDashboard() {
         supabase
           .from('service_leads')
           .select(
-            'id, customer_name, vehicle_number, pickup_required, pickup_status, status, assigned_mechanic_id, assigned_pickup_boy_id',
+            `id, customer_name, vehicle_number, lead_number, pickup_required, pickup_status, status,
+             assigned_mechanic_id, assigned_pickup_boy_id, mechanic_completed_at, qc_status, created_at, updated_at,
+             mechanic:assigned_mechanic_id(full_name)`,
           )
           .eq('workshop_id', workshopId)
-          .in('status', ['ACCEPTED', 'VEHICLE_DROPPED_AT_WORKSHOP'])
           .is('deleted_at', null),
         supabase
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
-          .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE'])
+          .in('pickup_status', ['ASSIGNED', 'ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT'])
           .is('deleted_at', null),
         supabase
           .from('mechanic_jobs')
@@ -123,31 +126,71 @@ export default function WorkshopAdvisorDashboard() {
         (job: any) => job.mechanic?.workshop_id === workshopId && !job.service_leads?.deleted_at,
       ) as JobRow[];
 
-      const openLeads = (unassignedRes.data || []) as any[];
+      const openLeads = ((unassignedRes.data || []) as any[]).filter(
+        (lead) => !['REJECTED', 'CANCELLED', 'CLOSED'].includes(String(lead.status || '').toUpperCase()),
+      );
       const pickupWaiting = openLeads.filter((lead) => isWaitingPickupAssign(lead));
+      const pickupInProgress = openLeads.filter((lead) => isPickupInProgress(lead));
       const mechanicWaiting = openLeads.filter(
-        (lead) => !lead.assigned_mechanic_id && isReadyForMechanicAssign(lead),
+        (lead) =>
+          !lead.assigned_mechanic_id &&
+          isReadyForMechanicAssign(lead) &&
+          !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(
+            String(lead.status || '').toUpperCase(),
+          ),
       );
       const assignQueue = [
         ...pickupWaiting.map((lead) => ({
           id: lead.id,
           customer_name: lead.customer_name,
           vehicle_number: lead.vehicle_number,
+          lead_number: lead.lead_number,
           kind: 'pickup' as const,
+        })),
+        ...pickupInProgress.map((lead) => ({
+          id: lead.id,
+          customer_name: lead.customer_name,
+          vehicle_number: lead.vehicle_number,
+          lead_number: lead.lead_number,
+          kind: 'pickup_track' as const,
         })),
         ...mechanicWaiting.map((lead) => ({
           id: lead.id,
           customer_name: lead.customer_name,
           vehicle_number: lead.vehicle_number,
+          lead_number: lead.lead_number,
           kind: 'mechanic' as const,
         })),
       ];
 
-      setRecentJobs(workshopJobs.slice(0, 8));
+      const activeFromLeads = openLeads
+        .filter((lead) => {
+          if (!lead.assigned_mechanic_id) return false;
+          const status = String(lead.status || '').toUpperCase();
+          return !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED', 'COMPLETED', 'DELIVERED'].includes(
+            status,
+          );
+        })
+        .map((lead) => {
+          const status = String(lead.status || '').toUpperCase();
+          return {
+            id: lead.id,
+            mechanic_status: status === 'IN_PROGRESS' ? 'IN_PROGRESS' : 'ASSIGNED',
+            service_leads: {
+              lead_number: lead.lead_number,
+              customer_name: lead.customer_name,
+            },
+            mechanic: { full_name: lead.mechanic?.full_name },
+          } as JobRow;
+        });
+
+      const displayJobs = workshopJobs.length > 0 ? workshopJobs : activeFromLeads;
+
+      setRecentJobs(displayJobs.slice(0, 8));
       setNeedsAssign(assignQueue.slice(0, 6));
       setStats({
         total_mechanics: mechanics.length,
-        active_jobs: workshopJobs.length,
+        active_jobs: displayJobs.length,
         completed_today: ((doneRes.data || []) as any[]).filter(
           (job) =>
             job.mechanic?.workshop_id === workshopId &&
@@ -158,7 +201,7 @@ export default function WorkshopAdvisorDashboard() {
           (job) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
         ).length,
         pending_leads: pendingRes.count || 0,
-        unassigned: assignQueue.length,
+        unassigned: pickupWaiting.length + mechanicWaiting.length,
         pickup_active: pickupRes.count || 0,
       });
       setLoading(false);
@@ -233,13 +276,14 @@ export default function WorkshopAdvisorDashboard() {
             ) : null}
             {needsAssign.map((job) => {
               const pickup = job.kind === 'pickup';
+              const pickupTrack = job.kind === 'pickup_track';
               return (
                 <button
                   key={`${job.kind}-${job.id}`}
                   type="button"
                   onClick={() =>
                     router.push(
-                      pickup
+                      pickup || pickupTrack
                         ? '/dashboard/workshop-advisor/pickup-delivery'
                         : '/dashboard/workshop-advisor/job-assignments',
                     )
@@ -250,10 +294,12 @@ export default function WorkshopAdvisorDashboard() {
                     <p className="truncate text-sm font-semibold text-[#023D95]">
                       {job.customer_name || 'Customer'}
                     </p>
-                    <p className="truncate text-xs text-slate-500">{job.vehicle_number || '—'}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {[job.lead_number, job.vehicle_number].filter(Boolean).join(' · ') || '—'}
+                    </p>
                   </div>
                   <span className="shrink-0 rounded-full bg-[#EA580C] px-2 py-0.5 text-[10px] font-bold text-white">
-                    {pickup ? 'PICKUP' : 'MECHANIC'}
+                    {pickup ? 'PICKUP' : pickupTrack ? 'IN PICKUP' : 'MECHANIC'}
                   </span>
                 </button>
               );

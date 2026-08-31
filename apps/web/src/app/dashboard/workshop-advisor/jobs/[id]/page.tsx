@@ -1192,7 +1192,8 @@ export default function SupervisorJobDetailPage() {
           setParts(partsData || []);
         }
 
-        // Fetch mechanic checklist items
+        // Fetch mechanic checklist items (General Service points etc.)
+        let checklistItems: any[] = [];
         const { data: checklistData, error: checklistError } = await supabase
           .from('service_checklists')
           .select('checklist_items')
@@ -1205,14 +1206,44 @@ export default function SupervisorJobDetailPage() {
           if (typeof items === 'string') {
             try {
               items = JSON.parse(items);
-            } catch (e) {
+            } catch {
               items = [];
             }
           }
-          setMechanicChecklist(Array.isArray(items) ? items : []);
-        } else {
-          setMechanicChecklist([]);
+          checklistItems = Array.isArray(items) ? items : [];
         }
+
+        if (checklistItems.length === 0 && mechanicJob.mechanic_id) {
+          try {
+            const res = await fetch(`/api/leads/${jobId}/ensure-checklist`, { method: 'POST' });
+            const json = await res.json().catch(() => ({}));
+            if (res.ok && Array.isArray(json.items) && json.items.length > 0) {
+              checklistItems = json.items;
+            } else {
+              const { data: refreshed } = await supabase
+                .from('service_checklists')
+                .select('checklist_items')
+                .eq('lead_id', jobId)
+                .eq('mechanic_id', mechanicJob.mechanic_id)
+                .maybeSingle();
+              if (refreshed?.checklist_items) {
+                let items = refreshed.checklist_items;
+                if (typeof items === 'string') {
+                  try {
+                    items = JSON.parse(items);
+                  } catch {
+                    items = [];
+                  }
+                }
+                checklistItems = Array.isArray(items) ? items : [];
+              }
+            }
+          } catch (e) {
+            console.warn('ensure-checklist failed:', e);
+          }
+        }
+
+        setMechanicChecklist(checklistItems);
       }
 
       // Fetch QC checks data for advisor checklist and proof images

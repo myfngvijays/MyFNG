@@ -13,17 +13,65 @@ import {
   BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../../constants/theme';
+import { AC } from '../../../components/workshop/advisorCrmUi';
 import type { PickupTracking, ServiceLead } from '../../../../../shared/types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ENV } from '../../../config/environment';
+import { openInAppPickupNavigation, resolvePickupNavFromLead } from '../../../lib/pickupNavigation';
 import * as Location from 'expo-location';
 import { useNotifications } from '../../../context/NotificationContext';
+
+function isDummyPickupLead(lead: any): boolean {
+  const num = String(lead?.lead_number || '').toUpperCase();
+  return num.startsWith('L-DUM') || lead?.created_from === 'DUMMY_SEED';
+}
+
+function getPickupFlowState(lead: any, tracking: any, pickupPhotoCount: number) {
+  const ld = lead || {};
+  const tr = tracking || {};
+  const dummy = isDummyPickupLead(ld);
+  const trackingStatus = String(tr.pickup_status || '').toUpperCase();
+  const leadPickupStatus = String(ld.pickup_status || '').toUpperCase();
+  const leadStatus = String(ld.status || '').toUpperCase();
+  const pickupStatus = trackingStatus || leadPickupStatus || leadStatus;
+
+  const WORKSHOP_STATUSES = ['VEHICLE_DROPPED_AT_WORKSHOP', 'ARRIVED_AT_WORKSHOP', 'DROPPED'];
+  const otpVerified =
+    !!(tr.pickup_otp_verified_at || ld.pickup_otp_verified_at) ||
+    ['OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', ...WORKSHOP_STATUSES].includes(pickupStatus) ||
+    WORKSHOP_STATUSES.includes(leadStatus);
+  const vehiclePicked =
+    !!tr.pickup_picked_time ||
+    ['VEHICLE_IN_TRANSIT', 'PICKED_UP', 'PICKED', ...WORKSHOP_STATUSES].includes(pickupStatus) ||
+    ['VEHICLE_IN_TRANSIT', ...WORKSHOP_STATUSES].includes(leadStatus);
+  const atWorkshop =
+    !!tr.pickup_arrival_time ||
+    !!ld.pickup_arrival_time ||
+    WORKSHOP_STATUSES.includes(trackingStatus) ||
+    WORKSHOP_STATUSES.includes(leadPickupStatus) ||
+    WORKSHOP_STATUSES.includes(leadStatus);
+  const started =
+    ['ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT', 'PICKED_UP', 'PICKED', ...WORKSHOP_STATUSES].includes(
+      pickupStatus,
+    ) || !!tr.pickup_start_time;
+  return {
+    pickupStatus,
+    otpVerified,
+    vehiclePicked,
+    atWorkshop,
+    started,
+    photosOk: dummy || pickupPhotoCount >= 4,
+    isDummy: dummy,
+  };
+}
 
 export default function PickupJobDetailScreen(props: any) {
   const hideChrome = !!(props as any)?.hideChrome;
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { pickupRefreshTick } = useNotifications();
   const route = (props as any)?.route;
   const leadId: string = (props as any)?.leadId || route?.params?.taskId || route?.params?.leadId;
@@ -101,6 +149,15 @@ export default function PickupJobDetailScreen(props: any) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupRefreshTick]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (leadId) {
+        void fetchLeadDetails();
+        void fetchPhotoCount();
+      }
+    }, [leadId]),
+  );
 
   // Foreground GPS pings for route deviation/delay detection (Pickup/Workshop/Drop legs)
   useEffect(() => {
@@ -232,17 +289,19 @@ export default function PickupJobDetailScreen(props: any) {
     }
   };
 
+  const isDeliveryLead = (ld: any) =>
+    ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(String(ld?.status || '').toUpperCase());
+
   const handleNavigateToLocation = () => {
-    if (tracking?.pickup_latitude && tracking?.pickup_longitude) {
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${tracking.pickup_latitude},${tracking.pickup_longitude}`;
-      Linking.openURL(url);
-    } else if (tracking?.pickup_address) {
-      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tracking.pickup_address)}`;
-      Linking.openURL(url);
+    const deliveryMode = isDeliveryLead(lead);
+    const ok = openInAppPickupNavigation(
+      navigation,
+      resolvePickupNavFromLead(lead, tracking, deliveryMode),
+    );
+    if (!ok) {
+      Alert.alert('Address missing', 'No location available for navigation.');
     }
   };
-
-  const isDeliveryLead = (ld: any) => ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(String(ld?.status || '').toUpperCase());
 
   const getAccessToken = async (): Promise<string> => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -259,7 +318,7 @@ export default function PickupJobDetailScreen(props: any) {
       body: JSON.stringify(body || {}),
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.error || 'Request failed');
+    if (!res.ok) throw new Error(json?.details || json?.error || 'Request failed');
     return json;
   };
 
@@ -357,6 +416,7 @@ export default function PickupJobDetailScreen(props: any) {
   const getStatusLabel = (status: string) => {
     const labelMap: Record<string, string> = {
       NOT_ASSIGNED: 'Not Assigned',
+      ON_THE_WAY: 'On the way',
       PENDING: 'Pickup Pending',
       OTP_VERIFIED: 'OTP Verified',
       PICKED: 'Vehicle Picked',
@@ -368,12 +428,58 @@ export default function PickupJobDetailScreen(props: any) {
     return labelMap[status] || status;
   };
 
+  const renderFlowSteps = (flow: ReturnType<typeof getPickupFlowState>, onOtpPress?: () => void) => {
+    const steps = [
+      { key: 'nav', label: 'Navigate', done: flow.started },
+      { key: 'otp', label: 'OTP', done: flow.otpVerified, onPress: onOtpPress },
+      { key: 'photos', label: 'Photos', done: flow.photosOk },
+      { key: 'workshop', label: 'Workshop', done: flow.atWorkshop },
+    ];
+    return (
+      <View style={styles.stepRow}>
+        {steps.map((s, i) => {
+          const inner = (
+            <>
+              <View style={[styles.stepDot, s.done && styles.stepDotDone]}>
+                <Text style={[styles.stepDotTxt, s.done && styles.stepDotTxtDone]}>
+                  {s.done ? '✓' : i + 1}
+                </Text>
+              </View>
+              <Text style={[styles.stepLab, s.done && styles.stepLabDone]}>{s.label}</Text>
+            </>
+          );
+          if (s.onPress) {
+            return (
+              <TouchableOpacity
+                key={s.key}
+                style={styles.stepItem}
+                onPress={s.onPress}
+                activeOpacity={0.75}
+              >
+                {inner}
+              </TouchableOpacity>
+            );
+          }
+          return (
+            <View key={s.key} style={styles.stepItem}>
+              {inner}
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
   const renderActionButton = () => {
     if (!lead) return null;
 
     const isDelivery = isDeliveryLead(lead);
-    const otpVerified = isDelivery ? !!(tracking as any)?.drop_otp_verified_at : !!(tracking as any)?.pickup_otp_verified_at;
-    const minPhotosOk = isDelivery ? dropPhotoCount >= 3 : pickupPhotoCount >= 4;
+    const ld = lead as any;
+    const tr = tracking as any;
+    const dropOtpVerified = !!(tr?.drop_otp_verified_at || ld?.drop_otp_verified_at);
+    const flow = getPickupFlowState(ld, tr, pickupPhotoCount);
+    const otpVerified = isDelivery ? dropOtpVerified : flow.otpVerified;
+    const minPhotosOk = isDelivery ? dropPhotoCount >= 3 : flow.photosOk;
 
     // Delivery flow (READY_FOR_DELIVERY / COD_PENDING)
     if (isDelivery) {
@@ -427,65 +533,93 @@ export default function PickupJobDetailScreen(props: any) {
       );
     }
 
-    // Pickup flow
+    const goOtp = () => {
+      if (onVerifyOTP) {
+        onVerifyOTP();
+        return;
+      }
+      (navigation as any).navigate?.('PickupOtp', { leadId, otpType: 'PICKUP' });
+    };
+
+    // Pickup flow — Navigate → OTP → Photos → Workshop
     return (
-      <>
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-          onPress={onStartPickup || handleStartNavigateFlow}
-        >
-          <Text style={styles.actionButtonText}>🚗 Start / Navigate</Text>
-        </TouchableOpacity>
+      <View style={AC.whiteCard}>
+        <Text style={styles.nextTitle}>Next Steps</Text>
+        {renderFlowSteps(flow, goOtp)}
 
         {!otpVerified && (
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: COLORS.info }]}
-            onPress={
-              onVerifyOTP || (() => (navigation as any).navigate?.('PickupOtp', { leadId, otpType: 'PICKUP' }))
-            }
-          >
-            <Text style={styles.actionButtonText}>🔐 Verify Pickup OTP</Text>
-          </TouchableOpacity>
-        )}
-
-        {otpVerified && (
           <>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.secondary }]}
+              style={[styles.flowBtn, { backgroundColor: COLORS.primary }]}
+              onPress={onStartPickup || handleStartNavigateFlow}
+            >
+              <Text style={styles.flowBtnTxt}>Start Pickup / Navigate</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.flowBtn, { backgroundColor: '#0284C7' }]}
+              onPress={goOtp}
+            >
+              <Text style={styles.flowBtnTxt}>Verify Pickup OTP</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {otpVerified && !flow.vehiclePicked && (
+          <>
+            <TouchableOpacity
+              style={[styles.flowBtn, { backgroundColor: '#EA580C' }]}
               onPress={
                 onUploadPhotos ||
                 (() => (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'PICKUP' }))
               }
             >
-              <Text style={styles.actionButtonText}>📸 Upload Pickup Photos ({pickupPhotoCount}/4 min)</Text>
+              <Text style={styles.flowBtnTxt}>
+                Upload Vehicle Photos ({pickupPhotoCount}/4 min)
+              </Text>
             </TouchableOpacity>
-            {minPhotosOk && (
+            {minPhotosOk ? (
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: COLORS.success }]}
+                style={[styles.flowBtn, { backgroundColor: COLORS.success }]}
                 onPress={onMarkPicked || handleMarkPicked}
               >
-                <Text style={styles.actionButtonText}>✅ Mark Vehicle Picked</Text>
+                <Text style={styles.flowBtnTxt}>Mark Vehicle Picked</Text>
               </TouchableOpacity>
+            ) : (
+              <Text style={styles.flowHint}>
+                {flow.isDummy
+                  ? 'Dummy lead — photos optional; tap Mark Vehicle Picked when ready'
+                  : 'Minimum 4 photos uploaded (server) — then mark picked'}
+              </Text>
             )}
           </>
         )}
 
-        {String((lead as any)?.status || '').toUpperCase() === 'VEHICLE_IN_TRANSIT' && (
+        {otpVerified && flow.vehiclePicked && !flow.atWorkshop && (
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
+            style={[styles.flowBtn, { backgroundColor: COLORS.primary }]}
             onPress={handleArrivedAtWorkshop}
           >
-            <Text style={styles.actionButtonText}>🏁 Mark Arrived at Workshop</Text>
+            <Text style={styles.flowBtnTxt}>🏁 Mark Arrived at Workshop</Text>
           </TouchableOpacity>
         )}
-      </>
+
+        {flow.atWorkshop && (
+          <View style={styles.doneBanner}>
+            <Text style={styles.doneBannerTxt}>✓ Vehicle dropped at workshop</Text>
+          </View>
+        )}
+      </View>
     );
   };
 
   if (!leadId || !lead) {
     return (
       <View style={styles.container}>
-        {hideChrome ? null : (
+        {hideChrome ? (
+          <TouchableOpacity onPress={onBack} style={styles.shellBack}>
+            <Text style={styles.shellBackTxt}>← Back</Text>
+          </TouchableOpacity>
+        ) : (
           <View style={styles.header}>
             <TouchableOpacity onPress={onBack} style={styles.backButton}>
               <Text style={styles.backButtonText}>← Back</Text>
@@ -498,6 +632,8 @@ export default function PickupJobDetailScreen(props: any) {
   }
 
   const deliveryMode = isDeliveryLead(lead as any);
+  const ld = lead as any;
+  const tr = tracking as any;
   const statusForUi = deliveryMode
     ? String((tracking as any)?.drop_status || (lead as any)?.status || '')
     : String((tracking as any)?.pickup_status || (lead as any)?.status || '');
@@ -512,89 +648,138 @@ export default function PickupJobDetailScreen(props: any) {
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{deliveryMode ? 'Delivery Details' : 'Pickup Details'}</Text>
+          <Text style={styles.headerTitle}>{deliveryMode ? 'Delivery Details' : 'Task Details'}</Text>
         </View>
       )}
 
       <ScrollView
         style={styles.content}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Lead Number & Status */}
-        <View style={styles.card}>
-          <View style={styles.leadHeader}>
-            <Text style={styles.leadNumber}>Lead #{lead.lead_number}</Text>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(statusForUi) },
-              ]}
-            >
-              <Text style={styles.statusText}>
-                {getStatusLabel(statusForUi)}
-              </Text>
+        {hideChrome ? (
+          <TouchableOpacity onPress={onBack} style={styles.shellBack}>
+            <Text style={styles.shellBackTxt}>← Back</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Hero — advisor navy card */}
+        <View style={AC.navy}>
+          <View style={AC.navyRow}>
+            <Text style={AC.navyName} numberOfLines={1}>
+              {lead.customer_name || 'Customer'}
+            </Text>
+            <View style={AC.navyBadge}>
+              <Text style={AC.navyBadgeTxt}>{getStatusLabel(statusForUi).toUpperCase()}</Text>
             </View>
           </View>
+          <Text style={AC.navyMeta}>Lead #{lead.lead_number}</Text>
+          <Text style={AC.navyMeta}>
+            {lead.vehicle_number || '—'}
+            {lead.vehicle_make ? ` · ${lead.vehicle_make} ${lead.vehicle_model || ''}` : ''}
+          </Text>
+          {lead.service_type ? <Text style={AC.navyMeta}>{lead.service_type}</Text> : null}
+          {lead.customer_phone ? (
+            <TouchableOpacity onPress={handleCallCustomer} style={styles.heroCallBtn}>
+              <Text style={AC.navyBtnTxt}>Call Customer</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
+        {/* Next steps — right after hero so pickup boy sees what to do */}
+        {observationRequired && !observationDone ? (
+          <View style={AC.whiteCard}>
+            <Text style={styles.nextTitle}>📝 Observation (Required)</Text>
+            <Text style={styles.flowHint}>Submit observation report to continue.</Text>
+            <TextInput
+              style={styles.observationInput}
+              value={observationText}
+              onChangeText={setObservationText}
+              placeholder="Vehicle condition, issues, notes..."
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity
+              style={[styles.flowBtn, { backgroundColor: COLORS.primary, marginTop: SPACING.sm }]}
+              onPress={submitObservation}
+              disabled={savingObservation}
+            >
+              <Text style={styles.flowBtnTxt}>
+                {savingObservation ? 'Saving...' : 'Submit Observation'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          renderActionButton()
+        )}
+
+        <Text style={AC.section}>Details</Text>
+
         {/* Customer Details */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>👤 Customer Details</Text>
+        <View style={AC.whiteCard}>
+          <Text style={styles.cardTitle}>Customer</Text>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Name:</Text>
-            <Text style={styles.detailValue}>{lead.customer_name}</Text>
+            <Text style={styles.detailLabel}>Name</Text>
+            <Text style={styles.detailValue} numberOfLines={2}>
+              {lead.customer_name}
+            </Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Phone:</Text>
-            <TouchableOpacity onPress={handleCallCustomer}>
-              <Text style={[styles.detailValue, styles.linkText]}>
-                📞 {lead.customer_phone}
-              </Text>
+            <Text style={styles.detailLabel}>Phone</Text>
+            <TouchableOpacity onPress={handleCallCustomer} style={styles.detailValueTouch}>
+              <Text style={[styles.detailValue, styles.linkText]}>{lead.customer_phone}</Text>
             </TouchableOpacity>
           </View>
           {lead.customer_email && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Email:</Text>
-              <Text style={styles.detailValue}>{lead.customer_email}</Text>
+              <Text style={styles.detailLabel}>Email</Text>
+              <Text style={styles.detailValue} numberOfLines={2}>
+                {lead.customer_email}
+              </Text>
             </View>
           )}
         </View>
 
         {/* Vehicle Details */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>🚗 Vehicle Details</Text>
+        <View style={AC.whiteCard}>
+          <Text style={styles.cardTitle}>Vehicle</Text>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Registration:</Text>
+            <Text style={styles.detailLabel}>Registration</Text>
             <Text style={styles.detailValue}>{lead.vehicle_number}</Text>
           </View>
           {lead.vehicle_make && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Make/Model:</Text>
-              <Text style={styles.detailValue}>
+              <Text style={styles.detailLabel}>Make/Model</Text>
+              <Text style={styles.detailValue} numberOfLines={2}>
                 {lead.vehicle_make} {lead.vehicle_model}
               </Text>
             </View>
           )}
           {lead.service_type && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Service Type:</Text>
-              <Text style={styles.detailValue}>{lead.service_type}</Text>
+              <Text style={styles.detailLabel}>Service</Text>
+              <Text style={styles.detailValue} numberOfLines={2}>
+                {lead.service_type}
+              </Text>
             </View>
           )}
         </View>
 
         {/* Pickup Information */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📍 {deliveryMode ? 'Customer Location' : 'Pickup Information'}</Text>
+        <View style={AC.whiteCard}>
+          <Text style={styles.cardTitle}>{deliveryMode ? 'Delivery Location' : 'Pickup Location'}</Text>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Address:</Text>
-            <Text style={styles.detailValue}>{(tracking as any)?.pickup_address || (lead as any)?.customer_address || '-'}</Text>
+            <Text style={styles.detailLabel}>Address</Text>
+            <Text style={styles.detailValue} numberOfLines={3}>
+              {(tracking as any)?.pickup_address || (lead as any)?.customer_address || '-'}
+            </Text>
           </View>
           {!!(tracking as any)?.pickup_distance && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Distance:</Text>
+              <Text style={styles.detailLabel}>Distance</Text>
               <Text style={styles.detailValue}>
                 {(tracking as any).pickup_distance.toFixed(1)} km
               </Text>
@@ -602,7 +787,7 @@ export default function PickupJobDetailScreen(props: any) {
           )}
           {!!(tracking as any)?.pickup_time_window_start && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Pickup Window:</Text>
+              <Text style={styles.detailLabel}>Window</Text>
               <Text style={styles.detailValue}>
                 {formatTime12h((tracking as any).pickup_time_window_start)} -{' '}
                 {formatTime12h((tracking as any).pickup_time_window_end!)}
@@ -611,75 +796,68 @@ export default function PickupJobDetailScreen(props: any) {
           )}
           {!!(tracking as any)?.pickup_customer_instructions && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Instructions:</Text>
-              <Text style={styles.detailValue}>
+              <Text style={styles.detailLabel}>Notes</Text>
+              <Text style={styles.detailValue} numberOfLines={4}>
                 {(tracking as any).pickup_customer_instructions}
               </Text>
             </View>
           )}
 
-          {/* Navigate Button */}
-          <TouchableOpacity
-            style={[styles.secondaryButton, { marginTop: SPACING.md }]}
-            onPress={handleNavigateToLocation}
-          >
-            <Text style={styles.secondaryButtonText}>🗺️ Navigate to Location</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Status Timeline */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📋 Status Timeline</Text>
-          {!tracking ? (
-            <Text style={styles.infoText}>No tracking yet. Tap “Start / Navigate” to begin.</Text>
+        <View style={AC.whiteCard}>
+          <Text style={styles.cardTitle}>Timeline</Text>
+          {!tracking && !(lead as any)?.pickup_otp_verified_at ? (
+            <Text style={styles.infoText}>Start pickup to begin tracking.</Text>
           ) : (
           <View style={styles.timeline}>
             <View
               style={[
                 styles.timelineItem,
-                (tracking as any).pickup_assigned_at && styles.timelineItemCompleted,
+                (tr?.pickup_assigned_at || ld?.assigned_pickup_boy_id) && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Assigned</Text>
-                {(tracking as any).pickup_assigned_at && (
-                  <Text style={styles.timelineTime}>
-                    {formatDateTime((tracking as any).pickup_assigned_at)}
-                  </Text>
-                )}
+                {tr?.pickup_assigned_at ? (
+                  <Text style={styles.timelineTime}>{formatDateTime(tr.pickup_assigned_at)}</Text>
+                ) : null}
               </View>
             </View>
 
             <View
               style={[
                 styles.timelineItem,
-                (tracking as any).pickup_start_time && styles.timelineItemCompleted,
+                (tr?.pickup_start_time || ['ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT'].includes(String(ld?.pickup_status || ld?.status || '').toUpperCase())) &&
+                  styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Pickup Started</Text>
-                {(tracking as any).pickup_start_time && (
-                  <Text style={styles.timelineTime}>
-                    {formatDateTime((tracking as any).pickup_start_time)}
-                  </Text>
-                )}
+                {tr?.pickup_start_time ? (
+                  <Text style={styles.timelineTime}>{formatDateTime(tr.pickup_start_time)}</Text>
+                ) : null}
               </View>
             </View>
 
             <View
               style={[
                 styles.timelineItem,
-                ((tracking as any).pickup_otp_verified_at || (tracking as any).drop_otp_verified_at) && styles.timelineItemCompleted,
+                (tr?.pickup_otp_verified_at || tr?.drop_otp_verified_at || ld?.pickup_otp_verified_at) &&
+                  styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>OTP Verified</Text>
-                {((tracking as any).pickup_otp_verified_at || (tracking as any).drop_otp_verified_at) && (
+                {(tr?.pickup_otp_verified_at || tr?.drop_otp_verified_at || ld?.pickup_otp_verified_at) && (
                   <Text style={styles.timelineTime}>
-                    {formatDateTime(((tracking as any).drop_otp_verified_at || (tracking as any).pickup_otp_verified_at) as any)}
+                    {formatDateTime(
+                      (tr?.drop_otp_verified_at || tr?.pickup_otp_verified_at || ld?.pickup_otp_verified_at) as any,
+                    )}
                   </Text>
                 )}
               </View>
@@ -688,85 +866,56 @@ export default function PickupJobDetailScreen(props: any) {
             <View
               style={[
                 styles.timelineItem,
-                (tracking as any).pickup_picked_time && styles.timelineItemCompleted,
+                tr?.pickup_picked_time && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Vehicle Picked</Text>
-                {(tracking as any).pickup_picked_time && (
-                  <Text style={styles.timelineTime}>
-                    {formatDateTime((tracking as any).pickup_picked_time)}
-                  </Text>
-                )}
+                {tr?.pickup_picked_time ? (
+                  <Text style={styles.timelineTime}>{formatDateTime(tr.pickup_picked_time)}</Text>
+                ) : null}
               </View>
             </View>
 
             <View
               style={[
                 styles.timelineItem,
-                (tracking as any).pickup_arrival_time && styles.timelineItemCompleted,
+                tr?.pickup_arrival_time && styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineTitle}>Arrived at Workshop</Text>
-                {(tracking as any).pickup_arrival_time && (
-                  <Text style={styles.timelineTime}>
-                    {formatDateTime((tracking as any).pickup_arrival_time)}
-                  </Text>
-                )}
+                {tr?.pickup_arrival_time ? (
+                  <Text style={styles.timelineTime}>{formatDateTime(tr.pickup_arrival_time)}</Text>
+                ) : null}
               </View>
             </View>
           </View>
           )}
         </View>
 
-        {/* Action Buttons */}
-        {observationRequired && !observationDone && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>📝 Observation (Required)</Text>
-            <Text style={{ color: COLORS.gray[700], marginBottom: SPACING.sm }}>
-              Submit observation report to continue.
-            </Text>
-            <TextInput
-              style={styles.observationInput}
-              value={observationText}
-              onChangeText={setObservationText}
-              placeholder="Write observation (vehicle condition, issues, notes)..."
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                { backgroundColor: COLORS.primary, marginTop: SPACING.sm },
-                savingObservation && { opacity: 0.7 },
-              ]}
-              onPress={submitObservation}
-              disabled={savingObservation}
-            >
-              <Text style={styles.actionButtonText}>
-                {savingObservation ? 'Saving...' : 'Submit Observation'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        <View style={styles.actionsContainer}>{renderActionButton()}</View>
-
-        {/* Report Incident Button */}
+        {/* Report Incident */}
         <TouchableOpacity
-          style={[styles.secondaryButton, { backgroundColor: COLORS.danger }]}
+          style={styles.incidentBtn}
           onPress={onReportIncident || (() => (navigation as any).navigate?.('PickupIncident', { leadId }))}
+          activeOpacity={0.85}
         >
-          <Text style={[styles.secondaryButtonText, { color: COLORS.white }]}>
-            ⚠️ Report Incident
-          </Text>
+          <Text style={styles.incidentBtnTxt}>⚠️ Report Incident</Text>
         </TouchableOpacity>
 
-        <View style={{ height: SPACING.xxl }} />
+        <View style={{ height: SPACING.xxl + 80 }} />
       </ScrollView>
+
+      <TouchableOpacity
+        style={[styles.navFab, { bottom: insets.bottom + 16 }]}
+        onPress={handleNavigateToLocation}
+        activeOpacity={0.9}
+      >
+        <Text style={styles.navFabIcon}>🧭</Text>
+        <Text style={styles.navFabTxt}>Directions</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -800,7 +949,18 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: SPACING.md,
+  },
+  scrollContent: {
+    paddingBottom: SPACING.xxl + 32,
+  },
+  shellBack: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  shellBackTxt: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.primary,
+    fontWeight: '800',
   },
   card: {
     backgroundColor: COLORS.white,
@@ -839,20 +999,111 @@ const styles = StyleSheet.create({
     color: COLORS.heading,
     marginBottom: SPACING.sm,
   },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: SPACING.sm,
+  },
+  nextTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: SPACING.sm,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+    paddingHorizontal: 4,
+  },
+  stepItem: { alignItems: 'center', flex: 1 },
+  stepDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  stepDotDone: { backgroundColor: COLORS.success },
+  stepDotTxt: { fontSize: 12, fontWeight: '800', color: COLORS.gray[600] },
+  stepDotTxtDone: { color: COLORS.white },
+  stepLab: { fontSize: 10, fontWeight: '700', color: COLORS.gray[500] },
+  stepLabDone: { color: COLORS.success },
+  flowBtn: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    ...SHADOWS.small,
+  },
+  flowBtnTxt: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+  flowBtnOutline: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+  },
+  flowBtnOutlineTxt: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  flowHint: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray[600],
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+  },
+  doneBanner: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 12,
+    padding: SPACING.md,
+    alignItems: 'center',
+  },
+  doneBannerTxt: {
+    color: '#166534',
+    fontWeight: '800',
+    fontSize: FONT_SIZES.sm,
+  },
+  heroCallBtn: {
+    marginTop: 14,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
   detailRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
     marginBottom: SPACING.xs,
+    paddingVertical: 3,
   },
   detailLabel: {
+    minWidth: 108,
+    maxWidth: '42%',
     fontSize: FONT_SIZES.sm,
     color: COLORS.gray[600],
     fontWeight: '600',
-    width: 100,
+    flexShrink: 0,
   },
   detailValue: {
     flex: 1,
     fontSize: FONT_SIZES.sm,
     color: COLORS.bodyText,
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  detailValueTouch: {
+    flex: 1,
+    alignItems: 'flex-end',
   },
   linkText: {
     color: COLORS.primary,
@@ -897,6 +1148,7 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     marginBottom: SPACING.md,
+    marginHorizontal: 16,
   },
   actionButton: {
     padding: SPACING.md,
@@ -919,19 +1171,49 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.heading,
   },
-  secondaryButton: {
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+  navigateBtn: {
+    marginTop: SPACING.md,
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: COLORS.primary,
-    marginBottom: SPACING.sm,
+    ...SHADOWS.small,
   },
-  secondaryButtonText: {
+  navigateBtnTxt: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
+    fontWeight: '800',
     color: COLORS.primary,
+  },
+  navFab: {
+    position: 'absolute',
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 999,
+    ...SHADOWS.small,
+    elevation: 6,
+  },
+  navFabIcon: { fontSize: 18 },
+  navFabTxt: { color: COLORS.white, fontWeight: '800', fontSize: 14 },
+  incidentBtn: {
+    marginHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: COLORS.danger,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.small,
+  },
+  incidentBtnTxt: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '800',
+    color: COLORS.white,
   },
 });
 

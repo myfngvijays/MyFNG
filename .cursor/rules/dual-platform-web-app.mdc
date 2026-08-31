@@ -1,15 +1,62 @@
 ---
-description: CRM / dashboard features must ship on web + mobile app together, with mobile-responsive web UI, for the same user roles.
+description: Every pickup/workshop/CRM feature must ship on web + mobile together; changes in either platform require syncing the other in the same task.
 alwaysApply: true
 ---
 
-# Dual platform (web + app)
+# Dual platform (web + app) — mandatory sync
 
-When the user asks for dashboard / Advanced CRM / Lead Manager / Telecaller (or similar role) features:
+When the user builds or changes anything on **one platform**, update the **other in the same change** unless they explicitly say web-only or app-only.
 
-1. **Implement on website** (`apps/web`) for the same roles (e.g. `TELECALLER` + `LEAD_MANAGER`).
-2. **Make the web UI mobile-responsive** (phone + tablet layouts; touch-friendly; no desktop-only breakage).
-3. **Implement the same feature on the mobile app** (`apps/mobile`) for those roles — same APIs, same capabilities (adapted to native UX).
-4. Do not leave app behind unless the user explicitly says web-only.
+## Roles in scope
 
-Prefer shared APIs under `/api/telecaller/crm/...` (or existing role APIs) so web and app stay in sync.
+- `WORKSHOP_PICKUP_BOY` (pickup & delivery)
+- `WORKSHOP_SUPERVISOR` / workshop advisor
+- `WORKSHOP_MECHANIC`
+- `WORKSHOP_ADMIN` / owner
+- `TELECALLER`, `LEAD_MANAGER`, Advanced CRM
+- Any other dashboard / role feature the user touches
+
+## Bidirectional rule
+
+| User works on… | You must also update… |
+|----------------|------------------------|
+| `apps/mobile` (screens, flows, UI) | Matching `apps/web` pages under `/dashboard/...` |
+| `apps/web` (pages, components) | Matching `apps/mobile` screens under `src/screens/...` |
+
+Do not wait for the user to ask “web pe bhi karo” or “app pe bhi karo”.
+
+## What to keep in sync
+
+1. **APIs** — Prefer shared routes under `apps/web/src/app/api/...` used by both clients. New endpoints → wire mobile (`ENV.API_URL`) and web.
+2. **Business logic** — Mirror helpers in both:
+   - Web: `apps/web/src/lib/workshop/pickupTaskFlow.ts`, `pickupPhotos.ts`, etc.
+   - Mobile: `apps/mobile/src/lib/pickupTaskFlow.ts` (same function names & behavior).
+3. **Flows** — Same steps, gates, dummy-lead bypass rules, notifications, and status handling on both sides.
+4. **Dashboard UX** — Same sections (e.g. Fresh leads / Recently completed), filters, counts, empty states, View all targets.
+5. **UI parity** — Web must be **mobile-responsive** (phone + tablet). App uses native patterns but same data and actions.
+
+## Pickup boy reference paths
+
+| Concern | Web | Mobile |
+|---------|-----|--------|
+| Dashboard | `apps/web/src/app/dashboard/workshop_pickup_boy/page.tsx` | `apps/mobile/src/screens/dashboard/WorkshopPickupBoyDashboard.tsx` |
+| Tasks | `.../workshop_pickup_boy/tasks/page.tsx` | `apps/mobile/src/screens/pickup/PickupTasksScreen.tsx` |
+| History | `.../workshop_pickup_boy/history/page.tsx` | `apps/mobile/src/screens/pickup/TaskHistoryScreen.tsx` |
+| Job detail | `.../workshop_pickup_boy/tasks/[id]/page.tsx` | `.../workshop_pickup_boy/PickupJobDetailScreen.tsx` |
+| Lead card | `apps/web/src/components/workshop/PickupLeadCard.tsx` | `apps/mobile/src/components/workshop/PickupLeadCard.tsx` |
+| Pickup APIs | `apps/web/src/app/api/pickup/**` | Same routes via `ENV.API_URL` |
+
+## Implementation checklist (every feature)
+
+- [ ] API route(s) shared or duplicated with same contract
+- [ ] Web page/screen updated
+- [ ] Mobile page/screen updated
+- [ ] Shared flow helpers updated on **both** sides if status/filter logic changed
+- [ ] Notifications / realtime refresh on both if applicable
+- [ ] Dummy-test bypass (`L-DUM*` / `DUMMY_SEED`) consistent if pickup-related
+- [ ] Web layout tested at mobile breakpoints
+
+## Exceptions
+
+- Pure copy, icons, or platform-specific native permissions (camera, push) — document in the response; still sync the **behavior**.
+- User explicitly says **web-only** or **app-only**.

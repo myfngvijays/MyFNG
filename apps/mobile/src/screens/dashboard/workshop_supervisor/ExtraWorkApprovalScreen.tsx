@@ -15,8 +15,10 @@ import {
   BackHandler,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
+import { ENV } from '../../../config/environment';
 import { useNavigation } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
+import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
 import GlossyButton from '../../../components/workshop/GlossyButton';
 
 interface ExtraWorkRequest {
@@ -204,60 +206,43 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        Alert.alert('Error', 'Not authenticated');
+        return;
+      }
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-
-      const supervisorId = userProfile?.id;
-
-      // Update extra charge request
-      const { error: updateError } = await supabase
-        .from('lead_extra_charges')
-        .update(        {
-          status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-          approved_by: supervisorId,
-          approved_at: new Date().toISOString(),
-          final_cost: decision === 'APPROVE' ? parseFloat(adjustedCost) : null,
-          supervisor_notes: approvalNotes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedRequest.id);
-
-      if (updateError) throw updateError;
-
-      // Log supervisor action
-      await supabase
-        .from('supervisor_actions')
-        .insert({
-          supervisor_id: supervisorId,
-          lead_id: selectedRequest.lead_id,
-          action_type: decision === 'APPROVE' ? 'EXTRA_WORK_APPROVED' : 'EXTRA_WORK_REJECTED',
-          action_description: `Extra work ${decision === 'APPROVE' ? 'approved' : 'rejected'}: ${selectedRequest.description}`,
-        });
-
-      // If approved, update lead total cost
       if (decision === 'APPROVE') {
-        const { data: currentLead } = await supabase
-          .from('service_leads')
-          .select('total_cost')
-          .eq('id', selectedRequest.lead_id)
-          .single();
-
-        const currentTotal = currentLead?.total_cost || 0;
-        const newTotal = currentTotal + parseFloat(adjustedCost);
-
-        await supabase
-          .from('service_leads')
-          .update({
-            total_cost: newTotal,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedRequest.lead_id);
+        const response = await fetch(`${ENV.API_URL}/api/supervisor/extra-work/approve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            id: selectedRequest.id,
+            part_price_type: 'OEM',
+            oem_price: parseFloat(adjustedCost),
+            labour_price: 0,
+            notes: approvalNotes || undefined,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result?.error || 'Failed to approve');
+      } else {
+        const response = await fetch(
+          `${ENV.API_URL}/api/supervisor/extra-work/${selectedRequest.id}/reject`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ notes: approvalNotes || 'Rejected by advisor' }),
+          }
+        );
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result?.error || 'Failed to reject');
       }
 
       Alert.alert(
@@ -344,40 +329,23 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
   return (
     <View style={AC.page}>
-      <Text style={AC.sub}>{stats.pending} pending requests</Text>
-
-      <View style={AC.chipWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
-          {['PENDING', 'APPROVED', 'REJECTED', 'ALL'].map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[AC.chip, filter === f && AC.chipOn]}
-              onPress={() => setFilter(f)}
-            >
-              <Text style={[AC.chipTxt, filter === f && AC.chipTxtOn]}>{f}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={AC.kpiRow}>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#F59E0B' }]}>{stats.pending}</Text>
-          <Text style={AC.kpiLab}>Pending</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#10B981' }]}>{stats.approved}</Text>
-          <Text style={AC.kpiLab}>Approved</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#EF4444' }]}>{stats.rejected}</Text>
-          <Text style={AC.kpiLab}>Rejected</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#004AAD', fontSize: 14 }]}>₹{stats.totalCost}</Text>
-          <Text style={AC.kpiLab}>Value</Text>
-        </View>
-      </View>
+      <AdvisorFilterBar
+        subtitle={`${stats.pending} pending requests`}
+        kpis={[
+          { label: 'Pending', value: stats.pending, color: '#F59E0B' },
+          { label: 'Approved', value: stats.approved, color: '#10B981' },
+          { label: 'Rejected', value: stats.rejected, color: '#EF4444' },
+          { label: 'Value', value: `₹${stats.totalCost}`, color: '#004AAD' },
+        ]}
+        chips={[
+          { key: 'PENDING', label: 'PENDING' },
+          { key: 'APPROVED', label: 'APPROVED' },
+          { key: 'REJECTED', label: 'REJECTED' },
+          { key: 'ALL', label: 'ALL' },
+        ]}
+        activeChip={filter}
+        onChip={setFilter}
+      />
 
       <FlatList
         data={filteredRequests}

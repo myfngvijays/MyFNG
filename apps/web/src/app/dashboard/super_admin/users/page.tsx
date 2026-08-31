@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
-import { Users, UserPlus, UserX, UserCheck, Pencil, Eye, EyeOff, KeyRound, Shield, CheckSquare, Square, MinusSquare } from 'lucide-react';
+import { Users, UserPlus, UserX, UserCheck, Pencil, Eye, EyeOff, KeyRound, Shield, CheckSquare, Square, MinusSquare, Trash2 } from 'lucide-react';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { formatDateDMY } from '@/lib/utils';
 
@@ -121,6 +121,8 @@ export default function UserManagementPage() {
   const [savingAction, setSavingAction] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState('');
   const [newUser, setNewUser] = useState({
     full_name: '',
     email: '',
@@ -137,6 +139,10 @@ export default function UserManagementPage() {
     fetchWorkshops();
     fetchRoles();
     fetchManagers();
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) setCurrentUserId(user.id);
+    })();
   }, []);
 
   const fetchUsers = async () => {
@@ -481,6 +487,49 @@ export default function UserManagementPage() {
     }
   };
 
+  const handleDeleteUser = async (user: any) => {
+    const userId = String(user?.id || '');
+    if (!userId) return;
+    if (userId === currentUserId) {
+      alert('You cannot delete your own account');
+      return;
+    }
+    if (String(user?.role?.role_code || '').toUpperCase() === 'SUPER_ADMIN') {
+      alert('Super Admin accounts cannot be deleted');
+      return;
+    }
+
+    const label = user.full_name || user.email || userId;
+    if (
+      !confirm(
+        `Permanently delete "${label}"?\n\nThis removes the user from the system and they cannot log in again.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setDeletingUserId(userId);
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(result.error || 'Failed to delete user');
+        return;
+      }
+      alert('User deleted permanently');
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+      fetchUsers();
+    } catch (error) {
+      alert('Failed to delete user');
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
   const roleStats = useMemo(() => {
     const map = new Map<string, { code: string; name: string; count: number; active: number }>();
     for (const u of users) {
@@ -811,7 +860,7 @@ export default function UserManagementPage() {
                   <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Joined
                   </th>
-                  <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[196px]">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[240px]">
                     Actions
                   </th>
                 </tr>
@@ -895,6 +944,16 @@ export default function UserManagementPage() {
                               <UserCheck className="h-4 w-4" />
                             </UserActionButton>
                           )}
+                          <UserActionButton
+                            title="Delete permanently"
+                            tone="red"
+                            onClick={() => {
+                              if (deletingUserId) return;
+                              void handleDeleteUser(user);
+                            }}
+                          >
+                            <Trash2 className={`h-4 w-4 ${deletingUserId === userId ? 'opacity-40' : ''}`} />
+                          </UserActionButton>
                         </div>
                       </td>
                     </tr>
@@ -1004,6 +1063,16 @@ export default function UserManagementPage() {
                       <UserCheck className="h-4 w-4" />
                     </UserActionButton>
                   )}
+                  <UserActionButton
+                    title="Delete permanently"
+                    tone="red"
+                    onClick={() => {
+                      if (deletingUserId) return;
+                      void handleDeleteUser(user);
+                    }}
+                  >
+                    <Trash2 className={`h-4 w-4 ${deletingUserId === userId ? 'opacity-40' : ''}`} />
+                  </UserActionButton>
                 </div>
               </div>
             );

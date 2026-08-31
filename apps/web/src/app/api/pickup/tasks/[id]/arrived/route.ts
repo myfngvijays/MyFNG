@@ -1,17 +1,11 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createNotification, notifyPickupBoy, notifyWorkshopRoles } from '@/lib/notifications';
+import { checkMandatoryPickupPhotos, isDummyPickupLead } from '@/lib/workshop/pickupPhotos';
 
 export const dynamic = 'force-dynamic';
 
-const REQUIRED_BEFORE_TYPES = [
-  'BEFORE_FRONT',
-  'BEFORE_REAR',
-  'BEFORE_LEFT',
-  'BEFORE_RIGHT',
-  'BEFORE_DASHBOARD',
-  'BEFORE_ENGINE_BAY',
-];
+const IN_TRANSIT_STATUSES = ['VEHICLE_IN_TRANSIT', 'OTP_VERIFIED', 'PICKED', 'ON_THE_WAY'];
 
 /**
  * POST /api/pickup/tasks/[id]/arrived
@@ -76,66 +70,49 @@ export async function POST(
     // Prevent overwriting COMPLETED or later statuses
     const protectedStatuses = ['COMPLETED', 'WORK_COMPLETED', 'QC_PENDING', 'QC_APPROVED', 'READY_FOR_BILLING', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED'];
 
-    // Verify current status is VEHICLE_IN_TRANSIT
-    if (lead.pickup_status !== 'VEHICLE_IN_TRANSIT' && lead.status !== 'VEHICLE_IN_TRANSIT') {
-      return NextResponse.json({ 
-        error: 'Vehicle must be in transit before marking as arrived',
+    // Verify vehicle is en route or OTP-verified with photos uploaded
+    const { data: trackingRow } = await supabase
+      .from('pickup_tracking')
+      .select('pickup_status')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    const leadStatus = String(lead.status || '').toUpperCase();
+    const leadPickup = String(lead.pickup_status || '').toUpperCase();
+    const trackingPickup = String(trackingRow?.pickup_status || '').toUpperCase();
+
+    const canArrive =
+      IN_TRANSIT_STATUSES.includes(leadStatus) ||
+      IN_TRANSIT_STATUSES.includes(leadPickup) ||
+      IN_TRANSIT_STATUSES.includes(trackingPickup);
+
+    if (!canArrive) {
+      return NextResponse.json({
+        error: 'Vehicle must be picked up and in transit before marking as arrived',
         current_status: lead.status,
-        current_pickup_status: lead.pickup_status
+        current_pickup_status: lead.pickup_status,
+        tracking_pickup_status: trackingRow?.pickup_status,
       }, { status: 400 });
     }
 
-    // Enforce mandatory pickup photos (front/rear/left/right/dashboard/engine bay)
-    // before allowing "Arrived at Workshop". This matches BeforeInspectionUpload required slots.
-    try {
-      const { data: mediaRows, error: mediaError } = await supabase
-        .from('lead_media')
-        .select('*')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false })
-        .limit(200);
-
-      if (mediaError) {
-        return NextResponse.json(
-          { error: 'Failed to verify mandatory pickup photos', details: mediaError.message },
-          { status: 500 }
-        );
-      }
-
-      const inferSlot = (row: any) => {
-        const t = String(row?.photo_type || row?.category || '').trim().toUpperCase();
-        if (t) return t;
-        const fn = String(row?.file_name || '').trim();
-        const m = fn.match(/^(BEFORE_[A-Z0-9_]+)__+/);
-        return m?.[1] ? String(m[1]).toUpperCase() : '';
-      };
-
-      const beforeSet = new Set<string>();
-      for (const row of mediaRows || []) {
-        const slot = inferSlot(row);
-        if (slot && slot.startsWith('BEFORE_')) beforeSet.add(slot);
-      }
-
-      const missing = REQUIRED_BEFORE_TYPES.filter((t) => !beforeSet.has(t));
-      if (missing.length > 0) {
+    if (!isDummyPickupLead(lead)) {
+      const photoCheck = await checkMandatoryPickupPhotos(supabase, leadId);
+      if (!photoCheck.ok) {
         return NextResponse.json(
           {
             error: 'Mandatory pickup photos pending',
             message: 'Please upload all compulsory pickup photos before marking Arrived at Workshop.',
-            missing_photos: missing,
-            required_photos: REQUIRED_BEFORE_TYPES,
+            missing_photos: photoCheck.missing,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
-    } catch (e: any) {
-      return NextResponse.json(
-        { error: 'Failed to verify mandatory pickup photos', details: e?.message || String(e) },
-        { status: 500 }
-      );
     }
 
     const now = new Date().toISOString();
+
+    // pickup_tracking.pickup_status enum may lack VEHICLE_DROPPED_AT_WORKSHOP on older DBs
+    const trackingArrivedStatus = 'DROPPED';
 
     // Always persist tracking timestamps.
     // If lead has already moved ahead (READY_FOR_BILLING/DELIVERY), do not change lead.status.
@@ -168,7 +145,7 @@ export async function POST(
           lead_id: leadId,
           pickup_required: true,
           pickup_assigned_to: (lead as any)?.assigned_pickup_boy_id || userProfile.id,
-          pickup_status: 'VEHICLE_DROPPED_AT_WORKSHOP',
+          pickup_status: trackingArrivedStatus,
           pickup_arrival_time: now,
           // Treat arrival at workshop as handover time as well (keys handed)
           pickup_handover_to_workshop_at: now,
@@ -236,13 +213,13 @@ export async function POST(
       // Pickup boy confirmation / next action
       await notifyPickupBoy({
         pickupBoyId: userProfile.id,
-        type: 'HANDOVER_PENDING',
-        title: 'Vehicle delivered to workshop',
-        message: `Lead ${leadNumber}: Vehicle delivered. Complete handover checklist to close pickup.`,
+        type: 'PICKUP_ARRIVED',
+        title: 'Arrived at workshop',
+        message: `Lead ${leadNumber}: Vehicle dropped at workshop. Pickup leg complete.`,
         priority: 'MEDIUM',
         leadId,
         leadNumber,
-        metadata: { kind: 'HANDOVER_PENDING' },
+        metadata: { kind: 'PICKUP_ARRIVED' },
       });
 
       if ((lead as any)?.assigned_mechanic_id) {
@@ -287,6 +264,15 @@ export async function POST(
           metadata: { kind: 'VEHICLE_READY' },
         });
       }
+
+      // Customer-facing timeline event (public tracking page polls lead_events)
+      await supabase.from('lead_events').insert({
+        lead_id: leadId,
+        event_type: 'VEHICLE_ARRIVED_AT_WORKSHOP',
+        event_description: `Your vehicle has arrived safely at the workshop.`,
+        created_by: userProfile.id,
+        created_at: now,
+      } as any);
     } catch (e) {
       console.warn('Vehicle arrived notifications failed (non-blocking):', e);
     }

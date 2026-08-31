@@ -2,9 +2,10 @@ import React from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import IncidentReportScreen from './IncidentReportScreen';
 
-export default function PickupIncidentWrapperScreen() {
+export default function PickupIncidentWrapperScreen(props: any) {
   const navigation = useNavigation();
   const route = useRoute<any>();
+  const hideChrome = !!(props as any)?.hideChrome;
 
   const leadId = route?.params?.leadId as string | undefined;
   if (!leadId) return null as any;
@@ -12,6 +13,7 @@ export default function PickupIncidentWrapperScreen() {
   return (
     <IncidentReportScreen
       leadId={leadId}
+      hideChrome={hideChrome}
       onBack={() => (navigation as any).goBack?.()}
       onSuccess={() => (navigation as any).goBack?.()}
     />

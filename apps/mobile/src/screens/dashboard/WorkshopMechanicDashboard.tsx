@@ -16,6 +16,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
+import { fetchMechanicJobs } from '../../lib/mechanicJobs';
+import {
+  isMechanicJobInProgress,
+  mechanicStatusColors,
+  mechanicStatusLabel,
+  resolveMechanicDisplayStatus,
+} from '../../lib/mechanicJobStatus';
 
 export default function WorkshopMechanicDashboard({ navigation }: any) {
   const { jobRefreshTick } = useNotifications();
@@ -66,127 +73,97 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
 
   const fetchData = async () => {
     try {
-      // ✅ FIX: Get user profile if not set
-      let mechanicId = userProfile?.id;
-      
-      if (!mechanicId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
 
-        const { data: profileData } = await supabase
-          .from('users_login')
-          .select('id')
-          .eq('email', user.email)
-          .single();
+      let dashboardData: any[] = [];
 
-        if (!profileData) {
-          return;
+      try {
+        dashboardData = await fetchMechanicJobs(session.access_token);
+      } catch (apiError) {
+        console.warn('Mechanic jobs API failed, trying direct query:', apiError);
+
+        let mechanicId = userProfile?.id;
+        if (!mechanicId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          const { data: profileData } = await supabase
+            .from('users_login')
+            .select('id')
+            .ilike('email', user.email || '')
+            .maybeSingle();
+          mechanicId = profileData?.id || user.id;
         }
-        mechanicId = profileData.id;
-      }
 
-      // ✅ FIX: Fetch jobs from mechanic_dashboard view (like web)
-      const { data: dashboardData, error: jobsError } = await supabase
-        .from('mechanic_dashboard')
-        .select('*')
-        .eq('mechanic_id', mechanicId)
-        .order('assigned_at', { ascending: false });
-
-      if (jobsError) {
-        // Fallback: try mechanic_jobs if view doesn't exist
         const { data: fallbackData } = await supabase
           .from('mechanic_jobs')
-          .select('*')
+          .select(`
+            *,
+            lead:service_leads(customer_name, vehicle_number, vehicle_make, vehicle_model, service_type)
+          `)
           .eq('mechanic_id', mechanicId)
           .order('assigned_at', { ascending: false });
-        
-        if (fallbackData) {
-          setMyJobs(fallbackData);
-          calculateStatsFromJobs(fallbackData);
-        }
-        return;
+
+        dashboardData = (fallbackData || []).map((mj: any) => ({
+          id: mj.id,
+          job_id: mj.id,
+          lead_id: mj.lead_id,
+          customer_name: mj.lead?.customer_name || 'Customer',
+          vehicle_number: mj.lead?.vehicle_number || '',
+          vehicle_make: mj.lead?.vehicle_make || '',
+          vehicle_model: mj.lead?.vehicle_model || '',
+          service_type: mj.lead?.service_type || '',
+          mechanic_status: mj.mechanic_status || 'ASSIGNED',
+          assigned_at: mj.assigned_at,
+          completed_at: mj.completed_at,
+          has_pending_extra_work: !!mj.has_pending_extra_work,
+        }));
       }
 
-      // ✅ FIX: Calculate stats from dashboard data (like web)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const normalizedJobs = dashboardData.map((job: any) => {
+        const done = Number(job.checklist_done ?? 0);
+        const total = Number(job.checklist_total ?? 0);
+        const displayStatus =
+          job.display_status ||
+          resolveMechanicDisplayStatus(job.mechanic_status, done, total);
+        return { ...job, display_status: displayStatus, checklist_done: done, checklist_total: total };
+      });
 
-      const assignedToday = dashboardData?.filter(job => {
-        if (!job.assigned_at) return false;
-        const assignedDate = new Date(job.assigned_at);
-        assignedDate.setHours(0, 0, 0, 0);
-        return assignedDate.getTime() === today.getTime();
-      }).length || 0;
-
-      const inProgress = dashboardData?.filter(job => 
-        job.mechanic_status === 'IN_PROGRESS'
-      ).length || 0;
-
-      const onHold = dashboardData?.filter((job) => {
-        const s = String(job.mechanic_status || '');
+      const inProgress = normalizedJobs.filter((job) =>
+        isMechanicJobInProgress(job.mechanic_status, job.checklist_done, job.checklist_total),
+      ).length;
+      const onHold = normalizedJobs.filter((job) => {
+        const s = String(job.display_status || job.mechanic_status || '');
         return s === 'HOLD' || s === 'WAITING_APPROVAL';
-      }).length || 0;
-
-      const needApproval = dashboardData?.filter((job) => job.has_pending_extra_work).length || 0;
-
-      const completedToday = dashboardData?.filter(job => {
-        if (!job.completed_at) return false;
-        const completedDate = new Date(job.completed_at);
-        completedDate.setHours(0, 0, 0, 0);
-        return completedDate.getTime() === today.getTime();
-      }).length || 0;
+      }).length;
+      const needApproval = normalizedJobs.filter((job) => job.has_pending_extra_work).length;
 
       setStats({
-        assignedJobs: assignedToday,
-        inProgress: inProgress,
-        completedToday: completedToday,
+        assignedJobs: normalizedJobs.filter((job) => {
+          if (!job.assigned_at) return false;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const assignedDate = new Date(job.assigned_at);
+          assignedDate.setHours(0, 0, 0, 0);
+          return assignedDate.getTime() === today.getTime();
+        }).length,
+        inProgress,
+        completedToday: normalizedJobs.filter((job) => {
+          if (!job.completed_at) return false;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const completedDate = new Date(job.completed_at);
+          completedDate.setHours(0, 0, 0, 0);
+          return completedDate.getTime() === today.getTime();
+        }).length,
         onHold,
         needApproval,
       });
 
-      setMyJobs(dashboardData || []);
+      setMyJobs(normalizedJobs);
     } catch (error) {
-      // Error handled silently
+      console.error('Mechanic dashboard fetch error:', error);
     }
-  };
-
-  // Helper function for fallback stats calculation
-  const calculateStatsFromJobs = (jobs: any[]) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const assignedToday = jobs.filter(job => {
-      if (!job.assigned_at) return false;
-      const assignedDate = new Date(job.assigned_at);
-      assignedDate.setHours(0, 0, 0, 0);
-      return assignedDate.getTime() === today.getTime();
-    }).length || 0;
-
-    const inProgress = jobs.filter(job => 
-      job.mechanic_status === 'IN_PROGRESS'
-    ).length || 0;
-
-    const onHold = jobs.filter((job) => {
-      const s = String(job.mechanic_status || '');
-      return s === 'HOLD' || s === 'WAITING_APPROVAL';
-    }).length;
-
-    const needApproval = jobs.filter((job) => job.has_pending_extra_work).length;
-
-    const completedToday = jobs.filter(job => {
-      if (!job.completed_at) return false;
-      const completedDate = new Date(job.completed_at);
-      completedDate.setHours(0, 0, 0, 0);
-      return completedDate.getTime() === today.getTime();
-    }).length || 0;
-
-    setStats({
-      assignedJobs: assignedToday,
-      inProgress: inProgress,
-      completedToday: completedToday,
-      onHold,
-      needApproval,
-    });
   };
 
   const onRefresh = async () => {
@@ -196,45 +173,70 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
   };
 
   useEffect(() => {
-    if (userProfile?.id) {
-      fetchData();
+    fetchData();
 
-      // ✅ FIX: Setup realtime subscription (like web)
-      let channel: RealtimeChannel;
+    let channel: RealtimeChannel | undefined;
 
-      const setupRealtimeSubscription = async () => {
-        if (!userProfile?.id) return;
+    const setupRealtimeSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-        channel = supabase
-          .channel('mechanic-jobs-changes')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'mechanic_jobs',
-              filter: `mechanic_id=eq.${userProfile.id}`
-            },
-            (payload) => {
-              fetchData();
-            }
-          )
-          .subscribe();
-      };
+      const { data: profileData } = await supabase
+        .from('users_login')
+        .select('id')
+        .ilike('email', user.email || '')
+        .maybeSingle();
+      const mechanicId = profileData?.id || user.id;
 
-      setupRealtimeSubscription();
+      channel = supabase
+        .channel('mechanic-jobs-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'mechanic_jobs',
+            filter: `mechanic_id=eq.${mechanicId}`,
+          },
+          () => {
+            fetchData();
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'service_leads',
+            filter: `assigned_mechanic_id=eq.${mechanicId}`,
+          },
+          () => {
+            fetchData();
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'service_checklists',
+          },
+          () => fetchData(),
+        )
+        .subscribe();
+    };
 
-      return () => {
-        if (channel) {
-          supabase.removeChannel(channel);
-        }
-      };
-    }
-  }, [userProfile]);
+    setupRealtimeSubscription();
 
-  // If a new job-impacting notification arrives, refresh the mechanic dashboard data.
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [userProfile?.id]);
+
   useEffect(() => {
-    if (!userProfile?.id) return;
+    if (!userProfile?.id && !authProfile?.id) return;
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobRefreshTick]);
@@ -242,6 +244,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
   useFocusEffect(
     React.useCallback(() => {
       void refreshUserProfile();
+      void fetchData();
     }, [refreshUserProfile]),
   );
 
@@ -281,21 +284,11 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     return s !== 'COMPLETED' && s !== 'READY_FOR_DELIVERY';
   });
 
-  const statusLabel = (status?: string) => {
-    const s = String(status || 'ASSIGNED');
-    if (s === 'IN_PROGRESS') return 'In Progress';
-    if (s === 'WAITING_APPROVAL') return 'Need approval';
-    if (s === 'READY_FOR_DELIVERY') return 'Ready';
-    return s.replace(/_/g, ' ');
-  };
+  const statusLabel = (job: any) =>
+    mechanicStatusLabel(job.display_status || job.mechanic_status || 'ASSIGNED');
 
-  const statusTone = (status?: string) => {
-    const s = String(status || '');
-    if (s === 'IN_PROGRESS') return { bg: '#DBEAFE', fg: '#004AAD' };
-    if (s === 'ASSIGNED') return { bg: '#D1FAE5', fg: '#047857' };
-    if (s === 'HOLD' || s === 'WAITING_APPROVAL') return { bg: '#FEF3C7', fg: '#B45309' };
-    return { bg: '#E2E8F0', fg: '#475569' };
-  };
+  const statusTone = (job: any) =>
+    mechanicStatusColors(job.display_status || job.mechanic_status || 'ASSIGNED');
 
   const shell = (child: React.ReactNode) => (
     <WorkshopCrmShell
@@ -363,6 +356,14 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
         onCustomEnd={setCustomEnd}
       />
 
+      {datePreset !== 'today' && datePreset !== 'all_time' ? (
+        <View style={styles.dateHint}>
+          <Text style={styles.dateHintText}>
+            Assigned / Completed counts are for selected dates. Active jobs below are current.
+          </Text>
+        </View>
+      ) : null}
+
       <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Overview</Text>
       <View style={styles.statsGrid}>
         {kpiTiles.map((tile) => (
@@ -378,23 +379,6 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>Quick actions</Text>
-      <View style={styles.quickGrid}>
-        {quickActions.map((action) => (
-          <TouchableOpacity
-            key={action.key}
-            style={styles.quickCard}
-            onPress={() => go(action.screen)}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.quickIcon, { backgroundColor: `${action.color}18` }]}>
-              <Ionicons name={action.icon} size={22} color={action.color} />
-            </View>
-            <Text style={styles.quickLabel}>{action.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>Active jobs</Text>
         <TouchableOpacity onPress={() => go('MechanicJobs')}>
@@ -403,7 +387,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
       </View>
       {activeJobs.length > 0 ? (
         activeJobs.slice(0, 8).map((job) => {
-          const tone = statusTone(job.mechanic_status || job.status);
+          const tone = statusTone(job);
           return (
             <TouchableOpacity
               key={job.job_id || job.id}
@@ -422,7 +406,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
                 </Text>
                 <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
                   <Text style={[styles.statusPillTxt, { color: tone.fg }]}>
-                    {statusLabel(job.mechanic_status || job.status)}
+                    {statusLabel(job)}
                   </Text>
                 </View>
               </View>
@@ -435,9 +419,10 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
                 {job.service_type ||
                   (Array.isArray(job.service_types) ? job.service_types.join(', ') : '') ||
                   'Repair'}
-                {job.assigned_at || job.created_at
-                  ? ` · ${formatDateDMY(job.assigned_at || job.created_at)}`
+                {job.checklist_total
+                  ? ` · Checklist ${job.checklist_done || 0}/${job.checklist_total}`
                   : ''}
+                {job.assigned_at ? ` · ${formatDateDMY(job.assigned_at)}` : ''}
               </Text>
               {job.has_pending_extra_work ? (
                 <View style={styles.warnRow}>
@@ -454,6 +439,23 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
           <Text style={styles.emptySub}>New assignments will show here</Text>
         </View>
       )}
+
+      <Text style={styles.sectionTitle}>Quick actions</Text>
+      <View style={styles.quickGrid}>
+        {quickActions.map((action) => (
+          <TouchableOpacity
+            key={action.key}
+            style={styles.quickCard}
+            onPress={() => go(action.screen)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: `${action.color}18` }]}>
+              <Ionicons name={action.icon} size={22} color={action.color} />
+            </View>
+            <Text style={styles.quickLabel}>{action.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </ScrollView>
   );
 }
@@ -497,6 +499,21 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   viewAll: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  dateHint: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  dateHintText: {
+    fontSize: 12,
+    color: '#1D4ED8',
+    fontWeight: '600',
+    lineHeight: 16,
+  },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   quickCard: {
     width: '48%',
@@ -524,23 +541,24 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   statCard: {
-    width: '47.5%',
+    width: '31%',
+    flexGrow: 1,
     backgroundColor: COLORS.white,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     borderRadius: BORDER_RADIUS.lg,
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     alignItems: 'center',
     ...SHADOWS.small,
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '800',
     color: '#023D95',
     marginBottom: 2,
   },
   statLabel: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 11,
     color: COLORS.bodyText,
     textAlign: 'center',
     fontWeight: '600',

@@ -14,7 +14,9 @@ import {
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
+import { computeSlaRemainingMinutes, isWorkshopJobOverdue } from '../../../lib/workshop/slaUtils';
 import { AC } from '../../../components/workshop/advisorCrmUi';
+import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
 
 interface JobMonitor {
   id: string;
@@ -39,7 +41,7 @@ export default function JobMonitoringScreen() {
   const navigation = useNavigation<any>();
   const [jobs, setJobs] = useState<JobMonitor[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobMonitor[]>([]);
-  const [filter, setFilter] = useState('ACTIVE');
+  const [filter, setFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -130,17 +132,21 @@ export default function JobMonitoringScreen() {
 
       console.log('✅ Found', leads?.length || 0, 'jobs');
 
-      const now = new Date();
-      const formattedJobs = leads?.map((lead: any) => {
-        const slaDeadline = lead.sla_expires_at ? new Date(lead.sla_expires_at) : new Date(lead.created_at);
-        const slaRemaining = Math.floor((slaDeadline.getTime() - now.getTime()) / (1000 * 60));
+      const formattedJobs = (leads || [])
+        .filter((lead: any) => {
+          const status = String(lead.status || '').toUpperCase();
+          return !['REJECTED', 'CANCELLED', 'CLOSED'].includes(status);
+        })
+        .map((lead: any) => {
+        const slaRemaining = computeSlaRemainingMinutes(lead) ?? 9999;
         
-        // Determine mechanic_status from lead status
         let mechanicStatus = 'UNASSIGNED';
         if (lead.assigned_mechanic_id) {
-          if (lead.status === 'IN_PROGRESS') mechanicStatus = 'IN_PROGRESS';
-          else if (lead.status === 'COMPLETED') mechanicStatus = 'COMPLETED';
-          else if (lead.status === 'ACCEPTED') mechanicStatus = 'ASSIGNED';
+          const status = String(lead.status || '').toUpperCase();
+          if (status === 'IN_PROGRESS') mechanicStatus = 'IN_PROGRESS';
+          else if (status === 'COMPLETED') mechanicStatus = 'COMPLETED';
+          else if (status === 'HOLD') mechanicStatus = 'HOLD';
+          else mechanicStatus = 'ASSIGNED';
         }
         
         return {
@@ -159,9 +165,9 @@ export default function JobMonitoringScreen() {
           checklist_progress: 0,
           images_uploaded: false,
           parts_assigned: false,
-          has_issues: slaRemaining < 60,
+          has_issues: isWorkshopJobOverdue(lead),
         };
-      }) || [];
+      });
 
       console.log('📊 Formatted jobs:', formattedJobs.length);
       setJobs(formattedJobs);
@@ -252,9 +258,16 @@ export default function JobMonitoringScreen() {
     } else if (filter === 'HOLD') {
       setFilteredJobs(jobs.filter((j) => j.mechanic_status === 'HOLD'));
     } else if (filter === 'AT_RISK') {
-      setFilteredJobs(jobs.filter((j) => j.sla_remaining_minutes < 120 && j.sla_remaining_minutes > 0));
+      setFilteredJobs(
+        jobs.filter(
+          (j) =>
+            j.sla_remaining_minutes < 120 &&
+            j.sla_remaining_minutes >= 0 &&
+            j.mechanic_status !== 'UNASSIGNED',
+        ),
+      );
     } else if (filter === 'OVERDUE') {
-      setFilteredJobs(jobs.filter((j) => j.sla_remaining_minutes < 0));
+      setFilteredJobs(jobs.filter((j) => j.has_issues));
     } else {
       setFilteredJobs(jobs);
     }
@@ -310,8 +323,12 @@ export default function JobMonitoringScreen() {
   }
 
   function renderJob({ item }: { item: JobMonitor }) {
-    const isAtRisk = item.sla_remaining_minutes < 120 && item.sla_remaining_minutes > 0;
-    const isOverdue = item.sla_remaining_minutes < 0;
+    const isOverdue = item.has_issues;
+    const isAtRisk =
+      !isOverdue &&
+      item.sla_remaining_minutes < 120 &&
+      item.sla_remaining_minutes >= 0 &&
+      item.mechanic_status !== 'UNASSIGNED';
 
     return (
       <View style={AC.navy}>
@@ -345,7 +362,7 @@ export default function JobMonitoringScreen() {
         <View style={AC.navyBtnRow}>
           <TouchableOpacity
             style={AC.navyBtn}
-            onPress={() => navigation.navigate('JobDetail', { jobId: item.id })}
+            onPress={() => navigation.navigate('JobDetail', { leadId: item.lead_id })}
           >
             <Text style={AC.navyBtnTxt}>View Details</Text>
           </TouchableOpacity>
@@ -362,48 +379,36 @@ export default function JobMonitoringScreen() {
     active: jobs.filter((j) => j.mechanic_status === 'IN_PROGRESS').length,
     assigned: jobs.filter((j) => j.mechanic_status === 'ASSIGNED').length,
     hold: jobs.filter((j) => j.mechanic_status === 'HOLD').length,
-    atRisk: jobs.filter((j) => j.sla_remaining_minutes < 120 && j.sla_remaining_minutes > 0).length,
-    overdue: jobs.filter((j) => j.sla_remaining_minutes < 0).length,
+    atRisk: jobs.filter(
+      (j) =>
+        j.sla_remaining_minutes < 120 &&
+        j.sla_remaining_minutes >= 0 &&
+        j.mechanic_status !== 'UNASSIGNED',
+    ).length,
+    overdue: jobs.filter((j) => j.has_issues).length,
   };
 
   return (
     <View style={AC.page}>
-      <Text style={AC.sub}>
-        {stats.active} active · {stats.atRisk + stats.overdue} need attention
-      </Text>
-
-      <View style={AC.kpiRow}>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#004AAD' }]}>{stats.active}</Text>
-          <Text style={AC.kpiLab}>Active</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#023D95' }]}>{stats.assigned}</Text>
-          <Text style={AC.kpiLab}>Assigned</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#F59E0B' }]}>{stats.hold}</Text>
-          <Text style={AC.kpiLab}>On Hold</Text>
-        </View>
-        <View style={AC.kpi}>
-          <Text style={[AC.kpiVal, { color: '#EF4444' }]}>{stats.overdue}</Text>
-          <Text style={AC.kpiLab}>Overdue</Text>
-        </View>
-      </View>
-
-      <View style={AC.chipWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
-          {['ACTIVE', 'ASSIGNED', 'HOLD', 'AT_RISK', 'OVERDUE', 'ALL'].map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[AC.chip, filter === f && AC.chipOn]}
-              onPress={() => setFilter(f)}
-            >
-              <Text style={[AC.chipTxt, filter === f && AC.chipTxtOn]}>{f.replace('_', ' ')}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+      <AdvisorFilterBar
+        subtitle={`${stats.active} active · ${stats.atRisk + stats.overdue} need attention`}
+        kpis={[
+          { label: 'Active', value: stats.active, color: '#004AAD' },
+          { label: 'Assigned', value: stats.assigned, color: '#023D95' },
+          { label: 'On Hold', value: stats.hold, color: '#F59E0B' },
+          { label: 'Overdue', value: stats.overdue, color: '#EF4444' },
+        ]}
+        chips={[
+          { key: 'ALL', label: 'ALL' },
+          { key: 'ACTIVE', label: 'ACTIVE' },
+          { key: 'ASSIGNED', label: 'ASSIGNED' },
+          { key: 'HOLD', label: 'HOLD' },
+          { key: 'AT_RISK', label: 'AT RISK' },
+          { key: 'OVERDUE', label: 'OVERDUE' },
+        ]}
+        activeChip={filter}
+        onChip={setFilter}
+      />
 
       <FlatList
         data={filteredJobs}

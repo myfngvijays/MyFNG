@@ -1,158 +1,196 @@
-import React, { useEffect, useState } from 'react';
-import { formatDateTime } from "@/lib/dateFormat";
+import React, { useEffect, useMemo, useState } from 'react';
+import { formatDateTime } from '@/lib/dateFormat';
 import {
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
-  Alert, 
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Alert,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { AC } from '../../components/workshop/advisorCrmUi';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import PickupLeadCard from '../../components/workshop/PickupLeadCard';
+import PickupFilterDropdown from '../../components/workshop/PickupFilterDropdown';
+import {
+  formatPickupHistoryStatus,
+  formatPickupStatusLabel,
+  getPickupHistoryCompletedAt,
+  isHistoryTaskCancelled,
+  isPickupBoyHistoryTask,
+} from '../../lib/pickupTaskFlow';
 
-export default function TaskHistoryScreen({ userId }: { userId?: string }) {
+type HistoryFilter = 'all' | 'completed' | 'cancelled';
+
+const FILTER_LABELS: Record<HistoryFilter, string> = {
+  all: 'All history',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+
+function historyStatusColor(historyStatus: string) {
+  if (historyStatus === 'COMPLETED') return COLORS.success;
+  if (historyStatus === 'CANCELLED') return COLORS.danger;
+  return COLORS.gray[500];
+}
+
+export default function TaskHistoryScreen({
+  userId,
+  initialFilter = 'all',
+}: {
+  userId?: string;
+  initialFilter?: string;
+}) {
+  const navigation = useNavigation<any>();
   const [tasks, setTasks] = useState<any[]>([]);
-  const [filter, setFilter] = useState('all'); // all, completed, cancelled
-  const [filteredTasks, setFilteredTasks] = useState<any[]>([]);
+  const [filter, setFilter] = useState<HistoryFilter>(
+    (['all', 'completed', 'cancelled'].includes(initialFilter)
+      ? initialFilter
+      : 'all') as HistoryFilter,
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [resolvedUserId, setResolvedUserId] = useState<string | undefined>(userId);
 
   useEffect(() => {
-    // ✅ FIX: Fetch userId if not provided
-    if (!userId) {
-      fetchUserId();
-    } else {
-      fetchHistory();
+    if (['all', 'completed', 'cancelled'].includes(initialFilter)) {
+      setFilter(initialFilter as HistoryFilter);
     }
+  }, [initialFilter]);
+
+  useEffect(() => {
+    setResolvedUserId(userId);
   }, [userId]);
 
   useEffect(() => {
-    // ✅ FIX: Setup realtime subscription when userId is available
-    if (!userId) return;
+    void bootstrap();
+  }, [resolvedUserId]);
 
-    let channel: RealtimeChannel;
+  const bootstrap = async () => {
+    let id = resolvedUserId;
+    if (!id) {
+      id = (await fetchUserId()) || undefined;
+      if (id) setResolvedUserId(id);
+    }
+    if (id) await fetchHistory(id);
+  };
 
-    const setupRealtimeSubscription = () => {
-      channel = supabase
-        .channel('pickup-boy-history')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'service_leads'
-          },
-            (payload) => {
-              fetchHistory();
-            }
-          )
-          .subscribe();
-    };
+  useEffect(() => {
+    if (!resolvedUserId) return;
 
-    setupRealtimeSubscription();
+    const channel = supabase
+      .channel(`pickup-boy-history-${resolvedUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_leads',
+          filter: `assigned_pickup_boy_id=eq.${resolvedUserId}`,
+        },
+        () => {
+          void fetchHistory(resolvedUserId);
+        },
+      )
+      .subscribe();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [resolvedUserId]);
 
-  useEffect(() => {
-    filterTasks();
-  }, [filter, tasks]);
-
-  // ✅ FIX: Fetch user ID by email (like web)
   const fetchUserId = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
       const { data: userProfile } = await supabase
         .from('users_login')
         .select('id')
         .eq('email', user.email)
         .single();
-
-      if (userProfile?.id) {
-        // Update userId state to trigger fetchHistory and realtime subscription
-        // Note: This component receives userId as prop, so we'll call fetchHistory directly
-        await fetchHistory(userProfile.id);
-      }
-    } catch (error) {
-      // Error handled silently
+      return userProfile?.id || null;
+    } catch {
+      return null;
     }
   };
 
   const fetchHistory = async (pickupBoyId?: string) => {
-    const idToUse = pickupBoyId || userId;
+    const idToUse = pickupBoyId || resolvedUserId;
     if (!idToUse) return;
 
     try {
       setLoading(true);
-
-      // ✅ FIX: Fetch from service_leads table (like web)
       const { data, error } = await supabase
         .from('service_leads')
         .select('*')
         .eq('assigned_pickup_boy_id', idToUse)
-        .eq('pickup_required', true)
         .not('status', 'in', '(REJECTED)')
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .order('updated_at', { ascending: false })
+        .limit(100);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      // ✅ FIX: Format tasks for display
-      const formattedTasks = (data || []).map(item => ({
-        id: item.id,
-        lead_number: item.lead_number,
-        customer_name: item.customer_name,
-        customer_phone: item.customer_phone,
-        customer_address: item.customer_address || item.address,
-        vehicle_number: item.vehicle_number,
-        vehicle_make: item.vehicle_make,
-        vehicle_model: item.vehicle_model,
-        task_type: item.pickup_required ? 'PICKUP' : 'DELIVERY',
-        pickup_address: item.customer_address || item.address,
-        delivery_address: item.workshop_address,
-        status: item.pickup_status === 'PICKED_UP' || item.pickup_status === 'DELIVERED' ? 'COMPLETED' : 
-                item.status === 'CANCELLED' ? 'CANCELLED' : item.pickup_status || item.status,
-        completed_at: item.pickup_completed_at || item.updated_at,
-        created_at: item.created_at,
-      }));
-
-      setTasks(formattedTasks);
-    } catch (error) {
+      setTasks(
+        (data || [])
+          .filter((item) => isPickupBoyHistoryTask(item) || isHistoryTaskCancelled(item))
+          .map((item) => {
+            const historyStatus = formatPickupHistoryStatus(item);
+            const rawStatus = String(item.pickup_status || item.status || '').toUpperCase();
+            return {
+              id: item.id,
+              lead_number: item.lead_number,
+              customer_name: item.customer_name,
+              customer_phone: item.customer_phone,
+              vehicle_number: item.vehicle_number,
+              vehicle_make: item.vehicle_make,
+              vehicle_model: item.vehicle_model,
+              task_type: item.pickup_required ? 'PICKUP' : 'DELIVERY',
+              historyStatus,
+              statusLabel:
+                historyStatus === 'COMPLETED'
+                  ? 'Completed'
+                  : historyStatus === 'CANCELLED'
+                    ? 'Cancelled'
+                    : formatPickupStatusLabel(rawStatus),
+              pickup_address: item.customer_address || item.address,
+              completed_at: getPickupHistoryCompletedAt(item),
+            };
+          }),
+      );
+    } catch {
       Alert.alert('Error', 'Failed to load history');
     } finally {
       setLoading(false);
     }
   };
 
-  const filterTasks = () => {
-    if (filter === 'all') {
-      setFilteredTasks(tasks);
-    } else if (filter === 'completed') {
-      setFilteredTasks(tasks.filter(t => 
-        t.status === 'COMPLETED' || 
-        t.pickup_status === 'PICKED_UP' || 
-        t.pickup_status === 'DELIVERED'
-      ));
-    } else if (filter === 'cancelled') {
-      setFilteredTasks(tasks.filter(t => 
-        t.status === 'CANCELLED' || 
-        t.status === 'REJECTED'
-      ));
-    }
-  };
+  const filteredTasks = useMemo(() => {
+    if (filter === 'completed') return tasks.filter((t) => t.historyStatus === 'COMPLETED');
+    if (filter === 'cancelled') return tasks.filter((t) => t.historyStatus === 'CANCELLED');
+    return tasks;
+  }, [filter, tasks]);
+
+  const filterOptions = useMemo(
+    () => [
+      { key: 'all', label: 'All', count: tasks.length },
+      {
+        key: 'completed',
+        label: 'Completed',
+        count: tasks.filter((t) => t.historyStatus === 'COMPLETED').length,
+      },
+      {
+        key: 'cancelled',
+        label: 'Cancelled',
+        count: tasks.filter((t) => t.historyStatus === 'CANCELLED').length,
+      },
+    ],
+    [tasks],
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -160,42 +198,25 @@ export default function TaskHistoryScreen({ userId }: { userId?: string }) {
     setRefreshing(false);
   };
 
-  const getTaskTypeIcon = (type: string) => {
-    switch (type) {
-      case 'PICKUP': return '📦';
-      case 'DELIVERY': return '🚚';
-      case 'BOTH': return '🔄';
-      default: return '📋';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    return status === 'COMPLETED' ? COLORS.success : COLORS.danger;
-  };
-
   const renderTask = ({ item }: { item: any }) => (
-    <View style={AC.listCard}>
-      <View style={styles.taskHeader}>
-        <Text style={AC.name} numberOfLines={1}>{item.customer_name || 'Customer'}</Text>
-        <View style={[AC.statusPill, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={AC.statusPillTxt}>{String(item.status || '').replace(/_/g, ' ')}</Text>
-        </View>
-      </View>
-      <Text style={AC.meta}>{getTaskTypeIcon(item.task_type)} {item.task_type}</Text>
-      
-      {item.pickup_address && (
-        <Text style={styles.taskDetail}>📍 Pickup: {item.pickup_address}</Text>
-      )}
-      {item.delivery_address && (
-        <Text style={styles.taskDetail}>📍 Delivery: {item.delivery_address}</Text>
-      )}
-      
-      {item.completed_at && (
-        <Text style={styles.taskTime}>
-          ✓ Completed: {formatDateTime(item.completed_at)}
-        </Text>
-      )}
-    </View>
+    <PickupLeadCard
+      leadNumber={item.lead_number}
+      customerName={item.customer_name}
+      customerPhone={item.customer_phone}
+      vehicleNumber={item.vehicle_number}
+      vehicleMake={item.vehicle_make}
+      vehicleModel={item.vehicle_model}
+      taskType={item.task_type}
+      statusLabel={item.statusLabel}
+      statusColor={historyStatusColor(item.historyStatus)}
+      address={item.pickup_address}
+      footerText={
+        item.completed_at
+          ? `${item.historyStatus === 'COMPLETED' ? 'Completed' : 'Updated'} · ${formatDateTime(item.completed_at)}`
+          : undefined
+      }
+      onPress={() => navigation.navigate('PickupJobDetail', { taskId: item.id, leadId: item.id })}
+    />
   );
 
   if (loading) {
@@ -209,59 +230,27 @@ export default function TaskHistoryScreen({ userId }: { userId?: string }) {
 
   return (
     <View style={AC.page}>
-      <Text style={AC.sub}>Completed & cancelled tasks</Text>
-      <View style={[AC.chipWrap, { flexDirection: 'row', flexWrap: 'wrap' }]}>
-        {['all', 'completed', 'cancelled'].map((status) => (
-          <TouchableOpacity
-            key={status}
-            style={[AC.chip, filter === status && AC.chipOn]}
-            onPress={() => setFilter(status)}
-          >
-            <Text style={[AC.chipTxt, filter === status && AC.chipTxtOn]}>
-              {status.charAt(0).toUpperCase() + status.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <Text style={AC.sub}>Completed & cancelled pickup / delivery jobs</Text>
 
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>{tasks.length}</Text>
-          <Text style={styles.statLabel}>Total</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>
-            {tasks.filter(t => 
-              t.status === 'COMPLETED' || 
-              t.pickup_status === 'PICKED_UP' || 
-              t.pickup_status === 'DELIVERED'
-            ).length}
-          </Text>
-          <Text style={styles.statLabel}>Completed</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>
-            {tasks.filter(t => 
-              t.status === 'CANCELLED' || 
-              t.status === 'REJECTED'
-            ).length}
-          </Text>
-          <Text style={styles.statLabel}>Cancelled</Text>
-        </View>
-      </View>
+      <PickupFilterDropdown
+        activeKey={filter}
+        options={filterOptions}
+        onChange={(key) => setFilter(key as HistoryFilter)}
+        summary={`${filteredTasks.length} ${FILTER_LABELS[filter].toLowerCase()}`}
+      />
 
       <FlatList
         data={filteredTasks}
         renderItem={renderTask}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No history found</Text>
+          <View style={AC.empty}>
+            <Text style={AC.emptyTxt}>No {FILTER_LABELS[filter].toLowerCase()}</Text>
+            <Text style={AC.emptySub}>Jobs finish here after workshop drop or delivery</Text>
           </View>
         }
       />
@@ -270,10 +259,6 @@ export default function TaskHistoryScreen({ userId }: { userId?: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -282,143 +267,12 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.gray[600],
-  },
-  header: {
-    backgroundColor: COLORS.primary,
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
-  },
-  title: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  subtitle: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.white,
-    opacity: 0.9,
-    marginTop: SPACING.xs,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    padding: SPACING.md,
-    gap: SPACING.sm,
-  },
-  filterButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.gray[200],
-  },
-  filterButtonActive: {
-    backgroundColor: COLORS.primary,
-  },
-  filterText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray[700],
-    fontWeight: '500',
-  },
-  filterTextActive: {
-    color: COLORS.white,
     fontWeight: '600',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.sm,
-    alignItems: 'center',
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statValue: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-  },
-  statLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.gray[600],
-    marginTop: 2,
+    color: COLORS.textSecondary,
   },
   listContainer: {
-    padding: SPACING.lg,
     paddingBottom: SPACING.xxl + SPACING.lg,
-  },
-  taskCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  taskTypeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  taskTypeIcon: {
-    fontSize: 24,
-  },
-  taskType: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  statusText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.white,
-    fontWeight: '600',
-  },
-  customerName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: 'bold',
-    color: COLORS.heading,
-    marginBottom: SPACING.xs,
-  },
-  taskDetail: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray[600],
-    marginBottom: 4,
-  },
-  taskTime: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.gray[400],
-    marginTop: SPACING.xs,
-  },
-  emptyContainer: {
-    padding: SPACING.xxl,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.gray[500],
+    paddingTop: 4,
   },
 });
-

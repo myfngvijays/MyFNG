@@ -1,5 +1,6 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 // GET - Get checklist for a job
 export async function GET(
@@ -192,15 +193,36 @@ export async function PUT(
       }, { status: 500 });
     }
 
-    // Update mechanic_jobs checklist_completed flag
-    await supabase
+    // Update mechanic_jobs checklist + auto IN_PROGRESS when work started
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const jobClient = supabaseAdmin || supabase;
+    const { data: currentJob } = await jobClient
       .from('mechanic_jobs')
-      .update({
-        checklist_completed: allMandatoryCompleted,
-        checklist_completed_at: allMandatoryCompleted ? now : null,
-        updated_at: now
-      })
-      .eq('lead_id', leadId);
+      .select('started_at, mechanic_status')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    const jobUpdates: Record<string, unknown> = {
+      checklist_completed: allMandatoryCompleted,
+      checklist_completed_at: allMandatoryCompleted ? now : null,
+      updated_at: now,
+    };
+    if (completedItems > 0 && completedItems < totalItems) {
+      jobUpdates.mechanic_status = 'IN_PROGRESS';
+      if (!currentJob?.started_at) {
+        jobUpdates.started_at = now;
+      }
+    }
+
+    await jobClient.from('mechanic_jobs').update(jobUpdates).eq('lead_id', leadId);
+
+    if (completedItems > 0 && supabaseAdmin) {
+      await supabaseAdmin
+        .from('service_leads')
+        .update({ status: 'IN_PROGRESS', updated_at: now })
+        .eq('id', leadId)
+        .in('status', ['ACCEPTED', 'ASSIGNED', 'ASSIGNED_TO_WORKSHOP', 'TEAM_ASSIGNED']);
+    }
 
     // Create activity log
     await supabase

@@ -79,6 +79,7 @@ export default function WorkshopStaffScreen({ workshopId }: { workshopId?: strin
           role:roles!role_id(id, role_name, role_code)
         `)
         .eq('workshop_id', workshopId)
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       // Fetch workshop staff roles only
@@ -266,7 +267,10 @@ export default function WorkshopStaffScreen({ workshopId }: { workshopId?: strin
             try {
               const { error } = await supabase
                 .from('users_login')
-                .delete()
+                .update({
+                  is_active: false,
+                  updated_at: new Date().toISOString(),
+                })
                 .eq('id', member.id);
 
               if (error) throw error;

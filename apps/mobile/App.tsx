@@ -72,6 +72,7 @@ import { ENV } from './src/config/environment';
 import { getCustomerSessionToken } from './src/lib/customerSession';
 import { storeReferralCode, checkPlayStoreReferrer } from './src/lib/referralDeepLink';
 import { performCustomerLogout } from './src/lib/customerLogout';
+import { GpsStampHost } from './src/lib/gpsPhotoStamp';
 import { preloadWalletRules } from './src/lib/wallet';
 import { preloadMembershipTerms } from './src/lib/membershipTerms';
 import { preloadPublicFaqs } from './src/lib/publicFaqs';
@@ -575,6 +576,7 @@ function AppContent() {
         </Stack.Navigator>
       </NavigationContainer>
 
+      <GpsStampHost />
       {softUpdate?.softAvailable && softUpdateVisible ? (
         <SoftUpdateModal
           visible
