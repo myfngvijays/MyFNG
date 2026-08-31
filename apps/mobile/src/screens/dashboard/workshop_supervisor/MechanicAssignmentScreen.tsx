@@ -15,6 +15,7 @@ import { supabase } from '../../../lib/supabase';
 import { useRoute } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import GlossyButton from '../../../components/workshop/GlossyButton';
+import { isReadyForMechanicAssign } from '../../../lib/workshopJobFlow';
 
 interface Job {
   id: string;
@@ -123,11 +124,13 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
         .from('service_leads')
         .select('*')
         .eq('workshop_id', workshopId)
-        .in('status', ['ACCEPTED', 'IN_PROGRESS'])
+        .in('status', ['ACCEPTED', 'IN_PROGRESS', 'VEHICLE_DROPPED_AT_WORKSHOP'])
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
-      const formattedJobs = leads?.map((lead: any) => ({
+      const formattedJobs = (leads || [])
+        .filter((lead: any) => isReadyForMechanicAssign(lead))
+        .map((lead: any) => ({
         id: lead.id,
         lead_id: lead.id,
         lead_number: lead.lead_number,
@@ -139,7 +142,7 @@ export default function MechanicAssignmentScreen({ navigation }: any) {
         priority: lead.priority || 'NORMAL',
         status: lead.status,
         estimated_hours: lead.estimated_hours,
-      })) || [];
+      }));
 
       setJobs(formattedJobs);
 

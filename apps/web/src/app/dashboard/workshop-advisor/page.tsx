@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
+import { isReadyForMechanicAssign, isWaitingPickupAssign } from '@/lib/workshop/jobFlow';
 
 type JobRow = {
   id: string;
@@ -42,7 +43,9 @@ export default function WorkshopAdvisorDashboard() {
     unassigned: 0,
     pickup_active: 0,
   });
-  const [recentJobs, setRecentJobs] = useState<JobRow[]>([]);
+  const [needsAssign, setNeedsAssign] = useState<
+    { id: string; customer_name?: string; vehicle_number?: string; kind: 'pickup' | 'mechanic' }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
   const [customStart, setCustomStart] = useState(istYmd());
@@ -90,10 +93,11 @@ export default function WorkshopAdvisorDashboard() {
           .is('deleted_at', null),
         supabase
           .from('service_leads')
-          .select('id', { count: 'exact', head: true })
+          .select(
+            'id, customer_name, vehicle_number, pickup_required, pickup_status, status, assigned_mechanic_id, assigned_pickup_boy_id',
+          )
           .eq('workshop_id', workshopId)
-          .eq('status', 'ACCEPTED')
-          .is('assigned_mechanic_id', null)
+          .in('status', ['ACCEPTED', 'VEHICLE_DROPPED_AT_WORKSHOP'])
           .is('deleted_at', null),
         supabase
           .from('service_leads')
@@ -119,7 +123,28 @@ export default function WorkshopAdvisorDashboard() {
         (job: any) => job.mechanic?.workshop_id === workshopId && !job.service_leads?.deleted_at,
       ) as JobRow[];
 
+      const openLeads = (unassignedRes.data || []) as any[];
+      const pickupWaiting = openLeads.filter((lead) => isWaitingPickupAssign(lead));
+      const mechanicWaiting = openLeads.filter(
+        (lead) => !lead.assigned_mechanic_id && isReadyForMechanicAssign(lead),
+      );
+      const assignQueue = [
+        ...pickupWaiting.map((lead) => ({
+          id: lead.id,
+          customer_name: lead.customer_name,
+          vehicle_number: lead.vehicle_number,
+          kind: 'pickup' as const,
+        })),
+        ...mechanicWaiting.map((lead) => ({
+          id: lead.id,
+          customer_name: lead.customer_name,
+          vehicle_number: lead.vehicle_number,
+          kind: 'mechanic' as const,
+        })),
+      ];
+
       setRecentJobs(workshopJobs.slice(0, 8));
+      setNeedsAssign(assignQueue.slice(0, 6));
       setStats({
         total_mechanics: mechanics.length,
         active_jobs: workshopJobs.length,
@@ -133,7 +158,7 @@ export default function WorkshopAdvisorDashboard() {
           (job) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
         ).length,
         pending_leads: pendingRes.count || 0,
-        unassigned: unassignedRes.count || 0,
+        unassigned: assignQueue.length,
         pickup_active: pickupRes.count || 0,
       });
       setLoading(false);
@@ -168,7 +193,7 @@ export default function WorkshopAdvisorDashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatTile label="Mechanics" value={stats.total_mechanics} accent="#004AAD" icon={<Users className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/team-overview" onClick={router.push} />
           <StatTile label="Active Jobs" value={stats.active_jobs} accent="#D97706" icon={<Wrench className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/jobs" onClick={router.push} />
-          <StatTile label="To Assign" value={stats.unassigned} accent="#EA580C" icon={<UserPlus className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/job-assignments" onClick={router.push} />
+          <StatTile label="To Assign" value={stats.unassigned} accent="#EA580C" icon={<UserPlus className="w-5 h-5" />} loading={loading} href={needsAssign.some((j) => j.kind === 'pickup') ? '/dashboard/workshop-advisor/pickup-delivery' : '/dashboard/workshop-advisor/job-assignments'} onClick={router.push} />
           <StatTile label="Pending Leads" value={stats.pending_leads} accent="#0284C7" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/pending-leads" onClick={router.push} />
           <StatTile label="Completed" value={stats.completed_today} accent="#059669" icon={<CheckCircle className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/daily-report" onClick={router.push} />
           <StatTile label="Pending QC" value={stats.pending_qc} accent="#6D28D9" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/qc-queue" onClick={router.push} />
@@ -183,6 +208,60 @@ export default function WorkshopAdvisorDashboard() {
           <QuickLink href="/dashboard/workshop-advisor/pickup-delivery" icon={<Car className="w-5 h-5" />} title="Pickup & Delivery" sub="Track pickup boys" onClick={router.push} />
           <QuickLink href="/dashboard/workshop-advisor/extra-work" icon={<Banknote className="w-5 h-5" />} title="Extra Jobs" sub="Approve additional work" onClick={router.push} />
           <QuickLink href="/dashboard/workshop-advisor/day-planning" icon={<CalendarDays className="w-5 h-5" />} title="Day Planning" sub="Plan today's jobs" onClick={router.push} />
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <h2 className="text-[14px] font-bold text-[#023D95]">Needs Assignment</h2>
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  needsAssign.some((j) => j.kind === 'pickup')
+                    ? '/dashboard/workshop-advisor/pickup-delivery'
+                    : '/dashboard/workshop-advisor/job-assignments',
+                )
+              }
+              className="text-xs font-bold text-[#004AAD]"
+            >
+              View all →
+            </button>
+          </div>
+          <div className="space-y-2">
+            {loading && needsAssign.length === 0 ? (
+              <p className="py-4 text-center text-sm text-slate-500">Loading…</p>
+            ) : null}
+            {needsAssign.map((job) => {
+              const pickup = job.kind === 'pickup';
+              return (
+                <button
+                  key={`${job.kind}-${job.id}`}
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      pickup
+                        ? '/dashboard/workshop-advisor/pickup-delivery'
+                        : '/dashboard/workshop-advisor/job-assignments',
+                    )
+                  }
+                  className="flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-xl border border-slate-100 bg-[#F0F7FF] p-3 text-left"
+                >
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="truncate text-sm font-semibold text-[#023D95]">
+                      {job.customer_name || 'Customer'}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">{job.vehicle_number || '—'}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-[#EA580C] px-2 py-0.5 text-[10px] font-bold text-white">
+                    {pickup ? 'PICKUP' : 'MECHANIC'}
+                  </span>
+                </button>
+              );
+            })}
+            {!loading && needsAssign.length === 0 ? (
+              <p className="py-4 text-center text-sm text-slate-500">No jobs waiting to assign</p>
+            ) : null}
+          </div>
         </div>
 
         <div className="rounded-2xl bg-[#004AAD] p-3.5 shadow-sm sm:p-4">

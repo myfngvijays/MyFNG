@@ -1,35 +1,54 @@
 /**
- * Pickup Delivery Tracking Screen - Workshop Supervisor
- * Track pickup boys and vehicle deliveries
+ * Pickup Delivery Tracking — Advisor assigns pickup boy, then tracks the job.
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, BackHandler } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  BackHandler,
+  TouchableOpacity,
+  Modal,
+  Alert,
+} from 'react-native';
 import { supabase } from '../../../lib/supabase';
-import { COLORS, SIZES, SPACING, SHADOWS } from '../../../constants/theme';
+import { apiFetch } from '../../../lib/api';
+import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
+
+function staffName(u: any) {
+  const joined = [u.first_name, u.last_name].map((s) => String(s || '').trim()).filter(Boolean).join(' ');
+  return joined || String(u.full_name || '').trim() || 'Pickup';
+}
 
 export default function PickupDeliveryTrackingScreen() {
   const navigation = useNavigation<any>();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [pickupBoys, setPickupBoys] = useState<any[]>([]);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
+  const [assignTask, setAssignTask] = useState<any | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  // Handle hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (assignTask) {
+        setAssignTask(null);
+        return true;
+      }
       if (navigation?.goBack) {
         navigation.goBack();
         return true;
       }
       return false;
     });
-
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [navigation, assignTask]);
 
   useEffect(() => {
     initializeScreen();
@@ -39,7 +58,6 @@ export default function PickupDeliveryTrackingScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('❌ No user found');
         setLoading(false);
         return;
       }
@@ -51,18 +69,15 @@ export default function PickupDeliveryTrackingScreen() {
         .single();
 
       if (!userProfile?.workshop_id) {
-        console.log('❌ No workshop_id found');
         setLoading(false);
         return;
       }
 
-      console.log('✅ Pickup Tracking - Workshop ID:', userProfile.workshop_id);
       setWorkshopId(userProfile.workshop_id);
-      
       await fetchTasks(userProfile.workshop_id);
       setupRealtimeSubscription(userProfile.workshop_id);
     } catch (error) {
-      console.error('❌ Error initializing screen:', error);
+      console.error('Error initializing screen:', error);
       setLoading(false);
     }
   };
@@ -73,20 +88,15 @@ export default function PickupDeliveryTrackingScreen() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'pickup_tracking'
-      }, () => {
-        console.log('Pickup tracking: Real-time update');
-        fetchTasks(wid);
-      })
+        table: 'pickup_tracking',
+      }, () => fetchTasks(wid))
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'service_leads'
-      }, () => {
-        fetchTasks(wid);
-      })
+        table: 'service_leads',
+      }, () => fetchTasks(wid))
       .subscribe();
-    
+
     return () => {
       channel.unsubscribe();
     };
@@ -94,50 +104,64 @@ export default function PickupDeliveryTrackingScreen() {
 
   const fetchTasks = async (wid?: string) => {
     const workshopIdToUse = wid || workshopId;
-    
+
     try {
       if (!workshopIdToUse) {
-        console.log('❌ No workshop ID');
         setRefreshing(false);
         return;
       }
 
-      console.log('🔍 Fetching pickup tasks for workshop:', workshopIdToUse);
-
-      // ✅ FIX: Use service_leads with pickup info (correct table)
-      const { data, error } = await supabase
-        .from('service_leads')
-        .select(`
-          id,
-          lead_number,
-          customer_name,
-          vehicle_number,
-          vehicle_make,
-          vehicle_model,
-          pickup_required,
-          pickup_status,
-          assigned_pickup_boy_id,
-          pickup_boy:assigned_pickup_boy_id(
+      const [{ data, error }, { data: staff }] = await Promise.all([
+        supabase
+          .from('service_leads')
+          .select(`
             id,
-            full_name
-          )
-        `)
-        .eq('workshop_id', workshopIdToUse)
-        .eq('pickup_required', true)
-        .is('deleted_at', null)
-        .in('pickup_status', ['ASSIGNED', 'IN_TRANSIT', 'PICKED_UP', 'EN_ROUTE'])
-        .order('created_at', { ascending: false });
+            lead_number,
+            customer_name,
+            vehicle_number,
+            vehicle_make,
+            vehicle_model,
+            pickup_required,
+            pickup_status,
+            assigned_pickup_boy_id,
+            pickup_boy:assigned_pickup_boy_id(
+              id,
+              full_name
+            )
+          `)
+          .eq('workshop_id', workshopIdToUse)
+          .eq('pickup_required', true)
+          .is('deleted_at', null)
+          .not('status', 'in', '(REJECTED,CANCELLED)')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('users_login')
+          .select('id, full_name, first_name, last_name, is_active, role:role_id(role_code)')
+          .eq('workshop_id', workshopIdToUse)
+          .eq('is_active', true),
+      ]);
 
       if (error) {
-        console.error('❌ Error fetching tasks:', error);
         setRefreshing(false);
         setLoading(false);
         return;
       }
 
-      console.log('✅ Found', data?.length || 0, 'active pickup tasks');
+      const openPickup = (data || []).filter((t: any) => {
+        const st = String(t.pickup_status || 'PENDING').toUpperCase();
+        return ![
+          'VEHICLE_DROPPED_AT_WORKSHOP',
+          'PICKED_UP',
+          'PICKUP_COMPLETED',
+          'DELIVERED',
+          'DROPPED',
+        ].includes(st);
+      });
 
-      setTasks(data || []);
+      setTasks(openPickup);
+      setPickupBoys(
+        (staff || []).filter((u: any) => u.role?.role_code === 'WORKSHOP_PICKUP_BOY'),
+      );
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -146,14 +170,40 @@ export default function PickupDeliveryTrackingScreen() {
     }
   };
 
+  async function assignPickupBoy(pickupBoyId: string, pickupBoyName: string) {
+    if (!assignTask) return;
+    try {
+      setSaving(true);
+      await apiFetch(`/api/workshop/leads/${assignTask.id}/assign-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickup_boy_id: pickupBoyId }),
+      });
+      setAssignTask(null);
+      if (workshopId) await fetchTasks(workshopId);
+      Alert.alert('Assigned', `Pickup assigned to ${pickupBoyName}`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to assign pickup boy');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ASSIGNED': return COLORS.info;
-      case 'IN_TRANSIT': return COLORS.warning;
-      case 'PICKED_UP': return COLORS.success;
-      default: return COLORS.gray[500];
+    switch (String(status || '').toUpperCase()) {
+      case 'ASSIGNED':
+        return COLORS.info;
+      case 'IN_TRANSIT':
+      case 'EN_ROUTE':
+        return COLORS.warning;
+      case 'PICKED_UP':
+        return COLORS.success;
+      default:
+        return COLORS.gray[500];
     }
   };
+
+  const unassignedCount = tasks.filter((t) => !t.assigned_pickup_boy_id).length;
 
   return (
     <ScrollView
@@ -169,57 +219,106 @@ export default function PickupDeliveryTrackingScreen() {
         />
       }
     >
-      <Text style={AC.sub}>{tasks.length} active tasks</Text>
-      
+      <Text style={AC.sub}>
+        {unassignedCount} need pickup assign · {tasks.length} open
+      </Text>
+
       {loading ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>Loading...</Text>
         </View>
       ) : tasks.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No active pickup tasks</Text>
+          <Text style={styles.emptyText}>No pickup jobs waiting</Text>
         </View>
       ) : (
-        tasks.map(task => (
-          <View key={task.id} style={AC.listCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <Text style={AC.name} numberOfLines={1}>
-                {task.customer_name || 'Customer'}
-              </Text>
-              <View style={[AC.statusPill, { backgroundColor: getStatusColor(task.pickup_status) }]}>
-                <Text style={AC.statusPillTxt}>{task.pickup_status}</Text>
+        tasks.map((task) => {
+          const unassigned = !task.assigned_pickup_boy_id;
+          return (
+            <View key={task.id} style={AC.listCard}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <Text style={AC.name} numberOfLines={1}>
+                  {task.customer_name || 'Customer'}
+                </Text>
+                <View style={[AC.statusPill, { backgroundColor: getStatusColor(task.pickup_status) }]}>
+                  <Text style={AC.statusPillTxt}>
+                    {unassigned ? 'UNASSIGNED' : String(task.pickup_status || 'PENDING').replace(/_/g, ' ')}
+                  </Text>
+                </View>
               </View>
+              <Text style={AC.meta}>
+                {[task.vehicle_number, task.vehicle_make, task.vehicle_model].filter(Boolean).join(' · ')}
+              </Text>
+              <Text style={[AC.meta, unassigned && { color: '#EA580C', fontWeight: '700' }]}>
+                {task.pickup_boy?.full_name || 'Unassigned'}
+              </Text>
+              {unassigned ? (
+                <TouchableOpacity style={styles.assignBtn} onPress={() => setAssignTask(task)}>
+                  <Text style={styles.assignBtnTxt}>Assign pickup</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
-            <Text style={AC.meta}>{task.vehicle_number}</Text>
-            <Text style={AC.meta}>{task.pickup_boy?.full_name || 'Unassigned'}</Text>
-          </View>
-        ))
+          );
+        })
       )}
+
+      <Modal visible={!!assignTask} transparent animationType="slide" onRequestClose={() => setAssignTask(null)}>
+        <View style={styles.modalWrap}>
+          <View style={styles.modalCard}>
+            <Text style={AC.name}>Assign pickup</Text>
+            <Text style={[AC.meta, { marginBottom: 12 }]}>{assignTask?.customer_name}</Text>
+            {pickupBoys.map((boy) => (
+              <TouchableOpacity
+                key={boy.id}
+                style={styles.boyRow}
+                disabled={saving}
+                onPress={() => assignPickupBoy(boy.id, staffName(boy))}
+              >
+                <Text style={styles.boyName}>{staffName(boy)}</Text>
+              </TouchableOpacity>
+            ))}
+            {pickupBoys.length === 0 ? (
+              <Text style={styles.emptyText}>No pickup boys in this workshop</Text>
+            ) : null}
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setAssignTask(null)} disabled={saving}>
+              <Text style={styles.cancelTxt}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: SPACING.md, paddingTop: 8, paddingBottom: 4 },
-  title: { fontSize: SIZES.xxl, fontWeight: 'bold' },
-  subtitle: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
   emptyContainer: { padding: SPACING.xl, alignItems: 'center' },
   emptyText: { fontSize: SIZES.md, color: COLORS.gray[500] },
-  card: {
-    backgroundColor: COLORS.white,
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
-    padding: SPACING.md,
-    borderRadius: 14,
-    ...SHADOWS.small,
+  assignBtn: {
+    marginTop: 10,
+    backgroundColor: '#004AAD',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  info: { flex: 1, minWidth: 0 },
-  leadNo: { fontSize: 16, fontWeight: '800', color: COLORS.textHeading },
-  vehicle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
-  customer: { fontSize: SIZES.sm, color: COLORS.gray[700], marginTop: 2 },
-  boy: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  badgeText: { color: COLORS.white, fontSize: 10, fontWeight: '800' },
+  assignBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  modalWrap: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  boyRow: {
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  boyName: { fontSize: 16, fontWeight: '700', color: '#023D95' },
+  cancelBtn: { paddingVertical: 16, alignItems: 'center' },
+  cancelTxt: { fontSize: 15, fontWeight: '700', color: COLORS.gray[500] },
 });

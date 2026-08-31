@@ -21,6 +21,7 @@ import { formatDateTime } from '@/lib/dateFormat';
 import { useAuth } from '../../context/AuthContext';
 import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
+import { isReadyForMechanicAssign, isWaitingPickupAssign } from '../../lib/workshopJobFlow';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -47,6 +48,8 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
     extraJobs: 0,
     pickupActive: 0,
     unassigned: 0,
+    pickupWaiting: 0,
+    mechanicUnassigned: 0,
   });
   const [unassignedJobs, setUnassignedJobs] = useState<any[]>([]);
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
@@ -71,7 +74,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         supabase
           .from('service_leads')
           .select(
-            'id, lead_number, customer_name, vehicle_number, status, assigned_mechanic_id, qc_status, pickup_status, created_at',
+            'id, lead_number, customer_name, vehicle_number, status, assigned_mechanic_id, assigned_pickup_boy_id, qc_status, pickup_status, pickup_required, created_at',
           )
           .eq('workshop_id', workshopId)
           .is('deleted_at', null)
@@ -106,9 +109,17 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         ['ASSIGNED', 'IN_PROGRESS', 'HOLD'].includes(job.mechanic_status),
       );
 
-      const unassignedJobsList = leadsData.filter(
-        (lead: any) => lead.status === 'ACCEPTED' && !lead.assigned_mechanic_id,
+      const pickupWaitingList = leadsData.filter((lead: any) => isWaitingPickupAssign(lead));
+      const mechanicWaitingList = leadsData.filter(
+        (lead: any) =>
+          !lead.assigned_mechanic_id &&
+          isReadyForMechanicAssign(lead) &&
+          ['ACCEPTED', 'VEHICLE_DROPPED_AT_WORKSHOP'].includes(lead.status),
       );
+      const unassignedJobsList = [
+        ...pickupWaitingList.map((lead: any) => ({ ...lead, assignKind: 'pickup' as const })),
+        ...mechanicWaitingList.map((lead: any) => ({ ...lead, assignKind: 'mechanic' as const })),
+      ];
 
       const pendingLeads = leadsData.filter((lead: any) =>
         ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'].includes(lead.status),
@@ -143,6 +154,8 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         extraJobs: extraRes.count || 0,
         pickupActive,
         unassigned: unassignedJobsList.length,
+        pickupWaiting: pickupWaitingList.length,
+        mechanicUnassigned: mechanicWaitingList.length,
       });
 
       setUnassignedJobs(unassignedJobsList.slice(0, 5));
@@ -238,7 +251,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
       icon: 'person-add-outline',
       color: COLORS.primary,
       screen: 'MechanicAssignment',
-      badge: stats.unassigned,
+      badge: stats.mechanicUnassigned,
     },
     {
       key: 'qc',
@@ -254,7 +267,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
       icon: 'car-outline',
       color: '#0D9488',
       screen: 'PickupDeliveryTracking',
-      badge: stats.pickupActive,
+      badge: stats.pickupWaiting + stats.pickupActive,
     },
     {
       key: 'extra',
@@ -324,7 +337,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         {[
           { key: 'mech', label: 'Mechanics', value: stats.totalMechanics, accent: '#004AAD', screen: 'TeamOverview' },
           { key: 'active', label: 'Active Jobs', value: stats.activeJobs, accent: '#D97706', screen: 'JobMonitoring' },
-          { key: 'assign', label: 'To Assign', value: stats.unassigned, accent: '#EA580C', screen: 'MechanicAssignment' },
+          { key: 'assign', label: 'To Assign', value: stats.unassigned, accent: '#EA580C', screen: unassignedJobs.some((j) => j.assignKind === 'pickup') ? 'PickupDeliveryTracking' : 'MechanicAssignment' },
           { key: 'leads', label: 'Pending Leads', value: stats.pendingLeads, accent: '#0284C7', screen: 'PendingLeads' },
           { key: 'done', label: 'Completed', value: stats.completedToday, accent: '#059669', screen: 'DailyReport' },
           { key: 'qc', label: 'Pending QC', value: stats.pendingQc, accent: '#6D28D9', screen: 'QCCheck' },
@@ -345,19 +358,29 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
 
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>Needs Assignment</Text>
-        <TouchableOpacity onPress={() => go('MechanicAssignment')}>
+        <TouchableOpacity
+          onPress={() =>
+            go(
+              unassignedJobs.some((j) => j.assignKind === 'pickup')
+                ? 'PickupDeliveryTracking'
+                : 'MechanicAssignment',
+            )
+          }
+        >
           <Text style={styles.viewAll}>View all</Text>
         </TouchableOpacity>
       </View>
       {unassignedJobs.length > 0 ? (
-        unassignedJobs.map((job) => (
-          <View key={job.id} style={styles.jobCard}>
+        unassignedJobs.map((job) => {
+          const pickup = job.assignKind === 'pickup';
+          return (
+          <View key={`${job.assignKind}-${job.id}`} style={styles.jobCard}>
             <View style={styles.jobHeader}>
               <Text style={styles.jobName} numberOfLines={1}>
                 {job.customer_name || 'Customer'}
               </Text>
               <View style={styles.urgentBadge}>
-                <Text style={styles.urgentText}>UNASSIGNED</Text>
+                <Text style={styles.urgentText}>{pickup ? 'PICKUP' : 'MECHANIC'}</Text>
               </View>
             </View>
             {job.vehicle_number ? (
@@ -368,16 +391,23 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
             ) : null}
             <TouchableOpacity
               style={styles.assignButton}
-              onPress={() => go('MechanicAssignment', { leadId: job.id })}
+              onPress={() =>
+                pickup
+                  ? go('PickupDeliveryTracking')
+                  : go('MechanicAssignment', { leadId: job.id })
+              }
             >
               <Ionicons name="person-add" size={16} color={COLORS.white} />
-              <Text style={styles.assignButtonText}>Assign Mechanic</Text>
+              <Text style={styles.assignButtonText}>
+                {pickup ? 'Assign pickup' : 'Assign Mechanic'}
+              </Text>
             </TouchableOpacity>
           </View>
-        ))
+          );
+        })
       ) : (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>No jobs waiting for a mechanic</Text>
+          <Text style={styles.emptyText}>No jobs waiting to assign</Text>
         </View>
       )}
 
