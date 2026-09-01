@@ -29,7 +29,7 @@ export type SmartfloRecordingsCronSettings = {
 const DEFAULTS: SmartfloRecordingsCronSettings = {
   enabled: true,
   interval_minutes: 15,
-  hours_back: 6,
+  hours_back: 24,
   last_run_at: null,
   last_run_ok: null,
   last_run_summary: null,
@@ -45,10 +45,31 @@ function clampInterval(raw: unknown): SmartfloRecordingsCronInterval {
   return DEFAULTS.interval_minutes;
 }
 
+export const SMARTFLO_RECORDINGS_HOURS_BACK_OPTIONS = [3, 6, 12, 24, 48, 72, 168] as const;
+export const SMARTFLO_RECORDINGS_MAX_HOURS_BACK = 240;
+
 function clampHoursBack(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n)) return DEFAULTS.hours_back;
-  return Math.min(72, Math.max(1, Math.round(n)));
+  return Math.min(SMARTFLO_RECORDINGS_MAX_HOURS_BACK, Math.max(1, Math.round(n)));
+}
+
+/**
+ * If cron never finished (or last run is older than the configured window),
+ * widen CDR lookback so missed days are pulled on the next successful tick.
+ */
+export function catchUpSmartfloRecordingsHoursBack(
+  settings: SmartfloRecordingsCronSettings,
+  nowMs = Date.now(),
+): number {
+  const configured = clampHoursBack(settings.hours_back);
+  const last = settings.last_run_at ? Date.parse(settings.last_run_at) : NaN;
+  if (!Number.isFinite(last) || settings.last_run_ok === false) {
+    return Math.max(configured, 240);
+  }
+  const hoursSince = (nowMs - last) / 3_600_000;
+  if (hoursSince <= configured) return configured;
+  return Math.min(SMARTFLO_RECORDINGS_MAX_HOURS_BACK, Math.max(configured, Math.ceil(hoursSince) + 2));
 }
 
 function parseSettings(raw: unknown): SmartfloRecordingsCronSettings {
@@ -132,6 +153,18 @@ export async function updateSmartfloRecordingsCronSettings(
   return writeSettings(next, updatedBy);
 }
 
+export async function markSmartfloRecordingsCronHeartbeat(): Promise<void> {
+  const current = await getSmartfloRecordingsCronSettings();
+  await writeSettings({
+    ...current,
+    last_run_at: new Date().toISOString(),
+    last_run_ok: false,
+    last_run_summary: 'in_progress',
+    last_skipped_at: null,
+    last_skip_reason: null,
+  });
+}
+
 export async function markSmartfloRecordingsCronRun(input: {
   ok: boolean;
   summary: string;
@@ -200,6 +233,7 @@ export function smartfloRecordingsCronAdminPayload(
     vercel_tick_label: 'Vercel checks every 5 min; effective interval set below',
     cutoff_ist: SMARTFLO_RECORDINGS_CUTOFF_IST,
     allowed_intervals: [...SMARTFLO_RECORDINGS_CRON_INTERVALS],
+    allowed_hours_back: [...SMARTFLO_RECORDINGS_HOURS_BACK_OPTIONS],
     setup_link: '/dashboard/super_admin/click-to-call',
     ...settings,
     schedule_label: settings.enabled

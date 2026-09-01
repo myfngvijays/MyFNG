@@ -2010,6 +2010,9 @@ async function checkSmartfloRecordings(): Promise<HealthCheck> {
 
     let cronEnabled = true;
     let cronInterval = 15;
+    let lastRunAt: string | null = null;
+    let lastRunOk: boolean | null = null;
+    let lastRunSummary: string | null = null;
     try {
       const { getSmartfloRecordingsCronSettings } = await import(
         '@/lib/telecaller/smartfloRecordingsCronSettings'
@@ -2017,32 +2020,61 @@ async function checkSmartfloRecordings(): Promise<HealthCheck> {
       const cron = await getSmartfloRecordingsCronSettings();
       cronEnabled = cron.enabled;
       cronInterval = cron.interval_minutes;
+      lastRunAt = cron.last_run_at;
+      lastRunOk = cron.last_run_ok;
+      lastRunSummary = cron.last_run_summary;
     } catch {
       /* ignore */
+    }
+
+    const lastRunMs = lastRunAt ? Date.parse(lastRunAt) : NaN;
+    const staleMs = Math.max(cronInterval * 2, 30) * 60 * 1000;
+    const cronOverdue =
+      cronEnabled && (!Number.isFinite(lastRunMs) || Date.now() - lastRunMs > staleMs);
+
+    let status: HealthCheck['status'] = 'healthy';
+    let message = `CDR sync ready · every ${cronInterval}m`;
+    let reason = `${withRec || 0} recording URL(s) ingested in last 48h. Cron /api/cron/smartflo-recordings every ${cronInterval}m (admin); webhook /api/webhooks/smartflo optional.`;
+    if (!cronEnabled) {
+      status = 'degraded';
+      message = 'CDR cron is OFF in admin';
+      reason = 'Enable Smartflo recordings cron on WhatsApp Cron Jobs page to resume auto-sync.';
+    } else if (cronOverdue) {
+      status = 'down';
+      message = lastRunAt
+        ? 'CDR cron overdue — last run stale'
+        : 'CDR cron has never completed';
+      reason = lastRunAt
+        ? `Last run ${lastRunAt}${lastRunSummary ? ` · ${lastRunSummary}` : ''}. Vercel tick should hit /api/cron/smartflo-recordings every 5 min.`
+        : 'No last_run_at in system_settings. Cron likely 401 (auth) or timing out before it can save status. Use Recordings → Sync now.';
     }
 
     return {
       name: 'Smartflo Call Recordings',
       category: 'Third Party',
-      status: cronEnabled ? 'healthy' : 'degraded',
+      status,
       responseTime: Date.now() - start,
-      message: cronEnabled
-        ? `CDR sync ready · every ${cronInterval}m`
-        : 'CDR cron is OFF in admin',
-      reason: cronEnabled
-        ? `${withRec || 0} recording URL(s) ingested in last 48h. Cron /api/cron/smartflo-recordings every ${cronInterval}m (admin); webhook /api/webhooks/smartflo optional.`
-        : 'Enable Smartflo recordings cron on WhatsApp Cron Jobs page to resume auto-sync.',
+      message,
+      reason,
       lastChecked: new Date().toISOString(),
       quickFix: {
-        label: 'Open recordings cron controls',
+        label: cronOverdue ? 'Open recordings page' : 'Open recordings cron controls',
         action: 'internal-link',
-        actionPayload: { url: '/dashboard/super_admin/whatsapp-cron' },
+        actionPayload: {
+          url: cronOverdue
+            ? '/dashboard/super_admin/recordings'
+            : '/dashboard/super_admin/whatsapp-cron',
+        },
       },
       details: {
         has_token: true,
         recordings_48h: withRec || 0,
         cron_enabled: cronEnabled,
         cron_interval_minutes: cronInterval,
+        cron_overdue: cronOverdue,
+        last_run_at: lastRunAt,
+        last_run_ok: lastRunOk,
+        last_run_summary: lastRunSummary,
         cron: '/api/cron/smartflo-recordings',
         webhook: '/api/webhooks/smartflo',
         SMARTFLO_WEBHOOK_SECRET: Boolean(process.env.SMARTFLO_WEBHOOK_SECRET),

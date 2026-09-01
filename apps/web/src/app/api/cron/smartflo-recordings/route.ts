@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertCronAuth } from '@/lib/cron/assertCronAuth';
-import { syncSmartfloRecordings } from '@/lib/telecaller/smartfloCdr';
-import { sweepCallIqWorkflow } from '@/lib/telecaller/callIqWorkflow';
-import { scoreOpenLeads } from '@/lib/telecaller/leadMlScore';
+import { backfillSmartfloRecordingsFromIst, SMARTFLO_RECORDINGS_AFTER_AUG23_IST, syncSmartfloRecordings } from '@/lib/telecaller/smartfloCdr';
 import {
+  catchUpSmartfloRecordingsHoursBack,
   getSmartfloRecordingsCronSettings,
+  markSmartfloRecordingsCronHeartbeat,
   markSmartfloRecordingsCronRun,
   markSmartfloRecordingsCronSkipped,
   shouldRunSmartfloRecordingsCron,
@@ -12,7 +12,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * Poll Smartflo CDR and attach recording_url onto telecaller_call_logs.
@@ -49,33 +49,50 @@ async function handle(req: NextRequest) {
   }
 
   const hoursParam = Number(searchParams.get('hours') || searchParams.get('hours_back') || '');
-  const hoursBack = Number.isFinite(hoursParam) && hoursParam > 0 ? hoursParam : settings.hours_back;
+  const hoursBack =
+    Number.isFinite(hoursParam) && hoursParam > 0
+      ? hoursParam
+      : catchUpSmartfloRecordingsHoursBack(settings);
+  const catchUp = hoursBack > settings.hours_back;
+  const fromAug24 = force || catchUp;
 
-  const result = await syncSmartfloRecordings({
-    hoursBack: Number.isFinite(hoursBack) ? hoursBack : 6,
-    maxPages: 4,
-    timeBudgetMs: 42_000,
-    concurrency: 6,
-  });
+  // Stamp last_run immediately so overlapping 5-min ticks skip instead of stacking.
+  await markSmartfloRecordingsCronHeartbeat();
 
-  const iqSweep = result.ok
-    ? await sweepCallIqWorkflow(6).catch((e) => ({
-        scanned: 0,
-        ran: 0,
-        skipped: 0,
-        error: e?.message || 'sweep failed',
-      }))
-    : { scanned: 0, ran: 0, skipped: 0 };
-
-  const mlSweep = result.ok
-    ? await scoreOpenLeads(25).catch((e) => ({
-        scored: 0,
-        warning: e?.message || 'ml sweep failed',
-      }))
-    : { scored: 0 };
+  let result;
+  try {
+    result = fromAug24
+      ? await backfillSmartfloRecordingsFromIst(SMARTFLO_RECORDINGS_AFTER_AUG23_IST, {
+          timeBudgetMs: force ? 600_000 : 95_000,
+          skipPostProcess: true,
+          newestFirst: true,
+        })
+      : await syncSmartfloRecordings({
+          hoursBack: Number.isFinite(hoursBack) ? hoursBack : 6,
+          maxPages: 4,
+          timeBudgetMs: 95_000,
+          concurrency: 6,
+          skipPostProcess: true,
+        });
+  } catch (e: any) {
+    const summary = e?.message || 'sync threw';
+    await markSmartfloRecordingsCronRun({ ok: false, summary });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: summary,
+        skipped: false,
+        hours_back: hoursBack,
+        timestamp: new Date().toISOString(),
+      },
+      { status: 502 },
+    );
+  }
 
   const summary = result.ok
-    ? `fetched=${result.fetched} with_recording=${result.with_recording} matched=${result.matched} call_iq=${iqSweep.ran}`
+    ? `fetched=${result.fetched} with_recording=${result.with_recording} matched=${result.matched}${
+        result.truncated ? ' truncated' : ''
+      }`
     : result.error || 'sync failed';
 
   await markSmartfloRecordingsCronRun({ ok: Boolean(result.ok), summary });
@@ -88,8 +105,8 @@ async function handle(req: NextRequest) {
       enabled: settings.enabled,
       interval_minutes: settings.interval_minutes,
       hours_back: hoursBack,
-      call_iq_sweep: iqSweep,
-      ml_score_sweep: mlSweep,
+      catch_up: catchUp,
+      from_aug24: fromAug24,
       timestamp: new Date().toISOString(),
     },
     { status: result.ok ? 200 : 502 },

@@ -29,6 +29,7 @@ import { usePathname } from 'next/navigation';
 
 type RecordingRow = {
   id: string;
+  call_log_id?: string | null;
   lead_id: string | null;
   lead_number: string | null;
   customer_name: string | null;
@@ -57,6 +58,16 @@ type Stats = {
   short: number | null;
 };
 
+type SyncMeta = {
+  enabled?: boolean;
+  last_run_at?: string | null;
+  last_run_ok?: boolean | null;
+  last_run_summary?: string | null;
+  last_skip_reason?: string | null;
+  overdue?: boolean;
+  can_sync?: boolean;
+};
+
 const CALL_STATUS_OPTIONS = [
   'ALL',
   'ANSWERED',
@@ -75,12 +86,6 @@ const DURATION_OPTIONS = [
   { value: 'MEDIUM', label: 'Medium (31–120s)' },
   { value: 'LONG', label: 'Long (>2m)' },
   { value: 'ZERO', label: '0s / unknown' },
-] as const;
-
-const LEAD_LINK_OPTIONS = [
-  { value: 'ALL', label: 'All calls' },
-  { value: 'WITH_LEAD', label: 'Linked to lead' },
-  { value: 'NO_LEAD', label: 'No lead' },
 ] as const;
 
 const GROUP_OPTIONS = [
@@ -237,7 +242,7 @@ export default function AdminRecordingsPanel({
   const [customEnd, setCustomEnd] = useState('');
   const [callStatus, setCallStatus] = useState<string>('ALL');
   const [duration, setDuration] = useState<string>('ALL');
-  const [leadLink, setLeadLink] = useState<string>('ALL');
+  const [leadLink, setLeadLink] = useState<string>('WITH_LEAD');
   const [telecallerId, setTelecallerId] = useState<string>('ALL');
   const [groupBy, setGroupBy] = useState<'date' | 'telecaller' | 'none'>('date');
   const [page, setPage] = useState(1);
@@ -259,6 +264,9 @@ export default function AdminRecordingsPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [analyzing, setAnalyzing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMeta, setSyncMeta] = useState<SyncMeta | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [analysisById, setAnalysisById] = useState<
     Record<
       string,
@@ -300,7 +308,7 @@ export default function AdminRecordingsPanel({
   const hasActiveFilters =
     callStatus !== 'ALL' ||
     duration !== 'ALL' ||
-    leadLink !== 'ALL' ||
+    leadLink !== 'WITH_LEAD' ||
     telecallerId !== 'ALL' ||
     qApplied.trim() ||
     preset !== 'last_30_days';
@@ -349,11 +357,14 @@ export default function AdminRecordingsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const ac = new AbortController();
+    const kill = window.setTimeout(() => ac.abort(), 20_000);
     try {
       const params = buildFilterParams();
       const res = await fetch(`/api/super_admin/recordings?${params}`, {
         credentials: 'include',
         cache: 'no-store',
+        signal: ac.signal,
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) {
@@ -373,10 +384,19 @@ export default function AdminRecordingsPanel({
       if (Array.isArray(json.telecallers)) {
         setTelecallers(json.telecallers);
       }
+      if (json.sync && typeof json.sync === 'object') {
+        setSyncMeta(json.sync);
+      }
     } catch (e: any) {
-      setError(e?.message || 'Failed to load');
+      const aborted = e?.name === 'AbortError' || /aborted/i.test(String(e?.message || ''));
+      setError(
+        aborted
+          ? 'Recordings took too long to load. Click Refresh, or Sync now.'
+          : e?.message || 'Failed to load',
+      );
       setRows([]);
     } finally {
+      window.clearTimeout(kill);
       setLoading(false);
     }
   }, [buildFilterParams]);
@@ -397,6 +417,34 @@ export default function AdminRecordingsPanel({
     }, 350);
     return () => window.clearTimeout(t);
   }, [q]);
+
+  async function handleSyncNow() {
+    if (!syncMeta?.can_sync || syncing) return;
+    setSyncing(true);
+    setError(null);
+    setSyncMessage(null);
+    try {
+      const res = await fetch('/api/super_admin/recordings', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        throw new Error(json?.error || json?.message || 'Recording sync failed');
+      }
+      setSyncMessage(
+        json.message ||
+          `Synced ${json.with_recording ?? 0} recording(s) from ${json.fetched ?? 0} CDR row(s)`,
+      );
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Recording sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleExport(mode: 'filtered' | 'selected') {
     if (preset === 'custom' && (!customStart || !customEnd)) {
@@ -489,7 +537,7 @@ export default function AdminRecordingsPanel({
     setCustomEnd('');
     setCallStatus('ALL');
     setDuration('ALL');
-    setLeadLink('ALL');
+    setLeadLink('WITH_LEAD');
     setTelecallerId('ALL');
     setGroupBy('date');
     setPage(1);
@@ -551,6 +599,21 @@ export default function AdminRecordingsPanel({
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {exporting ? 'Exporting…' : 'Export CSV'}
           </button>
+          {syncMeta?.can_sync !== false ? (
+            <button
+              type="button"
+              onClick={() => void handleSyncNow()}
+              disabled={syncing}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+            >
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {syncing ? 'Syncing…' : 'Sync now'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void load()}
@@ -562,6 +625,32 @@ export default function AdminRecordingsPanel({
         </div>
       </div>
 
+      {syncMeta?.overdue ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">Fresh recordings are not auto-syncing</p>
+          <p className="mt-0.5 text-amber-800">
+            {syncMeta.last_run_at
+              ? `Last cron run ${formatDateTime(syncMeta.last_run_at)}${
+                  syncMeta.last_run_summary ? ` · ${syncMeta.last_run_summary}` : ''
+                }.`
+              : 'Call-recording cron has not completed on the server.'}{' '}
+            {syncMeta.can_sync
+              ? 'Click Sync now to pull the last 7 days from Smartflo.'
+              : 'Ask Super Admin to run Sync now, or open WhatsApp Cron Jobs.'}
+          </p>
+        </div>
+      ) : syncMeta?.last_run_at ? (
+        <p className="text-xs text-slate-500">
+          Last sync:{' '}
+          {formatDateTime(syncMeta.last_run_at)}
+          {syncMeta.last_run_ok === false ? ' · failed' : ''}
+          {syncMeta.last_run_summary ? ` · ${syncMeta.last_run_summary}` : ''}
+        </p>
+      ) : null}
+      {syncMessage ? (
+        <p className="text-xs font-medium text-emerald-700">{syncMessage}</p>
+      ) : null}
+
       {/* Summary chips */}
       <div className="flex flex-wrap gap-2">
         <button
@@ -569,11 +658,11 @@ export default function AdminRecordingsPanel({
           onClick={() => {
             setCallStatus('ALL');
             setDuration('ALL');
-            setLeadLink('ALL');
+            setLeadLink('WITH_LEAD');
             setPage(1);
           }}
           className={`rounded-full px-3 py-1.5 text-xs font-bold ring-1 ${
-            callStatus === 'ALL' && duration === 'ALL' && leadLink === 'ALL'
+            callStatus === 'ALL' && duration === 'ALL' && leadLink === 'WITH_LEAD'
               ? 'bg-blue-600 text-white ring-blue-600'
               : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'
           }`}
@@ -691,22 +780,6 @@ export default function AdminRecordingsPanel({
             className="min-w-[170px]"
           >
             {DURATION_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </FilterSelect>
-
-          <FilterSelect
-            label="Lead link"
-            value={leadLink}
-            onChange={(v) => {
-              setPage(1);
-              setLeadLink(v);
-            }}
-            className="min-w-[150px]"
-          >
-            {LEAD_LINK_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -1023,7 +1096,9 @@ function SectionRows({
           : idx % 2 === 0
             ? 'bg-white'
             : 'bg-slate-50';
-        const disp = leadDisplayStatus({ status: row.lead_status } as any) || row.lead_status;
+        const disp = row.lead_id
+          ? leadDisplayStatus({ status: row.lead_status } as any) || row.lead_status
+          : null;
         const statusColors = leadStatusCardColors(String(disp || ''));
         return (
           <FragmentRow key={row.id}>

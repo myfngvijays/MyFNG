@@ -520,7 +520,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       const res = await fetch('/api/super_admin/click-to-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync_recordings', hours_back: 6, max_pages: 3 }),
+        body: JSON.stringify({ action: 'sync_recordings', hours_back: 168, max_pages: 12 }),
         signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
@@ -1518,7 +1518,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2 text-sm font-medium hover:bg-sky-700 disabled:opacity-50"
         >
           {syncingRec ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {syncingRec ? 'Syncing (max ~1 min)…' : 'Sync last 6h recordings'}
+          {syncingRec ? 'Syncing (max ~1 min)…' : 'Sync last 7 days recordings'}
         </button>
         {!config?.has_smartflo_api_token ? (
           <p className="mt-2 text-xs text-amber-700">Pehle c2c token Gateway menu mein save karo, phir sync.</p>

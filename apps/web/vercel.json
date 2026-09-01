@@ -60,5 +60,10 @@
       "path": "/api/cron/crm-ml-dl",
       "schedule": "*/10 * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/cron/smartflo-recordings/route.ts": {
+      "maxDuration": 120
+    }
+  }
 }

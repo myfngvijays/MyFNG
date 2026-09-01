@@ -340,6 +340,21 @@ export function ownerOfDid(
   return hit?.telecaller_id ? String(hit.telecaller_id).trim() : null;
 }
 
+/** DIDs that are assigned to a telecaller (Ajit / Mahendra click-to-call lines). */
+export function assignedDidPhoneSet(cfg: ClickToCallConfig): Set<string> {
+  const set = new Set<string>();
+  for (const a of cfg.did_assignments || []) {
+    if (!a.telecaller_id || !a.did) continue;
+    const p = didKey(a.did);
+    if (p) set.add(p);
+  }
+  return set;
+}
+
+export function telecallerIdForDid(cfg: ClickToCallConfig, did: unknown): string | null {
+  return ownerOfDid(cfg, String(did || ''));
+}
+
 export type ExclusiveDidResult =
   | { ok: true; did: string; source: 'assigned' | 'unassigned_pool' | 'requested' }
   | { ok: false; error: string; code: 'DID_EXCLUSIVE' | 'NO_DID_ASSIGNED' };

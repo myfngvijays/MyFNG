@@ -312,15 +312,21 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'sync_recordings') {
-    const hoursBack = Number(body.hours_back ?? body.hours ?? 6);
-    const maxPages = Number(body.max_pages ?? 6);
-    const { syncSmartfloRecordings } = await import('@/lib/telecaller/smartfloCdr');
-    const result = await syncSmartfloRecordings({
-      hoursBack: Number.isFinite(hoursBack) ? hoursBack : 6,
-      maxPages: Number.isFinite(maxPages) ? maxPages : 6,
-      timeBudgetMs: 55_000,
-      concurrency: 6,
+    const { backfillSmartfloRecordingsFromIst, SMARTFLO_RECORDINGS_AFTER_AUG23_IST } = await import(
+      '@/lib/telecaller/smartfloCdr'
+    );
+    const { markSmartfloRecordingsCronRun } = await import(
+      '@/lib/telecaller/smartfloRecordingsCronSettings'
+    );
+    const result = await backfillSmartfloRecordingsFromIst(SMARTFLO_RECORDINGS_AFTER_AUG23_IST, {
+      timeBudgetMs: 80_000,
+      skipPostProcess: true,
+      newestFirst: true,
     });
+    const summary = result.ok
+      ? `manual fetched=${result.fetched} with_recording=${result.with_recording}`
+      : result.error || 'sync failed';
+    await markSmartfloRecordingsCronRun({ ok: Boolean(result.ok), summary }).catch(() => {});
     if (!result.ok) {
       return NextResponse.json(
         { error: result.error || 'Sync failed', ...result },

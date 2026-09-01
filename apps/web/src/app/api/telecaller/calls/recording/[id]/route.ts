@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { fetchRecordingAudio } from '@/lib/telecaller/smartfloCdr';
+import { boundRecordingUrlForCallId, fetchRecordingAudio } from '@/lib/telecaller/smartfloCdr';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -58,24 +58,37 @@ export async function GET(
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = supabaseAdmin ?? auth.supabase;
 
-    const { data: log, error } = await db
+    const { data: log } = await db
       .from('telecaller_call_logs')
       .select('id, lead_id, call_recording_url, smartflo_call_id')
       .eq('id', logId)
       .maybeSingle();
 
-    if (error || !log) {
-      return NextResponse.json({ error: 'Call log not found' }, { status: 404 });
-    }
+    const { data: cdrByRow } = await db
+      .from('smartflo_call_recordings')
+      .select('id, recording_url, smartflo_call_id, call_log_id')
+      .eq('id', logId)
+      .maybeSingle();
 
-    let recordingUrl = String(log.call_recording_url || '').trim();
-    if (!recordingUrl && log.smartflo_call_id && supabaseAdmin) {
-      const { data: cdr } = await supabaseAdmin
-        .from('smartflo_call_recordings')
-        .select('recording_url')
-        .eq('smartflo_call_id', log.smartflo_call_id)
-        .maybeSingle();
-      recordingUrl = String(cdr?.recording_url || '').trim();
+    const cdrByCallId =
+      !cdrByRow && log?.smartflo_call_id
+        ? await db
+            .from('smartflo_call_recordings')
+            .select('id, recording_url, smartflo_call_id, call_log_id')
+            .eq('smartflo_call_id', log.smartflo_call_id)
+            .maybeSingle()
+        : { data: null as any };
+
+    const cdr = cdrByRow || cdrByCallId.data;
+    const callId = String(cdr?.smartflo_call_id || log?.smartflo_call_id || '').trim();
+    const recordingUrl = boundRecordingUrlForCallId(
+      callId,
+      String(cdr?.recording_url || log?.call_recording_url || '').trim() || null,
+    );
+    const playRefId = String(cdr?.id || log?.id || logId);
+
+    if (!log && !cdr) {
+      return NextResponse.json({ error: 'Call log not found' }, { status: 404 });
     }
 
     if (!recordingUrl) {
@@ -106,9 +119,9 @@ export async function GET(
 
       return NextResponse.json({
         success: true,
-        call_log_id: log.id,
+        call_log_id: playRefId,
         recording_url: canExposeDirectUrl ? recordingUrl : null,
-        proxy: `/api/telecaller/calls/recording/${log.id}`,
+        proxy: `/api/telecaller/calls/recording/${playRefId}`,
         download_allowed: canExposeDirectUrl,
       });
     }

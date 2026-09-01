@@ -22,12 +22,17 @@ import {
   setWhatsAppCronJobEnabled,
 } from '@/lib/services/whatsappCronJobFlags';
 import {
+  catchUpSmartfloRecordingsHoursBack,
   getSmartfloRecordingsCronSettings,
   markSmartfloRecordingsCronRun,
   smartfloRecordingsCronAdminPayload,
   updateSmartfloRecordingsCronSettings,
 } from '@/lib/telecaller/smartfloRecordingsCronSettings';
-import { syncSmartfloRecordings } from '@/lib/telecaller/smartfloCdr';
+import {
+  backfillSmartfloRecordingsFromIst,
+  SMARTFLO_RECORDINGS_AFTER_AUG23_IST,
+  syncSmartfloRecordings,
+} from '@/lib/telecaller/smartfloCdr';
 import {
   createTelecallerLeadsShiftTemplate,
   getTelecallerLeadsShiftTemplateStatus,
@@ -242,13 +247,25 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Only Super Admin can run cron jobs' }, { status: 403 });
       }
       const settings = await getSmartfloRecordingsCronSettings();
-      const hoursBack = Number(body?.hours_back ?? settings.hours_back);
-      const result = await syncSmartfloRecordings({
-        hoursBack: Number.isFinite(hoursBack) ? hoursBack : settings.hours_back,
-        maxPages: Number(body?.max_pages ?? 6) || 6,
-        timeBudgetMs: 55_000,
-        concurrency: 6,
-      });
+      const requested = Number(body?.hours_back);
+      const hoursBack =
+        Number.isFinite(requested) && requested > 0
+          ? requested
+          : catchUpSmartfloRecordingsHoursBack(settings);
+      const catchUp = hoursBack > settings.hours_back;
+      const result = catchUp
+        ? await backfillSmartfloRecordingsFromIst(SMARTFLO_RECORDINGS_AFTER_AUG23_IST, {
+            timeBudgetMs: 55_000,
+            skipPostProcess: true,
+            newestFirst: true,
+          })
+        : await syncSmartfloRecordings({
+            hoursBack,
+            maxPages: Number(body?.max_pages ?? 6) || 6,
+            timeBudgetMs: 55_000,
+            concurrency: 6,
+            skipPostProcess: true,
+          });
       const summary = result.ok
         ? `manual fetched=${result.fetched} with_recording=${result.with_recording}`
         : result.error || 'sync failed';

@@ -80,6 +80,7 @@ type CronPayload = {
     vercel_tick_label: string;
     cutoff_ist: string;
     allowed_intervals: number[];
+    allowed_hours_back?: number[];
     setup_link: string;
     enabled: boolean;
     interval_minutes: number;
@@ -640,7 +641,17 @@ export default function WhatsAppCronPage() {
                               void updateSmartfloCron({ hours_back: Number(e.target.value) })
                             }
                           >
-                            {[3, 6, 12, 24, 48].map((h) => (
+                            {Array.from(
+                              new Set([
+                                ...(data.smartflo_recordings_cron.allowed_hours_back || [
+                                  3, 6, 12, 24, 48, 72, 168,
+                                ]),
+                                data.smartflo_recordings_cron.hours_back,
+                              ]),
+                            )
+                              .filter((h) => Number.isFinite(h) && h > 0)
+                              .sort((a, b) => a - b)
+                              .map((h) => (
                               <option key={h} value={h}>
                                 Last {h}h
                               </option>
