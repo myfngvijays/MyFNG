@@ -4,6 +4,7 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { LEAD_SOURCES, normalizeLeadSource } from '@/lib/enquiry/createLead';
 import { PANEL_ACCESS_ROLES } from '@/lib/super-admin-auth';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
+import { buildAdminCrmStatusCouponMeta, adminCrmMappedWorkshopStatus } from '@/lib/telecaller/leadDisplayStatus';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -222,6 +223,34 @@ export async function PATCH(
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) && /^\d{2}:\d{2}/.test(timeStr)) {
         update.preferred_slot_start = `${dateStr}T${timeStr}:00+05:30`;
       }
+    }
+
+    if (body.crm_status !== undefined) {
+      const { data: currentLead } = await supabaseAdmin
+        .from('service_leads')
+        .select('coupon_meta, status')
+        .eq('id', id)
+        .maybeSingle();
+      const built = buildAdminCrmStatusCouponMeta(
+        currentLead?.coupon_meta && typeof currentLead.coupon_meta === 'object'
+          ? (currentLead.coupon_meta as Record<string, unknown>)
+          : {},
+        String(body.crm_status || ''),
+        {
+          lostReason: typeof body.lost_reason === 'string' ? body.lost_reason : null,
+          note: typeof body.crm_note === 'string' ? body.crm_note : 'Changed from admin panel',
+          actor: 'Admin',
+        },
+      );
+      if (!built.ok) {
+        return NextResponse.json({ error: built.error }, { status: 400 });
+      }
+      update.coupon_meta = built.coupon_meta;
+      const workshopStatus = adminCrmMappedWorkshopStatus(
+        String(body.crm_status || ''),
+        currentLead?.status ? String(currentLead.status) : null,
+      );
+      if (workshopStatus) update.status = workshopStatus;
     }
 
     let previousAssigneeId: string | null = null;

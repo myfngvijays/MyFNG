@@ -157,7 +157,7 @@ export function leadDisplayStatus(lead: any): string {
   return shortLeadStatusLabel(PIPELINE_LABEL[status] || status.replace(/_/g, ' ') || 'Fresh');
 }
 
-/** Lead list cards: only Lost + Booking keep accent; others neutral. */
+/** Lead list cards: Lost, Booking confirmed, and Service Done keep accent. */
 export function leadStatusCardColors(leadOrLabel: any): {
   cardBg: string;
   border: string;
@@ -173,7 +173,12 @@ export function leadStatusCardColors(leadOrLabel: any): {
   if (s.includes('LOST') || s === 'REJECTED') {
     return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
   }
-  if (s.includes('BOOKING')) {
+  if (
+    s.includes('BOOKING') ||
+    s.includes('SERVICE DONE') ||
+    s === 'SERVICE_DONE' ||
+    s === 'COMPLETED'
+  ) {
     return { cardBg: '#ECFDF5', border: '#A7F3D0', badgeBg: '#D1FAE5', badgeText: '#047857' };
   }
   return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
@@ -225,13 +230,109 @@ export function leadStatusKpiColors(leadOrLabel: any): {
 export function leadStatusBannerClass(lead: any): string {
   const s = leadDisplayStatus(lead).toUpperCase();
   if (s.includes('LOST') || s === 'REJECTED') return 'bg-red-50 border-red-200';
-  if (s.includes('BOOKING')) return 'bg-emerald-50 border-emerald-200';
+  if (s.includes('BOOKING') || s.includes('SERVICE DONE') || s === 'COMPLETED') return 'bg-emerald-50 border-emerald-200';
   return 'bg-slate-50 border-slate-200';
 }
 
 export function leadStatusPillClass(lead: any): string {
   const s = leadDisplayStatus(lead).toUpperCase();
   if (s.includes('LOST')) return 'bg-red-100 text-red-700';
-  if (s.includes('BOOKING')) return 'bg-emerald-100 text-emerald-800';
+  if (s.includes('BOOKING') || s.includes('SERVICE DONE') || s === 'COMPLETED') return 'bg-emerald-100 text-emerald-800';
   return 'bg-slate-100 text-slate-600';
+}
+
+export const ADMIN_CRM_STATUS_OPTIONS = [
+  { id: 'FRESH', label: 'Fresh' },
+  { id: 'INTERESTED', label: 'Interested' },
+  { id: 'WILL_VISIT', label: 'He will visit' },
+  { id: 'CALLBACK', label: 'Follow-up' },
+  { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed' },
+  { id: 'IN_SERVICE', label: 'In Service' },
+  { id: 'SERVICE_DONE', label: 'Service Done' },
+  { id: 'LOST', label: 'Lost' },
+  { id: 'RINGING', label: 'Ringing / No answer' },
+] as const;
+
+export type AdminCrmStatusId = (typeof ADMIN_CRM_STATUS_OPTIONS)[number]['id'];
+
+/** Same workshop `status` mapping telecaller CRM uses (Service Done → COMPLETED). */
+export const ADMIN_CRM_TO_LEAD_STATUS: Record<string, string> = {
+  BOOKING_CONFIRMED: 'VALIDATED',
+  IN_SERVICE: 'IN_PROGRESS',
+  SERVICE_DONE: 'COMPLETED',
+  LOST: 'REJECTED',
+};
+
+const WORKSHOP_TERMINAL = new Set(['COMPLETED', 'CANCELLED']);
+
+export function adminCrmMappedWorkshopStatus(
+  crmStatusId: string,
+  currentWorkshopStatus?: string | null,
+): string | undefined {
+  const crmId = String(crmStatusId || '').trim().toUpperCase();
+  const normalized = crmId === 'COMPLETED' ? 'SERVICE_DONE' : crmId;
+  const mapped = ADMIN_CRM_TO_LEAD_STATUS[normalized];
+  if (!mapped) return undefined;
+  const current = String(currentWorkshopStatus || '').trim().toUpperCase();
+  if ((normalized === 'SERVICE_DONE' || normalized === 'LOST') || !WORKSHOP_TERMINAL.has(current)) {
+    return mapped;
+  }
+  return undefined;
+}
+
+export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
+  const result = String(lead?.coupon_meta?.last_call_result || '').trim().toUpperCase();
+  if (result === 'COMPLETED') return 'SERVICE_DONE';
+  if (ADMIN_CRM_STATUS_OPTIONS.some((o) => o.id === result)) return result as AdminCrmStatusId;
+  const label = String(leadDisplayStatus(lead) || '').trim().toLowerCase();
+  if (label.startsWith('lost')) return 'LOST';
+  if (label === 'completed' || label === 'service done') return 'SERVICE_DONE';
+  const match = ADMIN_CRM_STATUS_OPTIONS.find((o) => o.label.toLowerCase() === label);
+  if (match) return match.id;
+  const st = String(lead?.status || '').trim().toUpperCase();
+  if (st === 'VALIDATED') return 'BOOKING_CONFIRMED';
+  if (st === 'IN_PROGRESS') return 'IN_SERVICE';
+  if (st === 'COMPLETED' || st === 'READY_FOR_DELIVERY') return 'SERVICE_DONE';
+  if (st === 'REJECTED' || st === 'CANCELLED') return 'LOST';
+  return 'FRESH';
+}
+
+export function buildAdminCrmStatusCouponMeta(
+  prevMeta: Record<string, unknown> | null | undefined,
+  statusIdInput: string,
+  opts?: { lostReason?: string | null; note?: string | null; actor?: string | null },
+): { ok: true; coupon_meta: Record<string, unknown>; label: string } | { ok: false; error: string } {
+  const statusIdRaw = String(statusIdInput || '').trim().toUpperCase();
+  const statusId = statusIdRaw === 'COMPLETED' ? 'SERVICE_DONE' : statusIdRaw;
+  const spec = ADMIN_CRM_STATUS_OPTIONS.find((o) => o.id === statusId);
+  if (!spec) return { ok: false, error: 'Invalid lead status' };
+
+  const lostReason = String(opts?.lostReason || '').trim();
+  if (statusId === 'LOST' && !lostReason) {
+    return { ok: false, error: 'Lost reason is required' };
+  }
+
+  const now = new Date().toISOString();
+  const label = statusId === 'LOST' ? `Lost · ${lostReason}` : spec.label;
+  const prev = prevMeta && typeof prevMeta === 'object' && !Array.isArray(prevMeta) ? { ...prevMeta } : {};
+  const prevHistory = Array.isArray(prev.profile_history) ? prev.profile_history : [];
+  const historyEntry = {
+    at: now,
+    summary: `${opts?.actor || 'Admin'} updated ${label}`,
+    remark: String(opts?.note || '').trim() || null,
+    status: statusId,
+  };
+
+  return {
+    ok: true,
+    label,
+    coupon_meta: {
+      ...prev,
+      last_call_result: statusId,
+      last_call_label: label,
+      last_call_at: now,
+      last_lost_reason: statusId === 'LOST' ? lostReason : prev.last_lost_reason || null,
+      profile_history: [historyEntry, ...prevHistory].slice(0, 50),
+    },
+  };
 }

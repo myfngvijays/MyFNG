@@ -4,8 +4,10 @@ import {
   applyExcludeReferralTestDummies,
   enrichCustomerListRows,
   fetchCustomerOverview,
+  fetchCustomersByIds,
   isReferralTestDummyCustomer,
   matchesPlatformFilter,
+  resolveListFilterCustomerIds,
 } from '@/lib/customer-insights-admin';
 import { exportCustomersCsv } from '@/lib/admin-exports';
 import { applyReportDateRangeFilter } from '@/lib/report-date-range';
@@ -84,41 +86,72 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const filteredMode = filter !== 'ALL' || platform !== 'ALL';
-    const fetchLimit = filteredMode ? 500 : limit;
-    const offset = filteredMode ? 0 : (page - 1) * limit;
-
     const overview = await fetchCustomerOverview(supabaseAdmin, { preset, start, end });
 
-    let query = supabaseAdmin
-      .from('customers')
-      .select(
-        'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
-        {
-        count: 'exact',
-      },
-      )
-      .order('created_at', { ascending: false });
+    const applyCustomerQuery = (query: any) => {
+      let next = applyExcludeReferralTestDummies(query);
+      next = applyReportDateRangeFilter(next, 'created_at', preset, start, end);
+      if (search) {
+        next = next.or(
+          [`full_name.ilike.%${search}%`, `phone.ilike.%${search}%`, `email.ilike.%${search}%`].join(','),
+        );
+      }
+      return next;
+    };
 
-    query = applyExcludeReferralTestDummies(query);
-    query = applyReportDateRangeFilter(query, 'created_at', preset, start, end);
+    const filteredMode = filter !== 'ALL' || platform !== 'ALL';
+    const filterIds = filteredMode ? await resolveListFilterCustomerIds(supabaseAdmin, filter) : null;
 
-    if (search) {
-      query = query.or(
-        [`full_name.ilike.%${search}%`, `phone.ilike.%${search}%`, `email.ilike.%${search}%`].join(','),
-      );
+    if (filteredMode && Array.isArray(filterIds) && filterIds.length === 0) {
+      return NextResponse.json({
+        overview,
+        customers: [],
+        pagination: { page, limit, total: 0, filtered_total: 0 },
+      });
     }
 
-    if (filteredMode) {
-      query = query.limit(fetchLimit);
+    let data: any[] = [];
+    let count: number | null = 0;
+
+    if (!filteredMode) {
+      const offset = (page - 1) * limit;
+      let query = supabaseAdmin
+        .from('customers')
+        .select(
+          'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
+          { count: 'exact' },
+        )
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      query = applyCustomerQuery(query);
+      const result = await query;
+      if (result.error) {
+        return NextResponse.json(
+          { error: 'Failed to fetch customers', details: result.error.message },
+          { status: 500 },
+        );
+      }
+      data = result.data || [];
+      count = result.count;
+    } else if (filterIds) {
+      data = await fetchCustomersByIds(supabaseAdmin, filterIds, applyCustomerQuery);
     } else {
-      query = query.range(offset, offset + limit - 1);
-    }
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      return NextResponse.json({ error: 'Failed to fetch customers', details: error.message }, { status: 500 });
+      let query = supabaseAdmin
+        .from('customers')
+        .select(
+          'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
+        )
+        .order('created_at', { ascending: false })
+        .limit(10000);
+      query = applyCustomerQuery(query);
+      const result = await query;
+      if (result.error) {
+        return NextResponse.json(
+          { error: 'Failed to fetch customers', details: result.error.message },
+          { status: 500 },
+        );
+      }
+      data = result.data || [];
     }
 
     let customers = await enrichCustomerListRows(supabaseAdmin, data || []);

@@ -1,4 +1,4 @@
-/** Lead list cards: only Lost + Booking keep accent; others neutral. */
+/** Lead list cards: Lost, Booking confirmed, and Service Done keep accent. */
 export function leadStatusCardColors(leadOrLabel: any): {
   cardBg: string;
   border: string;
@@ -19,7 +19,12 @@ export function leadStatusCardColors(leadOrLabel: any): {
   if (s.includes('LOST') || s === 'REJECTED') {
     return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
   }
-  if (s.includes('BOOKING')) {
+  if (
+    s.includes('BOOKING') ||
+    s.includes('SERVICE DONE') ||
+    s === 'SERVICE_DONE' ||
+    s === 'COMPLETED'
+  ) {
     return { cardBg: '#ECFDF5', border: '#A7F3D0', badgeBg: '#D1FAE5', badgeText: '#047857' };
   }
   return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };

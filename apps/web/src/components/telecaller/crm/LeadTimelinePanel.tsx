@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckSquare,
+  ClipboardList,
   Clock,
   History,
   Loader2,
+  MessageCircle,
   Phone,
   Plus,
 } from 'lucide-react';
@@ -39,6 +41,15 @@ type TaskRow = {
   reason: string | null;
   priority: string;
   bucket: 'late' | 'active' | 'closed';
+};
+
+type TimelineApiItem = {
+  id: string;
+  kind: 'call' | 'followup' | 'whatsapp' | 'system' | 'booking';
+  at: string;
+  title: string;
+  body?: string | null;
+  meta?: Record<string, unknown>;
 };
 
 type CallLog = {
@@ -125,6 +136,7 @@ export default function LeadTimelinePanel({
   );
   const [loadingLogs, setLoadingLogs] = useState(!Array.isArray(callLogsProp));
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [timelineItems, setTimelineItems] = useState<TimelineApiItem[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [activityShowAll, setActivityShowAll] = useState(false);
@@ -163,8 +175,10 @@ export default function LeadTimelinePanel({
       );
       const json = await res.json().catch(() => ({}));
       setTasks(Array.isArray(json?.tasks) ? json.tasks : []);
+      setTimelineItems(Array.isArray(json?.items) ? json.items : []);
     } catch {
       setTasks([]);
+      setTimelineItems([]);
     } finally {
       setLoadingTasks(false);
     }
@@ -220,8 +234,11 @@ export default function LeadTimelinePanel({
     return items;
   }, [profileHistory, callLogs]);
 
+  const usingApiFeed = timelineItems.length > 0;
+  const feedCount = usingApiFeed ? timelineItems.length : activityFeed.length;
+  const visibleApiItems = activityShowAll ? timelineItems : timelineItems.slice(0, 10);
   const hasAny =
-    activityFeed.length > 0 || Boolean(latestLabel) || Boolean(latestRemark);
+    feedCount > 0 || Boolean(latestLabel) || Boolean(latestRemark);
 
   const taskBuckets = useMemo(() => {
     const late = tasks.filter((t) => t.bucket === 'late');
@@ -347,13 +364,13 @@ export default function LeadTimelinePanel({
           >
             <History className="h-3.5 w-3.5" />
             Activity
-            {activityFeed.length > 0 ? (
+            {feedCount > 0 ? (
               <span
                 className={`rounded-full px-1.5 text-[10px] ${
                   tab === 'history' ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-800'
                 }`}
               >
-                {activityFeed.length}
+                {feedCount}
               </span>
             ) : null}
           </button>
@@ -414,7 +431,7 @@ export default function LeadTimelinePanel({
             </div>
           )}
 
-          {loadingLogs ? (
+          {loadingTasks ? (
             <div className="flex justify-center py-6 text-teal-600">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
@@ -430,7 +447,97 @@ export default function LeadTimelinePanel({
                 aria-hidden
               />
               <ul className="relative space-y-2">
-              {(activityShowAll ? activityFeed : activityFeed.slice(0, 10)).map((item) => {
+              {usingApiFeed
+                ? visibleApiItems.map((row) => {
+                    const kind = row.kind;
+                    const iconWrap =
+                      kind === 'call'
+                        ? 'bg-violet-100 text-violet-800'
+                        : kind === 'whatsapp'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : kind === 'booking'
+                            ? 'bg-amber-100 text-amber-800'
+                            : kind === 'followup'
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-teal-100 text-teal-800';
+                    const Icon =
+                      kind === 'call'
+                        ? Phone
+                        : kind === 'whatsapp'
+                          ? MessageCircle
+                          : kind === 'booking'
+                            ? ClipboardList
+                            : kind === 'followup'
+                              ? Clock
+                              : History;
+                    const callLogId = String(row.meta?.call_log_id || '').trim();
+                    const hasRec =
+                      kind === 'call' &&
+                      Boolean(callLogId) &&
+                      (Boolean(row.meta?.has_call_recording) || Boolean(row.meta?.call_recording_url));
+                    const statusLabel = String(row.meta?.status_label || row.meta?.status || '');
+                    const notesText = displayCallNotes(row.body);
+                    const inner = (
+                      <>
+                        <div className="flex items-start gap-2">
+                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                            <span className="break-words text-[11px] font-semibold text-gray-900">
+                              {row.title}
+                            </span>
+                            {statusLabel && kind !== 'call' ? (
+                              <span
+                                className="inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                                style={dispositionBadgeStyle(statusLabel)}
+                              >
+                                {prettifyDisposition(statusLabel)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <span className="shrink-0 whitespace-nowrap pt-0.5 text-[9px] tabular-nums text-gray-400">
+                            {fmtAt(row.at)}
+                          </span>
+                        </div>
+                        {notesText ? (
+                          <p className="mt-0.5 break-words text-[11px] leading-snug text-gray-700 whitespace-pre-line">
+                            {notesText}
+                          </p>
+                        ) : null}
+                        {row.meta?.by ? (
+                          <p className="mt-0.5 text-[10px] font-medium text-teal-800">{String(row.meta.by)}</p>
+                        ) : null}
+                        {kind === 'call' && !hasRec ? (
+                          <p className="mt-0.5 text-[9px] text-gray-400">No recording yet</p>
+                        ) : null}
+                      </>
+                    );
+                    return (
+                      <li key={row.id} className="relative flex items-start gap-2.5">
+                        <span
+                          className={`relative z-10 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ring-2 ring-teal-50 ${iconWrap}`}
+                        >
+                          <Icon className="h-2.5 w-2.5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          {kind === 'call' && callLogId ? (
+                            <CallRecordingCardRow
+                              callLogId={callLogId}
+                              hasRecording={hasRec}
+                              durationSeconds={
+                                row.meta?.duration != null ? Number(row.meta.duration) : null
+                              }
+                            >
+                              {inner}
+                            </CallRecordingCardRow>
+                          ) : (
+                            <div className="rounded-lg border border-teal-100 bg-white px-2.5 py-2 shadow-sm">
+                              {inner}
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })
+                : (activityShowAll ? activityFeed : activityFeed.slice(0, 10)).map((item) => {
                 if (item.kind === 'update') {
                   const entry = item.entry;
                   const status = prettifyDisposition(entry.status || entry.previous_label || null);
@@ -540,7 +647,7 @@ export default function LeadTimelinePanel({
                 );
               })}
               </ul>
-              {activityFeed.length > 10 ? (
+              {feedCount > 10 ? (
                 <button
                   type="button"
                   onClick={() => setActivityShowAll((v) => !v)}
@@ -548,7 +655,7 @@ export default function LeadTimelinePanel({
                 >
                   {activityShowAll
                     ? 'View less'
-                    : `View more (${activityFeed.length - 10})`}
+                    : `View more (${feedCount - 10})`}
                 </button>
               ) : null}
             </div>

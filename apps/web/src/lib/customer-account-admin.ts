@@ -67,14 +67,19 @@ export async function setCustomerAccountStatus(
   let nextStatus: CustomerAccountStatus = 'ACTIVE';
   let nextActive = true;
 
+  const reason = String(input.reason || '').trim();
+  if ((action === 'deactivate' || action === 'ban') && !reason) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: action === 'ban' ? 'Ban reason is required' : 'Deactivate reason is required',
+    };
+  }
+
   if (action === 'deactivate') {
     nextStatus = 'DEACTIVATED';
     nextActive = false;
   } else if (action === 'ban') {
-    const reason = String(input.reason || '').trim();
-    if (!reason) {
-      return { ok: false as const, status: 400, error: 'Ban reason is required' };
-    }
     nextStatus = 'BANNED';
     nextActive = false;
   } else if (action === 'reactivate') {

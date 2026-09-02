@@ -2,7 +2,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin, Phone } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin, Phone, Plus, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
@@ -40,14 +40,20 @@ import {
   computeServiceLeadOverview,
   type LeadSourceBadgeKind,
 } from '@/lib/booking-lead-utils';
+import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
+import AppActivityTimeline from '@/components/admin/AppActivityTimeline';
 import {
-  CallRecordingCardRow,
-  formatCallLogDuration,
-} from '@/components/telecaller/CallRecordingPlayer';
+  buildCheckoutLeadIndex,
+  checkoutSiblingsFor,
+  checkoutServiceLines,
+  collapseCheckoutChildLeads,
+  resolveCheckoutPrimary,
+} from '@/lib/admin-checkout-lead-group';
+import { parseCustomRepairItems } from '@/lib/custom-repair-items';
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
-import { leadStatusCardColors, leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
+import { leadStatusCardColors, leadDisplayStatus, ADMIN_CRM_STATUS_OPTIONS, resolveAdminCrmStatusId, LOST_REASON_FILTERS } from '@/lib/telecaller/leadDisplayStatus';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import BookingsSavedViews from '@/components/admin/bookings/BookingsSavedViews';
 import {
@@ -769,260 +775,110 @@ function getLatestTelecallerUpdate(lead: Record<string, any>) {
   return { status, remark, at, summary, count: history.length, fullLabel };
 }
 
-function TelecallerUpdateCell({ lead }: { lead: Record<string, any> }) {
+function TelecallerUpdateCell({
+  lead,
+  updating,
+  onChange,
+}: {
+  lead: Record<string, any>;
+  updating?: boolean;
+  onChange?: (statusId: string, lostReason?: string) => void;
+}) {
+  const [selectKey, setSelectKey] = useState(0);
   const latest = getLatestTelecallerUpdate(lead);
-  if (!latest.status) {
-    return <span className="text-gray-300">—</span>;
+  const value = resolveAdminCrmStatusId(lead);
+  if (!onChange) {
+    if (!latest.status) {
+      return <span className="text-gray-300">—</span>;
+    }
+    return (
+      <span
+        className="inline-flex max-w-[140px] truncate rounded-full px-2 py-0.5 text-[11px] font-semibold"
+        style={dispositionBadgeStyle(latest.status)}
+        title={[latest.fullLabel || latest.status, latest.remark, latest.at ? formatDateTime(latest.at) : '']
+          .filter(Boolean)
+          .join(' · ')}
+      >
+        {latest.status}
+      </span>
+    );
   }
   return (
-    <span
-      className="inline-flex max-w-[140px] truncate rounded-full px-2 py-0.5 text-[11px] font-semibold"
-      style={dispositionBadgeStyle(latest.status)}
-      title={[latest.fullLabel || latest.status, latest.remark, latest.at ? formatDateTime(latest.at) : '']
-        .filter(Boolean)
-        .join(' · ')}
-    >
-      {latest.status}
-    </span>
-  );
-}
-
-function TelecallerHistorySection({ item }: { item: Record<string, any> }) {
-  const leadId = String(item?.id || '').trim();
-  const couponMeta = getLeadCouponMeta(item);
-  const profileHistory = getProfileHistory(item);
-  const [callLogs, setCallLogs] = useState<any[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(false);
-
-  useEffect(() => {
-    if (!leadId) return;
-    let cancelled = false;
-    setLoadingLogs(true);
-    fetch(`/api/telecaller/calls/${encodeURIComponent(leadId)}`)
-      .then(async (res) => {
-        const json = await res.json().catch(() => ({}));
-        if (!cancelled && res.ok && Array.isArray(json?.call_logs)) {
-          setCallLogs(json.call_logs);
-        }
-      })
-      .catch(() => {
-        /* ignore — profile_history still shows */
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingLogs(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [leadId]);
-
-  const latestLabel = prettifyDisposition(
-    (couponMeta.last_call_label as string) || (couponMeta.last_call_result as string) || null,
-  );
-  const latestRemark = String(couponMeta.telecaller_remarks || '').trim() || null;
-
-  /** TeleCRM-style: updates + calls in one chronological feed (newest first). */
-  const activityFeed = useMemo(() => {
-    type FeedItem =
-      | { kind: 'update'; at: number; key: string; entry: ProfileHistoryItem }
-      | { kind: 'call'; at: number; key: string; log: any };
-
-    const items: FeedItem[] = [];
-
-    profileHistory.forEach((entry, index) => {
-      const t = entry.at ? Date.parse(String(entry.at)) : NaN;
-      items.push({
-        kind: 'update',
-        at: Number.isFinite(t) ? t : 0,
-        key: `upd-${entry.at || 'x'}-${index}`,
-        entry,
-      });
-    });
-
-    callLogs.forEach((log, index) => {
-      const t = log?.created_at ? Date.parse(String(log.created_at)) : NaN;
-      items.push({
-        kind: 'call',
-        at: Number.isFinite(t) ? t : 0,
-        key: `call-${log?.id || index}`,
-        log,
-      });
-    });
-
-    items.sort((a, b) => b.at - a.at);
-    return items;
-  }, [profileHistory, callLogs]);
-
-  const hasAny =
-    activityFeed.length > 0 || Boolean(latestLabel) || Boolean(latestRemark);
-
-  return (
-    <section className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
-      <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-teal-900">
-        <History className="h-4 w-4 shrink-0" />
-        Activity timeline
-        {loadingLogs ? <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600" /> : null}
-        {!loadingLogs && activityFeed.length > 0 ? (
-          <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
-            {activityFeed.length}
-          </span>
-        ) : null}
-      </p>
-
-      {(latestLabel || latestRemark || couponMeta.last_call_at) && (
-        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <DetailFieldCard label="Latest Status" value={latestLabel || '-'} />
-          <DetailFieldCard label="Latest Remark" value={latestRemark || '-'} />
-          <DetailFieldCard
-            label="Last Activity"
-            value={formatDateTime(
-              String(couponMeta.last_call_at || profileHistory[0]?.at || callLogs[0]?.created_at || '') ||
-                null,
-            )}
-          />
-        </div>
-      )}
-
-      {!hasAny && !loadingLogs ? (
-        <p className="text-sm text-gray-500">No telecaller activity logged for this lead yet.</p>
-      ) : null}
-
-      {activityFeed.length > 0 ? (
-        <ol className="relative space-y-2 border-l-2 border-teal-200 pl-4 ml-1.5">
-          {activityFeed.map((item) => {
-            if (item.kind === 'update') {
-              const entry = item.entry;
-              const status = prettifyDisposition(entry.status || entry.previous_label || null);
-              return (
-                <li key={item.key} className="relative">
-                  <span className="absolute -left-[1.4rem] top-3 flex h-5 w-5 items-center justify-center rounded-full bg-teal-100 text-teal-800 ring-2 ring-teal-50">
-                    <History className="h-3 w-3" />
-                  </span>
-                  <div className="rounded-lg border border-teal-100 bg-white px-3 py-2.5 shadow-sm">
-                    <div className="flex items-start gap-2">
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                        {status ? (
-                          <span
-                            className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                            style={dispositionBadgeStyle(status)}
-                          >
-                            {status}
-                          </span>
-                        ) : null}
-                        {entry.event ? (
-                          <span className="truncate text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                            {String(entry.event).replace(/_/g, ' ')}
-                          </span>
-                        ) : null}
-                      </div>
-                      <span className="shrink-0 whitespace-nowrap pt-0.5 text-[11px] tabular-nums text-gray-400">
-                        {formatDateTime(entry.at || null)}
-                      </span>
-                    </div>
-                    {entry.summary ? (
-                      <p className="mt-1 text-sm font-medium text-gray-900">{entry.summary}</p>
-                    ) : null}
-                    {entry.remark ? (
-                      <p className="mt-1 text-sm text-gray-700">
-                        <span className="font-semibold text-gray-500">Remark:</span> {entry.remark}
-                      </p>
-                    ) : null}
-                    {(entry.workshop_name || entry.city || entry.pincode || entry.lost_reason) && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        {[
-                          entry.workshop_name ? `Workshop: ${entry.workshop_name}` : null,
-                          entry.city ? `City: ${entry.city}` : null,
-                          entry.pincode ? `Pincode: ${entry.pincode}` : null,
-                          entry.lost_reason ? `Lost reason: ${entry.lost_reason}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </p>
-                    )}
-                  </div>
-                </li>
-              );
-            }
-
-            const log = item.log;
-            const telecallerName =
-              log?.telecaller?.full_name || log?.telecaller_name || null;
-            const hasRec = Boolean(log.call_recording_url);
-            const durLabel = formatCallLogDuration(log.call_duration);
-            return (
-              <li key={item.key} className="relative">
-                <span className="absolute -left-[1.4rem] top-3 flex h-5 w-5 items-center justify-center rounded-full bg-violet-100 text-violet-800 ring-2 ring-teal-50">
-                  <Phone className="h-3 w-3" />
-                </span>
-                <CallRecordingCardRow
-                  callLogId={String(log.id || '')}
-                  hasRecording={hasRec}
-                  durationSeconds={
-                    log.call_duration != null ? Number(log.call_duration) : null
-                  }
-                >
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                    <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 font-bold uppercase tracking-wide text-violet-800 ring-1 ring-violet-200">
-                      Call
-                    </span>
-                    {log.call_status ? (
-                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
-                        {String(log.call_status).replace(/_/g, ' ')}
-                      </span>
-                    ) : null}
-                    {log.outcome ? (
-                      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200">
-                        {String(log.outcome).replace(/_/g, ' ')}
-                      </span>
-                    ) : null}
-                    <span className="shrink-0 rounded-full bg-slate-50 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200">
-                      {durLabel === '—' ? 'Duration —' : durLabel}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
-                    {telecallerName ? (
-                      <span className="whitespace-nowrap font-medium text-teal-800">{telecallerName}</span>
-                    ) : null}
-                    <span className="whitespace-nowrap text-gray-400">
-                      {formatDateTime(log.created_at)}
-                    </span>
-                  </div>
-                  {log.notes ? (
-                    <p className="mt-1 break-words text-sm text-gray-700">
-                      {String(log.notes)
-                        .replace(/\[Smartflo\]\s*/gi, '')
-                        .replace(/\bSmartflo\b/gi, '')
-                        .trim()}
-                    </p>
-                  ) : null}
-                  {log.customer_response ? (
-                    <p className="mt-1 text-xs text-gray-500">Response: {log.customer_response}</p>
-                  ) : null}
-                  {!hasRec ? (
-                    <p className="mt-1 text-[11px] text-gray-400">No recording yet</p>
-                  ) : null}
-                </CallRecordingCardRow>
-              </li>
+    <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 shrink-0" /> : null}
+      <select
+        key={selectKey}
+        value={value}
+        disabled={updating}
+        aria-label="Change lead status"
+        title={latest.fullLabel || latest.status || 'Change lead status'}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          e.stopPropagation();
+          const next = e.target.value;
+          if (next === value) return;
+          let lostReason: string | undefined;
+          if (next === 'LOST') {
+            const reason = window.prompt(
+              `Lost reason (required)\n${LOST_REASON_FILTERS.filter((r) => r.id).map((r) => r.label).join('\n')}`,
+              'Not Interested',
             );
-          })}
-        </ol>
-      ) : null}
-    </section>
+            if (!reason?.trim()) {
+              setSelectKey((k) => k + 1);
+              return;
+            }
+            lostReason = reason.trim();
+          }
+          onChange(next, lostReason);
+        }}
+        className="max-w-[150px] text-[11px] font-semibold rounded-full pl-2 pr-6 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
+        style={dispositionBadgeStyle(latest.status || value)}
+      >
+        {ADMIN_CRM_STATUS_OPTIONS.map((opt) => (
+          <option key={opt.id} value={opt.id}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
 function ServiceLeadDetailContent({
   item,
+  allLeads,
   onPatch,
 }: {
   item: Record<string, any>;
+  allLeads: Record<string, any>[];
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
 }) {
   const meta = item.meta && typeof item.meta === 'object' ? (item.meta as Record<string, unknown>) : {};
   const serviceLabel = getServiceLabel(item);
   const misaServices = extractMisaServices(item);
+  const checkoutIndex = useMemo(() => buildCheckoutLeadIndex(allLeads), [allLeads]);
+  const checkoutSiblings = checkoutSiblingsFor(item, checkoutIndex);
+  const checkoutLines = useMemo(() => {
+    const lines = checkoutServiceLines(item, checkoutSiblings);
+    return lines.map((line) => {
+      const crmId = resolveAdminCrmStatusId(line.lead);
+      const crmLabel = ADMIN_CRM_STATUS_OPTIONS.find((opt) => opt.id === crmId)?.label || crmId;
+      const tint = leadStatusCardColors(crmId);
+      const misaOnLead = extractMisaServices(line.lead);
+      const price =
+        misaOnLead.length > 0 ? line.price : getLeadDisplayAmount(line.lead) || line.price;
+      const repairItems = parseCustomRepairItems(line.lead);
+      return { ...line, price, crmId, crmLabel, tint, repairItems };
+    });
+  }, [item, checkoutSiblings]);
   const payable = getLeadDisplayAmount(item);
+  const checkoutTotal =
+    checkoutSiblings.length > 0
+      ? payable + checkoutSiblings.reduce((sum, row) => sum + getLeadDisplayAmount(row), 0)
+      : payable;
   const [showMore, setShowMore] = useState(false);
+  const [expandedRepairIds, setExpandedRepairIds] = useState<Record<string, boolean>>({});
   const cities = useServiceCities();
 
   const addrParts = parseAddressParts(
@@ -1244,7 +1100,63 @@ function ServiceLeadDetailContent({
           </DetailSection>
 
           <DetailSection title="Service & Schedule" icon={Wrench} cols={3} className="border-violet-200 bg-violet-50/50">
-            {misaServices.length > 0 ? (
+            {checkoutLines.length > 1 ? (
+              <div className="col-span-full rounded-md border border-violet-200 bg-white px-2.5 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  Services on this checkout
+                </p>
+                <ul className="mt-1.5 space-y-2">
+                  {checkoutLines.map((line, index) => {
+                    const repairKey = String(line.lead.id || `${line.name}-${index}`);
+                    const repairOpen = Boolean(expandedRepairIds[repairKey]);
+                    return (
+                    <li key={repairKey} className="text-[13px]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {line.repairItems.length > 0 ? (
+                            <button
+                              type="button"
+                              title={repairOpen ? 'Hide repair items' : 'Show repair items'}
+                              aria-expanded={repairOpen}
+                              onClick={() =>
+                                setExpandedRepairIds((prev) => ({ ...prev, [repairKey]: !prev[repairKey] }))
+                              }
+                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                            >
+                              {repairOpen ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                            </button>
+                          ) : null}
+                          <span className="text-gray-900 font-medium">{line.name}</span>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          {line.price > 0 ? (
+                            <span className="font-semibold text-gray-900">{formatCurrency(line.price)}</span>
+                          ) : null}
+                          <span
+                            className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                            style={{ backgroundColor: line.tint.badgeBg, color: line.tint.badgeText }}
+                          >
+                            {line.crmLabel}
+                          </span>
+                        </div>
+                      </div>
+                      {repairOpen && line.repairItems.length > 0 ? (
+                        <ul className="mt-1.5 ml-7 space-y-0.5 text-[12px] text-gray-600">
+                          {line.repairItems.map((row, itemIndex) => (
+                            <li key={`${row.name}-${itemIndex}`}>
+                              {row.name}
+                              {row.qty > 1 ? ` × ${row.qty}` : ''}
+                              {row.amount > 0 ? ` · ${formatCurrency(row.amount)}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : misaServices.length > 0 ? (
               <div className="col-span-full rounded-md border border-gray-200/80 bg-white px-2.5 py-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Services</p>
                 <ul className="mt-1 space-y-1">
@@ -1304,6 +1216,9 @@ function ServiceLeadDetailContent({
 
           <DetailSection title="Payment & Pricing" icon={IndianRupee} cols={4} className="border-amber-200 bg-amber-50/50">
             <DetailFieldCard label="Payable Amount" value={formatCurrency(payable)} />
+            {checkoutSiblings.length > 0 ? (
+              <DetailFieldCard label="Checkout Total" value={formatCurrency(checkoutTotal)} />
+            ) : null}
             <InlineTextField
               label="Estimated Amount"
               field="estimated_amount"
@@ -1358,7 +1273,11 @@ function ServiceLeadDetailContent({
         </div>
       ) : null}
 
-      <TelecallerHistorySection item={item} />
+      <LeadTimelinePanel leadId={String(item.id || '')} lead={item} />
+      <AppActivityTimeline
+        leadId={String(item.id || '')}
+        phone={item.customer_phone ? String(item.customer_phone) : null}
+      />
     </div>
   );
 }
@@ -1952,6 +1871,8 @@ function SuperAdminBookingsPage() {
     tagMapsReady,
   ]);
 
+  const checkoutIndex = useMemo(() => buildCheckoutLeadIndex(serviceLeads), [serviceLeads]);
+
   const displayedServiceLeads = useMemo(() => {
     const rows = chartDrill
       ? baseFilteredServiceLeads.filter((lead) =>
@@ -1963,8 +1884,8 @@ function SuperAdminBookingsPage() {
       const db = new Date(b.created_at || 0).getTime();
       return listSort === 'oldest' ? da - db : db - da;
     });
-    return sorted;
-  }, [baseFilteredServiceLeads, chartDrill, listSort]);
+    return collapseCheckoutChildLeads(sorted, serviceLeads, checkoutIndex);
+  }, [baseFilteredServiceLeads, chartDrill, listSort, serviceLeads, checkoutIndex]);
 
   /** All loaded leads for a phone (for Bookings count + modal). */
   const bookingsByPhone = useMemo(() => {
@@ -1985,11 +1906,19 @@ function SuperAdminBookingsPage() {
     return map;
   }, [serviceLeads]);
 
+  const collapsedBookingsByPhone = useMemo(() => {
+    const map = new Map<string, ServiceLead[]>();
+    for (const [phone, list] of bookingsByPhone) {
+      map.set(phone, collapseCheckoutChildLeads(list, list, checkoutIndex));
+    }
+    return map;
+  }, [bookingsByPhone, checkoutIndex]);
+
   const openPhoneBookings = (phone: string | null | undefined, e?: React.MouseEvent) => {
     e?.stopPropagation();
     const key = normalizeLeadPhone(phone);
     if (!key) return;
-    const list = bookingsByPhone.get(key) || [];
+    const list = collapsedBookingsByPhone.get(key) || [];
     setPhoneBookingsPhone(key);
     setPhoneBookingsList(list);
     setPhoneBookingsOpen(true);
@@ -2421,12 +2350,13 @@ function SuperAdminBookingsPage() {
   }, [telecallers, showInactiveTelecallers, assignTelecallerId]);
 
   const openDetail = (title: string, item: Record<string, any>) => {
+    const resolved = resolveCheckoutPrimary(item, serviceLeads, checkoutIndex);
     setDetailTitle(title);
-    setDetailItem(item);
-    setAssignTelecallerId(String(item?.assigned_telecaller_id || ''));
+    setDetailItem(resolved);
+    setAssignTelecallerId(String(resolved?.assigned_telecaller_id || ''));
     setShowInactiveTelecallers(false);
     setDetailOpen(true);
-    void loadTelecallers(item);
+    void loadTelecallers(resolved);
   };
 
   const applyAssigneeUpdate = useCallback(
@@ -2566,6 +2496,44 @@ function SuperAdminBookingsPage() {
       toast.success(`Status updated to ${newStatus}`);
     } catch (err: any) {
       toast.error(err?.message || 'Status update failed');
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
+  const updateCrmLeadStatus = async (
+    lead: ServiceLead,
+    statusId: string,
+    lostReason?: string,
+    e?: React.SyntheticEvent,
+  ) => {
+    e?.stopPropagation();
+    if (!lead?.id) return;
+    if (resolveAdminCrmStatusId(lead) === statusId && statusId !== 'LOST') return;
+
+    setStatusUpdatingId(`crm:${lead.id}`);
+    try {
+      const res = await fetch(`/api/super_admin/leads/${lead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          crm_status: statusId,
+          lost_reason: lostReason || null,
+          crm_note: 'Changed from Bookings admin',
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Lead status update failed');
+
+      const updatedLead = enrichBookingLead(json.lead || lead);
+      setServiceLeads((prev) => prev.map((row) => (row.id === lead.id ? updatedLead : row)));
+      if (detailOpen && detailItem?.id === lead.id) {
+        setDetailItem(updatedLead);
+      }
+      toast.success(`Lead status updated to ${ADMIN_CRM_STATUS_OPTIONS.find((o) => o.id === statusId)?.label || statusId}`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Lead status update failed');
     } finally {
       setStatusUpdatingId(null);
     }
@@ -3664,13 +3632,24 @@ function SuperAdminBookingsPage() {
                   </thead>
                   <tbody>
                     {pagedServiceLeads.map((lead, rowIndex) => {
-                      const serviceLabel = getServiceLabel(lead);
-                      const misaServices = extractMisaServices(lead);
+                      const checkoutSiblings = checkoutSiblingsFor(lead, checkoutIndex);
+                      const groupedServiceLines = checkoutServiceLines(lead, checkoutSiblings);
+                      const serviceLabel =
+                        checkoutSiblings.length > 0
+                          ? groupedServiceLines.map((line) => line.name).join(', ')
+                          : getServiceLabel(lead);
+                      const misaServices =
+                        checkoutSiblings.length > 0
+                          ? groupedServiceLines.map((line) => ({ name: line.name, price: line.price }))
+                          : extractMisaServices(lead);
+                      const rowAmount =
+                        getLeadDisplayAmount(lead) +
+                        checkoutSiblings.reduce((sum, row) => sum + getLeadDisplayAmount(row), 0);
                       const leadId = String(lead.id || '');
                       const isSelected = leadId ? selectedIds.has(leadId) : false;
                       const phoneKey = normalizeLeadPhone(lead.customer_phone);
                       const phoneBookingCount = phoneKey
-                        ? bookingsByPhone.get(phoneKey)?.length || 0
+                        ? collapsedBookingsByPhone.get(phoneKey)?.length || 0
                         : 0;
                       const zebra = rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50';
                       return (
@@ -3707,7 +3686,13 @@ function SuperAdminBookingsPage() {
                         </td>
                         {showCol('leadStatus') ? (
                           <td className="px-3 py-3 text-sm min-w-[130px]">
-                            <TelecallerUpdateCell lead={lead} />
+                            <TelecallerUpdateCell
+                              lead={lead}
+                              updating={statusUpdatingId === `crm:${leadId}`}
+                              onChange={(statusId, lostReason) =>
+                                void updateCrmLeadStatus(lead, statusId, lostReason)
+                              }
+                            />
                           </td>
                         ) : null}
                         {showCol('leadNumber') ? (
@@ -3769,7 +3754,7 @@ function SuperAdminBookingsPage() {
                           </td>
                         ) : null}
                         {showCol('amount') ? (
-                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap min-w-[100px]">{formatCurrency(getLeadDisplayAmount(lead))}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap min-w-[100px]">{formatCurrency(rowAmount)}</td>
                         ) : null}
                         {showCol('date') ? (
                           <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap min-w-[110px]">{formatDateOnly(lead.created_at)}</td>
@@ -3940,6 +3925,14 @@ function SuperAdminBookingsPage() {
               {pagedServiceLeads.map((item) => {
                 const itemId = String(item.id || '');
                 const isItemSelected = itemId ? selectedIds.has(itemId) : false;
+                const itemSiblings = checkoutSiblingsFor(item, checkoutIndex);
+                const itemServiceLabel =
+                  itemSiblings.length > 0
+                    ? checkoutServiceLines(item, itemSiblings).map((line) => line.name).join(', ')
+                    : getServiceLabel(item);
+                const itemAmount =
+                  getLeadDisplayAmount(item) +
+                  itemSiblings.reduce((sum, row) => sum + getLeadDisplayAmount(row), 0);
                 return (
                 <div
                   key={String(item.id || `${item.lead_number}-${item.created_at}`)}
@@ -3997,7 +3990,7 @@ function SuperAdminBookingsPage() {
                             title="Lead rows for this phone — not confirmed booking count"
                           >
                             <Hash className="h-3 w-3" />
-                            {bookingsByPhone.get(normalizeLeadPhone(item.customer_phone))?.length || 1}
+                            {collapsedBookingsByPhone.get(normalizeLeadPhone(item.customer_phone))?.length || 1}
                           </button>
                         </div>
                         <div>
@@ -4006,7 +3999,7 @@ function SuperAdminBookingsPage() {
                         </div>
                         <div>
                           <p className="text-gray-500">Amount</p>
-                          <p className="font-medium text-gray-800">{formatCurrency(getLeadDisplayAmount(item))}</p>
+                          <p className="font-medium text-gray-800">{formatCurrency(itemAmount)}</p>
                         </div>
                         <div>
                           <p className="text-gray-500">Date</p>
@@ -4014,7 +4007,7 @@ function SuperAdminBookingsPage() {
                         </div>
                         <div className="col-span-2">
                           <p className="text-gray-500">Service</p>
-                          <p className="font-medium text-gray-800">{getServiceLabel(item) || '-'}</p>
+                          <p className="font-medium text-gray-800">{itemServiceLabel || '-'}</p>
                         </div>
                         <div className="col-span-2">
                           <p className="text-gray-500">UTM Campaign</p>
@@ -4039,7 +4032,13 @@ function SuperAdminBookingsPage() {
                   </div>
                   <div className="mt-3">
                     <p className="text-xs text-gray-500 mb-1">Telecaller update</p>
-                    <TelecallerUpdateCell lead={item} />
+                    <TelecallerUpdateCell
+                      lead={item}
+                      updating={statusUpdatingId === `crm:${item.id}`}
+                      onChange={(statusId, lostReason) =>
+                        void updateCrmLeadStatus(item, statusId, lostReason)
+                      }
+                    />
                   </div>
                   {item.id ? (
                     <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
@@ -4248,6 +4247,14 @@ function SuperAdminBookingsPage() {
                 <tbody>
                   {phoneBookingsList.map((row) => {
                     const otp = resolveOtpVerifiedTag(row);
+                    const rowSiblings = checkoutSiblingsFor(row, checkoutIndex);
+                    const rowService =
+                      rowSiblings.length > 0
+                        ? checkoutServiceLines(row, rowSiblings).map((line) => line.name).join(', ')
+                        : getServiceLabel(row);
+                    const rowAmount =
+                      getLeadDisplayAmount(row) +
+                      rowSiblings.reduce((sum, sib) => sum + getLeadDisplayAmount(sib), 0);
                     return (
                       <tr
                         key={String(row.id || row.lead_number)}
@@ -4272,7 +4279,7 @@ function SuperAdminBookingsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 max-w-[180px] truncate">
-                          {getServiceLabel(row) || '—'}
+                          {rowService || '—'}
                         </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
                           <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
@@ -4280,7 +4287,7 @@ function SuperAdminBookingsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-                          {formatCurrency(getLeadDisplayAmount(row))}
+                          {formatCurrency(rowAmount)}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
                           {formatDateTime(row.created_at)}
@@ -4448,6 +4455,13 @@ function SuperAdminBookingsPage() {
                 ) : null}
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                <TelecallerUpdateCell
+                  lead={detailItem}
+                  updating={statusUpdatingId === `crm:${detailItem.id}`}
+                  onChange={(statusId, lostReason) =>
+                    void updateCrmLeadStatus(detailItem, statusId, lostReason)
+                  }
+                />
                 {/* Compact TeleCRM-style assignee on the side */}
                 <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/80 pl-2 pr-1 py-1">
                   <UserPlus className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
@@ -4532,7 +4546,11 @@ function SuperAdminBookingsPage() {
                 </button>
               ) : null}
 
-              <ServiceLeadDetailContent item={detailItem} onPatch={saveDetailPatch} />
+              <ServiceLeadDetailContent
+                item={detailItem}
+                allLeads={serviceLeads}
+                onPatch={saveDetailPatch}
+              />
             </div>
           </aside>
         </div>

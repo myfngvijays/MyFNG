@@ -6201,6 +6201,34 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                         </View>
                       ) : null}
 
+                      {Array.isArray(o.custom_repair_items) && o.custom_repair_items.length > 0 ? (
+                        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, gap: 8, borderWidth: 1, borderColor: '#E5E7EB' }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>WORK DONE</Text>
+                          {o.custom_repair_items.map((item: any, idx: number) => {
+                            const qty = Number(item?.qty || 1) || 1;
+                            const amount = Number(item?.amount || 0);
+                            return (
+                              <View key={`${item?.name || 'item'}-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                                <Text style={{ flex: 1, fontSize: 13, color: '#111827' }}>
+                                  {item?.name || 'Item'}{qty > 1 ? ` × ${qty}` : ''}
+                                </Text>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>
+                                  {amount > 0 ? `₹${Math.round(amount).toLocaleString('en-IN')}` : '—'}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 8 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827' }}>Total</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827' }}>
+                              ₹{Math.round(
+                                o.custom_repair_items.reduce((sum: number, item: any) => sum + Number(item?.amount || 0), 0),
+                              ).toLocaleString('en-IN')}
+                            </Text>
+                          </View>
+                        </View>
+                      ) : null}
+
                       {(o.coupon_code || walletUsed > 0 || membershipDiscount > 0) ? (
                         <View style={{ backgroundColor: '#FFFBEB', borderRadius: 10, padding: 10, gap: 6 }}>
                           <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>DISCOUNTS & WALLET</Text>

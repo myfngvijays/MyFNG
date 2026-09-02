@@ -194,7 +194,7 @@ async function softDeleteSiblingLeads(
   try {
     const { data: siblings } = await supabaseAdmin
       .from('service_leads')
-      .select('id, status')
+      .select('id, status, service_type, meta')
       .or(phoneOrFilter(phone10))
       .neq('id', keeperId)
       .is('deleted_at', null)
@@ -202,6 +202,7 @@ async function softDeleteSiblingLeads(
 
     const ids = (siblings || [])
       .filter((r: any) => !skipStatuses.has(String(r.status || '').toUpperCase()))
+      .filter((r: any) => !isCustomRepairLead(r))
       .map((r: any) => r.id)
       .filter(Boolean);
     if (!ids.length) return;
@@ -1011,6 +1012,12 @@ const ACTIVE_JOB_STATUSES = new Set([
   'ASSIGNED_TO_WORKSHOP',
 ]);
 
+function isCustomRepairLead(row: any): boolean {
+  if (/custom repair/i.test(String(row?.service_type || ''))) return true;
+  const meta = row?.meta && typeof row.meta === 'object' ? (row.meta as Record<string, unknown>) : {};
+  return Boolean(meta.custom_repair);
+}
+
 function pickCanonicalLeadForPhone(siblings: any[]): any | null {
   if (!siblings.length) return null;
   const active = siblings.filter((r) =>
@@ -1049,7 +1056,7 @@ export async function consolidateDuplicateLeadsByPhones(
       const { data: siblings, error } = await supabaseAdmin
         .from('service_leads')
         .select(
-          'id, lead_number, status, customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, is_incomplete, coupon_meta, created_at, updated_at',
+          'id, lead_number, status, customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, is_incomplete, coupon_meta, created_at, updated_at, service_type, meta',
         )
         .or(phoneOrFilter(phone10))
         .is('deleted_at', null)
@@ -1058,11 +1065,14 @@ export async function consolidateDuplicateLeadsByPhones(
 
       if (error || !siblings?.length || siblings.length < 2) continue;
 
-      const winner = pickCanonicalLeadForPhone(siblings);
+      const winner = pickCanonicalLeadForPhone(siblings.filter((r: any) => !isCustomRepairLead(r)))
+        || pickCanonicalLeadForPhone(siblings);
       if (!winner?.id) continue;
 
       const losers = siblings.filter((r: any) => {
         if (String(r.id) === String(winner.id)) return false;
+        // Keep custom-repair jobs as separate customer orders (not CRM phone-dupes)
+        if (isCustomRepairLead(r)) return false;
         // Never soft-delete another active workshop job
         if (ACTIVE_JOB_STATUSES.has(String(r.status || '').toUpperCase())) return false;
         return true;

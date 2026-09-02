@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   adminActivateCustomerMembership,
   adminExpireCustomerMembership,
+  saveMembershipClaimsButtonOverride,
 } from '@/lib/membership-admin';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -68,6 +69,19 @@ export async function POST(
         return NextResponse.json({ error: result.error, details: (result as any).details }, { status: result.status });
       }
       return NextResponse.json({ success: true, expired_count: result.expired_count });
+    }
+
+    if (action === 'claims_button') {
+      const result = await saveMembershipClaimsButtonOverride(supabaseAdmin, {
+        customerId,
+        membershipId: typeof body.membership_id === 'string' ? body.membership_id : null,
+        mode: String(body.mode || 'AUTO'),
+        adminUserId: auth.user?.id || null,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status || 500 });
+      }
+      return NextResponse.json({ success: true, mode: result.mode, stored: result.stored });
     }
 
     const planId = String(body.plan_id || '').trim();

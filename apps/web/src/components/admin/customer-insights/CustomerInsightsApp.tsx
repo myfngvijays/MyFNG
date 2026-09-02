@@ -38,8 +38,21 @@ import {
 } from '@/lib/customer-account-admin';
 import ExportDateRangeMenu from '@/components/admin/ExportDateRangeMenu';
 import { getLeadServiceLabel, getLeadVehicleLabel, getLeadPricingBreakdown } from '@/lib/booking-lead-utils';
+import {
+  buildCheckoutLeadIndex,
+  checkoutSiblingsFor,
+  checkoutServiceLines,
+  collapseCheckoutChildLeads,
+} from '@/lib/admin-checkout-lead-group';
+import {
+  ADMIN_CRM_STATUS_OPTIONS,
+  LOST_REASON_FILTERS,
+  leadStatusCardColors,
+  resolveAdminCrmStatusId,
+} from '@/lib/telecaller/leadDisplayStatus';
 import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
 import { filterAppMembershipPlans } from '@/lib/membership-plans-db';
+import AppActivityTimeline from '@/components/admin/AppActivityTimeline';
 
 type Overview = {
   total_customers: number;
@@ -99,7 +112,7 @@ function pushStatusBadgeClass(status?: PushStatus | null) {
   return 'bg-amber-100 text-amber-800';
 }
 
-type DetailTab = 'profile' | 'bookings' | 'wallet' | 'membership' | 'coupons';
+type DetailTab = 'profile' | 'bookings' | 'wallet' | 'membership' | 'coupons' | 'activity';
 
 function inr(n: number) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
@@ -134,12 +147,6 @@ function formatAddressLine(a: {
   pincode?: string | null;
 }) {
   return [a.line1, a.line2, a.city, a.state, a.pincode].filter(Boolean).join(', ');
-}
-
-function friendlyEventName(name?: string | null) {
-  return String(name || '')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function toDateTimeLocalValue(date: Date) {
@@ -262,7 +269,6 @@ export default function CustomerInsightsApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
-  const [eventsExpanded, setEventsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [membershipPlans, setMembershipPlans] = useState<any[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
@@ -285,6 +291,10 @@ export default function CustomerInsightsApp() {
   const [customEnd, setCustomEnd] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [bookingCrmUpdatingId, setBookingCrmUpdatingId] = useState<string | null>(null);
+  const [bookingCrmSelectKey, setBookingCrmSelectKey] = useState(0);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
+  const detailBodyRef = useRef<HTMLDivElement>(null);
 
   const reloadDetail = useCallback(async (customerId: string) => {
     const res = await fetch(`/api/super_admin/customers/${customerId}`);
@@ -293,6 +303,46 @@ export default function CustomerInsightsApp() {
     setDetail(json);
     return json;
   }, []);
+
+  const handleBookingCrmStatus = async (lead: any, statusId: string) => {
+    const leadId = String(lead?.id || '').trim();
+    if (!leadId || !selectedId) return;
+    if (resolveAdminCrmStatusId(lead) === statusId && statusId !== 'LOST') return;
+
+    let lostReason: string | undefined;
+    if (statusId === 'LOST') {
+      const reason = window.prompt(
+        `Lost reason (required)\n${LOST_REASON_FILTERS.filter((r) => r.id).map((r) => r.label).join('\n')}`,
+        'Not Interested',
+      );
+      if (!reason?.trim()) {
+        setBookingCrmSelectKey((k) => k + 1);
+        return;
+      }
+      lostReason = reason.trim();
+    }
+
+    setBookingCrmUpdatingId(leadId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/super_admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          crm_status: statusId,
+          lost_reason: lostReason || null,
+          crm_note: 'Changed from App Customers admin',
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to update lead status');
+      await reloadDetail(selectedId);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to update lead status');
+    } finally {
+      setBookingCrmUpdatingId(null);
+    }
+  };
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -441,6 +491,10 @@ export default function CustomerInsightsApp() {
   }, [selectedId]);
 
   useEffect(() => {
+    detailBodyRef.current?.scrollTo({ top: 0 });
+  }, [selectedId, detailTab]);
+
+  useEffect(() => {
     if (detailTab !== 'membership') return;
     let active = true;
     (async () => {
@@ -475,10 +529,6 @@ export default function CustomerInsightsApp() {
     setWalletCreditAmount('');
     setWalletCreditNote('');
   }, [selectedId, detailTab]);
-
-  useEffect(() => {
-    setEventsExpanded(false);
-  }, [selectedId]);
 
   useEffect(() => {
     if (detailTab !== 'membership' || membershipPlans.length === 0) return;
@@ -568,8 +618,8 @@ export default function CustomerInsightsApp() {
   const handleAccountAction = async (action: 'deactivate' | 'ban' | 'reactivate') => {
     if (!selectedId) return;
 
-    if (action === 'ban' && !accountReason.trim()) {
-      setError('Ban reason required');
+    if ((action === 'ban' || action === 'deactivate') && !accountReason.trim()) {
+      setError(action === 'ban' ? 'Ban reason required' : 'Deactivate reason required');
       return;
     }
 
@@ -645,6 +695,38 @@ export default function CustomerInsightsApp() {
       setActivateMessage('Active membership expired.');
     } catch (e: any) {
       setError(e?.message || 'Failed to expire membership');
+    } finally {
+      setActivateLoading(false);
+    }
+  };
+
+  const handleClaimsButtonOverride = async (mode: 'AUTO' | 'SHOW' | 'HIDE') => {
+    if (!selectedId) return;
+    setActivateLoading(true);
+    setActivateMessage(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/super_admin/customers/${selectedId}/membership`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'claims_button',
+          mode,
+          membership_id: activeMembership?.id || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to update claim buttons');
+      await reloadDetail(selectedId);
+      setActivateMessage(
+        mode === 'SHOW'
+          ? 'App claim buttons are now shown.'
+          : mode === 'HIDE'
+            ? 'App claim buttons are now hidden.'
+            : 'App claim buttons follow automatic unlock rules.',
+      );
+    } catch (e: any) {
+      setError(e?.message || 'Failed to update claim buttons');
     } finally {
       setActivateLoading(false);
     }
@@ -889,9 +971,19 @@ export default function CustomerInsightsApp() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-        <div className={`${selectedId ? 'xl:col-span-2' : 'xl:col-span-5'} space-y-4`}>
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div
+        className={`grid grid-cols-1 xl:grid-cols-5 gap-4 ${
+          selectedId
+            ? 'xl:sticky xl:top-2 xl:z-10 xl:h-[calc(100dvh-1rem)] xl:min-h-0 xl:items-stretch'
+            : 'xl:items-start'
+        }`}
+      >
+        <div
+          className={`${
+            selectedId ? 'xl:col-span-2 xl:h-full xl:min-h-0' : 'xl:col-span-5'
+          } flex min-h-0 flex-col gap-4`}
+        >
+          <div className="shrink-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -955,12 +1047,16 @@ export default function CustomerInsightsApp() {
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+          <div
+            className={`rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden flex min-h-0 flex-col ${
+              selectedId ? 'xl:flex-1' : 'max-h-[calc(100dvh-14rem)]'
+            }`}
+          >
+            <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="sticky top-0 z-20 bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="sticky left-0 z-20 bg-gray-50 px-3 py-3 w-12 min-w-[3rem] border-r border-gray-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+                    <th className="sticky top-0 left-0 z-30 bg-gray-50 px-3 py-3 w-12 min-w-[3rem] border-r border-gray-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
                       <input
                         type="checkbox"
                         className="h-4 w-4 accent-blue-600 rounded border-gray-400 cursor-pointer"
@@ -1004,6 +1100,11 @@ export default function CustomerInsightsApp() {
                         onClick={() => {
                           setSelectedId(c.id);
                           setDetailTab('profile');
+                          if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1279px)').matches) {
+                            requestAnimationFrame(() => {
+                              detailPanelRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                            });
+                          }
                         }}
                       >
                         <td
@@ -1130,10 +1231,13 @@ export default function CustomerInsightsApp() {
         </div>
 
         {selectedId ? (
-          <div className="xl:col-span-3">
-            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm sticky top-4 max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
-              <div className="flex flex-wrap items-start justify-between gap-2 bg-[#023D95] px-3 py-2.5">
-                <div className="min-w-0">
+          <div className="xl:col-span-3 min-h-0 xl:h-full">
+            <div
+              ref={detailPanelRef}
+              className="rounded-2xl border border-gray-200 bg-white shadow-sm max-h-[calc(100dvh-6rem)] xl:max-h-none xl:h-full overflow-hidden flex flex-col"
+            >
+              <div className="flex items-center gap-2 bg-[#023D95] px-3 py-2.5">
+                <div className="min-w-0 shrink">
                   <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
                     <span className="truncate">{selectedCustomer?.full_name || detail?.customer?.full_name || 'Customer'}</span>
                     {(selectedCustomer?.has_membership || detail?.memberships?.some((m: any) => m.status === 'ACTIVE')) ? (
@@ -1173,7 +1277,7 @@ export default function CustomerInsightsApp() {
                     <p className="mt-0.5 text-[10px] font-semibold text-emerald-200">{accountMessage}</p>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
+                <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3">
                   {customerAccountStatus === 'ACTIVE' ? (
                     <>
                       <input
@@ -1183,14 +1287,18 @@ export default function CustomerInsightsApp() {
                         disabled={accountLoading}
                         placeholder="Reason"
                         aria-label="Account action reason"
-                        className="w-[7.5rem] h-7 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-900"
+                        className="h-7 w-[8.5rem] shrink-0 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-900"
                       />
                       <button
                         type="button"
                         onClick={() => handleAccountAction('deactivate')}
-                        disabled={accountLoading}
-                        title="Deactivate temporarily"
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                        disabled={accountLoading || !accountReason.trim()}
+                        title={
+                          accountReason.trim()
+                            ? 'Deactivate temporarily'
+                            : 'Enter a reason first'
+                        }
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-[11px] font-bold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <ShieldOff className="h-3 w-3" />
                         {accountLoading ? '…' : 'Deactivate'}
@@ -1198,9 +1306,9 @@ export default function CustomerInsightsApp() {
                       <button
                         type="button"
                         onClick={() => handleAccountAction('ban')}
-                        disabled={accountLoading}
-                        title="Ban permanently"
-                        className="inline-flex h-7 items-center gap-1 rounded-md bg-red-600 px-2 text-[11px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                        disabled={accountLoading || !accountReason.trim()}
+                        title={accountReason.trim() ? 'Ban permanently' : 'Enter a reason first'}
+                        className="inline-flex h-7 items-center gap-1 rounded-md bg-red-600 px-2 text-[11px] font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <ShieldBan className="h-3 w-3" />
                         {accountLoading ? '…' : 'Ban'}
@@ -1217,15 +1325,15 @@ export default function CustomerInsightsApp() {
                       {accountLoading ? '…' : 'Reactivate'}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(null)}
-                    className="rounded-md p-1 text-white hover:bg-white/15"
-                    aria-label="Close customer"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(null)}
+                  className="ml-2 shrink-0 rounded-md bg-white p-1.5 text-[#023D95] shadow-sm hover:bg-gray-100"
+                  aria-label="Close customer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
 
               <div className="flex flex-wrap gap-1 border-b border-gray-100 px-3 py-2">
@@ -1233,6 +1341,7 @@ export default function CustomerInsightsApp() {
                   [
                     ['profile', 'Profile', User],
                     ['bookings', 'Bookings', ClipboardList],
+                    ['activity', 'App activity', Smartphone],
                     ['wallet', 'Wallet', Wallet],
                     ['membership', 'Membership', Crown],
                     ['coupons', 'Coupons', Ticket],
@@ -1252,7 +1361,7 @@ export default function CustomerInsightsApp() {
                 ))}
               </div>
 
-              <div className="overflow-y-auto p-3 flex-1">
+              <div ref={detailBodyRef} className="overflow-y-auto p-3 flex-1 min-h-0">
                 {detailLoading ? (
                   <div className="py-16 text-center text-gray-400">Loading details...</div>
                 ) : !detail ? (
@@ -1373,7 +1482,7 @@ export default function CustomerInsightsApp() {
                       >
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-700">Bookings</div>
                         <div className="text-sm font-extrabold text-blue-900 leading-tight">
-                          {detail.service_bookings?.length || 0}
+                          {collapseCheckoutChildLeads(detail.service_bookings || []).length}
                         </div>
                       </button>
                       <button
@@ -1615,43 +1724,30 @@ export default function CustomerInsightsApp() {
                         </div>
                       </div>
                     ) : null}
-
-                    {detail.analytics_events?.length ? (
-                      <div>
-                        <h3 className="font-bold text-gray-800 mb-1 text-[13px]">Recent App Events</h3>
-                        <div className="space-y-1">
-                          {(eventsExpanded
-                            ? detail.analytics_events
-                            : detail.analytics_events.slice(0, 5)
-                          ).map((ev: any) => (
-                            <div key={ev.id} className="flex justify-between text-xs border-b border-gray-100 py-1.5 gap-2">
-                              <span className="font-medium">{friendlyEventName(ev.event_name)}</span>
-                              <span className="text-gray-400 shrink-0">{fmtDate(ev.created_at)}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {detail.analytics_events.length > 5 ? (
-                          <button
-                            type="button"
-                            onClick={() => setEventsExpanded((v) => !v)}
-                            className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-800"
-                          >
-                            {eventsExpanded
-                              ? 'Show less'
-                              : `Show more (${detail.analytics_events.length - 5})`}
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </div>
+                ) : detailTab === 'activity' ? (
+                  <AppActivityTimeline
+                    customerId={selectedId}
+                    phone={detail.customer?.phone || null}
+                  />
                 ) : detailTab === 'bookings' ? (
                   <div className="space-y-3">
-                    <h3 className="font-bold text-gray-800">Service Bookings ({detail.service_bookings?.length || 0})</h3>
-                    {(detail.service_bookings || []).length === 0 ? (
+                    {(() => {
+                      const allBookings = detail.service_bookings || [];
+                      const bookingIndex = buildCheckoutLeadIndex(allBookings);
+                      const visibleBookings = collapseCheckoutChildLeads(allBookings, allBookings, bookingIndex);
+                      return (
+                    <>
+                    <h3 className="font-bold text-gray-800">Service Bookings ({visibleBookings.length})</h3>
+                    {visibleBookings.length === 0 ? (
                       <p className="text-sm text-gray-400">No service bookings</p>
                     ) : (
-                      detail.service_bookings.map((b: any) => {
-                        const serviceLabel = getLeadServiceLabel(b);
+                      visibleBookings.map((b: any) => {
+                        const siblings = checkoutSiblingsFor(b, bookingIndex);
+                        const serviceLabel =
+                          siblings.length > 0
+                            ? checkoutServiceLines(b, siblings).map((line) => line.name).join(', ')
+                            : getLeadServiceLabel(b);
                         const vehicleLabel = b.vehicle_display || getLeadVehicleLabel(b);
                         const pricing = getLeadPricingBreakdown(b, {
                           walletTxAmount: b.wallet_used,
@@ -1662,6 +1758,8 @@ export default function CustomerInsightsApp() {
                           b.vehicle_number && String(b.vehicle_number).trim().toUpperCase() !== 'NA'
                             ? String(b.vehicle_number).trim()
                             : null;
+                        const crmStatusId = resolveAdminCrmStatusId(b);
+                        const crmTint = leadStatusCardColors(crmStatusId);
                         return (
                         <div key={b.id} className="rounded-xl border p-3 text-sm">
                           <div className="flex justify-between gap-2">
@@ -1676,7 +1774,28 @@ export default function CustomerInsightsApp() {
                             ) : (
                               <span className="font-bold">{b.lead_number || 'Lead'}</span>
                             )}
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            <select
+                              key={`${b.id}:${bookingCrmSelectKey}`}
+                              value={crmStatusId}
+                              disabled={bookingCrmUpdatingId === String(b.id)}
+                              onChange={(e) => void handleBookingCrmStatus(b, e.target.value)}
+                              className="max-w-[150px] text-[11px] font-semibold rounded-full px-2 py-0.5"
+                              style={{
+                                backgroundColor: crmTint.badgeBg,
+                                color: crmTint.badgeText,
+                                boxShadow: `inset 0 0 0 1px ${crmTint.border}`,
+                              }}
+                              aria-label="Change lead status"
+                            >
+                              {ADMIN_CRM_STATUS_OPTIONS.map((opt) => (
+                                <option key={opt.id} value={opt.id}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
                             <span className="text-xs rounded-full bg-gray-100 px-2 py-0.5">{b.status}</span>
+                          </div>
                           </div>
                           <div className="font-semibold text-gray-900 mt-1">{serviceLabel}</div>
                           {vehicleLabel || reg ? (
@@ -1753,6 +1872,9 @@ export default function CustomerInsightsApp() {
                         </div>
                       );})
                     )}
+                    </>
+                      );
+                    })()}
 
                     {(detail.chatbot_bookings || []).length > 0 ? (
                       <>
@@ -2005,6 +2127,43 @@ export default function CustomerInsightsApp() {
                         ) : null}
                       </div>
                     </div>
+
+                    {activeMembership ? (
+                      <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+                        <div>
+                          <h3 className="font-bold text-blue-900">App claim buttons</h3>
+                          <p className="text-xs text-blue-800 mt-1">
+                            Booking glitch / claims dikhe nahi — yahan se app pe claim buttons Show, Hide, ya Auto
+                            (pehli completed service ke baad) set karo.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { id: 'AUTO', label: 'Auto (rules)' },
+                            { id: 'SHOW', label: 'Show claims' },
+                            { id: 'HIDE', label: 'Hide claims' },
+                          ] as const).map((opt) => {
+                            const current = String(activeMembership.claims_button_override || 'AUTO').toUpperCase();
+                            const active = current === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                disabled={activateLoading}
+                                onClick={() => handleClaimsButtonOverride(opt.id)}
+                                className={`rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-50 ${
+                                  active
+                                    ? 'bg-[#004AAD] text-white'
+                                    : 'border border-blue-200 bg-white text-blue-900 hover:bg-blue-50'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <h3 className="font-bold text-gray-800">Memberships</h3>
                     {(detail.memberships || []).length === 0 ? (

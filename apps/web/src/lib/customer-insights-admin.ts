@@ -1,5 +1,5 @@
 import { normalizePhone } from './coupon-rules';
-import { enrichBookingLead, enrichLeadsServiceDisplay, getLeadVehicleLabel, getLeadPricingBreakdown } from './booking-lead-utils';
+import { enrichBookingLead, enrichLeadsServiceDisplay, getLeadVehicleLabel, getLeadPricingBreakdown, isIncomingSarvLeadSource, isWhatsAppEnquiryLead } from './booking-lead-utils';
 import { getPostBookingMembershipConfig } from './post-booking-membership-config';
 import { syncServiceLeadMembershipPricingForAdmin, resolveAdminBookingPayableAmount } from './post-booking-membership-offer';
 import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
@@ -7,6 +7,7 @@ import { resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
 import { loadCrmManualReferencesForCustomer } from './crm-manual-references';
 import { parseReferredBy } from './telecaller/crmLeadReference';
+import { isMembershipClaimLead, parseClaimsButtonOverride, usageCountsTowardBenefitQuota } from './membership-benefits-service';
 import { MOBILE_PUSH_PLATFORM } from './push/constants';
 import {
   applyReportDateRangeFilter,
@@ -43,31 +44,167 @@ export function applyExcludeReferralTestDummies(query: any) {
   return query.not('full_name', 'ilike', 'Test Friend');
 }
 
+const IN_QUERY_CHUNK = 80;
+
+function chunkIds(ids: string[], size = IN_QUERY_CHUNK): string[][] {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
+async function selectByIdChunks(
+  supabaseAdmin: any,
+  table: string,
+  select: string,
+  ids: string[],
+  idColumn = 'customer_id',
+  apply?: (query: any) => any,
+): Promise<any[]> {
+  if (!ids.length) return [];
+  const rows: any[] = [];
+  for (const slice of chunkIds(ids)) {
+    let query = supabaseAdmin.from(table).select(select).in(idColumn, slice);
+    if (apply) query = apply(query);
+    const { data, error } = await query;
+    if (error) continue;
+    rows.push(...(data || []));
+  }
+  return rows;
+}
+
+function uniqueIds(rows: Array<{ customer_id?: string | null } | null | undefined>): string[] {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const id = String(row?.customer_id || '').trim();
+    if (id) seen.add(id);
+  }
+  return [...seen];
+}
+
+/** Customer ids that match a list filter. `null` = scan all customers then JS-filter. */
+export async function resolveListFilterCustomerIds(
+  supabaseAdmin: any,
+  filter: string,
+): Promise<string[] | null> {
+  const normalized = String(filter || 'ALL').trim().toUpperCase();
+  if (normalized === 'ALL' || normalized === 'WITH_BOOKING' || normalized === 'PUSH_NO_TOKEN') {
+    return null;
+  }
+
+  if (normalized === 'WITH_MEMBERSHIP') {
+    const { data } = await supabaseAdmin
+      .from('customer_memberships')
+      .select('customer_id')
+      .eq('status', 'ACTIVE')
+      .gt('ends_at', new Date().toISOString())
+      .limit(10000);
+    return uniqueIds(data || []);
+  }
+
+  if (normalized === 'WITH_WALLET') {
+    const { data } = await supabaseAdmin
+      .from('wallet_accounts')
+      .select('customer_id')
+      .gt('current_balance', 0)
+      .limit(10000);
+    return uniqueIds(data || []);
+  }
+
+  if (normalized === 'WITH_COUPON') {
+    const { data } = await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .select('customer_id')
+      .limit(10000);
+    return uniqueIds(data || []);
+  }
+
+  if (normalized === 'PUSH_OFF') {
+    const { data } = await supabaseAdmin
+      .from('customer_notification_preferences')
+      .select('customer_id')
+      .eq('push_enabled', false)
+      .limit(10000);
+    return uniqueIds(data || []);
+  }
+
+  if (normalized === 'PUSH_ON') {
+    const [{ data: devices }, { data: offPrefs }] = await Promise.all([
+      supabaseAdmin
+        .from('notification_devices')
+        .select('customer_id')
+        .eq('platform', MOBILE_PUSH_PLATFORM)
+        .eq('is_active', true)
+        .limit(20000),
+      supabaseAdmin
+        .from('customer_notification_preferences')
+        .select('customer_id')
+        .eq('push_enabled', false)
+        .limit(10000),
+    ]);
+    const off = new Set(uniqueIds(offPrefs || []));
+    return uniqueIds(devices || []).filter((id) => !off.has(id));
+  }
+
+  return null;
+}
+
+export async function fetchCustomersByIds(
+  supabaseAdmin: any,
+  ids: string[],
+  apply: (query: any) => any,
+): Promise<any[]> {
+  if (!ids.length) return [];
+  const rows: any[] = [];
+  for (const slice of chunkIds(ids)) {
+    let query = supabaseAdmin
+      .from('customers')
+      .select(
+        'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
+      )
+      .in('id', slice)
+      .order('created_at', { ascending: false });
+    query = apply(query);
+    const { data, error } = await query;
+    if (error) continue;
+    rows.push(...(data || []));
+  }
+  rows.sort(
+    (a, b) => new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime(),
+  );
+  return rows;
+}
+
 async function fetchCustomerSessions(
   supabaseAdmin: any,
   customerIds?: string[],
 ): Promise<Array<{ customer_id: string; user_agent?: string | null; app_platform?: string | null; created_at?: string }>> {
-  let query = supabaseAdmin
-    .from('customer_sessions')
-    .select('customer_id, app_platform, user_agent, created_at')
-    .order('created_at', { ascending: false });
+  const load = async (select: string) => {
+    if (customerIds?.length) {
+      const rows: any[] = [];
+      for (const slice of chunkIds(customerIds)) {
+        const { data, error } = await supabaseAdmin
+          .from('customer_sessions')
+          .select(select)
+          .in('customer_id', slice)
+          .order('created_at', { ascending: false });
+        if (error) return { ok: false as const, data: [] };
+        rows.push(...(data || []));
+      }
+      return { ok: true as const, data: rows };
+    }
+    const { data, error } = await supabaseAdmin
+      .from('customer_sessions')
+      .select(select)
+      .order('created_at', { ascending: false });
+    if (error) return { ok: false as const, data: [] };
+    return { ok: true as const, data: data || [] };
+  };
 
-  if (customerIds?.length) {
-    query = query.in('customer_id', customerIds);
-  }
+  const primary = await load('customer_id, app_platform, user_agent, created_at');
+  if (primary.ok) return primary.data;
 
-  const { data, error } = await query;
-  if (!error) return data || [];
-
-  let fallbackQuery = supabaseAdmin
-    .from('customer_sessions')
-    .select('customer_id, user_agent, created_at')
-    .order('created_at', { ascending: false });
-  if (customerIds?.length) {
-    fallbackQuery = fallbackQuery.in('customer_id', customerIds);
-  }
-  const { data: fallbackData } = await fallbackQuery;
-  return fallbackData || [];
+  const fallback = await load('customer_id, user_agent, created_at');
+  return fallback.data;
 }
 
 function indexLatestSessions(
@@ -100,6 +237,54 @@ export function phoneChatbotFilter(phone: string | null | undefined) {
   const digits = phoneDigits(phone);
   if (!digits) return null;
   return `phone_number.ilike.%${digits}`;
+}
+
+const CUSTOMER_BOOKING_LEAD_FIELDS =
+  'customer_phone, coupon_code, discount_amount, deleted_at, lead_source, created_from, service_type, is_incomplete, meta, coupon_meta';
+
+function isEnquiryLeadNotBooking(lead: {
+  lead_source?: string | null;
+  created_from?: string | null;
+  service_type?: string | null;
+  is_incomplete?: boolean | null;
+  meta?: unknown;
+  coupon_meta?: unknown;
+} | null | undefined): boolean {
+  if (!lead) return false;
+  if (isWhatsAppEnquiryLead(lead)) return true;
+  if (isIncomingSarvLeadSource(String(lead.lead_source || ''))) return true;
+
+  const source = String(lead.lead_source || '').trim();
+  const createdFrom = String(lead.created_from || '').trim().toUpperCase();
+  const serviceType = String(lead.service_type || '').trim();
+  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+  const couponMeta =
+    lead.coupon_meta && typeof lead.coupon_meta === 'object'
+      ? (lead.coupon_meta as Record<string, unknown>)
+      : {};
+
+  if (meta.whatsapp_enquiry || couponMeta.whatsapp_enquiry || meta.telecrm_whatsapp || couponMeta.telecrm_whatsapp) {
+    return true;
+  }
+  if (createdFrom === 'WHATSAPP' || createdFrom === 'WHATSAPP_META' || createdFrom === 'SARV_CALL') return true;
+  if (/^whatsapp(\s*\(\d{10}\))?$/i.test(source)) return true;
+  if (/whatsapp enquiry/i.test(serviceType) || /^incoming call$/i.test(serviceType)) return true;
+  return false;
+}
+
+function isVisibleCustomerBooking(lead: {
+  deleted_at?: string | null;
+  lead_source?: string | null;
+  created_from?: string | null;
+  service_type?: string | null;
+  is_incomplete?: boolean | null;
+  meta?: unknown;
+  coupon_meta?: unknown;
+} | null | undefined): boolean {
+  if (!lead || lead.deleted_at) return false;
+  if (isMembershipClaimLead(lead)) return false;
+  if (isEnquiryLeadNotBooking(lead)) return false;
+  return true;
 }
 
 export async function fetchCustomerOverview(
@@ -184,7 +369,7 @@ export async function fetchCustomerOverview(
       ? phoneOrFilter
         ? supabaseAdmin
             .from('service_leads')
-            .select('id, coupon_code, discount_amount')
+            .select(CUSTOMER_BOOKING_LEAD_FIELDS)
             .or(phoneOrFilter)
             .limit(5000)
         : Promise.resolve({ data: [] })
@@ -249,7 +434,7 @@ export async function fetchCustomerOverview(
   let totalServiceBookings = 0;
   let bookingsWithCoupon = 0;
   if (dateFiltered) {
-    const leads = (leadsRes as { data?: any[] }).data || [];
+    const leads = ((leadsRes as { data?: any[] }).data || []).filter(isVisibleCustomerBooking);
     totalServiceBookings = leads.length;
     bookingsWithCoupon = leads.filter(
       (lead: any) => String(lead.coupon_code || '').trim() || Number(lead.discount_amount || 0) > 0,
@@ -315,38 +500,35 @@ export async function fetchCustomerOverview(
 export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[]) {
   if (!customers.length) return [];
 
-  const ids = customers.map((c) => c.id);
+  const ids = customers.map((c) => String(c.id));
   const nowIso = new Date().toISOString();
 
-  const [
-    { data: wallets },
-    { data: memberships },
-    { data: assignments },
-    sessions,
-    { data: pushPrefs },
-    { data: pushDevices },
-  ] = await Promise.all([
-    supabaseAdmin.from('wallet_accounts').select('customer_id, current_balance').in('customer_id', ids),
-    supabaseAdmin
-      .from('customer_memberships')
-      .select('customer_id, status, ends_at, plan:membership_plans(name, code, membership_type)')
-      .in('customer_id', ids)
-      .order('created_at', { ascending: false }),
-    supabaseAdmin
-      .from('customer_coupon_assignments')
-      .select('customer_id, redeemed_at')
-      .in('customer_id', ids),
+  const [wallets, memberships, assignments, sessions, pushPrefs, pushDevices] = await Promise.all([
+    selectByIdChunks(supabaseAdmin, 'wallet_accounts', 'customer_id, current_balance', ids),
+    selectByIdChunks(
+      supabaseAdmin,
+      'customer_memberships',
+      'customer_id, status, ends_at, created_at, plan:membership_plans(name, code, membership_type)',
+      ids,
+      'customer_id',
+      (q) => q.order('created_at', { ascending: false }),
+    ),
+    selectByIdChunks(supabaseAdmin, 'customer_coupon_assignments', 'customer_id, redeemed_at', ids),
     fetchCustomerSessions(supabaseAdmin, ids),
-    supabaseAdmin
-      .from('customer_notification_preferences')
-      .select('customer_id, push_enabled')
-      .in('customer_id', ids),
-    supabaseAdmin
-      .from('notification_devices')
-      .select('customer_id, last_seen_at, device_name')
-      .in('customer_id', ids)
-      .eq('platform', MOBILE_PUSH_PLATFORM)
-      .eq('is_active', true),
+    selectByIdChunks(
+      supabaseAdmin,
+      'customer_notification_preferences',
+      'customer_id, push_enabled',
+      ids,
+    ),
+    selectByIdChunks(
+      supabaseAdmin,
+      'notification_devices',
+      'customer_id, last_seen_at, device_name',
+      ids,
+      'customer_id',
+      (q) => q.eq('platform', MOBILE_PUSH_PLATFORM).eq('is_active', true),
+    ),
   ]);
 
   const walletByCustomer = new Map<string, number>();
@@ -396,16 +578,30 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
   const couponBookingsByDigits = new Map<string, number>();
 
   if (digitsList.length) {
-    const orFilter = digitsList.map((d) => `customer_phone.ilike.%${d}`).join(',');
-    const { data: leads } = await supabaseAdmin
-      .from('service_leads')
-      .select('customer_phone, coupon_code, discount_amount')
-      .or(orFilter)
-      .limit(5000);
+    const want = new Set(digitsList);
+    let leads: any[] = [];
+    if (digitsList.length > 40) {
+      const { data } = await supabaseAdmin
+        .from('service_leads')
+        .select(CUSTOMER_BOOKING_LEAD_FIELDS)
+        .limit(20000);
+      leads = data || [];
+    } else {
+      for (const slice of chunkIds(digitsList, 20)) {
+        const orFilter = slice.map((d) => `customer_phone.ilike.%${d}`).join(',');
+        const { data } = await supabaseAdmin
+          .from('service_leads')
+          .select(CUSTOMER_BOOKING_LEAD_FIELDS)
+          .or(orFilter)
+          .limit(5000);
+        leads.push(...(data || []));
+      }
+    }
 
-    for (const lead of leads || []) {
+    for (const lead of leads) {
+      if (!isVisibleCustomerBooking(lead)) continue;
       const d = phoneDigits(lead.customer_phone);
-      if (!d) continue;
+      if (!d || !want.has(d)) continue;
       bookingsByDigits.set(d, (bookingsByDigits.get(d) || 0) + 1);
       const hasCoupon = String(lead.coupon_code || '').trim() || Number(lead.discount_amount || 0) > 0;
       if (hasCoupon) couponBookingsByDigits.set(d, (couponBookingsByDigits.get(d) || 0) + 1);
@@ -619,7 +815,7 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     cartItems = itemRows || [];
   }
 
-  const leads = (leadsRes.data || []).map((l: any) => enrichBookingLead(l));
+  const leads = (leadsRes.data || []).filter(isVisibleCustomerBooking).map((l: any) => enrichBookingLead(l));
 
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
   const syncedLeads = await Promise.all(
@@ -729,7 +925,19 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     });
   }
 
-  const benefitCodes = [...new Set((usageRes.data || []).map((u: any) => u.benefit_code).filter(Boolean))];
+  const leadByIdForUsage: Record<string, { deleted_at?: unknown; status?: unknown }> = {};
+  for (const lead of leadsRes.data || []) {
+    leadByIdForUsage[String(lead.id)] = lead;
+  }
+
+  const benefitCodes = [
+    ...new Set(
+      (usageRes.data || [])
+        .filter((u: any) => usageCountsTowardBenefitQuota(u, leadByIdForUsage))
+        .map((u: any) => u.benefit_code)
+        .filter(Boolean),
+    ),
+  ];
   const benefitTitleByCode = new Map<string, string>();
   if (benefitCodes.length) {
     const { data: benefitRows } = await supabaseAdmin
@@ -741,10 +949,12 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     }
   }
 
-  const usage = (usageRes.data || []).map((u: any) => ({
-    ...u,
-    benefit_title: benefitTitleByCode.get(String(u.benefit_code)) || u.benefit_code,
-  }));
+  const usage = (usageRes.data || [])
+    .filter((u: any) => usageCountsTowardBenefitQuota(u, leadByIdForUsage))
+    .map((u: any) => ({
+      ...u,
+      benefit_title: benefitTitleByCode.get(String(u.benefit_code)) || u.benefit_code,
+    }));
 
   const pushEnabled = pushPrefsRes.data?.push_enabled !== false;
   const pushDevices = pushDevicesRes.data || [];
@@ -789,7 +999,18 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
         }
       : null,
     wallet_transactions: filterVisibleWalletTransactions(walletTransactions || []),
-    memberships: membershipsRes.data || [],
+    memberships: (membershipsRes.data || []).map((m: any) => {
+      const fromMembership = parseClaimsButtonOverride(m.claims_button_override);
+      const fromPrefs = parseClaimsButtonOverride(
+        profileRes?.data?.preferences && typeof profileRes.data.preferences === 'object'
+          ? (profileRes.data.preferences as Record<string, unknown>).membership_claims_button
+          : 'AUTO',
+      );
+      return {
+        ...m,
+        claims_button_override: fromMembership !== 'AUTO' ? fromMembership : fromPrefs,
+      };
+    }),
     membership_usage: usage,
     coupon_assignments: assignmentsRes.data || [],
     coupon_redemptions: redemptions,

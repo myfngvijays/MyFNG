@@ -18,6 +18,38 @@ export const COMPLETED_SERVICE_LEAD_STATUSES = [
 export const MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE =
   'Benefit claims unlock after your first service is completed.';
 
+export const MEMBERSHIP_CLAIMS_HIDDEN_MESSAGE =
+  'Membership benefit claims are hidden for this account.';
+
+export type ClaimsButtonOverride = 'AUTO' | 'SHOW' | 'HIDE';
+
+export function parseClaimsButtonOverride(value: unknown): ClaimsButtonOverride {
+  const raw = String(value || '')
+    .trim()
+    .toUpperCase();
+  if (raw === 'SHOW' || raw === 'HIDE') return raw;
+  return 'AUTO';
+}
+
+async function resolveClaimsButtonOverride(
+  supabaseAdmin: any,
+  membership: { claims_button_override?: unknown; customer_id?: string },
+  customerId: string,
+): Promise<ClaimsButtonOverride> {
+  const fromMembership = parseClaimsButtonOverride(membership.claims_button_override);
+  if (fromMembership !== 'AUTO') return fromMembership;
+  const { data: profile } = await supabaseAdmin
+    .from('customer_profiles')
+    .select('preferences')
+    .eq('customer_id', customerId)
+    .maybeSingle();
+  const prefs =
+    profile?.preferences && typeof profile.preferences === 'object'
+      ? (profile.preferences as Record<string, unknown>)
+      : {};
+  return parseClaimsButtonOverride(prefs.membership_claims_button);
+}
+
 export const DEFAULT_BENEFIT_MAX_USAGE: Record<string, number | null> = {
   PERIODIC_10_OFF: null,
   FREE_INSPECTION: 2,
@@ -148,9 +180,35 @@ async function findQualifyingCompletedServiceLead(
   );
 }
 
-function isMembershipClaimLead(lead: { meta?: unknown } | null | undefined): boolean {
+export function isMembershipClaimLead(lead: { meta?: unknown; lead_source?: string | null } | null | undefined): boolean {
+  if (lead?.lead_source && /membership claim/i.test(String(lead.lead_source))) return true;
   if (!lead?.meta || typeof lead.meta !== 'object') return false;
   return Boolean((lead.meta as { membership_claim?: { benefit_code?: string } }).membership_claim?.benefit_code);
+}
+
+export function isVoidedMembershipUsageLead(lead: {
+  deleted_at?: unknown;
+  status?: unknown;
+} | null | undefined): boolean {
+  if (!lead) return true;
+  if (lead.deleted_at) return true;
+  const status = String(lead.status || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  return status === 'CANCELLED' || status === 'CANCELED';
+}
+
+export function usageCountsTowardBenefitQuota(
+  row: { reference_type?: unknown; reference_id?: unknown },
+  leadById: Record<string, { deleted_at?: unknown; status?: unknown }>,
+): boolean {
+  if (String(row.reference_type || '').toUpperCase() !== 'LEAD' || !row.reference_id) {
+    return true;
+  }
+  const lead = leadById[String(row.reference_id)];
+  if (!lead) return true;
+  return !isVoidedMembershipUsageLead(lead);
 }
 
 export async function areMembershipClaimsUnlocked(
@@ -158,11 +216,25 @@ export async function areMembershipClaimsUnlocked(
   customer: { id: string; phone?: string | null },
   membership: {
     id?: string;
+    customer_id?: string;
     starts_at?: string | null;
     created_at?: string | null;
     source_lead_id?: string | null;
+    claims_button_override?: unknown;
   },
-): Promise<{ unlocked: boolean; pendingLeadId?: string | null }> {
+): Promise<{ unlocked: boolean; pendingLeadId?: string | null; hiddenByAdmin?: boolean }> {
+  const customerId = String(customer.id || membership.customer_id || '');
+  const override = customerId
+    ? await resolveClaimsButtonOverride(supabaseAdmin, membership, customerId)
+    : parseClaimsButtonOverride(membership.claims_button_override);
+  if (override === 'SHOW') return { unlocked: true };
+  if (override === 'HIDE') {
+    return {
+      unlocked: false,
+      pendingLeadId: membership?.source_lead_id || null,
+      hiddenByAdmin: true,
+    };
+  }
   const sourceLeadId = membership?.source_lead_id ? String(membership.source_lead_id) : null;
 
   if (sourceLeadId) {
@@ -229,6 +301,7 @@ export async function getMembershipBenefitsStatusForMembership(
     starts_at?: string | null;
     created_at?: string | null;
     source_lead_id?: string | null;
+    claims_button_override?: unknown;
   },
   customerPhone?: string | null,
 ): Promise<{
@@ -268,8 +341,23 @@ export async function getMembershipBenefitsStatusForMembership(
     .order('created_at', { ascending: false })
     .limit(100);
 
+  const usageLeadIds = (usageRows || [])
+    .filter((r: any) => String(r.reference_type || '').toUpperCase() === 'LEAD' && r.reference_id)
+    .map((r: any) => String(r.reference_id));
+  const usageLeadById: Record<string, { deleted_at?: unknown; status?: unknown }> = {};
+  if (usageLeadIds.length > 0) {
+    const { data: usageLeads } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, status, deleted_at')
+      .in('id', usageLeadIds);
+    for (const lead of usageLeads || []) {
+      usageLeadById[String(lead.id)] = lead;
+    }
+  }
+
   const usageByCode: Record<string, number> = {};
   for (const row of usageRows || []) {
+    if (!usageCountsTowardBenefitQuota(row, usageLeadById)) continue;
     const code = String(row.benefit_code || '').toUpperCase();
     usageByCode[code] = (usageByCode[code] || 0) + 1;
   }
@@ -365,6 +453,7 @@ export async function getMembershipBenefitsStatusForMembership(
 
   const legacyHistory: MembershipClaimHistoryItem[] = (usageRows || [])
     .filter((row: any) => !linkedUsageIds.has(String(row.id)))
+    .filter((row: any) => usageCountsTowardBenefitQuota(row, usageLeadById))
     .map((r: any) => {
       const code = String(r.benefit_code || '').toUpperCase();
       const lead = r.reference_id ? leadById[String(r.reference_id)] : null;
@@ -398,7 +487,11 @@ export async function getMembershipBenefitsStatusForMembership(
     history,
     pending_requests: pendingRequests,
     claims_unlocked: claimsUnlocked,
-    claims_unlock_message: claimsUnlocked ? null : MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE,
+    claims_unlock_message: claimsUnlocked
+      ? null
+      : unlockState.hiddenByAdmin
+        ? MEMBERSHIP_CLAIMS_HIDDEN_MESSAGE
+        : MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE,
   };
 }
 
@@ -442,7 +535,12 @@ export async function validateMembershipClaim(
     membership,
   );
   if (!unlockState.unlocked) {
-    return { valid: false, error: MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE };
+    return {
+      valid: false,
+      error: unlockState.hiddenByAdmin
+        ? MEMBERSHIP_CLAIMS_HIDDEN_MESSAGE
+        : MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE,
+    };
   }
 
   const { data: benefit } = await supabaseAdmin
@@ -461,13 +559,28 @@ export async function validateMembershipClaim(
     return { valid: false, error: 'Claim is not enabled for this benefit.' };
   }
 
-  const { count } = await supabaseAdmin
+  const { data: usageForBenefit } = await supabaseAdmin
     .from('membership_usage')
-    .select('id', { count: 'exact', head: true })
+    .select('id, reference_type, reference_id')
     .eq('customer_membership_id', membership.id)
     .eq('benefit_code', benefitCode);
 
-  const usedCount = Number(count || 0);
+  const usageLeadIds = (usageForBenefit || [])
+    .filter((r: any) => String(r.reference_type || '').toUpperCase() === 'LEAD' && r.reference_id)
+    .map((r: any) => String(r.reference_id));
+  const usageLeadById: Record<string, { deleted_at?: unknown; status?: unknown }> = {};
+  if (usageLeadIds.length > 0) {
+    const { data: usageLeads } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, status, deleted_at')
+      .in('id', usageLeadIds);
+    for (const lead of usageLeads || []) {
+      usageLeadById[String(lead.id)] = lead;
+    }
+  }
+  const usedCount = (usageForBenefit || []).filter((row: any) =>
+    usageCountsTowardBenefitQuota(row, usageLeadById),
+  ).length;
   const maxUsage = resolveMaxUsage(benefit);
 
   let pendingQuery = supabaseAdmin

@@ -160,6 +160,37 @@ export default function CustomerOrderDetailScreen({ navigation, route }: any) {
           ) : null}
         </View>
 
+        {Array.isArray(order?.custom_repair_items) && order.custom_repair_items.length > 0 ? (
+          <View style={styles.card}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.sectionTitle}>Work done</Text>
+              <Text style={styles.sectionMeta}>{order.custom_repair_items.length} items</Text>
+            </View>
+            {order.custom_repair_items.map((item: any, idx: number) => {
+              const qty = Number(item?.qty || 1) || 1;
+              const lineAmount = Number(item?.amount || 0);
+              return (
+                <View key={`${item?.name || 'item'}-${idx}`} style={styles.priceRow}>
+                  <Text style={styles.listText}>
+                    {item?.name || `Item ${idx + 1}`}{qty > 1 ? ` × ${qty}` : ''}
+                  </Text>
+                  <Text style={styles.priceText}>
+                    {lineAmount > 0 ? `₹${Math.round(lineAmount).toLocaleString('en-IN')}` : '—'}
+                  </Text>
+                </View>
+              );
+            })}
+            <View style={[styles.priceRow, styles.priceTotalRow]}>
+              <Text style={styles.priceTotalLabel}>Total</Text>
+              <Text style={styles.priceTotalValue}>
+                ₹{Math.round(
+                  order.custom_repair_items.reduce((sum: number, item: any) => sum + Number(item?.amount || 0), 0),
+                ).toLocaleString('en-IN')}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.card}>
           <View style={styles.rowBetween}>
             <Text style={styles.sectionTitle}>Checklist</Text>
@@ -287,6 +318,11 @@ const styles = StyleSheet.create({
   moreLink: { marginTop: 4, color: COLORS.primary, fontSize: SIZES.sm, fontWeight: '700' },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   listText: { flex: 1, color: COLORS.textHeading, fontSize: SIZES.sm },
+  priceRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
+  priceText: { color: COLORS.textHeading, fontSize: SIZES.sm, fontWeight: '700' },
+  priceTotalRow: { borderTopWidth: 1, borderTopColor: '#EEF2F7', paddingTop: 10, marginTop: 4, marginBottom: 0 },
+  priceTotalLabel: { color: COLORS.textHeading, fontSize: SIZES.sm, fontWeight: '800' },
+  priceTotalValue: { color: COLORS.textHeading, fontSize: SIZES.sm, fontWeight: '800' },
   sectionStack: { gap: 12 },
   mediaSectionWrap: { borderTopWidth: 1, borderTopColor: '#EEF2F7', paddingTop: 10 },
   mediaSectionTitle: { fontSize: SIZES.sm, fontWeight: '800', color: COLORS.textHeading },

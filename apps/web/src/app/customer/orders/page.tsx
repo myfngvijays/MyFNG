@@ -41,15 +41,37 @@ export default function CustomerOrdersPage() {
               </tr>
             </thead>
             <tbody>
-              {orders.map((o) => (
-                <tr key={o.id} className="border-t">
+              {orders.map((o) => {
+                const items = Array.isArray(o.custom_repair_items) ? o.custom_repair_items : [];
+                return (
+                <tr key={o.id} className="border-t align-top">
                   <td className="px-4 py-3">{o.lead_number}</td>
                   <td className="px-4 py-3">{o.vehicle_number || '—'}</td>
-                  <td className="px-4 py-3">{o.service_type || '—'}</td>
+                  <td className="px-4 py-3">
+                    <div>{o.service_display || o.service_type || '—'}</div>
+                    {items.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                        {items.map((item: any, idx: number) => (
+                          <li key={`${item?.name || idx}`} className="flex justify-between gap-3">
+                            <span>
+                              {item?.name}
+                              {Number(item?.qty || 1) > 1 ? ` × ${item.qty}` : ''}
+                            </span>
+                            <span className="font-semibold text-gray-800">
+                              {Number(item?.amount || 0) > 0
+                                ? `₹${Math.round(Number(item.amount)).toLocaleString('en-IN')}`
+                                : '—'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3">{o.status}</td>
                   <td className="px-4 py-3">₹{Number(o.actual_amount || 0).toFixed(2)}</td>
                 </tr>
-              ))}
+                );
+              })}
               {orders.length === 0 && (
                 <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={5}>No orders found.</td></tr>
               )}

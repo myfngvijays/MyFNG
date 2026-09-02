@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,15 @@ import { COLORS, SPACING } from '../../../constants/theme';
 import CrmSavedViewsSheet, { type MobileSavedViewFilters } from '../../../components/CrmSavedViewsSheet';
 import { leadStatusKpiColors } from '../../../lib/telecaller/leadStatusColors';
 import { formatDateDMY } from '@/lib/dateFormat';
+import AdminCrmStatusPicker from '../../../components/admin/AdminCrmStatusPicker';
+import { resolveAdminCrmStatusId } from '../../../lib/telecaller/adminCrmStatus';
+import {
+  buildCheckoutLeadIndex,
+  checkoutSiblingsFor,
+  checkoutServiceLines,
+  collapseCheckoutChildLeads,
+  checkoutLeadAmount,
+} from '../../../lib/admin-checkout-lead-group';
 
 function OpsShell({
   title,
@@ -183,6 +192,7 @@ export function LeadManagerAppBookingsScreen() {
   const [sourceChip, setSourceChip] = useState('ALL');
   const [couponChip, setCouponChip] = useState('ALL');
   const [dateChip, setDateChip] = useState('all_time');
+  const [crmUpdatingId, setCrmUpdatingId] = useState<string | null>(null);
   const [summary, setSummary] = useState<{
     total_fetched?: number;
     total_filtered?: number;
@@ -258,7 +268,7 @@ export function LeadManagerAppBookingsScreen() {
   const filtered = rows.filter((item) => {
     const needle = (applied.search || q).trim().toLowerCase();
     if (needle) {
-      const hit = [item.customer_name, item.customer_phone, item.lead_number, item.status]
+      const hit = [item.customer_name, item.customer_phone, item.lead_number, item.status, item.service_type, item.service_display]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(needle));
       if (!hit) return false;
@@ -309,12 +319,42 @@ export function LeadManagerAppBookingsScreen() {
     return true;
   });
 
+  const checkoutIndex = useMemo(() => buildCheckoutLeadIndex(rows), [rows]);
+  const visible = useMemo(
+    () => collapseCheckoutChildLeads(filtered, rows, checkoutIndex),
+    [filtered, rows, checkoutIndex],
+  );
+
+  const updateCrmLeadStatus = async (lead: any, statusId: string, lostReason?: string) => {
+    const leadId = String(lead?.id || '').trim();
+    if (!leadId) return;
+    if (resolveAdminCrmStatusId(lead) === statusId && statusId !== 'LOST') return;
+    setCrmUpdatingId(leadId);
+    try {
+      const json = await apiFetch<any>(`/api/super_admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          crm_status: statusId,
+          lost_reason: lostReason || null,
+          crm_note: 'Changed from Bookings admin',
+        }),
+      });
+      const updated = json?.lead || lead;
+      setRows((prev) => prev.map((row) => (String(row.id) === leadId ? { ...row, ...updated } : row)));
+    } catch (e: any) {
+      Alert.alert('Lead status', e?.message || 'Failed to update');
+    } finally {
+      setCrmUpdatingId(null);
+    }
+  };
+
   const kpis = {
-    total: rows.length,
-    fresh: rows.filter((r) => String(r.status || '').toUpperCase() === 'NEW').length,
-    assigned: rows.filter((r) => String(r.status || '').toUpperCase() === 'ASSIGNED').length,
-    completed: rows.filter((r) => String(r.status || '').toUpperCase() === 'COMPLETED').length,
-    sla: rows.filter((r) => String(r.sla_state || '').toUpperCase() === 'BREACHED').length,
+    total: visible.length,
+    fresh: visible.filter((r) => String(r.status || '').toUpperCase() === 'NEW').length,
+    assigned: visible.filter((r) => String(r.status || '').toUpperCase() === 'ASSIGNED').length,
+    completed: visible.filter((r) => String(r.status || '').toUpperCase() === 'COMPLETED').length,
+    sla: visible.filter((r) => String(r.sla_state || '').toUpperCase() === 'BREACHED').length,
   };
 
   const goBack = () => {
@@ -332,8 +372,8 @@ export function LeadManagerAppBookingsScreen() {
           <Text style={styles.bookingsTitle}>Bookings & Leads</Text>
           <Text style={styles.bookingsSub}>
             {summary?.truncated
-              ? `Showing ${filtered.length.toLocaleString('en-IN')} of ${(summary.total_in_range || 0).toLocaleString('en-IN')}`
-              : `${filtered.length.toLocaleString('en-IN')} records`}
+              ? `Showing ${visible.length.toLocaleString('en-IN')} of ${(summary.total_in_range || 0).toLocaleString('en-IN')}`
+              : `${visible.length.toLocaleString('en-IN')} records`}
           </Text>
         </View>
         <TouchableOpacity style={styles.bookingsViewBtn} onPress={() => setViewsOpen(true)}>
@@ -414,7 +454,7 @@ export function LeadManagerAppBookingsScreen() {
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
       ) : (
         <FlatList
-          data={filtered}
+          data={visible}
           keyExtractor={(item) => String(item.id)}
           refreshControl={
             <RefreshControl
@@ -429,6 +469,17 @@ export function LeadManagerAppBookingsScreen() {
           renderItem={({ item }) => {
             const tint = leadStatusKpiColors(item);
             const status = String(item.status || 'NEW').replace(/_/g, ' ');
+            const siblings = checkoutSiblingsFor(item, checkoutIndex);
+            const serviceLabel =
+              siblings.length > 0
+                ? checkoutServiceLines(item, siblings).map((line) => line.name).join(', ')
+                : leadServiceLabel(item);
+            const amount =
+              siblings.length > 0
+                ? `₹${Math.round(
+                    checkoutLeadAmount(item) + siblings.reduce((sum, row) => sum + checkoutLeadAmount(row), 0),
+                  ).toLocaleString('en-IN')}`
+                : leadAmount(item);
             return (
               <TouchableOpacity
                 style={[styles.leadCard, { backgroundColor: tint.cardBg, borderColor: tint.border }]}
@@ -452,13 +503,13 @@ export function LeadManagerAppBookingsScreen() {
                 <View style={styles.leadGrid}>
                   <View style={styles.leadCell}>
                     <Text style={styles.leadCellLbl}>Service</Text>
-                    <Text style={styles.leadCellVal} numberOfLines={1}>
-                      {leadServiceLabel(item)}
+                    <Text style={styles.leadCellVal} numberOfLines={2}>
+                      {serviceLabel}
                     </Text>
                   </View>
                   <View style={styles.leadCell}>
                     <Text style={styles.leadCellLbl}>Amount</Text>
-                    <Text style={styles.leadCellVal}>{leadAmount(item)}</Text>
+                    <Text style={styles.leadCellVal}>{amount}</Text>
                   </View>
                   <View style={styles.leadCell}>
                     <Text style={styles.leadCellLbl}>Date</Text>
@@ -468,6 +519,14 @@ export function LeadManagerAppBookingsScreen() {
                 {item.assigned_telecaller_name ? (
                   <Text style={styles.assignee}>Assignee · {item.assigned_telecaller_name}</Text>
                 ) : null}
+                <View style={styles.crmRow}>
+                  <Text style={styles.leadCellLbl}>Lead status</Text>
+                  <AdminCrmStatusPicker
+                    lead={item}
+                    updating={crmUpdatingId === String(item.id)}
+                    onChange={(statusId, lostReason) => void updateCrmLeadStatus(item, statusId, lostReason)}
+                  />
+                </View>
               </TouchableOpacity>
             );
           }}
@@ -539,7 +598,9 @@ export function LeadManagerAppCustomersScreen() {
   const [selected, setSelected] = useState<any | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [eventsExpanded, setEventsExpanded] = useState(false);
+  const [appActivityItems, setAppActivityItems] = useState<any[]>([]);
+  const [appActivityLoading, setAppActivityLoading] = useState(false);
+  const [appActivityExpanded, setAppActivityExpanded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -563,16 +624,25 @@ export function LeadManagerAppCustomersScreen() {
   const openCustomer = async (row: any) => {
     setSelected(row);
     setDetail(null);
-    setEventsExpanded(false);
+    setAppActivityItems([]);
+    setAppActivityExpanded(false);
     setDetailLoading(true);
+    setAppActivityLoading(true);
     try {
-      const data = await apiFetch<any>(`/api/super_admin/customers/${row.id}`);
+      const [data, appData] = await Promise.all([
+        apiFetch<any>(`/api/super_admin/customers/${row.id}`),
+        apiFetch<any>(
+          `/api/super_admin/app-activity?customer_id=${encodeURIComponent(String(row.id))}&phone=${encodeURIComponent(String(row.phone || ''))}`,
+        ).catch(() => ({ items: [] })),
+      ]);
       setDetail(data);
+      setAppActivityItems(Array.isArray(appData?.items) ? appData.items : []);
     } catch (e: any) {
       Alert.alert('Customer', e?.message || 'Failed to load profile');
       setSelected(null);
     } finally {
       setDetailLoading(false);
+      setAppActivityLoading(false);
     }
   };
 
@@ -729,43 +799,55 @@ export function LeadManagerAppCustomersScreen() {
               )}
 
               <Text style={styles.sectionTitle}>Bookings</Text>
-              {(detail.service_bookings || []).length ? (
-                (detail.service_bookings || []).map((b: any) => (
-                  <View key={b.id} style={styles.card}>
-                    <Text style={styles.name}>{b.lead_number || 'Lead'}</Text>
-                    <Text style={styles.meta}>{[b.status, b.service_type, b.vehicle_number].filter(Boolean).join(' · ')}</Text>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.emptyHint}>No service bookings</Text>
-              )}
-
-              <Text style={styles.sectionTitle}>Recent App Events</Text>
-              {(detail.analytics_events || []).length ? (
-                <>
-                  {(eventsExpanded
-                    ? detail.analytics_events
-                    : detail.analytics_events.slice(0, 5)
-                  ).map((ev: any) => (
-                    <View key={ev.id} style={styles.row}>
-                      <Text style={[styles.meta, { flex: 1, color: COLORS.textPrimary, fontWeight: '600' }]}>
-                        {String(ev.event_name || '').replace(/_/g, ' ')}
+              {(() => {
+                const bookingRows = collapseCheckoutChildLeads(detail.service_bookings || []);
+                const bookingIndex = buildCheckoutLeadIndex(detail.service_bookings || []);
+                if (!bookingRows.length) {
+                  return <Text style={styles.emptyHint}>No service bookings</Text>;
+                }
+                return bookingRows.map((b: any) => {
+                  const siblings = checkoutSiblingsFor(b, bookingIndex);
+                  const service =
+                    siblings.length > 0
+                      ? checkoutServiceLines(b, siblings).map((line) => line.name).join(', ')
+                      : b.service_type;
+                  return (
+                    <View key={b.id} style={styles.card}>
+                      <Text style={styles.name}>{b.lead_number || 'Lead'}</Text>
+                      <Text style={styles.meta}>
+                        {[b.status, service, b.vehicle_number].filter(Boolean).join(' · ')}
                       </Text>
-                      <Text style={styles.meta}>{fmtWhen(ev.created_at)}</Text>
+                    </View>
+                  );
+                });
+              })()}
+
+              <Text style={styles.sectionTitle}>
+                App activity{appActivityItems.length ? ` (${appActivityItems.length})` : ''}
+              </Text>
+              {appActivityLoading ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : appActivityItems.length ? (
+                <>
+                  {(appActivityExpanded ? appActivityItems : appActivityItems.slice(0, 10)).map((item: any) => (
+                    <View key={item.id || `${item.kind}-${item.at}`} style={styles.card}>
+                      <Text style={styles.name}>{item.title}</Text>
+                      {item.body ? <Text style={styles.meta}>{String(item.body)}</Text> : null}
+                      <Text style={styles.meta}>{fmtWhen(item.at)}</Text>
                     </View>
                   ))}
-                  {detail.analytics_events.length > 5 ? (
-                    <TouchableOpacity onPress={() => setEventsExpanded((v) => !v)} style={{ paddingVertical: 8 }}>
+                  {appActivityItems.length > 10 ? (
+                    <TouchableOpacity onPress={() => setAppActivityExpanded((v) => !v)} style={{ paddingVertical: 8 }}>
                       <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>
-                        {eventsExpanded
+                        {appActivityExpanded
                           ? 'Show less'
-                          : `Show more (${detail.analytics_events.length - 5})`}
+                          : `View more (${appActivityItems.length - 10})`}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
                 </>
               ) : (
-                <Text style={styles.emptyHint}>No app events</Text>
+                <Text style={styles.emptyHint}>No app activity yet</Text>
               )}
             </ScrollView>
           )}
@@ -1253,4 +1335,11 @@ const styles = StyleSheet.create({
   leadCellLbl: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase' },
   leadCellVal: { fontSize: 12, fontWeight: '700', color: '#111827', marginTop: 2 },
   assignee: { marginTop: 8, fontSize: 12, fontWeight: '600', color: '#004AAD' },
+  crmRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
 });

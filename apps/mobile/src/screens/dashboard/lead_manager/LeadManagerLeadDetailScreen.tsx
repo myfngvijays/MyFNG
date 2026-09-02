@@ -20,6 +20,17 @@ import { apiFetch } from '../../../lib/api';
 import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
+import AdminCrmStatusPicker from '../../../components/admin/AdminCrmStatusPicker';
+import { resolveAdminCrmStatusId, ADMIN_CRM_STATUS_OPTIONS } from '../../../lib/telecaller/adminCrmStatus';
+import { parseCustomRepairItems } from '../../../lib/custom-repair-items';
+import {
+  buildCheckoutLeadIndex,
+  checkoutPhoneKey,
+  checkoutSiblingsFor,
+  checkoutServiceLines,
+  checkoutLeadAmount,
+  resolveCheckoutPrimary,
+} from '../../../lib/admin-checkout-lead-group';
 
 export default function LeadManagerLeadDetailScreen({ navigation, route }: any) {
   const { leadId, mode = 'view' } = route.params;
@@ -68,10 +79,16 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
   const [leadEvents, setLeadEvents] = useState<any[]>([]);
   const [activityItems, setActivityItems] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [appActivityItems, setAppActivityItems] = useState<any[]>([]);
+  const [appActivityLoading, setAppActivityLoading] = useState(false);
+  const [checkoutSiblings, setCheckoutSiblings] = useState<any[]>([]);
+  const [expandedRepairIds, setExpandedRepairIds] = useState<Record<string, boolean>>({});
+  const [activityLeadId, setActivityLeadId] = useState<string>(String(leadId || ''));
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [validationNotes, setValidationNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [crmUpdating, setCrmUpdating] = useState(false);
 
   const formatDate = (value: any) => {
     if (!value) return null;
@@ -116,7 +133,6 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
 
   useEffect(() => {
     fetchLeadDetails();
-    fetchActivityTimeline();
   }, []);
 
   // Handle hardware back button
@@ -164,6 +180,37 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
       if (leadError) throw leadError;
       setLead(leadData);
 
+      const phone = checkoutPhoneKey(leadData.customer_phone);
+      let related: any[] = [leadData];
+      if (phone.length === 10) {
+        try {
+          const { data: relatedRows } = await supabase
+            .from('service_leads')
+            .select(
+              'id, lead_number, service_type, estimated_amount, actual_amount, amount_display, status, coupon_meta, meta, created_at, customer_phone, vehicle_number, description',
+            )
+            .is('deleted_at', null)
+            .ilike('customer_phone', `%${phone}`)
+            .limit(40);
+          if (Array.isArray(relatedRows) && relatedRows.length) {
+            const byId = new Map(relatedRows.map((row: any) => [String(row.id), row]));
+            byId.set(String(leadData.id), { ...leadData, ...byId.get(String(leadData.id)) });
+            related = Array.from(byId.values()).filter(
+              (row) => checkoutPhoneKey(row.customer_phone) === phone,
+            );
+          }
+        } catch {
+          related = [leadData];
+        }
+      }
+      const checkoutIndex = buildCheckoutLeadIndex(related);
+      const primary = resolveCheckoutPrimary(leadData, related, checkoutIndex);
+      const siblings = checkoutSiblingsFor(primary, checkoutIndex);
+      setCheckoutSiblings(siblings);
+      const timelineId = String(primary?.id || leadData.id);
+      setActivityLeadId(timelineId);
+      void fetchActivityTimeline(timelineId);
+
       // Set editable data
       setEditedData({
         customer_name: leadData.customer_name || '',
@@ -205,24 +252,34 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
     }
   };
 
-  const fetchActivityTimeline = async () => {
+  const fetchActivityTimeline = async (timelineLeadId?: string) => {
+    const id = String(timelineLeadId || activityLeadId || leadId || '');
+    if (!id) return;
     try {
       setActivityLoading(true);
-      const data = await apiFetch<{ items?: any[] }>(
-        `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(leadId)}`,
-      );
+      setAppActivityLoading(true);
+      const [data, appData] = await Promise.all([
+        apiFetch<{ items?: any[] }>(
+          `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(id)}`,
+        ),
+        apiFetch<{ items?: any[] }>(
+          `/api/super_admin/app-activity?lead_id=${encodeURIComponent(id)}`,
+        ).catch(() => ({ items: [] })),
+      ]);
       setActivityItems(Array.isArray(data?.items) ? data.items : []);
+      setAppActivityItems(Array.isArray(appData?.items) ? appData.items : []);
     } catch {
       setActivityItems([]);
+      setAppActivityItems([]);
     } finally {
       setActivityLoading(false);
+      setAppActivityLoading(false);
     }
   };
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchLeadDetails();
-    fetchActivityTimeline();
   };
 
   const handleSave = async () => {
@@ -322,6 +379,32 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
       Alert.alert('Error', 'Failed to validate lead');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const updateCrmLeadStatus = async (statusId: string, lostReason?: string) => {
+    if (!leadId) return;
+    if (resolveAdminCrmStatusId(lead) === statusId && statusId !== 'LOST') return;
+    setCrmUpdating(true);
+    try {
+      const json = await apiFetch<any>(`/api/super_admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          crm_status: statusId,
+          lost_reason: lostReason || null,
+          crm_note: 'Changed from Bookings admin',
+        }),
+      });
+      if (json?.lead) {
+        setLead((prev: any) => ({ ...prev, ...json.lead }));
+      } else {
+        fetchLeadDetails();
+      }
+    } catch (e: any) {
+      Alert.alert('Lead status', e?.message || 'Failed to update');
+    } finally {
+      setCrmUpdating(false);
     }
   };
 
@@ -468,6 +551,11 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
       >
         {/* Status & Priority Row */}
         <View style={styles.statusRow}>
+          <AdminCrmStatusPicker
+            lead={lead}
+            updating={crmUpdating}
+            onChange={(statusId, lostReason) => void updateCrmLeadStatus(statusId, lostReason)}
+          />
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(lead.status) + '20' }]}>
             <Text style={[styles.statusText, { color: getStatusColor(lead.status) }]}>{lead.status}</Text>
           </View>
@@ -784,7 +872,67 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
               </>
             ) : (
               <>
-                <InfoRow icon="wrench" label="Service Type" value={lead.service_type || 'Not specified'} />
+                {checkoutSiblings.length > 0 ? (
+                  checkoutServiceLines(lead, checkoutSiblings).map((line, index) => {
+                    const crmId = resolveAdminCrmStatusId(line.lead);
+                    const crmLabel =
+                      ADMIN_CRM_STATUS_OPTIONS.find((opt) => opt.id === crmId)?.label || crmId;
+                    const price = checkoutLeadAmount(line.lead) || line.price;
+                    const repairKey = String(line.lead.id || `${line.name}-${index}`);
+                    const repairItems = parseCustomRepairItems(line.lead);
+                    const repairOpen = Boolean(expandedRepairIds[repairKey]);
+                    return (
+                      <View key={repairKey} style={styles.infoItem}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+                            {repairItems.length > 0 ? (
+                              <TouchableOpacity
+                                onPress={() =>
+                                  setExpandedRepairIds((prev) => ({ ...prev, [repairKey]: !prev[repairKey] }))
+                                }
+                                style={{
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: 11,
+                                  borderWidth: 1,
+                                  borderColor: COLORS.primary,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  marginRight: 8,
+                                }}
+                              >
+                                <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 14 }}>
+                                  {repairOpen ? '−' : '+'}
+                                </Text>
+                              </TouchableOpacity>
+                            ) : null}
+                            <Text style={[styles.infoLabel, { color: COLORS.textPrimary, fontWeight: '700' }]}>
+                              {line.name}
+                            </Text>
+                          </View>
+                          <Text style={styles.infoValue}>
+                            {price > 0 ? `₹${Math.round(price).toLocaleString('en-IN')} · ` : ''}
+                            {crmLabel}
+                          </Text>
+                        </View>
+                        {repairOpen
+                          ? repairItems.map((row, itemIndex) => (
+                              <Text
+                                key={`${row.name}-${itemIndex}`}
+                                style={[styles.infoValue, { color: COLORS.textSecondary, marginLeft: 30 }]}
+                              >
+                                {row.name}
+                                {row.qty > 1 ? ` × ${row.qty}` : ''}
+                                {row.amount > 0 ? ` · ₹${Math.round(row.amount).toLocaleString('en-IN')}` : ''}
+                              </Text>
+                            ))
+                          : null}
+                      </View>
+                    );
+                  })
+                ) : (
+                  <InfoRow icon="wrench" label="Service Type" value={lead.service_type || 'Not specified'} />
+                )}
                 {lead.problem_description && (
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>Problem:</Text>
@@ -1078,6 +1226,32 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
           </View>
         </View>
 
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="phone-portrait" size={24} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>
+              App activity{appActivityItems.length > 0 ? ` (${appActivityItems.length})` : ''}
+            </Text>
+          </View>
+          <View style={styles.sectionContent}>
+            {appActivityLoading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : appActivityItems.length === 0 ? (
+              <Text style={styles.emptyTimeline}>No app activity yet</Text>
+            ) : (
+              appActivityItems.map((item: any) => (
+                <View key={item.id || `${item.kind}-${item.at}`} style={styles.timelineItem}>
+                  <View style={styles.timelineHeader}>
+                    <Text style={styles.timelineStatus}>{item.title}</Text>
+                  </View>
+                  {item.body ? <Text style={styles.timelineMeta}>{String(item.body)}</Text> : null}
+                  <Text style={styles.timelineTime}>{item.at ? formatDateTime(item.at) : '—'}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+
         {/* Internal Notes Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -1285,6 +1459,25 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  crmStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  crmStatusLbl: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
   },
   priorityBadge: {
     paddingHorizontal: SPACING.sm,

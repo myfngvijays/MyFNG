@@ -5,7 +5,8 @@ import {
   filterLeadsForCustomer,
   normalizeCustomerPhone,
 } from '@/lib/customer-service-leads';
-import { parseMembershipClaimMeta } from '@/lib/membership-benefits-service';
+import { parseMembershipClaimMeta, isMembershipClaimLead } from '@/lib/membership-benefits-service';
+import { resolveCustomRepairItemsFromLeads } from '@/lib/custom-repair-items';
 import {
   expireUnpaidBookingMembershipBundleIfNeeded,
   resolveActiveMembershipBundleDiscount,
@@ -33,8 +34,9 @@ export async function GET(request: Request) {
 
   let query = supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, discount_amount, coupon_code, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, pickup_required, preferred_date, preferred_time_slot, preferred_slot_start, meta, customer_phone')
+    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, discount_amount, coupon_code, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, pickup_required, preferred_date, preferred_time_slot, preferred_slot_start, meta, customer_phone, lead_source')
     .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(200);
 
@@ -42,10 +44,24 @@ export async function GET(request: Request) {
   if (vehicle) query = query.eq('vehicle_number', vehicle);
   if (q) query = query.ilike('lead_number', `%${q}%`);
 
-  const { data, error } = await query;
+  let { data, error } = await query;
+  if (error && /deleted_at/i.test(String(error.message || ''))) {
+    query = supabaseAdmin
+      .from('service_leads')
+      .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, discount_amount, coupon_code, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, pickup_required, preferred_date, preferred_time_slot, preferred_slot_start, meta, customer_phone, lead_source')
+      .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (status) query = query.eq('status', status);
+    if (vehicle) query = query.eq('vehicle_number', vehicle);
+    if (q) query = query.ilike('lead_number', `%${q}%`);
+    ({ data, error } = await query);
+  }
   if (error) return NextResponse.json({ error: 'Failed to fetch order history' }, { status: 500 });
 
-  const rows = filterLeadsForCustomer(data, { id: customer.id, phone: normalizedPhone });
+  const rows = filterLeadsForCustomer(data, { id: customer.id, phone: normalizedPhone }).filter(
+    (row: { meta?: unknown; lead_source?: string | null }) => !isMembershipClaimLead(row),
+  );
 
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
   const nowIso = new Date().toISOString();
@@ -209,6 +225,7 @@ export async function GET(request: Request) {
       wallet_deduction: resolveDisplayWalletDeduction(r, pbConfig),
       membership_bundle_discount: membershipBundleDiscount,
       membership_claim: parseMembershipClaimMeta(r.meta),
+      custom_repair_items: resolveCustomRepairItemsFromLeads(r, rows),
       post_booking_membership: hasActiveMembership
         ? null
         : resolvePostBookingMembershipOfferStatus(r, pbConfig),

@@ -172,3 +172,74 @@ export async function adminExpireCustomerMembership(
 
   return { ok: true as const, expired_count: activeRows.length };
 }
+
+export async function saveMembershipClaimsButtonOverride(
+  supabaseAdmin: any,
+  input: {
+    customerId: string;
+    membershipId?: string | null;
+    mode: string;
+    adminUserId?: string | null;
+  },
+) {
+  const { parseClaimsButtonOverride } = await import('@/lib/membership-benefits-service');
+  const mode = parseClaimsButtonOverride(input.mode);
+  const now = new Date().toISOString();
+  const membershipId = String(input.membershipId || '').trim();
+  let storedOnMembership = false;
+
+  if (membershipId) {
+    const { error } = await supabaseAdmin
+      .from('customer_memberships')
+      .update({ claims_button_override: mode, updated_at: now })
+      .eq('id', membershipId)
+      .eq('customer_id', input.customerId);
+    if (error && !/column|does not exist|schema cache/i.test(String(error.message || ''))) {
+      return { ok: false as const, status: 500, error: error.message };
+    }
+    storedOnMembership = !error;
+  }
+
+  const { data: profile } = await supabaseAdmin
+    .from('customer_profiles')
+    .select('id, preferences')
+    .eq('customer_id', input.customerId)
+    .maybeSingle();
+  const prefs =
+    profile?.preferences && typeof profile.preferences === 'object'
+      ? { ...(profile.preferences as Record<string, unknown>) }
+      : {};
+  prefs.membership_claims_button = mode;
+
+  if (profile?.id) {
+    const { error } = await supabaseAdmin
+      .from('customer_profiles')
+      .update({ preferences: prefs, updated_at: now })
+      .eq('id', profile.id);
+    if (error) return { ok: false as const, status: 500, error: error.message };
+  } else {
+    const { error } = await supabaseAdmin.from('customer_profiles').insert({
+      customer_id: input.customerId,
+      preferences: prefs,
+    });
+    if (error) return { ok: false as const, status: 500, error: error.message };
+  }
+
+  await supabaseAdmin.from('customer_analytics_events').insert({
+    customer_id: input.customerId,
+    event_name: 'membership_claims_button_override',
+    event_group: 'membership',
+    properties: {
+      mode,
+      membership_id: membershipId || null,
+      admin_user_id: input.adminUserId || null,
+      stored: storedOnMembership ? 'membership' : 'profile',
+    },
+  });
+
+  return {
+    ok: true as const,
+    mode,
+    stored: storedOnMembership ? ('membership' as const) : ('profile' as const),
+  };
+}

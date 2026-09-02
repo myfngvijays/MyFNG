@@ -4,6 +4,15 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { consolidateDuplicateLeadsByPhones } from '@/lib/service-lead-reopen';
 import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
+import {
+  ADMIN_CRM_STATUS_OPTIONS,
+  resolveAdminCrmStatusId,
+} from '@/lib/telecaller/leadDisplayStatus';
+import {
+  buildCheckoutLeadIndex,
+  checkoutServiceName,
+  isAdminCustomRepairLead,
+} from '@/lib/admin-checkout-lead-group';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -32,6 +41,11 @@ function friendlyPipelineStatus(status: string | null | undefined): string {
     READY_FOR_DELIVERY: 'Ready for delivery',
   };
   return map[s] || (s ? s.replace(/_/g, ' ') : 'Unknown');
+}
+
+function crmStatusLabel(lead: any): string {
+  const id = resolveAdminCrmStatusId(lead);
+  return ADMIN_CRM_STATUS_OPTIONS.find((opt) => opt.id === id)?.label || friendlyPipelineStatus(lead?.status);
 }
 
 async function requireCrmUser(request: NextRequest) {
@@ -75,7 +89,7 @@ export async function GET(request: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: 'Admin unavailable' }, { status: 500 });
 
     const leadSelectFull =
-      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model';
+      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model, service_type, meta';
     const leadSelectLean =
       'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id';
 
@@ -131,6 +145,9 @@ export async function GET(request: NextRequest) {
     }
 
     const phone = normalizePhone(String((lead as any).customer_phone || ''));
+    const adminScope = ['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS'].includes(
+      gate.roleCode,
+    );
 
     const safeSelect = async (
       run: () => PromiseLike<{ data: any; error: any }>,
@@ -146,34 +163,62 @@ export async function GET(request: NextRequest) {
       return { data: [] as any[], error: null };
     };
 
-    const [callsRes, fuRes, waRes, archivedRes] = await Promise.all([
+    let relatedLeadIds = [leadId];
+    let siblingLeads: any[] = [];
+    if (phone10 && adminScope) {
+      const sib = await safeSelect(() =>
+        supabaseAdmin
+          .from('service_leads')
+          .select(
+            'id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, created_at, updated_at, deleted_at, service_type, meta, coupon_meta, customer_phone',
+          )
+          .or(
+            `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.eq.+91${phone10},customer_phone.ilike.%${phone10}`,
+          )
+          .neq('id', leadId)
+          .order('created_at', { ascending: false })
+          .limit(30),
+      );
+      siblingLeads = sib.data || [];
+      relatedLeadIds = [
+        leadId,
+        ...Array.from(new Set(siblingLeads.map((r) => String(r.id || '')).filter(Boolean))),
+      ];
+    }
+
+    const leadNumberById = new Map<string, string>([
+      [leadId, String((lead as any).lead_number || '')],
+      ...siblingLeads.map((r) => [String(r.id), String(r.lead_number || '')] as [string, string]),
+    ]);
+
+    const [callsRes, fuRes, waRes, archivedRes, eventsRes] = await Promise.all([
       safeSelect(
         () =>
           supabaseAdmin
             .from('telecaller_call_logs')
             .select(
-              'id, call_status, call_duration, outcome, notes, created_at, telecaller_id, call_recording_url, telecaller:telecaller_id(full_name)',
+              'id, lead_id, call_status, call_duration, outcome, notes, created_at, telecaller_id, call_recording_url, telecaller:telecaller_id(full_name)',
             )
-            .eq('lead_id', leadId)
+            .in('lead_id', relatedLeadIds)
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(80),
         () =>
           supabaseAdmin
             .from('telecaller_call_logs')
-            .select('id, call_status, call_duration, outcome, notes, created_at, telecaller_id')
-            .eq('lead_id', leadId)
+            .select('id, lead_id, call_status, call_duration, outcome, notes, created_at, telecaller_id')
+            .in('lead_id', relatedLeadIds)
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(80),
       ),
       safeSelect(() =>
         supabaseAdmin
           .from('telecaller_follow_ups')
           .select(
-            'id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
+            'id, lead_id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
           )
-          .eq('lead_id', leadId)
+          .in('lead_id', relatedLeadIds)
           .order('scheduled_time', { ascending: false })
-          .limit(40),
+          .limit(60),
       ),
       phone
         ? safeSelect(
@@ -222,6 +267,14 @@ export async function GET(request: NextRequest) {
                 .limit(20),
           )
         : Promise.resolve({ data: [] as any[], error: null }),
+      safeSelect(() =>
+        supabaseAdmin
+          .from('lead_events')
+          .select('id, event_type, description, created_at')
+          .in('lead_id', relatedLeadIds)
+          .order('created_at', { ascending: false })
+          .limit(40),
+      ),
     ]);
 
     type Item = {
@@ -256,14 +309,22 @@ export async function GET(request: NextRequest) {
           : null;
       const recUrl = String((log as any).call_recording_url || '').trim();
       const hasRec = Boolean(recUrl);
+      const callLeadId = String((log as any).lead_id || leadId);
+      const otherLeadNo = callLeadId !== leadId ? leadNumberById.get(callLeadId) : '';
       items.push({
         id: `call-${(log as any).id}`,
         kind: 'call',
         at: String((log as any).created_at),
-        title: durLabel ? `Call · ${label} · ${durLabel}` : `Call · ${label}`,
+        title: [
+          durLabel ? `Call · ${label} · ${durLabel}` : `Call · ${label}`,
+          otherLeadNo ? `#${otherLeadNo}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         body: note || null,
         meta: {
           call_log_id: (log as any).id,
+          lead_id: callLeadId,
           call_status: (log as any).call_status,
           outcome: (log as any).outcome,
           duration: (log as any).call_duration,
@@ -288,12 +349,15 @@ export async function GET(request: NextRequest) {
 
     for (const msg of waRes.data || []) {
       const dir = String((msg as any).direction || '').toUpperCase();
+      const waText = String(
+        (msg as any).text_body || (msg as any).media_caption || (msg as any).template_name || '',
+      ).trim();
       items.push({
         id: `wa-${(msg as any).id}`,
         kind: 'whatsapp',
         at: String((msg as any).created_at),
         title: dir === 'INBOUND' ? 'WhatsApp received' : 'WhatsApp sent',
-        body: null,
+        body: waText || null,
         meta: { status: (msg as any).status, message_type: (msg as any).message_type },
       });
     }
@@ -380,6 +444,53 @@ export async function GET(request: NextRequest) {
           lead_number: leadNo,
           merged: true,
         },
+      });
+    }
+
+    const checkoutIndex = buildCheckoutLeadIndex([lead as any, ...siblingLeads]);
+    const checkoutParentId = checkoutIndex.childToParentId.get(leadId) || leadId;
+    const checkoutPairIds = new Set<string>(
+      (checkoutIndex.siblingsByParentId.get(checkoutParentId) || []).map((row) => String(row.id || '')),
+    );
+    if (checkoutParentId !== leadId) checkoutPairIds.add(checkoutParentId);
+
+    for (const sib of siblingLeads) {
+      if (sib?.deleted_at) continue;
+      const leadNo = String(sib.lead_number || sib.id || '');
+      const vehicle = [sib.vehicle_make, sib.vehicle_model, sib.vehicle_number]
+        .map((v) => String(v || '').trim())
+        .filter((v) => v && v.toUpperCase() !== 'NA')
+        .join(' · ');
+      const isCheckoutPair = checkoutPairIds.has(String(sib.id));
+      const statusLabel = isCheckoutPair ? crmStatusLabel(sib) : friendlyPipelineStatus(sib.status);
+      const serviceName = isAdminCustomRepairLead(sib)
+        ? 'Custom Repair'
+        : checkoutServiceName(sib);
+      items.push({
+        id: `sib-${sib.id}`,
+        kind: 'booking',
+        at: String(sib.created_at || sib.updated_at || new Date().toISOString()),
+        title: isCheckoutPair ? `${serviceName} · ${statusLabel}` : `Other booking · #${leadNo} · ${statusLabel}`,
+        body: isCheckoutPair
+          ? [leadNo ? `Lead # ${leadNo}` : null, vehicle || null].filter(Boolean).join('\n')
+          : [vehicle || null, `Status: ${statusLabel}`].filter(Boolean).join('\n'),
+        meta: {
+          status: sib.status,
+          status_label: statusLabel,
+          lead_number: leadNo,
+          lead_id: String(sib.id),
+          checkout_pair: isCheckoutPair,
+        },
+      });
+    }
+
+    for (const ev of eventsRes.data || []) {
+      items.push({
+        id: `evt-${(ev as any).id}`,
+        kind: 'system',
+        at: String((ev as any).created_at),
+        title: String((ev as any).event_type || 'Event').replace(/_/g, ' '),
+        body: String((ev as any).description || '').trim() || null,
       });
     }
 

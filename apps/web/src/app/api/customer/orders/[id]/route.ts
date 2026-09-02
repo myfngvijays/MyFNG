@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
 import {
+  buildCustomerLeadOrFilter,
+  leadBelongsToCustomer,
+  normalizeCustomerPhone,
+} from '@/lib/customer-service-leads';
+import { resolveCustomRepairItemsFromLeads } from '@/lib/custom-repair-items';
+import {
   expireUnpaidBookingMembershipBundleIfNeeded,
   resolveActiveMembershipBundleDiscount,
   resolveDisplayWalletDeduction,
@@ -17,14 +23,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if ('response' in ctx) return ctx.response;
   const { customer, supabaseAdmin } = ctx;
   const { id } = await params;
+  const normalizedPhone = normalizeCustomerPhone(customer.phone);
 
   const { data: lead, error } = await supabaseAdmin
     .from('service_leads')
     .select('*')
     .eq('id', id)
-    .eq('customer_phone', customer.phone)
     .maybeSingle();
-  if (error || !lead) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (
+    error ||
+    !lead ||
+    (lead as { deleted_at?: string | null }).deleted_at ||
+    !normalizedPhone ||
+    !leadBelongsToCustomer(lead, { id: customer.id, phone: normalizedPhone })
+  ) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
 
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
   await expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, lead as Record<string, unknown>, pbConfig);
@@ -129,6 +143,23 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   );
   const couponDiscount = resolveServiceLeadCouponDiscount(lead as Record<string, unknown>, pbConfig);
 
+  let siblingLeads: Array<{
+    lead_number?: string | null;
+    meta?: unknown;
+    description?: string | null;
+    service_type?: string | null;
+  }> = [lead as any];
+  if (normalizedPhone) {
+    const { data: related } = await supabaseAdmin
+      .from('service_leads')
+      .select('lead_number, meta, description, service_type')
+      .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
+      .is('deleted_at', null)
+      .limit(50);
+    if (Array.isArray(related) && related.length) siblingLeads = related;
+  }
+  const customRepairItems = resolveCustomRepairItemsFromLeads(lead as any, siblingLeads);
+
   const { data: invoice } = await supabaseAdmin
     .from('invoices')
     .select('id, invoice_number, payment_status, final_amount, invoice_type, status, line_items, created_at')
@@ -215,6 +246,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     coupon_code: couponCode,
     coupon_discount: couponDiscount,
     membership_bundle_discount: membershipBundleDiscount,
+    custom_repair_items: customRepairItems,
   };
 
   return NextResponse.json({
