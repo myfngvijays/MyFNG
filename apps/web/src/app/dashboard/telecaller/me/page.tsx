@@ -167,7 +167,7 @@ export default function TelecallerMyProfilePage() {
     } catch (e: any) {
       alert(
         e?.message?.includes('telecaller_attendance') || e?.message?.includes('relation')
-          ? 'Run database migration 282_telecaller_crm_advanced.sql first'
+          ? 'Attendance is not available right now. Try again later.'
           : e?.message || 'Failed',
       );
     } finally {
@@ -453,7 +453,7 @@ export default function TelecallerMyProfilePage() {
                 </div>
               </div>
 
-              {attendance?.warning ? (
+              {attendance?.warning && !/database\/|\.sql/i.test(String(attendance.warning)) ? (
                 <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   {attendance.warning}
                 </p>

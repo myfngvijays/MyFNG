@@ -59,10 +59,11 @@ export default function CallIqAgentsPanel({
       const list = Array.isArray(json.agents) && json.agents.length ? json.agents : defaultCallIqAgents();
       applyAgents(list, json.persisted !== false && res.ok);
       setWarning(
-        json.warning ||
-          (json.persisted === false || !res.ok
-            ? 'Showing default Call-IQ agents. Run database/351_call_iq_agents.sql to save edits.'
-            : null),
+        json.warning && !/database\/|\.sql/i.test(String(json.warning))
+          ? json.warning
+          : json.persisted === false || !res.ok
+            ? 'Showing default Call-IQ agents. Refresh if edits do not save.'
+            : null,
       );
     } catch {
       applyAgents(defaultCallIqAgents(), false);
@@ -126,7 +127,7 @@ export default function CallIqAgentsPanel({
         setOpenId(updated.id);
       }
       setEditing(false);
-      setWarning(json.warning || null);
+      setWarning(json.warning && !/database\/|\.sql/i.test(String(json.warning)) ? json.warning : null);
     } catch (e: any) {
       setError(e?.message || 'Save failed');
     } finally {

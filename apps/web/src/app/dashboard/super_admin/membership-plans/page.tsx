@@ -711,21 +711,11 @@ export default function MembershipPlansPage() {
         </div>
       ) : null}
 
-      {!loading && !fetchError && appRows.some((r) => !(r.benefits?.length)) ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-4">
-          <strong>Benefits or value fields missing?</strong> Run{' '}
-          <code className="text-xs bg-amber-100 px-1 rounded">database/149_membership_admin.sql</code> then{' '}
-          <code className="text-xs bg-amber-100 px-1 rounded">database/152_membership_value_card_cms.sql</code> and{' '}
-          <code className="text-xs bg-amber-100 px-1 rounded">database/153_membership_app_placements.sql</code> in Supabase.
-        </div>
-      ) : null}
-
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600">Loading…</div>
       ) : rows.length === 0 && !fetchError ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>No plans in database.</strong> Add a plan here, or run{' '}
-          <code className="text-xs bg-amber-100 px-1 rounded">database/149_membership_admin.sql</code> in Supabase to unlock tagline, benefits &amp; 2nd-car CMS fields for existing plans.
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          No plans yet. Add a plan here.
         </div>
       ) : (
         <div className="space-y-8">

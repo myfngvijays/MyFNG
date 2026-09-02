@@ -63,7 +63,7 @@ const TABS = [
 
 function FieldGrid({ sop }: { sop: CallIqSopAudit }) {
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('sop');
-  const hit = new Set(sop.usps_highlighted);
+  const hit = new Set(sop.usps_highlighted || []);
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white">

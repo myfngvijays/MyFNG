@@ -4,7 +4,13 @@
  */
 
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { getClickToCallConfig, DEFAULT_CLICK_TO_CALL_DIDS, ownerOfDid } from '@/lib/telecaller/clickToCallConfig';
+import {
+  getClickToCallConfig,
+  DEFAULT_CLICK_TO_CALL_DIDS,
+  ownerOfDid,
+  poolDidPhoneSet,
+  type ClickToCallConfig,
+} from '@/lib/telecaller/clickToCallConfig';
 import { normalizePhone10 } from '@/lib/telecaller/initiateClickToCall';
 import { enqueueCallIqOnRecordingCompleted } from '@/lib/telecaller/callIqWorkflow';
 import { enqueueCrmDlOnRecordingCompleted } from '@/lib/telecaller/leadDlVoice';
@@ -124,6 +130,82 @@ function knownDidPhones(extra?: Set<string> | null): Set<string> {
   return set;
 }
 
+let cachedCtc: { at: number; cfg: ClickToCallConfig } | null = null;
+async function clickToCallConfigCached(): Promise<ClickToCallConfig> {
+  if (cachedCtc && Date.now() - cachedCtc.at < 30_000) return cachedCtc.cfg;
+  const cfg = await getClickToCallConfig();
+  cachedCtc = { at: Date.now(), cfg };
+  return cfg;
+}
+
+async function ourDidPool(): Promise<Set<string>> {
+  return poolDidPhoneSet(await clickToCallConfigCached());
+}
+
+/** Tata DID / caller-id on this CDR (prefers a number that is in the MyFNG 5-DID pool). */
+function pickCdrDidNumber(
+  rec: SmartfloCdrRecord,
+  extraDids?: Set<string> | null,
+): string | null {
+  const pool = knownDidPhones(extraDids);
+  const candidates = [
+    rec.did_number,
+    rec.caller_id_number,
+    rec.caller_id,
+    rec.broadcast_no,
+    rec.service_number,
+    rec.agent_number,
+  ];
+  for (const raw of candidates) {
+    const p = normalizePhone10(raw);
+    if (p && pool.has(p)) return digitsOnly(raw) || p;
+  }
+  const d = digitsOnly(rec.did_number);
+  return d.length >= 10 ? d : null;
+}
+
+function cdrUsesPoolDid(
+  rec: {
+    did_number?: unknown;
+    agent_number?: unknown;
+    caller_id_number?: unknown;
+    caller_id?: unknown;
+    broadcast_no?: unknown;
+    service_number?: unknown;
+  },
+  pool: Set<string>,
+): boolean {
+  for (const raw of [
+    rec.did_number,
+    rec.caller_id_number,
+    rec.caller_id,
+    rec.broadcast_no,
+    rec.service_number,
+    rec.agent_number,
+  ]) {
+    const p = normalizePhone10(raw);
+    if (p && pool.has(p)) return true;
+  }
+  return false;
+}
+
+/**
+ * Other Tata DIDs (not the 5 MyFNG numbers). Empty did_number is NOT foreign —
+ * Tata click-to-call often omits it. Never treat customer caller-id as a DID.
+ */
+function isExplicitForeignDid(
+  rec: {
+    did_number?: unknown;
+  },
+  pool: Set<string>,
+): boolean {
+  if (!pool.size) return false;
+  const did10 = normalizePhone10(rec.did_number);
+  if (!did10) return false;
+  if (pool.has(did10)) return false;
+  return true;
+}
+
 /** True when the number is a Smartflo DID / agent line, not a CRM customer mobile. */
 export function isSmartfloLineNumber(raw: unknown, extraDids?: Set<string> | null): boolean {
   const p = normalizePhone10(raw);
@@ -134,7 +216,8 @@ export function isSmartfloLineNumber(raw: unknown, extraDids?: Set<string> | nul
 /** Tata outbound click-to-call often puts the customer on destination / customer_number, not client_number. */
 function pickCdrCustomerNumber(rec: SmartfloCdrRecord, extraDids?: Set<string> | null): string | null {
   const dids = knownDidPhones(extraDids);
-  const did10 = normalizePhone10(rec.did_number);
+  const pickedDid = normalizePhone10(pickCdrDidNumber(rec, extraDids));
+  const did10 = pickedDid || normalizePhone10(rec.did_number);
   const agent10 = normalizePhone10(rec.agent_number);
   if (did10) dids.add(did10);
   if (agent10) dids.add(agent10);
@@ -142,12 +225,16 @@ function pickCdrCustomerNumber(rec: SmartfloCdrRecord, extraDids?: Set<string> |
     rec.customer_number,
     rec.customer_number_with_prefix,
     rec.destination,
+    rec.destination_number,
     rec.call_to_number,
     rec.called_number,
     rec.callee,
     rec.broadcast_no,
     rec.to,
     rec.dst,
+    rec.caller_id_num,
+    rec.callerid,
+    (rec.contact_details as Record<string, unknown> | undefined)?.field_0,
     rec.client_number,
   ].map((v) => normalizePhone10(v));
   const walked = collectCustomerMobile10s(rec as Record<string, unknown>);
@@ -155,6 +242,16 @@ function pickCdrCustomerNumber(rec: SmartfloCdrRecord, extraDids?: Set<string> |
   const unique = [...new Set(candidates)];
   const mobile = unique.find((p) => isIndianMobile10(p) && !dids.has(p));
   return mobile || null;
+}
+
+function cdrMentionsPhone(rec: SmartfloCdrRecord, phone10: string): boolean {
+  if (!phone10 || phone10.length < 10) return false;
+  try {
+    const blob = JSON.stringify(rec);
+    return blob.includes(phone10);
+  } catch {
+    return false;
+  }
 }
 
 /** Collapse agent-leg + customer-leg CDRs (same lead, ~same second) into one row. */
@@ -185,7 +282,11 @@ export function dedupeSmartfloCrmRows<T extends Record<string, any>>(rows: T[]):
   return out;
 }
 
-function pickCdrRecordingUrl(rec: SmartfloCdrRecord, callId?: string | null): string | null {
+function pickCdrRecordingUrl(
+  rec: SmartfloCdrRecord,
+  callId?: string | null,
+  opts?: { inventIfAnswered?: boolean; duration?: number | null },
+): string | null {
   let fromApi: string | null = null;
   for (const key of [
     'recording_url',
@@ -202,7 +303,11 @@ function pickCdrRecordingUrl(rec: SmartfloCdrRecord, callId?: string | null): st
       break;
     }
   }
-  return boundRecordingUrlForCallId(callId, fromApi);
+  if (fromApi) return boundRecordingUrlForCallId(callId, fromApi);
+  if (opts?.inventIfAnswered && callId && (opts.duration || 0) > 0) {
+    return recordingUrlForCallId(String(callId));
+  }
+  return null;
 }
 
 /** Tata portal file URL — audio is keyed by callId, not by a shared token. */
@@ -232,17 +337,23 @@ export function boundRecordingUrlForCallId(
   if (id) {
     if (stored) {
       const inUrl = callIdFromRecordingUrl(stored);
-      if (inUrl === id) return stored;
-      if (inUrl && inUrl !== id) return recordingUrlForCallId(id);
+      if (!inUrl || inUrl === id) return stored;
+      return recordingUrlForCallId(id);
     }
-    return recordingUrlForCallId(id);
+    return null;
   }
   return /^https?:\/\//i.test(stored) ? stored : null;
 }
 
 function toInt(raw: unknown): number | null {
   const n = Number(raw);
-  return Number.isFinite(n) ? Math.round(n) : null;
+  if (Number.isFinite(n)) return Math.round(n);
+  const s = String(raw || '').trim();
+  const hms = s.match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (hms) return Number(hms[1]) * 3600 + Number(hms[2]) * 60 + Number(hms[3]);
+  const ms = s.match(/^(\d+):(\d{2})$/);
+  if (ms) return Number(ms[1]) * 60 + Number(ms[2]);
+  return null;
 }
 
 /** Format for Smartflo query: "YYYY-MM-DD HH:mm:ss" (IST-ish wall clock is fine; API accepts). */
@@ -286,6 +397,13 @@ function parseSmartfloStamp(rec: SmartfloCdrRecord): {
     const dur = toInt(rec.call_duration) || 0;
     startedAt = new Date(new Date(endedAt).getTime() - dur * 1000).toISOString();
   }
+  if (!startedAt) {
+    const isoRaw = String((rec as any).started_at || (date.includes('T') ? date : '') || '').trim();
+    if (isoRaw) {
+      const t = Date.parse(isoRaw.includes('T') ? isoRaw : isoRaw.replace(' ', 'T'));
+      if (Number.isFinite(t)) startedAt = new Date(t).toISOString();
+    }
+  }
 
   return { startedAt, endedAt };
 }
@@ -302,6 +420,16 @@ export async function fetchSmartfloCallRecords(input: {
   page?: number;
   limit?: number;
   callId?: string | null;
+  /** Tata query: callerid = client/customer number */
+  callerid?: string | null;
+  /** Tata query: destination */
+  destination?: string | null;
+  /** Tata query: did_number (one of our 5 DIDs) */
+  didNumber?: string | null;
+  /** Tata OpenAPI: comma-separated did_numbers */
+  didNumbers?: string[] | null;
+  /** Tata query: services e.g. "Click to Call" */
+  services?: string | null;
   timeoutMs?: number;
 }): Promise<{ ok: boolean; status: number; count: number; results: SmartfloCdrRecord[]; error?: string; raw?: unknown }> {
   const page = Math.max(1, input.page || 1);
@@ -312,6 +440,23 @@ export async function fetchSmartfloCallRecords(input: {
   url.searchParams.set('page', String(page));
   url.searchParams.set('limit', String(limit));
   if (input.callId) url.searchParams.set('call_id', input.callId);
+  const callerid = String(input.callerid || '').replace(/\D/g, '');
+  if (callerid.length >= 10) url.searchParams.set('callerid', callerid);
+  const dest = String(input.destination || '').replace(/\D/g, '');
+  if (dest.length >= 10) url.searchParams.set('destination', dest);
+  const didList = (input.didNumbers || [])
+    .map((d) => String(d || '').replace(/\D/g, ''))
+    .filter((d) => d.length >= 10);
+  const did = String(input.didNumber || '').replace(/\D/g, '');
+  if (didList.length) {
+    url.searchParams.set('did_numbers', didList.join(','));
+    if (didList.length === 1) url.searchParams.set('did_number', didList[0]);
+  } else if (did.length >= 10) {
+    url.searchParams.set('did_number', did);
+    url.searchParams.set('did_numbers', did);
+  }
+  const services = String(input.services || '').trim();
+  if (services) url.searchParams.set('services', services);
 
   const timeoutMs = Math.min(30000, Math.max(5000, input.timeoutMs ?? 18000));
   const controller = new AbortController();
@@ -381,9 +526,69 @@ export async function fetchSmartfloCallRecords(input: {
   };
 }
 
+function cdrSample(rec: SmartfloCdrRecord | undefined) {
+  if (!rec) return null;
+  return {
+    call_id: pickCallId(rec),
+    service: rec.service,
+    call_hint: rec.call_hint,
+    client_number: rec.client_number,
+    did_number: rec.did_number,
+    caller_id_num: rec.caller_id_num,
+    destination: rec.destination,
+    agent_number: rec.agent_number,
+    recording: Boolean(String(rec.recording_url || '').trim()),
+  };
+}
+
+async function fetchCdrPages(input: {
+  token: string;
+  fromDate: string;
+  toDate: string;
+  maxPages: number;
+  timeoutMs?: number;
+  callerid?: string | null;
+  destination?: string | null;
+  didNumber?: string | null;
+  services?: string | null;
+}): Promise<{ ok: boolean; error?: string; results: SmartfloCdrRecord[] }> {
+  const results: SmartfloCdrRecord[] = [];
+  const seen = new Set<string>();
+  for (let page = 1; page <= input.maxPages; page += 1) {
+    const batch = await fetchSmartfloCallRecords({
+      token: input.token,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      page,
+      limit: 50,
+      timeoutMs: input.timeoutMs ?? 16_000,
+      callerid: input.callerid,
+      destination: input.destination,
+      didNumber: input.didNumber,
+      services: input.services,
+    });
+    if (!batch.ok) {
+      return { ok: results.length > 0, error: batch.error, results };
+    }
+    for (const rec of batch.results || []) {
+      const key = pickCallId(rec) || `p${page}-${results.length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push(rec);
+    }
+    if ((batch.results || []).length < 50) break;
+  }
+  return { ok: true, results };
+}
+
 function pickCallId(rec: SmartfloCdrRecord): string | null {
-  const id = String(rec.call_id || rec.uuid || rec.id || '').trim();
-  return id || null;
+  for (const raw of [rec.call_id, rec.uuid, rec.callId, rec.uniqueid]) {
+    const id = String(raw || '').trim();
+    if (!id) continue;
+    if (/^[a-f0-9]{24}$/i.test(id)) continue;
+    return id;
+  }
+  return null;
 }
 
 async function findLeadIdForPhone(
@@ -401,30 +606,21 @@ async function findLeadIdForPhone(
   // Exact variants first (fast) — avoid expensive ilike scan unless needed
   const { data: exactRows } = await db
     .from('service_leads')
-    .select('id, customer_phone, customer_alternate_phone, updated_at')
+    .select('id, customer_phone, customer_alternate_phone, updated_at, assigned_telecaller_id')
     .or(
       `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.eq.+91${phone10},customer_phone.eq.0${phone10},customer_alternate_phone.eq.${phone10},customer_alternate_phone.eq.91${phone10},customer_alternate_phone.eq.+91${phone10}`,
     )
     .order('updated_at', { ascending: false })
-    .limit(5);
+    .limit(8);
 
   let rows = Array.isArray(exactRows) ? exactRows : [];
-  if (!rows.length) {
-    const { data: fuzzy } = await db
-      .from('service_leads')
-      .select('id, customer_phone, customer_alternate_phone, updated_at')
-      .or(`customer_phone.like.%${phone10}%,customer_alternate_phone.like.%${phone10}%`)
-      .order('updated_at', { ascending: false })
-      .limit(8);
-    rows = Array.isArray(fuzzy) ? fuzzy : [];
-  }
   if (!rows.length) {
     const { data: fromLogs } = await db
       .from('telecaller_call_logs')
       .select('lead_id, phone_number')
       .not('lead_id', 'is', null)
       .or(
-        `phone_number.eq.${phone10},phone_number.eq.91${phone10},phone_number.eq.+91${phone10},phone_number.like.%${phone10}`,
+        `phone_number.eq.${phone10},phone_number.eq.91${phone10},phone_number.eq.+91${phone10}`,
       )
       .limit(5);
     const logLead = (Array.isArray(fromLogs) ? fromLogs : []).find(
@@ -437,12 +633,23 @@ async function findLeadIdForPhone(
     }
   }
 
-  const exact = rows.find(
+  const exact = rows.filter(
     (r: any) =>
       normalizePhone10(r.customer_phone) === phone10 ||
       normalizePhone10(r.customer_alternate_phone) === phone10,
   );
-  const leadId = String((exact || rows[0])?.id || '').trim() || null;
+  let pick = exact[0] || null;
+  try {
+    const cfg = await clickToCallConfigCached();
+    const owners = new Set(
+      (cfg.did_assignments || []).map((a) => String(a.telecaller_id || '').trim()).filter(Boolean),
+    );
+    const assigned = exact.find((r: any) => owners.has(String(r.assigned_telecaller_id || '').trim()));
+    if (assigned) pick = assigned;
+  } catch {
+    /* config optional */
+  }
+  const leadId = pick ? String(pick.id).trim() || null : null;
   cache?.set(phone10, leadId);
   return leadId;
 }
@@ -471,6 +678,69 @@ async function findLeadIdFromSmartfloCallId(db: any, callId: string): Promise<st
     /* table optional */
   }
   return null;
+}
+
+async function findLeadFromDialSession(
+  db: any,
+  input: {
+    callId: string;
+    phone10: string | null;
+    didNumber: string | null;
+    startedAt: string | null;
+  },
+): Promise<{ leadId: string | null; didNumber: string | null }> {
+  const callId = String(input.callId || '').trim();
+  if (callId) {
+    try {
+      const { data: sess } = await db
+        .from('smartflo_dial_sessions')
+        .select('lead_id, did_number, customer_phone')
+        .eq('smartflo_call_id', callId)
+        .not('lead_id', 'is', null)
+        .maybeSingle();
+      if (sess?.lead_id) {
+        return {
+          leadId: String(sess.lead_id),
+          didNumber: String(sess.did_number || '').trim() || input.didNumber,
+        };
+      }
+    } catch {
+      /* table optional */
+    }
+  }
+
+  const phone10 = input.phone10;
+  if (!phone10) return { leadId: null, didNumber: input.didNumber };
+
+  try {
+    const center = input.startedAt ? Date.parse(input.startedAt) : Date.now();
+    const fromIso = new Date((Number.isFinite(center) ? center : Date.now()) - 6 * 60 * 60 * 1000).toISOString();
+    const toIso = new Date((Number.isFinite(center) ? center : Date.now()) + 2 * 60 * 60 * 1000).toISOString();
+    const { data } = await db
+      .from('smartflo_dial_sessions')
+      .select('lead_id, did_number, customer_phone, started_at')
+      .gte('started_at', fromIso)
+      .lte('started_at', toIso)
+      .not('lead_id', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(40);
+    const wantDid = normalizePhone10(input.didNumber);
+    const hit = (Array.isArray(data) ? data : []).find((r: any) => {
+      if (normalizePhone10(r.customer_phone) !== phone10) return false;
+      if (!wantDid) return true;
+      const rowDid = normalizePhone10(r.did_number);
+      return !rowDid || rowDid === wantDid;
+    });
+    if (hit?.lead_id) {
+      return {
+        leadId: String(hit.lead_id),
+        didNumber: String(hit.did_number || '').trim() || input.didNumber,
+      };
+    }
+  } catch {
+    /* table optional */
+  }
+  return { leadId: null, didNumber: input.didNumber };
 }
 
 async function loadLeadPhoneIndex(db: any): Promise<Map<string, string>> {
@@ -543,9 +813,15 @@ async function findOrAttachCallLog(input: {
   // Never reuse a log that already has another smartflo_call_id / recording —
   // that was overwriting call #1 when call #2 synced.
   if (leadId || phone10) {
-    const center = startedAt ? new Date(startedAt).getTime() : Date.now();
-    const fromIso = new Date(center - 6 * 60 * 60 * 1000).toISOString();
-    const toIso = new Date(center + 2 * 60 * 60 * 1000).toISOString();
+    const startMs = startedAt ? Date.parse(startedAt) : NaN;
+    const hasStart = Number.isFinite(startMs);
+    const center = hasStart ? startMs : Date.now();
+    const fromIso = hasStart || !leadId
+      ? new Date(center - 12 * 60 * 60 * 1000).toISOString()
+      : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const toIso = hasStart || !leadId
+      ? new Date(center + 4 * 60 * 60 * 1000).toISOString()
+      : new Date().toISOString();
 
     let q = db
       .from('telecaller_call_logs')
@@ -780,10 +1056,21 @@ export async function upsertSmartfloRecording(
     };
   }
 
-  const phone10 = pickCdrCustomerNumber(rec);
-  const recordingUrl = pickCdrRecordingUrl(rec, callId);
+  const pool = await ourDidPool();
+  const didDigits = pickCdrDidNumber(rec, pool);
+  const foreignDid = isExplicitForeignDid({ ...rec, did_number: didDigits || rec.did_number }, pool);
   const duration = toInt(rec.call_duration) ?? toInt(rec.answered_seconds);
   const { startedAt, endedAt } = parseSmartfloStamp(rec);
+  const phone10 = pickCdrCustomerNumber(rec, pool);
+  const statusStr = String(rec.status || rec.hangup_cause || rec.description || '');
+  const answeredLike =
+    (duration != null && duration > 0) || /answer|completed|hangup/i.test(statusStr);
+  const recordingUrl = !foreignDid
+    ? pickCdrRecordingUrl(rec, callId, {
+        inventIfAnswered: true,
+        duration: answeredLike ? duration || 1 : 1,
+      })
+    : null;
   const hasRecording = Boolean(recordingUrl);
   const onlyAttachIfRecording = opts?.onlyAttachIfRecording !== false;
 
@@ -800,14 +1087,15 @@ export async function upsertSmartfloRecording(
     };
   }
 
+  const skipCrmAttach = foreignDid;
+
   // Fast path: no audio AND no useful outcome → skip expensive lead/log matching.
   // CDRs with duration/answered/missed must still heal pending RINGING stubs.
-  const statusStr = String(rec.status || rec.hangup_cause || '');
   const meaningfulOutcome =
-    (duration != null && duration > 0) ||
-    /answer|miss|no[_\s-]?answer|not[_\s-]?connected|completed|hangup/i.test(statusStr);
+    answeredLike ||
+    /miss|no[_\s-]?answer|not[_\s-]?connected/i.test(statusStr);
 
-  if (onlyAttachIfRecording && !hasRecording && !meaningfulOutcome) {
+  if (skipCrmAttach || (onlyAttachIfRecording && !hasRecording && !meaningfulOutcome)) {
     const { data: upserted, error: upErr } = await db
       .from('smartflo_call_recordings')
       .upsert(
@@ -815,14 +1103,17 @@ export async function upsertSmartfloRecording(
           smartflo_call_id: callId,
           client_number: phone10 ? `91${phone10}` : null,
           agent_number: String(rec.agent_number || '').trim() || null,
-          did_number: digitsOnly(rec.did_number) || null,
+          did_number: didDigits || digitsOnly(rec.did_number) || null,
           direction: String(rec.direction || '').trim() || null,
           status: String(rec.status || '').trim() || null,
           call_duration: duration,
           answered_seconds: toInt(rec.answered_seconds),
-          recording_url: null,
+          recording_url: skipCrmAttach ? recordingUrl : null,
           started_at: startedAt,
           ended_at: endedAt,
+          lead_id: null,
+          call_log_id: null,
+          matched_at: null,
           source,
           updated_at: new Date().toISOString(),
         },
@@ -831,6 +1122,12 @@ export async function upsertSmartfloRecording(
       .select('id')
       .maybeSingle();
     if (upErr) console.warn('[smartfloCdr] light upsert:', upErr.message);
+    if (skipCrmAttach) {
+      await db
+        .from('telecaller_call_logs')
+        .update({ call_recording_url: null, smartflo_recording_synced_at: null })
+        .eq('smartflo_call_id', callId);
+    }
     return {
       recordingRowId: upserted?.id ? String(upserted.id) : null,
       callLogId: null,
@@ -842,16 +1139,23 @@ export async function upsertSmartfloRecording(
     };
   }
 
-  const leadId = phone10
-    ? (await findLeadIdFromSmartfloCallId(db, callId)) ||
-      (await findLeadIdForPhone(db, phone10, opts?.leadCache))
-    : null;
+  const fromDial = await findLeadFromDialSession(db, {
+    callId,
+    phone10,
+    didNumber: didDigits,
+    startedAt,
+  });
+  const leadId =
+    fromDial.leadId ||
+    (await findLeadIdFromSmartfloCallId(db, callId)) ||
+    (phone10 ? await findLeadIdForPhone(db, phone10, opts?.leadCache) : null);
+  const didForStore = didDigits || fromDial.didNumber || digitsOnly(rec.did_number) || null;
 
   const row: Record<string, unknown> = {
     smartflo_call_id: callId,
     client_number: phone10 ? `91${phone10}` : null,
     agent_number: String(rec.agent_number || '').trim() || null,
-    did_number: digitsOnly(rec.did_number) || null,
+    did_number: didForStore,
     direction: String(rec.direction || '').trim() || null,
     status: String(rec.status || '').trim() || null,
     call_duration: duration,
@@ -885,7 +1189,7 @@ export async function upsertSmartfloRecording(
     startedAt,
     status: String(rec.status || ''),
     agentNumber: String(rec.agent_number || '').trim() || null,
-    didNumber: digitsOnly(rec.did_number) || null,
+    didNumber: didForStore,
   });
 
   if (upserted?.id && attach.callLogId) {
@@ -932,7 +1236,7 @@ export async function repairDetachedSmartfloRecordings(limit = 200): Promise<{
   const { data: rows } = await db
     .from('smartflo_call_recordings')
     .select(
-      'id, smartflo_call_id, client_number, agent_number, recording_url, call_duration, started_at, ended_at, status, lead_id, call_log_id',
+      'id, smartflo_call_id, client_number, agent_number, did_number, recording_url, call_duration, started_at, ended_at, status, lead_id, call_log_id',
     )
     .not('recording_url', 'is', null)
     .neq('recording_url', '')
@@ -941,6 +1245,7 @@ export async function repairDetachedSmartfloRecordings(limit = 200): Promise<{
     .limit(limit);
 
   const list = Array.isArray(rows) ? rows : [];
+  const pool = await ourDidPool();
   let repaired = 0;
   let created_logs = 0;
 
@@ -948,6 +1253,7 @@ export async function repairDetachedSmartfloRecordings(limit = 200): Promise<{
     const callId = String(row.smartflo_call_id || '').trim();
     const recordingUrl = String(row.recording_url || '').trim();
     if (!callId || !recordingUrl) continue;
+    if (isExplicitForeignDid(row, pool)) continue;
 
     if (
       isBeforeSmartfloRecordingsCutoff(
@@ -1038,7 +1344,7 @@ export async function rematchSmartfloRecordingsToLeads(limit = 4000): Promise<{
     const { data: rows } = await db
       .from('smartflo_call_recordings')
       .select(
-        'id, smartflo_call_id, client_number, agent_number, recording_url, call_duration, started_at, status, lead_id, call_log_id',
+        'id, smartflo_call_id, client_number, agent_number, did_number, recording_url, call_duration, started_at, status, lead_id, call_log_id',
       )
       .is('lead_id', null)
       .or(`started_at.gte.${cutoffIso},and(started_at.is.null,created_at.gte.${cutoffIso})`)
@@ -1051,17 +1357,19 @@ export async function rematchSmartfloRecordingsToLeads(limit = 4000): Promise<{
 
   const byCallId = new Map<string, any>();
   const unmatchedByPhone: any[] = [];
+  const pool = await ourDidPool();
   for (const row of list) {
+    if (isExplicitForeignDid(row, pool)) continue;
     const phone10 = normalizePhone10(row.client_number);
     const agent10 = normalizePhone10(row.agent_number);
     const callId = String(row.smartflo_call_id || '').trim();
     const fromPhone =
-      phone10 && phone10 !== agent10 && !isSmartfloLineNumber(phone10)
+      phone10 && phone10 !== agent10 && !isSmartfloLineNumber(phone10, pool)
         ? phoneIndex.get(phone10)
         : undefined;
     if (fromPhone) {
       byCallId.set(row.id, { row, leadId: fromPhone, phone10 });
-    } else if (callId && phone10 && !isSmartfloLineNumber(phone10)) {
+    } else if (callId && phone10 && !isSmartfloLineNumber(phone10, pool)) {
       unmatchedByPhone.push(row);
     }
   }
@@ -1294,6 +1602,457 @@ export async function detachPreCutoffSmartfloRecordings(): Promise<{
   };
 }
 
+let lastForeignDetachAt = 0;
+
+/**
+ * Remove CRM attachments for Smartflo calls that did not use the MyFNG 5-DID pool
+ * (other agents / inbound on unrelated Tata numbers).
+ */
+export async function detachForeignDidRecordings(): Promise<{
+  cleared_logs: number;
+  unlinked_cdrs: number;
+}> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { cleared_logs: 0, unlinked_cdrs: 0 };
+  const db = supabaseAdmin;
+  const pool = await ourDidPool();
+  if (!pool.size) return { cleared_logs: 0, unlinked_cdrs: 0 };
+
+  const { data: rows } = await db
+    .from('smartflo_call_recordings')
+    .select('id, did_number, agent_number, call_log_id, smartflo_call_id, lead_id')
+    .or('lead_id.not.is.null,call_log_id.not.is.null')
+    .order('started_at', { ascending: false, nullsFirst: false })
+    .limit(2500);
+
+  const foreign = (Array.isArray(rows) ? rows : []).filter((r: any) => isExplicitForeignDid(r, pool));
+  if (!foreign.length) return { cleared_logs: 0, unlinked_cdrs: 0 };
+
+  const logIds = [
+    ...new Set(
+      foreign
+        .map((r: any) => String(r.call_log_id || '').trim())
+        .filter(Boolean),
+    ),
+  ];
+  const callIds = [
+    ...new Set(
+      foreign
+        .map((r: any) => String(r.smartflo_call_id || '').trim())
+        .filter(Boolean),
+    ),
+  ];
+  const cdrIds = foreign.map((r: any) => String(r.id)).filter(Boolean);
+
+  let cleared_logs = 0;
+  for (let i = 0; i < logIds.length; i += 80) {
+    const chunk = logIds.slice(i, i + 80);
+    const { data } = await db
+      .from('telecaller_call_logs')
+      .update({ call_recording_url: null, smartflo_recording_synced_at: null })
+      .in('id', chunk)
+      .select('id');
+    cleared_logs += Array.isArray(data) ? data.length : 0;
+  }
+  for (let i = 0; i < callIds.length; i += 80) {
+    const chunk = callIds.slice(i, i + 80);
+    const { data } = await db
+      .from('telecaller_call_logs')
+      .update({ call_recording_url: null, smartflo_recording_synced_at: null })
+      .in('smartflo_call_id', chunk)
+      .select('id');
+    cleared_logs += Array.isArray(data) ? data.length : 0;
+  }
+  for (let i = 0; i < cdrIds.length; i += 80) {
+    const chunk = cdrIds.slice(i, i + 80);
+    await db
+      .from('smartflo_call_recordings')
+      .update({
+        lead_id: null,
+        call_log_id: null,
+        matched_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', chunk);
+  }
+
+  return { cleared_logs, unlinked_cdrs: cdrIds.length };
+}
+
+export async function detachForeignDidRecordingsThrottled(): Promise<void> {
+  if (Date.now() - lastForeignDetachAt < 45_000) return;
+  lastForeignDetachAt = Date.now();
+  try {
+    await detachForeignDidRecordings();
+  } catch (e) {
+    lastForeignDetachAt = 0;
+    console.warn('[smartfloCdr] detach foreign DID failed:', e);
+  }
+}
+
+/** Immediate: strip non-pool recordings from one lead's call history (lead drawer). */
+export async function detachForeignDidRecordingsForLead(leadId: string): Promise<void> {
+  const id = String(leadId || '').trim();
+  if (!id) return;
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+  const pool = await ourDidPool();
+  if (!pool.size) return;
+
+  const { data: rows } = await supabaseAdmin
+    .from('smartflo_call_recordings')
+    .select('id, did_number, agent_number, call_log_id, smartflo_call_id')
+    .eq('lead_id', id)
+    .limit(80);
+
+  const foreign = (Array.isArray(rows) ? rows : []).filter((r: any) => isExplicitForeignDid(r, pool));
+  if (!foreign.length) return;
+
+  const logIds = foreign.map((r: any) => String(r.call_log_id || '').trim()).filter(Boolean);
+  const callIds = foreign.map((r: any) => String(r.smartflo_call_id || '').trim()).filter(Boolean);
+  const cdrIds = foreign.map((r: any) => String(r.id)).filter(Boolean);
+
+  if (logIds.length) {
+    await supabaseAdmin
+      .from('telecaller_call_logs')
+      .update({ call_recording_url: null, smartflo_recording_synced_at: null })
+      .in('id', logIds);
+  }
+  if (callIds.length) {
+    await supabaseAdmin
+      .from('telecaller_call_logs')
+      .update({ call_recording_url: null, smartflo_recording_synced_at: null })
+      .in('smartflo_call_id', callIds)
+      .eq('lead_id', id);
+  }
+  if (cdrIds.length) {
+    await supabaseAdmin
+      .from('smartflo_call_recordings')
+      .update({
+        lead_id: null,
+        call_log_id: null,
+        matched_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', cdrIds);
+  }
+}
+
+const leadHealAt = new Map<string, number>();
+const leadHealInflight = new Map<string, Promise<{ attached: number }>>();
+
+function dbRowToCdr(row: any): SmartfloCdrRecord {
+  return {
+    call_id: String(row.smartflo_call_id || ''),
+    client_number: row.client_number,
+    customer_number: row.client_number,
+    agent_number: row.agent_number,
+    did_number: row.did_number,
+    direction: row.direction,
+    status: row.status,
+    call_duration: row.call_duration,
+    answered_seconds: row.answered_seconds,
+    recording_url: row.recording_url,
+    started_at: row.started_at,
+    end_stamp: row.ended_at,
+  };
+}
+
+/**
+ * When a lead is opened: attach stored / Tata click-to-call audio onto RINGING stubs.
+ * Tata often omits did_number on click-to-call; we still match by customer phone.
+ */
+export async function healSmartfloRecordingForLead(leadId: string): Promise<{ attached: number }> {
+  const id = String(leadId || '').trim();
+  if (!id) return { attached: 0 };
+  const inflight = leadHealInflight.get(id);
+  if (inflight) return inflight;
+  const last = leadHealAt.get(id) || 0;
+  if (Date.now() - last < 90_000) return { attached: 0 };
+  leadHealAt.set(id, Date.now());
+
+  const run = doHealSmartfloRecordingForLead(id);
+  leadHealInflight.set(id, run);
+  try {
+    const result = await run;
+    if (!result.attached) leadHealAt.delete(id);
+    return result;
+  } finally {
+    leadHealInflight.delete(id);
+  }
+}
+
+async function doHealSmartfloRecordingForLead(id: string): Promise<{ attached: number }> {
+
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { attached: 0 };
+  const db = supabaseAdmin;
+  const pool = await ourDidPool();
+
+  const { data: lead } = await db
+    .from('service_leads')
+    .select('id, customer_phone, customer_alternate_phone, created_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!lead) return { attached: 0 };
+
+  const phones = [
+    ...new Set(
+      [normalizePhone10(lead.customer_phone), normalizePhone10(lead.customer_alternate_phone)].filter(
+        (p): p is string => Boolean(p),
+      ),
+    ),
+  ];
+  if (!phones.length) return { attached: 0 };
+
+  let attached = 0;
+  for (const p of phones) {
+    const { data: cdrs } = await db
+      .from('smartflo_call_recordings')
+      .select(
+        'id, smartflo_call_id, client_number, agent_number, did_number, direction, status, call_duration, answered_seconds, recording_url, started_at, ended_at',
+      )
+      .or(`client_number.eq.${p},client_number.eq.91${p},client_number.eq.+91${p},client_number.ilike.%${p}`)
+      .order('started_at', { ascending: false, nullsFirst: false })
+      .limit(20);
+    for (const row of Array.isArray(cdrs) ? cdrs : []) {
+      if (isExplicitForeignDid(row, pool)) continue;
+      const r = await upsertSmartfloRecording(dbRowToCdr(row), 'cdr', {
+        onlyAttachIfRecording: false,
+        skipRaw: true,
+      });
+      if (r.callLogId && r.hasRecording) attached += 1;
+    }
+  }
+
+  const { data: logs } = await db
+    .from('telecaller_call_logs')
+    .select('id, call_recording_url, created_at')
+    .eq('lead_id', id)
+    .order('created_at', { ascending: false })
+    .limit(80);
+
+  const token = await getSmartfloApiToken();
+  if (!token) return { attached };
+
+  const now = Date.now();
+  const leadCreatedMs = Date.parse(String((lead as any).created_at || ''));
+  const cutoffMs = Date.parse(smartfloRecordingsCutoffIso());
+  let fromMs = Number.isFinite(cutoffMs) ? cutoffMs : now - 14 * 24 * 60 * 60 * 1000;
+  if (Number.isFinite(leadCreatedMs) && leadCreatedMs > fromMs) fromMs = leadCreatedMs;
+  for (const l of Array.isArray(logs) ? logs : []) {
+    const t = Date.parse(String(l.created_at || ''));
+    if (Number.isFinite(t) && t < fromMs) fromMs = t;
+  }
+  const winFrom = formatSmartfloDateTime(new Date(fromMs));
+  const winTo = formatSmartfloDateTime(new Date(now));
+
+  const phoneList = [...phones];
+  const queries: { label: string; callerid?: string }[] = [];
+  for (const p of phoneList) {
+    queries.push({ label: `callerid=91${p}`, callerid: `91${p}` });
+  }
+
+  let fetched = 0;
+  const seen = new Set<string>();
+  for (const q of queries) {
+    const batch = await fetchCdrPages({
+      token,
+      fromDate: winFrom,
+      toDate: winTo,
+      maxPages: 6,
+      timeoutMs: 16_000,
+      callerid: q.callerid,
+    });
+    fetched += batch.results.length;
+    const hits = batch.results.filter((rec) => {
+      if (isExplicitForeignDid(rec, pool)) return false;
+      return phoneList.some((p) => cdrMentionsPhone(rec, p));
+    });
+    console.warn('[smartflo-heal] query', {
+      id,
+      q: q.label,
+      from: winFrom,
+      to: winTo,
+      ok: batch.ok,
+      error: batch.error,
+      rows: batch.results.length,
+      phoneHits: hits.length,
+      sample: cdrSample(batch.results[0]),
+    });
+    for (const rec of hits) {
+      const cid = pickCallId(rec) || '';
+      if (cid && seen.has(cid)) continue;
+      if (cid) seen.add(cid);
+      const r = await upsertSmartfloRecording(rec, 'cdr', {
+        onlyAttachIfRecording: false,
+        skipRaw: true,
+      });
+      console.warn('[smartflo-heal] match', {
+        callId: pickCallId(rec),
+        phone: pickCdrCustomerNumber(rec, pool),
+        did: rec.did_number,
+        attached: Boolean(r.callLogId && r.hasRecording),
+        skipped: r.skippedAttach,
+        recording: r.hasRecording,
+      });
+      if (r.callLogId && r.hasRecording) attached += 1;
+      else if (r.callLogId) attached += 1;
+    }
+  }
+  console.warn('[smartflo-heal] done', { id, phones, from: winFrom, to: winTo, fetched, attached });
+
+  return { attached };
+}
+
+let assignedC2cHealInflight: Promise<{
+  leads: number;
+  phones: number;
+  fetched: number;
+  attached: number;
+}> | null = null;
+
+/**
+ * Pull every Click-to-Call CDR for leads assigned to Mahendra / Ajit (DID owners)
+ * and attach all recordings (today + later calls on the same lead).
+ */
+export async function healClickToCallRecordingsForAssignedLeads(input?: {
+  timeBudgetMs?: number;
+}): Promise<{ leads: number; phones: number; fetched: number; attached: number }> {
+  if (assignedC2cHealInflight) return assignedC2cHealInflight;
+  const run = doHealClickToCallRecordingsForAssignedLeads(input);
+  assignedC2cHealInflight = run;
+  try {
+    return await run;
+  } finally {
+    assignedC2cHealInflight = null;
+  }
+}
+
+async function doHealClickToCallRecordingsForAssignedLeads(input?: {
+  timeBudgetMs?: number;
+}): Promise<{ leads: number; phones: number; fetched: number; attached: number }> {
+  const started = Date.now();
+  const timeBudgetMs = Math.min(90_000, Math.max(8_000, input?.timeBudgetMs ?? 40_000));
+  const empty = { leads: 0, phones: 0, fetched: 0, attached: 0 };
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return empty;
+  const token = await getSmartfloApiToken();
+  if (!token) return empty;
+
+  const cfg = await clickToCallConfigCached();
+  const ownerIds = [
+    ...new Set(
+      (cfg.did_assignments || []).map((a) => String(a.telecaller_id || '').trim()).filter(Boolean),
+    ),
+  ];
+  if (!ownerIds.length) return empty;
+
+  const { data: leads } = await supabaseAdmin
+    .from('service_leads')
+    .select('id, customer_phone, customer_alternate_phone')
+    .in('assigned_telecaller_id', ownerIds)
+    .limit(4000);
+  const list = Array.isArray(leads) ? leads : [];
+  const pool = await ourDidPool();
+  const phoneToLead = new Map<string, string>();
+  for (const lead of list) {
+    const id = String(lead.id || '').trim();
+    if (!id) continue;
+    for (const raw of [lead.customer_phone, lead.customer_alternate_phone]) {
+      const p = normalizePhone10(raw);
+      if (p && !phoneToLead.has(p)) phoneToLead.set(p, id);
+    }
+  }
+
+  const phones = [...phoneToLead.keys()];
+  const fromDate = smartfloRecordingsMinFrom();
+  const toDate = formatSmartfloDateTime(new Date());
+  const leadCache = new Map<string, string | null>();
+  const seen = new Set<string>();
+  let fetched = 0;
+  let attached = 0;
+
+  const assignedLeadIds = [...new Set(phoneToLead.values())];
+  const haveLead = new Set<string>();
+  if (assignedLeadIds.length) {
+    const { data: existing } = await supabaseAdmin
+      .from('smartflo_call_recordings')
+      .select('lead_id')
+      .in('lead_id', assignedLeadIds.slice(0, 1000))
+      .limit(4000);
+    for (const row of Array.isArray(existing) ? existing : []) {
+      const id = String((row as any).lead_id || '').trim();
+      if (id) haveLead.add(id);
+    }
+  }
+
+  const calledFirst: string[] = [];
+  const rest: string[] = [];
+  if (assignedLeadIds.length) {
+    const { data: logs } = await supabaseAdmin
+      .from('telecaller_call_logs')
+      .select('lead_id, phone_number')
+      .in('lead_id', assignedLeadIds.slice(0, 1000))
+      .gte('created_at', smartfloRecordingsCutoffIso())
+      .limit(5000);
+    const calledLeads = new Set<string>();
+    for (const row of Array.isArray(logs) ? logs : []) {
+      const id = String((row as any).lead_id || '').trim();
+      if (id) calledLeads.add(id);
+    }
+    for (const phone of phones) {
+      const leadId = phoneToLead.get(phone) || '';
+      if (haveLead.has(leadId)) continue;
+      if (calledLeads.has(leadId)) calledFirst.push(phone);
+      else rest.push(phone);
+    }
+  } else {
+    rest.push(...phones);
+  }
+
+  const work = [...calledFirst, ...rest];
+  const leftover = await mapPool(work, 5, async (phone) => {
+    if (Date.now() - started > timeBudgetMs - 2_000) return { fetched: 0, attached: 0 };
+    const batch = await fetchCdrPages({
+      token,
+      fromDate,
+      toDate,
+      maxPages: 2,
+      timeoutMs: 12_000,
+      callerid: `91${phone}`,
+    });
+    let n = 0;
+    for (const rec of batch.results || []) {
+      if (isExplicitForeignDid(rec, pool)) continue;
+      if (!cdrMentionsPhone(rec, phone)) continue;
+      const cid = pickCallId(rec) || '';
+      if (cid && seen.has(cid)) continue;
+      if (cid) seen.add(cid);
+      const r = await upsertSmartfloRecording(rec, 'cdr', {
+        leadCache,
+        onlyAttachIfRecording: false,
+        skipRaw: true,
+      });
+      if (r.callLogId) n += 1;
+    }
+    return { fetched: batch.results.length, attached: n };
+  });
+  fetched += leftover.reduce((n, o) => n + (o?.fetched || 0), 0);
+  attached += leftover.reduce((n, o) => n + (o?.attached || 0), 0);
+
+  console.warn('[smartflo-heal] assigned-c2c', {
+    leads: list.length,
+    phones: phones.length,
+    queued: work.length,
+    called_first: calledFirst.length,
+    fetched,
+    attached,
+    elapsed_ms: Date.now() - started,
+  });
+  return { leads: list.length, phones: phones.length, fetched, attached };
+}
+
 export async function syncSmartfloRecordings(input?: {
   hoursBack?: number;
   fromDate?: string;
@@ -1353,7 +2112,6 @@ export async function syncSmartfloRecordings(input?: {
   const concurrency = Math.min(10, Math.max(2, input?.concurrency ?? 6));
   const leadCache = new Map<string, string | null>();
 
-  let page = 1;
   let fetched = 0;
   let upserted = 0;
   let matched = 0;
@@ -1363,10 +2121,17 @@ export async function syncSmartfloRecordings(input?: {
   let pages = 0;
   let truncated = false;
 
+  const poolDids = [...(await ourDidPool())];
+  const didQueries = poolDids.length
+    ? poolDids.map((d) => (d.length === 10 ? `91${d}` : d))
+    : [null as string | null];
+
+  didLoop: for (const didNumber of didQueries) {
+  let page = 1;
   while (page <= maxPages) {
     if (Date.now() - started > timeBudgetMs) {
       truncated = true;
-      break;
+      break didLoop;
     }
 
     const batch = await fetchSmartfloCallRecords({
@@ -1376,9 +2141,10 @@ export async function syncSmartfloRecordings(input?: {
       page,
       limit: 50,
       timeoutMs: 18000,
+      didNumber,
     });
     if (!batch.ok) {
-      if (page === 1) {
+      if (page === 1 && didQueries.length === 1) {
         return {
           ok: false,
           error: batch.error || 'CDR fetch failed',
@@ -1393,6 +2159,10 @@ export async function syncSmartfloRecordings(input?: {
           pages,
           elapsed_ms: Date.now() - started,
         };
+      }
+      if (page === 1) {
+        console.warn('[smartflo-sync] DID fetch failed', didNumber, batch.error);
+        continue didLoop;
       }
       truncated = true;
       break;
@@ -1435,10 +2205,11 @@ export async function syncSmartfloRecordings(input?: {
 
     if (Date.now() - started > timeBudgetMs) {
       truncated = true;
-      break;
+      break didLoop;
     }
     if (results.length < 50) break;
     page += 1;
+  }
   }
 
   // Heal: re-attach stored CDRs that never linked to a call log (RINGING stubs, late audio)
@@ -1504,9 +2275,18 @@ export async function syncSmartfloRecordings(input?: {
   }
 
   let detach = { cleared_logs: 0, cleared_cdr_links: 0 };
+  try {
+    const foreign = await detachForeignDidRecordings();
+    detach.cleared_logs += foreign.cleared_logs;
+    detach.cleared_cdr_links += foreign.unlinked_cdrs;
+  } catch (e) {
+    console.warn('[smartfloCdr] detach foreign DID failed:', e);
+  }
   if (!input?.skipPostProcess) {
     try {
-      detach = await detachPreCutoffSmartfloRecordings();
+      const pre = await detachPreCutoffSmartfloRecordings();
+      detach.cleared_logs += pre.cleared_logs;
+      detach.cleared_cdr_links += pre.cleared_cdr_links;
     } catch (e) {
       console.warn('[smartfloCdr] detach pre-cutoff failed:', e);
     }

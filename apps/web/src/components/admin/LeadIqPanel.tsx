@@ -141,7 +141,7 @@ export default function LeadIqPanel({
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed');
       setLeads(Array.isArray(json.leads) ? json.leads : []);
-      if (json.warning) setError(json.warning);
+      if (json.warning && !/database\/|\.sql/i.test(String(json.warning))) setError(json.warning);
     } catch (e: any) {
       setError(e?.message || 'Failed');
     } finally {
@@ -190,7 +190,7 @@ export default function LeadIqPanel({
         prev.map((row) => (row.id === id ? { ...row, brief: json.brief } : row)),
       );
       setOpenId(id);
-      if (json.warning) setError(json.warning);
+      if (json.warning && !/database\/|\.sql/i.test(String(json.warning))) setError(json.warning);
     } catch (e: any) {
       setError(e?.message || 'Generate failed');
     } finally {

@@ -25,7 +25,7 @@ import { attachTranscriptToSopInput } from '@/lib/telecaller/callIqTranscript';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 async function assertAdminOrManager(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -514,27 +514,95 @@ export async function POST(request: NextRequest) {
     const callLogId = String(body?.call_log_id || '').trim();
     if (callLogId) ids.push(callLogId);
     const uniqueIds = Array.from(new Set(ids));
+    const recordingIds = Array.isArray(body?.recording_ids)
+      ? body.recording_ids.map((x: any) => String(x || '').trim()).filter(Boolean).slice(0, 20)
+      : [];
+    const recordingId = String(body?.recording_id || '').trim();
+    if (recordingId) recordingIds.push(recordingId);
+    const uniqueRecordingIds = Array.from(new Set(recordingIds));
     if (!uniqueIds.length) {
       return NextResponse.json({ error: 'call_log_id or ids required' }, { status: 400 });
     }
 
-    const { data, error } = await db
-      .from('telecaller_call_logs')
-      .select(
-        `
+    const logSelect = `
         id, telecaller_id, lead_id, call_status, call_duration, outcome, notes,
         customer_response, phone_number, call_recording_url, created_at,
         lead:service_leads!lead_id(id, lead_number, customer_name, status, problem_description, service_type, lead_source, vehicle_number, vehicle_make, vehicle_model, city),
         telecaller:telecaller_id(id, full_name)
-      `,
-      )
+      `;
+
+    const { data, error } = await db
+      .from('telecaller_call_logs')
+      .select(logSelect)
       .in('id', uniqueIds);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const rows = (Array.isArray(data) ? data : []).map(mapRow);
+    let logRows = Array.isArray(data) ? data : [];
+    const found = new Set(logRows.map((r: any) => String(r.id)));
+    const missing = uniqueIds.filter((id) => !found.has(id));
+    const urlByLogId = new Map<string, string>();
+    const cdrLookupIds = Array.from(new Set([...missing, ...uniqueRecordingIds]));
+    if (cdrLookupIds.length) {
+      const { data: cdrs } = await db
+        .from('smartflo_call_recordings')
+        .select('id, call_log_id, recording_url')
+        .in('id', cdrLookupIds);
+      const extraLogIds: string[] = [];
+      for (const c of Array.isArray(cdrs) ? cdrs : []) {
+        const lid = String(c.call_log_id || '').trim();
+        const url = String(c.recording_url || '').trim();
+        if (lid && url) urlByLogId.set(lid, url);
+        if (lid && !found.has(lid)) extraLogIds.push(lid);
+      }
+      const uniqueExtra = Array.from(new Set(extraLogIds));
+      if (uniqueExtra.length) {
+        const { data: extra } = await db
+          .from('telecaller_call_logs')
+          .select(logSelect)
+          .in('id', uniqueExtra);
+        logRows = [...logRows, ...(Array.isArray(extra) ? extra : [])];
+      }
+    }
+
+    const stillMissingUrl = logRows
+      .map((r: any) => String(r.id))
+      .filter((id: string) => {
+        if (!id || urlByLogId.has(id)) return false;
+        const row = logRows.find((x: any) => String(x.id) === id);
+        return !String(row?.call_recording_url || '').trim();
+      });
+    if (stillMissingUrl.length) {
+      const { data: cdrs } = await db
+        .from('smartflo_call_recordings')
+        .select('call_log_id, recording_url, started_at')
+        .in('call_log_id', stillMissingUrl)
+        .order('started_at', { ascending: false });
+      for (const c of Array.isArray(cdrs) ? cdrs : []) {
+        const lid = String(c.call_log_id || '').trim();
+        const url = String(c.recording_url || '').trim();
+        if (lid && url && !urlByLogId.has(lid)) urlByLogId.set(lid, url);
+      }
+    }
+
+    const rows = logRows.map((r: any) => {
+      const mapped = mapRow(r);
+      const overlay = urlByLogId.get(String(r.id));
+      if (overlay) mapped.call_recording_url = overlay;
+      return mapped;
+    });
+    if (!rows.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No matching call log for this recording. Sync recordings, then try Analyze again.',
+        },
+        { status: 404 },
+      );
+    }
+
     const analyses: CallAnalysisResult[] = [];
     const warnings: string[] = [];
     let usedOpenai = 0;

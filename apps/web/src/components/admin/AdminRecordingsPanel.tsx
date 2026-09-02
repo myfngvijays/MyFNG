@@ -1,5 +1,7 @@
 'use client';
 
+/** Recordings list: Deep AI expands under Play. Customer opens Bookings, not lead-history. */
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -20,6 +22,8 @@ import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
 import CallRecordingPlayer, {
   formatCallLogDuration,
 } from '@/components/telecaller/CallRecordingPlayer';
+import DeepAiCallResult from '@/components/admin/DeepAiCallResult';
+import type { CallIqSopAudit } from '@/lib/telecaller/callIqSop';
 import {
   istYmd,
   type ReportDatePreset,
@@ -46,6 +50,30 @@ type RecordingRow = {
   notes: string | null;
   created_at: string;
   has_recording: boolean;
+};
+
+type AnalysisHit = {
+  quality_score: number;
+  quality_grade: string;
+  sentiment: string;
+  summary: string;
+  conversation_tags: string[];
+  customer_problem?: string | null;
+  agent_solution?: string | null;
+  solution_adequacy?: string;
+  coaching_tips?: string[];
+  query_resolutions?: Array<{
+    id: string;
+    query: string;
+    agent_answer: string | null;
+    resolution: string;
+    gap: string | null;
+  }>;
+  overall_resolution?: string | null;
+  queries_resolved?: number;
+  queries_total?: number;
+  engine?: string;
+  sop_audit?: CallIqSopAudit | null;
 };
 
 type TelecallerOpt = { id: string; full_name: string };
@@ -135,22 +163,20 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function formatTimeOnly(value?: string | null) {
-  if (!value) return '';
+function formatWhenCompact(value?: string | null) {
+  if (!value) return '—';
   const d = new Date(value);
-  if (!Number.isFinite(d.getTime())) return '';
-  return d.toLocaleTimeString('en-IN', {
+  if (!Number.isFinite(d.getTime())) return '—';
+  const time = d.toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
   });
-}
-
-function cleanNotes(raw?: string | null) {
-  return String(raw || '')
-    .replace(/\[Smartflo\]\s*/gi, '')
-    .replace(/\bSmartflo\b/gi, '')
-    .trim();
+  const date = d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+  });
+  return `${time} · ${date}`;
 }
 
 function callStatusTone(status?: string | null) {
@@ -229,11 +255,9 @@ function groupRows(rows: RecordingRow[], groupBy: string) {
 export default function AdminRecordingsPanel({
   helpHref,
   bookingsHref,
-  leadHistoryHref,
 }: {
   helpHref: string;
   bookingsHref: string;
-  leadHistoryHref?: string | null;
 }) {
   const [q, setQ] = useState('');
   const [qApplied, setQApplied] = useState('');
@@ -264,42 +288,11 @@ export default function AdminRecordingsPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingKey, setAnalyzingKey] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMeta, setSyncMeta] = useState<SyncMeta | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [analysisById, setAnalysisById] = useState<
-    Record<
-      string,
-      {
-        quality_score: number;
-        quality_grade: string;
-        sentiment: string;
-        summary: string;
-        conversation_tags: string[];
-        customer_problem?: string | null;
-        agent_solution?: string | null;
-        solution_adequacy?: string;
-        coaching_tips?: string[];
-        query_resolutions?: Array<{
-          id: string;
-          query: string;
-          agent_answer: string | null;
-          resolution: string;
-          gap: string | null;
-        }>;
-        overall_resolution?: string | null;
-        queries_resolved?: number;
-        queries_total?: number;
-        sop_audit?: {
-          overall_score?: number;
-          suggested_lead_status?: string;
-          customer_intent_level?: string;
-          decision_stage?: string;
-          closing_attempt?: string;
-        } | null;
-      }
-    >
-  >({});
+  const [analysisById, setAnalysisById] = useState<Record<string, AnalysisHit>>({});
   const pathname = usePathname() || '';
   const intelligenceHref = pathname.includes('/lead_manager')
     ? '/dashboard/lead_manager/call-intelligence'
@@ -484,27 +477,49 @@ export default function AdminRecordingsPanel({
     }
   }
 
-  async function handleAnalyze(ids: string[], deep = false) {
+  async function handleAnalyze(ids: string[], deep = false, recordingIds: string[] = []) {
     if (!ids.length) return;
     setAnalyzing(true);
+    setAnalyzingKey(recordingIds[0] || ids[0] || null);
     setError(null);
+    if (deep) setSyncMessage(null);
     try {
       const res = await fetch('/api/super_admin/call-intelligence', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, deep }),
+        body: JSON.stringify({
+          ids,
+          deep,
+          recording_ids: recordingIds.filter(Boolean),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || 'Analyze failed');
       }
-      if (Array.isArray(json.warnings) && json.warnings[0]) {
-        setError(String(json.warnings[0]));
+      const usedAi = Number(json.used_openai || 0) > 0;
+      const warn = Array.isArray(json.warnings) && json.warnings[0] ? String(json.warnings[0]) : '';
+      if (deep) {
+        if (usedAi) {
+          setSyncMessage(
+            json.engine === 'openai_deep_v1'
+              ? 'Deep AI done — recording transcript + SOP saved. Open the row for details.'
+              : 'Deep AI finished.',
+          );
+        } else {
+          setError(warn || 'Deep AI could not run on this call (no transcript/notes). Free score shown.');
+        }
+      } else if (warn && !/database\/|\.sql/i.test(warn)) {
+        setSyncMessage(warn);
       }
-      const next: typeof analysisById = { ...analysisById };
-      for (const a of json.analyses || []) {
-        next[a.call_log_id] = {
+      const list = Array.isArray(json.analyses) ? json.analyses : [];
+      if (!list.length) {
+        throw new Error('Analyze returned no result for this call.');
+      }
+      const next: Record<string, AnalysisHit> = { ...analysisById };
+      for (const a of list) {
+        const payload: AnalysisHit = {
           quality_score: a.quality_score,
           quality_grade: a.quality_grade,
           sentiment: a.sentiment,
@@ -518,14 +533,22 @@ export default function AdminRecordingsPanel({
           overall_resolution: a.overall_resolution || null,
           queries_resolved: a.queries_resolved,
           queries_total: a.queries_total,
+          engine: a.engine || json.engine || null,
           sop_audit: a.sop_audit || null,
         };
+        const logId = String(a.call_log_id || '').trim();
+        if (logId) next[logId] = payload;
+        for (const requested of ids) next[requested] = payload;
+        for (const recId of recordingIds) next[recId] = payload;
       }
       setAnalysisById(next);
+      const expandId = recordingIds[0] || rows.find((r) => ids.includes(String(r.call_log_id || r.id)))?.id;
+      if (deep && expandId) setExpandedId(expandId);
     } catch (e: any) {
       setError(e?.message || 'Analyze failed');
     } finally {
       setAnalyzing(false);
+      setAnalyzingKey(null);
     }
   }
 
@@ -578,7 +601,7 @@ export default function AdminRecordingsPanel({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Recordings</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Click-to-call recordings — filter, segregate, and play like CRM leads.
+            Only Mahendra / Ajit click-to-call on the 5 MyFNG DIDs — not other Tata numbers.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -625,21 +648,7 @@ export default function AdminRecordingsPanel({
         </div>
       </div>
 
-      {syncMeta?.overdue ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold">Fresh recordings are not auto-syncing</p>
-          <p className="mt-0.5 text-amber-800">
-            {syncMeta.last_run_at
-              ? `Last cron run ${formatDateTime(syncMeta.last_run_at)}${
-                  syncMeta.last_run_summary ? ` · ${syncMeta.last_run_summary}` : ''
-                }.`
-              : 'Call-recording cron has not completed on the server.'}{' '}
-            {syncMeta.can_sync
-              ? 'Click Sync now to pull the last 7 days from Smartflo.'
-              : 'Ask Super Admin to run Sync now, or open WhatsApp Cron Jobs.'}
-          </p>
-        </div>
-      ) : syncMeta?.last_run_at ? (
+      {syncMeta?.last_run_at ? (
         <p className="text-xs text-slate-500">
           Last sync:{' '}
           {formatDateTime(syncMeta.last_run_at)}
@@ -883,7 +892,14 @@ export default function AdminRecordingsPanel({
           </button>
           <button
             type="button"
-            onClick={() => void handleAnalyze(Array.from(selectedIds), false)}
+            onClick={() => {
+              const recIds = Array.from(selectedIds);
+              const logIds = recIds.map((id) => {
+                const row = rows.find((r) => r.id === id);
+                return String(row?.call_log_id || id);
+              });
+              void handleAnalyze(logIds, false, recIds);
+            }}
             disabled={analyzing}
             className="inline-flex items-center gap-1.5 rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-800 disabled:opacity-50"
           >
@@ -892,11 +908,19 @@ export default function AdminRecordingsPanel({
           </button>
           <button
             type="button"
-            onClick={() => void handleAnalyze(Array.from(selectedIds), true)}
+            onClick={() => {
+              const recIds = Array.from(selectedIds);
+              const logIds = recIds.map((id) => {
+                const row = rows.find((r) => r.id === id);
+                return String(row?.call_log_id || id);
+              });
+              void handleAnalyze(logIds, true, recIds);
+            }}
             disabled={analyzing}
             className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-900 disabled:opacity-50"
-            title="Uses OpenAI on notes (on-demand). No auto speech-to-text."
+            title="Transcribes this recording, then runs OpenAI SOP (10–30s)."
           >
+            {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             Deep AI
           </button>
           <button
@@ -933,9 +957,9 @@ export default function AdminRecordingsPanel({
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left">
-              <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500 border-b border-gray-200">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500 border-b border-gray-200">
                 <tr>
-                  <th className="px-2 py-3 w-10">
+                  <th className="px-2 py-2 w-10">
                     <button
                       type="button"
                       onClick={toggleSelectPage}
@@ -944,25 +968,23 @@ export default function AdminRecordingsPanel({
                       aria-label={allPageSelected ? 'Deselect page' : 'Select page'}
                     >
                       {allPageSelected ? (
-                        <CheckSquare className="w-5 h-5 text-blue-600" />
+                        <CheckSquare className="w-4 h-4 text-blue-600" />
                       ) : somePageSelected ? (
-                        <CheckSquare className="w-5 h-5 text-blue-400" />
+                        <CheckSquare className="w-4 h-4 text-blue-400" />
                       ) : (
-                        <Square className="w-5 h-5 text-gray-400" />
+                        <Square className="w-4 h-4 text-gray-400" />
                       )}
                     </button>
                   </th>
-                  <th className="px-3 py-3 whitespace-nowrap">Call</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Lead #</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Customer</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Phone</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Lead status</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Telecaller</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Duration</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Notes</th>
-                  <th className="px-3 py-3 whitespace-nowrap">When</th>
-                  <th className="px-3 py-3 whitespace-nowrap">AI</th>
-                  <th className="px-3 py-3 text-right whitespace-nowrap">Play</th>
+                  <th className="px-2 py-2 whitespace-nowrap">Lead status</th>
+                  <th className="px-2 py-2 whitespace-nowrap">Call</th>
+                  <th className="px-2 py-2 whitespace-nowrap">Customer</th>
+                  <th className="px-2 py-2 whitespace-nowrap">Phone</th>
+                  <th className="px-2 py-2 whitespace-nowrap">Telecaller</th>
+                  <th className="px-2 py-2 whitespace-nowrap">Duration</th>
+                  <th className="px-2 py-2 whitespace-nowrap">When</th>
+                  <th className="px-2 py-2 whitespace-nowrap">AI</th>
+                  <th className="px-2 py-2 text-right whitespace-nowrap">Play</th>
                 </tr>
               </thead>
               <tbody>
@@ -971,17 +993,21 @@ export default function AdminRecordingsPanel({
                     key={section.key}
                     label={section.label}
                     rows={section.rows}
-                    colSpan={12}
+                    colSpan={10}
                     expandedId={expandedId}
                     setExpandedId={setExpandedId}
                     bookingsHref={bookingsHref}
-                    leadHistoryHref={leadHistoryHref}
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
                     analysisById={analysisById}
                     analyzing={analyzing}
-                    onAnalyze={(id) => void handleAnalyze([id], false)}
-                    onDeepAnalyze={(id) => void handleAnalyze([id], true)}
+                    analyzingKey={analyzingKey}
+                    onAnalyze={(row) =>
+                      void handleAnalyze([String(row.call_log_id || row.id)], false, [row.id])
+                    }
+                    onDeepAnalyze={(row) =>
+                      void handleAnalyze([String(row.call_log_id || row.id)], true, [row.id])
+                    }
                   />
                 ))}
               </tbody>
@@ -1026,11 +1052,11 @@ function SectionRows({
   expandedId,
   setExpandedId,
   bookingsHref,
-  leadHistoryHref,
   selectedIds,
   onToggleSelect,
   analysisById,
   analyzing,
+  analyzingKey,
   onAnalyze,
   onDeepAnalyze,
 }: {
@@ -1040,36 +1066,13 @@ function SectionRows({
   expandedId: string | null;
   setExpandedId: (id: string | null) => void;
   bookingsHref: string;
-  leadHistoryHref?: string | null;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
-  analysisById: Record<
-    string,
-    {
-      quality_score: number;
-      quality_grade: string;
-      sentiment: string;
-      summary: string;
-      conversation_tags: string[];
-      customer_problem?: string | null;
-      agent_solution?: string | null;
-      solution_adequacy?: string;
-      coaching_tips?: string[];
-      query_resolutions?: Array<{
-        id: string;
-        query: string;
-        agent_answer: string | null;
-        resolution: string;
-        gap: string | null;
-      }>;
-      overall_resolution?: string | null;
-      queries_resolved?: number;
-      queries_total?: number;
-    }
-  >;
+  analysisById: Record<string, AnalysisHit>;
   analyzing: boolean;
-  onAnalyze: (id: string, deep?: boolean) => void;
-  onDeepAnalyze: (id: string) => void;
+  analyzingKey: string | null;
+  onAnalyze: (row: RecordingRow) => void;
+  onDeepAnalyze: (row: RecordingRow) => void;
 }) {
   return (
     <>
@@ -1077,7 +1080,7 @@ function SectionRows({
         <tr className="bg-slate-100/90">
           <td
             colSpan={colSpan}
-            className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-600"
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-600"
           >
             {label}
             <span className="ml-2 font-semibold normal-case text-slate-400">
@@ -1088,7 +1091,6 @@ function SectionRows({
       ) : null}
       {rows.map((row, idx) => {
         const phone = row.customer_phone || row.phone_number || '—';
-        const notes = cleanNotes(row.notes);
         const open = expandedId === row.id;
         const isSelected = selectedIds.has(row.id);
         const zebra = isSelected
@@ -1100,69 +1102,33 @@ function SectionRows({
           ? leadDisplayStatus({ status: row.lead_status } as any) || row.lead_status
           : null;
         const statusColors = leadStatusCardColors(String(disp || ''));
+        const customer = (
+          <span className="truncate">
+            {row.customer_name || '—'}
+            {row.city ? <span className="text-gray-400 font-normal"> · {row.city}</span> : null}
+          </span>
+        );
         return (
           <FragmentRow key={row.id}>
-            <tr className={`border-b border-gray-100 ${zebra} hover:bg-sky-50/70`}>
+            <tr className={`border-b border-gray-100 h-10 ${zebra} hover:bg-sky-50/70`}>
               <td
-                className="px-2 py-3 align-top w-10"
+                className="px-2 py-1 align-middle w-10"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
                   type="button"
                   onClick={() => onToggleSelect(row.id)}
-                  className="p-1 rounded hover:bg-gray-200"
+                  className="p-0.5 rounded hover:bg-gray-200"
                   aria-label={isSelected ? 'Deselect' : 'Select'}
                 >
                   {isSelected ? (
-                    <CheckSquare className="w-5 h-5 text-blue-600" />
+                    <CheckSquare className="w-4 h-4 text-blue-600" />
                   ) : (
-                    <Square className="w-5 h-5 text-gray-400" />
+                    <Square className="w-4 h-4 text-gray-400" />
                   )}
                 </button>
               </td>
-              <td className="px-3 py-3 align-top">
-                <div className="flex flex-col gap-1">
-                  <span
-                    className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${callStatusTone(row.call_status)}`}
-                  >
-                    <Phone className="h-3 w-3" />
-                    {String(row.call_status || 'CALL').replace(/_/g, ' ')}
-                  </span>
-                  {row.outcome ? (
-                    <span className="inline-flex w-fit rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200">
-                      {String(row.outcome).replace(/_/g, ' ')}
-                    </span>
-                  ) : null}
-                </div>
-              </td>
-              <td className="px-3 py-3 align-top text-sm font-semibold text-gray-900 whitespace-nowrap">
-                {row.lead_id && row.lead_number ? (
-                  leadHistoryHref ? (
-                    <Link
-                      href={`${leadHistoryHref}/${row.lead_id}`}
-                      className="text-teal-700 hover:underline"
-                    >
-                      {row.lead_number}
-                    </Link>
-                  ) : (
-                    <Link href={bookingsHref} className="text-teal-700 hover:underline">
-                      {row.lead_number}
-                    </Link>
-                  )
-                ) : (
-                  <span className="text-gray-300">—</span>
-                )}
-              </td>
-              <td className="px-3 py-3 align-top text-sm text-gray-800 min-w-[140px]">
-                {row.customer_name || '—'}
-                {row.city ? (
-                  <span className="block text-[11px] text-gray-400">{row.city}</span>
-                ) : null}
-              </td>
-              <td className="px-3 py-3 align-top text-sm tabular-nums text-gray-700 whitespace-nowrap">
-                {phone}
-              </td>
-              <td className="px-3 py-3 align-top">
+              <td className="px-2 py-1 align-middle whitespace-nowrap">
                 {disp ? (
                   <span
                     className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold"
@@ -1177,92 +1143,101 @@ function SectionRows({
                   <span className="text-gray-300 text-sm">—</span>
                 )}
               </td>
-              <td className="px-3 py-3 align-top text-sm font-medium text-teal-800 whitespace-nowrap">
+              <td className="px-2 py-1 align-middle whitespace-nowrap">
+                <span
+                  className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${callStatusTone(row.call_status)}`}
+                >
+                  <Phone className="h-3 w-3" />
+                  {String(row.call_status || 'CALL').replace(/_/g, ' ')}
+                </span>
+              </td>
+              <td className="px-2 py-1 align-middle text-[13px] text-gray-800 max-w-[180px]">
+                {row.lead_id ? (
+                  <Link
+                    href={`${bookingsHref}?search=${encodeURIComponent(
+                      String(row.lead_number || row.customer_phone || row.phone_number || '').trim(),
+                    )}`}
+                    className="text-teal-700 hover:underline font-medium"
+                  >
+                    {customer}
+                  </Link>
+                ) : (
+                  customer
+                )}
+              </td>
+              <td className="px-2 py-1 align-middle text-[13px] tabular-nums text-gray-700 whitespace-nowrap">
+                {phone}
+              </td>
+              <td className="px-2 py-1 align-middle text-[13px] font-medium text-teal-800 whitespace-nowrap">
                 {row.telecaller_name || '—'}
               </td>
-              <td className="px-3 py-3 align-top text-sm font-semibold text-slate-700 whitespace-nowrap">
+              <td className="px-2 py-1 align-middle text-[13px] font-semibold text-slate-700 whitespace-nowrap">
                 {formatCallLogDuration(row.call_duration)}
               </td>
-              <td className="px-3 py-3 align-top text-sm text-gray-600 max-w-[220px]">
-                <span className="line-clamp-2" title={notes || undefined}>
-                  {notes || '—'}
-                </span>
+              <td className="px-2 py-1 align-middle text-[10px] text-gray-600 whitespace-nowrap">
+                {formatWhenCompact(row.created_at)}
               </td>
-              <td className="px-3 py-3 align-top text-[11px] text-gray-500 whitespace-nowrap">
-                <span className="block font-medium text-gray-700">
-                  {formatTimeOnly(row.created_at)}
-                </span>
-                <span>{formatDateTime(row.created_at)}</span>
-              </td>
-              <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
-                {analysisById[row.id] ? (
-                  <div className="space-y-1 max-w-[220px]">
-                    <span className="inline-flex rounded-full bg-violet-700 px-2 py-0.5 text-[10px] font-bold text-white">
-                      {analysisById[row.id].quality_grade} {analysisById[row.id].quality_score}
-                    </span>
-                    {analysisById[row.id].sop_audit?.overall_score != null ? (
-                      <span className="ml-1 inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-800 ring-1 ring-indigo-200">
-                        SOP {analysisById[row.id].sop_audit?.overall_score}/100
-                        {analysisById[row.id].sop_audit?.suggested_lead_status
-                          ? ` · ${analysisById[row.id].sop_audit?.suggested_lead_status}`
-                          : ''}
-                      </span>
-                    ) : null}
-                    <span className="block text-[10px] font-semibold text-slate-600">
-                      {analysisById[row.id].overall_resolution
-                        ? String(analysisById[row.id].overall_resolution).replace(/_/g, ' ')
-                        : analysisById[row.id].sentiment}
-                      {analysisById[row.id].queries_total
-                        ? ` · ${analysisById[row.id].queries_resolved || 0}/${analysisById[row.id].queries_total}`
-                        : ''}
-                    </span>
-                    {(analysisById[row.id].query_resolutions || []).slice(0, 3).map((q) => (
-                      <div key={q.id} className="text-[10px] leading-snug border-t border-slate-100 pt-1">
-                        <span className="font-bold text-orange-700">Q:</span> {q.query}
-                        <br />
-                        <span className="font-bold text-emerald-700">A:</span>{' '}
-                        {q.agent_answer || '—'}
-                        <span className="ml-1 font-bold text-slate-500">[{q.resolution}]</span>
+              <td className="px-2 py-1 align-middle" onClick={(e) => e.stopPropagation()}>
+                {(() => {
+                  const key = String(row.call_log_id || row.id);
+                  const hit = analysisById[key] || analysisById[row.id];
+                  const busy = analyzing && (analyzingKey === row.id || analyzingKey === key);
+                  const isDeep =
+                    String(hit?.engine || '').includes('openai') ||
+                    String(hit?.sop_audit?.engine || '').includes('openai');
+                  if (hit) {
+                    return (
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${
+                            isDeep ? 'bg-indigo-700' : 'bg-violet-700'
+                          }`}
+                          title={hit.summary || ''}
+                        >
+                          {isDeep ? 'Deep ' : ''}
+                          {hit.quality_grade} {hit.quality_score}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={analyzing}
+                          onClick={() => onDeepAnalyze(row)}
+                          className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-800 disabled:opacity-50"
+                          title="Transcribe recording and run Deep AI SOP"
+                        >
+                          {busy ? '…' : 'Deep AI'}
+                        </button>
                       </div>
-                    ))}
-                    <div className="flex gap-1 pt-0.5">
+                    );
+                  }
+                  return (
+                    <div className="flex items-center gap-1 whitespace-nowrap">
                       <button
                         type="button"
                         disabled={analyzing}
-                        onClick={() => onDeepAnalyze(row.id)}
-                        className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-800"
+                        onClick={() => onAnalyze(row)}
+                        className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
                       >
-                        Deep AI
+                        <Brain className="h-3 w-3" />
+                        {busy ? '…' : 'Analyze'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={analyzing}
+                        onClick={() => onDeepAnalyze(row)}
+                        className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                      >
+                        {busy ? '…' : 'Deep AI'}
                       </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    <button
-                      type="button"
-                      disabled={analyzing}
-                      onClick={() => onAnalyze(row.id)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-                    >
-                      <Brain className="h-3 w-3" />
-                      Analyze
-                    </button>
-                    <button
-                      type="button"
-                      disabled={analyzing}
-                      onClick={() => onDeepAnalyze(row.id)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
-                    >
-                      Deep AI
-                    </button>
-                  </div>
-                )}
+                  );
+                })()}
               </td>
-              <td className="px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
+              <td className="px-2 py-1 align-middle text-right" onClick={(e) => e.stopPropagation()}>
                 {row.has_recording && !open ? (
                   <CallRecordingPlayer
                     callLogId={row.id}
                     hasRecording
+                    showChipDuration={false}
                     durationSeconds={
                       row.call_duration != null ? Number(row.call_duration) : null
                     }
@@ -1277,7 +1252,7 @@ function SectionRows({
               </td>
             </tr>
             {open ? (
-              <tr className="border-b border-violet-100 bg-violet-50/40">
+              <tr className="border-b border-violet-100 bg-slate-50/80">
                 <td colSpan={colSpan} className="px-3 py-3">
                   <CallRecordingPlayer
                     callLogId={row.id}
@@ -1288,24 +1263,10 @@ function SectionRows({
                     open
                     onOpenChange={(next) => setExpandedId(next ? row.id : null)}
                   />
-                  {row.lead_id ? (
-                    <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                      <Link
-                        href={bookingsHref}
-                        className="font-semibold text-violet-700 hover:underline"
-                      >
-                        Open leads
-                      </Link>
-                      {leadHistoryHref ? (
-                        <Link
-                          href={`${leadHistoryHref}/${row.lead_id}`}
-                          className="font-semibold text-teal-700 hover:underline"
-                        >
-                          Lead history
-                        </Link>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  {(() => {
+                    const hit = analysisById[String(row.call_log_id || row.id)] || analysisById[row.id];
+                    return hit ? <DeepAiCallResult hit={hit} /> : null;
+                  })()}
                 </td>
               </tr>
             ) : null}

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { boundRecordingUrlForCallId, fetchRecordingAudio } from '@/lib/telecaller/smartfloCdr';
+import { boundRecordingUrlForCallId, fetchRecordingAudio, recordingUrlForCallId } from '@/lib/telecaller/smartfloCdr';
+import { getClickToCallConfig, poolDidPhoneSet } from '@/lib/telecaller/clickToCallConfig';
+import { normalizePhone10 } from '@/lib/telecaller/initiateClickToCall';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -66,7 +68,7 @@ export async function GET(
 
     const { data: cdrByRow } = await db
       .from('smartflo_call_recordings')
-      .select('id, recording_url, smartflo_call_id, call_log_id')
+      .select('id, recording_url, smartflo_call_id, call_log_id, did_number, agent_number')
       .eq('id', logId)
       .maybeSingle();
 
@@ -74,17 +76,37 @@ export async function GET(
       !cdrByRow && log?.smartflo_call_id
         ? await db
             .from('smartflo_call_recordings')
-            .select('id, recording_url, smartflo_call_id, call_log_id')
+            .select('id, recording_url, smartflo_call_id, call_log_id, did_number, agent_number')
             .eq('smartflo_call_id', log.smartflo_call_id)
             .maybeSingle()
         : { data: null as any };
 
-    const cdr = cdrByRow || cdrByCallId.data;
+    const cdrByLog =
+      !cdrByRow && !cdrByCallId.data && log?.id
+        ? await db
+            .from('smartflo_call_recordings')
+            .select('id, recording_url, smartflo_call_id, call_log_id, did_number, agent_number')
+            .eq('call_log_id', log.id)
+            .maybeSingle()
+        : { data: null as any };
+
+    const cdr = cdrByRow || cdrByCallId.data || cdrByLog.data;
     const callId = String(cdr?.smartflo_call_id || log?.smartflo_call_id || '').trim();
-    const recordingUrl = boundRecordingUrlForCallId(
+    const cfg = await getClickToCallConfig();
+    const pool = poolDidPhoneSet(cfg);
+    if (pool.size && cdr) {
+      const did10 = normalizePhone10(cdr.did_number);
+      if (did10 && !pool.has(did10)) {
+        return NextResponse.json({ error: 'No recording for this call yet' }, { status: 404 });
+      }
+    }
+    let recordingUrl = boundRecordingUrlForCallId(
       callId,
       String(cdr?.recording_url || log?.call_recording_url || '').trim() || null,
     );
+    if (!recordingUrl && callId) {
+      recordingUrl = recordingUrlForCallId(callId);
+    }
     const playRefId = String(cdr?.id || log?.id || logId);
 
     if (!log && !cdr) {

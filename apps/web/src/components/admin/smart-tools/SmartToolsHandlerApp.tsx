@@ -391,12 +391,6 @@ export default function SmartToolsHandlerApp() {
                 Phone unlock list = those logged-in numbers can open it even without membership. Main grid slot shows the section heading.
               </p>
             </div>
-
-            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5 text-sm text-amber-900">
-              Run migrations <code className="rounded bg-white px-1 py-0.5">235</code>,{' '}
-              <code className="rounded bg-white px-1 py-0.5">236</code>, and{' '}
-              <code className="rounded bg-white px-1 py-0.5">306</code> in Supabase if save fails.
-            </div>
           </div>
         </aside>
       </div>

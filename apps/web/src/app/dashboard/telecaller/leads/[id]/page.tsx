@@ -15,6 +15,7 @@ import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
 import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
+import AppActivityTimeline from '@/components/admin/AppActivityTimeline';
 import LeadIqCard from '@/components/admin/LeadIqCard';
 import LeadBrainCard from '@/components/telecaller/crm/LeadBrainCard';
 import {
@@ -835,6 +836,10 @@ function LeadDetailContent() {
                 callLogs={callLogs}
                 refreshKey={timelineRefreshKey}
               />
+              <AppActivityTimeline
+                leadId={leadId}
+                phone={lead.customer_phone ? String(lead.customer_phone) : null}
+              />
             </div>
           </div>
         ) : (
@@ -1261,6 +1266,10 @@ function LeadDetailContent() {
               lead={lead}
               callLogs={callLogs}
               refreshKey={timelineRefreshKey}
+            />
+            <AppActivityTimeline
+              leadId={leadId}
+              phone={lead.customer_phone ? String(lead.customer_phone) : null}
             />
 
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 shadow-sm">

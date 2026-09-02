@@ -431,6 +431,9 @@ export default function TelecallerLeadDetailScreen({
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
   const [activityShowAll, setActivityShowAll] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [appActivityItems, setAppActivityItems] = useState<any[]>([]);
+  const [appActivityLoading, setAppActivityLoading] = useState(false);
+  const [appActivityShowAll, setAppActivityShowAll] = useState(false);
   const [leadIq, setLeadIq] = useState<any>(null);
   const [leadIqRunning, setLeadIqRunning] = useState(false);
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
@@ -1141,10 +1144,7 @@ export default function TelecallerLeadDetailScreen({
         hasRecording,
         sortAt: String(item.at || ''),
         title: String(item.title || 'Update'),
-        notes:
-          item.kind === 'whatsapp'
-            ? ''
-            : String(item.body || '')
+        notes: String(item.body || '')
                 .replace(/\[Smartflo\]\s*/gi, '')
                 .replace(/\bSmartflo\b/gi, '')
                 .trim(),
@@ -1254,15 +1254,24 @@ export default function TelecallerLeadDetailScreen({
     if (!leadId) return;
     try {
       setTimelineLoading(true);
-      const data = await apiFetch<{ items?: any[] }>(
-        `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(leadId)}`,
-      );
+      setAppActivityLoading(true);
+      const [data, appData] = await Promise.all([
+        apiFetch<{ items?: any[] }>(
+          `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(leadId)}`,
+        ),
+        apiFetch<{ items?: any[] }>(
+          `/api/super_admin/app-activity?lead_id=${encodeURIComponent(leadId)}`,
+        ).catch(() => ({ items: [] })),
+      ]);
       setTimelineItems(Array.isArray(data?.items) ? data.items : []);
+      setAppActivityItems(Array.isArray(appData?.items) ? appData.items : []);
     } catch (error) {
       console.error('Error fetching activity timeline:', error);
       setTimelineItems([]);
+      setAppActivityItems([]);
     } finally {
       setTimelineLoading(false);
+      setAppActivityLoading(false);
     }
   };
 
@@ -3415,6 +3424,43 @@ export default function TelecallerLeadDetailScreen({
             </>
           )}
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>
+            App activity{appActivityItems.length > 0 ? ` (${appActivityItems.length})` : ''}
+          </Text>
+        </View>
+        {appActivityLoading ? (
+          <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />
+        ) : appActivityItems.length === 0 ? (
+          <Text style={[styles.logNotes, { color: COLORS.textSecondary, paddingVertical: 8 }]}>
+            No app activity yet
+          </Text>
+        ) : (
+          <>
+            {(appActivityShowAll ? appActivityItems : appActivityItems.slice(0, 10)).map((item: any) => (
+              <View key={item.id || `${item.kind}-${item.at}`} style={styles.logCard}>
+                <Text style={styles.logBadgeText}>{item.title}</Text>
+                {item.body ? <Text style={styles.logNotes}>{String(item.body)}</Text> : null}
+                <Text style={styles.logTime}>{item.at ? formatDateTime(item.at) : '—'}</Text>
+              </View>
+            ))}
+            {appActivityItems.length > 10 ? (
+              <TouchableOpacity
+                onPress={() => setAppActivityShowAll((v) => !v)}
+                style={{ paddingVertical: 10, alignItems: 'center' }}
+              >
+                <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
+                  {appActivityShowAll
+                    ? 'View less'
+                    : `View more (${appActivityItems.length - 10})`}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
+        )}
       </View>
 
       {/* Workshop Info */}

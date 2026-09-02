@@ -2121,8 +2121,6 @@ function SuperAdminBookingsPage() {
 
     setLoading(true);
     setError(null);
-    // Refresh recording index when leads reload (after sync / date change)
-    setRecordingLeadIds(null);
 
     try {
       const query = new URLSearchParams();
@@ -2217,8 +2215,15 @@ function SuperAdminBookingsPage() {
   }, [fetchData, urlFiltersReady]);
 
   useEffect(() => {
-    if (recordingFilter === 'ALL') return;
-    if (recordingLeadIds) return;
+    if (!urlFiltersReady) return;
+    void fetch('/api/super_admin/leads/with-recordings', { credentials: 'include', cache: 'no-store' });
+  }, [urlFiltersReady]);
+
+  useEffect(() => {
+    if (recordingFilter === 'ALL') {
+      setLoadingRecordingIds(false);
+      return;
+    }
     let cancelled = false;
     setLoadingRecordingIds(true);
     fetch('/api/super_admin/leads/with-recordings', { credentials: 'include', cache: 'no-store' })
@@ -2243,7 +2248,7 @@ function SuperAdminBookingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [recordingFilter, recordingLeadIds]);
+  }, [recordingFilter]);
 
   useEffect(() => {
     if (tagIds.length === 0) {
@@ -3545,6 +3550,11 @@ function SuperAdminBookingsPage() {
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">{error}</div>
+        ) : recordingFilter !== 'ALL' && (loadingRecordingIds || !recordingLeadIds) ? (
+          <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
+            <p className="text-sm text-gray-600 mt-3">Loading recordings filter...</p>
+          </div>
         ) : displayedServiceLeads.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center">
             <p className="text-gray-700 font-semibold">No records found</p>

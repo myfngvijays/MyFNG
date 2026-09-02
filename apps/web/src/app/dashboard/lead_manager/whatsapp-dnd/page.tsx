@@ -93,7 +93,7 @@ export default function LeadManagerWhatsAppDndPage() {
           </p>
         </div>
 
-        {warning ? (
+        {warning && !/database\/|\.sql/i.test(warning) ? (
           <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
             {warning}
           </p>

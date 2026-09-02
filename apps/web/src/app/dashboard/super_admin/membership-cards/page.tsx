@@ -254,10 +254,8 @@ export default function MembershipCardsPage() {
       ) : null}
 
       {!fetchError && rows.length === 0 && !loading ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          No cards found. Run{' '}
-          <code className="bg-amber-100 px-1 rounded">database/156_membership_cards_table.sql</code> in Supabase,
-          then refresh. Active = card ON + kam se kam 1 placement.
+        <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+          No cards found. Active = card ON + at least 1 placement.
         </div>
       ) : null}
 

@@ -108,7 +108,7 @@ export default function TechnicalSeoPanel({ onRefreshAll }: Props) {
   if (!draft) {
     return (
       <div className={`${t.cardMuted} p-10 text-center text-sm ${t.subtitle}`}>
-        Technical SEO settings unavailable. Run migration `database/273_site_technical_seo.sql`.
+        Technical SEO settings unavailable.
       </div>
     );
   }

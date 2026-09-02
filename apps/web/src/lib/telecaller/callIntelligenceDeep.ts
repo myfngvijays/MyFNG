@@ -1,8 +1,7 @@
 /**
  * Deep call query-resolution analysis.
  * - Free path: structured multi-query extraction from notes
- * - Deep path (on-demand): OpenAI JSON reasoning over notes/lead context
- *   (no auto speech-to-text — avoids SARV-style cost burn)
+ * - Deep path (on-demand): transcribe recording, then OpenAI over transcript + notes
  */
 
 import type {
@@ -384,8 +383,7 @@ export function analyzeCallWithQueryResolution(input: AnalyzeCallInput): CallAna
 }
 
 /**
- * On-demand OpenAI deep reasoning over call notes / lead context.
- * Does NOT transcribe audio (keeps cost controlled).
+ * On-demand OpenAI deep reasoning over the recording transcript (preferred) or notes.
  */
 export async function deepAnalyzeWithOpenAI(input: AnalyzeCallInput): Promise<{
   analysis: CallAnalysisResult;
@@ -393,54 +391,61 @@ export async function deepAnalyzeWithOpenAI(input: AnalyzeCallInput): Promise<{
   used_openai: boolean;
   warning?: string;
 }> {
-  const freeBase = analyzeCallWithQueryResolution(input);
+  const transcript = clean(input.call_transcript);
+  const notes = clean(input.notes);
+  const spoken = transcript || notes;
+  const enriched: AnalyzeCallInput = spoken ? { ...input, notes: spoken } : input;
+  const freeBase = analyzeCallWithQueryResolution(enriched);
+  const answered = (Number(input.call_duration) || 0) > 0 || Boolean(spoken);
 
   if (!OPENAI_API_KEY) {
     return {
       analysis: freeBase,
       deep: extractQueryResolutionsFree({
-        ...input,
-        answered: true,
+        ...enriched,
+        answered,
       }),
       used_openai: false,
       warning: 'OPENAI_API_KEY missing — free query resolution used',
     };
   }
 
-  const notes = clean(input.notes);
   const context = {
     call_status: input.call_status,
     call_duration_sec: input.call_duration,
     outcome: input.outcome,
-    notes,
+    audit_source: transcript ? 'recording_transcript' : 'agent_notes',
+    recording_transcript: transcript || null,
+    agent_notes: notes || null,
     customer_response: clean(input.customer_response),
     lead_problem_description: clean(input.problem_description),
     service_type: clean(input.service_type),
     lead_status: input.lead_status,
   };
 
-  if (!notes && !context.lead_problem_description && !context.customer_response) {
+  if (!spoken && !context.lead_problem_description && !context.customer_response) {
     return {
       analysis: freeBase,
       deep: extractQueryResolutionsFree({
-        ...input,
-        answered: (Number(input.call_duration) || 0) > 0,
+        ...enriched,
+        answered,
       }),
       used_openai: false,
-      warning: 'Notes empty — deep AI needs call notes / problem text. Free analysis returned.',
+      warning: 'No recording transcript or notes — cannot Deep AI',
     };
   }
 
   const system = `You are a strict QA coach for Indian auto-service telecalling (Hinglish OK).
-Given call notes + lead context, extract EVERY distinct customer query/problem, and judge whether the telecaller gave a proper answer that resolves it.
+Given the call recording transcript (preferred) and/or agent notes + lead context, extract EVERY distinct customer query/problem, and judge whether the telecaller gave a proper answer that resolves it.
 
 Rules:
 - Do NOT invent facts not present in the text.
+- Prefer the recording transcript over canned notes like "Recording synced".
 - If answer is vague / only "callback" without addressing the ask → PARTIAL or UNRESOLVED.
 - Booking/slot/price/workshop/pickup must be concrete to count as RESOLVED.
 - Output ONLY valid JSON matching the schema.`;
 
-  const user = `Analyze this telecaller call notes for query resolution.
+  const user = `Analyze this telecaller ${transcript ? 'call recording transcript' : 'call notes'} for query resolution.
 
 CONTEXT:
 ${JSON.stringify(context, null, 2)}
@@ -526,7 +531,7 @@ Return JSON:
     const deep: DeepResolutionResult = {
       queries: queries.length
         ? queries
-        : extractQueryResolutionsFree({ ...input, answered: true }).queries,
+        : extractQueryResolutionsFree({ ...enriched, answered: true }).queries,
       overall_resolution: ['FULLY_RESOLVED', 'PARTIALLY_RESOLVED', 'NOT_RESOLVED', 'NOT_APPLICABLE'].includes(overall)
         ? overall
         : 'PARTIALLY_RESOLVED',
@@ -550,7 +555,7 @@ Return JSON:
       engine: 'openai_deep_v1',
     };
 
-    const base = analyzeCallRecording(input);
+    const base = analyzeCallRecording(enriched);
     return {
       analysis: mergeDeepIntoAnalysis(base, deep),
       deep,
@@ -559,7 +564,7 @@ Return JSON:
   } catch (e: any) {
     return {
       analysis: freeBase,
-      deep: extractQueryResolutionsFree({ ...input, answered: true }),
+      deep: extractQueryResolutionsFree({ ...enriched, answered }),
       used_openai: false,
       warning: e?.message || 'Deep AI parse failed — free analysis used',
     };

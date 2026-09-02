@@ -26,10 +26,14 @@ async function assertAdmin(request: NextRequest) {
   const roleCode = String((profile as any)?.roles?.role_code || '')
     .trim()
     .toUpperCase();
-  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS'].includes(roleCode)) {
+  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS', 'TELECALLER'].includes(roleCode)) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
-  return { ok: true as const };
+  return {
+    ok: true as const,
+    roleCode,
+    userId: String((profile as any)?.id || user.id),
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -46,10 +50,14 @@ export async function GET(request: NextRequest) {
     let customerId = String(request.nextUrl.searchParams.get('customer_id') || '').trim();
     let phone = String(request.nextUrl.searchParams.get('phone') || '').trim();
 
-    if (leadId && (!customerId || !phone)) {
+    if (auth.roleCode === 'TELECALLER' && !leadId) {
+      return NextResponse.json({ error: 'lead_id required' }, { status: 400 });
+    }
+
+    if (leadId && (!customerId || !phone || auth.roleCode === 'TELECALLER')) {
       const { data: lead } = await supabaseAdmin
         .from('service_leads')
-        .select('id, customer_phone, meta, coupon_meta, created_from, lead_source, lead_number, created_at')
+        .select('id, customer_phone, meta, coupon_meta, created_from, lead_source, lead_number, created_at, assigned_telecaller_id')
         .eq('id', leadId)
         .maybeSingle();
       if (lead) {
@@ -63,6 +71,21 @@ export async function GET(request: NextRequest) {
         customerId =
           customerId ||
           String(meta.customer_id || coupon.customer_id || '').trim();
+        if (auth.roleCode === 'TELECALLER') {
+          const assigned = String((lead as any).assigned_telecaller_id || '');
+          if (assigned && assigned !== auth.userId) {
+            const { count } = await supabaseAdmin
+              .from('telecaller_call_logs')
+              .select('id', { count: 'exact', head: true })
+              .eq('lead_id', leadId)
+              .eq('telecaller_id', auth.userId);
+            if (!count) {
+              return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            }
+          }
+        }
+      } else if (auth.roleCode === 'TELECALLER') {
+        return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
       }
     }
 

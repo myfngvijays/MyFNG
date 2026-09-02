@@ -45,7 +45,7 @@ export default function LeadIqCard({ leadId }: { leadId: string }) {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) throw new Error(json?.error || 'Failed');
       setBrief(json.brief);
-      if (json.warning) setError(json.warning);
+      if (json.warning && !/database\/|\.sql/i.test(String(json.warning))) setError(json.warning);
     } catch (e: any) {
       setError(e?.message || 'Failed');
     } finally {

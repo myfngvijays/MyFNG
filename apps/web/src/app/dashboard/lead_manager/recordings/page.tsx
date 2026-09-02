@@ -9,7 +9,6 @@ export default function LeadManagerRecordingsPage() {
       <AdminRecordingsPanel
         helpHref="/dashboard/lead_manager/recordings"
         bookingsHref="/dashboard/lead_manager/leads"
-        leadHistoryHref={null}
       />
     </DashboardLayout>
   );

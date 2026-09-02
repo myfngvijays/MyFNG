@@ -351,6 +351,29 @@ export function assignedDidPhoneSet(cfg: ClickToCallConfig): Set<string> {
   return set;
 }
 
+/** Last-10 digits of every DID in the Click-to-Call pool (the 5 MyFNG numbers). */
+export function poolDidPhoneSet(cfg?: ClickToCallConfig | null): Set<string> {
+  const set = new Set<string>();
+  for (const d of DEFAULT_CLICK_TO_CALL_DIDS) {
+    const p = didKey(d);
+    if (p) set.add(p);
+  }
+  if (cfg) {
+    for (const d of cfg.dids || []) {
+      const p = didKey(d);
+      if (p) set.add(p);
+    }
+    const fallback = didKey(cfg.did);
+    if (fallback) set.add(fallback);
+  }
+  return set;
+}
+
+export function isPoolDidNumber(raw: unknown, cfg?: ClickToCallConfig | null): boolean {
+  const p = didKey(raw);
+  return Boolean(p && poolDidPhoneSet(cfg).has(p));
+}
+
 export function telecallerIdForDid(cfg: ClickToCallConfig, did: unknown): string | null {
   return ownerOfDid(cfg, String(did || ''));
 }

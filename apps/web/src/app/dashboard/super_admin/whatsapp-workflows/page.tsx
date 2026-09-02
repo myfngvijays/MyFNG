@@ -57,7 +57,6 @@ export default function WhatsAppWorkflowsPage() {
   const [eventSearch, setEventSearch] = useState('');
   const [selectedEvent, setSelectedEvent] = useState('whatsapp_incoming');
   const [creating, setCreating] = useState(false);
-  const [migrationHint, setMigrationHint] = useState(false);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -104,7 +103,6 @@ export default function WhatsAppWorkflowsPage() {
       if (!flowsRes.ok || !flowsJson?.success) throw new Error(flowsJson?.error || 'Failed to load workflows');
       setFlows(Array.isArray(flowsJson.flows) ? flowsJson.flows : []);
       setRuns(Array.isArray(runsJson?.runs) ? runsJson.runs : []);
-      setMigrationHint(Boolean(runsJson?.migration_required));
     } catch (e: any) {
       toast.error(e?.message || 'Failed to load');
       setFlows([]);
@@ -227,13 +225,6 @@ export default function WhatsAppWorkflowsPage() {
             </li>
           </ol>
         </div>
-
-        {migrationHint ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Run SQL migration <code className="font-mono">database/315_whatsapp_workflow_builder.sql</code> in
-            Supabase for execution stats / runs table.
-          </div>
-        ) : null}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border bg-white p-4 shadow-sm">

@@ -2429,7 +2429,7 @@ export default function WhatsAppMobilePreviewModal({
         const fr = frictionlessTemplate;
         if (!fr?.template_name) {
           toast.error(
-            'Frictionless template missing. Run SQL 332 and Push myfng_closed_window_note (UTILITY).',
+            'Closed-window note template is missing. Submit/push myfng_closed_window_note (UTILITY) first.',
           );
           setActiveType('template');
           return;

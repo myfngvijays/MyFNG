@@ -81,8 +81,8 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Saari click-to-call recordings ek jagah — search by phone/name, date filter, Play / download.\n\nBookings & Leads pe bhi recording dikhti hai; yeh dedicated list hai audits / QA ke liye.',
     tips: [
       'Play pe click = in-page player (same as lead timeline).',
-      'Lead history link se full activity khulti hai.',
-      'Call Intelligence menu pe free quality / sentiment analytics milti hai.',
+      'Customer name Bookings & Leads pe kholta hai.',
+      'Deep AI recording transcribe karke SOP score, queries, coaching dikhata hai.',
     ],
   },
   '/dashboard/super_admin/ai-suite': {

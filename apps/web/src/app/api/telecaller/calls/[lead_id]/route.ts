@@ -6,10 +6,12 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
+import { detachForeignDidRecordingsForLead, detachForeignDidRecordingsThrottled, healSmartfloRecordingForLead } from '@/lib/telecaller/smartfloCdr';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 export async function GET(
   request: NextRequest,
@@ -38,6 +40,10 @@ export async function GET(
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = supabaseAdmin ?? supabase;
+
+    await detachForeignDidRecordingsForLead(leadId);
+    await healSmartfloRecordingForLead(leadId);
+    void detachForeignDidRecordingsThrottled();
 
     // TELECALLER must be able to read the lead (assigned / CRM scope)
     if (roleCode === 'TELECALLER') {

@@ -886,14 +886,6 @@ export default function MisaAiAdminDashboardPage() {
           <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500">MISA product analytics</h2>
         </div>
 
-        {!overview?.usage_tracking_available ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Usage & billing tracking is not enabled yet. Run{' '}
-            <code className="rounded bg-white px-1">database/278_misa_ai_usage_logs.sql</code> on Supabase. New chats
-            will start logging tokens automatically.
-          </div>
-        ) : null}
-
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">Range: {overview?.range_label || '—'}</p>
         </div>
@@ -1061,9 +1053,8 @@ export default function MisaAiAdminDashboardPage() {
                   </tr>
                 ) : !usageTrackingAvailable ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-4 text-center text-amber-800">
-                      Usage logging table missing. Run{' '}
-                      <code className="rounded bg-amber-50 px-1">database/278_misa_ai_usage_logs.sql</code> on Supabase.
+                    <td colSpan={6} className="px-4 py-4 text-center text-gray-500">
+                      No usage logs yet.
                     </td>
                   </tr>
                 ) : usageRows.length === 0 ? (

@@ -8,6 +8,7 @@ import {
   ADMIN_CRM_STATUS_OPTIONS,
   resolveAdminCrmStatusId,
 } from '@/lib/telecaller/leadDisplayStatus';
+import { detachForeignDidRecordingsForLead, detachForeignDidRecordingsThrottled, healSmartfloRecordingForLead } from '@/lib/telecaller/smartfloCdr';
 import {
   buildCheckoutLeadIndex,
   checkoutServiceName,
@@ -16,6 +17,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -62,7 +64,7 @@ async function requireCrmUser(request: NextRequest) {
     .trim()
     .toUpperCase();
 
-  if (!['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN', 'TELECALLER'].includes(roleCode)) {
+  if (!['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN', 'TELECALLER', 'APP_OPERATIONS'].includes(roleCode)) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 
@@ -87,6 +89,10 @@ export async function GET(request: NextRequest) {
 
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: 'Admin unavailable' }, { status: 500 });
+
+    await detachForeignDidRecordingsForLead(leadId);
+    await healSmartfloRecordingForLead(leadId);
+    void detachForeignDidRecordingsThrottled();
 
     const leadSelectFull =
       'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model, service_type, meta';
@@ -134,7 +140,7 @@ export async function GET(request: NextRequest) {
         const { data: refreshed } = await supabaseAdmin
           .from('service_leads')
           .select(
-            'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model',
+            'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model, service_type, meta',
           )
           .eq('id', leadId)
           .maybeSingle();
@@ -145,9 +151,6 @@ export async function GET(request: NextRequest) {
     }
 
     const phone = normalizePhone(String((lead as any).customer_phone || ''));
-    const adminScope = ['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS'].includes(
-      gate.roleCode,
-    );
 
     const safeSelect = async (
       run: () => PromiseLike<{ data: any; error: any }>,
@@ -165,7 +168,7 @@ export async function GET(request: NextRequest) {
 
     let relatedLeadIds = [leadId];
     let siblingLeads: any[] = [];
-    if (phone10 && adminScope) {
+    if (phone10) {
       const sib = await safeSelect(() =>
         supabaseAdmin
           .from('service_leads')

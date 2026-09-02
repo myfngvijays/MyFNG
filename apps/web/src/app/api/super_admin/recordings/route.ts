@@ -12,8 +12,9 @@ import {
   isSmartfloLineNumber,
   smartfloRecordingsCutoffIso,
   boundRecordingUrlForCallId,
+  detachForeignDidRecordingsThrottled,
 } from '@/lib/telecaller/smartfloCdr';
-import { assignedDidPhoneSet, getClickToCallConfig, ownerOfDid } from '@/lib/telecaller/clickToCallConfig';
+import { getClickToCallConfig, ownerOfDid, poolDidPhoneSet } from '@/lib/telecaller/clickToCallConfig';
 import { normalizePhone10 } from '@/lib/telecaller/initiateClickToCall';
 
 export const dynamic = 'force-dynamic';
@@ -64,6 +65,8 @@ export async function GET(request: NextRequest) {
     if (!allowed.has(roleCode)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    void detachForeignDidRecordingsThrottled();
 
     const sp = request.nextUrl.searchParams;
     const q = String(sp.get('q') || '').trim();
@@ -274,12 +277,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const assignedDids = assignedDidPhoneSet(ctcCfg);
-    const assignedTeleIds = new Set(
-      (ctcCfg.did_assignments || [])
-        .map((a) => String(a.telecaller_id || '').trim())
-        .filter(Boolean),
-    );
+    const assignedDids = poolDidPhoneSet(ctcCfg);
     const teleNameById = new Map<string, string>();
     for (const t of Array.isArray(telecallersRes.data) ? telecallersRes.data : []) {
       teleNameById.set(String(t.id), String(t.full_name || 'Telecaller'));
@@ -297,16 +295,13 @@ export async function GET(request: NextRequest) {
         ) {
           return false;
         }
-        if (isSmartfloLineNumber(r.client_number)) {
+        if (isSmartfloLineNumber(r.client_number, assignedDids)) {
           return false;
         }
         if (!r.lead_id) return false;
         if (assignedDids.size > 0) {
           const did10 = normalizePhone10(r.did_number);
-          const leadTc = String(r.lead?.assigned_telecaller_id || '').trim();
-          const didOk = Boolean(did10 && assignedDids.has(did10));
-          const leadOk = Boolean(leadTc && assignedTeleIds.has(leadTc));
-          if (!didOk && !leadOk) return false;
+          if (did10 && !assignedDids.has(did10)) return false;
         }
         return true;
       }),
@@ -357,10 +352,24 @@ export async function GET(request: NextRequest) {
                 ? 'FAILED'
                 : u || 'COMPLETED';
       const teleFromDid = ownerOfDid(ctcCfg, r.did_number);
-      const teleName =
-        tele?.full_name ||
-        (teleFromDid ? teleNameById.get(teleFromDid) : null) ||
+      const c2cOwnerIds = new Set(
+        (ctcCfg.did_assignments || [])
+          .map((a) => String(a.telecaller_id || '').trim())
+          .filter(Boolean),
+      );
+      const logTid = String(log?.telecaller_id || tele?.id || '').trim();
+      const assignedTid = String(lead?.assigned_telecaller_id || '').trim();
+      const telecallerId =
+        teleFromDid ||
+        (c2cOwnerIds.has(logTid) ? logTid : '') ||
+        (c2cOwnerIds.has(assignedTid) ? assignedTid : '') ||
         null;
+      const teleName = telecallerId
+        ? teleNameById.get(telecallerId) ||
+          (teleFromDid && teleFromDid === logTid ? tele?.full_name : null) ||
+          tele?.full_name ||
+          null
+        : null;
       const when = r.started_at || log?.created_at || r.created_at;
       const playId = String(r.id);
       const boundUrl = boundRecordingUrlForCallId(
@@ -380,7 +389,7 @@ export async function GET(request: NextRequest) {
         lead_status: lead?.status || null,
         city: lead?.city || null,
         phone_number: displayPhone,
-        telecaller_id: log?.telecaller_id || teleFromDid || lead?.assigned_telecaller_id || null,
+        telecaller_id: telecallerId,
         telecaller_name: teleName,
         call_type: 'OUTBOUND',
         call_status: callStatusMapped,
@@ -535,16 +544,17 @@ export async function POST(request: NextRequest) {
     const { getSmartfloRecordingsCronSettings, markSmartfloRecordingsCronRun } = await import(
       '@/lib/telecaller/smartfloRecordingsCronSettings'
     );
-    const { backfillSmartfloRecordingsFromIst, SMARTFLO_RECORDINGS_AFTER_AUG23_IST } = await import(
+    const { backfillSmartfloRecordingsFromIst, healClickToCallRecordingsForAssignedLeads, SMARTFLO_RECORDINGS_AFTER_AUG23_IST } = await import(
       '@/lib/telecaller/smartfloCdr'
     );
 
     const settings = await getSmartfloRecordingsCronSettings();
     const result = await backfillSmartfloRecordingsFromIst(SMARTFLO_RECORDINGS_AFTER_AUG23_IST, {
-      timeBudgetMs: 110_000,
+      timeBudgetMs: 70_000,
       skipPostProcess: true,
       newestFirst: true,
     });
+    const assigned = await healClickToCallRecordingsForAssignedLeads({ timeBudgetMs: 40_000 });
     const summary = result.ok
       ? `manual fetched=${result.fetched} with_recording=${result.with_recording}`
       : result.error || 'sync failed';
@@ -559,8 +569,9 @@ export async function POST(request: NextRequest) {
       {
         success: result.ok,
         message: result.ok
-          ? `Synced ${result.with_recording} recording(s) from ${result.fetched} CDR row(s)${extra}`
+          ? `Synced ${result.with_recording} recording(s) from ${result.fetched} CDR row(s); assigned leads +${assigned.attached}${extra}`
           : result.error || 'Sync failed',
+        assigned_heal: assigned,
         ...result,
         hours_back: settings.hours_back,
         catch_up: true,

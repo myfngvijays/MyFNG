@@ -90,13 +90,6 @@ export default function PushCampaignsSection() {
         </button>
       </div>
 
-      {missingTable ? (
-        <div className="push-card p-4 text-sm text-amber-800 bg-amber-50 border border-amber-200">
-          Run <code className="font-mono text-xs">database/294_push_campaigns_segments_schedule.sql</code> to enable
-          campaigns.
-        </div>
-      ) : null}
-
       {loading ? (
         <div className="flex items-center justify-center min-h-[30vh] text-gray-500 gap-2">
           <Loader2 className="w-5 h-5 animate-spin" /> Loading campaigns…

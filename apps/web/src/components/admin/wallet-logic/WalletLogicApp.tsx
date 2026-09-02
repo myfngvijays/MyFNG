@@ -1013,11 +1013,6 @@ function WelcomeBonusAutoCouponSection({
       ) : (
         <p className="text-xs text-gray-500">Coupon select nahi hai — sirf special wallet amount chalega.</p>
       )}
-      {!loading && coupons.length === 0 ? (
-        <p className="text-xs text-amber-700">
-          Koi active coupon nahi mila. Supabase me migration 309 chalao (WELCOME_CI1000 create hota hai).
-        </p>
-      ) : null}
     </div>
   );
 }

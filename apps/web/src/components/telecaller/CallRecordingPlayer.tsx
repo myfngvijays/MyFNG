@@ -49,6 +49,7 @@ export default function CallRecordingPlayer({
   open: openProp,
   onOpenChange,
   allowDownload: allowDownloadProp,
+  showChipDuration = true,
 }: {
   callLogId: string;
   hasRecording?: boolean;
@@ -60,6 +61,8 @@ export default function CallRecordingPlayer({
   onOpenChange?: (open: boolean) => void;
   /** Explicit override; default = manager/admin paths only (not telecaller). */
   allowDownload?: boolean;
+  /** Closed Play chip duration. Off when a Duration column is already visible. */
+  showChipDuration?: boolean;
 }) {
   const pathname = usePathname();
   const allowDownload =
@@ -246,11 +249,13 @@ export default function CallRecordingPlayer({
         type="button"
         onClick={() => setOpen(true)}
         className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-violet-600 px-3 text-[11px] font-bold text-white shadow-sm hover:bg-violet-700"
-        title={knownLabel ? `Play · ${knownLabel}` : 'Play recording'}
+        title="Play recording"
       >
         <Play className="h-3.5 w-3.5 fill-current" />
         Play
-        {knownLabel ? <span className="font-semibold text-violet-100">{knownLabel}</span> : null}
+        {showChipDuration && knownLabel ? (
+          <span className="font-semibold text-violet-100">{knownLabel}</span>
+        ) : null}
       </button>
     );
   }

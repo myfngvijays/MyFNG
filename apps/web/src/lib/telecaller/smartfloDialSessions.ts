@@ -245,16 +245,30 @@ export async function refreshDialSessionFromSmartflo(
   if (status === 'RINGING' && Date.now() - startedMs > 20_000) {
     const fromDate = new Date(startedMs - 60_000).toISOString().slice(0, 19).replace('T', ' ');
     const toDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const cdr = await fetchSmartfloCallRecords({
+    const dest91 = customer10 ? `91${customer10}` : null;
+    let cdr = await fetchSmartfloCallRecords({
       token,
       fromDate,
       toDate,
       limit: 25,
       timeoutMs: 8000,
+      destination: dest91,
     });
+    if (!cdr.ok || !cdr.results.length) {
+      cdr = await fetchSmartfloCallRecords({
+        token,
+        fromDate,
+        toDate,
+        limit: 25,
+        timeoutMs: 8000,
+        callerid: dest91,
+      });
+    }
     if (cdr.ok) {
       const hit = cdr.results.find((r) => {
-        const client = digitsLast10((r as any).client_number || (r as any).customer_number);
+        const client = digitsLast10(
+          (r as any).client_number || (r as any).customer_number || (r as any).destination,
+        );
         return client === customer10;
       });
       if (hit) {

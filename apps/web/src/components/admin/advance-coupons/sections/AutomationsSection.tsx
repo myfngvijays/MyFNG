@@ -278,12 +278,6 @@ export default function PcmAutomationsSection() {
         }
       />
 
-      {migrationRequired ? (
-        <div className="mb-4 pcm-card rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <strong>Migration required:</strong> Run <code className="bg-white px-1 rounded">database/158_coupon_automations.sql</code> in Supabase to enable saving automation rules. Templates are visible below — activate after migration.
-        </div>
-      ) : null}
-
       {error ? (
         <div className="mb-4 pcm-card rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>
       ) : null}

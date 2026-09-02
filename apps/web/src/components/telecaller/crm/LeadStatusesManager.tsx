@@ -391,7 +391,7 @@ export default function LeadStatusesManager({
         <p className="text-sm text-slate-500">{subtitle}</p>
       </div>
 
-      {warning ? (
+      {warning && !/database\/|\.sql/i.test(warning) ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {warning}
         </p>

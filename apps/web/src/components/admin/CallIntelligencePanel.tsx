@@ -433,11 +433,6 @@ export default function CallIntelligencePanel({
         </div>
       </div>
 
-      {data?.persist_warning ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          {data.persist_warning}
-        </div>
-      ) : null}
       <p className="text-[11px] text-slate-500">
         <strong>Deep AI</strong> recording sunta hai (transcript) phir SOP. <strong>Free</strong> sirf
         notes + lead fields — bina sunne.

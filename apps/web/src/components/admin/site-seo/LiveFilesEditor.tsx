@@ -88,7 +88,7 @@ export default function LiveFilesEditor({ compact = false }: Props) {
   if (!files.length) {
     return (
       <div className={`${t.cardMuted} p-8 text-center text-sm ${t.subtitle}`}>
-        Live files unavailable. Run migration `database/274_site_seo_live_files.sql`.
+        Live files unavailable.
       </div>
     );
   }

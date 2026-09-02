@@ -32,6 +32,8 @@ export type AnalyzeCallInput = {
   /** From service_leads.problem_description when available */
   problem_description?: string | null;
   service_type?: string | null;
+  /** Deep AI transcript (recording → text) */
+  call_transcript?: string | null;
 };
 
 export type SolutionAdequacy = 'PROPER' | 'PARTIAL' | 'MISSING' | 'NOT_NEEDED' | 'UNKNOWN';

@@ -112,7 +112,7 @@ export default function LeadBrainCard({
         similar: Array.isArray(json.similar) ? json.similar : [],
         warning: json.warning,
       });
-      if (json.warning) setError(json.warning);
+      if (json.warning && !/database\/|\.sql/i.test(String(json.warning))) setError(json.warning);
     } catch {
       setData(null);
     } finally {
@@ -142,7 +142,7 @@ export default function LeadBrainCard({
         similar: Array.isArray(json.similar) ? json.similar : [],
         warning: json.warning,
       });
-      if (json.warning) setError(json.warning);
+      if (json.warning && !/database\/|\.sql/i.test(String(json.warning))) setError(json.warning);
     } catch (e: any) {
       setError(e?.message || 'Failed');
     } finally {

@@ -373,21 +373,13 @@ export default function PushTemplatesSection() {
             }}
             disabled={fallback}
             className="push-btn-primary inline-flex items-center gap-1.5 text-xs disabled:opacity-50"
-            title={fallback ? 'Run SQL migrations first' : 'Create template'}
+            title={fallback ? 'Create unavailable' : 'Create template'}
           >
             <Plus className="w-3.5 h-3.5" />
             New Template
           </button>
         </div>
       </div>
-
-      {fallback ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Showing fallback templates. Run{' '}
-          <code className="bg-white px-1 rounded">database/219_push_notification_management.sql</code> in
-          Supabase to enable create/edit.
-        </div>
-      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

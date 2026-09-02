@@ -109,7 +109,7 @@ export default function SalesPlaybookPanel({
         </div>
       </div>
 
-      {error ? (
+      {error && !/database\/|\.sql/i.test(error) ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div>
       ) : null}
       {saved ? (
