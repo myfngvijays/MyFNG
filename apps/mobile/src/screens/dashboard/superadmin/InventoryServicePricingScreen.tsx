@@ -10,8 +10,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
-  BackHandler
+  BackHandler,
+  Share,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import CustomPicker from '../../../components/CustomPicker';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -28,6 +30,7 @@ export default function InventoryServicePricingScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   const availableClasses = ['DEFAULT', 'Hatchback', 'Sedan', 'SUV', 'Luxury', 'MUV'];
 
@@ -82,6 +85,236 @@ export default function InventoryServicePricingScreen({ navigation }: any) {
       setPrices({});
     }
   }, [selectedWorkshop, selectedClass, selectedZone]);
+
+  const escapeCsv = (value: any) => {
+    const s = value === null || value === undefined ? '' : String(value);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const buildCsv = (headers: string[], rows: any[][]) => {
+    const headerLine = headers.map(escapeCsv).join(',');
+    const body = rows.map((r) => r.map(escapeCsv).join(',')).join('\n');
+    return `${headerLine}\n${body}\n`;
+  };
+
+  const slugFile = (name: string) =>
+    name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '');
+
+  const fetchPagedRows = async (table: string, select: string, extra?: (q: any) => any) => {
+    const pageSize = 1000;
+    const rows: any[] = [];
+    for (let from = 0; ; from += pageSize) {
+      let q = supabase.from(table).select(select);
+      if (extra) q = extra(q);
+      const { data, error } = await q.range(from, from + pageSize - 1);
+      if (error) throw error;
+      const batch = data || [];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
+    }
+    return rows;
+  };
+
+  const shareCsv = async (csv: string, filename: string) => {
+    try {
+      const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+      if (dir) {
+        const path = `${dir}${filename}`;
+        await FileSystem.writeAsStringAsync(path, csv);
+        await Share.share({ url: path, title: filename, message: filename });
+        return;
+      }
+    } catch {
+      // fall through to text share
+    }
+    await Share.share({ message: csv.slice(0, 90000), title: filename });
+  };
+
+  const exportCurrentViewCsv = async () => {
+    if (!selectedZone || !selectedClass || !selectedWorkshop) {
+      Alert.alert('Export', 'Select Zone, Car Class and Workshop first.');
+      return;
+    }
+    if (!serviceTypes?.length) {
+      Alert.alert('Export', 'No service types loaded yet.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const zoneName = zones.find((z) => z.id === selectedZone)?.name || 'zone';
+      const className = selectedClass === 'DEFAULT' ? 'default' : selectedClass;
+      const workshopName =
+        selectedWorkshop === 'ALL'
+          ? 'all-workshops'
+          : workshops.find((w) => w.id === selectedWorkshop)?.name || 'workshop';
+      const headers = [
+        'zone_id',
+        'zone_name',
+        'class',
+        'workshop_id',
+        'workshop_name',
+        'service_type_id',
+        'service_name',
+        'custom_price',
+      ];
+      const sorted = [...serviceTypes].sort((a: any, b: any) =>
+        (a?.name || '').localeCompare(b?.name || ''),
+      );
+      const rows = sorted.map((st: any) => [
+        selectedZone || '',
+        zoneName,
+        selectedClass === 'DEFAULT' ? '' : selectedClass,
+        selectedWorkshop,
+        workshopName,
+        st.id,
+        st.name,
+        prices[st.id] || '',
+      ]);
+      const date = new Date().toISOString().slice(0, 10);
+      const filename = slugFile(
+        `service-pricing-${zoneName}-${className}-${workshopName}-${date}.csv`,
+      );
+      await shareCsv(buildCsv(headers, rows), filename);
+    } catch (e: any) {
+      Alert.alert('Export', e?.message || 'Failed to export this view.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportAllServicePricingCsv = async () => {
+    setExporting(true);
+    try {
+      const [priceRows, workshopRows, serviceRows, zoneRows, cityRows] = await Promise.all([
+        fetchPagedRows(
+          'workshop_service_pricing',
+          'workshop_id, service_type_id, custom_price, class, zone_id, city_id, is_active',
+          (q: any) => q.eq('is_active', true).order('workshop_id', { ascending: true }),
+        ),
+        fetchPagedRows('workshops', 'id, name'),
+        fetchPagedRows('service_types', 'id, name'),
+        fetchPagedRows('zones', 'id, name'),
+        fetchPagedRows('cities', 'id, name'),
+      ]);
+      const workshopMap = new Map((workshopRows || []).map((w: any) => [w.id, w.name || '']));
+      const serviceMap = new Map((serviceRows || []).map((s: any) => [s.id, s]));
+      const zoneMap = new Map((zoneRows || []).map((z: any) => [z.id, z.name || '']));
+      const cityMap = new Map((cityRows || []).map((c: any) => [c.id, c.name || '']));
+      const headers = [
+        'zone_id',
+        'zone_name',
+        'city_id',
+        'city_name',
+        'class',
+        'workshop_id',
+        'workshop_name',
+        'service_type_id',
+        'service_name',
+        'custom_price',
+      ];
+      const rows = (priceRows || []).map((row: any) => {
+        const st = serviceMap.get(row.service_type_id) || {};
+        return [
+          row.zone_id || '',
+          zoneMap.get(row.zone_id) || '',
+          row.city_id || '',
+          cityMap.get(row.city_id) || '',
+          row.class || '',
+          row.workshop_id || '',
+          workshopMap.get(row.workshop_id) || '',
+          row.service_type_id || '',
+          st.name || '',
+          row.custom_price ?? '',
+        ];
+      });
+      const date = new Date().toISOString().slice(0, 10);
+      await shareCsv(buildCsv(headers, rows), slugFile(`service-pricing-all-classes-${date}.csv`));
+    } catch (e: any) {
+      Alert.alert('Export', e?.message || 'Failed to export all pricing.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportWorkshopAllClassesCsv = async () => {
+    if (!selectedWorkshop || selectedWorkshop === 'ALL') {
+      Alert.alert('Export', 'Select one workshop first.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const workshopName = workshops.find((w) => w.id === selectedWorkshop)?.name || 'workshop';
+      const zoneName = selectedZone ? zones.find((z) => z.id === selectedZone)?.name || 'zone' : 'all-zones';
+      const [priceRows, workshopRows, serviceRows, zoneRows, cityRows] = await Promise.all([
+        fetchPagedRows(
+          'workshop_service_pricing',
+          'workshop_id, service_type_id, custom_price, class, zone_id, city_id, is_active',
+          (q: any) => {
+            let qq = q.eq('is_active', true).eq('workshop_id', selectedWorkshop);
+            if (selectedZone) qq = qq.eq('zone_id', selectedZone);
+            return qq.order('class', { ascending: true });
+          },
+        ),
+        fetchPagedRows('workshops', 'id, name'),
+        fetchPagedRows('service_types', 'id, name'),
+        fetchPagedRows('zones', 'id, name'),
+        fetchPagedRows('cities', 'id, name'),
+      ]);
+      const workshopMap = new Map((workshopRows || []).map((w: any) => [w.id, w.name || '']));
+      const serviceMap = new Map((serviceRows || []).map((s: any) => [s.id, s]));
+      const zoneMap = new Map((zoneRows || []).map((z: any) => [z.id, z.name || '']));
+      const cityMap = new Map((cityRows || []).map((c: any) => [c.id, c.name || '']));
+      const headers = [
+        'zone_id',
+        'zone_name',
+        'city_id',
+        'city_name',
+        'class',
+        'workshop_id',
+        'workshop_name',
+        'service_type_id',
+        'service_name',
+        'custom_price',
+      ];
+      const rows = (priceRows || []).map((row: any) => {
+        const st = serviceMap.get(row.service_type_id) || {};
+        return [
+          row.zone_id || '',
+          zoneMap.get(row.zone_id) || '',
+          row.city_id || '',
+          cityMap.get(row.city_id) || '',
+          row.class || '',
+          row.workshop_id || '',
+          workshopMap.get(row.workshop_id) || '',
+          row.service_type_id || '',
+          st.name || '',
+          row.custom_price ?? '',
+        ];
+      });
+      if (!rows.length) {
+        Alert.alert('Export', 'No pricing rows found for this workshop.');
+        return;
+      }
+      const date = new Date().toISOString().slice(0, 10);
+      await shareCsv(
+        buildCsv(headers, rows),
+        slugFile(`service-pricing-${workshopName}-${zoneName}-all-classes-${date}.csv`),
+      );
+    } catch (e: any) {
+      Alert.alert('Export', e?.message || 'Failed to export this workshop.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const promptExport = () => {
+    Alert.alert('Export CSV', 'Choose what to export', [
+      { text: 'This class', onPress: () => void exportCurrentViewCsv() },
+      { text: 'This workshop (all classes)', onPress: () => void exportWorkshopAllClassesCsv() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
 
   const fetchWorkshops = async () => {
     try {
@@ -316,6 +549,17 @@ export default function InventoryServicePricingScreen({ navigation }: any) {
           </TouchableOpacity>
         )}
         <Text style={styles.title}>Service Pricing</Text>
+        <TouchableOpacity
+          onPress={promptExport}
+          disabled={exporting}
+          style={styles.exportButton}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          ) : (
+            <Text style={styles.exportButtonText}>Export</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollView}>
@@ -440,9 +684,25 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   title: {
+    flex: 1,
     fontSize: 24,
     fontWeight: 'bold',
     color: '#111827',
+  },
+  exportButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  exportButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   scrollView: {
     flex: 1,

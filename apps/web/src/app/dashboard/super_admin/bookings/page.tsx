@@ -66,6 +66,15 @@ import {
   inferMisaOtpChannel,
 } from '@/lib/chatbot_v2/misaLeadSource';
 import type { MessageTrigger } from '@/lib/enquiry/messageTriggers';
+import {
+  ENQUIRY_CSV_COLUMNS,
+  enrichEnquiryMakes,
+  enrichEnquiryTags,
+  formatEnquiryTimestamp,
+  isValidEnquiryPhone,
+  mapEnquiryCsvRows,
+} from '@/lib/crm/normalizeEnquiryCsv';
+import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 type ServiceLead = Record<string, any>;
 type CsvRow = Record<string, string>;
@@ -1636,7 +1645,7 @@ function SuperAdminBookingsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ inserted: number; skipped: number; total: number; errors?: string[] } | null>(null);
 
-  const CSV_COLUMNS = ['phone_no', 'name', 'address', 'regdate', 'car_number', 'make', 'model'] as const;
+  const CSV_COLUMNS = ENQUIRY_CSV_COLUMNS;
 
   const splitCsvLine = (line: string, sep: string): string[] => {
     const fields: string[] = [];
@@ -1671,9 +1680,9 @@ function SuperAdminBookingsPage() {
   const parseCsv = (text: string): CsvRow[] => {
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length < 2) return [];
-    const headerLine = lines[0];
+    const headerLine = lines[0].replace(/^\uFEFF/, '');
     const sep = headerLine.includes('\t') ? '\t' : ',';
-    const headers = splitCsvLine(headerLine, sep).map((h) => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+    const headers = splitCsvLine(headerLine, sep).map((h) => h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
     const expectedCols = headers.length;
 
     return lines.slice(1).map((line) => {
@@ -1681,7 +1690,7 @@ function SuperAdminBookingsPage() {
 
       // If there are extra columns (unquoted commas in data), merge overflow into the last known text column
       if (sep === ',' && values.length > expectedCols) {
-        const phoneIdx = headers.indexOf('phone_no');
+        const phoneIdx = Math.max(headers.indexOf('phone_no'), headers.indexOf('phone'));
         const nameIdx = headers.indexOf('name');
         const addressIdx = headers.indexOf('address');
         const mergeIdx = addressIdx >= 0 ? addressIdx : nameIdx >= 0 ? nameIdx : phoneIdx >= 0 ? phoneIdx + 1 : 1;
@@ -1704,11 +1713,27 @@ function SuperAdminBookingsPage() {
     setUploadResult(null);
     setCsvFileName(file.name);
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const text = ev.target?.result as string;
-      const rows = parseCsv(text);
-      setCsvRows(rows);
-      if (rows.length === 0) toast.error('No data rows found in the file');
+      try {
+        const supabase = getBrowserClient();
+        const [{ data: tagRows }] = await Promise.all([
+          supabase.from('crm_lead_tags').select('name'),
+        ]);
+        const catalogTags = (tagRows || []).map((t: any) => String(t.name || '').trim()).filter(Boolean);
+        let next = mapEnquiryCsvRows(parseCsv(text), catalogTags);
+        next = await enrichEnquiryMakes(next, async () => {
+          const { data } = await supabase.from('car_models').select('make, model_name').eq('is_active', true);
+          return data || [];
+        });
+        next = await enrichEnquiryTags(next, async () => catalogTags);
+        setCsvRows(next);
+        if (next.length === 0) toast.error('No data rows found in the file');
+      } catch {
+        const next = mapEnquiryCsvRows(parseCsv(text));
+        setCsvRows(next);
+        if (next.length === 0) toast.error('No data rows found in the file');
+      }
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -1741,7 +1766,7 @@ function SuperAdminBookingsPage() {
 
       const result = { inserted: totalInserted, skipped: totalSkipped, total: csvRows.length, errors: allErrors.length > 0 ? allErrors : undefined };
       setUploadResult(result);
-      toast.success(`${totalInserted} records uploaded successfully!`);
+          toast.success(`${totalInserted} leads added to Bookings & Leads`);
     } catch (err: any) {
       toast.error(err.message || 'Upload failed');
     } finally {
@@ -3459,7 +3484,7 @@ function SuperAdminBookingsPage() {
                   <div className="text-center">
                     <p className="text-sm font-semibold text-gray-700">Click to upload CSV file</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Columns: phone_no, name, address, regdate, car_number, make, model
+                      TeleCRM export: Phone, CARNO, Model (make inferred), LEADTAG matched to Incoming Sarv Call / Website / App Booking. Created &amp; modified times and packagerateaccess are kept. Lead link, lead id and workshop shortAddress are ignored.
                     </p>
                   </div>
                 </button>
@@ -3490,6 +3515,22 @@ function SuperAdminBookingsPage() {
                     </div>
                   </div>
 
+                  {(() => {
+                    const badPhones = csvRows.filter((r) => !isValidEnquiryPhone(r.phone_no));
+                    if (!badPhones.length) return null;
+                    return (
+                      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        {badPhones.length} row{badPhones.length > 1 ? 's' : ''} have invalid phone
+                        {badPhones.slice(0, 3).map((r) => (
+                          <span key={`${r.name}-${r.phone_no}`}>
+                            {' '}· {r.name || 'row'}: <span className="font-mono">{r.phone_no || '(empty)'}</span> ({String(r.phone_no || '').length} digits)
+                          </span>
+                        ))}
+                        . Need 10-digit Indian mobile (starts 6–9), or 91 + 10 digits. Excel Phone column should be Text.
+                      </div>
+                    );
+                  })()}
+
                   {uploadResult && (
                     <div className={`flex items-start gap-3 p-4 rounded-xl mb-4 ${uploadResult.errors ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
                       {uploadResult.errors ? (
@@ -3500,7 +3541,7 @@ function SuperAdminBookingsPage() {
                       <div className="text-sm">
                         <p className="font-semibold text-gray-800">
                           {uploadResult.inserted} / {uploadResult.total} records inserted
-                          {uploadResult.skipped > 0 && <span className="text-yellow-700"> ({uploadResult.skipped} skipped — missing phone_no)</span>}
+                          {uploadResult.skipped > 0 && <span className="text-yellow-700"> ({uploadResult.skipped} skipped — missing phone)</span>}
                         </p>
                         {uploadResult.errors?.map((err, i) => (
                           <p key={i} className="text-red-600 text-xs mt-1">{err}</p>
@@ -3524,11 +3565,24 @@ function SuperAdminBookingsPage() {
                         {csvRows.slice(0, 100).map((row, idx) => (
                           <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
-                            {CSV_COLUMNS.map((col) => (
-                              <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap max-w-[200px] truncate">
-                                {row[col] || <span className="text-gray-300">-</span>}
-                              </td>
-                            ))}
+                            {CSV_COLUMNS.map((col) => {
+                              const raw = row[col] || '';
+                              const display =
+                                (col === 'created_at' || col === 'updated_at') && raw
+                                  ? formatEnquiryTimestamp(raw)
+                                  : raw;
+                              const invalidPhone = col === 'phone_no' && !isValidEnquiryPhone(row.phone_no);
+                              return (
+                                <td
+                                  key={col}
+                                  className={`px-3 py-2 whitespace-nowrap max-w-[220px] truncate ${
+                                    invalidPhone ? 'text-red-600 font-semibold' : 'text-gray-700'
+                                  }`}
+                                >
+                                  {display || <span className="text-gray-300">-</span>}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                       </tbody>

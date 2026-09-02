@@ -27,6 +27,7 @@ export default function ServiceTypePricingPage() {
 
   // CSV Import/Export Modal
   const [showCsvModal, setShowCsvModal] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [csvOnlyOverrides, setCsvOnlyOverrides] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState<string>('');
@@ -563,15 +564,36 @@ export default function ServiceTypePricingPage() {
 
   const isBulkMode = selectedWorkshop === 'ALL' && selectedZone && selectedClass;
 
+  const fetchPagedRows = async (table: string, select: string, extra?: (q: any) => any) => {
+    const pageSize = 1000;
+    const rows: any[] = [];
+    for (let from = 0; ; from += pageSize) {
+      let q = supabase.from(table).select(select);
+      if (extra) q = extra(q);
+      const { data, error } = await q.range(from, from + pageSize - 1);
+      if (error) throw error;
+      const batch = data || [];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
+    }
+    return rows;
+  };
+
+  const slugFile = (name: string) =>
+    name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '');
+
   const exportServicePricingCsv = () => {
     setCsvError('');
     setCsvInfo('');
+    setShowExportMenu(false);
     if (!selectedZone || !selectedClass || !selectedWorkshop) {
       setCsvError('Please select Zone, Car Class and Workshop first.');
+      setShowCsvModal(true);
       return;
     }
     if (!serviceTypes?.length) {
       setCsvError('No service types loaded yet.');
+      setShowCsvModal(true);
       return;
     }
 
@@ -584,9 +606,12 @@ export default function ServiceTypePricingPage() {
 
     const headers = [
       'zone_id',
+      'zone_name',
       'city_id',
+      'city_name',
       'class',
       'workshop_id',
+      'workshop_name',
       'service_type_id',
       'service_name',
       'hsn_code',
@@ -600,9 +625,12 @@ export default function ServiceTypePricingPage() {
 
     const rows = selectedRows.map((st: any) => [
       selectedZone || '',
+      zoneName,
       selectedCity || '',
+      selectedCity ? cityName : '',
       selectedClass === 'DEFAULT' ? '' : selectedClass,
       selectedWorkshop,
+      workshopName,
       st.id,
       st.name,
       st.hsn_sac_code || '',
@@ -611,11 +639,213 @@ export default function ServiceTypePricingPage() {
 
     const csv = buildCsv(headers, rows);
     const date = new Date().toISOString().slice(0, 10);
-    const filename = `service-pricing-${zoneName}-${cityName}-${className}-${workshopName}-${date}.csv`
-      .replace(/\s+/g, '-')
-      .replace(/[^a-zA-Z0-9._-]/g, '');
+    const filename = slugFile(`service-pricing-${zoneName}-${cityName}-${className}-${workshopName}-${date}.csv`);
     downloadTextFile(csv, filename);
-    setCsvInfo(`Downloaded ${rows.length} rows.`);
+    setCsvInfo(`Downloaded ${rows.length} rows for this view.`);
+  };
+
+  const pricingCsvHeaders = [
+    'zone_id',
+    'zone_name',
+    'city_id',
+    'city_name',
+    'class',
+    'workshop_id',
+    'workshop_name',
+    'service_type_id',
+    'service_name',
+    'hsn_code',
+    'custom_price',
+  ];
+
+  const mapPricingRows = (
+    priceRows: any[],
+    maps: {
+      workshopMap: Map<string, string>;
+      serviceMap: Map<string, any>;
+      zoneMap: Map<string, string>;
+      cityMap: Map<string, string>;
+    },
+  ) =>
+    (priceRows || []).map((row: any) => {
+      const st = maps.serviceMap.get(row.service_type_id) || {};
+      return [
+        row.zone_id || '',
+        maps.zoneMap.get(row.zone_id) || '',
+        row.city_id || '',
+        maps.cityMap.get(row.city_id) || '',
+        row.class || '',
+        row.workshop_id || '',
+        maps.workshopMap.get(row.workshop_id) || '',
+        row.service_type_id || '',
+        st.name || '',
+        st.hsn_sac_code || '',
+        row.custom_price ?? '',
+      ];
+    });
+
+  const loadPricingLookupMaps = async () => {
+    const [workshopRows, serviceRows, zoneRows, cityRows] = await Promise.all([
+      fetchPagedRows('workshops', 'id, name'),
+      fetchPagedRows('service_types', 'id, name, hsn_sac_code'),
+      fetchPagedRows('zones', 'id, name'),
+      fetchPagedRows('cities', 'id, name'),
+    ]);
+    return {
+      workshopMap: new Map((workshopRows || []).map((w: any) => [w.id, w.name || ''])),
+      serviceMap: new Map((serviceRows || []).map((s: any) => [s.id, s])),
+      zoneMap: new Map((zoneRows || []).map((z: any) => [z.id, z.name || ''])),
+      cityMap: new Map((cityRows || []).map((c: any) => [c.id, c.name || ''])),
+    };
+  };
+
+  const exportWorkshopAllClassesCsv = async () => {
+    setCsvError('');
+    setCsvInfo('');
+    setShowExportMenu(false);
+    if (!selectedWorkshop || selectedWorkshop === 'ALL') {
+      setCsvError('Select one workshop first. This export is for a single workshop, all car classes.');
+      return;
+    }
+    setCsvBusy(true);
+    try {
+      const workshopName = workshops.find((w) => w.id === selectedWorkshop)?.name || 'workshop';
+      const zoneName = selectedZone ? zones.find((z) => z.id === selectedZone)?.name || 'zone' : 'all-zones';
+      const cityName = selectedCity ? cities.find((c) => c.id === selectedCity)?.name || 'city' : 'all-cities';
+
+      const [priceRowsRaw, maps] = await Promise.all([
+        fetchPagedRows(
+          'workshop_service_pricing',
+          'workshop_id, service_type_id, custom_price, class, zone_id, city_id, is_active',
+          (q: any) => {
+            let qq = q.eq('is_active', true).eq('workshop_id', selectedWorkshop);
+            if (selectedZone) qq = qq.eq('zone_id', selectedZone);
+            return qq.order('class', { ascending: true });
+          },
+        ),
+        loadPricingLookupMaps(),
+      ]);
+
+      const priceRows = selectedCity
+        ? (priceRowsRaw || []).filter((r: any) => !r.city_id || r.city_id === selectedCity)
+        : priceRowsRaw;
+
+      const rows = mapPricingRows(priceRows, maps);
+      if (!rows.length) {
+        throw new Error('No pricing rows found for this workshop with the selected zone/city.');
+      }
+
+      const csv = buildCsv(pricingCsvHeaders, rows);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadTextFile(
+        csv,
+        slugFile(`service-pricing-${workshopName}-${zoneName}-${cityName}-all-classes-${date}.csv`),
+      );
+      setCsvInfo(
+        `Downloaded ${rows.length} rows for ${workshopName} — all car classes${selectedCity ? ` in ${cityName}` : ''}.`,
+      );
+    } catch (e: any) {
+      setCsvError(e?.message || 'Failed to export this workshop.');
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
+  const exportAllServicePricingCsv = async () => {
+    setCsvError('');
+    setCsvInfo('');
+    setShowExportMenu(false);
+    setCsvBusy(true);
+    try {
+      const [priceRows, workshopRows, serviceRows, zoneRows, cityRows] = await Promise.all([
+        fetchPagedRows(
+          'workshop_service_pricing',
+          'workshop_id, service_type_id, custom_price, class, zone_id, city_id, is_active',
+          (q: any) => q.eq('is_active', true).order('workshop_id', { ascending: true }),
+        ),
+        fetchPagedRows('workshops', 'id, name'),
+        fetchPagedRows('service_types', 'id, name, hsn_sac_code'),
+        fetchPagedRows('zones', 'id, name'),
+        fetchPagedRows('cities', 'id, name'),
+      ]);
+
+      const workshopMap = new Map((workshopRows || []).map((w: any) => [w.id, w.name || '']));
+      const serviceMap = new Map((serviceRows || []).map((s: any) => [s.id, s]));
+      const zoneMap = new Map((zoneRows || []).map((z: any) => [z.id, z.name || '']));
+      const cityMap = new Map((cityRows || []).map((c: any) => [c.id, c.name || '']));
+
+      const headers = [
+        'zone_id',
+        'zone_name',
+        'city_id',
+        'city_name',
+        'class',
+        'workshop_id',
+        'workshop_name',
+        'service_type_id',
+        'service_name',
+        'hsn_code',
+        'custom_price',
+      ];
+
+      const rows = (priceRows || []).map((row: any) => {
+        const st = serviceMap.get(row.service_type_id) || {};
+        return [
+          row.zone_id || '',
+          zoneMap.get(row.zone_id) || '',
+          row.city_id || '',
+          cityMap.get(row.city_id) || '',
+          row.class || '',
+          row.workshop_id || '',
+          workshopMap.get(row.workshop_id) || '',
+          row.service_type_id || '',
+          st.name || '',
+          st.hsn_sac_code || '',
+          row.custom_price ?? '',
+        ];
+      });
+
+      const csv = buildCsv(headers, rows);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadTextFile(csv, slugFile(`service-pricing-all-classes-${date}.csv`));
+      setCsvInfo(`Downloaded ${rows.length} pricing rows across all zones, cities, classes and workshops.`);
+    } catch (e: any) {
+      setCsvError(e?.message || 'Failed to export all pricing.');
+      setShowCsvModal(true);
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
+  const exportCarModelsCsv = async () => {
+    setCsvError('');
+    setCsvInfo('');
+    setShowExportMenu(false);
+    setCsvBusy(true);
+    try {
+      const cars = await fetchPagedRows(
+        'car_models',
+        'id, make, model_name, class, is_active',
+        (q: any) => q.order('make', { ascending: true }),
+      );
+      const headers = ['id', 'make', 'model_name', 'class', 'is_active'];
+      const rows = (cars || []).map((c: any) => [
+        c.id || '',
+        c.make || '',
+        c.model_name || '',
+        c.class || '',
+        c.is_active === false ? 'false' : 'true',
+      ]);
+      const csv = buildCsv(headers, rows);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadTextFile(csv, slugFile(`car-models-classes-${date}.csv`));
+      setCsvInfo(`Downloaded ${rows.length} car models with their pricing class.`);
+    } catch (e: any) {
+      setCsvError(e?.message || 'Failed to export car models.');
+      setShowCsvModal(true);
+    } finally {
+      setCsvBusy(false);
+    }
   };
 
   const applyImportedCsv = async (file: File) => {
@@ -785,6 +1015,60 @@ export default function ServiceTypePricingPage() {
               <span className="sm:hidden">Apply All ({filteredWorkshops.length})</span>
             </button>
           )}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu((v) => !v)}
+              disabled={csvBusy}
+              className="btn btn-outline bg-white flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+              title="Export pricing CSV"
+            >
+              {csvBusy ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+              <span className="hidden sm:inline">Export</span>
+              <span className="sm:hidden">Export</span>
+            </button>
+            {showExportMenu && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-40 cursor-default"
+                  aria-label="Close export menu"
+                  onClick={() => setShowExportMenu(false)}
+                />
+                <div className="absolute right-0 mt-1 z-50 w-72 rounded-xl border border-gray-200 bg-white shadow-lg py-1">
+                  <button
+                    type="button"
+                    onClick={exportServicePricingCsv}
+                    disabled={!selectedZone || !selectedClass || !selectedWorkshop || !serviceTypes?.length}
+                    className="w-full text-left px-3 py-2 text-xs sm:text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    This view (one class)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportWorkshopAllClassesCsv()}
+                    disabled={!selectedWorkshop || selectedWorkshop === 'ALL'}
+                    className="w-full text-left px-3 py-2 text-xs sm:text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    This workshop — all classes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportAllServicePricingCsv()}
+                    className="w-full text-left px-3 py-2 text-xs sm:text-sm hover:bg-gray-50"
+                  >
+                    All workshops (every class)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportCarModelsCsv()}
+                    className="w-full text-left px-3 py-2 text-xs sm:text-sm hover:bg-gray-50"
+                  >
+                    Car models &amp; classes
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => {
               setCsvError('');
@@ -793,11 +1077,11 @@ export default function ServiceTypePricingPage() {
             }}
             disabled={!selectedZone || !selectedClass || !selectedWorkshop}
             className="btn btn-outline bg-white flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-            title="Export or Import pricing via CSV"
+            title="Import pricing via CSV"
           >
-            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Import/Export CSV</span>
-            <span className="sm:hidden">CSV</span>
+            <Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Import CSV</span>
+            <span className="sm:hidden">Import</span>
           </button>
           <button 
             onClick={handleSave}
@@ -810,6 +1094,17 @@ export default function ServiceTypePricingPage() {
           </button>
         </div>
       </div>
+
+      {csvError && !showCsvModal && (
+        <div className="mb-3 text-xs sm:text-sm whitespace-pre-line text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+          {csvError}
+        </div>
+      )}
+      {csvInfo && !showCsvModal && (
+        <div className="mb-3 text-xs sm:text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+          {csvInfo}
+        </div>
+      )}
 
       {/* CSV Import/Export Modal */}
       {showCsvModal && (
@@ -841,24 +1136,52 @@ export default function ServiceTypePricingPage() {
             </div>
 
             <div className="p-4 sm:p-5 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={csvOnlyOverrides}
-                    onChange={(e) => setCsvOnlyOverrides(e.target.checked)}
-                    className="rounded border-gray-300"
-                  />
-                  Export only overridden prices
-                </label>
-                <button
-                  onClick={exportServicePricingCsv}
-                  disabled={csvBusy || !serviceTypes?.length}
-                  className="btn btn-secondary flex items-center gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Download CSV
-                </button>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={csvOnlyOverrides}
+                      onChange={(e) => setCsvOnlyOverrides(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    Export only overridden prices (this view)
+                  </label>
+                  <button
+                    onClick={exportServicePricingCsv}
+                    disabled={csvBusy || !serviceTypes?.length}
+                    className="btn btn-secondary flex items-center gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    This view
+                  </button>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={() => void exportWorkshopAllClassesCsv()}
+                    disabled={csvBusy || !selectedWorkshop || selectedWorkshop === 'ALL'}
+                    className="btn btn-outline bg-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                  >
+                    {csvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    This workshop — all classes
+                  </button>
+                  <button
+                    onClick={() => void exportAllServicePricingCsv()}
+                    disabled={csvBusy}
+                    className="btn btn-outline bg-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                  >
+                    {csvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    All workshops
+                  </button>
+                  <button
+                    onClick={() => void exportCarModelsCsv()}
+                    disabled={csvBusy}
+                    className="btn btn-outline bg-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Car models
+                  </button>
+                </div>
               </div>
 
               <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 sm:p-4">
