@@ -10,7 +10,9 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import BeforeInspectionUpload from '@/components/mechanic/BeforeInspectionUpload';
+import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
 import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
+import WorkVideosUpload from '@/components/mechanic/WorkVideosUpload';
 import { WorkshopPageHeader, WorkshopPageShell, WorkshopEmpty } from '@/components/workshop/WorkshopUi';
 
 export default function ManageJobPage() {
@@ -40,6 +42,7 @@ export default function ManageJobPage() {
   const [extraWorkReason, setExtraWorkReason] = useState('');
   const [extraWorkCost, setExtraWorkCost] = useState('');
   const [extraWorkCategory, setExtraWorkCategory] = useState('PARTS_REPLACEMENT');
+  const [extraWorkOtherCategory, setExtraWorkOtherCategory] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
   
   const [processing, setProcessing] = useState(false);
@@ -181,6 +184,11 @@ export default function ManageJobPage() {
       return;
     }
 
+    if (extraWorkCategory === 'OTHER' && !extraWorkOtherCategory.trim()) {
+      toast.error('Please specify the other category');
+      return;
+    }
+
     const cost = parseFloat(extraWorkCost);
     if (isNaN(cost) || cost <= 0) {
       toast.error('Please enter a valid cost');
@@ -198,6 +206,7 @@ export default function ManageJobPage() {
           reason: extraWorkReason,
           estimated_cost: cost,
           category: extraWorkCategory,
+          other_category: extraWorkCategory === 'OTHER' ? extraWorkOtherCategory.trim() : undefined,
           is_urgent: isUrgent
         })
       });
@@ -214,6 +223,8 @@ export default function ManageJobPage() {
       setExtraWorkDescription('');
       setExtraWorkReason('');
       setExtraWorkCost('');
+      setExtraWorkCategory('PARTS_REPLACEMENT');
+      setExtraWorkOtherCategory('');
       setIsUrgent(false);
     } catch (error) {
       console.error('Error:', error);
@@ -394,32 +405,15 @@ export default function ManageJobPage() {
               </p>
             </div>
             
-            <div className="px-4 pb-4">
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 mb-4">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-yellow-800 mb-1">
-                    Completion Requirements:
-                  </p>
-                  <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
-                    <li>Minimum 6 after service photos (Front, Rear, Left, Right, Engine Bay, Old Parts)</li>
-                    <li>Final odometer reading must be captured</li>
-                    <li>All checklist items must be completed</li>
-                    <li>Parts used must be recorded in system</li>
-                    <li>Work notes must be entered</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            
-            <AfterServiceUpload
-              leadId={jobId}
-              jobId={job.id}
-              onUploadComplete={() => {
-                fetchJobDetails();
-              }}
-            />
+            <div className="px-4 pb-4 space-y-4">
+              <WorkVideosUpload leadId={jobId} onUploadComplete={() => fetchJobDetails()} />
+              <AfterServiceUpload
+                leadId={jobId}
+                jobId={job.id}
+                onUploadComplete={() => {
+                  fetchJobDetails();
+                }}
+              />
             </div>
           </div>
         )}
@@ -487,20 +481,21 @@ export default function ManageJobPage() {
           </div>
         )}
 
-        {/* Pickup/Visit Photos Section - Show if job not started */}
-        {canStart && job && (
+        {/* Pickup / Before photos — stay available after job start */}
+        {(canStart || canComplete) && job && (
           <div className="overflow-hidden rounded-2xl border-2 border-blue-200 bg-white shadow-sm">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 mb-4">
               <h3 className="text-xl font-bold flex items-center gap-2">
                 <Camera className="w-6 h-6" />
-                Pickup/Visit Photos (Mandatory)
+                Pickup / Before Photos
               </h3>
               <p className="text-sm text-blue-100 mt-1">
-                Complete all required photos before starting repair work
+                Vehicle condition photos. Pickup boy uploads count here too — mechanic can add missing slots.
               </p>
             </div>
             
             <div className="px-4 pb-4">
+            {canStart ? (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 mb-4">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
@@ -515,8 +510,9 @@ export default function ManageJobPage() {
                     <li>All photos must be uploaded before "Start Job" button is enabled</li>
                   </ul>
                 </div>
-          </div>
-        </div>
+              </div>
+            </div>
+            ) : null}
             
             <BeforeInspectionUpload
               leadId={jobId}
@@ -525,6 +521,30 @@ export default function ManageJobPage() {
                 fetchJobDetails();
               }}
             />
+            </div>
+          </div>
+        )}
+
+        {/* During service photos */}
+        {canComplete && job && (
+          <div className="overflow-hidden rounded-2xl border-2 border-orange-200 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white p-4 mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Camera className="w-6 h-6" />
+                During Service Photos
+              </h3>
+              <p className="text-sm text-orange-50 mt-1">
+                Upload while work is in progress — oil drain/pour, filters, brakes, parts.
+              </p>
+            </div>
+            <div className="px-4 pb-4">
+              <DuringServiceUpload
+                leadId={jobId}
+                jobId={job.id}
+                onUploadComplete={() => {
+                  fetchJobDetails();
+                }}
+              />
             </div>
           </div>
         )}
@@ -649,13 +669,16 @@ export default function ManageJobPage() {
 
         {/* Additional Job Request Modal */}
         {showExtraWorkModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-bold mb-4 text-orange-600">Request Additional Job Approval</h3>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto shadow-xl">
+              <h3 className="text-lg sm:text-xl font-bold mb-1 text-[#023D95]">Request additional job</h3>
+              <p className="text-xs sm:text-sm text-gray-500 mb-4">
+                Job stays on hold until advisor approves or rejects this request.
+              </p>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                     Description <span className="text-red-500">*</span>
                   </label>
                   <textarea
@@ -669,7 +692,7 @@ export default function ManageJobPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                     Reason <span className="text-red-500">*</span>
                   </label>
                   <textarea
@@ -683,15 +706,15 @@ export default function ManageJobPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Estimated Cost (₹) <span className="text-red-500">*</span>
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                    Estimated cost (₹) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     value={extraWorkCost}
                     onChange={(e) => setExtraWorkCost(e.target.value)}
                     className="input w-full"
-                    placeholder="0.00"
+                    placeholder="e.g. 1500"
                     min="0"
                     step="0.01"
                     required
@@ -699,12 +722,15 @@ export default function ManageJobPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                     Category
                   </label>
                   <select
                     value={extraWorkCategory}
-                    onChange={(e) => setExtraWorkCategory(e.target.value)}
+                    onChange={(e) => {
+                      setExtraWorkCategory(e.target.value);
+                      if (e.target.value !== 'OTHER') setExtraWorkOtherCategory('');
+                    }}
                     className="input w-full"
                   >
                     <option value="PARTS_REPLACEMENT">Parts Replacement</option>
@@ -715,34 +741,51 @@ export default function ManageJobPage() {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {extraWorkCategory === 'OTHER' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                      Specify other category <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={extraWorkOtherCategory}
+                      onChange={(e) => setExtraWorkOtherCategory(e.target.value)}
+                      className="input w-full"
+                      placeholder="e.g. Wheel alignment, AC gas refill"
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                <label htmlFor="urgent" className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 cursor-pointer">
                   <input
                     type="checkbox"
                     id="urgent"
                     checked={isUrgent}
                     onChange={(e) => setIsUrgent(e.target.checked)}
-                    className="w-4 h-4"
+                    className="mt-0.5 w-4 h-4 accent-[#004AAD]"
                   />
-                  <label htmlFor="urgent" className="text-sm font-medium text-gray-700">
-                    Mark as Urgent (requires immediate supervisor approval)
-                  </label>
-                </div>
+                  <span>
+                    <span className="block text-sm font-semibold text-gray-800">Mark as urgent</span>
+                    <span className="block text-xs text-gray-500">Needs immediate advisor approval</span>
+                  </span>
+                </label>
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleRequestExtraWork}
-                  disabled={processing}
-                  className="btn-secondary bg-orange-600 hover:bg-orange-700 text-white flex-1"
-                >
-                  {processing ? 'Submitting...' : 'Submit Request'}
-                </button>
+              <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 mt-6">
                 <button
                   onClick={() => setShowExtraWorkModal(false)}
                   disabled={processing}
                   className="btn-secondary flex-1"
                 >
                   Cancel
+                </button>
+                <button
+                  onClick={handleRequestExtraWork}
+                  disabled={processing}
+                  className="flex-1 rounded-lg bg-[#004AAD] hover:bg-[#003A88] text-white font-semibold py-2.5 px-4 disabled:opacity-50"
+                >
+                  {processing ? 'Submitting...' : 'Submit request'}
                 </button>
               </div>
             </div>

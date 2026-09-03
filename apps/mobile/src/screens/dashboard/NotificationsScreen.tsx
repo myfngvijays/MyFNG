@@ -97,6 +97,61 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
     const actionUrl = notification.action_url || '';
     const kind = (notification as any)?.metadata?.kind;
     const type = String((notification as any)?.type || '');
+    const extraWorkType = type === 'EXTRA_WORK_APPROVED' || type === 'EXTRA_WORK_REJECTED' || type === 'EXTRA_WORK_REQUESTED';
+
+    const isPendingQcNotif =
+      String(kind || '') === 'PENDING_QC' ||
+      String(actionUrl).includes('/workshop-advisor/jobs/') &&
+        String(actionUrl).includes('/review') ||
+      String(actionUrl).includes('/workshop-advisor/qc-queue');
+
+    if (leadId && isPendingQcNotif) {
+      try {
+        navigation.navigate('QCReview', { jobId: leadId });
+        return;
+      } catch {
+        /* fallthrough */
+      }
+      try {
+        navigation.navigate('QCCheck');
+        return;
+      } catch {
+        /* fallthrough */
+      }
+    }
+
+    if (leadId && extraWorkType) {
+      try {
+        navigation.navigate('JobDetail', { jobId: leadId, leadId, tab: 'extra' });
+        return;
+      } catch {
+        /* fallthrough */
+      }
+      try {
+        navigation.navigate('ExtraWorkApproval');
+        return;
+      } catch {
+        /* fallthrough */
+      }
+    }
+
+    if (
+      leadId &&
+      (String(actionUrl).includes('workshop_mechanic') ||
+        [
+          'QC_APPROVED',
+          'QC_REJECTED',
+          'JOB_ASSIGNED',
+          'JOB_COMPLETED',
+        ].includes(type))
+    ) {
+      try {
+        navigation.navigate('JobDetail', { jobId: leadId, leadId });
+        return;
+      } catch {
+        /* fallthrough */
+      }
+    }
 
     if (
       leadId &&
@@ -225,16 +280,24 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
   return (
     <SafeAreaView style={styles.safe} edges={hideChrome ? ['left', 'right'] : ['top', 'left', 'right']}>
       {hideChrome ? (
-        unreadCount > 0 ? (
-          <View style={styles.header}>
-            <View style={{ width: 36 }} />
-            <View style={{ flex: 1 }} />
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation?.goBack?.()}
+            style={styles.backBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="chevron-back" size={26} color={COLORS.gray[800]} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          {unreadCount > 0 ? (
             <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.markAll}>
               <Ionicons name="checkmark-done" size={18} color={COLORS.primary} />
               <Text style={styles.markAllText}>Mark all</Text>
             </TouchableOpacity>
-          </View>
-        ) : null
+          ) : (
+            <View style={{ width: 72 }} />
+          )}
+        </View>
       ) : (
       <View style={styles.header}>
         <TouchableOpacity

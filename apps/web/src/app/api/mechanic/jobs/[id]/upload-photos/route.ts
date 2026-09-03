@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 // Configure route for large file uploads (videos can be large)
 export const dynamic = 'force-dynamic';
@@ -161,13 +162,14 @@ export async function POST(
       }, { status: 404 });
     }
 
-    // Get job_id from lead_id
-    // Use maybeSingle() to handle cases where job might not exist yet
-    let { data: jobData, error: jobError } = await supabase
+    // Get job_id from lead_id (limit 1 — duplicate rows must not 500)
+    const { data: jobRows, error: jobError } = await supabase
       .from('mechanic_jobs')
       .select('id, mechanic_id')
       .eq('lead_id', leadId)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
+    let jobData = jobRows?.[0] || null;
 
     if (jobError) {
       console.error('Error fetching mechanic_jobs:', jobError);
@@ -180,13 +182,15 @@ export async function POST(
     // Auto-create mechanic_jobs record if it doesn't exist but mechanic is assigned
     if (!jobData && leadData.assigned_mechanic_id) {
       console.log('Auto-creating mechanic_jobs record for lead:', leadId);
-      
-      const { data: newJobData, error: createError } = await supabase
+      const { supabaseAdmin } = getSupabaseAdmin();
+      const writer = supabaseAdmin || supabase;
+
+      const { data: newJobData, error: createError } = await writer
         .from('mechanic_jobs')
         .insert({
           lead_id: leadId,
           mechanic_id: leadData.assigned_mechanic_id,
-          assigned_by: userProfile.id, // Current user creating the record
+          assigned_by: userProfile.id,
           mechanic_status: 'ASSIGNED',
           job_priority: 'NORMAL',
         })
@@ -228,7 +232,7 @@ export async function POST(
     // Mechanics MUST be able to upload BEFORE / DURING / AFTER as per the post-job workflow.
     // We still keep strong validation so mechanics can only upload appropriate types for each category.
     if (isAssignedMechanic && !isSuperAdmin && roleCode !== 'WORKSHOP_SUPERVISOR') {
-      const allowedCategoriesForMechanic = ['before', 'during', 'after'];
+      const allowedCategoriesForMechanic = ['before', 'during', 'after', 'extra', 'after_video'];
 
       // If partId is provided, allow any category + dynamic type (parts used photos).
       // Otherwise enforce category+type mapping.
@@ -276,10 +280,22 @@ export async function POST(
             'AFTER_NEW_PARTS',
             'AFTER_ODOMETER',
           ],
+          extra: [],
+          after_video: [],
         };
 
         const allowedTypes = allowedTypesByCategory[String(photoCategory)] || [];
-        if (allowedTypes.length > 0 && !allowedTypes.includes(String(photoType))) {
+        const typeStr = String(photoType);
+        const extraAllowed =
+          String(photoCategory) === 'extra' && typeStr.toUpperCase().startsWith('EXTRA_WORK');
+        const afterVideoAllowed =
+          String(photoCategory) === 'after_video' && typeStr.toUpperCase().startsWith('AFTER_VIDEO');
+        if (
+          allowedTypes.length > 0 &&
+          !allowedTypes.includes(typeStr) &&
+          !extraAllowed &&
+          !afterVideoAllowed
+        ) {
           return NextResponse.json(
             {
               error: 'Invalid photo type for the selected category',
@@ -408,12 +424,20 @@ export async function POST(
       }
     }
 
+    // DB CHECK only allows before/during/after. Extra-work proof and after
+    // videos are stored as `after` with EXTRA_WORK-* / AFTER_VIDEO-* types.
+    const requestedCategory = String(photoCategory || '');
+    const dbCategory =
+      requestedCategory === 'extra' || requestedCategory === 'after_video'
+        ? 'after'
+        : requestedCategory;
+
     // Save photo record to database
     const photoRecordData: any = {
       job_id: jobData.id,
       lead_id: leadId,
       photo_type: photoType,
-      photo_category: photoCategory,
+      photo_category: dbCategory,
       photo_url: photoUrl,
       uploaded_by: actorId,
       latitude: latitude ? parseFloat(latitude) : null,
@@ -425,7 +449,10 @@ export async function POST(
       notes: notes || null,
     };
 
-    const { data: photoRecord, error: photoError } = await supabase
+    const { supabaseAdmin: photoAdmin } = getSupabaseAdmin();
+    const dbWriter = photoAdmin || supabase;
+
+    const { data: photoRecord, error: photoError } = await dbWriter
       .from('mechanic_job_photos')
       .insert(photoRecordData)
       .select()
@@ -627,7 +654,11 @@ export async function GET(
       .eq('job_id', jobData.id)
       .order('created_at', { ascending: false });
 
-    if (category) {
+    if (category === 'extra') {
+      query = query.ilike('photo_type', 'EXTRA_WORK-%');
+    } else if (category === 'after_video') {
+      query = query.ilike('photo_type', 'AFTER_VIDEO-%');
+    } else if (category) {
       query = query.eq('photo_category', category);
     }
 

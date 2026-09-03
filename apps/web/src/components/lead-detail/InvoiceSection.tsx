@@ -1390,7 +1390,22 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Invoice Type Tabs (OS/CI/TI) */}
+            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Customer</p>
+                <p className="font-bold text-[#023D95]">{lead?.customer_name || '—'}</p>
+                <p className="text-slate-600">{lead?.customer_phone || lead?.lead_number || ''}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Vehicle / Service</p>
+                <p className="font-bold text-[#023D95]">{lead?.vehicle_number || '—'}</p>
+                <p className="text-slate-600">
+                  {[lead?.vehicle_make, lead?.vehicle_model, lead?.service_type].filter(Boolean).join(' · ') || '—'}
+                </p>
+              </div>
+            </div>
+
+            {/* Invoice Type Tabs (OS/CI/TI) */}
           {invoiceList.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               {typeTabs.map((t) => {
@@ -1423,8 +1438,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           )}
 
           {/* Invoice Breakdown */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
               {hasLineItems ? (
                 <>
                   <thead className="bg-gray-100">

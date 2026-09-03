@@ -546,6 +546,27 @@ export async function notifyQCDecision(
   });
 }
 
+export async function resolveLeadMechanicId(
+  leadId: string,
+  assignedMechanicId?: string | null,
+) {
+  const direct = String(assignedMechanicId || '').trim();
+  if (direct) return direct;
+
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return null;
+
+  const { data } = await supabaseAdmin
+    .from('mechanic_jobs')
+    .select('mechanic_id')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return String((data as any)?.mechanic_id || '').trim() || null;
+}
+
 // Helper function to notify about additional job approval/rejection
 export async function notifyExtraWorkDecision(
   leadId: string,
@@ -554,22 +575,47 @@ export async function notifyExtraWorkDecision(
   isApproved: boolean,
   amount: number,
   supervisorName: string,
-  reason?: string
+  reason?: string,
+  opts?: { extraWorkId?: string; advisorId?: string; description?: string },
 ) {
-  await createNotification({
-    userId: mechanicId,
-    type: isApproved ? 'EXTRA_WORK_APPROVED' : 'EXTRA_WORK_REJECTED',
-    title: isApproved ? 'Additional Jobs Approved ✅' : 'Additional Jobs Rejected ❌',
-    message: isApproved 
-      ? `Extra work approved for lead ${leadNumber}. Amount: ₹${amount}`
-      : `Extra work rejected for lead ${leadNumber}. Reason: ${reason || 'Not provided'}`,
-    priority: 'HIGH',
-    leadId,
-    leadNumber,
-    relatedUserName: supervisorName,
-    actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}/manage`,
-    metadata: { amount, reason }
-  });
+  const item = String(opts?.description || 'Additional job').trim();
+  const extraWorkId = opts?.extraWorkId;
+  const metadata = { amount, reason, extra_work_id: extraWorkId, tab: 'extra' };
+
+  if (mechanicId) {
+    await createNotification({
+      userId: mechanicId,
+      type: isApproved ? 'EXTRA_WORK_APPROVED' : 'EXTRA_WORK_REJECTED',
+      title: isApproved ? 'Additional job approved' : 'Additional job rejected',
+      message: isApproved
+        ? `${item} approved for lead ${leadNumber}. Amount: ₹${amount}. Open Extra tab to do this work.`
+        : `${item} rejected for lead ${leadNumber}. Reason: ${reason || 'Not provided'}`,
+      priority: 'HIGH',
+      leadId,
+      leadNumber,
+      relatedUserName: supervisorName,
+      actionUrl: `/dashboard/workshop_mechanic/jobs/${leadId}?tab=extra`,
+      metadata,
+    });
+  }
+
+  const advisorId = String(opts?.advisorId || '').trim();
+  if (advisorId && advisorId !== mechanicId) {
+    await createNotification({
+      userId: advisorId,
+      type: isApproved ? 'EXTRA_WORK_APPROVED' : 'EXTRA_WORK_REJECTED',
+      title: isApproved ? 'Additional job approved' : 'Additional job rejected',
+      message: isApproved
+        ? `You approved ${item} for lead ${leadNumber}. Amount: ₹${amount}. Mechanic can start this extra work.`
+        : `You rejected ${item} for lead ${leadNumber}.`,
+      priority: 'HIGH',
+      leadId,
+      leadNumber,
+      relatedUserName: supervisorName,
+      actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`,
+      metadata,
+    });
+  }
 }
 
 // Helper function to notify workshop admin about new lead assignment
@@ -768,25 +814,58 @@ export async function notifyReadyForQC(
   supervisorId?: string | null,
   workshopId?: string | null
 ) {
-  const notifications: CreateNotificationParams[] = [];
+  const { supabaseAdmin } = getSupabaseAdmin();
+  const recipientIds = new Set<string>();
+  const assigned = String(supervisorId || '').trim();
+  if (assigned) recipientIds.add(assigned);
 
-  if (supervisorId) {
-    notifications.push({
-      userId: supervisorId,
-      type: 'JOB_COMPLETED',
-      title: 'Job submitted for QC',
-      message: `Lead ${leadNumber} is now WORK_COMPLETED and ready for supervisor QC.`,
-      priority: 'HIGH',
-      leadId,
-      leadNumber,
-      actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}`,
+  if (workshopId) {
+    const advisors = await getUsersInWorkshopByRoleCodes(workshopId, [
+      'WORKSHOP_SUPERVISOR',
+    ]);
+    advisors.forEach((u) => {
+      if (u?.id) recipientIds.add(u.id);
     });
   }
 
-  // Fallback: notify workshop admin(s) in case supervisor is not assigned
-  if (!supervisorId && workshopId) {
+  if (recipientIds.size === 0 && workshopId) {
     await notifyWorkshopAdmin(workshopId, leadId, leadNumber, 'System');
+    return;
   }
+
+  if (recipientIds.size === 0) return;
+
+  let alreadyNotified = new Set<string>();
+  if (supabaseAdmin) {
+    const { data: existing } = await supabaseAdmin
+      .from('notifications')
+      .select('user_id, metadata, is_read')
+      .eq('lead_id', leadId)
+      .eq('type', 'JOB_COMPLETED')
+      .in('user_id', Array.from(recipientIds));
+    alreadyNotified = new Set(
+      (existing || [])
+        .filter((row: any) => {
+          if (row?.is_read) return false;
+          return String(row?.metadata?.kind || '') === 'PENDING_QC';
+        })
+        .map((row: any) => String(row.user_id)),
+    );
+  }
+
+  const notifications: CreateNotificationParams[] = Array.from(recipientIds)
+    .filter((userId) => !alreadyNotified.has(userId))
+    .map((userId) => ({
+      userId,
+      type: 'JOB_COMPLETED' as NotificationType,
+      title: 'Pending QC',
+      message: `Lead ${leadNumber} is pending quality check. Review photos and pass / rework / fail.`,
+      priority: 'HIGH' as NotificationPriority,
+      leadId,
+      leadNumber,
+      actionUrl: `/dashboard/workshop-advisor/jobs/${leadId}/review`,
+      metadata: { kind: 'PENDING_QC' },
+    }));
 
   if (notifications.length > 0) {
     await createBulkNotifications(notifications);

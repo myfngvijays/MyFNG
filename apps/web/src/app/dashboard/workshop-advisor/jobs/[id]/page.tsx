@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import QCChecklist from '@/components/supervisor/QCChecklist';
 import MechanicAssignmentModal from '@/components/supervisor/MechanicAssignmentModal';
@@ -59,6 +59,7 @@ const ADVISOR_QC_ITEMS: Array<{ serial: number; question: string }> = [
 export default function SupervisorJobDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const jobId = params.id as string;
 
   type MainTab =
@@ -80,6 +81,21 @@ export default function SupervisorJobDetailPage() {
   const [activityOpenGroups, setActivityOpenGroups] = useState<Record<string, boolean>>({});
   const [expandedActivityEventId, setExpandedActivityEventId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<MainTab>('overview');
+  useEffect(() => {
+    const tab = String(searchParams.get('tab') || '').toLowerCase();
+    if (
+      tab === 'billing' ||
+      tab === 'qc' ||
+      tab === 'overview' ||
+      tab === 'photos' ||
+      tab === 'additional-jobs' ||
+      tab === 'service' ||
+      tab === 'workflow' ||
+      tab === 'report'
+    ) {
+      setActiveTab(tab as MainTab);
+    }
+  }, [searchParams]);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedExtraCharge, setSelectedExtraCharge] = useState<any>(null);
@@ -278,6 +294,7 @@ export default function SupervisorJobDetailPage() {
 
   // QC Tab Data - Mechanic Checklist, Advisor QC, and Proof Images
   const [mechanicChecklist, setMechanicChecklist] = useState<any[]>([]);
+  const [showAllOverviewChecklist, setShowAllOverviewChecklist] = useState(false);
   const [advisorQcData, setAdvisorQcData] = useState<{
     answered?: Record<number, 'YES' | 'NO'>;
     proof_required_serials?: number[];
@@ -959,7 +976,7 @@ export default function SupervisorJobDetailPage() {
       // Fetch mechanic_jobs to get mechanic_id, job id, and mechanic_status
       const { data: mechanicJob, error: mechanicJobError } = await supabase
         .from('mechanic_jobs')
-        .select('id, mechanic_id, mechanic_status, started_at')
+        .select('id, mechanic_id, mechanic_status, started_at, work_notes')
         .eq('lead_id', jobId)
         .maybeSingle();
       
@@ -973,6 +990,7 @@ export default function SupervisorJobDetailPage() {
         (data as any).mechanic_job_id = mechanicJob.id;
         (data as any).mechanic_status = mechanicJob.mechanic_status;
         (data as any).mechanic_started_at = mechanicJob.started_at;
+        (data as any).work_notes = mechanicJob.work_notes || '';
         
         // Override lead status based on mechanic_status - prioritize mechanic_status over lead status
         if (mechanicJob.mechanic_status === 'HOLD' || mechanicJob.mechanic_status === 'ON_HOLD') {
@@ -1681,6 +1699,30 @@ export default function SupervisorJobDetailPage() {
     );
   }
 
+  const extraChargeTitle = (charge: any) =>
+    String(charge?.description || charge?.issue_found || charge?.category_label || charge?.category || 'Additional work').trim();
+  const extraChargeReason = (charge: any) => String(charge?.reason || charge?.work_needed || '').trim();
+  const extraChargeAmount = (charge: any) => {
+    const n = Number(charge?.amount ?? charge?.estimated_cost ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const extraChargeStatus = (charge: any) => String(charge?.status || charge?.approval_status || 'PENDING').toUpperCase();
+  const checklistItemDone = (item: any) => {
+    const s = String(item?.status || '').toUpperCase();
+    return s === 'COMPLETED' || s === 'DONE' || item?.is_completed === true;
+  };
+  const checklistDoneCount = mechanicChecklist.filter(checklistItemDone).length;
+  const checklistPct = mechanicChecklist.length
+    ? Math.round((checklistDoneCount / mechanicChecklist.length) * 100)
+    : 0;
+  const visibleOverviewChecklist = showAllOverviewChecklist
+    ? mechanicChecklist
+    : mechanicChecklist.slice(0, 10);
+  const extraWorkTotal = (lead.extra_charges || []).reduce(
+    (sum: number, row: any) => sum + extraChargeAmount(row),
+    0,
+  );
+
   const pendingExtraCharges = (lead.extra_charges || []).filter((c: any) => c.status === 'PENDING');
   const approvedExtraCharges = (lead.extra_charges || []).filter((row: any) => {
     const s = String(row?.status || '').trim().toUpperCase();
@@ -1696,6 +1738,7 @@ export default function SupervisorJobDetailPage() {
   const mediaCount = Array.isArray(lead?.media) ? lead.media.length : 0;
   const eventsCount = Array.isArray(lead?.events) ? lead.events.length : 0;
   const qcPending = ['WORK_COMPLETED', 'QC_PENDING'].includes(lead.status) && lead.qc_status === 'PENDING';
+  const qcPassedNow = ['PASSED', 'APPROVED'].includes(String(lead.qc_status || '').toUpperCase());
   const invoiceGenerated =
     Boolean((lead as any)?.invoice_id) ||
     [
@@ -1744,7 +1787,7 @@ export default function SupervisorJobDetailPage() {
       <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title={lead.lead_number}
-          subtitle="Job details and progress"
+          subtitle={[lead.customer_name, lead.vehicle_number].filter(Boolean).join(' · ') || 'Job details and progress'}
           href="/dashboard/workshop-advisor/jobs"
           right={
             <button
@@ -1835,7 +1878,8 @@ export default function SupervisorJobDetailPage() {
           </button>
           {/* 7. Billing */}
           <button type="button" className={tabBtn('billing')} onClick={() => setActiveTab('billing')}>
-            Billing {pendingExtraCharges.length > 0 && <span className="ml-1">({pendingExtraCharges.length})</span>}
+            Billing
+            {qcPassedNow && <span className="ml-1 text-green-700 font-semibold">(Next)</span>}
           </button>
           {/* 8. Workflow & Timeline */}
           <button type="button" className={tabBtn('workflow')} onClick={() => setActiveTab('workflow')}>
@@ -1850,6 +1894,23 @@ export default function SupervisorJobDetailPage() {
             </button>
           )}
         </div>
+
+        {qcPassedNow && activeTab === 'overview' && (
+          <div className="card border-2 border-green-300 bg-green-50">
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-green-800">QC passed · next step</p>
+            <h2 className="mt-1 text-lg sm:text-xl font-extrabold text-[#023D95]">Order Summary / Billing</h2>
+            <p className="mt-1 text-sm text-slate-700">
+              Bill check karo, finalize karo, phir payment record. Delivery uske baad.
+            </p>
+            <button
+              type="button"
+              onClick={() => setActiveTab('billing')}
+              className="mt-3 inline-flex items-center rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-extrabold text-white"
+            >
+              Open Order Summary
+            </button>
+          </div>
+        )}
 
         {activeTab === 'overview' && (
         <>
@@ -1886,6 +1947,114 @@ export default function SupervisorJobDetailPage() {
             </div>
           </div>
         </div>
+
+        {mechanicChecklist.length > 0 && (
+          <div className="card">
+            <div className="flex items-end justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-[#023D95]">Job Progress</h2>
+                <p className="text-sm text-gray-600 mt-0.5">
+                  {checklistDoneCount} of {mechanicChecklist.length} tasks
+                </p>
+              </div>
+              <p className="text-2xl sm:text-3xl font-extrabold text-[#004AAD]">{checklistPct}%</p>
+            </div>
+            <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden mb-4">
+              <div className="h-full rounded-full bg-[#004AAD]" style={{ width: `${checklistPct}%` }} />
+            </div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm sm:text-base font-bold text-[#023D95]">
+                Checklist ({mechanicChecklist.length})
+              </h3>
+              {mechanicChecklist.length > 10 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllOverviewChecklist((v) => !v)}
+                  className="text-sm font-bold text-[#004AAD]"
+                >
+                  {showAllOverviewChecklist ? 'Show less' : 'View all'}
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {visibleOverviewChecklist.map((item: any, idx: number) => {
+                const done = checklistItemDone(item);
+                return (
+                  <div
+                    key={item?.id || idx}
+                    className={`flex items-center gap-2 min-h-[58px] rounded-xl border px-2.5 py-2 ${
+                      done ? 'border-green-200 bg-green-50' : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-extrabold ${
+                        done ? 'border-green-300 bg-green-100 text-green-800' : 'border-slate-300 bg-white text-slate-600'
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span className={`text-sm font-semibold leading-snug ${done ? 'text-green-800' : 'text-slate-800'}`}>
+                      {item?.name || item?.item_name || `Item ${idx + 1}`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {Array.isArray(lead.extra_charges) && lead.extra_charges.length > 0 && (
+          <div className="card">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-base sm:text-lg font-bold text-[#023D95]">
+                Extra work ({lead.extra_charges.length})
+              </h2>
+              {extraWorkTotal > 0 && (
+                <p className="text-base font-extrabold text-[#023D95]">
+                  ₹{extraWorkTotal.toLocaleString('en-IN')}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              {lead.extra_charges.map((charge: any) => {
+                const status = extraChargeStatus(charge);
+                const reason = extraChargeReason(charge);
+                const statusClass =
+                  status === 'APPROVED'
+                    ? 'bg-green-100 text-green-800'
+                    : status === 'REJECTED'
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-yellow-100 text-yellow-800';
+                return (
+                  <div
+                    key={charge.id}
+                    className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm sm:text-base font-bold text-[#023D95]">{extraChargeTitle(charge)}</p>
+                      {reason ? <p className="mt-0.5 text-sm text-gray-600">{reason}</p> : null}
+                      <span className={`mt-2 inline-flex rounded-md px-2 py-0.5 text-[11px] font-extrabold ${statusClass}`}>
+                        {status.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <p className="shrink-0 text-base font-extrabold text-[#023D95]">
+                      ₹{extraChargeAmount(charge).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {String((lead as any)?.work_notes || '').trim() ? (
+          <div className="card">
+            <h2 className="text-base sm:text-lg font-bold text-[#023D95] mb-2">Work Notes</h2>
+            <p className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">
+              {String((lead as any).work_notes)}
+            </p>
+          </div>
+        ) : null}
 
         {/* Section 2: Customer & Vehicle */}
         <div className="flex items-center justify-end mb-2">
@@ -2772,7 +2941,33 @@ export default function SupervisorJobDetailPage() {
                   <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
                   All Additional Jobs ({lead.extra_charges.length})
                 </h3>
-                <div className="overflow-x-auto">
+                <div className="md:hidden space-y-3">
+                  {lead.extra_charges.map((charge: any) => {
+                    const status = extraChargeStatus(charge);
+                    const reason = extraChargeReason(charge);
+                    const statusClass =
+                      status === 'APPROVED'
+                        ? 'bg-green-100 text-green-800'
+                        : status === 'REJECTED'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800';
+                    return (
+                      <div key={charge.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-base font-bold text-[#023D95]">{extraChargeTitle(charge)}</p>
+                          <p className="shrink-0 text-base font-extrabold text-[#023D95]">
+                            ₹{extraChargeAmount(charge).toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                        {reason ? <p className="mt-1 text-sm text-gray-600">{reason}</p> : null}
+                        <span className={`mt-2 inline-flex rounded-md px-2 py-0.5 text-[11px] font-extrabold ${statusClass}`}>
+                          {status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
@@ -2813,8 +3008,8 @@ export default function SupervisorJobDetailPage() {
 
                         return (
                         <tr key={charge.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 text-sm font-medium text-gray-900">{charge.description}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{charge.reason || '—'}</td>
+                          <td className="px-4 py-2 text-sm font-medium text-gray-900">{extraChargeTitle(charge)}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{extraChargeReason(charge) || '—'}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">
                             {(charge as any)?.requester?.full_name || 'Unknown'}
                           </td>
@@ -2848,7 +3043,7 @@ export default function SupervisorJobDetailPage() {
                             {charge?.work_completed_at ? formatDateTime(charge.work_completed_at) : '—'}
                           </td>
                           <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">
-                            ₹{Number(charge.amount || 0).toLocaleString()}
+                            ₹{extraChargeAmount(charge).toLocaleString('en-IN')}
                           </td>
                           <td className="px-4 py-2 text-sm">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass}`}>

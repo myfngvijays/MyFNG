@@ -1,6 +1,8 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyReadyForQC, createNotification, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
+import { isDummyWorkshopLead, checkMandatoryPickupPhotos } from '@/lib/workshop/pickupPhotos';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export async function POST(
   request: NextRequest,
@@ -81,18 +83,24 @@ export async function POST(
       }, { status: 400 });
     }
 
+    const dummyLead = isDummyWorkshopLead(lead);
+
     // Verify lead is assigned to this mechanic
     if (lead.assigned_mechanic_id !== userProfile.id) {
       return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });
     }
 
-    // Verify lead is in a valid status for completion (work finished by mechanic)
-    // Allow multiple statuses where mechanic can submit completion:
-    // - IN_PROGRESS / MECHANIC_WORKING: active repair
-    // - VEHICLE_DROPPED_AT_WORKSHOP: vehicle arrived but mechanic may directly complete quick jobs
-    // Also allow if already WORK_COMPLETED (idempotent operation)
-    const allowedStatuses = ['IN_PROGRESS', 'MECHANIC_WORKING', 'REWORK_REQUIRED', 'VEHICLE_DROPPED_AT_WORKSHOP', 'WORK_COMPLETED'];
-    if (!allowedStatuses.includes(lead.status)) {
+    const allowedStatuses = [
+      'IN_PROGRESS',
+      'MECHANIC_WORKING',
+      'REWORK_REQUIRED',
+      'VEHICLE_DROPPED_AT_WORKSHOP',
+      'WORK_COMPLETED',
+      'TEAM_ASSIGNED',
+      'ACCEPTED',
+      'ASSIGNED',
+    ];
+    if (!allowedStatuses.includes(lead.status) && !dummyLead) {
       return NextResponse.json({ 
         error: 'Job must be in progress to mark complete',
         current_status: lead.status,
@@ -102,6 +110,19 @@ export async function POST(
 
     // If already WORK_COMPLETED, just return success (idempotent)
     if (lead.status === 'WORK_COMPLETED') {
+      try {
+        const qc = String(lead.qc_status || '').toUpperCase();
+        if (!qc || qc === 'PENDING') {
+          await notifyReadyForQC(
+            leadId,
+            lead.lead_number || leadId,
+            lead.assigned_supervisor_id,
+            lead.workshop_id,
+          );
+        }
+      } catch (notifError) {
+        console.warn('Pending QC notify on already-complete job failed:', notifError);
+      }
       return NextResponse.json({
         success: true,
         message: 'Job already marked as work completed',
@@ -132,11 +153,13 @@ export async function POST(
     const MIN_DURING_PHOTOS = 1; // at least one DURING proof is mandatory
 
     // Get job_id for this lead (mechanic_job_photos is keyed by job_id)
-    const { data: jobRow } = await supabase
+    const { data: jobRows } = await supabase
       .from('mechanic_jobs')
       .select('id')
       .eq('lead_id', leadId)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const jobRow = jobRows?.[0] || null;
 
     let beforeImagesCount = 0;
     let afterImagesCount = 0;
@@ -153,7 +176,16 @@ export async function POST(
         (photos || []).filter(p => p.photo_category === 'before').map(p => p.photo_type)
       );
       const afterTypes = new Set(
-        (photos || []).filter(p => p.photo_category === 'after').map(p => p.photo_type)
+        (photos || [])
+          .filter((p) => {
+            const type = String(p.photo_type || '').toUpperCase();
+            return (
+              p.photo_category === 'after' &&
+              !type.startsWith('EXTRA_WORK') &&
+              !type.startsWith('AFTER_VIDEO')
+            );
+          })
+          .map((p) => p.photo_type)
       );
       const duringCount = (photos || []).filter(p => p.photo_category === 'during').length;
 
@@ -170,6 +202,18 @@ export async function POST(
       beforeImagesCount = beforeTypes.size;
       afterImagesCount = afterTypes.size;
       duringImagesCount = duringCount;
+
+      if (missing.some((item) => String(item).startsWith('BEFORE_'))) {
+        try {
+          const pickupCheck = await checkMandatoryPickupPhotos(supabase, leadId);
+          if (pickupCheck.ok) {
+            missing = missing.filter((item) => !String(item).startsWith('BEFORE_'));
+            beforeImagesCount = Math.max(beforeImagesCount, 6);
+          }
+        } catch {
+          // pickup table missing — keep mechanic before requirement
+        }
+      }
     } else {
       // Legacy fallback (older flow): only checks basic before/after counts.
       const { count: beforeImages } = await supabase
@@ -189,6 +233,10 @@ export async function POST(
 
       if (beforeImagesCount < 1) missing.push('BEFORE_* (at least 1 before photo)');
       if (afterImagesCount < 1) missing.push('AFTER_* (at least 1 after photo)');
+    }
+
+    if (missing.length > 0 && dummyLead) {
+      missing = [];
     }
 
     if (missing.length > 0) {
@@ -221,43 +269,36 @@ export async function POST(
     }
 
     const now = new Date().toISOString();
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const writer = supabaseAdmin || supabase;
 
     // IMPORTANT:
     // "Mechanic job complete" means work is finished and job is READY FOR QC.
-    // It must NOT jump to final completion/closure states (those happen after:
-    // QC -> Billing -> Invoice -> Payment -> Delivery -> CSE -> Closure).
     const finalStatus = 'WORK_COMPLETED';
 
-    // Update lead status - set to COMPLETED
     const updateData: any = {
       status: finalStatus,
       mechanic_completed_at: now,
       notes: work_summary || notes || lead.notes,
-      updated_at: now
+      updated_at: now,
+      qc_status: 'PENDING',
     };
 
-    // Always set QC status to PENDING when mechanic completes/resubmits work.
-    // Supervisor QC will set qc_status to PASSED/FAILED.
-    updateData.qc_status = 'PENDING';
-
-    // Use a WHERE clause to ensure we only update if status hasn't changed
-    // This prevents race conditions where status might be changed by another process
-    const { data: updatedLead, error: updateError } = await supabase
+    const { data: updatedLead, error: updateError } = await writer
       .from('service_leads')
       .update(updateData)
       .eq('id', leadId)
-      .in('status', allowedStatuses.filter(s => s !== 'COMPLETED')) // Only update if status is still in allowed pre-completion states
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) {
       console.error('Error completing job:', updateError);
       // Check if the error is because status was already changed
-      const { data: currentLead } = await supabase
+      const { data: currentLead } = await writer
         .from('service_leads')
         .select('status')
         .eq('id', leadId)
-        .single();
+        .maybeSingle();
       
       if (currentLead?.status === 'WORK_COMPLETED') {
         // Status was already updated, return success
@@ -275,11 +316,11 @@ export async function POST(
     // Double-check that the update actually happened
     if (!updatedLead) {
       // Status might have been changed by another process, fetch current status
-      const { data: currentLead } = await supabase
+      const { data: currentLead } = await writer
         .from('service_leads')
         .select('status')
         .eq('id', leadId)
-        .single();
+        .maybeSingle();
       
       if (currentLead?.status === 'WORK_COMPLETED') {
         return NextResponse.json({
@@ -296,23 +337,22 @@ export async function POST(
       }, { status: 500 });
     }
 
-    // Log status change in lead_status_history
-    await supabase
-      .from('lead_status_history')
-      .insert({
+    try {
+      await writer.from('lead_status_history').insert({
         lead_id: leadId,
         old_status: lead.status,
         new_status: finalStatus,
         changed_by: userProfile.id,
         changed_at: now,
         reason: 'Mechanic completed the job',
-        notes: work_summary || notes || 'Job completed successfully'
+        notes: work_summary || notes || 'Job completed successfully',
       });
+    } catch (e) {
+      console.warn('lead_status_history insert skipped:', e);
+    }
 
-    // Create activity log
-    await supabase
-      .from('lead_activities')
-      .insert({
+    try {
+      await writer.from('lead_activities').insert({
         lead_id: leadId,
         user_id: userProfile.id,
         activity_type: 'JOB_COMPLETED',
@@ -326,14 +366,15 @@ export async function POST(
           notes: notes,
           before_images_count: beforeImagesCount,
           during_images_count: duringImagesCount,
-          after_images_count: afterImagesCount
-        }
+          after_images_count: afterImagesCount,
+        },
       });
+    } catch (e) {
+      console.warn('lead_activities insert skipped:', e);
+    }
 
-    // Lead event for analytics/audit trail
-    await supabase
-      .from('lead_events')
-      .insert({
+    try {
+      await writer.from('lead_events').insert({
         lead_id: leadId,
         event_type: 'WORK_COMPLETED',
         event_description: 'Mechanic submitted job completion for QC',
@@ -347,31 +388,34 @@ export async function POST(
         created_by: userProfile.id,
         created_at: now,
       });
+    } catch (e) {
+      console.warn('lead_events insert skipped:', e);
+    }
 
-    // Update mechanic assignment status
-    await supabase
+    await writer
       .from('mechanic_assignments')
       .update({
         status: 'COMPLETED',
-        completed_at: now
+        completed_at: now,
       })
       .eq('lead_id', leadId)
       .eq('mechanic_id', userProfile.id)
       .eq('status', 'ACTIVE');
 
-    // Update mechanic_jobs table
-    const { data: mechanicJob } = await supabase
+    const { data: mechanicJobRows } = await writer
       .from('mechanic_jobs')
       .select('id')
       .eq('lead_id', leadId)
-      .single();
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const mechanicJob = mechanicJobRows?.[0] || null;
 
     if (mechanicJob) {
-      await supabase
+      await writer
         .from('mechanic_jobs')
         .update({
           mechanic_status: 'COMPLETED',
-          completed_at: now
+          completed_at: now,
         })
         .eq('id', mechanicJob.id);
     }

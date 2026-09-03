@@ -18,12 +18,12 @@ import {
   ADVISOR_CRM_NAV,
   ADVISOR_CRM_QUICK,
 } from '../../constants/workshopCrmNav';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { formatDateTime } from '@/lib/dateFormat';
 import { useAuth } from '../../context/AuthContext';
 import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
-import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc } from '../../lib/workshopJobFlow';
+import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc, isQcPassed } from '../../lib/workshopJobFlow';
 import { fetchWorkshopPickupBoys, type PickupBoyOption } from '../../lib/fetchWorkshopPickupBoys';
 import PickupAssignModal from '../../components/workshop/PickupAssignModal';
 
@@ -84,7 +84,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
           .from('service_leads')
           .select(
             `id, lead_number, customer_name, vehicle_number, status, assigned_mechanic_id, assigned_pickup_boy_id,
-             qc_status, pickup_status, pickup_required, mechanic_completed_at, created_at, updated_at,
+             qc_status, qc_performed_at, pickup_status, pickup_required, mechanic_completed_at, created_at, updated_at,
              mechanic:assigned_mechanic_id(full_name)`,
           )
           .eq('workshop_id', workshopId)
@@ -118,10 +118,9 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
 
       const activeFromLeads = leadsData.filter((lead: any) => {
         if (!lead.assigned_mechanic_id) return false;
+        if (isQcPassed(lead)) return false;
         const status = String(lead.status || '').toUpperCase();
-        return !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED', 'COMPLETED', 'DELIVERED'].includes(
-          status,
-        );
+        return !['WORK_COMPLETED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(status);
       });
 
       const activeJobsList = activeFromLeads.map((lead: any) => {
@@ -169,9 +168,14 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         ['ASSIGNED', 'ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT'].includes(lead.pickup_status),
       ).length;
 
-      const completedInRange = workshopJobs.filter((job: any) =>
-        isoInRange(job.completed_at, range.start, range.end, range.allTime),
-      ).length;
+      const completedInRange = leadsData.filter((lead: any) => {
+        if (!isQcPassed(lead)) return false;
+        return (
+          isoInRange(lead.qc_performed_at, range.start, range.end, range.allTime) ||
+          isoInRange(lead.mechanic_completed_at, range.start, range.end, range.allTime) ||
+          isoInRange(lead.updated_at, range.start, range.end, range.allTime)
+        );
+      }).length;
 
       const overdueJobs = workshopJobs.filter(
         (job: any) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
@@ -414,14 +418,20 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
             onPress={() => go(tile.screen)}
             activeOpacity={0.8}
           >
-            <Text style={[styles.statValue, { color: tile.accent }]}>{tile.value}</Text>
-            <Text style={styles.statLabel}>{tile.label}</Text>
+            <Text style={[styles.statValue, { color: tile.accent }]} maxFontSizeMultiplier={1.1}>
+              {tile.value}
+            </Text>
+            <Text style={styles.statLabel} maxFontSizeMultiplier={1.1}>
+              {tile.label}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>Needs Assignment</Text>
+        <Text style={[styles.sectionTitle, styles.sectionTitleInline]} maxFontSizeMultiplier={1.1}>
+          Needs Assignment
+        </Text>
         <TouchableOpacity
           onPress={() =>
             go(
@@ -441,7 +451,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
           return (
           <View key={`${job.assignKind}-${job.id}`} style={styles.jobCard}>
             <View style={styles.jobHeader}>
-              <Text style={styles.jobName} numberOfLines={1}>
+              <Text style={styles.jobName} numberOfLines={1} maxFontSizeMultiplier={1.1}>
                 {job.customer_name || 'Customer'}
               </Text>
               <View style={styles.urgentBadge}>
@@ -451,13 +461,19 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
               </View>
             </View>
             {job.lead_number ? (
-              <Text style={styles.jobMeta} numberOfLines={1}>{job.lead_number}</Text>
+              <Text style={styles.jobMeta} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+                {job.lead_number}
+              </Text>
             ) : null}
             {job.vehicle_number ? (
-              <Text style={styles.jobMeta} numberOfLines={1}>{job.vehicle_number}</Text>
+              <Text style={styles.jobMeta} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+                {job.vehicle_number}
+              </Text>
             ) : null}
             {job.created_at ? (
-              <Text style={styles.jobDate}>{formatDateTime(job.created_at)}</Text>
+              <Text style={styles.jobDate} maxFontSizeMultiplier={1.1}>
+                {formatDateTime(job.created_at)}
+              </Text>
             ) : null}
             <TouchableOpacity
               style={styles.assignButton}
@@ -469,8 +485,8 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
                     : go('MechanicAssignment', { leadId: job.id })
               }
             >
-              <Ionicons name={pickupTrack ? 'navigate' : 'person-add'} size={16} color={COLORS.white} />
-              <Text style={styles.assignButtonText}>
+              <Ionicons name={pickupTrack ? 'navigate' : 'person-add'} size={14} color={COLORS.white} />
+              <Text style={styles.assignButtonText} maxFontSizeMultiplier={1.1}>
                 {pickup ? 'Assign pickup' : pickupTrack ? 'Track pickup' : 'Assign Mechanic'}
               </Text>
             </TouchableOpacity>
@@ -510,16 +526,16 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
                 </View>
               </View>
               {job.service_leads?.vehicle_number ? (
-                <Text style={styles.jobMeta} numberOfLines={1}>
+                <Text style={styles.jobMeta} numberOfLines={1} maxFontSizeMultiplier={1.1}>
                   {job.service_leads.vehicle_number}
                 </Text>
               ) : null}
               {job.service_leads?.created_at || job.assigned_at ? (
-                <Text style={styles.jobDate}>
+                <Text style={styles.jobDate} maxFontSizeMultiplier={1.1}>
                   {formatDateTime(job.service_leads?.created_at || job.assigned_at)}
                 </Text>
               ) : null}
-              <Text style={styles.assignedTo}>
+              <Text style={styles.assignedTo} maxFontSizeMultiplier={1.1}>
                 {job.mechanic?.full_name || 'Mechanic not set'}
               </Text>
             </TouchableOpacity>
@@ -602,21 +618,21 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   heroName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
     color: COLORS.heading,
   },
   heroMeta: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 12,
     color: COLORS.bodyText,
     marginTop: 2,
   },
   sectionTitle: {
-    fontSize: FONT_SIZES.md,
+    fontSize: 13,
     fontWeight: '800',
     color: COLORS.heading,
-    marginBottom: SPACING.sm,
-    marginTop: SPACING.md,
+    marginBottom: 8,
+    marginTop: 12,
   },
   sectionTitleFirst: {
     marginTop: 0,
@@ -633,7 +649,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   viewAll: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.primary,
   },
@@ -688,36 +704,37 @@ const styles = StyleSheet.create({
   statsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    gap: 8,
+    marginBottom: 4,
   },
   statCard: {
     width: '47.5%',
     backgroundColor: COLORS.white,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-    borderLeftWidth: 4,
-    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    alignItems: 'flex-start',
     ...SHADOWS.small,
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: '800',
     color: COLORS.heading,
-    marginBottom: 2,
+    marginBottom: 1,
+    lineHeight: 22,
   },
   statLabel: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 11,
     color: COLORS.bodyText,
-    textAlign: 'center',
     fontWeight: '600',
+    lineHeight: 14,
   },
   jobCard: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
     ...SHADOWS.small,
   },
   jobHeader: {
@@ -729,8 +746,8 @@ const styles = StyleSheet.create({
   },
   jobName: {
     flex: 1,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '700',
     color: COLORS.heading,
   },
   urgentBadge: {
@@ -755,35 +772,37 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   jobMeta: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 11,
+    lineHeight: 15,
     color: COLORS.gray[600],
-    marginBottom: 2,
+    marginBottom: 1,
   },
   jobDate: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 10,
+    lineHeight: 14,
     color: COLORS.gray[500],
     marginBottom: 8,
   },
   assignedTo: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 11,
     color: COLORS.primary,
     fontWeight: '600',
   },
   assignButton: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
     marginTop: 4,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   assignButtonText: {
     color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
   },
   emptyCard: {
     backgroundColor: COLORS.white,

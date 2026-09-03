@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyExtraWorkDecision, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
+import { notifyExtraWorkDecision, notifyWorkshopRoles, notifyTelecallerForLead, resolveLeadMechanicId } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -218,19 +218,23 @@ export async function POST(request: NextRequest) {
     // In-app notifications (Phase A)
     try {
       const leadNumber = (lead as any)?.lead_number || reqRow.lead_id;
-      const mechanicId = (lead as any)?.assigned_mechanic_id;
+      const mechanicId = await resolveLeadMechanicId(reqRow.lead_id, (lead as any)?.assigned_mechanic_id);
       const supervisorName = (profile as any)?.full_name || 'Supervisor';
 
-      if (mechanicId) {
-        await notifyExtraWorkDecision(
-          reqRow.lead_id,
-          leadNumber,
-          mechanicId,
-          true,
-          computedTotal,
-          supervisorName
-        );
-      }
+      await notifyExtraWorkDecision(
+        reqRow.lead_id,
+        leadNumber,
+        mechanicId || '',
+        true,
+        computedTotal,
+        supervisorName,
+        undefined,
+        {
+          extraWorkId: id,
+          advisorId: profile.id,
+          description: String(reqRow.description || '').trim() || 'Additional job',
+        },
+      );
 
       await notifyWorkshopRoles({
         workshopId: profile.workshop_id,

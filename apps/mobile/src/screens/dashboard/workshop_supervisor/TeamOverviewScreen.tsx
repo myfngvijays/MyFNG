@@ -15,9 +15,8 @@ import {
   ActivityIndicator,
   BackHandler,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
-import { COLORS, SIZES, SPACING } from '../../../constants/theme';
+import { COLORS, SIZES, SPACING, SHADOWS } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { AC, ADVISOR_ROLES, advisorRoleStyle } from '../../../components/workshop/advisorCrmUi';
 
@@ -37,6 +36,45 @@ export default function TeamOverviewScreen() {
   useEffect(() => {
     initializeScreen();
   }, []);
+
+  useEffect(() => {
+    if (!workshopId) return;
+    const channelName = `team_members-${workshopId}`;
+    supabase.getChannels().forEach((ch) => {
+      if (String(ch.topic || '').includes(channelName)) supabase.removeChannel(ch);
+    });
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users_login',
+          filter: `workshop_id=eq.${workshopId}`,
+        },
+        () => {
+          fetchTeamData(workshopId);
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mechanic_jobs',
+        },
+        () => {
+          fetchTeamData(workshopId);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [workshopId]);
 
   const initializeScreen = async () => {
     try {
@@ -64,47 +102,10 @@ export default function TeamOverviewScreen() {
       setWorkshopId(userProfile.workshop_id);
       
       await fetchTeamData(userProfile.workshop_id);
-      setupRealtimeSubscription(userProfile.workshop_id);
     } catch (error) {
       console.error('❌ Error initializing screen:', error);
       setLoading(false);
     }
-  };
-
-  const setupRealtimeSubscription = (wid: string) => {
-    if (!wid) return;
-
-    // Subscribe to real-time updates for team members
-    const channel = supabase
-      .channel(`team_members_changes-${wid}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'users_login',
-          filter: `workshop_id=eq.${wid}`,
-        },
-        () => {
-          fetchTeamData(wid);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'mechanic_jobs',
-        },
-        () => {
-          fetchTeamData(wid);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
   };
 
   const fetchTeamData = async (wid?: string) => {
@@ -143,24 +144,23 @@ export default function TeamOverviewScreen() {
       const mechanics = members?.filter(m => m.role?.role_code === 'WORKSHOP_MECHANIC') || [];
       const mechanicIds = mechanics.map(m => m.id);
 
-      console.log('👨‍🔧 Found', mechanics.length, 'mechanics');
-
-      // ✅ FIX: Fetch jobs with correct column name (mechanic_status, not status)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const { data: jobs, error: jobsError } = await supabase
-        .from('mechanic_jobs')
-        .select('*')
-        .in('mechanic_id', mechanicIds)
-        .gte('assigned_at', today.toISOString());
+      let jobs: any[] = [];
+      if (mechanicIds.length > 0) {
+        const { data: jobsData, error: jobsError } = await supabase
+          .from('mechanic_jobs')
+          .select('*')
+          .in('mechanic_id', mechanicIds)
+          .gte('assigned_at', today.toISOString());
 
-      if (jobsError) {
-        console.error('❌ Error fetching jobs:', jobsError);
-        throw jobsError;
+        if (jobsError) {
+          console.error('❌ Error fetching jobs:', jobsError);
+        } else {
+          jobs = jobsData || [];
+        }
       }
-
-      console.log('📊 Found', jobs?.length || 0, 'jobs today');
 
       // Calculate stats for each member
       const roleRank = (code?: string) => {
@@ -279,28 +279,25 @@ export default function TeamOverviewScreen() {
 
       {/* Stats Cards */}
       <View style={styles.statsGrid}>
-        <View style={[styles.statCard, { borderLeftColor: COLORS.primary }]}>
-          <Ionicons name="people" size={24} color={COLORS.primary} />
-          <Text style={styles.statValue}>{teamStats.totalMembers}</Text>
-          <Text style={styles.statLabel}>Total Team</Text>
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { borderLeftColor: COLORS.primary }]}>
+            <Text style={styles.statLabel}>Total Team</Text>
+            <Text style={[styles.statValue, { color: COLORS.primary }]}>{teamStats.totalMembers}</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftColor: COLORS.success }]}>
+            <Text style={styles.statLabel}>Active Now</Text>
+            <Text style={[styles.statValue, { color: COLORS.success }]}>{teamStats.activeNow}</Text>
+          </View>
         </View>
-
-        <View style={[styles.statCard, { borderLeftColor: COLORS.success }]}>
-          <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-          <Text style={styles.statValue}>{teamStats.activeNow}</Text>
-          <Text style={styles.statLabel}>Active Now</Text>
-        </View>
-
-        <View style={[styles.statCard, { borderLeftColor: COLORS.info }]}>
-          <Ionicons name="time" size={24} color={COLORS.info} />
-          <Text style={styles.statValue}>{teamStats.totalJobsToday}</Text>
-          <Text style={styles.statLabel}>Jobs Today</Text>
-        </View>
-
-        <View style={[styles.statCard, { borderLeftColor: COLORS.warning }]}>
-          <Ionicons name="trending-up" size={24} color={COLORS.warning} />
-          <Text style={styles.statValue}>{teamStats.avgPerformance}%</Text>
-          <Text style={styles.statLabel}>Avg Performance</Text>
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { borderLeftColor: COLORS.info }]}>
+            <Text style={styles.statLabel}>Jobs Today</Text>
+            <Text style={[styles.statValue, { color: COLORS.info }]}>{teamStats.totalJobsToday}</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftColor: COLORS.warning }]}>
+            <Text style={styles.statLabel}>Avg Performance</Text>
+            <Text style={[styles.statValue, { color: COLORS.warning }]}>{teamStats.avgPerformance}%</Text>
+          </View>
         </View>
       </View>
 
@@ -389,36 +386,36 @@ const styles = StyleSheet.create({
     color: COLORS.gray[600],
   },
   statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.md,
-    justifyContent: 'space-between',
-    rowGap: 10,
+    paddingTop: 8,
+    gap: 8,
+    marginBottom: 12,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   statCard: {
-    width: '48.5%',
+    flex: 1,
     backgroundColor: COLORS.white,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderLeftWidth: 4,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    overflow: 'hidden',
+    ...SHADOWS.small,
   },
   statValue: {
-    fontSize: SIZES.xxl,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '800',
     color: COLORS.gray[900],
-    marginTop: SPACING.sm,
+    marginTop: 2,
+    lineHeight: 22,
   },
   statLabel: {
-    fontSize: SIZES.sm,
+    fontSize: 11,
     color: COLORS.gray[600],
-    marginTop: SPACING.xs,
+    fontWeight: '600',
   },
   section: {
     padding: SPACING.md,
@@ -538,17 +535,22 @@ const styles = StyleSheet.create({
   },
   roleLegend: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 16,
     gap: 6,
-    marginBottom: 8,
+    marginTop: 2,
+    marginBottom: 10,
   },
   roleLegendChip: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '22%',
+    minWidth: 70,
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
     alignItems: 'center',
   },
-  roleLegendTxt: { color: '#fff', fontWeight: '800', fontSize: 11 },
+  roleLegendTxt: { color: '#fff', fontWeight: '800', fontSize: 10 },
   roleCard: {
     backgroundColor: '#fff',
     borderRadius: 14,

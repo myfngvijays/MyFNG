@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,15 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
-  BackHandler,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
-import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../../constants/theme';
 import { Icon } from '../../../components/Icon';
 import { useNavigation } from '@react-navigation/native';
-import { ENV } from '../../../config/environment';
+import { ENV, isIosSimulator, isAndroidEmulator } from '../../../config/environment';
+import { takeGpsStampedPhoto } from '../../../lib/gpsPhotoStamp';
+import { isDummyWorkshopLead } from '../../../lib/workshopDummyLead';
 
 interface PhotoState {
   type: string;
@@ -33,272 +31,315 @@ interface PhotoState {
 
 interface Props {
   route: any;
-  navigation: any;
+  navigation?: any;
+  hideChrome?: boolean;
 }
 
 const REQUIRED_AFTER_PHOTOS = [
-  { type: 'AFTER_FRONT', label: 'Front View (After)', required: true },
-  { type: 'AFTER_REAR', label: 'Rear View (After)', required: true },
-  { type: 'AFTER_LEFT', label: 'Left Side (After)', required: true },
-  { type: 'AFTER_RIGHT', label: 'Right Side (After)', required: true },
-  { type: 'AFTER_ENGINE_BAY', label: 'Engine Bay (After)', required: true },
-  { type: 'AFTER_OLD_PARTS', label: 'Old Parts Photo', required: true },
-  { type: 'AFTER_NEW_PARTS', label: 'New Parts Installed', required: false },
-  { type: 'AFTER_ODOMETER', label: 'Final Odometer Reading', required: true },
+  { type: 'AFTER_FRONT', label: 'Front', required: true },
+  { type: 'AFTER_REAR', label: 'Rear', required: true },
+  { type: 'AFTER_LEFT', label: 'Left', required: true },
+  { type: 'AFTER_RIGHT', label: 'Right', required: true },
+  { type: 'AFTER_ENGINE_BAY', label: 'Engine', required: true },
+  { type: 'AFTER_OLD_PARTS', label: 'Old parts', required: true },
+  { type: 'AFTER_ODOMETER', label: 'Odometer', required: true },
+  { type: 'AFTER_NEW_PARTS', label: 'New parts', required: false },
 ];
 
-export default function AfterServicePhotoScreen({ route, hideChrome = false }: Props & { hideChrome?: boolean }) {
+function isUuid(value?: string | null) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    String(value || ''),
+  );
+}
+
+export default function AfterServicePhotoScreen({
+  route,
+  hideChrome = false,
+}: Props) {
   const navigation = useNavigation();
-  const { jobId, leadId } = route.params;
-  const { user } = useAuth();
-  const [photos, setPhotos] = useState<PhotoState[]>([]);
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const params = route?.params || {};
+  const jobId = params.jobId as string | undefined;
+  const leadId = (params.leadId || params.jobId) as string | undefined;
+
+  const [photos, setPhotos] = useState<PhotoState[]>(() =>
+    REQUIRED_AFTER_PHOTOS.map((photo) => ({
+      type: photo.type,
+      label: photo.label,
+      uri: null,
+      uploaded: false,
+      uploading: false,
+      required: photo.required,
+    })),
+  );
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [odometerReading, setOdometerReading] = useState('');
   const [showOdometerModal, setShowOdometerModal] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
-  const [job, setJob] = useState<any>(null);
   const [checklistCompleted, setChecklistCompleted] = useState(false);
   const [partsRecorded, setPartsRecorded] = useState(false);
   const [workNotes, setWorkNotes] = useState('');
+  const [afterVideos, setAfterVideos] = useState<Array<{ id: string; uri: string }>>([]);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [isDummy, setIsDummy] = useState(() =>
+    isDummyWorkshopLead({
+      lead_number: params.leadNumber,
+      created_from: params.createdFrom,
+      customer_name: params.customerName,
+    }),
+  );
 
-  // Handle hardware back button
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (navigation?.goBack) {
-        navigation.goBack();
-        return true;
-      }
-      return false;
-    });
+  const load = useCallback(async () => {
+    if (!leadId) {
+      setLoading(false);
+      return;
+    }
 
-    return () => backHandler.remove();
-  }, [navigation]);
-
-  useEffect(() => {
-    requestPermissions();
-    getLocation();
-    initializePhotos();
-    fetchJobDetails();
-    fetchExistingPhotos();
-  }, []);
-
-  const initializePhotos = () => {
-    setPhotos(
-      REQUIRED_AFTER_PHOTOS.map((photo) => ({
-        type: photo.type,
-        label: photo.label,
-        uri: null,
-        uploaded: false,
-        uploading: false,
-        required: photo.required,
-      }))
-    );
-  };
-
-  const fetchJobDetails = async () => {
     try {
-      const { data, error } = await supabase
-        .from('mechanic_jobs')
-        .select('*, service_leads!inner(lead_number, customer_name, vehicle_number)')
-        .eq('lead_id', leadId)
-        .single();
+      const { data: lead } = await supabase
+        .from('service_leads')
+        .select('lead_number, created_from, customer_name')
+        .eq('id', leadId)
+        .maybeSingle();
 
-      if (error) throw error;
-      setJob(data);
-      setChecklistCompleted(data.checklist_completed || false);
-      setWorkNotes(data.work_notes || '');
+      if (lead) setIsDummy(isDummyWorkshopLead(lead));
 
-      // Check if parts are recorded
+      let jobRow: any = null;
+      if (isUuid(jobId)) {
+        const { data } = await supabase
+          .from('mechanic_jobs')
+          .select('id, checklist_completed, work_notes')
+          .eq('id', jobId)
+          .maybeSingle();
+        jobRow = data;
+      }
+
+      if (!jobRow) {
+        const { data: rows } = await supabase
+          .from('mechanic_jobs')
+          .select('id, checklist_completed, work_notes')
+          .eq('lead_id', leadId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        jobRow = rows?.[0] || null;
+      }
+
+      if (jobRow) {
+        setChecklistCompleted(Boolean(jobRow.checklist_completed));
+        if (jobRow.work_notes) setWorkNotes(String(jobRow.work_notes));
+      }
+
       const { data: partsData } = await supabase
         .from('mechanic_parts_usage')
         .select('id')
         .eq('lead_id', leadId)
         .limit(1);
-
       setPartsRecorded((partsData?.length || 0) > 0);
-    } catch (error) {
-      console.error('Error fetching job:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const fetchExistingPhotos = async () => {
-    try {
-      const { data, error } = await supabase
+      const { data: existing } = await supabase
         .from('mechanic_job_photos')
         .select('photo_type, photo_url, odometer_reading')
         .eq('lead_id', leadId)
         .eq('photo_category', 'after');
 
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setPhotos((prevPhotos) =>
-          prevPhotos.map((photo) => {
-            const existing = data.find((d) => d.photo_type === photo.type);
-            if (existing) {
-              return {
-                ...photo,
-                uri: existing.photo_url,
-                uploaded: true,
-              };
-            }
-            return photo;
-          })
+      if (existing?.length) {
+        setPhotos((prev) =>
+          prev.map((photo) => {
+            const match = existing.find((row) => row.photo_type === photo.type);
+            if (!match) return photo;
+            return { ...photo, uri: match.photo_url, uploaded: true };
+          }),
         );
-
-        // Set odometer reading if exists
-        const odometerPhoto = data.find((d) => d.photo_type === 'AFTER_ODOMETER');
-        if (odometerPhoto?.odometer_reading) {
-          setOdometerReading(odometerPhoto.odometer_reading.toString());
-        }
+        const odo = existing.find((row) => row.photo_type === 'AFTER_ODOMETER');
+        if (odo?.odometer_reading) setOdometerReading(String(odo.odometer_reading));
       }
-    } catch (error) {
-      console.error('Error fetching photos:', error);
+
+      const { data: videos } = await supabase
+        .from('mechanic_job_photos')
+        .select('id, photo_url, photo_type')
+        .eq('lead_id', leadId)
+        .ilike('photo_type', 'AFTER_VIDEO-%');
+      setAfterVideos(
+        (videos || []).map((row) => ({ id: String(row.id), uri: String(row.photo_url) })),
+      );
+    } catch {
+      // Never console.error objects here — LogBox covers the photo grid.
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [jobId, leadId]);
 
-  const requestPermissions = async () => {
-    const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
-    const { status: mediaStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-    if (cameraStatus !== 'granted' || mediaStatus !== 'granted') {
-      Alert.alert('Permissions Required', 'Please grant camera and media library permissions to continue');
-    }
-  };
+  const uploadPhoto = async (index: number, uri?: string, odoValue?: string) => {
+    const photo = photos[index];
+    const photoUri = uri || photo.uri;
+    if (!photoUri || photo.uploaded || photo.uploading || !leadId) return;
 
-  const getLocation = async () => {
+    const next = [...photos];
+    next[index] = { ...next[index], uploading: true };
+    setPhotos(next);
+    setUploading(true);
+
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
 
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+      const formData = new FormData();
+      const filename = photoUri.split('/').pop() || 'photo.jpg';
+      const isVideo = /\.(mp4|mov|m4v|webm|3gp)(\?|$)/i.test(filename) || filename.includes('video');
+      // @ts-ignore React Native FormData file
+      formData.append('file', {
+        uri: photoUri,
+        name: filename,
+        type: isVideo ? 'video/mp4' : 'image/jpeg',
       });
-      setLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+      formData.append('photo_type', photo.type);
+      formData.append('photo_category', 'after');
+      const odo = odoValue || odometerReading;
+      if (photo.type === 'AFTER_ODOMETER' && odo) {
+        formData.append('odometer_reading', odo);
+      }
+
+      const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${leadId}/upload-photos`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: formData,
       });
-    } catch (error) {
-      // Silent fail
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Failed to upload photo');
+
+      next[index] = {
+        ...next[index],
+        uploading: false,
+        uploaded: true,
+        uri: result.data?.photo_url || photoUri,
+      };
+      setPhotos([...next]);
+    } catch (error: any) {
+      next[index] = { ...next[index], uploading: false };
+      setPhotos([...next]);
+      Alert.alert('Upload failed', error?.message || 'Could not upload photo');
+    } finally {
+      setUploading(false);
     }
   };
 
   const takePhoto = async (index: number) => {
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-        exif: true,
-      });
+      let stampedUri: string | null = null;
+      const useGallery = isDummy || isIosSimulator() || isAndroidEmulator();
 
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const newPhotos = [...photos];
-        newPhotos[index].uri = asset.uri;
-        setPhotos(newPhotos);
-
-        // If it's odometer photo, show input
-        if (photos[index].type === 'AFTER_ODOMETER') {
-          setSelectedPhotoIndex(index);
-          setShowOdometerModal(true);
-        } else {
-          uploadPhoto(index, asset.uri);
+      if (useGallery) {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission', 'Gallery access chahiye photo add karne ke liye.');
+          return;
         }
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
-    }
-  };
-
-  const uploadPhoto = async (index: number, uri?: string) => {
-    const photo = photos[index];
-    const photoUri = uri || photo.uri;
-    if (!photoUri || photo.uploaded || photo.uploading) return;
-
-    const newPhotos = [...photos];
-    newPhotos[index].uploading = true;
-    setPhotos(newPhotos);
-    setUploading(true);
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
-
-      const formData = new FormData();
-      const filename = photoUri.split('/').pop() || 'photo.jpg';
-      
-      // @ts-ignore
-      formData.append('file', {
-        uri: photoUri,
-        name: filename,
-        type: 'image/jpeg',
-      });
-      
-      formData.append('photo_type', photo.type);
-      formData.append('photo_category', 'after');
-      
-      if (photo.type === 'AFTER_ODOMETER' && odometerReading) {
-        formData.append('odometer_reading', odometerReading);
-      }
-      
-      if (location) {
-        formData.append('latitude', location.latitude.toString());
-        formData.append('longitude', location.longitude.toString());
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images', 'videos'],
+          allowsEditing: false,
+          quality: 0.8,
+          videoMaxDuration: 60,
+        });
+        if (result.canceled || !result.assets?.[0]?.uri) return;
+        stampedUri = result.assets[0].uri;
+      } else {
+        stampedUri = await takeGpsStampedPhoto();
+        if (!stampedUri) return;
       }
 
-      const response = await fetch(
-        `${ENV.API_URL}/api/mechanic/jobs/${leadId}/upload-photos`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: formData,
-        }
-      );
+      const next = [...photos];
+      next[index] = { ...next[index], uri: stampedUri, uploaded: false };
+      setPhotos(next);
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to upload photo');
+      if (photos[index].type === 'AFTER_ODOMETER' && !isDummy) {
+        setSelectedPhotoIndex(index);
+        setShowOdometerModal(true);
+        return;
       }
-
-      newPhotos[index].uploading = false;
-      newPhotos[index].uploaded = true;
-      newPhotos[index].uri = result.data.photo_url;
-      setPhotos(newPhotos);
-      setUploading(false);
+      if (photos[index].type === 'AFTER_ODOMETER' && isDummy && !odometerReading) {
+        setOdometerReading('0');
+      }
+      await uploadPhoto(index, stampedUri, isDummy ? odometerReading || '0' : undefined);
     } catch (error: any) {
-      newPhotos[index].uploading = false;
-      setPhotos(newPhotos);
-      setUploading(false);
-      Alert.alert('Error', error.message || 'Failed to upload photo');
+      Alert.alert(
+        'Could not add photo',
+        error?.message || 'Pick from gallery on simulator, or use camera on a real device.',
+      );
     }
   };
 
   const handleOdometerSubmit = () => {
-    if (!odometerReading || isNaN(parseFloat(odometerReading))) {
-      Alert.alert('Error', 'Please enter a valid odometer reading');
+    if (!odometerReading || Number.isNaN(parseFloat(odometerReading))) {
+      Alert.alert('Odometer', 'Enter a valid reading');
       return;
     }
     setShowOdometerModal(false);
     if (selectedPhotoIndex !== null) {
-      uploadPhoto(selectedPhotoIndex);
+      void uploadPhoto(selectedPhotoIndex);
     }
   };
 
+  const addAfterVideo = async () => {
+    if (!leadId) return;
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission', 'Gallery access chahiye video add karne ke liye.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      setUploadingVideo(true);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      for (const [index, asset] of result.assets.entries()) {
+        const formData = new FormData();
+        // @ts-ignore React Native FormData file
+        formData.append('file', {
+          uri: asset.uri,
+          name: `after-video-${Date.now()}-${index}.mp4`,
+          type: 'video/mp4',
+        });
+        formData.append('photo_type', `AFTER_VIDEO-${Date.now()}-${index}`);
+        formData.append('photo_category', 'after_video');
+        const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${leadId}/upload-photos`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: formData,
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(json?.error || 'Failed to upload video');
+      }
+      await load();
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload video');
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+
+  const requiredCount = photos.filter((p) => p.required).length;
+  const uploadedCount = photos.filter((p) => p.required && p.uploaded).length;
+
   const canCompleteJob = () => {
-    const requiredPhotos = photos.filter((p) => p.required);
-    const uploadedRequired = requiredPhotos.filter((p) => p.uploaded);
+    if (isDummy) return workNotes.trim().length > 0;
     return (
-      uploadedRequired.length >= 6 &&
+      uploadedCount >= 6 &&
       checklistCompleted &&
       partsRecorded &&
       workNotes.trim().length > 0
@@ -308,212 +349,200 @@ export default function AfterServicePhotoScreen({ route, hideChrome = false }: P
   const handleCompleteJob = async () => {
     if (!canCompleteJob()) {
       Alert.alert(
-        'Incomplete Requirements',
-        'Please ensure:\n• All required photos uploaded (minimum 6)\n• Checklist completed\n• Parts recorded\n• Work notes entered'
+        'Incomplete',
+        isDummy
+          ? 'Add a short work note, then mark complete. Photos are optional on dummy leads.'
+          : 'Need 6 after photos, checklist, parts, and work notes.',
       );
       return;
     }
+    if (!leadId) return;
 
     try {
-      // Update work notes first
-      if (workNotes.trim()) {
-        await supabase
-          .from('mechanic_jobs')
-          .update({ work_notes: workNotes })
-          .eq('lead_id', leadId);
-      }
-
-      // Complete the job via canonical API (sets WORK_COMPLETED + qc_status + notifications)
       const session = (await supabase.auth.getSession()).data.session;
-      const response = await fetch(
-        `${ENV.API_URL}/api/mechanic/jobs/${leadId}/complete`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            notes: 'Job completed with all after service photos',
-            work_summary: workNotes.trim() || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to complete job');
+      if (workNotes.trim()) {
+        await supabase.from('mechanic_jobs').update({ work_notes: workNotes }).eq('lead_id', leadId);
       }
-
-      Alert.alert('Success', 'Job completed successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${leadId}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          notes: 'Job completed with after service photos',
+          work_summary: workNotes.trim() || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.details || error.error || error.hint || 'Failed to complete job');
+      }
+      Alert.alert('Done', 'Job sent to QC', [{ text: 'OK', onPress: () => navigation.goBack() }]);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to complete job');
+      Alert.alert('Error', error?.message || 'Failed to complete job');
     }
   };
 
-  const requiredCount = photos.filter((p) => p.required).length;
-  const uploadedCount = photos.filter((p) => p.required && p.uploaded).length;
-
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={hideChrome ? [] : ['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>After Service Photos</Text>
-        <View style={styles.placeholder} />
-      </View>
+    <View style={styles.container}>
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={styles.inPageBack}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+      >
+        <Icon name="arrow-left" size={18} color={COLORS.primary} />
+        <Text style={styles.inPageBackText}>Back to job</Text>
+      </TouchableOpacity>
 
-      {/* Progress Indicator */}
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>
-          {uploadedCount} / {requiredCount} Required Photos
-        </Text>
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${(uploadedCount / requiredCount) * 100}%` },
-            ]}
-          />
-        </View>
-      </View>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {isDummy ? (
+          <View style={styles.dummyBanner}>
+            <Text style={styles.dummyTitle}>Dummy lead</Text>
+            <Text style={styles.dummyText}>
+              Simulator pe gallery se photo / video add karo. Checklist / parts yahan mandatory nahi.
+            </Text>
+          </View>
+        ) : null}
 
-      {/* Requirements Checklist */}
-      <View style={styles.requirementsContainer}>
-        <Text style={styles.requirementsTitle}>Completion Requirements:</Text>
-        <View style={styles.requirementItem}>
-          <Icon 
-            name={checklistCompleted ? "check" : "x"} 
-            size={16} 
-            color={checklistCompleted ? COLORS.success : COLORS.error} 
-          />
-          <Text style={styles.requirementText}>Checklist Completed</Text>
+        <View style={styles.topBar}>
+          <Text style={styles.progressText}>
+            {uploadedCount}/{requiredCount} photos
+          </Text>
+          <View style={styles.chipRow}>
+            <Text style={[styles.chip, checklistCompleted || isDummy ? styles.chipOk : styles.chipWait]}>
+              Checklist
+            </Text>
+            <Text style={[styles.chip, partsRecorded || isDummy ? styles.chipOk : styles.chipWait]}>
+              Parts
+            </Text>
+            <Text style={[styles.chip, workNotes.trim() ? styles.chipOk : styles.chipWait]}>Notes</Text>
+          </View>
         </View>
-        <View style={styles.requirementItem}>
-          <Icon 
-            name={partsRecorded ? "check" : "x"} 
-            size={16} 
-            color={partsRecorded ? COLORS.success : COLORS.error} 
-          />
-          <Text style={styles.requirementText}>Parts Recorded</Text>
-        </View>
-        <View style={styles.requirementItem}>
-          <Icon 
-            name={workNotes.trim().length > 0 ? "check" : "x"} 
-            size={16} 
-            color={workNotes.trim().length > 0 ? COLORS.success : COLORS.error} 
-          />
-          <Text style={styles.requirementText}>Work Notes Entered</Text>
-        </View>
-      </View>
 
-      {/* Work Notes Input */}
-      <View style={styles.notesContainer}>
-        <Text style={styles.notesLabel}>Work Notes *</Text>
+        <View style={styles.videoSection}>
+          <Text style={styles.videoTitle}>Work videos</Text>
+          <Text style={styles.videoHint}>
+            Regular service ka video yahan add karo. Extra work ke videos Extra Work tab pe alag hain.
+          </Text>
+          <View style={styles.videoRow}>
+            {afterVideos.map((clip) => (
+              <View key={clip.id} style={styles.videoThumb}>
+                <Icon name="video" size={20} color={COLORS.white} />
+                <Text style={styles.videoThumbText}>VIDEO</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={[styles.addVideoBtn, uploadingVideo && { opacity: 0.6 }]}
+              onPress={() => void addAfterVideo()}
+              disabled={uploadingVideo}
+            >
+              {uploadingVideo ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <>
+                  <Icon name="video" size={20} color={COLORS.primary} />
+                  <Text style={styles.addVideoText}>Add video</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <TextInput
           style={styles.notesInput}
-          placeholder="Enter work notes..."
+          placeholder="Work notes *"
           value={workNotes}
           onChangeText={setWorkNotes}
           multiline
-          numberOfLines={4}
         />
-      </View>
 
-      {/* Photos Grid */}
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {photos.map((photo, index) => (
-          <View key={photo.type} style={styles.photoCard}>
-            <Text style={styles.photoLabel}>
-              {photo.label}
-              {photo.required && <Text style={styles.required}> *</Text>}
-            </Text>
-            
-            {photo.uri ? (
-              <View style={styles.photoPreview}>
-                <Image source={{ uri: photo.uri }} style={styles.photoImage} />
-                {photo.uploading && (
-                  <View style={styles.uploadingOverlay}>
-                    <ActivityIndicator size="small" color={COLORS.white} />
-                  </View>
-                )}
-                {photo.uploaded && (
-                  <View style={styles.uploadedBadge}>
-                    <Icon name="check" size={16} color={COLORS.white} />
-                  </View>
-                )}
-                {!photo.uploaded && !photo.uploading && (
-                  <TouchableOpacity
-                    style={styles.retakeButton}
-                    onPress={() => takePhoto(index)}
-                  >
-                    <Text style={styles.retakeText}>Retake</Text>
+        <View style={styles.grid}>
+          {photos.map((photo, index) => (
+            <View key={photo.type} style={styles.photoCard}>
+              <Text style={styles.photoLabel} numberOfLines={1}>
+                {photo.label}
+                {photo.required ? <Text style={styles.required}> *</Text> : null}
+              </Text>
+              {photo.uri ? (
+                <View style={styles.photoPreview}>
+                  {/\.(mp4|mov|m4v|webm|3gp)(\?|$)/i.test(photo.uri) ? (
+                    <View style={styles.videoPlaceholder}>
+                      <Icon name="video" size={22} color={COLORS.white} />
+                      <Text style={styles.videoPlaceholderText}>Video</Text>
+                    </View>
+                  ) : (
+                    <Image source={{ uri: photo.uri }} style={styles.photoImage} />
+                  )}
+                  {photo.uploading ? (
+                    <View style={styles.uploadingOverlay}>
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    </View>
+                  ) : null}
+                  {photo.uploaded ? (
+                    <View style={styles.uploadedBadge}>
+                      <Icon name="check" size={12} color={COLORS.white} />
+                    </View>
+                  ) : null}
+                  <TouchableOpacity style={styles.retakeButton} onPress={() => void takePhoto(index)}>
+                    <Text style={styles.retakeText}>Change</Text>
                   </TouchableOpacity>
-                )}
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.captureButton}
-                onPress={() => takePhoto(index)}
-                disabled={uploading}
-              >
-                <Icon name="camera" size={32} color={COLORS.primary} />
-                <Text style={styles.captureText}>Capture Photo</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ))}
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.captureButton}
+                  onPress={() => void takePhoto(index)}
+                  disabled={uploading}
+                >
+                  <Icon name="camera" size={22} color={COLORS.primary} />
+                  <Text style={styles.captureText}>Add photo / video</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </View>
       </ScrollView>
 
-      {/* Complete Job Button */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[
-            styles.completeButton,
-            (!canCompleteJob() || uploading) && styles.completeButtonDisabled,
-          ]}
-          onPress={handleCompleteJob}
+          style={[styles.completeButton, (!canCompleteJob() || uploading) && styles.completeButtonDisabled]}
+          onPress={() => void handleCompleteJob()}
           disabled={!canCompleteJob() || uploading}
         >
           {uploading ? (
             <ActivityIndicator size="small" color={COLORS.white} />
           ) : (
-            <>
-              <Icon name="check" size={20} color={COLORS.white} />
-              <Text style={styles.completeButtonText}>Mark Job Complete</Text>
-            </>
+            <Text style={styles.completeButtonText}>Mark job complete</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Odometer Modal */}
       <Modal
         visible={showOdometerModal}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowOdometerModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Enter Final Odometer Reading</Text>
+            <Text style={styles.modalTitle}>Final odometer (km)</Text>
             <TextInput
               style={styles.odometerInput}
-              placeholder="Enter final odometer reading"
+              placeholder="e.g. 45210"
               value={odometerReading}
               onChangeText={setOdometerReading}
               keyboardType="numeric"
@@ -530,15 +559,13 @@ export default function AfterServicePhotoScreen({ route, hideChrome = false }: P
                 style={[styles.modalButton, styles.modalButtonSubmit]}
                 onPress={handleOdometerSubmit}
               >
-                <Text style={[styles.modalButtonText, styles.modalButtonTextSubmit]}>
-                  Submit
-                </Text>
+                <Text style={[styles.modalButtonText, styles.modalButtonTextSubmit]}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -547,21 +574,33 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  inPageBack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+  },
+  inPageBackText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
+    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],
@@ -570,97 +609,103 @@ const styles = StyleSheet.create({
     padding: SPACING.xs,
   },
   headerTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
     color: COLORS.text,
   },
   placeholder: {
-    width: 40,
-  },
-  progressContainer: {
-    padding: SPACING.md,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
-  },
-  progressText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: COLORS.gray[200],
-    borderRadius: BORDER_RADIUS.sm,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.primary,
-  },
-  requirementsContainer: {
-    padding: SPACING.md,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
-  },
-  requirementsTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  requirementItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
-  requirementText: {
-    marginLeft: SPACING.sm,
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
-  },
-  notesContainer: {
-    padding: SPACING.md,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
-  },
-  notesLabel: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  notesInput: {
-    borderWidth: 1,
-    borderColor: COLORS.gray[300],
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    minHeight: 100,
-    textAlignVertical: 'top',
+    width: 32,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
-  photoCard: {
+  dummyBanner: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FDBA74',
+    borderWidth: 1,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  dummyTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '800',
+    color: '#C2410C',
+  },
+  dummyText: {
+    marginTop: 2,
+    fontSize: FONT_SIZES.xs,
+    color: '#9A3412',
+  },
+  topBar: {
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  progressText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  chip: {
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  chipOk: {
+    backgroundColor: '#D1FAE5',
+    color: '#047857',
+  },
+  chipWait: {
+    backgroundColor: '#FEE2E2',
+    color: '#B91C1C',
+  },
+  notesInput: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 8,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    minHeight: 52,
+    textAlignVertical: 'top',
+    marginBottom: SPACING.sm,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  photoCard: {
+    width: '48%',
+    flexGrow: 1,
+    maxWidth: '48.5%',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: 8,
     borderWidth: 1,
     borderColor: COLORS.gray[200],
   },
   photoLabel: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: COLORS.text,
-    marginBottom: SPACING.sm,
+    marginBottom: 6,
   },
   required: {
     color: COLORS.error,
@@ -668,8 +713,8 @@ const styles = StyleSheet.create({
   photoPreview: {
     position: 'relative',
     width: '100%',
-    height: 200,
-    borderRadius: BORDER_RADIUS.md,
+    height: 110,
+    borderRadius: BORDER_RADIUS.sm,
     overflow: 'hidden',
   },
   photoImage: {
@@ -677,57 +722,120 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'cover',
   },
+  videoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  videoPlaceholderText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  videoSection: {
+    marginTop: 16,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+  },
+  videoTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#004AAD',
+  },
+  videoHint: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  videoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  videoThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  videoThumbText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  addVideoBtn: {
+    minWidth: 72,
+    height: 72,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+  },
+  addVideoText: {
+    color: '#004AAD',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   uploadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   uploadedBadge: {
     position: 'absolute',
-    top: SPACING.xs,
-    right: SPACING.xs,
+    top: 4,
+    right: 4,
     backgroundColor: COLORS.success,
-    borderRadius: BORDER_RADIUS.full,
-    width: 32,
-    height: 32,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
   retakeButton: {
     position: 'absolute',
-    bottom: SPACING.xs,
-    right: SPACING.xs,
+    bottom: 4,
+    right: 4,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   retakeText: {
     color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
   },
   captureButton: {
-    width: '100%',
-    height: 150,
-    borderWidth: 2,
+    height: 110,
+    borderWidth: 1.5,
     borderColor: COLORS.primary,
     borderStyle: 'dashed',
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: COLORS.gray[50],
   },
   captureText: {
-    marginTop: SPACING.xs,
-    fontSize: FONT_SIZES.sm,
+    marginTop: 4,
+    fontSize: 11,
     color: COLORS.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   footer: {
     padding: SPACING.md,
@@ -737,25 +845,22 @@ const styles = StyleSheet.create({
   },
   completeButton: {
     backgroundColor: COLORS.success,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: SPACING.md,
+    paddingVertical: 12,
     borderRadius: BORDER_RADIUS.md,
   },
   completeButtonDisabled: {
     backgroundColor: COLORS.gray[300],
-    opacity: 0.6,
   },
   completeButtonText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    marginLeft: SPACING.xs,
+    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -763,29 +868,29 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.lg,
-    width: '80%',
+    width: '82%',
   },
   modalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
     color: COLORS.text,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   odometerInput: {
     borderWidth: 1,
     borderColor: COLORS.gray[300],
     borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
+    padding: SPACING.sm,
     fontSize: FONT_SIZES.md,
     marginBottom: SPACING.md,
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
   modalButton: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.md,
   },
@@ -796,12 +901,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   modalButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text,
+    fontWeight: '600',
   },
   modalButtonTextSubmit: {
     color: COLORS.white,
-    fontWeight: '600',
   },
 });
-

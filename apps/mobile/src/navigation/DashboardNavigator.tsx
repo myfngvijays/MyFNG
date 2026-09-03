@@ -73,6 +73,7 @@ import ExtraWorkApprovalScreen from '../screens/dashboard/workshop_supervisor/Ex
 import SupervisorAnalyticsScreen from '../screens/dashboard/workshop_supervisor/SupervisorAnalyticsScreen';
 import JobMonitoringScreen from '../screens/dashboard/workshop_supervisor/JobMonitoringScreen';
 import JobDetailScreen from '../screens/dashboard/workshop_supervisor/JobDetailScreen';
+import AdvisorBillingScreen from '../screens/dashboard/workshop_supervisor/AdvisorBillingScreen';
 import MechanicAssignmentScreen from '../screens/dashboard/workshop_supervisor/MechanicAssignmentScreen';
 import SupervisorMenuScreen from '../screens/dashboard/workshop_supervisor/SupervisorMenuScreen';
 import AdvisorReadMeScreen from '../screens/dashboard/workshop_supervisor/AdvisorReadMeScreen';
@@ -192,6 +193,7 @@ const AdvisorPerformance = withAdvisorShell(SupervisorPerformanceScreen, 'Superv
 const AdvisorProfile = withAdvisorShell(SupervisorProfileScreen, 'SupervisorProfile');
 const AdvisorReadMe = withAdvisorShell(AdvisorReadMeScreen, 'AdvisorReadMe');
 const AdvisorJobDetail = withAdvisorShell(JobDetailScreen, 'JobDetail');
+const AdvisorBilling = withAdvisorShell(AdvisorBillingScreen, 'AdvisorBilling');
 const AdvisorMechanicAssignment = withAdvisorShell(MechanicAssignmentScreen, 'MechanicAssignment');
 
 interface DashboardNavigatorProps {
@@ -983,6 +985,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           component={AdvisorJobDetail}
           options={{ title: 'Job Details' }}
         />
+        <Stack.Screen
+          name="AdvisorBilling"
+          component={AdvisorBilling}
+          options={{ title: 'Order Summary' }}
+        />
         <Stack.Screen 
           name="MechanicAssignment" 
           component={AdvisorMechanicAssignment}
@@ -1003,6 +1010,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     const MechanicExtraWorkRequestScreen = require('../screens/dashboard/workshop_mechanic/MechanicExtraWorkRequestScreen').default;
     const PerformanceScreen = require('../screens/dashboard/workshop_mechanic/PerformanceScreen').default;
     const AfterServicePhotoScreen = require('../screens/dashboard/workshop_mechanic/AfterServicePhotoScreen').default;
+    const DuringServicePhotoScreen = require('../screens/dashboard/workshop_mechanic/DuringServicePhotoScreen').default;
 
     return (
       <Stack.Navigator screenOptions={screenOptions}>
@@ -1035,6 +1043,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="AfterServicePhotos" 
           component={withMechanicShell(AfterServicePhotoScreen, 'AfterServicePhotos')}
           options={{ title: 'After Service Photos' }}
+        />
+        <Stack.Screen
+          name="DuringServicePhotos"
+          component={withMechanicShell(DuringServicePhotoScreen, 'DuringServicePhotos')}
+          options={{ title: 'During Service Photos' }}
         />
         <Stack.Screen
           name="MechanicExtraWorkRequest"

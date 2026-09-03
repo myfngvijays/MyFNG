@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { notifyQCDecision, notifyAccountsTeam, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 import { getEffectivePricingItemAmount, getEffectiveQty } from '@/lib/utils/pricing';
+import { resolveWorkshopServicePrice } from '@/lib/utils/workshopServicePricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -350,15 +351,15 @@ export async function POST(
 
         const extraCharges = (Array.isArray(extraChargesRaw) ? extraChargesRaw : []).filter(isApprovedExtra);
 
-        const pricingTotal = (pricingItems || []).reduce((sum: number, it: any) => sum + getEffectivePricingItemAmount(it), 0) || 0;
+        let pricingTotal = (pricingItems || []).reduce((sum: number, it: any) => sum + getEffectivePricingItemAmount(it), 0) || 0;
         const extraTotal =
           (extraCharges || []).reduce((sum: number, it: any) => sum + computeExtraAmount(it), 0) || 0;
         const partsTotal =
           (jobCard?.job_card_parts || []).reduce((sum: number, p: any) => sum + parseFloat(p.total_price || '0'), 0) || 0;
         const discountAmount = parseFloat((lead as any).discount_amount || '0') || 0;
 
-        const subTotal = Math.max(0, pricingTotal + extraTotal + partsTotal);
-        const finalAmount = Math.max(0, subTotal - discountAmount);
+        let subTotal = Math.max(0, pricingTotal + extraTotal + partsTotal);
+        let finalAmount = Math.max(0, subTotal - discountAmount);
 
         const lineItems: any[] = [];
         (pricingItems || []).forEach((it: any) => {
@@ -372,6 +373,92 @@ export async function POST(
             category: it.is_addon ? 'ADDON' : 'SERVICE',
           });
         });
+
+        const hasServiceLine = lineItems.some(
+          (row) => String(row?.category || '').toUpperCase() === 'SERVICE',
+        );
+        if (!hasServiceLine) {
+          const isUuid = (value: string) =>
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+          const parseIdList = (raw: any): string[] => {
+            if (!raw) return [];
+            if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+            if (typeof raw === 'string') {
+              const txt = raw.trim();
+              if (!txt) return [];
+              try {
+                const parsed = JSON.parse(txt);
+                if (Array.isArray(parsed)) return parsed.map(String).map((s) => s.trim()).filter(Boolean);
+              } catch {
+                // ignore
+              }
+              return txt.split(',').map((s) => s.trim()).filter(Boolean);
+            }
+            return [];
+          };
+          const nameHints = String((lead as any)?.service_type || '')
+            .split(/[,+/|&]| and /i)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 1 && !isUuid(s));
+          const foundIds = new Set<string>(parseIdList((lead as any)?.service_type_ids).filter(isUuid));
+          if (nameHints.length > 0) {
+            try {
+              const orFilter = nameHints
+                .slice(0, 8)
+                .map((n) => `name.ilike.%${String(n).replace(/[%_,.()]/g, ' ').replace(/\s+/g, ' ').trim()}%`)
+                .filter(Boolean)
+                .join(',');
+              if (orFilter) {
+                const { data: byName } = await supabase
+                  .from('service_types')
+                  .select('id, name')
+                  .or(orFilter)
+                  .limit(25);
+                for (const st of byName || []) {
+                  const id = String((st as any)?.id || '').trim();
+                  if (id) foundIds.add(id);
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+          const serviceTypeIds = [...foundIds];
+          if (serviceTypeIds.length > 0) {
+            let serviceTypes: any[] = [];
+            const { data: stData } = await supabase
+              .from('service_types')
+              .select('id, name, base_price')
+              .in('id', serviceTypeIds);
+            serviceTypes = stData || [];
+            for (const st of serviceTypes) {
+              const id = String((st as any)?.id || '').trim();
+              if (!id) continue;
+              let price = 0;
+              try {
+                price = await resolveWorkshopServicePrice({
+                  supabase,
+                  workshopId: String(lead.workshop_id || ''),
+                  serviceTypeId: id,
+                  cityId: String((lead as any)?.city_id || '').trim() || null,
+                  cityName: String((lead as any)?.city || '').trim() || null,
+                });
+              } catch {
+                price = 0;
+              }
+              const base = parseFloat(String((st as any).base_price || '0')) || 0;
+              const amount = price > 0 ? price : base;
+              lineItems.unshift({
+                description: (st as any)?.name || 'Service',
+                qty: 1,
+                rate: amount,
+                amount,
+                category: 'SERVICE',
+                service_type_id: id,
+              });
+            }
+          }
+        }
         (jobCard?.job_card_parts || []).forEach((p: any) => {
           lineItems.push({
             description: `${p.part_name || 'Part'}${p.part_number ? ` (${p.part_number})` : ''}`,
@@ -391,6 +478,16 @@ export async function POST(
             category: 'EXTRA',
           });
         });
+
+        const serviceAddonTotal = lineItems
+          .filter((row) => {
+            const cat = String(row?.category || '').toUpperCase();
+            return cat === 'SERVICE' || cat === 'ADDON' || cat === 'ADD_ON' || cat === 'ADD-ON';
+          })
+          .reduce((sum, row) => sum + (Number(row?.amount || 0) || 0), 0);
+        if (serviceAddonTotal > 0) pricingTotal = serviceAddonTotal;
+        subTotal = Math.max(0, pricingTotal + extraTotal + partsTotal);
+        finalAmount = Math.max(0, subTotal - discountAmount);
 
         const osInsert: any = {
           invoice_number: osNumber,

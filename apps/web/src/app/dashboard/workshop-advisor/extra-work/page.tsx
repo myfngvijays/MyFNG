@@ -413,6 +413,31 @@ export default function ExtraWorkApprovalsPage() {
 
       if (error) {
         console.error('Error fetching additional job:', error);
+      }
+
+      if (error || !extraWork?.length) {
+        try {
+          const apiRes = await fetch('/api/supervisor/extra-work');
+          const apiJson = await apiRes.json().catch(() => ({}));
+          if (apiRes.ok && Array.isArray(apiJson.requests) && apiJson.requests.length > 0) {
+              extraWork = apiJson.requests.map((r: any) => ({
+              ...r,
+              service_leads: {
+                lead_number: r.lead_number,
+                customer_name: r.customer_name,
+                vehicle_number: r.vehicle_number,
+                workshop_id: userProfile.workshop_id,
+                deleted_at: null,
+              },
+            }));
+            error = null;
+          }
+        } catch (apiErr) {
+          console.warn('Additional jobs API fallback failed:', apiErr);
+        }
+      }
+
+      if (error) {
         toast.error('Failed to fetch additional job requests');
         return;
       }
@@ -875,7 +900,8 @@ export default function ExtraWorkApprovalsPage() {
       'EXTENDED_WORK': 'badge-yellow',
       'OTHER': 'badge-gray'
     };
-    return badges[category] || 'badge-gray';
+    const key = String(category || '').toUpperCase().startsWith('OTHER') ? 'OTHER' : category;
+    return badges[key] || 'badge-gray';
   };
 
   const groupedRequests = useMemo(() => {

@@ -15,7 +15,7 @@ import { useNotifications } from '../../../context/NotificationContext';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import { COLORS, SHADOWS } from '../../../constants/theme';
 import { fetchMechanicJobs } from '../../../lib/mechanicJobs';
-import { isMechanicJobInProgress, resolveMechanicDisplayStatus } from '../../../lib/mechanicJobStatus';
+import { isMechanicJobFinished, isMechanicJobInProgress, resolveMechanicDisplayStatus } from '../../../lib/mechanicJobStatus';
 
 interface Job {
   id: string;
@@ -47,10 +47,11 @@ function filterLabel(id: string) {
   return id.replace(/_/g, ' ');
 }
 
-export default function MechanicJobsScreen({ navigation, embedInShell = false }: any) {
+export default function MechanicJobsScreen({ navigation, route, embedInShell = false }: any) {
+  const incomingFilter = String(route?.params?.filter || 'ALL').toUpperCase();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
-  const [activeFilter, setActiveFilter] = useState('ALL');
+  const [activeFilter, setActiveFilter] = useState(incomingFilter || 'ALL');
   const [refreshing, setRefreshing] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const { user } = useAuth();
@@ -136,7 +137,12 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
           const total = Number((row as any).checklist_total ?? 0);
           const displayStatus =
             (row as any).display_status ||
-            resolveMechanicDisplayStatus(row.mechanic_status, done, total);
+            resolveMechanicDisplayStatus(
+              row.mechanic_status,
+              done,
+              total,
+              !!row.has_pending_extra_work,
+            );
           return { ...row, display_status: displayStatus, checklist_done: done, checklist_total: total };
         }),
       );
@@ -174,14 +180,21 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
   }, [jobRefreshTick, user?.id, fetchJobs]);
 
   useEffect(() => {
+    const next = String(route?.params?.filter || '').toUpperCase();
+    if (next) setActiveFilter(next);
+  }, [route?.params?.filter]);
+
+  useEffect(() => {
     if (activeFilter === 'ALL') {
-      setFilteredJobs(jobs);
+      setFilteredJobs(jobs.filter((job) => !isMechanicJobFinished(job.mechanic_status)));
     } else if (activeFilter === 'NEED_APPROVAL') {
       setFilteredJobs(jobs.filter((job) => job.has_pending_extra_work));
     } else if (activeFilter === 'HOLD') {
       setFilteredJobs(
         jobs.filter((job) => job.mechanic_status === 'HOLD' || job.mechanic_status === 'WAITING_APPROVAL'),
       );
+    } else if (activeFilter === 'COMPLETED') {
+      setFilteredJobs(jobs.filter((job) => isMechanicJobFinished(job.mechanic_status)));
     } else {
       setFilteredJobs(
         jobs.filter((job) => (job.display_status || job.mechanic_status) === activeFilter),
@@ -190,14 +203,14 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
   }, [activeFilter, jobs]);
 
   const counts: Record<string, number> = {
-    ALL: jobs.length,
+    ALL: jobs.filter((j) => !isMechanicJobFinished(j.mechanic_status)).length,
     ASSIGNED: jobs.filter((j) => (j.display_status || j.mechanic_status) === 'ASSIGNED').length,
     IN_PROGRESS: jobs.filter((j) =>
       isMechanicJobInProgress(j.mechanic_status, j.checklist_done, j.checklist_total),
     ).length,
     HOLD: jobs.filter((j) => j.mechanic_status === 'HOLD' || j.mechanic_status === 'WAITING_APPROVAL').length,
     NEED_APPROVAL: jobs.filter((j) => j.has_pending_extra_work).length,
-    COMPLETED: jobs.filter((j) => j.mechanic_status === 'COMPLETED').length,
+    COMPLETED: jobs.filter((j) => isMechanicJobFinished(j.mechanic_status)).length,
   };
 
   function getStatusColor(status: string) {
@@ -241,7 +254,13 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
     return (
       <TouchableOpacity
         style={[AC.listCard, { borderLeftColor: getPriorityColor(item.job_priority) }]}
-        onPress={() => navigation.navigate('JobDetail', { jobId: item.lead_id, leadId: item.lead_id })}
+        onPress={() =>
+          navigation.navigate('JobDetail', {
+            jobId: item.lead_id,
+            leadId: item.lead_id,
+            tab: item.has_pending_extra_work ? 'extra' : undefined,
+          })
+        }
         activeOpacity={0.8}
       >
         <View style={styles.jobHeader}>
@@ -339,8 +358,14 @@ export default function MechanicJobsScreen({ navigation, embedInShell = false }:
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
           <View style={AC.empty}>
-            <Text style={AC.emptyTxt}>No jobs found</Text>
-            <Text style={AC.emptySub}>New assignments will show here</Text>
+            <Text style={AC.emptyTxt}>
+              {activeFilter === 'NEED_APPROVAL' ? 'No additional jobs waiting for approval' : 'No jobs found'}
+            </Text>
+            <Text style={AC.emptySub}>
+              {activeFilter === 'NEED_APPROVAL'
+                ? 'Submitted extra work requests will show here'
+                : 'New assignments will show here'}
+            </Text>
           </View>
         }
       />

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { notifyExtraWorkDecision, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
+import { notifyExtraWorkDecision, notifyWorkshopRoles, notifyTelecallerForLead, resolveLeadMechanicId } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,22 +183,28 @@ export async function POST(
     // In-app notifications (Phase A)
     try {
       const leadNumber = (extraWork as any)?.service_leads?.lead_number || extraWork.lead_id;
-      const mechanicId = (extraWork as any)?.service_leads?.assigned_mechanic_id;
+      const mechanicId = await resolveLeadMechanicId(
+        extraWork.lead_id,
+        (extraWork as any)?.service_leads?.assigned_mechanic_id,
+      );
       const supervisorName = (userProfile as any)?.full_name || 'Supervisor';
       const amountNum =
         typeof extraWork.amount === 'number' ? extraWork.amount : Number.parseFloat(String(extraWork.amount));
 
-      if (mechanicId) {
-        await notifyExtraWorkDecision(
-          extraWork.lead_id,
-          leadNumber,
-          mechanicId,
-          false,
-          Number.isFinite(amountNum) ? amountNum : 0,
-          supervisorName,
-          reason
-        );
-      }
+      await notifyExtraWorkDecision(
+        extraWork.lead_id,
+        leadNumber,
+        mechanicId || '',
+        false,
+        Number.isFinite(amountNum) ? amountNum : 0,
+        supervisorName,
+        reason,
+        {
+          extraWorkId,
+          advisorId: userProfile.id,
+          description: String(extraWork.description || '').trim() || 'Additional job',
+        },
+      );
 
       if (userProfile.workshop_id) {
         await notifyWorkshopRoles({

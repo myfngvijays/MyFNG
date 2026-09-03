@@ -18,6 +18,25 @@ const QC_TERMINAL_STATUSES = new Set([
   'REWORK_REQUIRED',
 ]);
 
+/** After QC pass the floor job is done — billing / payment / delivery. */
+export const FLOOR_DONE_STATUSES = new Set([
+  'QC_APPROVED',
+  'READY_FOR_BILLING',
+  'INVOICE_GENERATED',
+  'PAYMENT_AWAITING',
+  'AWAITING_PAYMENT',
+  'READY_FOR_DELIVERY',
+  'DELIVERED',
+  'CLOSED',
+  'COMPLETED',
+]);
+
+export function isQcPassed(lead: { qc_status?: string | null; status?: string | null }) {
+  const qc = String(lead.qc_status || '').toUpperCase();
+  if (qc === 'PASSED' || qc === 'APPROVED') return true;
+  return FLOOR_DONE_STATUSES.has(String(lead.status || '').toUpperCase());
+}
+
 /** Mechanic assign only after pickup is done (or pickup not required). */
 export function isReadyForMechanicAssign(lead: {
   pickup_required?: boolean | null;
@@ -79,4 +98,18 @@ export function isPendingQc(lead: {
   const qc = String(lead.qc_status || '').toUpperCase();
   if (qc === 'PASSED' || qc === 'APPROVED' || qc === 'FAILED') return false;
   return !qc || qc === 'PENDING';
+}
+
+/** QC Queue chips — PENDING includes mechanic-complete with qc_status = PENDING. */
+export function qcQueueTab(lead: {
+  status?: string | null;
+  qc_status?: string | null;
+  mechanic_completed_at?: string | null;
+}): 'PENDING' | 'PASSED' | 'FAILED' | 'REWORK' | 'OTHER' {
+  if (isPendingQc(lead)) return 'PENDING';
+  const qc = String(lead.qc_status || '').toUpperCase();
+  if (qc === 'PASSED' || qc === 'APPROVED') return 'PASSED';
+  if (qc === 'FAILED') return 'FAILED';
+  if (qc === 'REWORK_REQUIRED' || qc === 'REWORK') return 'REWORK';
+  return 'OTHER';
 }

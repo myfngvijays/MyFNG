@@ -23,7 +23,7 @@ import {
   WorkshopEmpty,
 } from '@/components/workshop/WorkshopUi';
 import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
-import { isMechanicJobInProgress, resolveMechanicDisplayStatus } from '@/lib/workshop/mechanicJobStatus';
+import { isMechanicJobFinished, isMechanicJobInProgress, resolveMechanicDisplayStatus } from '@/lib/workshop/mechanicJobStatus';
 
 type FilterType = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'HOLD' | 'COMPLETED' | 'NEED_APPROVAL';
 
@@ -86,7 +86,11 @@ export default function WorkshopMechanicDashboard() {
     [jobs, dateRange.start, dateRange.end, dateRange.allTime],
   );
   const completedInRange = useMemo(
-    () => jobs.filter((j) => isoInRange(j.completed_at, dateRange.start, dateRange.end, dateRange.allTime)).length,
+    () =>
+      jobs.filter((j) => {
+        if (!isMechanicJobFinished(j.mechanic_status)) return false;
+        return isoInRange(j.completed_at || j.assigned_at, dateRange.start, dateRange.end, dateRange.allTime);
+      }).length,
     [jobs, dateRange.start, dateRange.end, dateRange.allTime],
   );
 
@@ -600,14 +604,14 @@ export default function WorkshopMechanicDashboard() {
         filtered = jobs.filter(j => j.mechanic_status === 'HOLD' || j.mechanic_status === 'WAITING_APPROVAL');
         break;
       case 'COMPLETED':
-        filtered = jobs.filter(j => j.mechanic_status === 'COMPLETED');
+        filtered = jobs.filter(j => isMechanicJobFinished(j.mechanic_status));
         break;
       case 'NEED_APPROVAL':
         filtered = jobs.filter(j => j.has_pending_extra_work);
         break;
       case 'ALL':
       default:
-        filtered = jobs;
+        filtered = jobs.filter(j => !isMechanicJobFinished(j.mechanic_status));
     }
     
     setFilteredJobs(filtered);
@@ -653,6 +657,11 @@ export default function WorkshopMechanicDashboard() {
     }
   }
 
+  function jobHref(job: { lead_id: string; has_pending_extra_work?: boolean }) {
+    const extra = activeFilter === 'NEED_APPROVAL' || job.has_pending_extra_work ? '?tab=extra-work' : '';
+    return `/dashboard/workshop_mechanic/jobs/${job.lead_id}${extra}`;
+  }
+
   function formatSLA(minutes: number) {
     if (minutes < 0) return <span className="text-red-600 font-semibold">Overdue</span>;
     if (minutes < 60) return <span className="text-orange-600">{minutes}m remaining</span>;
@@ -691,7 +700,7 @@ export default function WorkshopMechanicDashboard() {
           <WorkshopStatTile label="Assigned" value={assignedInRange} icon={<Calendar className="w-6 h-6 text-blue-600" />} tone="from-blue-50 to-blue-100" loading={loading} />
           <WorkshopStatTile label="In Progress" value={stats.in_progress} icon={<Clock className="w-6 h-6 text-amber-600" />} tone="from-yellow-50 to-yellow-100" loading={loading} />
           <WorkshopStatTile label="Completed" value={completedInRange} icon={<CheckCircle className="w-6 h-6 text-green-600" />} tone="from-green-50 to-green-100" loading={loading} />
-          <WorkshopStatTile label="Need Approval" value={stats.need_approval} icon={<AlertTriangle className="w-6 h-6 text-orange-600" />} tone="from-orange-50 to-orange-100" loading={loading} />
+          <WorkshopStatTile label="Need Approval" value={stats.need_approval} icon={<AlertTriangle className="w-6 h-6 text-orange-600" />} tone="from-orange-50 to-orange-100" loading={loading} onClick={() => setActiveFilter('NEED_APPROVAL')} />
           <WorkshopStatTile label="SLA Success" value={`${performanceStats.sla_success_rate.toFixed(0)}%`} icon={<TrendingUp className="w-6 h-6 text-purple-600" />} tone="from-purple-50 to-purple-100" loading={loading} />
         </div>
 
@@ -710,7 +719,7 @@ export default function WorkshopMechanicDashboard() {
               <button
                 key={job.id}
                 type="button"
-                onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
+                onClick={() => router.push(jobHref(job))}
                 className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -765,7 +774,7 @@ export default function WorkshopMechanicDashboard() {
                     <tr 
                 key={job.id} 
                       className="hover:bg-gray-50 cursor-pointer"
-                onClick={() => router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`)}
+                onClick={() => router.push(jobHref(job))}
               >
                       {/* Lead Number */}
                       <td className="px-4 md:px-6 py-3 md:py-4">
@@ -923,7 +932,7 @@ export default function WorkshopMechanicDashboard() {
                             className="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded font-medium transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
-                      router.push(`/dashboard/workshop_mechanic/jobs/${job.lead_id}`);
+                      router.push(jobHref(job));
                     }}
                   >
                             View

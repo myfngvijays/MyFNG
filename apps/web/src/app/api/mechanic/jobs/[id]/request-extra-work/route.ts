@@ -1,6 +1,7 @@
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createNotification, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export async function POST(
   request: NextRequest,
@@ -51,13 +52,25 @@ export async function POST(
 
     // Get request body
     const body = await request.json();
-    const { description, reason, estimated_cost, category, attachment_url, is_urgent } = body;
+    const { description, reason, estimated_cost, category, other_category, category_label, attachment_url, is_urgent } = body;
 
     if (!description || !reason) {
       return NextResponse.json({ 
         error: 'Description and reason are required' 
       }, { status: 400 });
     }
+
+    const categoryCode = String(category || 'EXTRA_WORK').trim().toUpperCase();
+    const otherLabel = String(other_category || category_label || '').trim();
+    if (categoryCode === 'OTHER' && !otherLabel) {
+      return NextResponse.json(
+        { error: 'Please specify the other category' },
+        { status: 400 }
+      );
+    }
+    const storedCategory = categoryCode === 'OTHER'
+      ? `OTHER: ${otherLabel}`
+      : (categoryCode || 'EXTRA_WORK');
 
     const costNum = estimated_cost === undefined || estimated_cost === null || estimated_cost === ''
       ? 0
@@ -163,9 +176,12 @@ export async function POST(
     }
 
     const now = new Date().toISOString();
+    // users_login.id != auth.uid(), so JWT RLS blocks mechanic inserts on lead_extra_charges.
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const writer = supabaseAdmin || supabase;
 
     // Create additional job request
-    const { data: extraWorkRequest, error: insertError } = await supabase
+    const { data: extraWorkRequest, error: insertError } = await writer
       .from('lead_extra_charges')
       .insert({
         lead_id: leadId,
@@ -178,7 +194,7 @@ export async function POST(
         oes_price: 0,
         labour_price: 0,
         part_price_type: (is_urgent ? 'OEM' : 'OEM'),
-        category: category || 'EXTRA_WORK',
+        category: storedCategory,
         attachment_url: attachment_url,
         is_urgent: is_urgent || false,
         status: 'PENDING',
@@ -191,11 +207,18 @@ export async function POST(
 
     if (insertError) {
       console.error('Error creating additional job request:', insertError);
-      return NextResponse.json({ error: 'Failed to create additional job request' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'Failed to create additional job request',
+          details: insertError.message,
+          code: insertError.code,
+        },
+        { status: 500 }
+      );
     }
 
     // Create activity log
-    await supabase
+    await writer
       .from('lead_activities')
       .insert({
         lead_id: leadId,
@@ -208,7 +231,8 @@ export async function POST(
           description: description,
           reason: reason,
           estimated_cost: costNum,
-          category: category,
+          category: storedCategory,
+          other_category: categoryCode === 'OTHER' ? otherLabel : undefined,
           is_urgent: is_urgent,
           requested_at: now
         }
@@ -218,26 +242,27 @@ export async function POST(
     // - mechanic_jobs.mechanic_status = HOLD
     // - service_leads.status = ON_HOLD (lead workflow status)
     try {
-      const { data: currentJob } = await supabase
+      const { data: currentJob } = await writer
         .from('mechanic_jobs')
         .select('id, mechanic_status')
         .eq('lead_id', leadId)
         .eq('mechanic_id', userProfile.id)
         .maybeSingle();
 
-      if (currentJob) {
-        await supabase
-          .from('mechanic_jobs')
-          .update({
-            mechanic_status: 'HOLD',
-            paused_at: now,
-            updated_at: now,
-          })
-          .eq('lead_id', leadId)
-          .eq('mechanic_id', userProfile.id);
+      await writer
+        .from('mechanic_jobs')
+        .update({
+          mechanic_status: 'HOLD',
+          has_pending_extra_work: true,
+          paused_at: now,
+          updated_at: now,
+        })
+        .eq('lead_id', leadId)
+        .eq('mechanic_id', userProfile.id);
 
+      if (currentJob) {
         // Create mechanic action log (best-effort)
-        await supabase.from('mechanic_actions_log').insert({
+        await writer.from('mechanic_actions_log').insert({
           lead_id: leadId,
           mechanic_id: userProfile.id,
           action_type: 'STATUS_CHANGED',
@@ -253,12 +278,12 @@ export async function POST(
 
       // Update service_leads status + history (best-effort)
       if (lead.status !== 'ON_HOLD') {
-        await supabase
+        await writer
           .from('service_leads')
           .update({ status: 'ON_HOLD', updated_at: now })
           .eq('id', leadId);
 
-        await supabase.from('lead_status_history').insert({
+        await writer.from('lead_status_history').insert({
           lead_id: leadId,
           old_status: lead.status,
           new_status: 'ON_HOLD',
@@ -342,6 +367,90 @@ export async function POST(
       { error: 'Internal server error' },
       { status: 500 }
     );
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClientFromRequest(request);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const email = (user.email || '').trim();
+    const phone = (user.phone || '').trim();
+    const selectProfile = 'id, email, phone, full_name, workshop_id, role_id, roles!inner(role_code)';
+
+    const { data: byEmail } = email
+      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+      : { data: null };
+
+    const { data: byPhone } = !byEmail && phone
+      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+      : { data: null };
+
+    const userProfile = byEmail || byPhone;
+    if (!userProfile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    const roleCode = (userProfile.roles as any)?.role_code;
+    const allowedRoles = ['WORKSHOP_MECHANIC', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_ADMIN', 'SUPER_ADMIN'];
+    if (!allowedRoles.includes(roleCode)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const leadId = String(id || '').trim();
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing lead id' }, { status: 400 });
+    }
+
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const reader = supabaseAdmin || supabase;
+
+    if (roleCode === 'WORKSHOP_MECHANIC') {
+      const { data: jobRow } = await reader
+        .from('mechanic_jobs')
+        .select('id')
+        .eq('lead_id', leadId)
+        .eq('mechanic_id', userProfile.id)
+        .maybeSingle();
+      const { data: lead } = await reader
+        .from('service_leads')
+        .select('assigned_mechanic_id')
+        .eq('id', leadId)
+        .maybeSingle();
+      if (!jobRow && lead?.assigned_mechanic_id !== userProfile.id) {
+        return NextResponse.json({ error: 'Job not assigned to you' }, { status: 403 });
+      }
+    }
+
+    const { data: rows, error } = await reader
+      .from('lead_extra_charges')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to load additional job requests', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      requests: rows || [],
+      pending_count: (rows || []).filter((r: any) => String(r.status || '').toUpperCase() === 'PENDING').length,
+    });
+  } catch (error) {
+    console.error('Error listing additional job requests:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

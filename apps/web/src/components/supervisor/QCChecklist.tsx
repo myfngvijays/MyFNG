@@ -502,33 +502,31 @@ export default function QCChecklist({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <button
               onClick={() => setDecision('pass')}
               disabled={!allChecked}
-              className={`
-                p-6 border-2 rounded-lg transition flex flex-col items-center gap-2
-                ${allChecked
-                  ? 'border-green-500 bg-green-50 hover:bg-green-100 cursor-pointer'
-                  : 'border-gray-300 bg-gray-100 cursor-not-allowed opacity-50'
-                }
-              `}
+              className={`min-h-[56px] rounded-xl text-sm font-extrabold tracking-wide text-white transition ${
+                allChecked ? 'bg-green-600' : 'bg-green-600/40 cursor-not-allowed'
+              } ${decision === 'pass' ? 'ring-4 ring-green-900/20' : 'opacity-70'}`}
             >
-              <CheckCircle className={`w-10 h-10 ${allChecked ? 'text-green-600' : 'text-gray-400'}`} />
-              <span className={`font-semibold ${allChecked ? 'text-green-700' : 'text-gray-500'}`}>
-                QC PASSED
-              </span>
-              {!allChecked && (
-                <span className="text-xs text-gray-500">Complete all checks first</span>
-              )}
+              PASS
             </button>
-
             <button
               onClick={() => setDecision('fail')}
-              className="p-6 border-2 border-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition flex flex-col items-center gap-2 cursor-pointer"
+              className={`min-h-[56px] rounded-xl bg-orange-600 text-sm font-extrabold tracking-wide text-white ${
+                decision === 'fail' ? 'ring-4 ring-orange-900/20' : 'opacity-70'
+              }`}
             >
-              <XCircle className="w-10 h-10 text-red-600" />
-              <span className="font-semibold text-red-700">QC FAILED</span>
+              REWORK
+            </button>
+            <button
+              onClick={() => setDecision('fail')}
+              className={`min-h-[56px] rounded-xl bg-red-600 text-sm font-extrabold tracking-wide text-white ${
+                decision === 'fail' ? 'ring-4 ring-red-900/20' : 'opacity-70'
+              }`}
+            >
+              FAIL
             </button>
           </div>
         </>

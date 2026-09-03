@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { takeGpsStampedPhoto } from '../../../lib/gpsPhotoStamp';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
@@ -97,16 +98,15 @@ export default function BeforeInspectionScreen({ route, hideChrome = false }: Pr
 
   const fetchJobDetails = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: rows } = await supabase
         .from('mechanic_jobs')
-        .select('*, service_leads!inner(lead_number, customer_name, vehicle_number)')
+        .select('id, lead_id, checklist_completed, work_notes')
         .eq('lead_id', leadId)
-        .single();
-
-      if (error) throw error;
-      setJob(data);
-    } catch (error) {
-      console.error('Error fetching job:', error);
+        .order('created_at', { ascending: false })
+        .limit(1);
+      setJob(rows?.[0] || null);
+    } catch {
+      setJob(null);
     } finally {
       setLoading(false);
     }
@@ -185,42 +185,21 @@ export default function BeforeInspectionScreen({ route, hideChrome = false }: Pr
 
   const takePhoto = async (index: number) => {
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-        exif: true, // Capture EXIF data including GPS
-      });
+      const stampedUri = await takeGpsStampedPhoto();
+      if (!stampedUri) return;
 
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const newPhotos = [...photos];
-        newPhotos[index].uri = asset.uri;
-        setPhotos(newPhotos);
+      const newPhotos = [...photos];
+      newPhotos[index].uri = stampedUri;
+      setPhotos(newPhotos);
 
-        // Check for GPS in EXIF
-        if (!asset.exif?.GPSLatitude || !asset.exif?.GPSLongitude) {
-          setGpsWarning(true);
-        } else {
-          setLocation({
-            latitude: asset.exif.GPSLatitude,
-            longitude: asset.exif.GPSLongitude,
-          });
-          setGpsWarning(false);
-        }
-
-        // If it's dashboard photo, show odometer input
-        if (photos[index].type === 'BEFORE_DASHBOARD') {
-          setSelectedPhotoIndex(index);
-          setShowOdometerModal(true);
-        } else {
-          // Auto-upload other photos
-          uploadPhoto(index, asset.uri);
-        }
+      if (photos[index].type === 'BEFORE_DASHBOARD') {
+        setSelectedPhotoIndex(index);
+        setShowOdometerModal(true);
+      } else {
+        uploadPhoto(index, stampedUri);
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
+    } catch (error: any) {
+      Alert.alert('Could not add photo', error?.message || 'Use gallery on simulator or camera on a real device.');
     }
   };
 

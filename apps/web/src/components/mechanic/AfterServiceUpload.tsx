@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, MapPin, AlertTriangle, CheckCircle, FileText, Upload } from 'lucide-react';
+import { Camera, X, CheckCircle, Upload } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import { optimizeUploadFile } from '@/lib/media/optimizeUpload';
+import { isDummyWorkshopLead } from '@/lib/workshop/pickupPhotos';
 
 interface PhotoState {
   type: string;
@@ -37,8 +38,11 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
   const [photos, setPhotos] = useState<PhotoState[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [workNotes, setWorkNotes] = useState('');
+  const [afterVideos, setAfterVideos] = useState<Array<{ id: string; url: string }>>([]);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [checklistCompleted, setChecklistCompleted] = useState(false);
   const [partsRecorded, setPartsRecorded] = useState(false);
+  const [isDummy, setIsDummy] = useState(false);
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
   const photosRef = useRef<PhotoState[]>([]);
 
@@ -102,25 +106,41 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
   };
 
   const fetchJobDetails = async () => {
-    // Guard: Don't fetch if jobId is empty or invalid
-    if (!jobId || jobId.trim() === '') {
+    if (!jobId || jobId.trim() === '' || String(jobId).startsWith('lead-')) {
+      if (leadId) {
+        try {
+          const supabase = createClient();
+          const { data: lead } = await supabase
+            .from('service_leads')
+            .select('lead_number, created_from, customer_name')
+            .eq('id', leadId)
+            .maybeSingle();
+          if (lead) setIsDummy(isDummyWorkshopLead(lead));
+        } catch {
+          // ignore
+        }
+      }
       return;
     }
 
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('mechanic_jobs')
-        .select('*')
-        .eq('id', jobId)
-        .single();
+      const [{ data }, { data: lead }] = await Promise.all([
+        supabase.from('mechanic_jobs').select('checklist_completed, work_notes').eq('id', jobId).maybeSingle(),
+        leadId
+          ? supabase
+              .from('service_leads')
+              .select('lead_number, created_from, customer_name')
+              .eq('id', leadId)
+              .maybeSingle()
+          : Promise.resolve({ data: null } as any),
+      ]);
 
-      if (error) throw error;
+      if (lead) setIsDummy(isDummyWorkshopLead(lead));
       if (data) {
         setChecklistCompleted(data.checklist_completed || false);
         setWorkNotes(data.work_notes || '');
 
-        // Check if parts are recorded
         const { data: partsData } = await supabase
           .from('mechanic_parts_usage')
           .select('id')
@@ -129,8 +149,8 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
 
         setPartsRecorded((partsData?.length || 0) > 0);
       }
-    } catch (error) {
-      console.error('Error fetching job:', error);
+    } catch {
+      // ignore — photo upload still works without this row
     }
   };
 
@@ -165,8 +185,15 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
             return photo;
           })
         );
-
       }
+
+      const { data: videos } = await supabase
+        .from('mechanic_job_photos')
+        .select('id, photo_url')
+        .eq('job_id', jobId)
+        .ilike('photo_type', 'AFTER_VIDEO-%')
+        .order('created_at', { ascending: false });
+      setAfterVideos((videos || []).map((row: any) => ({ id: String(row.id), url: String(row.photo_url) })));
     } catch (error) {
       console.error('Error fetching photos:', error);
     }
@@ -236,6 +263,36 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
 
     // Always upload directly (no odometer prompt)
     uploadPhoto(index);
+  };
+
+  const uploadAfterVideos = async (files: File[]) => {
+    if (!files.length || !leadId) return;
+    setUploadingVideo(true);
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      for (const [index, file] of files.entries()) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('photo_type', `AFTER_VIDEO-${Date.now()}-${index}`);
+        formData.append('photo_category', 'after_video');
+        const response = await fetch(`/api/mechanic/jobs/${leadId}/upload-photos`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: formData,
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(json?.error || 'Failed to upload video');
+      }
+      await fetchExistingPhotos();
+      toast.success('Video uploaded');
+      onUploadComplete();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to upload video');
+    } finally {
+      setUploadingVideo(false);
+    }
   };
 
   const uploadPhoto = async (
@@ -331,7 +388,9 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
 
   const requiredCount = photos.filter((p) => p.required).length;
   const uploadedCount = photos.filter((p) => p.required && p.uploaded).length;
-  const canComplete = uploadedCount >= requiredCount && checklistCompleted && partsRecorded && workNotes.trim().length > 0;
+  const canComplete = isDummy
+    ? workNotes.trim().length > 0
+    : uploadedCount >= requiredCount && checklistCompleted && partsRecorded && workNotes.trim().length > 0;
 
   const photoTypeOptions = REQUIRED_AFTER_PHOTOS.map((p) => ({ type: p.type, label: p.label }));
 
@@ -446,104 +505,29 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
   };
 
   return (
-    <div className="space-y-4">
-      {/* After Service Checklist Indicator - Same style as Before Inspection */}
-      <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-5 border-2 border-green-200">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <Camera className="w-6 h-6 text-green-600" />
-            After Service Completion Checklist
-          </h4>
-          <div className={`px-4 py-2 rounded-full font-bold ${
-            uploadedCount >= requiredCount 
-              ? 'bg-green-100 text-green-700 border-2 border-green-300' 
-              : 'bg-orange-100 text-orange-700 border-2 border-orange-300'
-          }`}>
-            {uploadedCount} / {requiredCount}
-          </div>
+    <div className="space-y-3">
+      {isDummy ? (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+          Dummy lead — upload from gallery. Checklist / parts not required to complete.
         </div>
-        
-        {/* Progress Bar */}
-        <div className="mb-4">
-          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                uploadedCount >= requiredCount ? 'bg-gradient-to-r from-green-500 to-green-600' : 'bg-gradient-to-r from-orange-500 to-orange-600'
-              }`}
-              style={{ width: `${Math.min((uploadedCount / requiredCount) * 100, 100)}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-1 text-xs text-gray-600">
-            <span>{uploadedCount >= requiredCount ? '✅ Complete' : '⏳ In Progress'}</span>
-            <span>{Math.round((uploadedCount / requiredCount) * 100)}%</span>
-          </div>
-        </div>
+      ) : null}
 
-        {/* Checklist Items Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {photos.filter(p => p.required).map((photo, index) => (
-            <div
-              key={photo.type}
-              className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
-                photo.uploaded
-                  ? 'bg-green-50 border-green-300 shadow-sm'
-                  : 'bg-white border-orange-200'
-              }`}
-            >
-              <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
-                photo.uploaded ? 'bg-green-500' : 'bg-orange-200'
-              }`}>
-                {photo.uploaded ? (
-                  <CheckCircle className="w-5 h-5 text-white" />
-                ) : (
-                  <span className="text-orange-600 font-bold text-sm">{index + 1}</span>
-                )}
-              </div>
-              <div className="flex-1">
-                <p className={`text-sm font-semibold ${
-                  photo.uploaded ? 'text-green-800' : 'text-gray-700'
-                }`}>
-                  {photo.label}
-                </p>
-                {photo.uploaded && (
-                  <p className="text-xs text-green-600 mt-0.5">✓ Uploaded</p>
-                )}
-              </div>
-              {photo.uploaded && (
-                <div className="flex-shrink-0">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                </div>
-              )}
-            </div>
-          ))}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <p className="text-sm font-semibold text-slate-800">
+          {uploadedCount}/{requiredCount} after photos
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${checklistCompleted || isDummy ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+            Checklist
+          </span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${partsRecorded || isDummy ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+            Parts
+          </span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${workNotes.trim() ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+            Notes
+          </span>
         </div>
       </div>
-
-      {/* GPS Warning */}
-      {!location && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
-          <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm text-yellow-800 font-medium">GPS Data Missing</p>
-            <p className="text-xs text-yellow-700 mt-1">
-              Location verification recommended but not required. Some photos may be missing GPS coordinates.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* GPS Status */}
-      {location && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
-          <MapPin className="w-5 h-5 text-green-600" />
-          <div className="flex-1">
-            <p className="text-sm text-green-800 font-medium">GPS Location Captured</p>
-            <p className="text-xs text-green-700">
-              {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Bulk Upload (manual mapping) */}
       <div className="flex items-center justify-between gap-3">
@@ -575,71 +559,13 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
         </div>
       </div>
 
-      {/* Requirements Checklist */}
-      <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-4 border-2 border-gray-300">
-        <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-          <FileText className="w-4 h-4" />
-          Additional Completion Requirements:
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className={`flex items-center gap-2 p-2 rounded-lg ${
-            checklistCompleted ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
-          }`}>
-            {checklistCompleted ? (
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-            ) : (
-              <X className="w-5 h-5 text-red-600 flex-shrink-0" />
-            )}
-            <span className={`text-sm font-semibold ${
-              checklistCompleted ? 'text-green-800' : 'text-red-800'
-            }`}>
-              Checklist Completed
-            </span>
-          </div>
-          <div className={`flex items-center gap-2 p-2 rounded-lg ${
-            partsRecorded ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
-          }`}>
-            {partsRecorded ? (
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-            ) : (
-              <X className="w-5 h-5 text-red-600 flex-shrink-0" />
-            )}
-            <span className={`text-sm font-semibold ${
-              partsRecorded ? 'text-green-800' : 'text-red-800'
-            }`}>
-              Parts Recorded
-            </span>
-          </div>
-          <div className={`flex items-center gap-2 p-2 rounded-lg ${
-            workNotes.trim().length > 0 ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
-          }`}>
-            {workNotes.trim().length > 0 ? (
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-            ) : (
-              <X className="w-5 h-5 text-red-600 flex-shrink-0" />
-            )}
-            <span className={`text-sm font-semibold ${
-              workNotes.trim().length > 0 ? 'text-green-800' : 'text-red-800'
-            }`}>
-              Work Notes Entered
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Work Notes Input */}
-      <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Work Notes <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          value={workNotes}
-          onChange={(e) => setWorkNotes(e.target.value)}
-          className="input w-full"
-          rows={4}
-          placeholder="Enter work notes..."
-        />
-      </div>
+      <textarea
+        value={workNotes}
+        onChange={(e) => setWorkNotes(e.target.value)}
+        className="input w-full min-h-[72px]"
+        rows={2}
+        placeholder="Work notes *"
+      />
 
       {/* Photo Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -724,6 +650,31 @@ export default function AfterServiceUpload({ leadId, jobId, onUploadComplete }: 
             )}
           </div>
         ))}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-sm font-semibold text-slate-800">Service work videos</p>
+        <p className="text-xs text-slate-500 mt-0.5 mb-2">Regular service videos — extra work videos stay on extra work.</p>
+        <div className="flex flex-wrap gap-2 items-center">
+          {afterVideos.map((clip) => (
+            <video key={clip.id} src={clip.url} className="h-20 w-28 rounded-lg object-cover bg-black" controls preload="metadata" />
+          ))}
+          <label className={`btn btn-outline text-xs ${uploadingVideo ? 'opacity-60' : ''}`}>
+            {uploadingVideo ? 'Uploading...' : 'Add video'}
+            <input
+              type="file"
+              accept="video/*"
+              multiple
+              className="hidden"
+              disabled={uploadingVideo}
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                e.currentTarget.value = '';
+                void uploadAfterVideos(files);
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       {/* Bulk Mapping Modal */}

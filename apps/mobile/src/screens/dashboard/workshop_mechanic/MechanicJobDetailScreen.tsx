@@ -9,14 +9,17 @@ import {
   ActivityIndicator,
   TextInput,
   BackHandler,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { ENV } from '../../../config/environment';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { ENV } from '../../../config/environment';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { fetchMechanicJobs } from '../../../lib/mechanicJobs';
 import { parseServiceChecklistItems, sortServiceChecklistItems } from '../../../lib/serviceChecklist';
+import { apiFetch } from '../../../lib/api';
 import {
   mechanicStatusColors,
   mechanicStatusLabel,
@@ -47,6 +50,8 @@ interface JobDetail {
   min_before_images: number;
   min_progress_images: number;
   min_after_images: number;
+  lead_status?: string;
+  qc_status?: string | null;
 }
 
 interface ChecklistItem {
@@ -60,6 +65,36 @@ interface ChecklistItem {
   completed_at?: string;
 }
 
+interface ExtraProofItem {
+  id: string;
+  extraWorkId: string;
+  uri: string;
+  isVideo: boolean;
+}
+
+interface ExtraWorkRequest {
+  id: string;
+  description: string;
+  reason?: string;
+  amount: number;
+  category?: string;
+  is_urgent?: boolean;
+  status: string;
+  created_at?: string;
+  work_completed?: boolean;
+  work_completed_at?: string | null;
+  work_completion_remark?: string | null;
+}
+
+function formatExtraCategory(category?: string) {
+  const raw = String(category || '').trim();
+  if (!raw) return 'Extra work';
+  if (raw.toUpperCase().startsWith('OTHER:')) {
+    return raw.slice(6).trim() || 'Other';
+  }
+  return raw.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function MechanicJobDetailScreen({
   hideChrome = false,
   embedInShell = false,
@@ -69,10 +104,17 @@ export default function MechanicJobDetailScreen({
 }) {
   const navigation = useNavigation<any>();
   const route = useRoute();
-  const params = (route.params || {}) as { jobId?: string; leadId?: string };
+  const params = (route.params || {}) as { jobId?: string; leadId?: string; tab?: string };
   const jobId = params.jobId || params.leadId;
   const [job, setJob] = useState<JobDetail | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [extraWork, setExtraWork] = useState<ExtraWorkRequest[]>([]);
+  const [extraRemarkById, setExtraRemarkById] = useState<Record<string, string>>({});
+  const [completingExtraId, setCompletingExtraId] = useState<string | null>(null);
+  const [extraProof, setExtraProof] = useState<ExtraProofItem[]>([]);
+  const [uploadingProofId, setUploadingProofId] = useState<string | null>(null);
+  const [workVideos, setWorkVideos] = useState<Array<{ id: string; uri: string }>>([]);
+  const [uploadingWorkVideo, setUploadingWorkVideo] = useState(false);
   const [workNotes, setWorkNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -95,8 +137,6 @@ export default function MechanicJobDetailScreen({
 
   useEffect(() => {
     if (jobId) {
-    fetchJobDetail();
-
       // Setup realtime subscription for job updates
       const channel = supabase
         .channel(`mechanic-job-${jobId}`)
@@ -151,6 +191,20 @@ export default function MechanicJobDetailScreen({
       };
     }
   }, [jobId]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (jobId) {
+        fetchJobDetail();
+      }
+    }, [jobId]),
+  );
+
+  useEffect(() => {
+    if (params.tab === 'extra' || params.tab === 'extra-work') {
+      setActiveTab('extra');
+    }
+  }, [params.tab]);
 
   async function resolveMechanicId() {
     const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -249,6 +303,103 @@ export default function MechanicJobDetailScreen({
     setChecklist(items);
   }
 
+  async function loadExtraWork(leadId: string) {
+    try {
+      const json = await apiFetch<{ requests?: ExtraWorkRequest[] }>(
+        `/api/mechanic/jobs/${leadId}/request-extra-work`,
+      );
+      setExtraWork(Array.isArray(json?.requests) ? json.requests : []);
+    } catch (error) {
+      console.warn('Failed to load extra work requests:', error);
+      setExtraWork([]);
+    }
+    try {
+      const photos = await apiFetch<{ data?: Array<{ id: string; photo_url: string; photo_type?: string; notes?: string }> }>(
+        `/api/mechanic/jobs/${leadId}/upload-photos?category=extra`,
+      );
+      const rows = Array.isArray(photos?.data) ? photos.data : [];
+      setExtraProof(
+        rows.map((row) => {
+          const type = String(row.photo_type || '');
+          const fromType = type.toUpperCase().startsWith('EXTRA_WORK-') ? type.slice('EXTRA_WORK-'.length) : '';
+          const extraWorkId = String(row.notes || fromType || '').trim();
+          const uri = String(row.photo_url || '');
+          return {
+            id: String(row.id),
+            extraWorkId,
+            uri,
+            isVideo: /\.(mp4|mov|m4v|webm|3gp)(\?|$)/i.test(uri) || type.toUpperCase().includes('VIDEO'),
+          };
+        }),
+      );
+    } catch {
+      setExtraProof([]);
+    }
+  }
+
+  async function loadWorkVideos(leadId: string) {
+    try {
+      const photos = await apiFetch<{ data?: Array<{ id: string; photo_url: string; photo_type?: string }> }>(
+        `/api/mechanic/jobs/${leadId}/upload-photos?category=after_video`,
+      );
+      const rows = Array.isArray(photos?.data) ? photos.data : [];
+      setWorkVideos(
+        rows.map((row) => ({
+          id: String(row.id),
+          uri: String(row.photo_url || ''),
+        })),
+      );
+    } catch {
+      setWorkVideos([]);
+    }
+  }
+
+  async function pickServiceVideos() {
+    if (!job?.lead_id) return;
+    try {
+      setUploadingWorkVideo(true);
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission', 'Gallery access chahiye video add karne ke liye.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      for (const [index, asset] of result.assets.entries()) {
+        const formData = new FormData();
+        // @ts-ignore React Native FormData file
+        formData.append('file', {
+          uri: asset.uri,
+          name: `work-video-${Date.now()}-${index}.mp4`,
+          type: 'video/mp4',
+        });
+        formData.append('photo_type', `AFTER_VIDEO-${Date.now()}-${index}`);
+        formData.append('photo_category', 'after_video');
+        const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${job.lead_id}/upload-photos`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: formData,
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(json?.error || 'Failed to upload video');
+      }
+      await loadWorkVideos(job.lead_id);
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload video');
+    } finally {
+      setUploadingWorkVideo(false);
+    }
+  }
+
   async function fetchJobDetail() {
     try {
       setLoading(true);
@@ -263,7 +414,9 @@ export default function MechanicJobDetailScreen({
         vehicle_variant,
         problem_description,
         service_type,
-        service_type_ids
+        service_type_ids,
+        status,
+        qc_status
       `;
 
       let jobData: any = null;
@@ -368,6 +521,8 @@ export default function MechanicJobDetailScreen({
         min_before_images: jobData.min_before_images || 6,
         min_progress_images: jobData.min_progress_images || 0,
         min_after_images: jobData.min_after_images || 4,
+        lead_status: lead.status || '',
+        qc_status: lead.qc_status || null,
       };
       setJob(detail);
       setWorkNotes(jobData.work_notes || '');
@@ -400,6 +555,10 @@ export default function MechanicJobDetailScreen({
       }
 
       await loadChecklist(mechanicId);
+      await Promise.all([
+        loadExtraWork(jobData.lead_id || jobId),
+        loadWorkVideos(jobData.lead_id || jobId),
+      ]);
     } catch (error) {
       console.error('Error fetching job detail:', error);
       Alert.alert('Error', 'Failed to load job details');
@@ -447,6 +606,79 @@ export default function MechanicJobDetailScreen({
     } catch (error: any) {
       console.error('Error updating status:', error);
       Alert.alert('Error', error?.message || 'Failed to update job status');
+    }
+  }
+
+  async function markExtraWorkDone(extraWorkId: string) {
+    if (!job?.lead_id) return;
+    try {
+      setCompletingExtraId(extraWorkId);
+      await apiFetch(`/api/mechanic/jobs/${job.lead_id}/extra-work/${extraWorkId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remark: String(extraRemarkById[extraWorkId] || '').trim() }),
+      });
+      await loadExtraWork(job.lead_id);
+      Alert.alert('Done', 'Additional job marked as completed');
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to mark extra work done');
+    } finally {
+      setCompletingExtraId(null);
+    }
+  }
+
+  async function uploadExtraProofFile(extraWorkId: string, uri: string, isVideo: boolean) {
+    if (!job?.lead_id) return;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Not authenticated');
+
+    const formData = new FormData();
+    const ext = isVideo ? 'mp4' : 'jpg';
+    // @ts-ignore React Native FormData file
+    formData.append('file', {
+      uri,
+      name: `extra-${extraWorkId}.${ext}`,
+      type: isVideo ? 'video/mp4' : 'image/jpeg',
+    });
+    formData.append('photo_type', `EXTRA_WORK-${extraWorkId}`);
+    formData.append('photo_category', 'extra');
+    formData.append('notes', extraWorkId);
+
+    const response = await fetch(`${ENV.API_URL}/api/mechanic/jobs/${job.lead_id}/upload-photos`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: formData,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result?.details || result?.error || 'Failed to upload');
+  }
+
+  async function pickExtraProof(extraWorkId: string) {
+    try {
+      setUploadingProofId(extraWorkId);
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission', 'Gallery access chahiye photo / video add karne ke liye.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        videoMaxDuration: 60,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      for (const asset of result.assets) {
+        const isVideo = asset.type === 'video' || /\.(mp4|mov|m4v|webm|3gp)$/i.test(asset.uri || '');
+        await uploadExtraProofFile(extraWorkId, asset.uri, isVideo);
+      }
+      await loadExtraWork(job?.lead_id || '');
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload photo / video');
+    } finally {
+      setUploadingProofId(null);
     }
   }
 
@@ -551,9 +783,26 @@ export default function MechanicJobDetailScreen({
   const checklistDone = checklist.filter((i) => i.status === 'COMPLETED').length;
   const checklistTotal = checklist.length;
   const checklistPct = checklistTotal > 0 ? Math.round((checklistDone / checklistTotal) * 100) : 0;
-  const displayStatus = resolveMechanicDisplayStatus(job.mechanic_status, checklistDone, checklistTotal);
+  const pendingExtra = extraWork.filter((r) => String(r.status || '').toUpperCase() === 'PENDING');
+  const displayStatus = resolveMechanicDisplayStatus(
+    job.mechanic_status,
+    checklistDone,
+    checklistTotal,
+    pendingExtra.length > 0,
+  );
   const statusColors = mechanicStatusColors(displayStatus);
-  const canStartJob = displayStatus === 'ASSIGNED' && checklistDone === 0;
+  const qcPending =
+    ['PENDING', 'REWORK', 'REWORK_REQUIRED'].includes(String(job.qc_status || '').toUpperCase()) ||
+    ['WORK_COMPLETED', 'QC_PENDING', 'REWORK_REQUIRED'].includes(String(job.lead_status || '').toUpperCase());
+  const jobNotDone = displayStatus !== 'COMPLETED' || qcPending;
+  const workUnderway =
+    displayStatus === 'IN_PROGRESS' ||
+    displayStatus === 'HOLD' ||
+    displayStatus === 'WAITING_APPROVAL' ||
+    checklistDone > 0;
+  const showBeforePhotos = jobNotDone;
+  const showDuringPhotos = workUnderway || qcPending;
+  const showAfterPhotos = workUnderway || qcPending;
   const canCompleteJob = displayStatus === 'IN_PROGRESS' &&
                          job.checklist_completed &&
                          job.before_images_count >= job.min_before_images &&
@@ -731,42 +980,100 @@ export default function MechanicJobDetailScreen({
         </View>
       ) : null}
 
-      <View style={[styles.actionsContainer, inShell && styles.actionsContainerCompact]}>
-        {canStartJob ? (
-          <TouchableOpacity
-            style={[styles.actionOutline, styles.actionPrimary]}
-            onPress={() => navigation.navigate('BeforeInspection', { jobId: job.id, leadId: job.lead_id })}
-          >
-            <Text style={styles.actionPrimaryText}>Before Inspection</Text>
-          </TouchableOpacity>
-        ) : null}
-        {displayStatus === 'IN_PROGRESS' ? (
-          <TouchableOpacity
-            style={[styles.actionOutline, styles.actionSecondary]}
-            onPress={() => navigation.navigate('AfterServicePhotos', { jobId: job.id, leadId: job.lead_id })}
-          >
-            <Text style={styles.actionSecondaryText}>After Photos</Text>
-          </TouchableOpacity>
-        ) : null}
-        <TouchableOpacity
-          style={[styles.actionOutline, styles.actionAccent]}
-          onPress={() => navigation.navigate('MechanicExtraWorkRequest', { leadId: job.lead_id })}
-        >
-          <Text style={styles.actionAccentText}>Extra Work</Text>
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.contentSheet}>
+        <View style={styles.actionsRow}>
+          {showBeforePhotos ? (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionPrimary]}
+              onPress={() => navigation.navigate('BeforeInspection', { jobId: job.id, leadId: job.lead_id })}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.actionPrimaryText} numberOfLines={1}>Before</Text>
+            </TouchableOpacity>
+          ) : null}
+          {showDuringPhotos ? (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionDuring]}
+              onPress={() =>
+                navigation.navigate('DuringServicePhotos', {
+                  jobId: job.id,
+                  leadId: job.lead_id,
+                  leadNumber: job.lead_number,
+                  customerName: job.customer_name,
+                })
+              }
+              activeOpacity={0.85}
+            >
+              <Text style={styles.actionDuringText} numberOfLines={1}>During</Text>
+            </TouchableOpacity>
+          ) : null}
+          {showAfterPhotos ? (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionSecondary]}
+              onPress={() =>
+                navigation.navigate('AfterServicePhotos', {
+                  jobId: job.id,
+                  leadId: job.lead_id,
+                  leadNumber: job.lead_number,
+                  customerName: job.customer_name,
+                })
+              }
+              activeOpacity={0.85}
+            >
+              <Text style={styles.actionSecondaryText} numberOfLines={1}>After Photos</Text>
+            </TouchableOpacity>
+          ) : null}
+          {showAfterPhotos ? (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionVideo]}
+              onPress={() => void pickServiceVideos()}
+              activeOpacity={0.85}
+              disabled={uploadingWorkVideo}
+            >
+              <Text style={styles.actionVideoText} numberOfLines={1}>
+                {uploadingWorkVideo ? 'Uploading...' : 'Videos'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionAccent]}
+            onPress={() => navigation.navigate('MechanicExtraWorkRequest', { leadId: job.lead_id })}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.actionAccentText} numberOfLines={1}>Extra Work</Text>
+          </TouchableOpacity>
+        </View>
+
+        {extraWork.length > 0 ? (
+          <TouchableOpacity
+            style={styles.extraBanner}
+            onPress={() => setActiveTab('extra')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.extraBannerTitle}>
+              {pendingExtra.length > 0
+                ? `Additional job pending (${pendingExtra.length})`
+                : 'Additional job requested'}
+            </Text>
+            <Text style={styles.extraBannerSub} numberOfLines={2}>
+              {pendingExtra[0]?.description || extraWork[0]?.description}
+              {pendingExtra[0]?.amount || extraWork[0]?.amount
+                ? ` · ₹${Number(pendingExtra[0]?.amount || extraWork[0]?.amount).toLocaleString('en-IN')}`
+                : ''}
+            </Text>
+            <Text style={styles.extraBannerLink}>View request</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <View style={styles.tabsContainer}>
           {([
             { id: 'overview', label: 'Overview' },
-            {
-              id: 'checklist',
-              label: checklistTotal > 0 ? `Checklist (${checklistDone}/${checklistTotal})` : 'Checklist',
-            },
+            { id: 'checklist', label: 'Checklist' },
+            { id: 'extra', label: 'Extra' },
             { id: 'notes', label: 'Notes' },
           ] as const).map((tab) => {
             const active = activeTab === tab.id;
+            const extraCount = tab.id === 'extra' ? pendingExtra.length || extraWork.length : 0;
             return (
               <TouchableOpacity
                 key={tab.id}
@@ -774,9 +1081,16 @@ export default function MechanicJobDetailScreen({
                 onPress={() => setActiveTab(tab.id)}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1}>
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>
                   {tab.label}
                 </Text>
+                {tab.id === 'extra' && extraCount > 0 ? (
+                  <View style={[styles.tabBadge, pendingExtra.length > 0 && styles.tabBadgeWarn]}>
+                    <Text style={[styles.tabBadgeTxt, pendingExtra.length > 0 && styles.tabBadgeTxtWarn]}>
+                      {extraCount}
+                    </Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             );
           })}
@@ -821,23 +1135,73 @@ export default function MechanicJobDetailScreen({
             <View style={styles.section}>
               <Text style={styles.sectionEyebrow}>Work progress</Text>
               <View style={styles.progressGrid}>
-                <View style={[styles.progressCard, styles.progressCardBefore]}>
+                <TouchableOpacity
+                  style={[styles.progressCard, styles.progressCardBefore]}
+                  onPress={() => navigation.navigate('BeforeInspection', { jobId: job.id, leadId: job.lead_id })}
+                  activeOpacity={0.85}
+                >
                   <Text style={styles.progressTitle}>Before</Text>
                   <Text style={styles.progressValue}>
                     {job.before_images_count}/{job.min_before_images}
                   </Text>
-                </View>
-                <View style={[styles.progressCard, styles.progressCardMid]}>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.progressCard, styles.progressCardMid]}
+                  onPress={() =>
+                    navigation.navigate('DuringServicePhotos', {
+                      jobId: job.id,
+                      leadId: job.lead_id,
+                      leadNumber: job.lead_number,
+                      customerName: job.customer_name,
+                    })
+                  }
+                  activeOpacity={0.85}
+                >
                   <Text style={styles.progressTitle}>During</Text>
                   <Text style={styles.progressValue}>
                     {job.progress_images_count}/{job.min_progress_images || '—'}
                   </Text>
-                </View>
-                <View style={[styles.progressCard, styles.progressCardAfter]}>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.progressCard, styles.progressCardAfter]}
+                  onPress={() =>
+                    navigation.navigate('AfterServicePhotos', {
+                      jobId: job.id,
+                      leadId: job.lead_id,
+                      leadNumber: job.lead_number,
+                      customerName: job.customer_name,
+                    })
+                  }
+                  activeOpacity={0.85}
+                >
                   <Text style={styles.progressTitle}>After</Text>
                   <Text style={styles.progressValue}>
                     {job.after_images_count}/{job.min_after_images}
                   </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.serviceVideoBox}>
+                <Text style={styles.serviceVideoTitle}>Service videos</Text>
+                <Text style={styles.serviceVideoHint}>
+                  Extra work alag hai. Yahan regular service ka video add karo — QC pe Work videos mein dikhega.
+                </Text>
+                <View style={styles.extraProofRow}>
+                  {workVideos.map((clip) => (
+                    <View key={clip.id} style={styles.extraProofThumb}>
+                      <View style={styles.extraProofVideo}>
+                        <Text style={styles.extraProofVideoTxt}>VIDEO</Text>
+                      </View>
+                    </View>
+                  ))}
+                  <TouchableOpacity
+                    style={[styles.extraProofBtn, { flex: 1, minWidth: 120 }, uploadingWorkVideo && { opacity: 0.6 }]}
+                    onPress={() => void pickServiceVideos()}
+                    disabled={uploadingWorkVideo}
+                  >
+                    <Text style={styles.extraProofBtnTxt}>
+                      {uploadingWorkVideo ? 'Uploading...' : 'Add service video'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
               {checklistTotal > 0 ? (
@@ -856,6 +1220,134 @@ export default function MechanicJobDetailScreen({
 
         {activeTab === 'checklist' && (
           <View style={styles.tabPanel}>{renderChecklistTab()}</View>
+        )}
+
+        {activeTab === 'extra' && (
+          <View style={styles.tabPanel}>
+            <TouchableOpacity
+              onPress={() => setActiveTab('overview')}
+              style={styles.inPageBack}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.inPageBackText}>← Back to job</Text>
+            </TouchableOpacity>
+            {extraWork.length === 0 ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionEyebrow}>Additional job</Text>
+                <Text style={styles.detailText}>
+                  No extra work requested yet. Use Extra Work if you find additional repairs.
+                </Text>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={() => navigation.navigate('MechanicExtraWorkRequest', { leadId: job.lead_id })}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.saveButtonText}>Request extra work</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+              <View style={styles.section}>
+                <Text style={styles.sectionEyebrow}>Additional job</Text>
+                <Text style={styles.detailText}>
+                  After advisor approval, do the extra work then tap Mark work done on the card. After photos stay on After Photos.
+                </Text>
+              </View>
+              {extraWork.map((req) => {
+                const status = String(req.status || 'PENDING').toUpperCase();
+                const workDone = Boolean(req.work_completed || req.work_completed_at);
+                const busy = completingExtraId === req.id;
+                return (
+                  <View key={req.id} style={styles.extraCard}>
+                    <View style={styles.extraCardTop}>
+                      <Text style={styles.extraCardTitle} numberOfLines={2}>{req.description}</Text>
+                      <View style={[
+                        styles.extraStatus,
+                        status === 'APPROVED' && styles.extraStatusOk,
+                        status === 'REJECTED' && styles.extraStatusBad,
+                      ]}>
+                        <Text style={styles.extraStatusTxt}>
+                          {workDone ? 'DONE' : status.replace(/_/g, ' ')}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.extraMeta}>{formatExtraCategory(req.category)}</Text>
+                    {req.reason ? (
+                      <Text style={styles.detailText}>{req.reason}</Text>
+                    ) : null}
+                    <Text style={styles.extraAmount}>
+                      ₹{Number(req.amount || 0).toLocaleString('en-IN')}
+                      {req.is_urgent ? '  ·  Urgent' : ''}
+                    </Text>
+                    {status === 'PENDING' ? (
+                      <Text style={styles.extraWait}>Waiting for advisor approval</Text>
+                    ) : null}
+                    {status === 'APPROVED' || workDone ? (
+                      <View style={styles.extraProofBox}>
+                        <Text style={styles.extraCompleteHint}>Photos / videos of this extra work</Text>
+                        <View style={styles.extraProofRow}>
+                          {extraProof.filter((p) => p.extraWorkId === req.id).map((p) => (
+                            <View key={p.id} style={styles.extraProofThumb}>
+                              {p.isVideo ? (
+                                <View style={styles.extraProofVideo}>
+                                  <Text style={styles.extraProofVideoTxt}>VIDEO</Text>
+                                </View>
+                              ) : (
+                                <Image source={{ uri: p.uri }} style={styles.extraProofImg} />
+                              )}
+                            </View>
+                          ))}
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.extraProofBtn, uploadingProofId === req.id && { opacity: 0.6 }]}
+                          disabled={uploadingProofId === req.id}
+                          onPress={() => pickExtraProof(req.id)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.extraProofBtnTxt}>
+                            {uploadingProofId === req.id ? 'Uploading...' : 'Add photo / video'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                    {status === 'APPROVED' && !workDone ? (
+                      <View style={styles.extraCompleteBox}>
+                        <Text style={styles.extraCompleteHint}>
+                          Do this extra work, then mark it done here. After photos stay on After Photos.
+                        </Text>
+                        <TextInput
+                          style={styles.extraRemark}
+                          value={extraRemarkById[req.id] ?? ''}
+                          onChangeText={(text) =>
+                            setExtraRemarkById((prev) => ({ ...prev, [req.id]: text }))
+                          }
+                          placeholder="Remark (optional) e.g. replaced, checked"
+                          placeholderTextColor="#94A3B8"
+                        />
+                        <TouchableOpacity
+                          style={[styles.saveButton, busy && { opacity: 0.6 }]}
+                          disabled={busy}
+                          onPress={() => markExtraWorkDone(req.id)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.saveButtonText}>
+                            {busy ? 'Saving...' : 'Mark work done'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                    {workDone ? (
+                      <Text style={styles.extraDone}>
+                        Work completed
+                        {req.work_completion_remark ? ` · ${req.work_completion_remark}` : ''}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+              </>
+            )}
+          </View>
         )}
 
         {activeTab === 'notes' && (
@@ -986,13 +1478,16 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontWeight: '600',
   },
-  actionOutline: {
-    flex: 1,
-    minWidth: '30%',
-    paddingVertical: 11,
-    paddingHorizontal: 8,
-    borderRadius: 12,
+  actionBtn: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '46%',
+    minWidth: 96,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1.5,
   },
   actionPrimary: {
@@ -1013,6 +1508,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
+  actionDuring: {
+    backgroundColor: '#fff',
+    borderColor: '#EA580C',
+  },
+  actionDuringText: {
+    color: '#C2410C',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   actionAccent: {
     backgroundColor: '#fff',
     borderColor: '#F59E0B',
@@ -1021,6 +1525,33 @@ const styles = StyleSheet.create({
     color: '#B45309',
     fontSize: 12,
     fontWeight: '800',
+  },
+  actionVideo: {
+    backgroundColor: '#fff',
+    borderColor: '#0F172A',
+  },
+  actionVideoText: {
+    color: '#0F172A',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  serviceVideoBox: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  serviceVideoTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  serviceVideoHint: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 4,
+    marginBottom: 8,
+    lineHeight: 15,
   },
   header: {
     flexDirection: 'row',
@@ -1070,12 +1601,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  actionsContainer: {
+  actionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 12,
     paddingBottom: 8,
-    gap: 8,
   },
   actionsContainerCompact: {
     paddingTop: 0,
@@ -1164,15 +1704,20 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     borderBottomWidth: 1,
     borderBottomColor: '#EEF2F7',
-    paddingHorizontal: 8,
+    paddingHorizontal: 2,
   },
   tab: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 0,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
+    gap: 4,
+    paddingVertical: 12,
     paddingHorizontal: 4,
     borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
@@ -1182,14 +1727,195 @@ const styles = StyleSheet.create({
     borderBottomColor: '#004AAD',
   },
   tabText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#94A3B8',
     textAlign: 'center',
   },
   tabTextActive: {
     color: '#004AAD',
     fontWeight: '800',
+  },
+  tabBadge: {
+    backgroundColor: '#EEF2F7',
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  tabBadgeWarn: {
+    backgroundColor: '#FFEDD5',
+  },
+  tabBadgeTxt: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  tabBadgeTxtWarn: {
+    color: '#C2410C',
+  },
+  extraBanner: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  extraBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#9A3412',
+  },
+  extraBannerSub: {
+    fontSize: 12,
+    color: '#9A3412',
+    marginTop: 3,
+  },
+  extraBannerLink: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#004AAD',
+    marginTop: 6,
+  },
+  extraCard: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+  },
+  extraCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  extraCardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#023D95',
+  },
+  extraStatus: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  extraStatusOk: { backgroundColor: '#059669' },
+  extraStatusBad: { backgroundColor: '#DC2626' },
+  extraStatusTxt: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  extraMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  extraAmount: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#004AAD',
+    marginTop: 8,
+  },
+  extraWait: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#C2410C',
+    marginTop: 6,
+  },
+  extraCompleteBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#FED7AA',
+  },
+  extraCompleteHint: {
+    fontSize: 12,
+    color: '#9A3412',
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  extraRemark: {
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#111827',
+    marginBottom: 8,
+  },
+  extraDone: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
+    marginTop: 8,
+  },
+  extraProofBox: {
+    marginTop: 10,
+  },
+  extraProofRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  extraProofThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#E2E8F0',
+  },
+  extraProofImg: {
+    width: 64,
+    height: 64,
+  },
+  extraProofVideo: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F172A',
+    width: 64,
+    height: 64,
+  },
+  extraProofVideoTxt: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  extraProofBtn: {
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  extraProofBtnTxt: {
+    color: '#004AAD',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  inPageBack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  inPageBackText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#004AAD',
   },
   tabPanel: {
     paddingTop: 4,

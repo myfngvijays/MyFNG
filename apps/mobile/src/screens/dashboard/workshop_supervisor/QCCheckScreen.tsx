@@ -13,11 +13,16 @@ import {
   Alert,
   Image,
   BackHandler,
+  Linking,
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
+import { useAuth } from '../../../context/AuthContext';
+import { isPendingQc, qcQueueTab } from '../../../lib/workshopJobFlow';
+import { ENV } from '../../../config/environment';
+import { apiFetch } from '../../../lib/api';
 
 interface QCJob {
   id: string;
@@ -30,6 +35,7 @@ interface QCJob {
   mechanic_name: string;
   service_types: string[];
   mechanic_status: string;
+  status?: string;
   completed_at: string;
   checklist_completed: boolean;
   before_images_count: number;
@@ -44,14 +50,43 @@ interface ChecklistItem {
   notes?: string;
 }
 
+interface QcMedia {
+  id: string;
+  url: string;
+  label: string;
+  isVideo?: boolean;
+}
+
+interface ExtraWorkRow {
+  id: string;
+  label: string;
+  status: string;
+  amount?: number | null;
+}
+
 export default function QCCheckScreen({ navigation }: any) {
+  const { userProfile } = useAuth();
   const [jobs, setJobs] = useState<QCJob[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<QCJob[]>([]);
   const [selectedJob, setSelectedJob] = useState<QCJob | null>(null);
   const [showQCModal, setShowQCModal] = useState(false);
   const [qcChecklist, setQcChecklist] = useState<ChecklistItem[]>([]);
+  const [showAllQcChecklist, setShowAllQcChecklist] = useState(false);
   const [qcNotes, setQcNotes] = useState('');
   const [qcStatus, setQcStatus] = useState<'PASS' | 'FAIL' | 'REWORK'>('PASS');
+  const [qcLoading, setQcLoading] = useState(false);
+  const [workSummary, setWorkSummary] = useState('');
+  const [serviceLabel, setServiceLabel] = useState('');
+  const [leadNumber, setLeadNumber] = useState('');
+  const [vehicleLine, setVehicleLine] = useState('');
+  const [extraWorkRows, setExtraWorkRows] = useState<ExtraWorkRow[]>([]);
+  const [photoBuckets, setPhotoBuckets] = useState<{
+    before: QcMedia[];
+    during: QcMedia[];
+    after: QcMedia[];
+    videos: QcMedia[];
+    extra: QcMedia[];
+  }>({ before: [], during: [], after: [], videos: [], extra: [] });
   const [filter, setFilter] = useState('PENDING');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,57 +106,73 @@ export default function QCCheckScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchQCJobs();
-    
-    // Setup realtime subscription
+
     const channel = supabase
       .channel('qc-queue-updates')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'mechanic_jobs'
+        table: 'mechanic_jobs',
       }, () => {
-        console.log('QC Queue: Real-time update received');
         fetchQCJobs();
       })
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'qc_checks'
+        table: 'service_leads',
       }, () => {
-        console.log('QC Checks: Real-time update received');
         fetchQCJobs();
       })
-      .subscribe((status) => {
-        console.log('QC queue subscription status:', status);
-      });
-    
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'qc_checks',
+      }, () => {
+        fetchQCJobs();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [userProfile?.workshop_id]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchQCJobs();
+    }, [userProfile?.workshop_id]),
+  );
 
   useEffect(() => {
     filterJobs();
   }, [jobs, filter]);
 
+  async function resolveWorkshopId() {
+    if (userProfile?.workshop_id) return userProfile.workshop_id;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data } = await supabase
+      .from('users_login')
+      .select('workshop_id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    return data?.workshop_id || null;
+  }
+
   async function fetchQCJobs() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const workshopId = await resolveWorkshopId();
+      if (!workshopId) {
+        setJobs([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('workshop_id')
-        .eq('email', user.email)
-        .single();
-
-      const workshopId = userProfile?.workshop_id;
-      if (!workshopId) return;
-
-      console.log('🔍 Fetching QC jobs for workshop:', workshopId);
-
-      // ✅ FIX: Use service_leads table like web app does
-      const { data: qcJobs, error } = await supabase
+      const { data: leads, error } = await supabase
         .from('service_leads')
         .select(`
           id,
@@ -137,15 +188,8 @@ export default function QCCheckScreen({ navigation }: any) {
           assigned_mechanic_id
         `)
         .eq('workshop_id', workshopId)
-        .or('status.eq.WORK_COMPLETED,mechanic_completed_at.not.is.null')
-        .or('qc_status.is.null,qc_status.eq.PENDING')
         .is('deleted_at', null)
-        .not('status', 'eq', 'REJECTED')
-        .not('status', 'eq', 'CANCELLED')
-        .not('status', 'eq', 'CLOSED')
-        .not('status', 'eq', 'QC_APPROVED')
-        .not('status', 'eq', 'REWORK_REQUIRED')
-        .order('mechanic_completed_at', { ascending: true });
+        .order('mechanic_completed_at', { ascending: true, nullsFirst: false });
 
       if (error) {
         console.error('❌ Error fetching QC queue:', error);
@@ -154,30 +198,61 @@ export default function QCCheckScreen({ navigation }: any) {
         return;
       }
 
-      console.log('✅ Found', qcJobs?.length || 0, 'jobs pending QC');
+      const leadIds = (leads || []).map((lead) => lead.id);
+      const { data: mechanicJobs } = leadIds.length
+        ? await supabase
+            .from('mechanic_jobs')
+            .select('lead_id, completed_at, mechanic_status')
+            .in('lead_id', leadIds)
+        : { data: [] as any[] };
 
-      // Fetch mechanic names and image counts from mechanic_media
-      const jobsWithDetails = await Promise.all((qcJobs || []).map(async (job) => {
-        // Get mechanic name
-        const { data: mechanic } = await supabase
-          .from('users_login')
-          .select('full_name')
-          .eq('id', job.assigned_mechanic_id)
-          .single();
+      const completedAtByLead = new Map<string, string>();
+      (mechanicJobs || []).forEach((job: any) => {
+        if (job?.lead_id && job?.completed_at && !completedAtByLead.has(job.lead_id)) {
+          completedAtByLead.set(job.lead_id, job.completed_at);
+        }
+      });
 
-        // Get image counts from mechanic_media
-        const { count: beforeCount } = await supabase
-          .from('mechanic_media')
-          .select('*', { count: 'exact', head: true })
-          .eq('lead_id', job.id)
-          .eq('media_category', 'BEFORE');
+      const qcLeads = (leads || [])
+        .map((lead) => ({
+          ...lead,
+          mechanic_completed_at:
+            lead.mechanic_completed_at || completedAtByLead.get(lead.id) || null,
+        }))
+        .filter((lead) => {
+          const tab = qcQueueTab(lead);
+          return tab === 'PENDING' || tab === 'PASSED' || tab === 'FAILED' || tab === 'REWORK';
+        });
 
-        const { count: afterCount } = await supabase
-          .from('mechanic_media')
-          .select('*', { count: 'exact', head: true })
-          .eq('lead_id', job.id)
-          .eq('media_category', 'AFTER');
+      const mechanicIds = [
+        ...new Set(qcLeads.map((lead) => lead.assigned_mechanic_id).filter(Boolean)),
+      ] as string[];
+      const { data: mechanics } = mechanicIds.length
+        ? await supabase.from('users_login').select('id, full_name').in('id', mechanicIds)
+        : { data: [] as any[] };
+      const mechanicNameById = new Map(
+        (mechanics || []).map((m: any) => [m.id, m.full_name]),
+      );
 
+      const qcLeadIds = qcLeads.map((lead) => lead.id);
+      const { data: mediaRows } = qcLeadIds.length
+        ? await supabase
+            .from('mechanic_media')
+            .select('lead_id, media_category')
+            .in('lead_id', qcLeadIds)
+            .in('media_category', ['BEFORE', 'AFTER'])
+        : { data: [] as any[] };
+
+      const mediaCounts = new Map<string, { before: number; after: number }>();
+      (mediaRows || []).forEach((row: any) => {
+        const prev = mediaCounts.get(row.lead_id) || { before: 0, after: 0 };
+        if (row.media_category === 'BEFORE') prev.before += 1;
+        if (row.media_category === 'AFTER') prev.after += 1;
+        mediaCounts.set(row.lead_id, prev);
+      });
+
+      const jobsWithDetails: QCJob[] = qcLeads.map((job) => {
+        const counts = mediaCounts.get(job.id) || { before: 0, after: 0 };
         return {
           id: job.id,
           lead_id: job.id,
@@ -186,16 +261,17 @@ export default function QCCheckScreen({ navigation }: any) {
           vehicle_number: job.vehicle_number,
           vehicle_make: job.vehicle_make || '',
           vehicle_model: job.vehicle_model || '',
-          mechanic_name: mechanic?.full_name || 'Unknown',
+          mechanic_name: mechanicNameById.get(job.assigned_mechanic_id) || 'Unknown',
           service_types: [],
           mechanic_status: 'COMPLETED',
+          status: job.status,
           completed_at: job.mechanic_completed_at,
           checklist_completed: true,
-          before_images_count: beforeCount || 0,
-          after_images_count: afterCount || 0,
+          before_images_count: counts.before,
+          after_images_count: counts.after,
           qc_status: job.qc_status,
         };
-      }));
+      });
 
       setJobs(jobsWithDetails);
       setLoading(false);
@@ -207,109 +283,220 @@ export default function QCCheckScreen({ navigation }: any) {
     }
   }
 
+  function jobTab(job: QCJob) {
+    return qcQueueTab({
+      status: job.status,
+      qc_status: job.qc_status,
+      mechanic_completed_at: job.completed_at,
+    });
+  }
+
   function filterJobs() {
-    if (filter === 'PENDING') {
-      setFilteredJobs(jobs.filter((j) => !j.qc_status));
-    } else if (filter === 'PASSED') {
-      setFilteredJobs(jobs.filter((j) => j.qc_status === 'PASSED'));
-    } else if (filter === 'FAILED') {
-      setFilteredJobs(jobs.filter((j) => j.qc_status === 'FAILED'));
-    } else if (filter === 'REWORK') {
-      setFilteredJobs(jobs.filter((j) => j.qc_status === 'REWORK_REQUIRED'));
-    } else {
+    if (filter === 'ALL') {
       setFilteredJobs(jobs);
+      return;
     }
+    setFilteredJobs(jobs.filter((job) => jobTab(job) === filter));
+  }
+
+  function resetQcModal() {
+    setShowQCModal(false);
+    setSelectedJob(null);
+    setQcNotes('');
+    setQcStatus('PASS');
+    setQcChecklist([]);
+    setWorkSummary('');
+    setServiceLabel('');
+    setLeadNumber('');
+    setVehicleLine('');
+    setExtraWorkRows([]);
+    setPhotoBuckets({ before: [], during: [], after: [], videos: [], extra: [] });
+  }
+
+  function parseChecklistItems(raw: unknown): ChecklistItem[] {
+    let parsed: any = raw;
+    if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        parsed = [];
+      }
+    }
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item: any, index: number) => {
+      const status = String(item?.status || '').toUpperCase();
+      const done =
+        item?.is_completed === true ||
+        status === 'COMPLETED' ||
+        status === 'DONE' ||
+        status === 'YES';
+      return {
+        id: String(item?.id ?? index + 1),
+        item_name: String(item?.name || item?.item_name || `Item ${index + 1}`),
+        is_completed: done,
+        notes: String(item?.notes || item?.remark || '').trim() || undefined,
+      };
+    });
+  }
+
+  function bucketPhotos(rows: any[]) {
+    const before: QcMedia[] = [];
+    const during: QcMedia[] = [];
+    const after: QcMedia[] = [];
+    const videos: QcMedia[] = [];
+    const extra: QcMedia[] = [];
+
+    (rows || []).forEach((row: any) => {
+      const url = String(row?.photo_url || '');
+      if (!url) return;
+      const type = String(row?.photo_type || '').toUpperCase();
+      const cat = String(row?.photo_category || '').toLowerCase();
+      const isVideo =
+        type.startsWith('AFTER_VIDEO') ||
+        type.includes('VIDEO') ||
+        /\.(mp4|mov|m4v|webm|3gp)(\?|$)/i.test(url);
+      const media: QcMedia = {
+        id: String(row.id),
+        url,
+        label: type || cat || 'PHOTO',
+        isVideo,
+      };
+      if (type.startsWith('EXTRA_WORK')) extra.push(media);
+      else if (isVideo) videos.push(media);
+      else if (cat === 'before') before.push(media);
+      else if (cat === 'during') during.push(media);
+      else after.push(media);
+    });
+
+    return { before, during, after, videos, extra };
   }
 
   async function openQCModal(job: QCJob) {
     setSelectedJob(job);
-    
-    // Fetch checklist for this job
-    const { data: checklistData } = await supabase
-      .from('mechanic_checklist_items')
-      .select('*')
-      .eq('job_id', job.id)
-      .order('item_order');
-
-    setQcChecklist(
-      checklistData?.map((item: any) => ({
-        id: item.id,
-        item_name: item.item_name,
-        is_completed: item.is_completed,
-        notes: item.notes,
-      })) || []
-    );
-
+    setQcLoading(true);
     setShowQCModal(true);
+    setShowAllQcChecklist(false);
+
+    try {
+      const leadId = job.lead_id || job.id;
+      const { data: lead } = await supabase
+        .from('service_leads')
+        .select(
+          'id, lead_number, notes, service_type, vehicle_make, vehicle_model, assigned_mechanic_id',
+        )
+        .eq('id', leadId)
+        .maybeSingle();
+
+      setLeadNumber(lead?.lead_number || job.lead_number || '');
+      setWorkSummary(String(lead?.notes || '').trim());
+      setServiceLabel(String(lead?.service_type || 'General Service'));
+      setVehicleLine(
+        [job.vehicle_number, lead?.vehicle_make || job.vehicle_make, lead?.vehicle_model || job.vehicle_model]
+          .filter(Boolean)
+          .join(' · '),
+      );
+
+      try {
+        const evidence = await apiFetch<{
+          photos?: {
+            before?: QcMedia[];
+            during?: QcMedia[];
+            after?: QcMedia[];
+            videos?: QcMedia[];
+            extra?: QcMedia[];
+          };
+          extraWork?: ExtraWorkRow[];
+        }>(`/api/supervisor/jobs/${leadId}/qc-evidence`);
+        setPhotoBuckets({
+          before: evidence.photos?.before || [],
+          during: evidence.photos?.during || [],
+          after: evidence.photos?.after || [],
+          videos: evidence.photos?.videos || [],
+          extra: evidence.photos?.extra || [],
+        });
+        setExtraWorkRows(
+          (evidence.extraWork || []).map((row: any) => ({
+            id: String(row.id),
+            label: String(row.label || 'Additional work'),
+            status: String(row.status || ''),
+            amount: row.amount,
+          })),
+        );
+      } catch {
+        setPhotoBuckets({ before: [], during: [], after: [], videos: [], extra: [] });
+        setExtraWorkRows([]);
+      }
+
+      const mechanicId = lead?.assigned_mechanic_id;
+      let checklistQuery = supabase
+        .from('service_checklists')
+        .select('checklist_items')
+        .eq('lead_id', leadId);
+      if (mechanicId) checklistQuery = checklistQuery.eq('mechanic_id', mechanicId);
+      const { data: checklistData } = await checklistQuery.maybeSingle();
+      setQcChecklist(parseChecklistItems(checklistData?.checklist_items));
+    } catch (error) {
+      console.error('Error loading QC evidence:', error);
+    } finally {
+      setQcLoading(false);
+    }
   }
 
   async function submitQC() {
     if (!selectedJob) return;
+    const leadId = selectedJob.lead_id || selectedJob.id;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Not authenticated');
 
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-
-      const supervisorId = userProfile?.id;
-
-      // Create QC check record
-      const { error: qcError } = await supabase
-        .from('qc_checks')
-        .insert({
-          lead_id: selectedJob.lead_id,
-          mechanic_job_id: selectedJob.id,
-          supervisor_id: supervisorId,
-          qc_status: qcStatus === 'PASS' ? 'PASSED' : qcStatus === 'FAIL' ? 'FAILED' : 'REWORK_REQUIRED',
-          supervisor_notes: qcNotes,
-          checked_at: new Date().toISOString(),
-        });
-
-      if (qcError) throw qcError;
-
-      // Update lead status based on QC result
       if (qcStatus === 'PASS') {
-        await supabase
-          .from('service_leads')
-          .update({
-            status: 'READY_FOR_DELIVERY',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedJob.lead_id);
-      } else if (qcStatus === 'REWORK') {
-        await supabase
-          .from('mechanic_jobs')
-          .update({
-            mechanic_status: 'REWORK_REQUIRED',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedJob.id);
+        const response = await fetch(`${ENV.API_URL}/api/supervisor/jobs/${leadId}/approve-qc`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ notes: qcNotes, quality_score: 5 }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Failed to approve QC');
+      } else {
+        const reason =
+          qcNotes.trim() ||
+          (qcStatus === 'REWORK' ? 'Rework required after QC' : 'QC failed');
+        const response = await fetch(`${ENV.API_URL}/api/supervisor/jobs/${leadId}/reject-qc`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            reason,
+            notes: qcNotes,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Failed to submit QC');
       }
 
       Alert.alert(
         'Success',
-        `QC ${qcStatus === 'PASS' ? 'Passed' : qcStatus === 'FAIL' ? 'Failed' : 'Sent for Rework'}!`,
+        qcStatus === 'PASS'
+          ? 'QC passed'
+          : qcStatus === 'FAIL'
+            ? 'QC failed — sent back to mechanic'
+            : 'Sent for rework',
         [
           {
             text: 'OK',
             onPress: () => {
-              setShowQCModal(false);
-              setSelectedJob(null);
-              setQcNotes('');
-              setQcStatus('PASS');
+              resetQcModal();
               fetchQCJobs();
             },
           },
-        ]
+        ],
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting QC:', error);
-      Alert.alert('Error', 'Failed to submit QC. Please try again.');
+      Alert.alert('Error', error?.message || 'Failed to submit QC. Please try again.');
     }
   }
 
@@ -318,35 +505,58 @@ export default function QCCheckScreen({ navigation }: any) {
     fetchQCJobs();
   }
 
-  function getStatusColor(status?: string) {
-    switch (status) {
-      case 'PASSED':
-        return '#10b981';
-      case 'FAILED':
-        return '#ef4444';
-      case 'REWORK_REQUIRED':
-        return '#f59e0b';
-      default:
-        return '#6b7280';
-    }
+  function renderMediaStrip(title: string, items: QcMedia[]) {
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          {title} ({items.length})
+        </Text>
+        {items.length === 0 ? (
+          <Text style={styles.emptyHint}>None uploaded</Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {items.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.mediaThumb}
+                onPress={() => item.isVideo && item.url ? Linking.openURL(item.url) : undefined}
+                activeOpacity={item.isVideo ? 0.8 : 1}
+              >
+                {item.isVideo ? (
+                  <View style={styles.videoThumb}>
+                    <Text style={styles.videoThumbTxt}>VIDEO</Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: item.url }} style={styles.mediaImage} />
+                )}
+                {item.label ? (
+                  <Text style={styles.mediaLabel} numberOfLines={1}>
+                    {item.label.replace(/_/g, ' ')}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+    );
   }
 
   function renderJob({ item }: { item: QCJob }) {
+    const pending = isPendingQc({
+      status: item.status,
+      qc_status: item.qc_status,
+      mechanic_completed_at: item.completed_at,
+    });
     return (
       <View style={AC.navy}>
         <View style={AC.navyRow}>
           <Text style={AC.navyName} numberOfLines={1}>
             {item.customer_name || 'Customer'}
           </Text>
-          {item.qc_status ? (
-            <View style={AC.navyBadge}>
-              <Text style={AC.navyBadgeTxt}>{item.qc_status}</Text>
-            </View>
-          ) : (
-            <View style={AC.navyBadge}>
-              <Text style={AC.navyBadgeTxt}>PENDING</Text>
-            </View>
-          )}
+          <View style={AC.navyBadge}>
+            <Text style={AC.navyBadgeTxt}>{pending ? 'PENDING' : (item.qc_status || 'PENDING')}</Text>
+          </View>
         </View>
         <Text style={AC.navyMeta} numberOfLines={1}>
           {item.vehicle_number}
@@ -359,9 +569,9 @@ export default function QCCheckScreen({ navigation }: any) {
           <TouchableOpacity
             style={AC.navyBtn}
             onPress={() => openQCModal(item)}
-            disabled={!!item.qc_status}
+            disabled={!pending}
           >
-            <Text style={AC.navyBtnTxt}>{item.qc_status ? 'QC done' : 'Start QC'}</Text>
+            <Text style={AC.navyBtnTxt}>{pending ? 'Start QC' : 'QC done'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={AC.navyBtnGhost}
@@ -375,10 +585,10 @@ export default function QCCheckScreen({ navigation }: any) {
   }
 
   const stats = {
-    pending: jobs.filter((j) => !j.qc_status).length,
-    passed: jobs.filter((j) => j.qc_status === 'PASSED').length,
-    failed: jobs.filter((j) => j.qc_status === 'FAILED').length,
-    rework: jobs.filter((j) => j.qc_status === 'REWORK_REQUIRED').length,
+    pending: jobs.filter((j) => jobTab(j) === 'PENDING').length,
+    passed: jobs.filter((j) => jobTab(j) === 'PASSED').length,
+    failed: jobs.filter((j) => jobTab(j) === 'FAILED').length,
+    rework: jobs.filter((j) => jobTab(j) === 'REWORK').length,
   };
 
   return (
@@ -429,43 +639,132 @@ export default function QCCheckScreen({ navigation }: any) {
 
               {selectedJob && (
                 <View style={styles.selectedJobInfo}>
+                  {leadNumber ? (
+                    <Text style={styles.leadChip}>#{leadNumber}</Text>
+                  ) : null}
                   <Text style={styles.selectedJobNumber}>
                     {selectedJob.customer_name || 'Customer'}
                   </Text>
                   <Text style={styles.selectedJobCustomer}>
-                    {selectedJob.vehicle_number}
+                    {vehicleLine || selectedJob.vehicle_number}
                   </Text>
                   <Text style={styles.selectedJobMechanic}>
                     Mechanic: {selectedJob.mechanic_name}
                   </Text>
+                  {serviceLabel ? (
+                    <Text style={styles.selectedJobMechanic}>Service: {serviceLabel}</Text>
+                  ) : null}
                 </View>
               )}
 
-              {/* Checklist Review */}
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  Checklist ({qcChecklist.length} items)
-                </Text>
-                {qcChecklist.map((item) => (
-                  <View key={item.id} style={styles.checklistItem}>
-                    <Text style={styles.checklistIcon}>
-                      {item.is_completed ? '✅' : '❌'}
-                    </Text>
-                    <View style={styles.checklistItemContent}>
-                      <Text style={styles.checklistItemName}>
-                        {item.item_name}
-                      </Text>
-                      {item.notes && (
-                        <Text style={styles.checklistItemNotes}>
-                          {item.notes}
-                        </Text>
-                      )}
+              {qcLoading ? (
+                <Text style={styles.emptyHint}>Loading job details…</Text>
+              ) : (
+                <>
+                  {workSummary ? (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Work summary</Text>
+                      <Text style={styles.bodyText}>{workSummary}</Text>
                     </View>
-                  </View>
-                ))}
-              </View>
+                  ) : null}
 
-              {/* QC Decision */}
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>
+                      Extra work ({extraWorkRows.length})
+                    </Text>
+                    {extraWorkRows.length === 0 ? (
+                      <Text style={styles.emptyHint}>No extra work on this job</Text>
+                    ) : (
+                      extraWorkRows.map((row) => (
+                        <View key={row.id} style={styles.extraRow}>
+                          <Text style={styles.checklistItemName}>{row.label}</Text>
+                          <Text style={styles.extraMeta}>
+                            {row.status}
+                            {row.amount != null ? ` · ₹${row.amount}` : ''}
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+
+                  {renderMediaStrip('Pickup / Before photos', photoBuckets.before)}
+                  {renderMediaStrip('During photos', photoBuckets.during)}
+                  {renderMediaStrip('After photos', photoBuckets.after)}
+                  {renderMediaStrip('Work videos', photoBuckets.videos)}
+                  {renderMediaStrip('Extra work proof', photoBuckets.extra)}
+
+                  <View style={styles.section}>
+                    <View style={styles.checkHead}>
+                      <Text style={styles.sectionTitle}>
+                        Mechanic checklist ({qcChecklist.length})
+                      </Text>
+                      {qcChecklist.length > 10 ? (
+                        <TouchableOpacity onPress={() => setShowAllQcChecklist((v) => !v)}>
+                          <Text style={styles.viewAllTxt}>
+                            {showAllQcChecklist ? 'Show less' : 'View all'}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    {qcChecklist.length === 0 ? (
+                      <Text style={styles.emptyHint}>No checklist items recorded</Text>
+                    ) : (
+                      <View style={styles.checklistGrid}>
+                        {Array.from(
+                          {
+                            length: Math.ceil(
+                              (showAllQcChecklist ? qcChecklist : qcChecklist.slice(0, 10)).length / 2,
+                            ),
+                          },
+                          (_, row) => {
+                          const visible = showAllQcChecklist ? qcChecklist : qcChecklist.slice(0, 10);
+                          const pair = visible.slice(row * 2, row * 2 + 2);
+                          return (
+                            <View key={row} style={styles.checklistPair}>
+                              {pair.map((item, col) => {
+                                const index = row * 2 + col;
+                                return (
+                                  <View key={item.id} style={styles.checklistItem}>
+                                    <View
+                                      style={[
+                                        styles.checklistNumBadge,
+                                        item.is_completed
+                                          ? styles.checklistNumBadgeOn
+                                          : styles.checklistNumBadgeOff,
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.checklistNum,
+                                          item.is_completed ? styles.checklistNumOn : styles.checklistNumOff,
+                                        ]}
+                                      >
+                                        {index + 1}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.checklistItemContent}>
+                                      <Text style={styles.checklistItemName} numberOfLines={3}>
+                                        {item.item_name}
+                                      </Text>
+                                      {item.notes ? (
+                                        <Text style={styles.checklistItemNotes} numberOfLines={2}>
+                                          {item.notes}
+                                        </Text>
+                                      ) : null}
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                              {pair.length === 1 ? <View style={styles.checklistItemSpacer} /> : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                </>
+              )}
+
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>QC Decision</Text>
                 <View style={styles.qcOptions}>
@@ -483,7 +782,7 @@ export default function QCCheckScreen({ navigation }: any) {
                         qcStatus === 'PASS' && styles.qcOptionTextActive,
                       ]}
                     >
-                      ✅ PASS
+                      PASS
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -500,7 +799,7 @@ export default function QCCheckScreen({ navigation }: any) {
                         qcStatus === 'REWORK' && styles.qcOptionTextActive,
                       ]}
                     >
-                      🔄 REWORK
+                      REWORK
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -517,13 +816,12 @@ export default function QCCheckScreen({ navigation }: any) {
                         qcStatus === 'FAIL' && styles.qcOptionTextActive,
                       ]}
                     >
-                      ❌ FAIL
+                      FAIL
                     </Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* QC Notes */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>QC Notes</Text>
                 <TextInput
@@ -537,25 +835,11 @@ export default function QCCheckScreen({ navigation }: any) {
                 />
               </View>
 
-              {/* Submit Button */}
-              <TouchableOpacity
-                style={styles.submitButton}
-                onPress={submitQC}
-              >
-                <Text style={styles.submitButtonText}>
-                  Submit QC Check
-                </Text>
+              <TouchableOpacity style={styles.submitButton} onPress={submitQC}>
+                <Text style={styles.submitButtonText}>Submit QC Check</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => {
-                  setShowQCModal(false);
-                  setSelectedJob(null);
-                  setQcNotes('');
-                  setQcStatus('PASS');
-                }}
-              >
+              <TouchableOpacity style={styles.modalCloseButton} onPress={resetQcModal}>
                 <Text style={styles.modalCloseText}>Cancel</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -797,12 +1081,57 @@ const styles = StyleSheet.create({
     color: '#023D95',
     marginBottom: 12,
   },
-  checklistItem: {
+  checkHead: {
     flexDirection: 'row',
-    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  viewAllTxt: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#004AAD',
+    marginBottom: 12,
+  },
+  checklistGrid: {
+    gap: 8,
+  },
+  checklistPair: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  checklistItem: {
+    flex: 1,
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
     backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    marginBottom: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  checklistItemSpacer: {
+    flex: 1,
+  },
+  checklistNumBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  checklistNumBadgeOn: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+  },
+  checklistNumBadgeOff: {
+    backgroundColor: '#fff',
+    borderColor: '#CBD5E1',
   },
   checklistIcon: {
     fontSize: 20,
@@ -812,9 +1141,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   checklistItemName: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#023D95',
     fontWeight: '500',
+    lineHeight: 18,
   },
   checklistItemNotes: {
     fontSize: 12,
@@ -827,32 +1157,98 @@ const styles = StyleSheet.create({
   },
   qcOption: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 2,
+    justifyContent: 'center',
+    opacity: 0.45,
   },
   qcOptionPass: {
-    borderColor: '#10b981',
-    backgroundColor: '#ecfdf5',
+    backgroundColor: '#16A34A',
   },
   qcOptionRework: {
-    borderColor: '#f59e0b',
-    backgroundColor: '#fffbeb',
+    backgroundColor: '#EA580C',
   },
   qcOptionFail: {
-    borderColor: '#ef4444',
-    backgroundColor: '#fef2f2',
+    backgroundColor: '#DC2626',
   },
   qcOptionActive: {
-    borderWidth: 3,
+    opacity: 1,
   },
   qcOptionText: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.4,
   },
   qcOptionTextActive: {
-    fontSize: 16,
+    fontSize: 14,
+  },
+  emptyHint: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  bodyText: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  leadChip: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#004AAD',
+    marginBottom: 4,
+  },
+  extraRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  extraMeta: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  checklistNum: {
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  checklistNumOn: {
+    color: '#166534',
+  },
+  checklistNumOff: {
+    color: '#64748B',
+  },
+  mediaThumb: {
+    width: 92,
+    marginRight: 8,
+  },
+  mediaImage: {
+    width: 92,
+    height: 92,
+    borderRadius: 10,
+    backgroundColor: '#E5E7EB',
+  },
+  videoThumb: {
+    width: 92,
+    height: 92,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoThumbTxt: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  mediaLabel: {
+    fontSize: 10,
+    color: '#6b7280',
+    marginTop: 4,
   },
   notesInput: {
     borderWidth: 1,

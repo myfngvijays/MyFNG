@@ -25,12 +25,14 @@ export function WorkshopStatTile({
   icon,
   tone,
   loading,
+  onClick,
 }: {
   label: string;
   value: ReactNode;
   icon?: ReactNode;
   tone?: string;
   loading?: boolean;
+  onClick?: () => void;
 }) {
   const accent =
     tone?.includes('yellow') || tone?.includes('amber')
@@ -45,9 +47,15 @@ export function WorkshopStatTile({
               ? '#6D28D9'
               : '#004AAD';
 
+  const Tag = onClick ? 'button' : 'div';
+
   return (
-    <div
-      className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-3.5 border-l-4"
+    <Tag
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-3.5 border-l-4 text-left w-full ${
+        onClick ? 'cursor-pointer hover:bg-slate-50' : ''
+      }`}
       style={{ borderLeftColor: accent }}
     >
       <div className="flex items-center gap-2">
@@ -57,7 +65,7 @@ export function WorkshopStatTile({
           <p className="text-xl font-extrabold sm:text-2xl" style={{ color: accent }}>{loading ? '—' : value}</p>
         </div>
       </div>
-    </div>
+    </Tag>
   );
 }
 

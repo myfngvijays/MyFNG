@@ -277,12 +277,6 @@ export default function PendingLeadsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={fetchPendingLeads} />
         }
       >
-        <View style={styles.infoBanner}>
-          <Text style={styles.infoBannerText}>
-            Yahan sirf naye workshop leads dikhte hain — status ASSIGNED / ASSIGNED_TO_WORKSHOP.
-            Accept karne ke baad Needs Assignment mein aate hain.
-          </Text>
-        </View>
         {leads.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="checkmark-circle" size={64} color={COLORS.success} />
@@ -432,21 +426,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  infoBanner: {
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.xs,
-    backgroundColor: '#EAF2FF',
-    borderRadius: 12,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(0,74,173,0.12)',
-  },
-  infoBannerText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
   },
   emptyContainer: {
     alignItems: 'center',

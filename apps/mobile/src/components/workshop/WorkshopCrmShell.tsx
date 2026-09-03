@@ -167,6 +167,18 @@ export default function WorkshopCrmShell({
 
       <View style={styles.topBar}>
         <View style={styles.topSide} pointerEvents="box-none">
+          {navigation?.canGoBack?.() && !isHome ? (
+            <TouchableOpacity
+              style={styles.menuBtn}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={styles.menuBtn}
             onPress={() => setMenuOpen(true)}
@@ -422,7 +434,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   pageTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
     color: COLORS.textHeading,
   },

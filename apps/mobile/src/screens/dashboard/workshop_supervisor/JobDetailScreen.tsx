@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatDateTime } from "@/lib/dateFormat";
+import { formatDateTime } from '@/lib/dateFormat';
 import {
   View,
   Text,
@@ -10,10 +10,14 @@ import {
   Alert,
   BackHandler,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { ENV } from '../../../config/environment';
 import { parseServiceChecklistItems } from '../../../lib/serviceChecklist';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { COLORS } from '../../../constants/theme';
+import { AC } from '../../../components/workshop/advisorCrmUi';
+import { FLOOR_DONE_STATUSES, isQcPassed } from '../../../lib/workshopJobFlow';
 
 interface JobDetail {
   id: string;
@@ -32,6 +36,66 @@ interface JobDetail {
   started_at: string;
   completed_at: string;
   work_notes: string;
+  qc_status?: string;
+  lead_status?: string;
+}
+
+const LEAD_FIELDS =
+  'id, lead_number, customer_name, vehicle_number, service_type, estimated_amount, status, qc_status, priority';
+
+function chargeTitle(charge: any) {
+  return String(
+    charge?.description || charge?.issue_found || charge?.category_label || charge?.category || 'Additional work',
+  ).trim();
+}
+
+function chargeReason(charge: any) {
+  return String(charge?.reason || charge?.work_needed || '').trim();
+}
+
+function chargeAmount(charge: any) {
+  const n = Number(charge?.amount ?? charge?.estimated_cost ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function chargeStatus(charge: any) {
+  return String(charge?.status || charge?.approval_status || 'PENDING').toUpperCase();
+}
+
+function formatInr(n: number) {
+  return `₹${n.toLocaleString('en-IN')}`;
+}
+
+function prettyLabel(raw: string) {
+  return String(raw || '')
+    .replace(/_/g, ' ')
+    .trim();
+}
+
+function resolveDisplayStatus(job: JobDetail) {
+  const qc = String(job.qc_status || '').toUpperCase();
+  const leadSt = String(job.lead_status || '').toUpperCase();
+  if (qc === 'PASSED' || qc === 'APPROVED') {
+    if (leadSt && leadSt !== 'COMPLETED') return leadSt;
+    return 'QC_PASSED';
+  }
+  if (FLOOR_DONE_STATUSES.has(leadSt) && leadSt !== 'COMPLETED') return leadSt;
+  return job.status;
+}
+
+function statusColor(status: string) {
+  const key = String(status || '').toUpperCase();
+  if (['QC_PASSED', 'PASSED', 'APPROVED', 'COMPLETED', 'DELIVERED', 'PAID'].includes(key)) return '#10B981';
+  if (['PAYMENT_AWAITING', 'AWAITING_PAYMENT', 'READY_FOR_BILLING', 'INVOICE_GENERATED'].includes(key)) return '#0284C7';
+  if (key === 'IN_PROGRESS' || key === 'ASSIGNED') return key === 'IN_PROGRESS' ? '#004AAD' : '#F59E0B';
+  if (key === 'HOLD' || key === 'ON_HOLD' || key === 'FAILED' || key === 'REJECTED') return '#EF4444';
+  return '#64748B';
+}
+
+function chargeStatusStyle(status: string) {
+  if (status === 'APPROVED') return { bg: '#DCFCE7', fg: '#166534' };
+  if (status === 'REJECTED') return { bg: '#FEE2E2', fg: '#991B1B' };
+  return { bg: '#FEF3C7', fg: '#92400E' };
 }
 
 export default function JobDetailScreen() {
@@ -45,9 +109,9 @@ export default function JobDetailScreen() {
   const [assignedMechanicId, setAssignedMechanicId] = useState<string | null>(null);
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [extraCharges, setExtraCharges] = useState<any[]>([]);
+  const [showAllChecklist, setShowAllChecklist] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Handle hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (navigation?.goBack) {
@@ -68,42 +132,50 @@ export default function JobDetailScreen() {
 
   useEffect(() => {
     if (!lookupId || !job?.lead_id?.id) return;
-      
-    // Setup realtime subscription after job is loaded
-      const channel = supabase
-        .channel(`job-detail-${lookupId}`)
-        .on('postgres_changes', {
+
+    const channel = supabase
+      .channel(`job-detail-${lookupId}`)
+      .on(
+        'postgres_changes',
+        {
           event: '*',
           schema: 'public',
           table: 'mechanic_jobs',
           filter: mechanicJobId ? `id=eq.${mechanicJobId}` : `lead_id=eq.${lookupId}`,
-        }, () => {
+        },
+        () => {
           fetchJobDetail();
-        })
-        .on('postgres_changes', {
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
           event: '*',
           schema: 'public',
           table: 'service_checklists',
           filter: `lead_id=eq.${lookupId}`,
-        }, () => {
+        },
+        () => {
           fetchJobDetail();
-        })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'service_leads',
-        filter: `id=eq.${job.lead_id.id}`
-      }, (payload) => {
-        console.log('Lead status updated in real-time:', payload);
-        fetchJobDetail();
-      })
-        .subscribe((status) => {
-          console.log('Job detail subscription status:', status);
-        });
-      
-      return () => {
-        supabase.removeChannel(channel);
-      };
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'service_leads',
+          filter: `id=eq.${job.lead_id.id}`,
+        },
+        () => {
+          fetchJobDetail();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [lookupId, job?.lead_id?.id, mechanicJobId]);
 
   async function loadServiceChecklist(leadId: string, mechanicId: string | null) {
@@ -122,7 +194,9 @@ export default function JobDetailScreen() {
     let items = parseServiceChecklistItems(checklistData?.checklist_items);
     if (items.length === 0) {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         if (session?.access_token) {
           const response = await fetch(`${ENV.API_URL}/api/leads/${leadId}/ensure-checklist`, {
             method: 'POST',
@@ -134,7 +208,7 @@ export default function JobDetailScreen() {
           const result = await response.json().catch(() => ({}));
           if (response.ok) {
             if (Array.isArray(result.items) && result.items.length > 0) {
-              items = result.items;
+              items = parseServiceChecklistItems(result.items);
             } else {
               const { data: refreshed } = await supabase
                 .from('service_checklists')
@@ -144,8 +218,6 @@ export default function JobDetailScreen() {
                 .maybeSingle();
               items = parseServiceChecklistItems(refreshed?.checklist_items);
             }
-          } else {
-            console.warn('ensure-checklist response:', result?.error || response.status);
           }
         }
       } catch (e) {
@@ -169,9 +241,7 @@ export default function JobDetailScreen() {
 
       const byLead = await supabase
         .from('mechanic_jobs')
-        .select(
-          '*, lead_id(id, lead_number, customer_name, vehicle_number, service_type, estimated_amount), mechanic:mechanic_id(id, full_name)',
-        )
+        .select(`*, lead_id(${LEAD_FIELDS}), mechanic:mechanic_id(id, full_name)`)
         .eq('lead_id', lookupId)
         .maybeSingle();
       jobData = byLead.data;
@@ -179,9 +249,7 @@ export default function JobDetailScreen() {
       if (!jobData) {
         const byId = await supabase
           .from('mechanic_jobs')
-          .select(
-            '*, lead_id(id, lead_number, customer_name, vehicle_number, service_type, estimated_amount), mechanic:mechanic_id(id, full_name)',
-          )
+          .select(`*, lead_id(${LEAD_FIELDS}), mechanic:mechanic_id(id, full_name)`)
           .eq('id', lookupId)
           .maybeSingle();
         jobData = byId.data;
@@ -195,6 +263,9 @@ export default function JobDetailScreen() {
           ...jobData,
           mechanic_id: jobData.mechanic || { full_name: 'Unassigned' },
           status: jobData.mechanic_status || jobData.status || 'ASSIGNED',
+          qc_status: jobData.lead_id?.qc_status,
+          lead_status: jobData.lead_id?.status,
+          priority: jobData.priority || jobData.lead_id?.priority || 'NORMAL',
         });
         const leadRef = jobData.lead_id?.id || lookupId;
         await loadServiceChecklist(leadRef, mechanicUuid || jobData.mechanic?.id || null);
@@ -209,9 +280,7 @@ export default function JobDetailScreen() {
 
       const { data: lead, error: leadError } = await supabase
         .from('service_leads')
-        .select(
-          'id, lead_number, customer_name, vehicle_number, service_type, estimated_amount, status, priority, assigned_mechanic_id, mechanic:assigned_mechanic_id(full_name)',
-        )
+        .select(`${LEAD_FIELDS}, assigned_mechanic_id, mechanic:assigned_mechanic_id(full_name)`)
         .eq('id', lookupId)
         .is('deleted_at', null)
         .maybeSingle();
@@ -227,7 +296,7 @@ export default function JobDetailScreen() {
       if (lead.assigned_mechanic_id) {
         const st = String(lead.status || '').toUpperCase();
         if (st === 'IN_PROGRESS') mechanicStatus = 'IN_PROGRESS';
-        else if (st === 'COMPLETED') mechanicStatus = 'COMPLETED';
+        else if (st === 'COMPLETED' || FLOOR_DONE_STATUSES.has(st)) mechanicStatus = 'COMPLETED';
         else mechanicStatus = 'ASSIGNED';
       }
 
@@ -248,6 +317,8 @@ export default function JobDetailScreen() {
         started_at: '',
         completed_at: '',
         work_notes: '',
+        qc_status: lead.qc_status,
+        lead_status: lead.status,
       });
       await loadServiceChecklist(lead.id, lead.assigned_mechanic_id || null);
       const { data: chargesData } = await supabase
@@ -266,7 +337,7 @@ export default function JobDetailScreen() {
 
   const calculateProgress = () => {
     if (checklistItems.length === 0) return 0;
-    const completed = checklistItems.filter(item => item.is_completed).length;
+    const completed = checklistItems.filter((item) => item.is_completed).length;
     return (completed / checklistItems.length) * 100;
   };
 
@@ -275,18 +346,7 @@ export default function JobDetailScreen() {
     const now = new Date().getTime();
     const deadline = new Date(job.estimated_completion_time).getTime();
     const remaining = deadline - now;
-    const hours = Math.floor(remaining / (1000 * 60 * 60));
-    return hours;
-  };
-
-  const getStatusColor = (status: string) => {
-    const colors: any = {
-      ASSIGNED: '#f59e0b',
-      IN_PROGRESS: '#004AAD',
-      COMPLETED: '#10b981',
-      HOLD: '#ef4444',
-    };
-    return colors[status] || '#6b7280';
+    return Math.floor(remaining / (1000 * 60 * 60));
   };
 
   if (loading) {
@@ -304,7 +364,7 @@ export default function JobDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>❌</Text>
+          <Ionicons name="alert-circle-outline" size={48} color="#94A3B8" />
           <Text style={styles.errorText}>Job not found</Text>
         </View>
       </View>
@@ -313,161 +373,213 @@ export default function JobDetailScreen() {
 
   const slaHours = calculateSLARemaining();
   const progress = calculateProgress();
+  const doneCount = checklistItems.filter((i) => i.is_completed).length;
+  const visibleChecklist = showAllChecklist ? checklistItems : checklistItems.slice(0, 10);
+  const displayStatus = resolveDisplayStatus(job);
+  const badgeColor = statusColor(displayStatus);
+  const qcDone = isQcPassed({ qc_status: job.qc_status, status: job.lead_status });
+  const extraTotal = extraCharges.reduce((sum, row) => sum + chargeAmount(row), 0);
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.leadNumber}>{job.lead_id.customer_name || 'Customer'}</Text>
-            <Text style={styles.vehicle}>{job.lead_id.vehicle_number}</Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(job.status) }]}>
-            <Text style={styles.statusText}>{job.status}</Text>
-          </View>
-        </View>
-
-        {/* SLA Warning */}
-        {slaHours !== null && slaHours < 2 && job.status !== 'COMPLETED' && (
-          <View style={[
-            styles.slaWarning,
-            { backgroundColor: slaHours < 0 ? '#fee2e2' : '#fef3c7' }
-          ]}>
-            <Text style={[
-              styles.slaText,
-              { color: slaHours < 0 ? '#dc2626' : '#d97706' }
-            ]}>
-              {slaHours < 0 ? '🚨 SLA BREACHED!' : `⚠️ SLA At Risk: ${slaHours}h remaining`}
-            </Text>
-          </View>
-        )}
-
-        {/* Progress Card */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Job Progress</Text>
-          <View style={styles.progressCard}>
-            <Text style={styles.progressPercent}>{progress.toFixed(0)}%</Text>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
-            </View>
-            <Text style={styles.progressText}>
-              {checklistItems.filter(i => i.is_completed).length} of {checklistItems.length} tasks completed
-            </Text>
-          </View>
-        </View>
-
-        {/* Job Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Job Information</Text>
-          <View style={styles.infoCard}>
-            <InfoRow label="Service Type" value={job.lead_id.service_type} />
-            <InfoRow label="Mechanic" value={job.mechanic_id.full_name} />
-            <InfoRow label="Priority" value={job.priority || 'NORMAL'} />
-            {job.started_at && (
-              <InfoRow 
-                label="Started At" 
-                value={formatDateTime(job.started_at)} 
-              />
-            )}
-            {job.estimated_completion_time && (
-              <InfoRow 
-                label="ETA" 
-                value={formatDateTime(job.estimated_completion_time)} 
-              />
-            )}
-          </View>
-        </View>
-
-        {/* Checklist */}
-        {checklistItems.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Checklist ({checklistItems.length})</Text>
-            <View style={styles.checklistCard}>
-              {checklistItems.map((item, index) => (
-                <View key={item.id || index} style={styles.checklistItem}>
-                  <Text style={styles.checklistIcon}>
-                    {item.is_completed ? '✅' : '○'}
-                  </Text>
-                  <Text style={[
-                    styles.checklistText,
-                    item.is_completed && styles.checklistTextCompleted
-                  ]}>
-                    {item.item_name}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : assignedMechanicId && job.status !== 'UNASSIGNED' ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Checklist</Text>
-            <View style={styles.infoCard}>
-              <Text style={styles.progressText}>
-                General Service ke points load ho rahe hain… screen refresh karein ya thodi der baad dubara kholen.
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={AC.whiteCard}>
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              {job.lead_id.lead_number ? (
+                <Text style={styles.leadNumber}>{job.lead_id.lead_number}</Text>
+              ) : null}
+              <Text style={styles.customerName} numberOfLines={2}>
+                {job.lead_id.customer_name || 'Customer'}
               </Text>
+              <Text style={styles.vehicle}>{job.lead_id.vehicle_number || '—'}</Text>
             </View>
+            <View style={[styles.statusBadge, { backgroundColor: badgeColor }]}>
+              <Text style={styles.statusText}>{prettyLabel(displayStatus)}</Text>
+            </View>
+          </View>
+          <View style={styles.chipRow}>
+            {qcDone ? (
+              <TouchableOpacity
+                style={styles.chip}
+                onPress={() => navigation.navigate('AdvisorBilling', { leadId: job.lead_id.id })}
+              >
+                <Text style={styles.chipTxt}>Order Summary</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.chip}
+              onPress={() =>
+                navigation.navigate('QCReview' as never, { jobId: job.id, leadId: job.lead_id.id } as never)
+              }
+            >
+              <Text style={styles.chipTxt}>QC Review</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.chip} onPress={() => navigation.navigate('ExtraWorkApproval')}>
+              <Text style={styles.chipTxt}>Extra work</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {qcDone ? (
+          <View style={[AC.whiteCard, styles.nextCard]}>
+            <Text style={styles.nextEyebrow}>QC passed · next step</Text>
+            <Text style={styles.nextTitle}>Order Summary / Billing</Text>
+            <Text style={styles.nextBody}>
+              Bill check karo, finalize karo, phir payment. Delivery uske baad.
+            </Text>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => navigation.navigate('AdvisorBilling', { leadId: job.lead_id.id })}
+            >
+              <Text style={styles.actionButtonText}>Open Order Summary</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
-        {/* Extra Charges */}
-        {extraCharges.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Extra Charges ({extraCharges.length})</Text>
-            <View style={styles.chargesCard}>
-              {extraCharges.map((charge, index) => (
-                <View key={index} style={styles.chargeItem}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.chargeTitle}>{charge.issue_found}</Text>
-                    <Text style={styles.chargeDesc}>{charge.work_needed}</Text>
-                    <View style={[
-                      styles.chargeStatus,
-                      { backgroundColor: charge.approval_status === 'APPROVED' ? '#d1fae5' : '#fef3c7' }
-                    ]}>
-                      <Text style={[
-                        styles.chargeStatusText,
-                        { color: charge.approval_status === 'APPROVED' ? '#059669' : '#d97706' }
-                      ]}>
-                        {charge.approval_status}
-                      </Text>
+        {slaHours !== null && slaHours < 2 && job.status !== 'COMPLETED' && !qcDone && (
+          <View
+            style={[styles.slaWarning, { backgroundColor: slaHours < 0 ? '#FEE2E2' : '#FEF3C7' }]}
+          >
+            <Text style={[styles.slaText, { color: slaHours < 0 ? '#DC2626' : '#D97706' }]}>
+              {slaHours < 0 ? 'SLA breached' : `SLA at risk: ${slaHours}h remaining`}
+            </Text>
+          </View>
+        )}
+
+        <View style={AC.whiteCard}>
+          <Text style={styles.sectionTitle}>Job Progress</Text>
+          <View style={styles.progressHead}>
+            <Text style={styles.progressPercent}>{progress.toFixed(0)}%</Text>
+            <Text style={styles.progressText}>
+              {doneCount} of {checklistItems.length} tasks
+            </Text>
+          </View>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(0, progress))}%` }]} />
+          </View>
+        </View>
+
+        <View style={AC.whiteCard}>
+          <Text style={styles.sectionTitle}>Job Information</Text>
+          <InfoRow label="Service type" value={job.lead_id.service_type || '—'} />
+          <InfoRow label="Mechanic" value={job.mechanic_id.full_name} />
+          <InfoRow label="Priority" value={prettyLabel(job.priority || 'NORMAL')} />
+          {job.started_at ? <InfoRow label="Started" value={formatDateTime(job.started_at)} /> : null}
+          {job.estimated_completion_time ? (
+            <InfoRow label="ETA" value={formatDateTime(job.estimated_completion_time)} />
+          ) : null}
+        </View>
+
+        {checklistItems.length > 0 ? (
+          <View style={AC.whiteCard}>
+            <View style={styles.checkHead}>
+              <Text style={styles.sectionTitle}>Checklist ({checklistItems.length})</Text>
+              {checklistItems.length > 10 ? (
+                <TouchableOpacity
+                  onPress={() => setShowAllChecklist((v) => !v)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.viewAllTxt}>{showAllChecklist ? 'Show less' : 'View all'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={styles.checkGrid}>
+              {Array.from({ length: Math.ceil(visibleChecklist.length / 2) }, (_, row) => {
+                const pair = visibleChecklist.slice(row * 2, row * 2 + 2);
+                return (
+                  <View key={row} style={styles.checkPair}>
+                    {pair.map((item, col) => {
+                      const index = row * 2 + col;
+                      const done = Boolean(item.is_completed);
+                      return (
+                        <View key={item.id || index} style={[styles.checkRow, done && styles.checkRowDone]}>
+                          <View style={[styles.checkNumBadge, done && styles.checkNumBadgeDone]}>
+                            <Text style={[styles.checkNum, done && styles.checkNumDone]}>{index + 1}</Text>
+                          </View>
+                          <Text style={[styles.checkTxt, done && styles.checkTxtDone]} numberOfLines={3}>
+                            {item.item_name || item.name || `Item ${index + 1}`}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    {pair.length === 1 ? <View style={styles.checkRowSpacer} /> : null}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : assignedMechanicId && job.status !== 'UNASSIGNED' ? (
+          <View style={AC.whiteCard}>
+            <Text style={styles.sectionTitle}>Service Checklist</Text>
+            <Text style={styles.muted}>
+              Checklist points load ho rahe hain. Pull to refresh ya thodi der baad dubara kholen.
+            </Text>
+          </View>
+        ) : null}
+
+        {extraCharges.length > 0 ? (
+          <View style={AC.whiteCard}>
+            <View style={styles.checkHead}>
+              <Text style={styles.sectionTitle}>Extra work ({extraCharges.length})</Text>
+              {extraTotal > 0 ? <Text style={styles.extraTotal}>{formatInr(extraTotal)}</Text> : null}
+            </View>
+            {extraCharges.map((charge, index) => {
+              const st = chargeStatus(charge);
+              const tone = chargeStatusStyle(st);
+              const reason = chargeReason(charge);
+              return (
+                <View key={charge.id || index} style={styles.chargeItem}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.chargeTitle}>{chargeTitle(charge)}</Text>
+                    {reason ? <Text style={styles.chargeDesc}>{reason}</Text> : null}
+                    <View style={[styles.chargeStatus, { backgroundColor: tone.bg }]}>
+                      <Text style={[styles.chargeStatusText, { color: tone.fg }]}>{prettyLabel(st)}</Text>
                     </View>
                   </View>
-                  <Text style={styles.chargeAmount}>₹{charge.estimated_cost}</Text>
+                  <Text style={styles.chargeAmount}>{formatInr(chargeAmount(charge))}</Text>
                 </View>
-              ))}
-            </View>
+              );
+            })}
           </View>
-        )}
+        ) : null}
 
-        {/* Work Notes */}
-        {job.work_notes && (
-          <View style={styles.section}>
+        {job.work_notes ? (
+          <View style={AC.whiteCard}>
             <Text style={styles.sectionTitle}>Work Notes</Text>
-            <View style={styles.notesCard}>
-              <Text style={styles.notesText}>{job.work_notes}</Text>
-            </View>
+            <Text style={styles.notesText}>{job.work_notes}</Text>
           </View>
-        )}
+        ) : null}
       </ScrollView>
 
-      {/* Action Buttons */}
-      {job.status === 'IN_PROGRESS' && (
+      {job.status === 'IN_PROGRESS' || (job.status === 'COMPLETED' && !qcDone) ? (
         <View style={styles.actionBar}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('QCCheck' as never, { jobId: job.id } as never)}
+            onPress={() =>
+              navigation.navigate('QCReview' as never, { jobId: job.id, leadId: job.lead_id.id } as never)
+            }
           >
-            <Text style={styles.actionButtonText}>🔍 Conduct QC</Text>
+            <Text style={styles.actionButtonText}>Open QC Review</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : qcDone ? (
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('AdvisorBilling', { leadId: job.lead_id.id })}
+          >
+            <Text style={styles.actionButtonText}>Open Order Summary</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const InfoRow = ({ label, value }: { label: string; value: string }) => (
   <View style={styles.infoRow}>
-    <Text style={styles.infoLabel}>{label}:</Text>
+    <Text style={styles.infoLabel}>{label}</Text>
     <Text style={styles.infoValue}>{value}</Text>
   </View>
 );
@@ -475,7 +587,7 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => (
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F0F7FF',
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
@@ -484,193 +596,239 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
-    color: '#6b7280',
+    fontSize: 15,
+    color: COLORS.textSecondary,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  errorIcon: {
-    fontSize: 64,
-    marginBottom: 16,
+    gap: 8,
   },
   errorText: {
-    fontSize: 18,
-    color: '#6b7280',
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingTop: 8,
+    paddingBottom: 110,
   },
-  header: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: 10,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  chipTxt: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.primary,
   },
   leadNumber: {
     fontSize: 12,
-    color: '#6b7280',
+    fontWeight: '700',
+    color: COLORS.textSecondary,
     marginBottom: 4,
   },
   customerName: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#023D95',
-    marginBottom: 2,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 4,
   },
   vehicle: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
   statusBadge: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 999,
+    maxWidth: 140,
   },
   statusText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '800',
     color: '#fff',
+    textAlign: 'center',
   },
   slaWarning: {
+    marginHorizontal: 16,
+    marginBottom: 10,
     padding: 12,
-    margin: 16,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   slaText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
-  },
-  section: {
-    marginTop: 8,
-    paddingHorizontal: 16,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#023D95',
-    marginBottom: 12,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 10,
   },
-  progressCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  progressHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   progressPercent: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#004AAD',
-    marginBottom: 12,
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.primary,
   },
   progressBarBg: {
     width: '100%',
-    height: 12,
-    backgroundColor: '#e5e7eb',
+    height: 10,
+    backgroundColor: '#E5E7EB',
     borderRadius: 6,
     overflow: 'hidden',
-    marginBottom: 8,
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#004AAD',
+    backgroundColor: COLORS.primary,
     borderRadius: 6,
   },
   progressText: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  infoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   infoLabel: {
-    fontSize: 13,
-    color: '#6b7280',
+    fontSize: 14,
+    color: COLORS.textSecondary,
     flex: 1,
   },
   infoValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#023D95',
-    flex: 2,
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.heading,
+    flex: 1.4,
     textAlign: 'right',
   },
-  checklistCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  checklistItem: {
+  checkHead: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
-  checklistIcon: {
-    fontSize: 18,
-    marginRight: 12,
-  },
-  checklistText: {
+  viewAllTxt: {
     fontSize: 13,
-    color: '#023D95',
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginBottom: 10,
+  },
+  checkGrid: {
+    gap: 8,
+  },
+  checkPair: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  checkRow: {
+    flex: 1,
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  checkRowSpacer: {
     flex: 1,
   },
-  checklistTextCompleted: {
-    textDecorationLine: 'line-through',
-    color: '#9ca3af',
+  checkRowDone: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
   },
-  chargesCard: {
-    backgroundColor: '#fff',
+  checkNumBadge: {
+    width: 24,
+    height: 24,
     borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  checkNumBadgeDone: {
+    borderColor: '#86EFAC',
+    backgroundColor: '#DCFCE7',
+  },
+  checkNum: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  checkNumDone: {
+    color: '#166534',
+  },
+  checkTxt: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    lineHeight: 18,
+  },
+  checkTxtDone: {
+    color: '#166534',
+  },
+  extraTotal: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 10,
   },
   chargeItem: {
     flexDirection: 'row',
-    paddingBottom: 12,
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#F1F5F9',
   },
   chargeTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#023D95',
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.heading,
     marginBottom: 4,
   },
   chargeDesc: {
-    fontSize: 12,
-    color: '#6b7280',
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
     marginBottom: 6,
   },
   chargeStatus: {
@@ -680,29 +838,48 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   chargeStatusText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '800',
   },
   chargeAmount: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#023D95',
-    marginLeft: 12,
-  },
-  notesCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginLeft: 4,
   },
   notesText: {
-    fontSize: 13,
-    color: '#023D95',
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
+  },
+  muted: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
     lineHeight: 20,
+  },
+  nextCard: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  nextEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#166534',
+    textTransform: 'uppercase',
+  },
+  nextTitle: {
+    marginTop: 4,
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  nextBody: {
+    marginTop: 6,
+    marginBottom: 12,
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.textPrimary,
   },
   actionBar: {
     position: 'absolute',
@@ -712,23 +889,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    borderTopColor: '#E5E7EB',
   },
   actionButton: {
     backgroundColor: '#004AAD',
-    padding: 16,
-    borderRadius: 8,
+    padding: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });
-

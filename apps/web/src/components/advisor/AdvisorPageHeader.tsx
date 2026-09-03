@@ -22,10 +22,10 @@ export function AdvisorPageHeader({
           {eyebrow ? (
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#004AAD]/70">{eyebrow}</p>
           ) : null}
-          <h1 className="mt-0.5 min-w-0 break-words text-lg font-extrabold leading-tight text-[#023D95] sm:text-xl md:text-2xl">
+          <h1 className="mt-0.5 min-w-0 break-words text-xl font-extrabold leading-tight text-[#023D95] sm:text-2xl">
             {title}
           </h1>
-          {subtitle ? <p className="mt-1 text-xs text-slate-500 sm:text-sm">{subtitle}</p> : null}
+          {subtitle ? <p className="mt-1 text-sm text-slate-600 sm:text-base">{subtitle}</p> : null}
         </div>
         {right ? <div className="w-full min-w-0 min-[900px]:w-auto min-[900px]:shrink-0">{right}</div> : null}
       </div>

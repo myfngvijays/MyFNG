@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from '@/lib/utils';
 import {
-  ArrowLeft, Clock, User, Car, CheckCircle, XCircle, 
+  Clock, User, Car, XCircle, 
   Camera, Package, FileText, Loader2, AlertTriangle, Image as ImageIcon
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -82,9 +82,11 @@ export default function QCReviewPage() {
   const [showAllAfterPhotos, setShowAllAfterPhotos] = useState(false);
   const [showAllCarScanningPhotos, setShowAllCarScanningPhotos] = useState(false);
   const [showAllCustomServicePhotos, setShowAllCustomServicePhotos] = useState(false);
+  const [showAllChecklist, setShowAllChecklist] = useState(false);
   const [partsUsed, setPartsUsed] = useState<any[]>([]);
   const [checklist, setChecklist] = useState<any[]>([]);
   const [mechanic, setMechanic] = useState<any>(null);
+  const [extraWork, setExtraWork] = useState<any[]>([]);
   const [lightbox, setLightbox] = useState<{ url: string; label?: string } | null>(null);
 
   const checklistItems = [
@@ -439,6 +441,26 @@ export default function QCReviewPage() {
         }
       }
 
+      try {
+        const evRes = await fetch(`/api/supervisor/jobs/${jobId}/qc-evidence`);
+        const evJson = await evRes.json().catch(() => ({}));
+        if (evRes.ok && evJson?.success) {
+          const mapMedia = (list: any[] = [], category: string) =>
+            list.map((item: any) => ({
+              id: item.id,
+              photo_url: item.url,
+              photo_type: item.label,
+              photo_category: category,
+            }));
+          beforeCollected.push(...mapMedia(evJson.photos?.before, 'before'));
+          duringCollected.push(...mapMedia(evJson.photos?.during, 'during'));
+          afterCollected.push(...mapMedia(evJson.photos?.after, 'after'));
+          setExtraWork(Array.isArray(evJson.extraWork) ? evJson.extraWork : []);
+        }
+      } catch {
+        /* client RLS already tried; evidence API is the supervisor-safe source */
+      }
+
       // Set final de-duped lists once
       setBeforePhotos(dedupePhotos(beforeCollected));
       setAfterPhotos(dedupePhotos(afterCollected));
@@ -743,43 +765,38 @@ export default function QCReviewPage() {
     <DashboardLayout role="workshop_supervisor">
       <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
-          title={`QC Review · ${lead.lead_number}`}
-          subtitle="Review and approve completed work"
+          title="QC Review"
+          subtitle={`${lead.lead_number || ''} · Review photos, checklist, then pass or send back`}
           href="/dashboard/workshop-advisor/qc-queue"
           right={
             <button
               onClick={() => router.back()}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#012f73]"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#023D95] px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#012f73] sm:text-sm"
             >
-              <ArrowLeft className="w-4 h-4" />
               Back
             </button>
           }
         />
 
-        {/* Job Summary */}
-        <div className="card bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Customer</p>
-              <p className="font-bold text-lg">{lead.customer_name}</p>
-              <p className="text-sm text-gray-600">{lead.customer_phone}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Vehicle</p>
-              <p className="font-bold text-lg">{lead.vehicle_number}</p>
-              <p className="text-sm text-gray-600">{lead.vehicle_make} {lead.vehicle_model}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Mechanic</p>
-              <p className="font-bold text-lg">{mechanic?.full_name || 'Unknown'}</p>
-              {lead.mechanic_completed_at && (
-                <p className="text-sm text-gray-600">
-                  Completed: {formatDateTime(lead.mechanic_completed_at)}
-                </p>
-              )}
-            </div>
+        <div className="rounded-2xl bg-[#004AAD] p-3.5 text-white shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <p className="truncate text-sm font-extrabold">{lead.customer_name}</p>
+            {lead.lead_number ? (
+              <span className="shrink-0 rounded-lg bg-white/20 px-2 py-0.5 text-[10px] font-extrabold">
+                #{lead.lead_number}
+              </span>
+            ) : null}
           </div>
+          <p className="mt-1 truncate text-[11px] text-white/80">
+            {[lead.vehicle_number, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' · ')}
+          </p>
+          {lead.customer_phone ? (
+            <p className="mt-0.5 text-[11px] text-white/80">{lead.customer_phone}</p>
+          ) : null}
+          <p className="mt-0.5 text-[11px] text-white/80">
+            Mechanic: {mechanic?.full_name || 'Unknown'}
+            {lead.mechanic_completed_at ? ` · ${formatDateTime(lead.mechanic_completed_at)}` : ''}
+          </p>
         </div>
 
         {/* Tabs */}
@@ -849,55 +866,87 @@ export default function QCReviewPage() {
               )}
             </div>
 
+            <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+              <h3 className="mb-2 text-sm font-extrabold text-[#023D95]">Additional work ({extraWork.length})</h3>
+              {extraWork.length === 0 ? (
+                <p className="text-xs text-slate-500">No additional work on this job</p>
+              ) : (
+                <div className="space-y-3">
+                  {extraWork.map((row: any) => (
+                    <div key={row.id} className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-sm font-semibold text-slate-800">{row.label}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {row.status}
+                        {row.amount != null ? ` · ₹${row.amount}` : ''}
+                      </p>
+                      {Array.isArray(row.proof) && row.proof.length > 0 ? (
+                        <div className="mt-2 flex gap-2 overflow-x-auto">
+                          {row.proof.map((item: any) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => item.url && setLightbox({ url: item.url, label: row.label })}
+                            >
+                              <img src={item.url} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-400">No proof uploaded</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Checklist */}
             {checklist.length > 0 && (
               <div className="card">
-                <h3 className="text-lg font-semibold mb-3">Service Checklist</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold w-16">Status</th>
-                        <th className="px-4 py-3 text-left font-semibold">Point</th>
-                        <th className="px-4 py-3 text-left font-semibold">Remark</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {checklist.map((item: any, index: number) => {
-                        const status = String(item.status || '').toUpperCase();
-                        const remark = String(item.remark || item.notes || item.comment || '').trim();
-                        return (
-                          <tr key={index} className={status === 'COMPLETED' ? 'bg-green-50/40' : ''}>
-                            <td className="px-4 py-3">
-                              {status === 'COMPLETED' ? (
-                                <span className="inline-flex items-center gap-1 text-green-700 font-semibold">
-                                  <CheckCircle className="w-4 h-4" />
-                                  Done
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-gray-600 font-semibold">
-                                  <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
-                                  Pending
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={status === 'COMPLETED' ? 'text-green-800' : 'text-gray-800'}>
-                                {item.name || item.item_name || `Item ${index + 1}`}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-700">
-                              {remark ? (
-                                <span className="whitespace-pre-wrap break-words">{remark}</span>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold">Service Checklist ({checklist.length})</h3>
+                  {checklist.length > 10 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllChecklist((v) => !v)}
+                      className="text-xs font-semibold text-blue-700 hover:underline whitespace-nowrap"
+                    >
+                      {showAllChecklist ? 'Show less' : 'View all'}
+                    </button>
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-2 gap-2 items-stretch">
+                  {(showAllChecklist ? checklist : checklist.slice(0, 10)).map((item: any, index: number) => {
+                    const status = String(item.status || '').toUpperCase();
+                    const remark = String(item.remark || item.notes || item.comment || '').trim();
+                    const done = status === 'COMPLETED';
+                    return (
+                      <div
+                        key={index}
+                        className={`flex min-h-[58px] items-center gap-2 rounded-xl border px-2.5 py-2 ${
+                          done ? 'border-green-200 bg-green-50' : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border text-[10px] font-extrabold ${
+                            done
+                              ? 'border-green-300 bg-green-100 text-green-800'
+                              : 'border-slate-300 bg-white text-slate-600'
+                          }`}
+                        >
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className={`text-[11px] leading-[17px] ${done ? 'text-green-800' : 'text-slate-800'}`}>
+                            {item.name || item.item_name || `Item ${index + 1}`}
+                          </p>
+                          {remark ? (
+                            <p className="text-[10px] leading-4 text-slate-500 mt-0.5">{remark}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1434,31 +1483,27 @@ export default function QCReviewPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3">
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={handleApprove}
               disabled={processing || !advisorReviewReady || advisorAnyNo}
-              className="btn bg-green-600 hover:bg-green-700 text-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="min-h-12 rounded-xl bg-green-600 px-3 text-sm font-extrabold tracking-wide text-white disabled:opacity-40"
             >
-              {processing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Approving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4" />
-                  Approve QC
-                </>
-              )}
+              {processing ? '…' : 'PASS'}
             </button>
             <button
               onClick={() => setShowRejectModal(true)}
               disabled={processing || !advisorReviewReady}
-              className="btn bg-red-600 hover:bg-red-700 text-white flex-1 flex items-center justify-center gap-2"
+              className="min-h-12 rounded-xl bg-orange-600 px-3 text-sm font-extrabold tracking-wide text-white disabled:opacity-40"
             >
-              <XCircle className="w-4 h-4" />
-              Reject QC
+              REWORK
+            </button>
+            <button
+              onClick={() => setShowRejectModal(true)}
+              disabled={processing || !advisorReviewReady}
+              className="min-h-12 rounded-xl bg-red-600 px-3 text-sm font-extrabold tracking-wide text-white disabled:opacity-40"
+            >
+              FAIL
             </button>
           </div>
 

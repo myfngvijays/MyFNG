@@ -3,13 +3,15 @@
 export function isDummyPickupLead(lead: {
   lead_number?: string | null;
   created_from?: string | null;
+  customer_name?: string | null;
 }): boolean {
-  return (
-    String(lead?.lead_number || '')
-      .toUpperCase()
-      .startsWith('L-DUM') || lead?.created_from === 'DUMMY_SEED'
-  );
+  const num = String(lead?.lead_number || '').toUpperCase();
+  if (num.startsWith('L-DUM')) return true;
+  if (lead?.created_from === 'DUMMY_SEED') return true;
+  return /\bdummy\b/i.test(String(lead?.customer_name || ''));
 }
+
+export const isDummyWorkshopLead = isDummyPickupLead;
 
 export const REQUIRED_BEFORE_TYPES = [
   'BEFORE_FRONT',

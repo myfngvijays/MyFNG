@@ -16,8 +16,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { COLORS, SPACING, FONT_SIZES } from '../../../constants/theme';
+import { COLORS } from '../../../constants/theme';
 import { ENV } from '../../../config/environment';
+import { AC } from '../../../components/workshop/advisorCrmUi';
+import { apiFetch } from '../../../lib/api';
 
 interface Photo {
   id: string;
@@ -56,8 +58,14 @@ export default function QCReviewScreen() {
   const [beforePhotos, setBeforePhotos] = useState<Photo[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<Photo[]>([]);
   const [duringPhotos, setDuringPhotos] = useState<Photo[]>([]);
+  const [workVideos, setWorkVideos] = useState<Photo[]>([]);
+  const [extraProof, setExtraProof] = useState<Photo[]>([]);
+  const [extraWork, setExtraWork] = useState<
+    Array<{ id: string; label: string; status: string; amount?: number | null; proof?: Photo[] }>
+  >([]);
   const [partsUsed, setPartsUsed] = useState<Part[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [showAllChecklist, setShowAllChecklist] = useState(false);
   const [mechanic, setMechanic] = useState<any>(null);
 
   const checklistItems = [
@@ -118,17 +126,47 @@ export default function QCReviewScreen() {
         setMechanic(mechanicData);
       }
 
-      // Fetch photos
-      const { data: photosData, error: photosError } = await supabaseClient
-        .from('mechanic_job_photos')
-        .select('*')
-        .eq('lead_id', jobId)
-        .order('created_at', { ascending: false });
+      const toPhoto = (item: any, category: string): Photo => ({
+        id: String(item?.id || item?.url),
+        photo_url: String(item?.url || item?.photo_url || ''),
+        photo_category: category,
+      });
 
-      if (!photosError && photosData) {
-        setBeforePhotos(photosData.filter((p: any) => p.photo_category === 'before'));
-        setAfterPhotos(photosData.filter((p: any) => p.photo_category === 'after'));
-        setDuringPhotos(photosData.filter((p: any) => p.photo_category === 'during'));
+      try {
+        const evidence = await apiFetch<{
+          photos?: {
+            before?: any[];
+            during?: any[];
+            after?: any[];
+            videos?: any[];
+            extra?: any[];
+          };
+          extraWork?: Array<{
+            id: string;
+            label: string;
+            status: string;
+            amount?: number | null;
+            proof?: any[];
+          }>;
+        }>(`/api/supervisor/jobs/${jobId}/qc-evidence`);
+        setBeforePhotos((evidence.photos?.before || []).map((item) => toPhoto(item, 'before')));
+        setDuringPhotos((evidence.photos?.during || []).map((item) => toPhoto(item, 'during')));
+        setAfterPhotos((evidence.photos?.after || []).map((item) => toPhoto(item, 'after')));
+        setWorkVideos((evidence.photos?.videos || []).map((item) => toPhoto(item, 'after')));
+        setExtraProof((evidence.photos?.extra || []).map((item) => toPhoto(item, 'after')));
+        setExtraWork(
+          (evidence.extraWork || []).map((row) => ({
+            ...row,
+            proof: (row.proof || []).map((item) => toPhoto(item, 'after')),
+          })),
+        );
+      } catch {
+        setBeforePhotos([]);
+        setDuringPhotos([]);
+        setAfterPhotos([]);
+        setWorkVideos([]);
+        setExtraProof([]);
+        setExtraWork([]);
       }
 
       // Fetch parts used
@@ -259,6 +297,27 @@ export default function QCReviewScreen() {
     }
   }
 
+  function renderPhotoBlock(title: string, photos: Photo[], emptyHint?: string) {
+    return (
+      <View style={AC.whiteCard}>
+        <Text style={styles.sectionTitle}>
+          {title} ({photos.length})
+        </Text>
+        {photos.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {photos.slice(0, 8).map((photo) => (
+              <Image key={photo.id} source={{ uri: photo.photo_url }} style={styles.photoImage} />
+            ))}
+          </ScrollView>
+        ) : (
+          <Text style={styles.mutedLabel}>{emptyHint || 'None uploaded'}</Text>
+        )}
+      </View>
+    );
+  }
+
+  const visibleChecklist = showAllChecklist ? checklist : checklist.slice(0, 10);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -283,265 +342,200 @@ export default function QCReviewScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{lead.customer_name || 'Customer'}</Text>
-      </View>
-
-      <ScrollView style={styles.scrollView}>
-        {/* Job Summary */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Customer</Text>
-              <Text style={styles.summaryValue}>{lead.customer_name}</Text>
-              <Text style={styles.summarySubValue}>{lead.customer_phone}</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Vehicle</Text>
-              <Text style={styles.summaryValue}>{lead.vehicle_number}</Text>
-              <Text style={styles.summarySubValue}>
-                {lead.vehicle_make} {lead.vehicle_model}
-              </Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Mechanic</Text>
-              <Text style={styles.summaryValue}>{mechanic?.full_name || 'Unknown'}</Text>
-              {lead.mechanic_completed_at && (
-                <Text style={styles.summarySubValue}>
-                  Completed: {formatDateTime(lead.mechanic_completed_at)}
-                </Text>
-              )}
-            </View>
+    <View style={AC.page}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={AC.navy}>
+          <View style={AC.navyRow}>
+            <Text style={AC.navyName} numberOfLines={1}>
+              {lead.customer_name || 'Customer'}
+            </Text>
+            {lead.lead_number ? (
+              <View style={AC.navyBadge}>
+                <Text style={AC.navyBadgeTxt}>#{lead.lead_number}</Text>
+              </View>
+            ) : null}
           </View>
+          <Text style={AC.navyMeta} numberOfLines={1}>
+            {[lead.vehicle_number, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' · ')}
+          </Text>
+          {lead.customer_phone ? (
+            <Text style={AC.navyMeta}>{lead.customer_phone}</Text>
+          ) : null}
+          <Text style={AC.navyMeta} numberOfLines={2}>
+            Mechanic: {mechanic?.full_name || 'Unknown'}
+            {lead.mechanic_completed_at ? ` · ${formatDateTime(lead.mechanic_completed_at)}` : ''}
+          </Text>
         </View>
 
-        {/* Service Details */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Service Details</Text>
+        <View style={AC.whiteCard}>
+          <Text style={styles.sectionTitle}>Service</Text>
           {lead.service_type_names && lead.service_type_names.length > 0 ? (
             lead.service_type_names.map((serviceName: string, index: number) => (
-              <View key={index} style={styles.serviceItem}>
-                <View style={styles.serviceDot} />
-                <Text style={styles.serviceText}>{serviceName}</Text>
-              </View>
+              <Text key={index} style={styles.bodyLine}>
+                {serviceName}
+              </Text>
             ))
           ) : (
-            <Text style={styles.serviceText}>{lead.service_type || 'General Service'}</Text>
+            <Text style={styles.bodyLine}>{lead.service_type || 'General Service'}</Text>
           )}
-          {lead.notes && (
-            <View style={styles.notesContainer}>
-              <Text style={styles.notesTitle}>Work Summary:</Text>
-              <Text style={styles.notesText}>{lead.notes}</Text>
+          {lead.notes ? (
+            <View style={styles.summaryBox}>
+              <Text style={styles.mutedLabel}>Work summary</Text>
+              <Text style={styles.bodyLine}>{lead.notes}</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
-        {/* Photos Section */}
-        <View style={styles.photosContainer}>
-          {/* Before Photos */}
-          <View style={styles.photoCard}>
-            <View style={styles.photoHeader}>
-              <Ionicons name="camera" size={20} color={COLORS.primary} />
-              <Text style={styles.photoTitle}>Before ({beforePhotos.length})</Text>
-            </View>
-            {beforePhotos.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {beforePhotos.slice(0, 4).map((photo) => (
-                  <Image
-                    key={photo.id}
-                    source={{ uri: photo.photo_url }}
-                    style={styles.photoImage}
-                  />
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.noPhotoContainer}>
-                <Ionicons name="alert-circle" size={32} color={COLORS.textSecondary} />
-                <Text style={styles.noPhotoText}>No before photos</Text>
-              </View>
-            )}
-          </View>
+        {renderPhotoBlock('Pickup / Before', beforePhotos, 'Pickup boy vehicle photos. Mechanic Before button job start ke baad bhi rehta hai.')}
+        {renderPhotoBlock('During', duringPhotos, 'Mechanic app pe During button — kaam chalte hue oil/filter/parts proof.')}
+        {renderPhotoBlock('After', afterPhotos)}
+        {renderPhotoBlock('Work videos', workVideos)}
 
-          {/* During Photos */}
-          <View style={styles.photoCard}>
-            <View style={styles.photoHeader}>
-              <Ionicons name="camera" size={20} color="#f59e0b" />
-              <Text style={styles.photoTitle}>During ({duringPhotos.length})</Text>
-            </View>
-            {duringPhotos.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {duringPhotos.slice(0, 4).map((photo) => (
-                  <Image
-                    key={photo.id}
-                    source={{ uri: photo.photo_url }}
-                    style={styles.photoImage}
-                  />
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.noPhotoContainer}>
-                <Ionicons name="alert-circle" size={32} color={COLORS.textSecondary} />
-                <Text style={styles.noPhotoText}>No during photos</Text>
-              </View>
-            )}
-          </View>
-
-          {/* After Photos */}
-          <View style={styles.photoCard}>
-            <View style={styles.photoHeader}>
-              <Ionicons name="camera" size={20} color={COLORS.success} />
-              <Text style={styles.photoTitle}>After ({afterPhotos.length})</Text>
-            </View>
-            {afterPhotos.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {afterPhotos.slice(0, 4).map((photo) => (
-                  <Image
-                    key={photo.id}
-                    source={{ uri: photo.photo_url }}
-                    style={styles.photoImage}
-                  />
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.noPhotoContainer}>
-                <Ionicons name="alert-circle" size={32} color={COLORS.textSecondary} />
-                <Text style={styles.noPhotoText}>No after photos</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Checklist */}
-        {checklist.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Service Checklist</Text>
-            {checklist.map((item, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.checklistItem,
-                  item.status === 'COMPLETED' ? styles.checklistItemCompleted : null,
-                ]}
-              >
-                {item.status === 'COMPLETED' ? (
-                  <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-                ) : (
-                  <View style={styles.checklistCircle} />
-                )}
-                <Text
-                  style={[
-                    styles.checklistText,
-                    item.status === 'COMPLETED' ? styles.checklistTextCompleted : null,
-                  ]}
-                >
-                  {item.name || item.item_name || `Item ${index + 1}`}
+        <View style={AC.whiteCard}>
+          <Text style={styles.sectionTitle}>Additional work ({extraWork.length})</Text>
+          {extraWork.length === 0 ? (
+            <Text style={styles.mutedLabel}>No additional work on this job</Text>
+          ) : (
+            extraWork.map((row) => (
+              <View key={row.id} style={styles.summaryBox}>
+                <Text style={styles.bodyLine}>{row.label}</Text>
+                <Text style={styles.mutedLabel}>
+                  {row.status}
+                  {row.amount != null ? ` · ₹${row.amount}` : ''}
                 </Text>
+                {(row.proof || []).length > 0 ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                    {(row.proof || []).map((photo) => (
+                      <Image key={photo.id} source={{ uri: photo.photo_url }} style={styles.photoImage} />
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <Text style={styles.mutedLabel}>No proof uploaded</Text>
+                )}
               </View>
-            ))}
+            ))
+          )}
+          {extraProof.length > 0 && extraWork.every((row) => !(row.proof || []).length) ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+              {extraProof.map((photo) => (
+                <Image key={photo.id} source={{ uri: photo.photo_url }} style={styles.photoImage} />
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+
+        {checklist.length > 0 && (
+          <View style={AC.whiteCard}>
+            <View style={styles.checkHead}>
+              <Text style={styles.sectionTitle}>Checklist ({checklist.length})</Text>
+              {checklist.length > 10 ? (
+                <TouchableOpacity onPress={() => setShowAllChecklist((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.viewAllTxt}>{showAllChecklist ? 'Show less' : 'View all'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={styles.checkGrid}>
+              {Array.from({ length: Math.ceil(visibleChecklist.length / 2) }, (_, row) => {
+                const pair = visibleChecklist.slice(row * 2, row * 2 + 2);
+                return (
+                  <View key={row} style={styles.checkPair}>
+                    {pair.map((item, col) => {
+                      const index = row * 2 + col;
+                      const done = String(item.status || '').toUpperCase() === 'COMPLETED';
+                      return (
+                        <View key={index} style={[styles.checkRow, done && styles.checkRowDone]}>
+                          <View style={[styles.checkNumBadge, done && styles.checkNumBadgeDone]}>
+                            <Text style={[styles.checkNum, done && styles.checkNumDone]}>{index + 1}</Text>
+                          </View>
+                          <Text style={[styles.checkTxt, done && styles.checkTxtDone]} numberOfLines={3}>
+                            {item.name || item.item_name || `Item ${index + 1}`}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    {pair.length === 1 ? <View style={styles.checkRowSpacer} /> : null}
+                  </View>
+                );
+              })}
+            </View>
           </View>
         )}
 
-        {/* Parts Used */}
         {partsUsed.length > 0 && (
-          <View style={styles.card}>
-            <View style={styles.cardTitleRow}>
-              <Ionicons name="cube" size={20} color={COLORS.primary} />
-              <Text style={styles.cardTitle}>Parts Used ({partsUsed.length})</Text>
-            </View>
+          <View style={AC.whiteCard}>
+            <Text style={styles.sectionTitle}>Parts ({partsUsed.length})</Text>
             {partsUsed.map((part) => (
               <View key={part.id} style={styles.partRow}>
-                <View style={styles.partInfo}>
-                  <Text style={styles.partName}>{part.part_name}</Text>
-                  {part.part_code && (
-                    <Text style={styles.partCode}>{part.part_code}</Text>
-                  )}
-                </View>
-                <Text style={styles.partQuantity}>Qty: {part.quantity || 1}</Text>
+                <Text style={styles.bodyLine} numberOfLines={1}>
+                  {part.part_name}
+                </Text>
+                <Text style={styles.mutedLabel}>Qty {part.quantity || 1}</Text>
               </View>
             ))}
           </View>
         )}
 
-        {/* QC Approval Form */}
-        <View style={styles.qcFormCard}>
-          <Text style={styles.qcFormTitle}>Quality Check Review</Text>
+        <View style={AC.whiteCard}>
+          <Text style={styles.sectionTitle}>QC decision</Text>
 
-          {/* Quality Score */}
-          <View style={styles.scoreContainer}>
-            <Text style={styles.scoreLabel}>Quality Score (1-5)</Text>
-            <View style={styles.scoreButtons}>
-              {[1, 2, 3, 4, 5].map((score) => (
-                <TouchableOpacity
-                  key={score}
-                  style={[
-                    styles.scoreButton,
-                    qualityScore === score ? styles.scoreButtonSelected : null,
-                  ]}
-                  onPress={() => setQualityScore(score)}
-                >
-                  <Text
-                    style={[
-                      styles.scoreButtonText,
-                      qualityScore === score ? styles.scoreButtonTextSelected : null,
-                    ]}
-                  >
-                    {score}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <Text style={styles.mutedLabel}>Quality score</Text>
+          <View style={styles.scoreButtons}>
+            {[1, 2, 3, 4, 5].map((score) => (
+              <TouchableOpacity
+                key={score}
+                style={[styles.scoreButton, qualityScore === score && styles.scoreButtonSelected]}
+                onPress={() => setQualityScore(score)}
+              >
+                <Text style={[styles.scoreButtonText, qualityScore === score && styles.scoreButtonTextSelected]}>
+                  {score}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {/* Approval Notes */}
-          <View style={styles.notesInputContainer}>
-            <Text style={styles.notesLabel}>Approval Notes (Optional)</Text>
-            <TextInput
-              style={styles.notesInput}
-              value={approvalNotes}
-              onChangeText={setApprovalNotes}
-              placeholder="Any notes or feedback..."
-              multiline
-              numberOfLines={3}
-            />
-          </View>
+          <Text style={[styles.mutedLabel, { marginTop: 12 }]}>Notes (optional)</Text>
+          <TextInput
+            style={styles.notesInput}
+            value={approvalNotes}
+            onChangeText={setApprovalNotes}
+            placeholder="Any notes or feedback..."
+            placeholderTextColor="#9CA3AF"
+            multiline
+            numberOfLines={3}
+          />
 
-          {/* Action Buttons */}
           <View style={styles.actionButtons}>
             <TouchableOpacity
-              style={[
-                styles.approveButton,
-                (processing || beforePhotos.length === 0 || afterPhotos.length === 0) &&
-                  styles.buttonDisabled,
-              ]}
+              style={[styles.qcChoice, styles.qcChoicePass, processing && styles.buttonDisabled]}
               onPress={handleApprove}
-              disabled={processing || beforePhotos.length === 0 || afterPhotos.length === 0}
+              disabled={processing}
             >
               {processing ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                  <Text style={styles.approveButtonText}>Approve QC</Text>
-                </>
+                <Text style={styles.qcChoiceText}>PASS</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.rejectButton, processing && styles.buttonDisabled]}
+              style={[styles.qcChoice, styles.qcChoiceRework, processing && styles.buttonDisabled]}
               onPress={() => setShowRejectModal(true)}
               disabled={processing}
             >
-              <Ionicons name="close-circle" size={18} color="#fff" />
-              <Text style={styles.rejectButtonText}>Reject QC</Text>
+              <Text style={styles.qcChoiceText}>REWORK</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.qcChoice, styles.qcChoiceFail, processing && styles.buttonDisabled]}
+              onPress={() => setShowRejectModal(true)}
+              disabled={processing}
+            >
+              <Text style={styles.qcChoiceText}>FAIL</Text>
             </TouchableOpacity>
           </View>
 
           {(beforePhotos.length === 0 || afterPhotos.length === 0) && (
-            <View style={styles.warningContainer}>
-              <Text style={styles.warningText}>
-                ⚠️ Missing photos: Before ({beforePhotos.length}), After ({afterPhotos.length})
-              </Text>
-            </View>
+            <Text style={styles.warnTxt}>
+              Photos missing — Before {beforePhotos.length}, After {afterPhotos.length}
+            </Text>
           )}
         </View>
       </ScrollView>
@@ -628,21 +622,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.md,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    marginRight: SPACING.md,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+  scrollContent: {
+    paddingTop: 8,
+    paddingBottom: 28,
   },
   loadingContainer: {
     flex: 1,
@@ -653,344 +635,238 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.xl,
+    padding: 24,
   },
   errorText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: 14,
     color: COLORS.error,
-    marginBottom: SPACING.md,
+    marginBottom: 12,
   },
   backButtonStyle: {
-    padding: SPACING.md,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     backgroundColor: COLORS.primary,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   backButtonText: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 13,
   },
-  scrollView: {
-    flex: 1,
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 8,
   },
-  summaryCard: {
-    backgroundColor: '#e0f2fe',
-    margin: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
-  summaryRow: {
+  checkHead: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 2,
   },
-  summaryItem: {
-    flex: 1,
+  viewAllTxt: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginBottom: 8,
   },
-  summaryLabel: {
-    fontSize: FONT_SIZES.sm,
+  bodyLine: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    lineHeight: 18,
+  },
+  mutedLabel: {
+    fontSize: 11,
+    fontWeight: '700',
     color: COLORS.textSecondary,
+    marginBottom: 6,
   },
-  summaryValue: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginTop: 4,
-  },
-  summarySubValue: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  card: {
-    backgroundColor: '#fff',
-    margin: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  cardTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.md,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  serviceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  serviceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-  },
-  serviceText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textPrimary,
-  },
-  notesContainer: {
-    marginTop: SPACING.md,
-    padding: SPACING.md,
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-  },
-  notesTitle: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  notesText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  photosContainer: {
-    margin: SPACING.md,
-    gap: SPACING.md,
-  },
-  photoCard: {
-    backgroundColor: '#fff',
-    padding: SPACING.md,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-  },
-  photoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  photoTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+  summaryBox: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
   },
   photoImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginRight: SPACING.sm,
+    width: 84,
+    height: 84,
+    borderRadius: 10,
+    marginRight: 8,
+    backgroundColor: '#E5E7EB',
   },
-  noPhotoContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: SPACING.xl,
+  checkGrid: {
+    gap: 8,
   },
-  noPhotoText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.sm,
+  checkPair: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
   },
-  checklistItem: {
+  checkRow: {
+    flex: 1,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.md,
-    padding: SPACING.sm,
-    borderRadius: 8,
-    marginBottom: SPACING.xs,
-    backgroundColor: '#f9fafb',
-  },
-  checklistItemCompleted: {
-    backgroundColor: '#f0fdf4',
-  },
-  checklistCircle: {
-    width: 20,
-    height: 20,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
     borderRadius: 10,
-    borderWidth: 2,
-    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
   },
-  checklistText: {
+  checkRowSpacer: {
     flex: 1,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textPrimary,
   },
-  checklistTextCompleted: {
-    color: COLORS.success,
+  checkRowDone: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  checkNumBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  checkNumBadgeDone: {
+    borderColor: '#86EFAC',
+    backgroundColor: '#DCFCE7',
+  },
+  checkNum: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#475569',
+    textAlign: 'center',
+  },
+  checkNumDone: {
+    color: '#166534',
+  },
+  checkTxt: {
+    flex: 1,
+    fontSize: 11,
+    color: COLORS.textPrimary,
+    lineHeight: 17,
+  },
+  checkTxtDone: {
+    color: '#166534',
   },
   partRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: SPACING.sm,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  partInfo: {
-    flex: 1,
-  },
-  partName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
-  partCode: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  partQuantity: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textPrimary,
-  },
-  qcFormCard: {
-    backgroundColor: '#f0fdf4',
-    margin: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.success,
-  },
-  qcFormTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.success,
-    marginBottom: SPACING.md,
-  },
-  scoreContainer: {
-    marginBottom: SPACING.md,
-  },
-  scoreLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-  },
   scoreButtons: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    gap: 6,
   },
   scoreButton: {
     flex: 1,
-    padding: SPACING.md,
-    borderRadius: 8,
-    borderWidth: 2,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
   scoreButtonSelected: {
-    borderColor: COLORS.success,
-    backgroundColor: '#dcfce7',
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
   },
   scoreButtonText: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.textPrimary,
   },
   scoreButtonTextSelected: {
-    color: COLORS.success,
-  },
-  notesInputContainer: {
-    marginBottom: SPACING.md,
-  },
-  notesLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
+    color: '#fff',
   },
   notesInput: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: SPACING.sm,
-    fontSize: FONT_SIZES.md,
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 13,
     color: COLORS.textPrimary,
-    minHeight: 80,
+    minHeight: 72,
     textAlignVertical: 'top',
+    marginBottom: 12,
+    backgroundColor: '#fff',
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    gap: 8,
   },
-  approveButton: {
+  qcChoice: {
     flex: 1,
-    flexDirection: 'row',
+    minHeight: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.xs,
-    padding: SPACING.md,
-    backgroundColor: COLORS.success,
-    borderRadius: 8,
   },
-  approveButtonText: {
+  qcChoicePass: {
+    backgroundColor: '#16A34A',
+  },
+  qcChoiceRework: {
+    backgroundColor: '#EA580C',
+  },
+  qcChoiceFail: {
+    backgroundColor: '#DC2626',
+  },
+  qcChoiceText: {
     color: '#fff',
-    fontWeight: '600',
-  },
-  rejectButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    padding: SPACING.md,
-    backgroundColor: COLORS.error,
-    borderRadius: 8,
-  },
-  rejectButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 0.3,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
-  warningContainer: {
-    marginTop: SPACING.md,
-    padding: SPACING.sm,
-    backgroundColor: '#fef3c7',
-    borderWidth: 1,
-    borderColor: '#f59e0b',
-    borderRadius: 8,
-  },
-  warningText: {
-    fontSize: FONT_SIZES.sm,
-    color: '#92400e',
+  warnTxt: {
+    marginTop: 10,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#92400E',
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.md,
+    padding: 16,
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
+    borderRadius: 14,
+    padding: 16,
     width: '100%',
     maxHeight: '90%',
   },
   modalTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.error,
-    marginBottom: SPACING.md,
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 12,
   },
   modalBody: {
-    gap: SPACING.md,
+    gap: 12,
   },
   modalInputContainer: {
-    marginBottom: SPACING.md,
+    marginBottom: 8,
   },
   modalLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
+    marginBottom: 6,
   },
   required: {
     color: COLORS.error,
@@ -998,56 +874,58 @@ const styles = StyleSheet.create({
   modalTextInput: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: SPACING.sm,
-    fontSize: FONT_SIZES.md,
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 13,
     color: COLORS.textPrimary,
-    minHeight: 80,
+    minHeight: 72,
     textAlignVertical: 'top',
   },
   modalChecklistContainer: {
-    marginBottom: SPACING.md,
+    marginBottom: 8,
   },
   modalChecklist: {
-    maxHeight: 200,
+    maxHeight: 180,
   },
   modalChecklistItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.xs,
+    gap: 8,
+    paddingVertical: 4,
   },
   modalChecklistText: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 12,
     color: COLORS.textPrimary,
   },
   modalActions: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
+    gap: 8,
+    marginTop: 12,
   },
   modalRejectButton: {
     flex: 1,
-    padding: SPACING.md,
-    backgroundColor: COLORS.error,
-    borderRadius: 8,
+    paddingVertical: 12,
+    backgroundColor: '#DC2626',
+    borderRadius: 10,
     alignItems: 'center',
   },
   modalRejectButtonText: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '800',
+    fontSize: 12,
   },
   modalCancelButton: {
     flex: 1,
-    padding: SPACING.md,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
   },
   modalCancelButtonText: {
     color: COLORS.textPrimary,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 12,
   },
 });
 

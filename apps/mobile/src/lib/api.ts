@@ -88,8 +88,15 @@ export async function apiFetch<T = JsonValue>(
   }
   if (!res.ok) {
     const message = String(json?.error || 'Request failed');
-    const err = new Error(message) as Error & { code?: string };
+    const details = json?.details ? String(json.details) : '';
+    const err = new Error(details ? `${message}: ${details}` : message) as Error & {
+      code?: string;
+      details?: string;
+      payload?: Record<string, unknown>;
+    };
     if (json?.code) err.code = String(json.code);
+    if (details) err.details = details;
+    err.payload = json;
     throw err;
   }
 

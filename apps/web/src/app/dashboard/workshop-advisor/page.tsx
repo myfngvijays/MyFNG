@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
-import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc } from '@/lib/workshop/jobFlow';
+import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc, isQcPassed } from '@/lib/workshop/jobFlow';
 
 type JobRow = {
   id: string;
@@ -66,7 +66,7 @@ export default function WorkshopAdvisorDashboard() {
     const supabase = createClient();
 
     async function load() {
-      const [mechanicsRes, jobsRes, qcRes, pendingRes, unassignedRes, pickupRes, doneRes] = await Promise.all([
+      const [mechanicsRes, jobsRes, pendingRes, unassignedRes, pickupRes, doneRes] = await Promise.all([
         supabase
           .from('users_login')
           .select('id, role:role_id(role_code)', { count: 'exact' })
@@ -84,20 +84,13 @@ export default function WorkshopAdvisorDashboard() {
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
           .eq('workshop_id', workshopId)
-          .eq('status', 'WORK_COMPLETED')
-          .or('qc_status.is.null,qc_status.eq.PENDING')
-          .is('deleted_at', null),
-        supabase
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('workshop_id', workshopId)
           .in('status', ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'])
           .is('deleted_at', null),
         supabase
           .from('service_leads')
           .select(
             `id, customer_name, vehicle_number, lead_number, pickup_required, pickup_status, status,
-             assigned_mechanic_id, assigned_pickup_boy_id, mechanic_completed_at, qc_status, created_at, updated_at,
+             assigned_mechanic_id, assigned_pickup_boy_id, mechanic_completed_at, qc_status, qc_performed_at, created_at, updated_at,
              mechanic:assigned_mechanic_id(full_name)`,
           )
           .eq('workshop_id', workshopId)
@@ -166,10 +159,9 @@ export default function WorkshopAdvisorDashboard() {
       const activeFromLeads = openLeads
         .filter((lead) => {
           if (!lead.assigned_mechanic_id) return false;
+          if (isQcPassed(lead)) return false;
           const status = String(lead.status || '').toUpperCase();
-          return !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED', 'COMPLETED', 'DELIVERED'].includes(
-            status,
-          );
+          return !['WORK_COMPLETED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(status);
         })
         .map((lead) => {
           const status = String(lead.status || '').toUpperCase();
@@ -191,12 +183,14 @@ export default function WorkshopAdvisorDashboard() {
       setStats({
         total_mechanics: mechanics.length,
         active_jobs: displayJobs.length,
-        completed_today: ((doneRes.data || []) as any[]).filter(
-          (job) =>
-            job.mechanic?.workshop_id === workshopId &&
-            isoInRange(job.completed_at, dateRange.start, dateRange.end, dateRange.allTime),
+        completed_today: openLeads.filter(
+          (lead) =>
+            isQcPassed(lead) &&
+            (isoInRange(lead.qc_performed_at, dateRange.start, dateRange.end, dateRange.allTime) ||
+              isoInRange(lead.mechanic_completed_at, dateRange.start, dateRange.end, dateRange.allTime) ||
+              isoInRange(lead.updated_at, dateRange.start, dateRange.end, dateRange.allTime)),
         ).length,
-        pending_qc: qcRes.count || 0,
+        pending_qc: openLeads.filter((lead) => isPendingQc(lead)).length,
         overdue_jobs: workshopJobs.filter(
           (job) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
         ).length,
@@ -291,10 +285,10 @@ export default function WorkshopAdvisorDashboard() {
                   className="flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-xl border border-slate-100 bg-[#F0F7FF] p-3 text-left"
                 >
                   <div className="min-w-0 flex-1 overflow-hidden">
-                    <p className="truncate text-sm font-semibold text-[#023D95]">
+                    <p className="truncate text-[13px] font-semibold text-[#023D95]">
                       {job.customer_name || 'Customer'}
                     </p>
-                    <p className="truncate text-xs text-slate-500">
+                    <p className="truncate text-[11px] leading-4 text-slate-500">
                       {[job.lead_number, job.vehicle_number].filter(Boolean).join(' · ') || '—'}
                     </p>
                   </div>
@@ -388,8 +382,8 @@ function StatTile({
     <div className="flex items-center gap-2">
       <span className="shrink-0" style={{ color: accent }}>{icon}</span>
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-[11px]">{label}</p>
-        <p className="text-xl font-extrabold sm:text-2xl" style={{ color: accent }}>{loading ? '—' : value}</p>
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-lg font-extrabold leading-6 sm:text-xl" style={{ color: accent }}>{loading ? '—' : value}</p>
       </div>
     </div>
   );

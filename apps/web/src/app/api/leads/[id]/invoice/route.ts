@@ -556,6 +556,43 @@ export async function GET(
       .eq('id', leadId)
       .maybeSingle();
 
+    const parseServiceNameHints = (raw: any): string[] =>
+      String(raw || '')
+        .split(/[,+/|&]| and /i)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 1 && !isUuid(s));
+
+    const resolveLeadServiceTypeIds = async (leadRow: any): Promise<string[]> => {
+      const uuidIds = parseIdList(leadRow?.service_type_ids).filter(isUuid);
+      const nameHints = parseServiceNameHints(leadRow?.service_type);
+      const found = new Set<string>(uuidIds);
+      if (nameHints.length === 0) return [...found];
+      try {
+        const orFilter = nameHints
+          .slice(0, 8)
+          .map((n) => `name.ilike.%${String(n).replace(/[%_,.()]/g, ' ').replace(/\s+/g, ' ').trim()}%`)
+          .filter(Boolean)
+          .join(',');
+        if (!orFilter) return [...found];
+        const { data } = await supabase.from('service_types').select('id, name').or(orFilter).limit(25);
+        for (const st of data || []) {
+          const id = String((st as any)?.id || '').trim();
+          const stName = normalizeName(String((st as any)?.name || ''));
+          if (!id || !stName) continue;
+          const match = nameHints.some((h) => {
+            const nh = normalizeName(h);
+            return stName === nh || stName.includes(nh) || nh.includes(stName);
+          });
+          if (match) found.add(id);
+        }
+      } catch {
+        // ignore
+      }
+      return [...found];
+    };
+
+    const resolvedServiceTypeIds = await resolveLeadServiceTypeIds(leadMeta);
+
     if (invoice && ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_ADVISOR', 'WORKSHOP_ADVISER'].includes(roleCode)) {
       if (leadMeta && userProfile.workshop_id !== (leadMeta as any).workshop_id) {
         return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
@@ -700,15 +737,7 @@ export async function GET(
         return out;
       };
 
-      const serviceTypeIdsRaw =
-        parseIdList((leadMeta as any)?.service_type_ids) ||
-        [];
-      const serviceTypeIds =
-        serviceTypeIdsRaw.length > 0
-          ? serviceTypeIdsRaw
-          : (leadMeta as any)?.service_type
-          ? [String((leadMeta as any).service_type)]
-          : [];
+      const serviceTypeIds = resolvedServiceTypeIds;
 
       if (serviceTypeIds.length > 0) {
         let svcTypes: any[] = [];
@@ -752,7 +781,6 @@ export async function GET(
 
         for (const sid of serviceTypeIds) {
           const raw = byService[sid] || [];
-          if (!raw.length) continue;
           let servicePrice = 0;
           try {
             const leadCityId = String((leadMeta as any)?.city_id || '').trim() || null;
@@ -878,9 +906,8 @@ export async function GET(
         const c = String(x?.category || '').toUpperCase();
         return c === 'SERVICE' || c === 'ADDON';
       });
-      // If base_amount is 0 and there are no service/addon lines, the invoice is incomplete (common in older OS rows).
-      const baseZero = Number(inv?.base_amount || 0) <= 0;
-      const missingServiceLines = baseZero && serviceLi.length === 0;
+      const onlyService = li.filter((x: any) => String(x?.category || '').toUpperCase() === 'SERVICE');
+      const missingServiceLines = onlyService.length === 0;
       const hasZeroService = serviceLi.some(
         (x: any) => Number(x?.amount || 0) <= 0 && Number(x?.rate || 0) <= 0
       );
@@ -977,7 +1004,9 @@ export async function GET(
         let fallbackServiceLines: any[] = [];
         let workshopServiceLines: any[] = [];
         try {
-          const serviceTypeIds = parseIdList((leadFull as any).service_type_ids);
+          const serviceTypeIds = resolvedServiceTypeIds.length > 0
+            ? resolvedServiceTypeIds
+            : parseIdList((leadFull as any).service_type_ids).filter(isUuid);
           const addonIds = parseIdList((leadFull as any).subservice_ids);
 
           if (serviceTypeIds.length > 0) {
@@ -1059,6 +1088,47 @@ export async function GET(
                 category: 'SERVICE',
                 service_type_id: id,
               });
+            }
+          }
+
+          if (workshopServiceLines.length === 0) {
+            const nameHints = String((leadFull as any)?.service_type || '')
+              .split(/[,+/|&]| and /i)
+              .map((s) => s.trim())
+              .filter(Boolean);
+            for (const hint of nameHints) {
+              const { data: byName } = await supabase
+                .from('service_types')
+                .select('id, name, base_price')
+                .ilike('name', `%${hint.replace(/[%_]/g, ' ')}%`)
+                .limit(5);
+              for (const st of byName || []) {
+                const id = String(st?.id || '').trim();
+                if (!id) continue;
+                let price = 0;
+                try {
+                  price = await resolveWorkshopServicePrice({
+                    supabase,
+                    workshopId: String((leadFull as any).workshop_id),
+                    serviceTypeId: id,
+                    cityId: String((leadFull as any)?.city_id || '').trim() || null,
+                    cityName: String((leadFull as any)?.city || '').trim() || null,
+                    workshopZoneId: null,
+                    vehicleClass: null,
+                  });
+                } catch {
+                  price = 0;
+                }
+                const base = parseFloat(String((st as any).base_price || '0')) || 0;
+                workshopServiceLines.push({
+                  description: st?.name || nameHints[0] || 'Service',
+                  qty: 1,
+                  rate: price > 0 ? price : base,
+                  amount: price > 0 ? price : base,
+                  category: 'SERVICE',
+                  service_type_id: id,
+                });
+              }
             }
           }
 
@@ -1271,28 +1341,61 @@ export async function GET(
       const src = hydrated || inv;
       let lineItemsForTotals = Array.isArray((src as any).line_items) ? (src as any).line_items : [];
       const isOS = String((src as any)?.invoice_type || '').toUpperCase() === 'ORDER_SUMMARY';
-      if (isOS) {
-        const priceByTypeId = new Map<string, number>();
-        const priceByName = new Map<string, number>();
-        for (const svc of included_service_items || []) {
-          const sid = String((svc as any)?.service_type_id || '').trim();
-          const sname = normalizeName(String((svc as any)?.service_name || ''));
-          const sp = Number((svc as any)?.service_price || 0) || 0;
-          if (sid && sp > 0) priceByTypeId.set(sid, sp);
-          if (sname && sp > 0) priceByName.set(sname, sp);
-        }
-        lineItemsForTotals = lineItemsForTotals.map((row: any) => {
-          const cat = String(row?.category || '').toUpperCase();
-          if (cat !== 'SERVICE') return row;
-          const amount = Number(row?.amount || 0) || 0;
-          if (amount > 0) return row;
-          const sid = String(row?.service_type_id || '').trim();
-          const keyName = normalizeName(String(row?.description || ''));
-          const price = (sid && priceByTypeId.get(sid)) || priceByName.get(keyName) || 0;
-          if (!price) return row;
-          const qty = Number(row?.qty || 1) || 1;
-          return { ...row, amount: price, rate: price / qty };
-        });
+      const priceByTypeId = new Map<string, number>();
+      const priceByName = new Map<string, number>();
+      for (const svc of included_service_items || []) {
+        const sid = String((svc as any)?.service_type_id || '').trim();
+        const sname = normalizeName(String((svc as any)?.service_name || ''));
+        const sp = Number((svc as any)?.service_price || 0) || 0;
+        if (sid && sp > 0) priceByTypeId.set(sid, sp);
+        if (sname && sp > 0) priceByName.set(sname, sp);
+      }
+      lineItemsForTotals = lineItemsForTotals.map((row: any) => {
+        const cat = String(row?.category || '').toUpperCase();
+        if (cat !== 'SERVICE') return row;
+        const amount = Number(row?.amount || 0) || 0;
+        if (amount > 0) return row;
+        const sid = String(row?.service_type_id || '').trim();
+        const keyName = normalizeName(String(row?.description || ''));
+        const price = (sid && priceByTypeId.get(sid)) || priceByName.get(keyName) || 0;
+        if (!price) return row;
+        const qty = Number(row?.qty || 1) || 1;
+        return { ...row, amount: price, rate: price / qty };
+      });
+      const existingServiceKeys = new Set(
+        lineItemsForTotals
+          .filter((row: any) => String(row?.category || '').toUpperCase() === 'SERVICE')
+          .flatMap((row: any) => {
+            const sid = String(row?.service_type_id || '').trim();
+            const sname = normalizeName(String(row?.description || ''));
+            return [sid, sname].filter(Boolean);
+          }),
+      );
+      const missingIncluded = (included_service_items || []).filter((svc: any) => {
+        const sid = String(svc?.service_type_id || '').trim();
+        const sname = normalizeName(String(svc?.service_name || ''));
+        if (!sid && !sname) return false;
+        if (sid && existingServiceKeys.has(sid)) return false;
+        if (sname && existingServiceKeys.has(sname)) return false;
+        return true;
+      });
+      if (missingIncluded.length > 0) {
+        const injected = missingIncluded
+          .map((svc: any) => {
+            const name = String(svc?.service_name || '').trim();
+            const amount = Number(svc?.service_price || 0) || 0;
+            if (!name && amount <= 0) return null;
+            return {
+              description: name || 'Service',
+              qty: 1,
+              rate: amount,
+              amount,
+              category: 'SERVICE',
+              service_type_id: String(svc?.service_type_id || ''),
+            };
+          })
+          .filter(Boolean);
+        lineItemsForTotals = [...injected, ...lineItemsForTotals];
       }
 
       const norm = (c: any) => String(c || '').trim().toUpperCase();

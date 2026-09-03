@@ -8,7 +8,7 @@ import {
   MECHANIC_CRM_QUICK,
   WORKSHOP_CRM_TAB_TITLES,
 } from '../../constants/workshopCrmNav';
-import { COLORS, SPACING, FONT_SIZES, SHADOWS, BORDER_RADIUS } from '../../constants/theme';
+import { COLORS, SPACING, SHADOWS, BORDER_RADIUS } from '../../constants/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { formatDateDMY } from "@/lib/dateFormat";
 import { useNotifications } from '../../context/NotificationContext';
@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
 import { fetchMechanicJobs } from '../../lib/mechanicJobs';
 import {
+  isMechanicJobFinished,
   isMechanicJobInProgress,
   mechanicStatusColors,
   mechanicStatusLabel,
@@ -125,7 +126,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
         const total = Number(job.checklist_total ?? 0);
         const displayStatus =
           job.display_status ||
-          resolveMechanicDisplayStatus(job.mechanic_status, done, total);
+          resolveMechanicDisplayStatus(job.mechanic_status, done, total, !!job.has_pending_extra_work);
         return { ...job, display_status: displayStatus, checklist_done: done, checklist_total: total };
       });
 
@@ -279,10 +280,30 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     setCurrentScreen(tab);
   };
 
-  const activeJobs = myJobs.filter((job) => {
-    const s = String(job.mechanic_status || job.status || '').toUpperCase();
-    return s !== 'COMPLETED' && s !== 'READY_FOR_DELIVERY';
-  });
+  const activeJobs = myJobs.filter((job) => !isMechanicJobFinished(job.mechanic_status || job.status));
+
+  const periodAssigned = useMemo(
+    () =>
+      myJobs.filter(
+        (job) =>
+          !isMechanicJobFinished(job.mechanic_status) &&
+          isoInRange(job.assigned_at, dateRange.start, dateRange.end, dateRange.allTime),
+      ).length,
+    [myJobs, dateRange.start, dateRange.end, dateRange.allTime],
+  );
+  const periodCompleted = useMemo(
+    () =>
+      myJobs.filter((job) => {
+        if (!isMechanicJobFinished(job.mechanic_status)) return false;
+        return isoInRange(
+          job.completed_at || job.assigned_at,
+          dateRange.start,
+          dateRange.end,
+          dateRange.allTime,
+        );
+      }).length,
+    [myJobs, dateRange.start, dateRange.end, dateRange.allTime],
+  );
 
   const statusLabel = (job: any) =>
     mechanicStatusLabel(job.display_status || job.mechanic_status || 'ASSIGNED');
@@ -306,15 +327,6 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     </WorkshopCrmShell>
   );
 
-  const periodAssigned = useMemo(
-    () => myJobs.filter((job) => isoInRange(job.assigned_at, dateRange.start, dateRange.end, dateRange.allTime)).length,
-    [myJobs, dateRange.start, dateRange.end, dateRange.allTime],
-  );
-  const periodCompleted = useMemo(
-    () => myJobs.filter((job) => isoInRange(job.completed_at, dateRange.start, dateRange.end, dateRange.allTime)).length,
-    [myJobs, dateRange.start, dateRange.end, dateRange.allTime],
-  );
-
   const workshopLine =
     authProfile?.workshop?.name || 'Jobs assigned to you';
 
@@ -322,9 +334,9 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
     { key: 'today', label: 'Assigned', value: periodAssigned, accent: '#004AAD', screen: 'MechanicJobs' },
     { key: 'prog', label: 'In progress', value: stats.inProgress, accent: '#D97706', screen: 'MechanicJobs' },
     { key: 'done', label: 'Completed', value: periodCompleted, accent: '#059669', screen: 'JobHistory' },
-    { key: 'all', label: 'All jobs', value: myJobs.length, accent: '#0284C7', screen: 'MechanicJobs' },
+    { key: 'all', label: 'All jobs', value: activeJobs.length, accent: '#0284C7', screen: 'MechanicJobs' },
     { key: 'hold', label: 'On hold', value: stats.onHold, accent: '#EA580C', screen: 'MechanicJobs' },
-    { key: 'extra', label: 'Need approval', value: stats.needApproval, accent: '#6D28D9', screen: 'MechanicJobs' },
+    { key: 'extra', label: 'Need approval', value: stats.needApproval, accent: '#6D28D9', screen: 'MechanicJobs', params: { filter: 'NEED_APPROVAL' } },
   ];
 
   const quickActions = [
@@ -370,7 +382,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
           <TouchableOpacity
             key={tile.key}
             style={[styles.statCard, { borderLeftColor: tile.accent }]}
-            onPress={() => go(tile.screen)}
+            onPress={() => go(tile.screen, (tile as any).params)}
             activeOpacity={0.8}
           >
             <Text style={[styles.statValue, { color: tile.accent }]}>{tile.value}</Text>
@@ -396,6 +408,7 @@ export default function WorkshopMechanicDashboard({ navigation }: any) {
                 navigation.navigate('JobDetail', {
                   jobId: job.lead_id,
                   leadId: job.lead_id,
+                  tab: job.has_pending_extra_work ? 'extra' : undefined,
                 })
               }
               activeOpacity={0.8}
@@ -474,21 +487,21 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   heroName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
     color: '#023D95',
   },
   heroMeta: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: 12,
     color: COLORS.bodyText,
     marginTop: 2,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontWeight: '800',
     color: '#023D95',
-    marginBottom: SPACING.md,
-    marginTop: SPACING.md,
+    marginBottom: 8,
+    marginTop: 12,
   },
   sectionTitleInline: { marginBottom: 0, marginTop: 0, flex: 1 },
   sectionHeader: {
@@ -552,10 +565,11 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
     color: '#023D95',
-    marginBottom: 2,
+    marginBottom: 1,
+    lineHeight: 22,
   },
   statLabel: {
     fontSize: 11,

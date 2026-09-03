@@ -140,10 +140,6 @@ export async function GET(request: NextRequest) {
     }
 
     const jobs = rows
-      .filter((mj: any) => {
-        const st = String(mj.mechanic_status || '').toUpperCase();
-        return st !== 'COMPLETED' && st !== 'READY_FOR_DELIVERY';
-      })
       .map((mj: any) => {
         const lead = mj.lead || {};
         const serviceType = lead.service_type || 'General Service';
@@ -161,7 +157,12 @@ export async function GET(request: NextRequest) {
           service_type: serviceType,
           service_types: serviceType ? [serviceType] : [],
           mechanic_status: rawStatus,
-          display_status: resolveMechanicDisplayStatus(rawStatus, checklist.done, checklist.total),
+          display_status: resolveMechanicDisplayStatus(
+            rawStatus,
+            checklist.done,
+            checklist.total,
+            extraWorkLeadIds.has(mj.lead_id) || !!mj.has_pending_extra_work,
+          ),
           checklist_done: checklist.done,
           checklist_total: checklist.total,
           job_priority: mj.job_priority || 'NORMAL',

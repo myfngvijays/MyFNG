@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { ENV } from '../../../config/environment';
+import { apiFetch } from '../../../lib/api';
 import { useNavigation } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
@@ -91,89 +92,18 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
   async function fetchRequests() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('workshop_id')
-        .eq('email', user.email)
-        .single();
-
-      const workshopId = userProfile?.workshop_id;
-      if (!workshopId) return;
-
-      console.log('🔍 Fetching additional job requests for workshop:', workshopId);
-
-      // ✅ FIX: Match web app - correct column names
-      const { data: extraCharges, error } = await supabase
-        .from('lead_extra_charges')
-        .select(`
-          id,
-          lead_id,
-          description,
-          reason,
-          amount,
-          category,
-          is_urgent,
-          created_at,
-          status,
-          requested_by,
-          image_url,
-          service_leads!inner(
-            lead_number,
-            customer_name,
-            vehicle_number,
-            workshop_id,
-            deleted_at
-          )
-        `)
-        .eq('service_leads.workshop_id', workshopId)
-        .eq('status', 'PENDING')
-        .is('service_leads.deleted_at', null)
-        .order('is_urgent', { ascending: false })
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('❌ Error fetching additional job:', error);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-
-      console.log('✅ Found', extraCharges?.length || 0, 'additional job requests');
-
-      // Fetch mechanic names
-      const requestsWithMechanics = await Promise.all((extraCharges || []).map(async (req: any) => {
-        const { data: mechanic } = await supabase
-          .from('users_login')
-          .select('full_name')
-          .eq('id', req.requested_by)
-          .single();
-
-        return {
-          id: req.id,
-          lead_id: req.lead_id,
-          lead_number: req.service_leads.lead_number,
-          customer_name: req.service_leads.customer_name,
-          vehicle_number: req.service_leads.vehicle_number,
-          mechanic_name: mechanic?.full_name || 'Unknown',
-          description: req.description,
-          reason: req.reason,
-          amount: parseFloat(req.amount),
-          category: req.category || 'EXTRA_WORK',
-          is_urgent: req.is_urgent || false,
-          created_at: req.created_at,
-          status: req.status,
-          image_url: req.image_url,
-        };
-      }));
-
-      setRequests(requestsWithMechanics);
-      setLoading(false);
-      setRefreshing(false);
+      const json = await apiFetch<{ requests?: ExtraWorkRequest[] }>('/api/supervisor/extra-work');
+      const rows = Array.isArray(json?.requests) ? json.requests : [];
+      setRequests(
+        rows.map((req) => ({
+          ...req,
+          status: String(req.status || 'PENDING').toUpperCase(),
+          amount: Number(req.amount) || 0,
+        })),
+      );
     } catch (error) {
       console.error('Error fetching requests:', error);
+    } finally {
       setLoading(false);
       setRefreshing(false);
     }

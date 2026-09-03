@@ -12,6 +12,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import DuringServiceUpload from '@/components/mechanic/DuringServiceUpload';
 import AfterServiceUpload from '@/components/mechanic/AfterServiceUpload';
+import WorkVideosUpload from '@/components/mechanic/WorkVideosUpload';
 import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 import { sortServiceChecklistItems } from '@/lib/workshop/serviceChecklistOrder';
@@ -128,6 +129,8 @@ function MechanicJobDetailPageContent() {
   const [extraWorkRequests, setExtraWorkRequests] = useState<any[]>([]);
   const [extraWorkCompletionRemarkById, setExtraWorkCompletionRemarkById] = useState<Record<string, string>>({});
   const [completingExtraWorkById, setCompletingExtraWorkById] = useState<Record<string, boolean>>({});
+  const [extraProofItems, setExtraProofItems] = useState<Array<{ id: string; extraWorkId: string; url: string; isVideo: boolean }>>([]);
+  const [uploadingExtraProofId, setUploadingExtraProofId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -285,7 +288,14 @@ function MechanicJobDetailPageContent() {
 
   useEffect(() => {
     const action = searchParams?.get('action');
+    const tab = searchParams?.get('tab');
     if (action === 'upload') {
+      setActiveTab('media');
+    }
+    if (tab === 'extra-work' || tab === 'extra') {
+      setActiveTab('extra-work');
+    }
+    if (tab === 'media') {
       setActiveTab('media');
     }
   }, [searchParams]);
@@ -1012,11 +1022,15 @@ function MechanicJobDetailPageContent() {
           .eq('photo_category', 'during');
 
         // Get after photos count
-        const { count: afterCount } = await supabase
+        const { data: afterRows } = await supabase
           .from('mechanic_job_photos')
-          .select('*', { count: 'exact', head: true })
+          .select('photo_type')
           .eq('job_id', jobData.id)
           .eq('photo_category', 'after');
+        const afterCount = (afterRows || []).filter((row: any) => {
+          const type = String(row.photo_type || '').toUpperCase();
+          return !type.startsWith('EXTRA_WORK') && !type.startsWith('AFTER_VIDEO');
+        }).length;
 
         // Update job state with actual counts
         setJob((prevJob) => {
@@ -1046,17 +1060,32 @@ function MechanicJobDetailPageContent() {
       // Get additional job requests
       // NOTE: Requests are stored in `lead_extra_charges` (approved/rejected by supervisor/admin).
       // The previous `mechanic_extra_work_requests` source caused "Additional Jobs" to not show.
-      const { data: extraWorkData, error: extraWorkError } = await supabase
-        .from('lead_extra_charges')
-        .select('*')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false });
-
-      if (extraWorkError) {
-        console.error('Extra work error:', extraWorkError);
+      const extraRes = await fetch(`/api/mechanic/jobs/${leadId}/request-extra-work`);
+      const extraJson = extraRes.ok ? await extraRes.json().catch(() => ({})) : {};
+      if (!extraRes.ok) {
+        console.error('Extra work error:', extraJson?.error || extraRes.status);
       }
+      setExtraWorkRequests(Array.isArray(extraJson?.requests) ? extraJson.requests : []);
 
-      setExtraWorkRequests(extraWorkData || []);
+      const { data: extraPhotos } = await supabase
+        .from('mechanic_job_photos')
+        .select('id, photo_url, photo_type, notes')
+        .eq('lead_id', leadId)
+        .ilike('photo_type', 'EXTRA_WORK-%');
+      setExtraProofItems(
+        (extraPhotos || []).map((row: any) => {
+          const type = String(row.photo_type || '');
+          const fromType = type.toUpperCase().startsWith('EXTRA_WORK-') ? type.slice('EXTRA_WORK-'.length) : '';
+          const extraWorkId = String(row.notes || fromType || '').trim();
+          const url = String(row.photo_url || '');
+          return {
+            id: String(row.id),
+            extraWorkId,
+            url,
+            isVideo: /\.(mp4|mov|m4v|webm|3gp)(\?|$)/i.test(url) || type.toUpperCase().includes('VIDEO'),
+          };
+        }),
+      );
     };
 
     try {
@@ -1158,6 +1187,35 @@ function MechanicJobDetailPageContent() {
       alert(e?.message || 'Failed to mark completed');
     } finally {
       setCompletingExtraWorkById((p) => ({ ...p, [extraWorkId]: false }));
+    }
+  }
+
+  async function uploadExtraWorkProof(extraWorkId: string, files: FileList | null) {
+    if (!leadId || !files?.length) return;
+    try {
+      setUploadingExtraProofId(extraWorkId);
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('photo_type', `EXTRA_WORK-${extraWorkId}`);
+        formData.append('photo_category', 'extra');
+        formData.append('notes', extraWorkId);
+        const res = await fetch(`/api/mechanic/jobs/${leadId}/upload-photos`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: formData,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(String(data?.error || 'Failed to upload'));
+      }
+      await fetchJobDetails({ silent: true });
+    } catch (e: any) {
+      alert(e?.message || 'Failed to upload extra work media');
+    } finally {
+      setUploadingExtraProofId(null);
     }
   }
 
@@ -1465,8 +1523,13 @@ function MechanicJobDetailPageContent() {
                          job.checklist_completed && 
                          job.after_images_count >= job.min_after_images;
 
-  const pendingExtraWorkCount = extraWorkRequests.filter((r: any) => r?.status === 'PENDING').length;
+  const pendingExtraWorkCount = extraWorkRequests.filter((r: any) => String(r?.status || '').toUpperCase() === 'PENDING').length;
   const latestExtraWorkStatus = extraWorkRequests[0]?.status as string | undefined;
+  const workAllowsPhotos =
+    job.mechanic_status === 'IN_PROGRESS' ||
+    job.mechanic_status === 'HOLD' ||
+    job.mechanic_status === 'WAITING_APPROVAL' ||
+    pendingExtraWorkCount > 0;
 
   return (
     <DashboardLayout role="workshop_mechanic">
@@ -1623,6 +1686,21 @@ function MechanicJobDetailPageContent() {
               <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               <span className="hidden sm:inline">Resume Job</span>
               <span className="sm:hidden">Resume</span>
+            </button>
+          )}
+
+          {workAllowsPhotos && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('media');
+                setSelectedCategory('AFTER');
+              }}
+              className="btn bg-[#004AAD] hover:bg-[#003A88] text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+            >
+              <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">After Photos</span>
+              <span className="sm:hidden">Photos</span>
             </button>
           )}
 
@@ -1935,7 +2013,7 @@ function MechanicJobDetailPageContent() {
                 </div>
               )}
 
-              {job.mechanic_status === 'IN_PROGRESS' && (
+              {workAllowsPhotos && (
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 sm:p-4 md:p-5 border-2 border-green-300 mt-3 sm:mt-4">
                   <h3 className="text-base sm:text-lg font-bold text-gray-800 mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                     <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" />
@@ -2539,6 +2617,7 @@ function MechanicJobDetailPageContent() {
                       className="input w-full text-xs sm:text-sm"
                     >
                       <option value="PROGRESS">Work in Progress</option>
+                      <option value="WORK_VIDEOS">Service Work Videos</option>
                       <option value="CAR_SCANNING_BEFORE">Car Scanning (Before)</option>
                       <option value="CAR_SCANNING_AFTER">Car Scanning (After)</option>
                       {hasCustomService && <option value="CUSTOM_SERVICE">Custom Service</option>}
@@ -2547,6 +2626,13 @@ function MechanicJobDetailPageContent() {
                     </select>
                   </div>
                 </div>
+
+                {selectedCategory === 'WORK_VIDEOS' && (
+                  <div className="rounded-2xl border-2 border-slate-800 bg-white shadow-sm p-3 sm:p-4 md:p-5">
+                    <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">Service Work Videos</h2>
+                    <WorkVideosUpload leadId={leadId} onUploadComplete={() => fetchJobDetails()} />
+                  </div>
+                )}
 
                 {/* PROGRESS Category - During Service Upload */}
                 {selectedCategory === 'PROGRESS' && job && job.id && (
@@ -2653,13 +2739,16 @@ function MechanicJobDetailPageContent() {
                       <Camera className="w-6 h-6 text-green-700" />
                       After Service Photos
                     </h2>
-                    <AfterServiceUpload
-                      leadId={leadId}
-                      jobId={job.id}
-                      onUploadComplete={() => {
-                        fetchJobDetails();
-                      }}
-                    />
+                    <div className="space-y-4">
+                      <WorkVideosUpload leadId={leadId} onUploadComplete={() => fetchJobDetails()} />
+                      <AfterServiceUpload
+                        leadId={leadId}
+                        jobId={job.id}
+                        onUploadComplete={() => {
+                          fetchJobDetails();
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -2671,12 +2760,12 @@ function MechanicJobDetailPageContent() {
                       Additional Jobs Proof
                     </h2>
                     <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-                      Upload photos as proof of additional job performed (e.g., additional repairs, part replacements).
+                      Upload photos or videos as proof of additional job performed.
                     </p>
                     <div>
                       <label className="btn btn-primary cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2">
                         <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
-                        {uploadingMedia ? 'Uploading...' : 'Upload Proof Photos'}
+                        {uploadingMedia ? 'Uploading...' : 'Upload Proof Photos / Videos'}
                         <input
                           type="file"
                           multiple
@@ -3179,7 +3268,12 @@ function MechanicJobDetailPageContent() {
             {/* Existing requests */}
             <div id="extra-work-requests" className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 md:p-5">
               <div className="flex items-start justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-                <h2 className="text-lg sm:text-xl font-bold">Additional Job Requests</h2>
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold">Additional Job Requests</h2>
+                  <p className="text-[11px] sm:text-xs text-slate-500 mt-1">
+                    After approval, complete the extra work, add a remark, then tick Done. After photos stay on After Photos.
+                  </p>
+                </div>
               </div>
 
             {extraWorkRequests.length === 0 ? (
@@ -3200,6 +3294,7 @@ function MechanicJobDetailPageContent() {
                       <th className="text-left py-2 px-3">Note</th>
                       <th className="text-left py-2 px-3 whitespace-nowrap">Status</th>
                       <th className="text-left py-2 px-3 whitespace-nowrap">Done</th>
+                      <th className="text-left py-2 px-3 whitespace-nowrap">Photos / Videos</th>
                       <th className="text-left py-2 px-3 whitespace-nowrap">Completion Remark</th>
                       <th className="text-left py-2 px-3 whitespace-nowrap">Completed</th>
                       <th className="text-left py-2 px-3 whitespace-nowrap">Requested</th>
@@ -3304,6 +3399,39 @@ function MechanicJobDetailPageContent() {
                                     : 'Mark this additional job as completed'
                               }
                             />
+                          </td>
+                          <td className="py-3 px-3 align-top min-w-[180px]">
+                            {isApproved || isWorkCompleted ? (
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {extraProofItems
+                                    .filter((p) => p.extraWorkId === request.id)
+                                    .map((p) =>
+                                      p.isVideo ? (
+                                        <video key={p.id} src={p.url} className="h-12 w-16 rounded object-cover bg-black" />
+                                      ) : (
+                                        <img key={p.id} src={p.url} alt="" className="h-12 w-16 rounded object-cover" />
+                                      ),
+                                    )}
+                                </div>
+                                <label className="btn btn-outline text-[10px] sm:text-xs px-2 py-1 cursor-pointer inline-flex">
+                                  {uploadingExtraProofId === request.id ? 'Uploading...' : 'Add photo / video'}
+                                  <input
+                                    type="file"
+                                    multiple
+                                    accept="image/*,video/*"
+                                    className="hidden"
+                                    disabled={uploadingExtraProofId === request.id}
+                                    onChange={(e) => {
+                                      void uploadExtraWorkProof(request.id, e.target.files);
+                                      e.currentTarget.value = '';
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">After approval</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 align-top min-w-[260px]">
                             <input
