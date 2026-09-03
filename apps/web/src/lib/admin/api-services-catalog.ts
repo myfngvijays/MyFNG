@@ -63,6 +63,18 @@ export const API_SERVICES_CATALOG: ApiServiceEntry[] = [
     docsUrl: 'https://platform.openai.com/usage',
   },
   {
+    id: 'meta-ads',
+    name: 'Meta Marketing API (Ads)',
+    tier: 'paid',
+    category: 'Marketing',
+    description: 'Read-only MyFNG ad account: spend, campaigns, leads, CPL via Super Admin Meta Ads MCP.',
+    billingModel: 'Meta ads spend (API read is free; ad delivery is paid)',
+    adminMenus: ['Meta Ads MCP'],
+    envKeys: ['META_ADS_ACCESS_TOKEN', 'META_ADS_ACCOUNT_ID'],
+    dashboardHref: '/dashboard/super_admin/meta-ads-mcp',
+    docsUrl: 'https://developers.facebook.com/docs/marketing-api',
+  },
+  {
     id: 'whatsapp',
     name: 'WhatsApp Business (Meta)',
     tier: 'paid',
@@ -219,6 +231,7 @@ export const ADMIN_MENU_API_SUMMARY: Array<{
   { menu: 'Customer Reviews', href: '/dashboard/super_admin/website-images/customer-reviews', tier: 'paid', services: ['Google GBP / Places'] },
   { menu: 'Finance', href: '/dashboard/super_admin/finance', tier: 'free', services: ['Supabase (Razorpay records)'] },
   { menu: 'System Monitor', href: '/dashboard/super_admin/system-monitor', tier: 'platform', services: ['Probes all configured APIs'] },
+  { menu: 'Meta Ads MCP', href: '/dashboard/super_admin/meta-ads-mcp', tier: 'paid', services: ['Meta Marketing API'] },
 ];
 
 export function getEnvConfiguredKeys(): Record<string, boolean> {
@@ -244,6 +257,8 @@ export function getEnvConfiguredKeys(): Record<string, boolean> {
     SARV_API_KEY: !!process.env.SARV_API_KEY,
     TELECRM_API_KEY: !!process.env.TELECRM_API_KEY,
     TELECRM_WEBHOOK_SECRET: !!process.env.TELECRM_WEBHOOK_SECRET,
+    META_ADS_ACCESS_TOKEN: !!process.env.META_ADS_ACCESS_TOKEN,
+    META_ADS_ACCOUNT_ID: !!process.env.META_ADS_ACCOUNT_ID,
     ISANCTION_API_KEY: !!process.env.ISANCTION_API_KEY,
     TWILIO_ACCOUNT_SID: !!process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: !!process.env.TWILIO_AUTH_TOKEN,

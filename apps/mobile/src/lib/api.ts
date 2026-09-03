@@ -10,7 +10,7 @@ const FETCH_TIMEOUT_MS = 20000;
 
 export async function apiFetch<T = JsonValue>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit & { timeoutMs?: number } = {}
 ): Promise<T> {
   // Each token source is resolved independently so a failure in one
   // (e.g. Firebase native module unavailable, token refresh error) never
@@ -41,8 +41,9 @@ export async function apiFetch<T = JsonValue>(
 
   if (!bearerToken && !customerSessionToken && !firebaseIdToken) throw new Error('Not authenticated');
 
+  const { timeoutMs = FETCH_TIMEOUT_MS, headers: optionHeaders, ...fetchOptions } = options;
   const headers: Record<string, string> = {
-    ...(options.headers as Record<string, string> | undefined),
+    ...(optionHeaders as Record<string, string> | undefined),
     'X-App-Platform': Platform.OS,
     'x-mobile-client': 'true',
   };
@@ -51,9 +52,9 @@ export async function apiFetch<T = JsonValue>(
   if (firebaseIdToken) headers['x-firebase-id-token'] = firebaseIdToken;
 
   const controller = new AbortController();
-  const fetchTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const fetchTimer = setTimeout(() => controller.abort(), timeoutMs);
   const res = await fetch(`${ENV.API_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers,
     signal: controller.signal,
   }).catch((err: unknown) => {

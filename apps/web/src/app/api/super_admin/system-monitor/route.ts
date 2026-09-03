@@ -17,6 +17,8 @@ import { getMisaAiUsdInrRate } from '@/lib/chatbot_v2/misaAiBilling';
 import { getOpenAiCreditBalanceStatus } from '@/lib/chatbot_v2/openAiCreditBalance';
 import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
 import { getMcpHttpToken, MCP_PUBLIC_ORIGIN } from '@/lib/mcp/httpAuth';
+import { getMetaAdsSettings } from '@/lib/meta-ads/settings';
+import { graphGet } from '@/lib/meta-ads/graph';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -3148,6 +3150,57 @@ async function checkDltSms(): Promise<HealthCheck> {
   }
 }
 
+async function checkMetaAdsMcp(): Promise<HealthCheck> {
+  const start = Date.now();
+  const quickFix = {
+    label: 'Open Meta Ads MCP',
+    action: 'internal-link' as const,
+    actionPayload: { url: '/dashboard/super_admin/meta-ads-mcp' },
+  };
+  try {
+    const settings = await getMetaAdsSettings();
+    if (!settings.accessToken) {
+      return {
+        name: 'Meta Ads MCP',
+        category: 'AI',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Ad account not connected',
+        reason: 'Paste a System User token + act_ account ID on Super Admin → Meta Ads MCP.',
+        quickFix,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    const probePath = settings.accountId || 'me';
+    const probe = await checkWithTimeout(() =>
+      graphGet(probePath, { fields: settings.accountId ? 'id,name,account_status,currency' : 'id,name' }),
+    );
+    const name = (probe as { name?: string })?.name || settings.accountId || 'Meta user';
+    return {
+      name: 'Meta Ads MCP',
+      category: 'AI',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: settings.accountId ? `Connected · ${name}` : `Token valid · ${name} (add account ID)`,
+      reason: 'Marketing API is reachable. Super Admin can load spend and campaigns.',
+      quickFix,
+      lastChecked: new Date().toISOString(),
+      details: { accountId: settings.accountId || null, fromEnv: settings.fromEnv },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Meta Ads MCP',
+      category: 'AI',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Graph API failed',
+      reason: String(e?.message || e),
+      quickFix,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkMcpRemote(): Promise<HealthCheck> {
   const start = Date.now();
   try {
@@ -3266,6 +3319,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkPushDevices(),
     checkDltSms(),
     checkMcpRemote(),
+    checkMetaAdsMcp(),
     checkEmailService(),
     checkWalletSystem(),
     checkAdvanceCoupons(),
@@ -3346,6 +3400,8 @@ export async function GET() {
       SMARTFLO_WEBHOOK_SECRET: !!String(process.env.SMARTFLO_WEBHOOK_SECRET || '').trim(),
       DLT_SMS_ADMIN: true,
       MYFNG_MCP_TOKEN: !!(process.env.MYFNG_MCP_TOKEN || '').trim(),
+      META_ADS_ACCESS_TOKEN: !!(process.env.META_ADS_ACCESS_TOKEN || '').trim(),
+      META_ADS_ACCOUNT_ID: !!(process.env.META_ADS_ACCOUNT_ID || '').trim(),
     };
 
     const healthAlertTemplate = await getHealthAlertTemplateStatus();

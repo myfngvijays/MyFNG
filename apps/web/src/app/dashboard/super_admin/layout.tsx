@@ -707,6 +707,12 @@ const navigationItems: NavItem[] = [
     description: 'Read-only MCP package — tools catalog & setup',
   },
   {
+    name: 'Meta Ads',
+    href: '/dashboard/super_admin/meta-ads-mcp',
+    icon: Megaphone,
+    description: 'Spend, chat, voice reports',
+  },
+  {
     name: 'Audit Logs',
     href: '/dashboard/super_admin/audit-logs',
     icon: Activity,

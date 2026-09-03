@@ -133,6 +133,16 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Sirf SELECT — koi write tool nahi.',
     ],
   },
+  '/dashboard/super_admin/meta-ads-mcp': {
+    title: 'Meta Ads',
+    body:
+      'Overview, Ask ads (mic + Keep/Test/Pause suggestions), Brain playbook, Reports.\n\nAsk ads MyFNG ads brain use karta hai — kaunsi copy chalao, live 7d chats/CPR ke saath. Brain tab se goal/USP/rules edit. System user Myfng-adsreader pe Ad account + Pages + Pixel (View).',
+    tips: [
+      'Chip: “Kaunsi copy chalaun?” — Keep / Test / Pause cards.',
+      'Brain playbook save karo, phir naya sawaal poocho (purani chat old prompt use karti hai).',
+      'Read-only: pause/scale Ads Manager mein. Prepaid Funds Graph API nahi deta.',
+    ],
+  },
   '/dashboard/lead_manager/recordings': {
     title: 'Recordings',
     body:
