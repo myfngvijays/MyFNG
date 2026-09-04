@@ -9,12 +9,22 @@ import {
   Alert,
   TextInput,
   BackHandler,
+  Modal,
+  Platform,
+  Share,
+  Linking,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
 import { COLORS } from '../../../constants/theme';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import { apiFetch } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase';
+import { getSupabaseAccessToken } from '../../../lib/supabase';
+import { ENV } from '../../../config/environment';
 import { formatDateDMY } from '@/lib/dateFormat';
 
 type LineItem = {
@@ -25,7 +35,15 @@ type LineItem = {
   amount?: number;
   category?: string;
   service_type_id?: string;
-  included_items?: Array<{ name?: string; quantity?: number; unit_price?: number; amount?: number }>;
+  extra_charge_id?: string;
+  included_items?: Array<{ name?: string; quantity?: number; unit_price?: number; amount?: number; kind?: string }>;
+};
+
+type PartDraft = {
+  name: string;
+  qty: string;
+  unit_price: string;
+  kind: 'PART' | 'LABOUR' | 'OTHER';
 };
 
 type Invoice = {
@@ -79,12 +97,67 @@ function invoiceTypeOf(inv: Invoice | null) {
   return String(inv?.invoice_type || 'ORDER_SUMMARY').toUpperCase();
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  return globalThis.btoa(binary);
+}
+
+async function readFetchError(res: Response) {
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text);
+    return String(json?.details || json?.error || text || `HTTP ${res.status}`).slice(0, 280);
+  } catch {
+    return (text || `HTTP ${res.status}`).slice(0, 280);
+  }
+}
+
+function InvoiceHtmlPreview({
+  title,
+  html,
+  onClose,
+}: {
+  title: string;
+  html: string;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const topPad = insets.top > 0 ? insets.top : Platform.OS === 'ios' ? 54 : StatusBar.currentHeight || 24;
+  const bottomPad = insets.bottom > 0 ? insets.bottom : 16;
+  return (
+    <View style={[styles.pdfPreview, { paddingTop: topPad, paddingBottom: bottomPad }]}>
+      <View style={styles.pdfPreviewBar}>
+        <Text style={styles.pdfPreviewTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={styles.pdfPreviewClose}>Close</Text>
+        </TouchableOpacity>
+      </View>
+      <WebView
+        originWhitelist={['*']}
+        source={{ html }}
+        style={styles.pdfWeb}
+        scalesPageToFit={false}
+        nestedScrollEnabled
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
+      />
+    </View>
+  );
+}
+
 function categoryLabel(c: string) {
   if (c === 'SERVICE') return 'Service Items';
   if (c === 'ADDON' || c === 'ADD-ON' || c === 'ADD_ON') return 'Add-ons';
   if (c === 'PART' || c === 'PARTS') return 'Additional Parts';
   if (c === 'LABOUR' || c === 'LABOR') return 'Labour';
-  if (c === 'EXTRA') return 'Additional Charges';
+  if (c === 'EXTRA') return 'Additional Work';
   return c || 'Items';
 }
 
@@ -106,6 +179,14 @@ export default function AdvisorBillingScreen() {
   const [staffName, setStaffName] = useState('Advisor');
   const [remarks, setRemarks] = useState('Dummy test payment');
   const [payMode, setPayMode] = useState<'CASH' | 'UPI' | 'POS' | 'CARD'>('CASH');
+  const [partsEditor, setPartsEditor] = useState<{
+    extraChargeId: string;
+    title: string;
+    rows: PartDraft[];
+  } | null>(null);
+  const [savingParts, setSavingParts] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfHtml, setPdfHtml] = useState<string | null>(null);
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -174,7 +255,14 @@ export default function AdvisorBillingScreen() {
     const fromIncluded: LineItem[] = (included || [])
       .map((svc) => {
         const name = String(svc?.service_name || '').trim();
-        const amount = num(svc?.service_price);
+        const items = Array.isArray(svc?.items) ? svc.items : [];
+        const bomSum = items.reduce((s, p) => {
+          const qty = num(p?.quantity) || 1;
+          const amt = num(p?.amount);
+          if (amt > 0) return s + amt;
+          return s + num(p?.unit_price) * qty;
+        }, 0);
+        const amount = bomSum > 0.5 ? bomSum : num(svc?.service_price);
         if (!name && amount <= 0) return null;
         return {
           description: name || 'Service',
@@ -183,7 +271,7 @@ export default function AdvisorBillingScreen() {
           amount,
           category: 'SERVICE',
           service_type_id: svc?.service_type_id,
-          included_items: svc?.items,
+          included_items: items,
         } as LineItem;
       })
       .filter(Boolean) as LineItem[];
@@ -218,7 +306,7 @@ export default function AdvisorBillingScreen() {
     }
     if (num(invoice?.extra_charges_amount || invoice?.extra_charges) > 0) {
       fallback.push({
-        description: 'Additional Charges',
+        description: 'Additional Work',
         qty: 1,
         rate: num(invoice?.extra_charges_amount || invoice?.extra_charges),
         amount: num(invoice?.extra_charges_amount || invoice?.extra_charges),
@@ -250,17 +338,35 @@ export default function AdvisorBillingScreen() {
 
   const includedFor = (it: LineItem) => {
     const cat = String(it.category || '').toUpperCase();
+    if (cat === 'EXTRA') return it.included_items || [];
     if (cat !== 'SERVICE') return it.included_items || [];
+    if (Array.isArray(it.included_items) && it.included_items.length > 0) {
+      return it.included_items;
+    }
     const sid = String(it.service_type_id || '').trim();
     const name = String(it.description || '').trim().toLowerCase();
     const match = included.find((svc) => {
       if (sid && String(svc.service_type_id || '') === sid) return true;
       return String(svc.service_name || '').trim().toLowerCase() === name;
     });
-    return (match?.items || it.included_items || []) as IncludedService['items'];
+    return (match?.items || []) as IncludedService['items'];
   };
 
   const lineAmount = (it: LineItem) => {
+    const cat = String(it.category || '').toUpperCase();
+    // Transparent pricing: SERVICE = sum of included workshop parts.
+    if (cat === 'SERVICE' && !(it as any)?.os_edited) {
+      const nested = includedFor(it) || [];
+      if (nested.length > 0) {
+        const bomSum = nested.reduce((s, p) => {
+          const qty = num(p?.quantity) || 1;
+          const amt = num(p?.amount);
+          if (amt > 0) return s + amt;
+          return s + num(p?.unit_price) * qty;
+        }, 0);
+        if (bomSum > 0.5) return bomSum;
+      }
+    }
     const qty = num(it.qty ?? it.quantity ?? 1) || 1;
     const rate = num(it.rate);
     const amount = num(it.amount);
@@ -274,10 +380,91 @@ export default function AdvisorBillingScreen() {
   const discount = num(invoice?.discount_amount);
   const storedPayable = num(invoice?.final_amount ?? invoice?.total_amount);
   const displayPayable = Math.max(0, subTotal - discount + (showGst ? num(invoice?.total_tax) : 0) + num(invoice?.round_off_amount));
-  const payable = storedPayable > 0 ? storedPayable : displayPayable;
+  // Prefer live line sum on Order Summary so transparent BOM pricing wins over stale stored totals.
+  const payable = isOS
+    ? displayPayable
+    : storedPayable > 0
+      ? storedPayable
+      : displayPayable;
   const paidAmt = num(invoice?.paid_amount);
   const balanceDue = Math.max(0, num(invoice?.balance_due) || payable - paidAmt);
   const paid = String(invoice?.payment_status || '').toUpperCase() === 'PAID' || (payable > 0 && paidAmt >= payable - 0.05);
+  const canOpenPdf = Boolean(invoice?.id) && (isCI || isTI);
+
+  async function openInvoicePdf() {
+    if (!invoice?.id) return;
+    setPdfBusy(true);
+    try {
+      const token = await getSupabaseAccessToken();
+      if (!token) throw new Error('Not authenticated');
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        'x-mobile-client': 'true',
+        'X-App-Platform': Platform.OS,
+        Accept: 'application/pdf, text/html',
+      };
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), 90000) : null;
+      let res: Response;
+      try {
+        res = await fetch(`${ENV.API_URL}/api/billing/invoices/${invoice.id}/generate-pdf`, {
+          method: 'GET',
+          headers,
+          signal: controller?.signal,
+        });
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+
+      if (!res.ok) {
+        throw new Error(await readFetchError(res));
+      }
+
+      const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+      const safeNo = String(invoice.invoice_number || invoice.id).replace(/[^\w.-]+/g, '_');
+      const title = isCI ? 'Customer Invoice' : 'Tax Invoice';
+
+      if (contentType.includes('text/html')) {
+        const html = await res.text();
+        if (!html.trim()) throw new Error('Invoice HTML empty thi.');
+        setPdfHtml(html);
+        return;
+      }
+
+      const bytes = await res.arrayBuffer();
+      if (bytes.byteLength < 80) {
+        throw new Error('PDF generate nahi hui. Thodi der baad try karo.');
+      }
+      const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+      const path = `${dir}${isCI ? 'CustomerInvoice' : 'TaxInvoice'}-${safeNo}.pdf`;
+      await FileSystem.writeAsStringAsync(path, arrayBufferToBase64(bytes), {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      let openUri = path;
+      if (Platform.OS === 'android' && typeof (FileSystem as any).getContentUriAsync === 'function') {
+        openUri = await (FileSystem as any).getContentUriAsync(path);
+      }
+      try {
+        await Share.share({
+          title,
+          url: openUri,
+          message: Platform.OS === 'android' ? `${title} ${safeNo}` : undefined,
+        });
+      } catch {
+        const opened = await Linking.canOpenURL(openUri);
+        if (opened) await Linking.openURL(openUri);
+        else Alert.alert('PDF saved', 'File cache mein save ho gayi.');
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      Alert.alert(
+        'PDF failed',
+        msg.includes('Abort') ? 'Server slow thi. Invoice dubara try karo.' : msg || 'Could not open PDF',
+      );
+    } finally {
+      setPdfBusy(false);
+    }
+  }
 
   async function finalizeBill() {
     setBusy(true);
@@ -359,6 +546,78 @@ export default function AdvisorBillingScreen() {
     }
   }
 
+  function openPartsEditor(it: LineItem) {
+    const nested = includedFor(it) || [];
+    const rows: PartDraft[] =
+      nested.length > 0
+        ? nested.map((inc) => ({
+            name: String(inc?.name || '').trim(),
+            qty: String(num(inc?.quantity) || 1),
+            unit_price: String(num(inc?.unit_price) || num(inc?.amount) || 0),
+            kind: (String((inc as any)?.kind || '').toUpperCase() === 'LABOUR'
+              ? 'LABOUR'
+              : String((inc as any)?.kind || '').toUpperCase() === 'OTHER'
+                ? 'OTHER'
+                : 'PART') as PartDraft['kind'],
+          }))
+        : [{ name: '', qty: '1', unit_price: '', kind: 'PART' }];
+    const extraId = String(it.extra_charge_id || '').trim();
+    if (!extraId) {
+      Alert.alert(
+        'Parts edit',
+        'Is additional work ka id nahi mila. Page refresh karke dubara try karo.',
+      );
+      return;
+    }
+    setPartsEditor({
+      extraChargeId: extraId,
+      title: String(it.description || 'Additional work'),
+      rows,
+    });
+  }
+
+  async function savePartsEditor() {
+    if (!partsEditor) return;
+    const lines = partsEditor.rows
+      .map((row) => {
+        const name = row.name.trim();
+        if (!name) return null;
+        const qty = Math.max(0.01, Number(row.qty) || 1);
+        const unit_price = Math.max(0, Number(row.unit_price) || 0);
+        return {
+          name,
+          qty,
+          unit_price,
+          amount: qty * unit_price,
+          kind: row.kind,
+        };
+      })
+      .filter(Boolean);
+    if (lines.length === 0) {
+      Alert.alert('Required', 'Kam se kam 1 part / labour line daalo.');
+      return;
+    }
+    setSavingParts(true);
+    try {
+      await apiFetch(`/api/supervisor/extra-work/${partsEditor.extraChargeId}/parts-breakdown`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parts_breakdown: lines,
+          part_price_type: 'OEM',
+          description: partsEditor.title,
+        }),
+      });
+      setPartsEditor(null);
+      await loadInvoice();
+      Alert.alert('Saved', 'Transparent parts pricing bill pe update ho gayi.');
+    } catch (e: any) {
+      Alert.alert('Save failed', e?.message || 'Try again');
+    } finally {
+      setSavingParts(false);
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -407,6 +666,17 @@ export default function AdvisorBillingScreen() {
               .join(' · ')}
           </Text>
           {lead?.customer_phone ? <Text style={styles.nextBody}>Phone: {lead.customer_phone}</Text> : null}
+          {canOpenPdf ? (
+            <TouchableOpacity
+              style={[styles.secondaryBtn, { marginTop: 12 }]}
+              onPress={openInvoicePdf}
+              disabled={pdfBusy}
+            >
+              <Text style={styles.secondaryTxt}>
+                {pdfBusy ? 'Preparing PDF…' : 'Open PDF (MyFNG logo + tax)'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {error ? (
@@ -429,7 +699,9 @@ export default function AdvisorBillingScreen() {
               </Text>
             </View>
 
-            {grouped.map((group) => (
+            {(() => {
+              let billSerial = 0;
+              return grouped.map((group) => (
               <View key={group.key}>
                 <Text style={styles.groupLabel}>{categoryLabel(group.key)}</Text>
                 {group.items.map((it, idx) => {
@@ -437,11 +709,25 @@ export default function AdvisorBillingScreen() {
                   const amt = lineAmount(it);
                   const rate = num(it.rate) || (qty ? amt / qty : amt);
                   const nested = includedFor(it) || [];
+                  billSerial += 1;
+                  const serial = billSerial;
                   return (
                     <View key={`${group.key}-${idx}`} style={styles.itemCard}>
                       <Text style={styles.itemName}>
-                        {idx + 1}. {it.description || `Item ${idx + 1}`}
+                        {serial}. {it.description || `Item ${serial}`}
                       </Text>
+                      {nested.length > 0
+                        ? nested.map((inc, n) => (
+                            <View key={`${idx}-inc-${n}`} style={styles.includedRow}>
+                              <Text style={styles.includedTxt} numberOfLines={3}>
+                                {inc?.name || 'Included'} · Qty {num(inc?.quantity) || 1}
+                              </Text>
+                              <Text style={styles.includedAmt}>
+                                {money(num(inc?.amount) || num(inc?.unit_price) * (num(inc?.quantity) || 1))}
+                              </Text>
+                            </View>
+                          ))
+                        : null}
                       <View style={styles.itemMetaRow}>
                         <View style={styles.itemMeta}>
                           <Text style={styles.itemMetaLab}>Qty</Text>
@@ -456,23 +742,25 @@ export default function AdvisorBillingScreen() {
                           <Text style={styles.itemMetaTotal}>{money(amt)}</Text>
                         </View>
                       </View>
-                      {nested.length > 0
-                        ? nested.map((inc, n) => (
-                            <View key={`${idx}-inc-${n}`} style={styles.includedRow}>
-                              <Text style={styles.includedTxt} numberOfLines={3}>
-                                {inc?.name || 'Included'} · Qty {num(inc?.quantity) || 1}
-                              </Text>
-                              <Text style={styles.includedAmt}>
-                                {money(num(inc?.amount) || num(inc?.unit_price) * (num(inc?.quantity) || 1))}
-                              </Text>
-                            </View>
-                          ))
-                        : null}
+                      {isOS && String(group.key).toUpperCase() === 'EXTRA' ? (
+                        <TouchableOpacity style={styles.editPartsBtn} onPress={() => openPartsEditor(it)}>
+                          <Text style={styles.editPartsTxt}>
+                            {nested.length > 0 ? 'Edit parts / pricing' : 'Add parts / pricing'}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   );
                 })}
+                <View style={styles.groupTotalRow}>
+                  <Text style={styles.groupTotalLab}>{categoryLabel(group.key)} total</Text>
+                  <Text style={styles.groupTotalVal}>
+                    {money(group.items.reduce((s, it) => s + lineAmount(it), 0))}
+                  </Text>
+                </View>
               </View>
-            ))}
+            ));
+            })()}
 
             <View style={styles.totals}>
               <View style={styles.totalRow}>
@@ -504,7 +792,7 @@ export default function AdvisorBillingScreen() {
                 </View>
               ) : null}
               <View style={[styles.totalRow, styles.grandRow]}>
-                <Text style={styles.grandLab}>{isOS ? 'Gross Total' : 'Total to Pay'}</Text>
+                <Text style={styles.grandLab}>{isOS ? 'Grand Total' : 'Total to Pay'}</Text>
                 <Text style={styles.grandVal}>{money(payable)}</Text>
               </View>
               {invoice.amount_in_words ? (
@@ -553,9 +841,12 @@ export default function AdvisorBillingScreen() {
       {invoice && !paid ? (
         <View style={styles.actionBar}>
           {isOS ? (
-            <TouchableOpacity style={styles.primaryBtn} onPress={finalizeBill} disabled={busy}>
-              <Text style={styles.primaryTxt}>{busy ? 'Finalizing…' : 'Finalize Bill (Create CI)'}</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={styles.primaryBtn} onPress={finalizeBill} disabled={busy}>
+                <Text style={styles.primaryTxt}>{busy ? 'Finalizing…' : 'Finalize Bill (Create CI)'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.payHint}>PDF Customer Invoice tab pe milega (logo + tax)</Text>
+            </>
           ) : null}
           {isCI && !invoice.visible_to_customer ? (
             <TouchableOpacity style={styles.secondaryBtn} onPress={activateForPayment} disabled={busy}>
@@ -567,16 +858,167 @@ export default function AdvisorBillingScreen() {
               <Text style={styles.primaryTxt}>{showPay ? 'Hide payment form' : 'Record payment'}</Text>
             </TouchableOpacity>
           ) : null}
+          {canOpenPdf ? (
+            <TouchableOpacity style={styles.secondaryBtn} onPress={openInvoicePdf} disabled={pdfBusy || busy}>
+              <Text style={styles.secondaryTxt}>{pdfBusy ? 'Preparing PDF…' : 'Open PDF'}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
 
       {paid || isTI ? (
         <View style={styles.actionBar}>
+          {canOpenPdf ? (
+            <TouchableOpacity style={styles.secondaryBtn} onPress={openInvoicePdf} disabled={pdfBusy}>
+              <Text style={styles.secondaryTxt}>{pdfBusy ? 'Preparing PDF…' : 'Open PDF (MyFNG logo + tax)'}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('PickupDeliveryTracking')}>
             <Text style={styles.primaryTxt}>Open Pickup & Delivery</Text>
           </TouchableOpacity>
         </View>
       ) : null}
+
+      <Modal visible={Boolean(pdfHtml)} animationType="slide" onRequestClose={() => setPdfHtml(null)}>
+        <SafeAreaProvider>
+          <InvoiceHtmlPreview
+            title={isCI ? 'Customer Invoice' : 'Tax Invoice'}
+            html={pdfHtml || ''}
+            onClose={() => setPdfHtml(null)}
+          />
+        </SafeAreaProvider>
+      </Modal>
+
+      <Modal
+        visible={Boolean(partsEditor)}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPartsEditor(null)}
+      >
+        <View style={styles.partsOverlay}>
+          <View style={styles.partsSheet}>
+            <Text style={styles.sectionTitle}>Additional work · parts used</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Job name (e.g. Clutch Replace)"
+              value={partsEditor?.title || ''}
+              onChangeText={(txt) =>
+                setPartsEditor((prev) => (prev ? { ...prev, title: txt } : prev))
+              }
+            />
+            <Text style={styles.partsHint}>
+              Jo part replace / use hua — name, qty, rate daalo. Transparent pricing ke liye.
+            </Text>
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+              {(partsEditor?.rows || []).map((row, i) => (
+                <View key={`part-${i}`} style={styles.partsRow}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Part / labour name (e.g. Engine assembly)"
+                    value={row.name}
+                    onChangeText={(txt) =>
+                      setPartsEditor((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              rows: prev.rows.map((r, idx) => (idx === i ? { ...r, name: txt } : r)),
+                            }
+                          : prev,
+                      )
+                    }
+                  />
+                  <View style={styles.partsMeta}>
+                    <TextInput
+                      style={[styles.input, styles.partsMini]}
+                      placeholder="Qty"
+                      keyboardType="decimal-pad"
+                      value={row.qty}
+                      onChangeText={(txt) =>
+                        setPartsEditor((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                rows: prev.rows.map((r, idx) => (idx === i ? { ...r, qty: txt } : r)),
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                    <TextInput
+                      style={[styles.input, styles.partsMini]}
+                      placeholder="Rate ₹"
+                      keyboardType="decimal-pad"
+                      value={row.unit_price}
+                      onChangeText={(txt) =>
+                        setPartsEditor((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                rows: prev.rows.map((r, idx) => (idx === i ? { ...r, unit_price: txt } : r)),
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                    <TouchableOpacity
+                      style={styles.kindChip}
+                      onPress={() =>
+                        setPartsEditor((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                rows: prev.rows.map((r, idx) =>
+                                  idx === i
+                                    ? {
+                                        ...r,
+                                        kind:
+                                          r.kind === 'PART' ? 'LABOUR' : r.kind === 'LABOUR' ? 'OTHER' : 'PART',
+                                      }
+                                    : r,
+                                ),
+                              }
+                            : prev,
+                        )
+                      }
+                    >
+                      <Text style={styles.kindChipTxt}>{row.kind}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setPartsEditor((prev) =>
+                        prev ? { ...prev, rows: prev.rows.filter((_, idx) => idx !== i) } : prev,
+                      )
+                    }
+                  >
+                    <Text style={styles.removeLine}>Remove line</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() =>
+                setPartsEditor((prev) =>
+                  prev
+                    ? { ...prev, rows: [...prev.rows, { name: '', qty: '1', unit_price: '', kind: 'PART' }] }
+                    : prev,
+                )
+              }
+            >
+              <Text style={styles.secondaryTxt}>+ Add part / labour</Text>
+            </TouchableOpacity>
+            <View style={styles.partsActions}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => setPartsEditor(null)}>
+                <Text style={styles.secondaryTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryBtn} onPress={savePartsEditor} disabled={savingParts}>
+                <Text style={styles.primaryTxt}>{savingParts ? 'Saving…' : 'Save pricing'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -611,8 +1053,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#475569',
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+  groupTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  groupTotalLab: { fontSize: 13, fontWeight: '800', color: '#334155' },
+  groupTotalVal: { fontSize: 14, fontWeight: '800', color: '#004AAD' },
   itemCard: {
     paddingVertical: 10,
     paddingHorizontal: 2,
@@ -636,6 +1089,57 @@ const styles = StyleSheet.create({
   includedRow: { marginTop: 6, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   includedTxt: { flex: 1, fontSize: 11, color: COLORS.textSecondary },
   includedAmt: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary },
+  editPartsBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+  },
+  editPartsTxt: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
+  pdfPreview: { flex: 1, backgroundColor: '#fff' },
+  pdfPreviewBar: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  pdfPreviewTitle: { fontSize: 16, fontWeight: '800', color: COLORS.heading },
+  pdfPreviewClose: { fontSize: 15, fontWeight: '800', color: COLORS.primary },
+  pdfWeb: { flex: 1, backgroundColor: '#fff' },
+  partsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
+  },
+  partsSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    gap: 8,
+    maxHeight: '90%',
+  },
+  partsHint: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 17, marginBottom: 4 },
+  partsRow: { marginBottom: 10, gap: 6 },
+  partsMeta: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  partsMini: { flex: 1, marginTop: 0 },
+  kindChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  kindChipTxt: { fontSize: 11, fontWeight: '800', color: COLORS.textPrimary },
+  removeLine: { fontSize: 12, fontWeight: '700', color: '#B91C1C' },
+  partsActions: { gap: 8, marginTop: 4 },
   totals: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 8 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
   totalLab: { fontSize: 14, color: COLORS.textSecondary },

@@ -56,8 +56,7 @@ export async function POST(
       .eq('lead_id', leadId)
       .maybeSingle();
 
-    const canAct =
-      lead.assigned_pickup_boy_id === userProfile.id || (tracking as any)?.drop_assigned_to === userProfile.id;
+    const canAct = (tracking as any)?.drop_assigned_to === userProfile.id;
     if (!canAct) return NextResponse.json({ error: 'Not assigned to this delivery' }, { status: 403 });
 
     const now = new Date().toISOString();

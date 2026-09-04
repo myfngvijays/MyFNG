@@ -1391,6 +1391,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/telecaller-leads-shift-summary',
     '/api/cron/telecrm-push',
     '/api/cron/notifications?task=followup_reminder',
+    '/api/cron/notifications?task=purge_old',
     '/api/cron/smartflo-recordings',
     '/api/cron/auto-dial-fresh-hours',
     '/api/cron/crm-ml-dl',

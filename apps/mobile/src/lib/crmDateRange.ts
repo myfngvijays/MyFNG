@@ -60,6 +60,10 @@ function addDaysYmd(ymd: string, delta: number) {
   return istYmd(shifted);
 }
 
+export function shiftIstYmd(ymd: string, delta: number) {
+  return addDaysYmd(ymd, delta);
+}
+
 export function resolveCrmDateRange(
   preset: string,
   customStart?: string | null,

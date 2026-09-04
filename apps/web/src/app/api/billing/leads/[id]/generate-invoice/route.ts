@@ -298,7 +298,7 @@ export async function POST(
               const { data: cm } = await supabase
                 .from('car_models')
                 .select('class')
-                .eq('model_name', (lead as any).vehicle_model)
+                .ilike('model_name', String((lead as any).vehicle_model).trim())
                 .maybeSingle();
               vehicleClass = (cm as any)?.class || null;
             }

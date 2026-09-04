@@ -400,6 +400,17 @@ export async function POST(
             .split(/[,+/|&]| and /i)
             .map((s) => s.trim())
             .filter((s) => s.length > 1 && !isUuid(s));
+          const leadOil = (() => {
+            const n = String((lead as any)?.service_type || '')
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, ' ')
+              .replace(/\s+/g, ' ');
+            if (/\bfully\b/.test(n) || n.includes('full synthetic')) return 'fully';
+            if (/\bsemi\b/.test(n)) return 'semi';
+            if (/\bmineral\b/.test(n)) return 'mineral';
+            return null as 'fully' | 'semi' | 'mineral' | null;
+          })();
           const foundIds = new Set<string>(parseIdList((lead as any)?.service_type_ids).filter(isUuid));
           if (nameHints.length > 0) {
             try {
@@ -416,11 +427,44 @@ export async function POST(
                   .limit(25);
                 for (const st of byName || []) {
                   const id = String((st as any)?.id || '').trim();
-                  if (id) foundIds.add(id);
+                  const stName = String((st as any)?.name || '')
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9\s]/g, ' ')
+                    .replace(/\s+/g, ' ');
+                  if (!id) continue;
+                  const stOil = (() => {
+                    if (/\bfully\b/.test(stName) || stName.includes('full synthetic')) return 'fully';
+                    if (/\bsemi\b/.test(stName)) return 'semi';
+                    if (/\bmineral\b/.test(stName)) return 'mineral';
+                    return null;
+                  })();
+                  if (leadOil && stOil && leadOil !== stOil) continue;
+                  foundIds.add(id);
                 }
               }
             } catch {
               // ignore
+            }
+          }
+          // If lead is generic "General Service", keep only Semi among oil variants.
+          if (!leadOil && foundIds.size > 1) {
+            const { data: named } = await supabase
+              .from('service_types')
+              .select('id, name')
+              .in('id', [...foundIds]);
+            const semiIds = (named || [])
+              .filter((st: any) => /\bsemi\b/i.test(String(st?.name || '')))
+              .map((st: any) => String(st.id));
+            const fullyIds = new Set(
+              (named || [])
+                .filter((st: any) => /\bfully\b|full synthetic/i.test(String(st?.name || '')))
+                .map((st: any) => String(st.id)),
+            );
+            if (semiIds.length > 0) {
+              for (const id of [...foundIds]) {
+                if (fullyIds.has(id)) foundIds.delete(id);
+              }
             }
           }
           const serviceTypeIds = [...foundIds];
@@ -470,12 +514,46 @@ export async function POST(
         });
         (extraCharges || []).forEach((c: any) => {
           const amt = computeExtraAmount(c);
+          const partType = String(c?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
+          const part =
+            partType === 'OES' ? Number(c?.oes_price ?? 0) || 0 : Number(c?.oem_price ?? 0) || 0;
+          const labour = Number(c?.labour_price ?? 0) || 0;
+          const included_items: any[] = [];
+          if (part > 0) {
+            included_items.push({
+              name: partType === 'OES' ? 'Parts (OES)' : 'Parts (OEM)',
+              quantity: 1,
+              unit_price: part,
+              amount: part,
+            });
+          }
+          if (labour > 0) {
+            included_items.push({
+              name: 'Labour',
+              quantity: 1,
+              unit_price: labour,
+              amount: labour,
+            });
+          }
+          const reason = String(c?.reason || '').trim();
+          if (reason) {
+            included_items.push({ name: `Note: ${reason}`, quantity: 1, unit_price: 0, amount: 0 });
+          }
+          if (included_items.length === 0 && amt > 0) {
+            included_items.push({
+              name: String(c.description || 'Additional work').trim(),
+              quantity: 1,
+              unit_price: amt,
+              amount: amt,
+            });
+          }
           lineItems.push({
-            description: c.description || c.reason || 'Additional Request',
+            description: c.description || c.reason || 'Additional work',
             qty: 1,
             rate: amt,
             amount: amt,
             category: 'EXTRA',
+            included_items,
           });
         });
 

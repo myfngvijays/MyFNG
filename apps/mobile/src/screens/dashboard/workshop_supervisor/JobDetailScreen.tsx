@@ -17,7 +17,7 @@ import { parseServiceChecklistItems } from '../../../lib/serviceChecklist';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../../constants/theme';
 import { AC } from '../../../components/workshop/advisorCrmUi';
-import { FLOOR_DONE_STATUSES, isQcPassed } from '../../../lib/workshopJobFlow';
+import { FLOOR_DONE_STATUSES, isQcPassed, latestMechanicJobForLead } from '../../../lib/workshopJobFlow';
 
 interface JobDetail {
   id: string;
@@ -239,12 +239,15 @@ export default function JobDetailScreen() {
 
       let jobData: any = null;
 
-      const byLead = await supabase
-        .from('mechanic_jobs')
-        .select(`*, lead_id(${LEAD_FIELDS}), mechanic:mechanic_id(id, full_name)`)
-        .eq('lead_id', lookupId)
-        .maybeSingle();
-      jobData = byLead.data;
+      const byLead = await latestMechanicJobForLead(supabase, lookupId);
+      if (byLead.data?.id) {
+        const hydrated = await supabase
+          .from('mechanic_jobs')
+          .select(`*, lead_id(${LEAD_FIELDS}), mechanic:mechanic_id(id, full_name)`)
+          .eq('id', byLead.data.id)
+          .maybeSingle();
+        jobData = hydrated.data;
+      }
 
       if (!jobData) {
         const byId = await supabase
@@ -379,6 +382,9 @@ export default function JobDetailScreen() {
   const badgeColor = statusColor(displayStatus);
   const qcDone = isQcPassed({ qc_status: job.qc_status, status: job.lead_status });
   const extraTotal = extraCharges.reduce((sum, row) => sum + chargeAmount(row), 0);
+  const floorDone = FLOOR_DONE_STATUSES.has(String(job.lead_status || displayStatus || '').toUpperCase());
+  const pendingExtra = extraCharges.some((row) => chargeStatus(row) === 'PENDING');
+  const showExtraWorkChip = pendingExtra || !floorDone;
 
   return (
     <View style={styles.container}>
@@ -410,14 +416,16 @@ export default function JobDetailScreen() {
             <TouchableOpacity
               style={styles.chip}
               onPress={() =>
-                navigation.navigate('QCReview' as never, { jobId: job.id, leadId: job.lead_id.id } as never)
+                navigation.navigate('QCReview' as never, { jobId: job.lead_id.id, leadId: job.lead_id.id } as never)
               }
             >
               <Text style={styles.chipTxt}>QC Review</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.chip} onPress={() => navigation.navigate('ExtraWorkApproval')}>
-              <Text style={styles.chipTxt}>Extra work</Text>
-            </TouchableOpacity>
+            {showExtraWorkChip ? (
+              <TouchableOpacity style={styles.chip} onPress={() => navigation.navigate('ExtraWorkApproval')}>
+                <Text style={styles.chipTxt}>{pendingExtra ? 'Extra work pending' : 'Extra work'}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -533,6 +541,13 @@ export default function JobDetailScreen() {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.chargeTitle}>{chargeTitle(charge)}</Text>
                     {reason ? <Text style={styles.chargeDesc}>{reason}</Text> : null}
+                    {Array.isArray(charge.parts_breakdown) && charge.parts_breakdown.length > 0 ? (
+                      <Text style={styles.chargeDesc}>
+                        {charge.parts_breakdown
+                          .map((p: any) => `${p.name}${p.qty ? ` ×${p.qty}` : ''}`)
+                          .join(' · ')}
+                      </Text>
+                    ) : null}
                     <View style={[styles.chargeStatus, { backgroundColor: tone.bg }]}>
                       <Text style={[styles.chargeStatusText, { color: tone.fg }]}>{prettyLabel(st)}</Text>
                     </View>
@@ -557,7 +572,7 @@ export default function JobDetailScreen() {
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() =>
-              navigation.navigate('QCReview' as never, { jobId: job.id, leadId: job.lead_id.id } as never)
+              navigation.navigate('QCReview' as never, { jobId: job.lead_id.id, leadId: job.lead_id.id } as never)
             }
           >
             <Text style={styles.actionButtonText}>Open QC Review</Text>

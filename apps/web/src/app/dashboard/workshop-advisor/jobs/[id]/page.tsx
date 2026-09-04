@@ -2037,9 +2037,20 @@ export default function SupervisorJobDetailPage() {
                         {status.replace(/_/g, ' ')}
                       </span>
                     </div>
-                    <p className="shrink-0 text-base font-extrabold text-[#023D95]">
+                    <div className="shrink-0 text-right">
+                    <p className="text-base font-extrabold text-[#023D95]">
                       ₹{extraChargeAmount(charge).toLocaleString('en-IN')}
                     </p>
+                    {status === 'PENDING' ? (
+                      <button
+                        type="button"
+                        className="mt-2 text-[11px] font-bold text-blue-700 hover:underline"
+                        onClick={() => setSelectedExtraCharge(charge)}
+                      >
+                        Review prices
+                      </button>
+                    ) : null}
+                    </div>
                   </div>
                 );
               })}

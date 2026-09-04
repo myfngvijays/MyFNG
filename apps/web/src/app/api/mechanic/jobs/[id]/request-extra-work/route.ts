@@ -2,6 +2,10 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createNotification, notifyWorkshopRoles, notifyTelecallerForLead } from '@/lib/notifications';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import {
+  normalizeExtraWorkPartLines,
+  supabaseWriteDropUnknownColumns,
+} from '@/lib/workshop/extraWorkParts';
 
 export async function POST(
   request: NextRequest,
@@ -53,6 +57,11 @@ export async function POST(
     // Get request body
     const body = await request.json();
     const { description, reason, estimated_cost, category, other_category, category_label, attachment_url, is_urgent } = body;
+    const partsLines = normalizeExtraWorkPartLines(body?.parts_breakdown ?? body?.parts ?? body?.items).map((row) => ({
+      ...row,
+      unit_price: 0,
+      amount: 0,
+    }));
 
     if (!description || !reason) {
       return NextResponse.json({ 
@@ -80,6 +89,12 @@ export async function POST(
         {
           error: 'Estimated cost must be a valid number (>= 0)',
         },
+        { status: 400 }
+      );
+    }
+    if (costNum <= 0 && partsLines.length === 0) {
+      return NextResponse.json(
+        { error: 'Add estimated cost or list the parts/labour used (pricing optional)' },
         { status: 400 }
       );
     }
@@ -181,37 +196,39 @@ export async function POST(
     const writer = supabaseAdmin || supabase;
 
     // Create additional job request
-    const { data: extraWorkRequest, error: insertError } = await writer
-      .from('lead_extra_charges')
-      .insert({
+    const insertPayload: Record<string, unknown> = {
         lead_id: leadId,
         description: description,
         reason: reason,
-        // Legacy total (kept for downstream billing)
         amount: costNum,
-        // Price breakdown (if columns exist in this DB)
         oem_price: costNum,
         oes_price: 0,
         labour_price: 0,
-        part_price_type: (is_urgent ? 'OEM' : 'OEM'),
+        part_price_type: 'OEM',
         category: storedCategory,
         attachment_url: attachment_url,
         is_urgent: is_urgent || false,
         status: 'PENDING',
         requested_by: userProfile.id,
         approval_requested_at: now,
-        created_at: now
-      })
-      .select()
-      .single();
+        created_at: now,
+        parts_breakdown: partsLines,
+    };
+    const { data: extraWorkRequest, error: insertError } = await supabaseWriteDropUnknownColumns(
+      writer,
+      'lead_extra_charges',
+      'insert',
+      insertPayload,
+      { select: '*' },
+    );
 
-    if (insertError) {
+    if (insertError || !extraWorkRequest) {
       console.error('Error creating additional job request:', insertError);
       return NextResponse.json(
         {
           error: 'Failed to create additional job request',
-          details: insertError.message,
-          code: insertError.code,
+          details: insertError?.message,
+          code: insertError?.code,
         },
         { status: 500 }
       );
@@ -231,6 +248,7 @@ export async function POST(
           description: description,
           reason: reason,
           estimated_cost: costNum,
+          parts_breakdown: partsLines,
           category: storedCategory,
           other_category: categoryCode === 'OTHER' ? otherLabel : undefined,
           is_urgent: is_urgent,

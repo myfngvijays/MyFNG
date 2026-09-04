@@ -54,6 +54,7 @@ export default function PickupDeliveryCoordinationPage() {
   const [savingChecklist, setSavingChecklist] = useState<Record<string, boolean>>({});
   const [deliveryTrackingByLead, setDeliveryTrackingByLead] = useState<Record<string, {
     drop_status?: string | null;
+    drop_assigned_to?: string | null;
     drop_start_time?: string | null;
     drop_completed_time?: string | null;
     drop_otp_verified_at?: string | null;
@@ -277,6 +278,7 @@ export default function PickupDeliveryCoordinationPage() {
       const leadIds = (enhancedJobs || []).map((job) => job.id);
       const nextTrackingMap: Record<string, {
         drop_status?: string | null;
+        drop_assigned_to?: string | null;
         drop_start_time?: string | null;
         drop_completed_time?: string | null;
         drop_otp_verified_at?: string | null;
@@ -284,7 +286,7 @@ export default function PickupDeliveryCoordinationPage() {
       if (leadIds.length > 0) {
         const { data: trackingRows, error: trackingError } = await supabase
           .from('pickup_tracking')
-          .select('lead_id, drop_status, drop_start_time, drop_completed_time, drop_otp_verified_at')
+          .select('lead_id, drop_status, drop_assigned_to, drop_start_time, drop_completed_time, drop_otp_verified_at')
           .in('lead_id', leadIds);
 
         if (trackingError) {
@@ -294,6 +296,7 @@ export default function PickupDeliveryCoordinationPage() {
             if (!row?.lead_id) return;
             nextTrackingMap[row.lead_id] = {
               drop_status: row.drop_status,
+              drop_assigned_to: row.drop_assigned_to,
               drop_start_time: row.drop_start_time,
               drop_completed_time: row.drop_completed_time,
               drop_otp_verified_at: row.drop_otp_verified_at,
@@ -348,10 +351,10 @@ export default function PickupDeliveryCoordinationPage() {
           // Many DBs don't have `service_leads.delivery_status` (delivery tracking lives in `pickup_tracking.drop_status`).
           // For this dashboard's "active tasks" counter, use lead status as a durable signal for delivery work.
           const { count: activeDeliveries, error: activeDeliveriesError } = await supabase
-            .from('service_leads')
+            .from('pickup_tracking')
             .select('*', { count: 'exact', head: true })
-            .eq('assigned_pickup_boy_id', boy.id)
-            .in('status', ['READY_FOR_DELIVERY', 'COD_PENDING']);
+            .eq('drop_assigned_to', boy.id)
+            .in('drop_status', ['ASSIGNED', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'ARRIVED_AT_CUSTOMER']);
           if (activeDeliveriesError) {
             // eslint-disable-next-line no-console
             console.warn('Active deliveries count failed (non-blocking):', activeDeliveriesError);
@@ -737,7 +740,7 @@ export default function PickupDeliveryCoordinationPage() {
                           reassignDeliveryBoy(
                             job.id,
                             e.target.value,
-                            job.pickup_boy?.id || null,
+                            deliveryTrackingByLead[job.id]?.drop_assigned_to || null,
                             Boolean(deliveryTrackingByLead[job.id]?.drop_start_time) ||
                               ['OUT_FOR_DELIVERY', 'IN_TRANSIT', 'ARRIVED_AT_CUSTOMER'].includes(
                                 String(deliveryTrackingByLead[job.id]?.drop_status || '').toUpperCase()
@@ -753,9 +756,10 @@ export default function PickupDeliveryCoordinationPage() {
                           )
                         }
                         className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed"
-                        defaultValue={job.pickup_boy?.id || ''}
+                        key={`${job.id}-delivery-${deliveryTrackingByLead[job.id]?.drop_assigned_to || 'none'}`}
+                        defaultValue={deliveryTrackingByLead[job.id]?.drop_assigned_to || ''}
                       >
-                        <option value="">Select pickup boy...</option>
+                        <option value="">Assign delivery boy...</option>
                         {pickupBoys.map((boy) => (
                           <option key={boy.id} value={boy.id}>
                             {boy.full_name} ({boy.activeTasks} tasks)
@@ -942,7 +946,7 @@ export default function PickupDeliveryCoordinationPage() {
                     <div className="w-full rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs sm:text-sm text-green-800">
                       <div className="font-semibold">Delivery Ready</div>
                       <div className="text-[11px] sm:text-xs text-green-700 mt-0.5">
-                        Pickup boy ke dashboard me “Delivery Ready” tab me aa jayega.
+                        Assign a pickup boy on the left to deliver the car. Pickup boy auto-assign nahi hota.
                       </div>
                     </div>
                   )}

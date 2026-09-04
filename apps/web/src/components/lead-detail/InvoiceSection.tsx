@@ -91,6 +91,11 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
   const [includedNameDraft, setIncludedNameDraft] = useState<Record<string, string>>({});
   const [lineItemDrafts, setLineItemDrafts] = useState<Record<string, { qty?: string; rate?: string; remark?: string }>>({});
   const [savingLineItems, setSavingLineItems] = useState(false);
+  const [extraPartsEditKey, setExtraPartsEditKey] = useState<string | null>(null);
+  const [extraPartsDraft, setExtraPartsDraft] = useState<
+    Array<{ name: string; qty: string; unit_price: string; kind: 'PART' | 'LABOUR' | 'OTHER' }>
+  >([]);
+  const [savingExtraParts, setSavingExtraParts] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [ensuringTI, setEnsuringTI] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -135,6 +140,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     setIncludedRateDraft({});
     setIncludedQtyDraft({});
     setIncludedNameDraft({});
+    setExtraPartsEditKey(null);
+    setExtraPartsDraft([]);
   }, [invoice?.id]);
 
   useEffect(() => {
@@ -330,7 +337,15 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           const items = Array.isArray(s?.items) ? s.items : [];
           if (sid) byId[sid] = items;
           if (sname) byName[normalizeName(sname)] = items;
-          const sp = Number(s?.service_price);
+          // Prefer transparent BOM sum (workshop parts) over package sticker price.
+          const bomSum = items.reduce((sum: number, p: any) => {
+            const qty = Number(p?.quantity || 1) || 1;
+            const amt = Number(p?.amount);
+            if (Number.isFinite(amt) && amt >= 0) return sum + amt;
+            return sum + (Number(p?.unit_price || 0) || 0) * qty;
+          }, 0);
+          const packageSp = Number(s?.service_price);
+          const sp = bomSum > 0.5 ? bomSum : packageSp;
           // IMPORTANT: "Custom Service" amount is editable from OS line-items,
           // so do not lock/override it with included_service_items pricing.
           const isCustom = isCustomServiceName(sname);
@@ -502,6 +517,69 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       alert(e?.message || 'Failed to save');
     } finally {
       setSavingLineItems(false);
+    }
+  }
+
+  function beginExtraPartsEdit(it: any, includedItems: any[]) {
+    const key = String(it?.extra_charge_id || it?.description || '').trim();
+    if (!key) return;
+    if (extraPartsEditKey === key) {
+      setExtraPartsEditKey(null);
+      setExtraPartsDraft([]);
+      return;
+    }
+    const rows =
+      Array.isArray(includedItems) && includedItems.length > 0
+        ? includedItems.map((p: any) => ({
+            name: String(p?.name || '').trim(),
+            qty: String(Number(p?.quantity || 1) || 1),
+            unit_price: String(Number(p?.unit_price || p?.amount || 0) || 0),
+            kind: (String(p?.kind || '').toUpperCase() === 'LABOUR'
+              ? 'LABOUR'
+              : String(p?.kind || '').toUpperCase() === 'OTHER'
+                ? 'OTHER'
+                : 'PART') as 'PART' | 'LABOUR' | 'OTHER',
+          }))
+        : [{ name: '', qty: '1', unit_price: '', kind: 'PART' as const }];
+    setExtraPartsEditKey(key);
+    setExtraPartsDraft(rows);
+  }
+
+  async function saveExtraPartsEdit(it: any) {
+    const extraId = String(it?.extra_charge_id || '').trim();
+    if (!extraId) {
+      alert('Extra work id missing. Refresh Order Summary and try again.');
+      return;
+    }
+    const lines = extraPartsDraft
+      .map((row) => {
+        const name = row.name.trim();
+        if (!name) return null;
+        const qty = Math.max(0.01, Number(row.qty) || 1);
+        const unit_price = Math.max(0, Number(row.unit_price) || 0);
+        return { name, qty, unit_price, amount: qty * unit_price, kind: row.kind };
+      })
+      .filter(Boolean);
+    if (lines.length === 0) {
+      alert('Add at least one part / labour line.');
+      return;
+    }
+    setSavingExtraParts(true);
+    try {
+      const res = await fetch(`/api/supervisor/extra-work/${extraId}/parts-breakdown`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts_breakdown: lines, part_price_type: 'OEM' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to save parts');
+      setExtraPartsEditKey(null);
+      setExtraPartsDraft([]);
+      await fetchInvoice();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save parts');
+    } finally {
+      setSavingExtraParts(false);
     }
   }
 
@@ -1186,7 +1264,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     if (c === 'ADDON' || c === 'ADD-ON' || c === 'ADD_ON') return 'Add-ons';
     if (c === 'PART' || c === 'PARTS') return 'Additional Parts';
     if (c === 'LABOUR' || c === 'LABOR') return 'Labour';
-    if (c === 'EXTRA') return 'Additional Charges';
+    if (c === 'EXTRA') return 'Additional Work';
     return c ? c : 'Items';
   };
 
@@ -1213,33 +1291,17 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
 
   const getIncludedItems = (it: any) => {
     const cat = String(it?.category || '').toUpperCase();
+    if (cat === 'EXTRA') {
+      return Array.isArray(it?.included_items) ? it.included_items : [];
+    }
     if (cat !== 'SERVICE') return [];
+    if (Array.isArray(it?.included_items) && it.included_items.length > 0) {
+      return it.included_items;
+    }
     return (it?.service_type_id && includedByServiceTypeId[String(it.service_type_id)])
       ? includedByServiceTypeId[String(it.service_type_id)]
       : includedByServiceNameKey[normalizeName(String(it?.description || ''))] || [];
   };
-
-  function getServicePrice(it: any) {
-    // Custom Service is editable (do not override from master service pricing maps)
-    if (isCustomServiceName(String(it?.description || ''))) {
-      const qty = Number(it?.qty ?? 1) || 1;
-      const rate = Number(it?.rate ?? 0) || 0;
-      const amount = Number(it?.amount ?? 0) || 0;
-      const fromLine = amount > 0 ? amount : qty * rate;
-      return Number.isFinite(fromLine) ? fromLine : 0;
-    }
-    const byType = it?.service_type_id ? servicePriceByTypeId[String(it.service_type_id)] : undefined;
-    const byName = servicePriceByNameKey[normalizeName(String(it?.description || ''))];
-    const fromLine =
-      Number(it?.amount ?? 0) > 0
-        ? Number(it.amount)
-        : (Number(it?.rate ?? 0) || 0) * (Number(it?.qty ?? 1) || 1);
-    return Number.isFinite(byType) && (byType as number) > 0
-      ? (byType as number)
-      : Number.isFinite(byName) && (byName as number) > 0
-        ? (byName as number)
-        : (Number.isFinite(fromLine) ? fromLine : 0);
-  }
 
   const computeIncludedTotal = (serviceRow: any, includedItems: any[], isEditingThis: boolean) => {
     return (includedItems || []).reduce((s: number, p: any) => {
@@ -1265,8 +1327,54 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     }, 0);
   };
 
+  function getServicePrice(it: any) {
+    const qty = Number(it?.qty ?? 1) || 1;
+    const rate = Number(it?.rate ?? 0) || 0;
+    const amount = Number(it?.amount ?? 0) || 0;
+    const fromLine = amount > 0 ? amount : qty * rate;
+
+    // Custom Service is editable (do not override from master service pricing maps)
+    if (isCustomServiceName(String(it?.description || ''))) {
+      return Number.isFinite(fromLine) ? fromLine : 0;
+    }
+    // Advisor-edited OS lines stay as stored.
+    if (it?.os_edited) {
+      return Number.isFinite(fromLine) ? fromLine : 0;
+    }
+
+    // Transparent pricing: bill = sum of included workshop parts (not package sticker).
+    const includedItems = getIncludedItems(it);
+    if (Array.isArray(includedItems) && includedItems.length > 0) {
+      const isEditingThis = editingIncludedFor === String(it?.description || '');
+      const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
+      if (includedTotal > 0.5) return includedTotal;
+    }
+
+    if (String(it?.pricing_mode || '') === 'TRANSPARENT_INCLUDED_SUM' && fromLine > 0) {
+      return fromLine;
+    }
+
+    const byType = it?.service_type_id ? servicePriceByTypeId[String(it.service_type_id)] : undefined;
+    const byName = servicePriceByNameKey[normalizeName(String(it?.description || ''))];
+    if (Number.isFinite(fromLine) && fromLine > 0) return fromLine;
+    return Number.isFinite(byType) && (byType as number) > 0
+      ? (byType as number)
+      : Number.isFinite(byName) && (byName as number) > 0
+        ? (byName as number)
+        : (Number.isFinite(fromLine) ? fromLine : 0);
+  }
+
   const applyProRata = (serviceRow: any, includedItems: any[]) => {
-    const servicePrice = getServicePrice(serviceRow);
+    // Pro-rata still targets package sticker when available; else current service amount.
+    const byType = serviceRow?.service_type_id
+      ? servicePriceByTypeId[String(serviceRow.service_type_id)]
+      : undefined;
+    const byName = servicePriceByNameKey[normalizeName(String(serviceRow?.description || ''))];
+    const packageOrLine =
+      (Number.isFinite(byType) && (byType as number) > 0 ? (byType as number) : 0) ||
+      (Number.isFinite(byName) && (byName as number) > 0 ? (byName as number) : 0) ||
+      getServicePrice(serviceRow);
+    const servicePrice = packageOrLine;
     if (!Number.isFinite(servicePrice) || servicePrice <= 0) {
       alert('Service price is missing or invalid.');
       return;
@@ -1446,16 +1554,17 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold w-12">Sr</th>
                       <th className="px-4 py-3 text-left font-semibold">Item</th>
-                      <th className="px-4 py-3 text-right font-semibold w-20">Qty</th>
-                      <th className="px-4 py-3 text-right font-semibold w-28">Rate</th>
-                      <th className="px-4 py-3 text-right font-semibold w-32">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {grouped.map((g) => (
+                    {(() => {
+                      let runningSr = 0;
+                      return grouped.map((g) => {
+                      let groupSum = 0;
+                      return (
                       <React.Fragment key={g.key}>
                         <tr className="bg-gray-50">
-                          <td className="px-4 py-2 text-xs font-bold text-gray-700" colSpan={5}>
+                          <td className="px-4 py-2 text-xs font-bold text-gray-700" colSpan={2}>
                             {categoryLabel(g.key)}
                           </td>
                         </tr>
@@ -1477,9 +1586,13 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                           const qty = canEditLineItem ? getDraftValue(rowIndex, 'qty', qtyBase) : qtyBase;
                           const rate = canEditLineItem ? getDraftValue(rowIndex, 'rate', rateBase || 0) : rateBase;
                           const amt = canEditLineItem ? qty * rate : Number(it?.amount ?? 0) || 0;
-                          const sr = idx + 1;
+                          runningSr += 1;
+                          const sr = runningSr;
                           const includedItems = getIncludedItems(it);
                           const canEditIncluded = isOS && cat === 'SERVICE' && Array.isArray(includedItems) && includedItems.length > 0;
+                          const extraEditKey = String(it?.extra_charge_id || it?.description || '').trim();
+                          const canEditExtraParts = isOS && cat === 'EXTRA' && Boolean(it?.extra_charge_id);
+                          const isEditingExtra = canEditExtraParts && extraPartsEditKey === extraEditKey;
                           const isEditingThis = canEditIncluded && editingIncludedFor === String(it?.description || '');
                           const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
                           const servicePrice = isService
@@ -1545,6 +1658,110 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                 {isOS && mismatch && (
                                   <div className="mt-1 text-[11px] text-red-600">
                                     Included total {money(includedTotal)} does not match service price {money(servicePrice)} (diff {diffSigned >= 0 ? '+' : '-'}{money(Math.abs(diffSigned))})
+                                  </div>
+                                )}
+                                {canEditExtraParts && (
+                                  <div className="mt-2">
+                                    <button
+                                      type="button"
+                                      className="text-[11px] font-bold text-blue-700 hover:underline"
+                                      onClick={() => beginExtraPartsEdit(it, includedItems)}
+                                    >
+                                      {isEditingExtra
+                                        ? 'Cancel'
+                                        : Array.isArray(includedItems) && includedItems.length > 0
+                                          ? 'Edit parts / pricing'
+                                          : 'Add parts / pricing'}
+                                    </button>
+                                    {isEditingExtra && (
+                                      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 space-y-2">
+                                        <p className="text-[11px] text-slate-600">
+                                          Transparent pricing: list every part replaced / used with qty and rate.
+                                        </p>
+                                        {extraPartsDraft.map((row, ri) => (
+                                          <div key={`extra-part-${ri}`} className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                                            <input
+                                              className="sm:col-span-5 rounded border border-slate-200 px-2 py-1 text-xs"
+                                              placeholder="Part / labour name"
+                                              value={row.name}
+                                              onChange={(e) =>
+                                                setExtraPartsDraft((prev) =>
+                                                  prev.map((r, i) => (i === ri ? { ...r, name: e.target.value } : r)),
+                                                )
+                                              }
+                                            />
+                                            <input
+                                              className="sm:col-span-2 rounded border border-slate-200 px-2 py-1 text-xs"
+                                              placeholder="Qty"
+                                              value={row.qty}
+                                              onChange={(e) =>
+                                                setExtraPartsDraft((prev) =>
+                                                  prev.map((r, i) => (i === ri ? { ...r, qty: e.target.value } : r)),
+                                                )
+                                              }
+                                            />
+                                            <input
+                                              className="sm:col-span-2 rounded border border-slate-200 px-2 py-1 text-xs"
+                                              placeholder="Rate"
+                                              value={row.unit_price}
+                                              onChange={(e) =>
+                                                setExtraPartsDraft((prev) =>
+                                                  prev.map((r, i) => (i === ri ? { ...r, unit_price: e.target.value } : r)),
+                                                )
+                                              }
+                                            />
+                                            <select
+                                              className="sm:col-span-2 rounded border border-slate-200 px-2 py-1 text-xs"
+                                              value={row.kind}
+                                              onChange={(e) =>
+                                                setExtraPartsDraft((prev) =>
+                                                  prev.map((r, i) =>
+                                                    i === ri
+                                                      ? { ...r, kind: e.target.value as 'PART' | 'LABOUR' | 'OTHER' }
+                                                      : r,
+                                                  ),
+                                                )
+                                              }
+                                            >
+                                              <option value="PART">Part</option>
+                                              <option value="LABOUR">Labour</option>
+                                              <option value="OTHER">Other</option>
+                                            </select>
+                                            <button
+                                              type="button"
+                                              className="sm:col-span-1 text-[11px] text-red-600"
+                                              onClick={() =>
+                                                setExtraPartsDraft((prev) => prev.filter((_, i) => i !== ri))
+                                              }
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        ))}
+                                        <div className="flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            className="text-[11px] font-bold text-blue-700"
+                                            onClick={() =>
+                                              setExtraPartsDraft((prev) => [
+                                                ...prev,
+                                                { name: '', qty: '1', unit_price: '', kind: 'PART' },
+                                              ])
+                                            }
+                                          >
+                                            + Add line
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="rounded bg-[#004AAD] px-3 py-1 text-[11px] font-bold text-white disabled:opacity-60"
+                                            disabled={savingExtraParts}
+                                            onClick={() => saveExtraPartsEdit(it)}
+                                          >
+                                            {savingExtraParts ? 'Saving…' : 'Save pricing'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                                 {Array.isArray(includedItems) && includedItems.length > 0 && (
@@ -1701,51 +1918,73 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                                     )}
                                   </div>
                                 )}
+                                {(() => {
+                                  groupSum += Number(displayTotal) || 0;
+                                  return null;
+                                })()}
+                                <div className="mt-3 grid grid-cols-3 gap-2 max-w-md">
+                                  <div className="rounded-lg bg-slate-100 px-2 py-2 text-center">
+                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Qty</div>
+                                    {canEditLineItem ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        className="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-right text-sm"
+                                        value={lineItemDrafts[String(rowIndex)]?.qty ?? String(qtyBase)}
+                                        onChange={(e) =>
+                                          setLineItemDrafts((prev) => ({
+                                            ...prev,
+                                            [String(rowIndex)]: { ...prev[String(rowIndex)], qty: e.target.value },
+                                          }))
+                                        }
+                                        onBlur={saveLineItems}
+                                      />
+                                    ) : (
+                                      <div className="mt-1 text-sm font-semibold text-slate-800">{qty}</div>
+                                    )}
+                                  </div>
+                                  <div className="rounded-lg bg-slate-100 px-2 py-2 text-center">
+                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Rate</div>
+                                    {canEditLineItem ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        className="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-right text-sm"
+                                        value={lineItemDrafts[String(rowIndex)]?.rate ?? String(rateBase || 0)}
+                                        onChange={(e) =>
+                                          setLineItemDrafts((prev) => ({
+                                            ...prev,
+                                            [String(rowIndex)]: { ...prev[String(rowIndex)], rate: e.target.value },
+                                          }))
+                                        }
+                                        onBlur={saveLineItems}
+                                      />
+                                    ) : (
+                                      <div className="mt-1 text-sm font-semibold text-slate-800">{money(displayRate)}</div>
+                                    )}
+                                  </div>
+                                  <div className="rounded-lg bg-blue-50 px-2 py-2 text-center">
+                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">Total</div>
+                                    <div className="mt-1 text-sm font-bold text-[#004AAD]">{money(displayTotal)}</div>
+                                  </div>
+                                </div>
                               </td>
-                              <td className="px-4 py-3 text-right">
-                                {canEditLineItem ? (
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    className="w-20 rounded border border-gray-200 px-2 py-1 text-right"
-                                    value={lineItemDrafts[String(rowIndex)]?.qty ?? String(qtyBase)}
-                                    onChange={(e) =>
-                                      setLineItemDrafts((prev) => ({
-                                        ...prev,
-                                        [String(rowIndex)]: { ...prev[String(rowIndex)], qty: e.target.value },
-                                      }))
-                                    }
-                                    onBlur={saveLineItems}
-                                  />
-                                ) : (
-                                  qty
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                {canEditLineItem ? (
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    className="w-24 rounded border border-gray-200 px-2 py-1 text-right"
-                                    value={lineItemDrafts[String(rowIndex)]?.rate ?? String(rateBase || 0)}
-                                    onChange={(e) =>
-                                      setLineItemDrafts((prev) => ({
-                                        ...prev,
-                                        [String(rowIndex)]: { ...prev[String(rowIndex)], rate: e.target.value },
-                                      }))
-                                    }
-                                    onBlur={saveLineItems}
-                                  />
-                                ) : (
-                                  money(displayRate)
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right font-medium">{money(displayTotal)}</td>
                             </tr>
                           );
                         })}
+                        <tr className="bg-slate-50">
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-bold text-slate-700">{categoryLabel(g.key)} total</span>
+                              <span className="text-sm font-bold text-[#004AAD]">{money(groupSum)}</span>
+                            </div>
+                          </td>
+                        </tr>
                       </React.Fragment>
-                    ))}
+                    );
+                    });
+                  })()}
                   </tbody>
                 </>
               ) : (
@@ -1769,7 +2008,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                     )}
                     {(invoice.extra_charges_amount || invoice.extra_charges || 0) > 0 && (
                       <tr>
-                        <td className="px-4 py-3">Additional Charges</td>
+                        <td className="px-4 py-3">Additional Work</td>
                         <td className="px-4 py-3 text-right font-medium">₹{((invoice.extra_charges_amount || invoice.extra_charges) || 0).toFixed(2)}</td>
                       </tr>
                     )}
@@ -1919,7 +2158,7 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
                 )}
                 <tr className="bg-brand-primary bg-opacity-10 font-bold text-lg">
                   <td className="px-4 py-3">
-                    {isOS ? 'Gross Total' : isCI ? 'Total to Pay' : 'Amount Payable (INR)'}
+                    {isOS ? 'Grand Total' : isCI ? 'Total to Pay' : 'Amount Payable (INR)'}
                   </td>
                   <td className="px-4 py-3 text-right">₹{(effectivePayable || 0).toFixed(2)}</td>
                 </tr>

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, Loader2, Check, XCircle, Image as ImageIcon, ZoomIn } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Loader2, Check, XCircle, Image as ImageIcon, ZoomIn, Send } from 'lucide-react';
 
 interface ExtraCharge {
   id: string;
@@ -12,6 +12,7 @@ interface ExtraCharge {
   requested_by_name?: string;
   requester?: { full_name?: string | null } | null;
   created_at: string;
+  parts_breakdown?: Array<{ name?: string; qty?: number; quantity?: number; unit_price?: number; kind?: string }>;
 }
 
 interface ExtraWorkModalProps {
@@ -47,6 +48,69 @@ export default function ExtraWorkModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageZoomed, setImageZoomed] = useState(false);
+  const [partRows, setPartRows] = useState<
+    Array<{ name: string; qty: string; unit_price: string; kind: 'PART' | 'LABOUR' }>
+  >([{ name: '', qty: '1', unit_price: '', kind: 'PART' }]);
+  const [sendingCustomer, setSendingCustomer] = useState(false);
+
+  useEffect(() => {
+    const pb = Array.isArray(extraCharge.parts_breakdown) ? extraCharge.parts_breakdown : [];
+    setPartRows(
+      pb.length > 0
+        ? pb.map((p) => ({
+            name: String(p?.name || ''),
+            qty: String(Number(p?.qty ?? p?.quantity ?? 1) || 1),
+            unit_price: String(Number(p?.unit_price || 0) || ''),
+            kind: String(p?.kind || '').toUpperCase() === 'LABOUR' ? 'LABOUR' : 'PART',
+          }))
+        : [{ name: '', qty: '1', unit_price: '', kind: 'PART' }],
+    );
+  }, [extraCharge.id]);
+
+  function currentPartsBreakdown() {
+    return partRows
+      .map((row) => {
+        const name = row.name.trim();
+        if (!name) return null;
+        const qty = Math.max(0.01, Number(row.qty) || 1);
+        const unit_price = Math.max(0, Number(row.unit_price) || 0);
+        return { name, qty, unit_price, amount: qty * unit_price, kind: row.kind };
+      })
+      .filter(Boolean);
+  }
+
+  async function sendToCustomer() {
+    try {
+      setSendingCustomer(true);
+      setError(null);
+      const parts_breakdown = currentPartsBreakdown();
+      if (parts_breakdown.length > 0) {
+        const saveRes = await fetch(`/api/supervisor/extra-work/${extraCharge.id}/parts-breakdown`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parts_breakdown, part_price_type: 'OEM' }),
+        });
+        const saveJson = await saveRes.json().catch(() => ({}));
+        if (!saveRes.ok) throw new Error(saveJson.error || 'Failed to save prices');
+      }
+      const linkRes = await fetch(`/api/workshop/leads/${leadId}/public-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      });
+      const linkJson = await linkRes.json().catch(() => ({}));
+      if (!linkRes.ok) throw new Error(linkJson.error || 'Failed to enable customer link');
+      const url = `${window.location.origin}/customer/track/${leadId}`;
+      window.prompt(
+        'Prices save ho gaye. Customer ko ye link bhejo. OK ke baad additional kaam start hoga.',
+        url,
+      );
+    } catch (err: any) {
+      setError(err.message || 'Failed to send');
+    } finally {
+      setSendingCustomer(false);
+    }
+  }
 
   async function handleSubmit() {
     if (action === 'reject') {
@@ -62,17 +126,22 @@ export default function ExtraWorkModal({
       setError(null);
 
       const endpoint = action === 'approve' 
-        ? `/api/leads/${leadId}/extra-work/approve`
-        : `/api/leads/${leadId}/extra-work/reject`;
+        ? `/api/supervisor/extra-work/approve`
+        : `/api/supervisor/extra-work/${extraCharge.id}/reject`;
 
-      const body: any = {
-        charge_id: extraCharge.id,
-        notes: notes.trim() || undefined
-      };
+      const parts_breakdown = currentPartsBreakdown();
 
-      if (action === 'reject') {
-        body.reason = rejectionReason === 'Other' ? customReason.trim() : rejectionReason;
-      }
+      const body: any =
+        action === 'approve'
+          ? {
+              id: extraCharge.id,
+              notes: notes.trim() || undefined,
+              part_price_type: 'OEM',
+              oem_price: parts_breakdown.length > 0 ? undefined : extraCharge.amount,
+              labour_price: parts_breakdown.length > 0 ? undefined : 0,
+              parts_breakdown: parts_breakdown.length > 0 ? parts_breakdown : undefined,
+            }
+          : { notes: notes.trim() || (rejectionReason === 'Other' ? customReason.trim() : rejectionReason) || 'Rejected by advisor' };
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -144,6 +213,63 @@ export default function ExtraWorkModal({
             </div>
           </div>
 
+          <div className="mb-4 rounded-lg border border-slate-200 p-3">
+            <p className="text-sm font-semibold text-slate-800">Parts / labour (transparent bill)</p>
+            <p className="text-xs text-slate-500 mt-1 mb-2">
+              Advisor yahan rates bharo. Mechanic sirf names bhej sakta hai.
+            </p>
+            {partRows.map((row, i) => (
+              <div key={`web-part-${i}`} className="mb-2 grid grid-cols-12 gap-2">
+                <input
+                  className="col-span-5 input text-sm"
+                  placeholder="Flywheel / clutch plate / wire"
+                  value={row.name}
+                  onChange={(e) =>
+                    setPartRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, name: e.target.value } : r)))
+                  }
+                />
+                <input
+                  className="col-span-2 input text-sm"
+                  placeholder="Qty"
+                  value={row.qty}
+                  onChange={(e) =>
+                    setPartRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, qty: e.target.value } : r)))
+                  }
+                />
+                <input
+                  className="col-span-3 input text-sm"
+                  placeholder="Rate ₹"
+                  value={row.unit_price}
+                  onChange={(e) =>
+                    setPartRows((prev) =>
+                      prev.map((r, idx) => (idx === i ? { ...r, unit_price: e.target.value } : r)),
+                    )
+                  }
+                />
+                <button
+                  type="button"
+                  className="col-span-2 rounded-lg bg-[#023D95] text-white text-xs font-bold"
+                  onClick={() =>
+                    setPartRows((prev) =>
+                      prev.map((r, idx) =>
+                        idx === i ? { ...r, kind: r.kind === 'LABOUR' ? 'PART' : 'LABOUR' } : r,
+                      ),
+                    )
+                  }
+                >
+                  {row.kind}
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="text-sm font-bold text-[#023D95]"
+              onClick={() => setPartRows((prev) => [...prev, { name: '', qty: '1', unit_price: '', kind: 'PART' }])}
+            >
+              + Add part / labour
+            </button>
+          </div>
+
           {/* Image */}
           {extraCharge.image_url ? (
             <div className="mb-4">
@@ -172,13 +298,23 @@ export default function ExtraWorkModal({
 
           {/* Action Selection */}
           {!action && (
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <button
+                onClick={() => void sendToCustomer()}
+                disabled={sendingCustomer}
+                className="p-6 border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 rounded-lg transition flex flex-col items-center gap-2 disabled:opacity-60"
+              >
+                <Send className="w-8 h-8 text-blue-700" />
+                <span className="font-semibold text-blue-800">
+                  {sendingCustomer ? 'Sending…' : 'Send to customer'}
+                </span>
+              </button>
               <button
                 onClick={() => setAction('approve')}
                 className="p-6 border-2 border-green-200 bg-green-50 hover:bg-green-100 rounded-lg transition flex flex-col items-center gap-2"
               >
                 <Check className="w-8 h-8 text-green-600" />
-                <span className="font-semibold text-green-700">Approve</span>
+                <span className="font-semibold text-green-700">Approve now</span>
               </button>
               <button
                 onClick={() => setAction('reject')}

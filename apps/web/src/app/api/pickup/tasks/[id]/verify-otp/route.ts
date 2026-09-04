@@ -116,9 +116,20 @@ export async function POST(
       return NextResponse.json({ error: 'Pickup task not found' }, { status: 404 });
     }
 
-    // Verify task is assigned to this pickup boy
-    if (lead.assigned_pickup_boy_id !== userProfile.id) {
-      return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
+    // Pickup OTP: original pickup boy. Delivery OTP: drop_assigned_to only.
+    if (otpType === 'PICKUP') {
+      if (lead.assigned_pickup_boy_id !== userProfile.id) {
+        return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
+      }
+    } else if (otpType === 'DROP') {
+      const { data: dropTrack } = await supabase
+        .from('pickup_tracking')
+        .select('drop_assigned_to')
+        .eq('lead_id', leadId)
+        .maybeSingle();
+      if ((dropTrack as any)?.drop_assigned_to !== userProfile.id) {
+        return NextResponse.json({ error: 'Delivery not assigned to you' }, { status: 403 });
+      }
     }
 
     // For PICKUP OTP we should not modify leads once work progressed too far.

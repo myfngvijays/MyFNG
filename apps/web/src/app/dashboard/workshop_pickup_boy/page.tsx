@@ -5,6 +5,7 @@ import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Camera, CheckCircle, Navigation, Truck } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { fetchPickupBoyLeads } from '@/lib/workshop/fetchPickupBoyLeads';
 import PickupLeadCard from '@/components/workshop/PickupLeadCard';
 import {
   WorkshopPageHeader,
@@ -20,16 +21,13 @@ import {
   getPickupHistoryCompletedAt,
   isActiveDeliveryBoyTask,
   isActivePickupBoyTask,
+  isAssignedDeliveryFor,
   isHistoryTaskCompleted,
   pickupStatusColor,
 } from '@/lib/workshop/pickupTaskFlow';
 
 function taskTypeForLead(lead: any): 'PICKUP' | 'DELIVERY' {
-  const isDelivery =
-    !lead.pickup_required ||
-    lead.status === 'READY_FOR_DELIVERY' ||
-    lead.status === 'COD_PENDING';
-  return isDelivery ? 'DELIVERY' : 'PICKUP';
+  return isActiveDeliveryBoyTask(lead) ? 'DELIVERY' : 'PICKUP';
 }
 
 function JobSection({
@@ -58,7 +56,11 @@ function JobSection({
       {tasks.length > 0 ? (
         <div className="space-y-3">
           {tasks.map((task) => {
-            const status = String(task.pickup_status || task.status || 'ASSIGNED');
+            const status = String(
+              isActiveDeliveryBoyTask(task)
+                ? task.status || task.pickup_status
+                : task.pickup_status || task.status || 'ASSIGNED',
+            );
             const completedAt = getPickupHistoryCompletedAt(task);
             return (
               <PickupLeadCard
@@ -151,15 +153,10 @@ export default function WorkshopPickupBoyDashboard() {
 
       if (!userProfile) return;
 
-      const { data: allTasks } = await supabase
-        .from('service_leads')
-        .select('*')
-        .eq('assigned_pickup_boy_id', userProfile.id)
-        .not('status', 'in', '(REJECTED,CANCELLED)')
-        .order('created_at', { ascending: false });
-
-      const rows = allTasks || [];
-      const openTasks = rows.filter((t) => isActivePickupBoyTask(t) || isActiveDeliveryBoyTask(t));
+      const rows = await fetchPickupBoyLeads(supabase, userProfile.id);
+      const openTasks = rows.filter(
+        (t) => isActivePickupBoyTask(t) || isAssignedDeliveryFor(t, userProfile.id),
+      );
       const upcoming = openTasks.filter((t) => classifyPickupBoyDashboardTask(t) === 'upcoming');
       const ongoing = openTasks.filter((t) => classifyPickupBoyDashboardTask(t) === 'ongoing');
       const completed = rows.filter((t) => {

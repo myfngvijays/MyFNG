@@ -5,6 +5,7 @@ import type { PickupBoyOption } from '../../lib/fetchWorkshopPickupBoys';
 
 type Props = {
   visible: boolean;
+  title?: string;
   leadLabel?: string;
   pickupBoys: PickupBoyOption[];
   loading?: boolean;
@@ -15,6 +16,7 @@ type Props = {
 
 export default function PickupAssignModal({
   visible,
+  title = 'Assign pickup',
   leadLabel,
   pickupBoys,
   loading = false,
@@ -26,7 +28,7 @@ export default function PickupAssignModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.wrap}>
         <View style={styles.card}>
-          <Text style={styles.title}>Assign pickup</Text>
+          <Text style={styles.title}>{title}</Text>
           {leadLabel ? <Text style={styles.subtitle}>{leadLabel}</Text> : null}
 
           {loading ? (

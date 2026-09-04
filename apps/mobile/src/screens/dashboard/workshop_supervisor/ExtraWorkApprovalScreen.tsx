@@ -37,6 +37,7 @@ interface ExtraWorkRequest {
   created_at: string;
   status: string;
   image_url?: string;
+  parts_breakdown?: Array<{ name?: string; qty?: number; quantity?: number; unit_price?: number; kind?: string }>;
 }
 
 export default function ExtraWorkApprovalScreen({ navigation }: any) {
@@ -46,6 +47,9 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalNotes, setApprovalNotes] = useState('');
   const [adjustedCost, setAdjustedCost] = useState('');
+  const [partRows, setPartRows] = useState<
+    Array<{ name: string; qty: string; unit_price: string; kind: 'PART' | 'LABOUR' | 'OTHER' }>
+  >([{ name: '', qty: '1', unit_price: '', kind: 'PART' }]);
   const [filter, setFilter] = useState('PENDING');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,7 +127,18 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
   function openApprovalModal(request: ExtraWorkRequest) {
     setSelectedRequest(request);
-    setAdjustedCost(request.amount.toString());
+    setAdjustedCost(request.amount ? request.amount.toString() : '');
+    const pb = Array.isArray(request.parts_breakdown) ? request.parts_breakdown : [];
+    setPartRows(
+      pb.length > 0
+        ? pb.map((p) => ({
+            name: String(p?.name || ''),
+            qty: String(Number(p?.qty ?? p?.quantity ?? 1) || 1),
+            unit_price: String(Number((p as any)?.unit_price || 0) || ''),
+            kind: String(p?.kind || '').toUpperCase() === 'LABOUR' ? 'LABOUR' : 'PART',
+          }))
+        : [{ name: '', qty: '1', unit_price: '', kind: 'PART' }],
+    );
     setShowApprovalModal(true);
   }
 
@@ -143,6 +158,23 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
       }
 
       if (decision === 'APPROVE') {
+        const parts_breakdown = partRows
+          .map((row) => {
+            const name = row.name.trim();
+            if (!name) return null;
+            const qty = Math.max(0.01, Number(row.qty) || 1);
+            const unit_price = Math.max(0, Number(row.unit_price) || 0);
+            return { name, qty, unit_price, amount: qty * unit_price, kind: row.kind };
+          })
+          .filter(Boolean);
+        const partsTotal = parts_breakdown.reduce((s, r: any) => s + (Number(r?.amount) || 0), 0);
+        const lump = parseFloat(adjustedCost);
+        if (parts_breakdown.length === 0 && (!Number.isFinite(lump) || lump <= 0)) {
+          throw new Error('Enter approved cost or add parts with pricing');
+        }
+        if (parts_breakdown.length > 0 && partsTotal <= 0) {
+          throw new Error('Parts lines need a price greater than 0');
+        }
         const response = await fetch(`${ENV.API_URL}/api/supervisor/extra-work/approve`, {
           method: 'POST',
           headers: {
@@ -152,8 +184,9 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
           body: JSON.stringify({
             id: selectedRequest.id,
             part_price_type: 'OEM',
-            oem_price: parseFloat(adjustedCost),
-            labour_price: 0,
+            oem_price: parts_breakdown.length > 0 ? undefined : lump,
+            labour_price: parts_breakdown.length > 0 ? undefined : 0,
+            parts_breakdown: parts_breakdown.length > 0 ? parts_breakdown : undefined,
             notes: approvalNotes || undefined,
           }),
         });
@@ -186,6 +219,7 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
               setSelectedRequest(null);
               setApprovalNotes('');
               setAdjustedCost('');
+              setPartRows([{ name: '', qty: '1', unit_price: '', kind: 'PART' }]);
               fetchRequests();
             },
           },
@@ -194,6 +228,40 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
     } catch (error) {
       console.error('Error handling approval:', error);
       Alert.alert('Error', 'Failed to process request. Please try again.');
+    }
+  }
+
+  async function sendToCustomer() {
+    if (!selectedRequest) return;
+    try {
+      const parts_breakdown = partRows
+        .map((row) => {
+          const name = row.name.trim();
+          if (!name) return null;
+          const qty = Math.max(0.01, Number(row.qty) || 1);
+          const unit_price = Math.max(0, Number(row.unit_price) || 0);
+          return { name, qty, unit_price, amount: qty * unit_price, kind: row.kind };
+        })
+        .filter(Boolean);
+      if (parts_breakdown.length > 0) {
+        await apiFetch(`/api/supervisor/extra-work/${selectedRequest.id}/parts-breakdown`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parts_breakdown, part_price_type: 'OEM' }),
+        });
+      }
+      await apiFetch(`/api/workshop/leads/${selectedRequest.lead_id}/public-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      });
+      const url = `${String(ENV.API_URL || '').replace(/\/$/, '')}/customer/track/${selectedRequest.lead_id}`;
+      Alert.alert(
+        'Customer approval',
+        `Prices save ho gaye. Customer ko ye link bhejo. OK ke baad additional kaam start hoga.\n\n${url}`,
+      );
+    } catch (e: any) {
+      Alert.alert('Send failed', e?.message || 'Try again');
     }
   }
 
@@ -229,9 +297,14 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
           {item.mechanic_name ? ` · ${item.mechanic_name}` : ''}
         </Text>
         <Text style={AC.meta}>{formatDateTime(item.created_at)}</Text>
-        {item.description ? (
+                    {item.description ? (
           <Text style={AC.meta} numberOfLines={2}>
             {item.description}
+          </Text>
+        ) : null}
+        {Array.isArray(item.parts_breakdown) && item.parts_breakdown.length > 0 ? (
+          <Text style={AC.meta} numberOfLines={3}>
+            Parts: {item.parts_breakdown.map((p) => p.name).filter(Boolean).join(', ')}
           </Text>
         ) : null}
         <View style={{ flexDirection: 'row', marginTop: 8 }}>
@@ -346,12 +419,82 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
                     </View>
                     <TextInput
                       style={styles.costInput}
-                      placeholder="Enter approved cost"
+                      placeholder="Enter approved cost (or use parts below)"
                       placeholderTextColor="#9ca3af"
                       keyboardType="numeric"
                       value={adjustedCost}
                       onChangeText={setAdjustedCost}
                     />
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Parts used (transparent pricing)</Text>
+                    <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
+                      Engine / gasket / labour — har line pe name + qty + rate.
+                    </Text>
+                    {partRows.map((row, i) => (
+                      <View key={`apr-part-${i}`} style={{ marginBottom: 10, gap: 6 }}>
+                        <TextInput
+                          style={styles.costInput}
+                          placeholder="Part name (e.g. Engine assembly OEM)"
+                          placeholderTextColor="#9ca3af"
+                          value={row.name}
+                          onChangeText={(txt) =>
+                            setPartRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, name: txt } : r)))
+                          }
+                        />
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TextInput
+                            style={[styles.costInput, { flex: 1 }]}
+                            placeholder="Qty"
+                            placeholderTextColor="#9ca3af"
+                            keyboardType="decimal-pad"
+                            value={row.qty}
+                            onChangeText={(txt) =>
+                              setPartRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, qty: txt } : r)))
+                            }
+                          />
+                          <TextInput
+                            style={[styles.costInput, { flex: 1 }]}
+                            placeholder="Rate ₹ (advisor)"
+                            placeholderTextColor="#9ca3af"
+                            keyboardType="decimal-pad"
+                            value={row.unit_price}
+                            onChangeText={(txt) =>
+                              setPartRows((prev) =>
+                                prev.map((r, idx) => (idx === i ? { ...r, unit_price: txt } : r)),
+                              )
+                            }
+                          />
+                          <TouchableOpacity
+                            onPress={() =>
+                              setPartRows((prev) =>
+                                prev.map((r, idx) =>
+                                  idx === i
+                                    ? { ...r, kind: r.kind === 'LABOUR' ? 'PART' : 'LABOUR' }
+                                    : r,
+                                ),
+                              )
+                            }
+                            style={{
+                              justifyContent: 'center',
+                              paddingHorizontal: 10,
+                              backgroundColor: '#004AAD',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: '800', fontSize: 11 }}>{row.kind}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      onPress={() =>
+                        setPartRows((prev) => [...prev, { name: '', qty: '1', unit_price: '', kind: 'PART' }])
+                      }
+                    >
+                      <Text style={{ color: '#004AAD', fontWeight: '800', fontSize: 13 }}>+ Add part / labour</Text>
+                    </TouchableOpacity>
                   </View>
 
                   <View style={styles.section}>
@@ -369,7 +512,12 @@ export default function ExtraWorkApprovalScreen({ navigation }: any) {
 
                   <View style={styles.glossyRow}>
                     <GlossyButton
-                      label="Approve"
+                      label="Send to customer"
+                      color="#004AAD"
+                      onPress={sendToCustomer}
+                    />
+                    <GlossyButton
+                      label="Approve now"
                       color="#10B981"
                       onPress={() => handleApproval('APPROVE')}
                     />
@@ -642,7 +790,7 @@ const styles = StyleSheet.create({
   leadViewName: { fontSize: 16, fontWeight: '800', color: '#023D95' },
   leadViewMeta: { fontSize: 12, color: '#64748B', marginTop: 2 },
   leadViewCost: { fontSize: 18, fontWeight: '800', color: '#004AAD' },
-  glossyRow: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 8 },
+  glossyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, marginBottom: 8 },
   selectedRequestInfo: {
     backgroundColor: '#EAF2FF',
     padding: 12,

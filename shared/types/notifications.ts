@@ -91,6 +91,20 @@ export interface Notification {
   created_at: string;
 }
 
+/** In-app notification list: hide and delete rows older than this. */
+export const NOTIFICATION_RETENTION_DAYS = 7;
+
+export function notificationRetentionCutoffIso(now = new Date()): string {
+  return new Date(now.getTime() - NOTIFICATION_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function isNotificationWithinRetention(createdAt: string | null | undefined, now = new Date()): boolean {
+  if (!createdAt) return false;
+  const t = new Date(createdAt).getTime();
+  if (Number.isNaN(t)) return false;
+  return t >= now.getTime() - NOTIFICATION_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+}
+
 export interface NotificationPreferences {
   user_id: string;
   email_enabled: boolean;

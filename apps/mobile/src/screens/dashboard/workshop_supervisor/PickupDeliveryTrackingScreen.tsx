@@ -18,7 +18,7 @@ import { apiFetch } from '../../../lib/api';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
-import { isActivePickupBoyTask, isActiveDeliveryBoyTask } from '../../../lib/pickupTaskFlow';
+import { isActivePickupBoyTask, isDeliveryStage, isUnassignedDeliveryTask } from '../../../lib/pickupTaskFlow';
 import { fetchWorkshopPickupBoys, type PickupBoyOption } from '../../../lib/fetchWorkshopPickupBoys';
 import PickupAssignModal from '../../../components/workshop/PickupAssignModal';
 
@@ -31,6 +31,7 @@ export default function PickupDeliveryTrackingScreen() {
   const [pickupBoysLoading, setPickupBoysLoading] = useState(false);
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const [assignTask, setAssignTask] = useState<any | null>(null);
+  const [assignMode, setAssignMode] = useState<'pickup' | 'delivery'>('pickup');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -146,9 +147,18 @@ export default function PickupDeliveryTrackingScreen() {
         return;
       }
 
-      const openPickup = (data || []).filter(
-        (t: any) => isActivePickupBoyTask(t) || isActiveDeliveryBoyTask(t),
-      );
+      const rows = data || [];
+      const ids = rows.map((t: any) => t.id);
+      const { data: trackingRows } = ids.length
+        ? await supabase
+            .from('pickup_tracking')
+            .select('lead_id, drop_assigned_to')
+            .in('lead_id', ids)
+        : { data: [] as any[] };
+      const dropMap = new Map((trackingRows || []).map((r: any) => [r.lead_id, r.drop_assigned_to]));
+      const withDrop = rows.map((t: any) => ({ ...t, drop_assigned_to: dropMap.get(t.id) || null }));
+
+      const openPickup = withDrop.filter((t: any) => isActivePickupBoyTask(t) || isDeliveryStage(t));
 
       setTasks(openPickup);
     } catch (error) {
@@ -159,7 +169,8 @@ export default function PickupDeliveryTrackingScreen() {
     }
   };
 
-  async function openAssignModal(task: any) {
+  async function openAssignModal(task: any, mode: 'pickup' | 'delivery') {
+    setAssignMode(mode);
     setAssignTask(task);
     if (!workshopId) return;
     setPickupBoysLoading(true);
@@ -174,16 +185,26 @@ export default function PickupDeliveryTrackingScreen() {
     if (!assignTask) return;
     try {
       setSaving(true);
-      await apiFetch(`/api/workshop/leads/${assignTask.id}/assign-team`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pickup_boy_id: pickupBoyId }),
-      });
+      if (assignMode === 'delivery') {
+        await apiFetch(`/api/workshop/leads/${assignTask.id}/reassign-delivery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pickup_boy_id: pickupBoyId }),
+        });
+        Alert.alert('Assigned', `Delivery assigned to ${pickupBoyName}`);
+      } else {
+        await apiFetch(`/api/workshop/leads/${assignTask.id}/assign-team`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pickup_boy_id: pickupBoyId }),
+        });
+        Alert.alert('Assigned', `Pickup assigned to ${pickupBoyName}`);
+      }
       setAssignTask(null);
       if (workshopId) await fetchTasks(workshopId);
-      Alert.alert('Assigned', `Pickup assigned to ${pickupBoyName}`);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to assign pickup boy');
+      setAssignTask(null);
+      Alert.alert('Error', e?.message || 'Failed to assign');
     } finally {
       setSaving(false);
     }
@@ -196,14 +217,21 @@ export default function PickupDeliveryTrackingScreen() {
       case 'IN_TRANSIT':
       case 'EN_ROUTE':
         return COLORS.warning;
-      case 'PICKED_UP':
+      case 'READY_FOR_DELIVERY':
+      case 'COD_PENDING':
+        return COLORS.info;
+      case 'VEHICLE_DROPPED_AT_WORKSHOP':
+      case 'DROPPED':
         return COLORS.success;
       default:
         return COLORS.gray[500];
     }
   };
 
-  const unassignedCount = tasks.filter((t) => !t.assigned_pickup_boy_id).length;
+  const pickupOpen = tasks.filter((t) => isActivePickupBoyTask(t));
+  const deliveryOpen = tasks.filter((t) => isDeliveryStage(t));
+  const unassignedCount = pickupOpen.filter((t) => !t.assigned_pickup_boy_id).length;
+  const unassignedDelivery = deliveryOpen.filter((t) => isUnassignedDeliveryTask(t)).length;
 
   return (
     <ScrollView
@@ -220,7 +248,7 @@ export default function PickupDeliveryTrackingScreen() {
       }
     >
       <Text style={AC.sub}>
-        {unassignedCount} need pickup assign · {tasks.length} open
+        {unassignedCount} need pickup assign · {unassignedDelivery} need delivery assign
       </Text>
 
       {loading ? (
@@ -233,28 +261,50 @@ export default function PickupDeliveryTrackingScreen() {
         </View>
       ) : (
         tasks.map((task) => {
-          const unassigned = !task.assigned_pickup_boy_id;
+          const isDelivery = isDeliveryStage(task);
+          const needsDeliveryAssign = isUnassignedDeliveryTask(task);
+          const unassigned = !isDelivery && !task.assigned_pickup_boy_id;
+          const badgeRaw = isDelivery
+            ? String(task.status || 'READY_FOR_DELIVERY')
+            : unassigned
+              ? 'UNASSIGNED'
+              : String(task.pickup_status || task.status || 'PENDING');
+          const lineName = isDelivery
+            ? needsDeliveryAssign
+              ? 'Needs delivery assign'
+              : 'Delivery assigned'
+            : task.pickup_boy?.full_name || 'Unassigned';
           return (
             <View key={task.id} style={AC.listCard}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                <Text style={AC.name} numberOfLines={1}>
-                  {task.customer_name || 'Customer'}
-                </Text>
-                <View style={[AC.statusPill, { backgroundColor: getStatusColor(task.pickup_status) }]}>
-                  <Text style={AC.statusPillTxt}>
-                    {unassigned ? 'UNASSIGNED' : String(task.pickup_status || 'PENDING').replace(/_/g, ' ')}
+              <View style={styles.cardTop}>
+                <View style={styles.cardCopy}>
+                  <Text style={AC.name} numberOfLines={2}>
+                    {task.customer_name || 'Customer'}
+                  </Text>
+                  <Text style={styles.vehicleLine} numberOfLines={2}>
+                    {[task.vehicle_number, task.vehicle_make, task.vehicle_model].filter(Boolean).join(' · ')}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.assignHint,
+                      (unassigned || needsDeliveryAssign) && { color: '#EA580C' },
+                    ]}
+                  >
+                    {lineName}
                   </Text>
                 </View>
+                <View style={[AC.statusPill, styles.badge, { backgroundColor: getStatusColor(badgeRaw) }]}>
+                  <Text style={[AC.statusPillTxt, styles.badgeTxt]}>{badgeRaw.replace(/_/g, ' ')}</Text>
+                </View>
               </View>
-              <Text style={AC.meta}>
-                {[task.vehicle_number, task.vehicle_make, task.vehicle_model].filter(Boolean).join(' · ')}
-              </Text>
-              <Text style={[AC.meta, unassigned && { color: '#EA580C', fontWeight: '700' }]}>
-                {task.pickup_boy?.full_name || 'Unassigned'}
-              </Text>
               {unassigned ? (
-                <TouchableOpacity style={styles.assignBtn} onPress={() => openAssignModal(task)}>
+                <TouchableOpacity style={styles.assignBtn} onPress={() => openAssignModal(task, 'pickup')}>
                   <Text style={styles.assignBtnTxt}>Assign pickup</Text>
+                </TouchableOpacity>
+              ) : null}
+              {needsDeliveryAssign ? (
+                <TouchableOpacity style={styles.assignBtn} onPress={() => openAssignModal(task, 'delivery')}>
+                  <Text style={styles.assignBtnTxt}>Assign delivery</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -264,6 +314,7 @@ export default function PickupDeliveryTrackingScreen() {
 
       <PickupAssignModal
         visible={!!assignTask}
+        title={assignMode === 'delivery' ? 'Assign delivery' : 'Assign pickup'}
         leadLabel={assignTask?.customer_name}
         pickupBoys={pickupBoys}
         loading={pickupBoysLoading}
@@ -278,11 +329,42 @@ export default function PickupDeliveryTrackingScreen() {
 const styles = StyleSheet.create({
   emptyContainer: { padding: SPACING.xl, alignItems: 'center' },
   emptyText: { fontSize: SIZES.md, color: COLORS.gray[500] },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  cardCopy: { flex: 1, minWidth: 0, paddingRight: 4 },
+  vehicleLine: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: COLORS.gray[500],
+  },
+  assignHint: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: COLORS.gray[500],
+  },
+  badge: {
+    flexShrink: 0,
+    maxWidth: 132,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  badgeTxt: {
+    fontSize: 9,
+    lineHeight: 13,
+    textAlign: 'center',
+  },
   assignBtn: {
-    marginTop: 10,
+    marginTop: 14,
     backgroundColor: '#004AAD',
     borderRadius: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: 'center',
   },
   assignBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 14 },

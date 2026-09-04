@@ -134,7 +134,7 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to load pickup tracking', details: trackingError.message }, { status: 500 });
     }
 
-    const canAct = lead.assigned_pickup_boy_id === userProfile.id || (tracking as any)?.drop_assigned_to === userProfile.id;
+    const canAct = (tracking as any)?.drop_assigned_to === userProfile.id;
     if (!canAct) return NextResponse.json({ error: 'Not assigned to this delivery' }, { status: 403 });
 
     // Check OTP verification (either on tracking or pickup_otps)

@@ -16,7 +16,7 @@ import WorkVideosUpload from '@/components/mechanic/WorkVideosUpload';
 import PartsUsedUpload from '@/components/mechanic/PartsUsedUpload';
 import { getStatusColor as getLeadStatusColor, getStatusLabel as getLeadStatusLabel } from '@/lib/services/leadStatusService';
 import { sortServiceChecklistItems } from '@/lib/workshop/serviceChecklistOrder';
-import { WorkshopPageHeader, WorkshopPageShell } from '@/components/workshop/WorkshopUi';
+import { relatedPartsForJob, type KitPart } from '@/lib/workshop/additionalJobKits';
 
 interface JobDetail {
   id: string;
@@ -156,6 +156,7 @@ function MechanicJobDetailPageContent() {
   const [rowPriority, setRowPriority] = useState<Record<string, 'HIGH' | 'MEDIUM' | 'LOW'>>({});
   const [rowNote, setRowNote] = useState<Record<string, string>>({});
   const [rowCost, setRowCost] = useState<Record<string, string>>({});
+  const [rowRelatedPicks, setRowRelatedPicks] = useState<Record<string, Record<string, boolean>>>({});
   const [submittingJobIds, setSubmittingJobIds] = useState<Record<string, boolean>>({});
   const [zoomedMedia, setZoomedMedia] = useState<MediaItem | null>(null);
   const [beforePhotoTypes, setBeforePhotoTypes] = useState<string[]>([]);
@@ -311,6 +312,7 @@ function MechanicJobDetailPageContent() {
       setRowPriority({});
       setRowNote({});
       setRowCost({});
+      setRowRelatedPicks({});
       setSubmittingJobIds({});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -419,10 +421,37 @@ function MechanicJobDetailPageContent() {
     return filteredAdditionalMasterItems.filter((it) => !selected.has(it.id)).slice(0, 20);
   }, [filteredAdditionalMasterItems, selectedAdditionalJobIds]);
 
+  const additionalMasterNames = useMemo(
+    () => additionalMasterItems.map((it) => it.name).filter(Boolean),
+    [additionalMasterItems],
+  );
+
+  function relatedPartsForSelected(it: AdditionalMasterItem): KitPart[] {
+    return relatedPartsForJob(it.name, additionalMasterNames);
+  }
+
+  function partsBreakdownForJob(it: AdditionalMasterItem) {
+    const picks = rowRelatedPicks[it.id] || {};
+    return relatedPartsForSelected(it)
+      .filter((p) => picks[p.name] !== false)
+      .map((p) => ({ name: p.name, qty: 1, unit_price: 0, amount: 0, kind: p.kind }));
+  }
+
   function addSelectedAdditionalJob(it: AdditionalMasterItem) {
     setSelectedAdditionalJobIds((prev) => (prev.includes(it.id) ? prev : [...prev, it.id]));
     // Default row values
     setRowPriority((p) => (p[it.id] ? p : { ...p, [it.id]: 'MEDIUM' }));
+    const rel = relatedPartsForJob(it.name, additionalMasterItems.map((x) => x.name));
+    if (rel.length) {
+      setRowRelatedPicks((p) => {
+        if (p[it.id]) return p;
+        const next: Record<string, boolean> = {};
+        rel.forEach((row) => {
+          next[row.name] = true;
+        });
+        return { ...p, [it.id]: next };
+      });
+    }
   }
 
   function removeSelectedAdditionalJob(id: string) {
@@ -438,6 +467,11 @@ function MechanicJobDetailPageContent() {
       return next;
     });
     setRowCost((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+    setRowRelatedPicks((p) => {
       const next = { ...p };
       delete next[id];
       return next;
@@ -476,6 +510,7 @@ function MechanicJobDetailPageContent() {
           estimated_cost: Number.isFinite(cost) ? cost : 0,
           category: 'ADDITIONAL_JOB',
           is_urgent: priority === 'HIGH',
+          parts_breakdown: partsBreakdownForJob(it),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -555,6 +590,7 @@ function MechanicJobDetailPageContent() {
               estimated_cost: Number.isFinite(costNum) ? costNum : 0,
               category: 'ADDITIONAL_JOB',
               is_urgent: priority === 'HIGH',
+              parts_breakdown: partsBreakdownForJob(it),
             }),
           });
           const data = await res.json().catch(() => ({}));
@@ -573,6 +609,7 @@ function MechanicJobDetailPageContent() {
       setRowPriority({});
       setRowNote({});
       setRowCost({});
+      setRowRelatedPicks({});
 
       await fetchJobDetails();
       alert('Requests submitted!');
@@ -3009,7 +3046,7 @@ function MechanicJobDetailPageContent() {
                     )}
                   </div>
                   <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1 leading-relaxed">
-                    Select required jobs from master list, set priority, and add notes.
+                    Select required jobs (e.g. Clutch), tick related parts, set priority, and send to advisor. Pricing advisor fill karega.
                   </p>
                 </div>
                 <button
@@ -3149,6 +3186,34 @@ function MechanicJobDetailPageContent() {
                                       </p>
                                     )}
                                   </div>
+                                  {relatedPartsForSelected(it).length > 0 && (
+                                    <div>
+                                      <label className="block text-[10px] font-semibold text-gray-600 mb-1">
+                                        Related parts / labour
+                                      </label>
+                                      <div className="space-y-1">
+                                        {relatedPartsForSelected(it).map((p) => {
+                                          const on = rowRelatedPicks[it.id]?.[p.name] !== false;
+                                          return (
+                                            <label key={p.name} className="flex items-center gap-2 text-xs text-gray-800">
+                                              <input
+                                                type="checkbox"
+                                                checked={on}
+                                                onChange={() =>
+                                                  setRowRelatedPicks((prev) => ({
+                                                    ...prev,
+                                                    [it.id]: { ...(prev[it.id] || {}), [p.name]: !on },
+                                                  }))
+                                                }
+                                              />
+                                              <span>{p.name}</span>
+                                              <span className="text-[10px] uppercase text-gray-400">{p.kind}</span>
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -3217,6 +3282,36 @@ function MechanicJobDetailPageContent() {
                                       </button>
                                     </td>
                                   </tr>
+                                  {relatedPartsForSelected(it).length > 0 ? (
+                                    <tr key={`${it.id}-parts`} className="bg-slate-50">
+                                      <td colSpan={4} className="px-3 pb-3">
+                                        <p className="mb-1 text-[10px] font-semibold text-gray-600">
+                                          Related parts / labour — tick jo advisor ko bhejna hai
+                                        </p>
+                                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                          {relatedPartsForSelected(it).map((p) => {
+                                            const on = rowRelatedPicks[it.id]?.[p.name] !== false;
+                                            return (
+                                              <label key={p.name} className="flex items-center gap-1.5 text-xs text-gray-800">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={on}
+                                                  onChange={() =>
+                                                    setRowRelatedPicks((prev) => ({
+                                                      ...prev,
+                                                      [it.id]: { ...(prev[it.id] || {}), [p.name]: !on },
+                                                    }))
+                                                  }
+                                                />
+                                                <span>{p.name}</span>
+                                                <span className="text-[10px] uppercase text-gray-400">{p.kind}</span>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ) : null}
                                 );
                               })}
                             </tbody>
@@ -3347,6 +3442,18 @@ function MechanicJobDetailPageContent() {
                         >
                           <td className="py-3 px-3 align-top">
                             <div className="font-semibold text-gray-900">{request.description}</div>
+                            {Array.isArray(request.parts_breakdown) && request.parts_breakdown.length > 0 ? (
+                              <div className="mt-1 text-[11px] text-slate-600">
+                                Parts:{' '}
+                                {request.parts_breakdown
+                                  .map((p: any) => `${p.name}${p.qty ? ` ×${p.qty}` : ''}`)
+                                  .join(', ')}
+                              </div>
+                            ) : (
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                Parts list optional — add names without prices; advisor will price.
+                              </div>
+                            )}
                           </td>
                           <td className="py-3 px-3 align-top">
                             <span

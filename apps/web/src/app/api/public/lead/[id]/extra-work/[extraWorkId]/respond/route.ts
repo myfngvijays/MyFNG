@@ -130,6 +130,23 @@ export async function POST(
       // ignore
     }
 
+    if (action === 'APPROVE') {
+      try {
+        await updater
+          .from('mechanic_jobs')
+          .update({ mechanic_status: 'IN_PROGRESS', updated_at: now })
+          .eq('lead_id', leadId)
+          .in('mechanic_status', ['HOLD', 'WAITING_APPROVAL', 'ON_HOLD']);
+        await updater
+          .from('service_leads')
+          .update({ status: 'IN_PROGRESS', updated_at: now })
+          .eq('id', leadId)
+          .eq('status', 'ON_HOLD');
+      } catch {
+        // ignore resume
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,

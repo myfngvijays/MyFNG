@@ -27,6 +27,7 @@ import {
   resolveReferralVoucherForBooking,
 } from '@/lib/referral-voucher-apply';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
+import { markCustomerBookingAbandonedCleared } from '@/lib/services/bookingAbandonmentGuard';
 import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
 import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
 import { upsertBookingServiceLead } from '@/lib/service-lead-reopen';
@@ -408,6 +409,12 @@ export async function createAuthenticatedServiceBooking(
   }
 
   await saveBookedVehicleToProfile(supabaseAdmin, leadInsert, normalizedPhone);
+
+  // Full booking done — stop incomplete / cart-abandoned WhatsApp reminders.
+  await markCustomerBookingAbandonedCleared(supabaseAdmin, {
+    customerId: customer.id,
+    phone: normalizedPhone,
+  });
 
   const telecrmLead = {
     ...leadInsert,

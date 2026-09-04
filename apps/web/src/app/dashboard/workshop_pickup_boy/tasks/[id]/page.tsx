@@ -16,6 +16,7 @@ import {
   WorkshopPageShell,
   WorkshopCard,
 } from '@/components/workshop/WorkshopUi';
+import { isDeliveryJob } from '@/lib/workshop/pickupTaskFlow';
 
 export default function PickupTaskDetailPage() {
   const router = useRouter();
@@ -60,7 +61,21 @@ export default function PickupTaskDetailPage() {
         return;
       }
 
-      const isDelivery = leadData.status === 'READY_FOR_DELIVERY' || leadData.status === 'COD_PENDING';
+      const { data: pickupTracking } = await supabase
+        .from('pickup_tracking')
+        .select(
+          'pickup_time_slot, drop_time_slot, drop_status, drop_otp, drop_otp_verified_at, drop_assigned_to, drop_assigned_at, drop_start_time, drop_out_for_delivery_at, drop_completed_time'
+        )
+        .eq('lead_id', taskId)
+        .maybeSingle();
+
+      const isDelivery = isDeliveryJob({
+        ...leadData,
+        drop_assigned_to: pickupTracking?.drop_assigned_to,
+        drop_status: pickupTracking?.drop_status,
+        drop_otp_verified_at: pickupTracking?.drop_otp_verified_at,
+        drop_completed_time: pickupTracking?.drop_completed_time,
+      });
       const desiredOtpType = isDelivery ? 'DROP' : 'PICKUP';
 
       // Determine OTP verified status from the correct source:
@@ -76,13 +91,6 @@ export default function PickupTaskDetailPage() {
         .eq('otp_type', desiredOtpType)
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
-
-      // Fetch pickup tracking for time slot + delivery state
-      const { data: pickupTracking } = await supabase
-        .from('pickup_tracking')
-        .select('pickup_time_slot, drop_time_slot, drop_status, drop_otp, drop_otp_verified_at')
-        .eq('lead_id', taskId)
         .maybeSingle();
 
       if (isDelivery) {
@@ -139,6 +147,11 @@ export default function PickupTaskDetailPage() {
           drop_status: pickupTracking.drop_status,
           drop_otp: pickupTracking.drop_otp,
           drop_otp_verified_at: pickupTracking.drop_otp_verified_at,
+          drop_assigned_to: pickupTracking.drop_assigned_to,
+          drop_assigned_at: pickupTracking.drop_assigned_at,
+          drop_start_time: pickupTracking.drop_start_time,
+          drop_out_for_delivery_at: pickupTracking.drop_out_for_delivery_at,
+          drop_completed_time: pickupTracking.drop_completed_time,
           // Ensure we display DROP OTP even if pickup_otps table isn't readable
           ...(isDelivery && pickupTracking.drop_otp ? { pickup_otp: pickupTracking.drop_otp } : null),
         }));
@@ -359,11 +372,11 @@ export default function PickupTaskDetailPage() {
     );
   }
 
-  const isDeliveryTask = task.status === 'READY_FOR_DELIVERY' || task.status === 'COD_PENDING';
+  const isDeliveryTask = isDeliveryJob(task);
 
   // Show Start Pickup button only if status is ACCEPTED or ASSIGNED_TO_WORKSHOP and OTP not generated
   // Don't show if status is ON_THE_WAY (OTP will be auto-generated on navigate)
-  const canStart = (
+  const canStart = !isDeliveryTask && (
     (task.status === 'ACCEPTED' || task.status === 'ASSIGNED_TO_WORKSHOP') 
     && !task.pickup_otp
   );
@@ -373,7 +386,7 @@ export default function PickupTaskDetailPage() {
   // 2. OTP exists (either in service_leads.pickup_otp or pickup_otps table - already merged in fetchTaskDetails)
   // 3. OTP is not yet verified
   const hasOTP = !!task.pickup_otp;
-  const canVerifyOTP = (
+  const canVerifyOTP = !isDeliveryTask && (
     task.status === 'ON_THE_WAY' || 
     task.status === 'ACCEPTED' || 
     task.status === 'ASSIGNED_TO_WORKSHOP' ||
@@ -381,12 +394,18 @@ export default function PickupTaskDetailPage() {
   ) && hasOTP && !otpVerified;
   const canVerifyDeliveryOtp = isDeliveryTask && hasOTP && !otpVerified;
   const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'VEHICLE_IN_TRANSIT';
-  const canMarkArrived = task.status === 'VEHICLE_IN_TRANSIT' && otpVerified;
+  const canMarkArrived = !isDeliveryTask && task.status === 'VEHICLE_IN_TRANSIT' && otpVerified;
   // For delivery, require DELIVERY OTP verified (drop_otp_verified_at is the source of truth; we sync otpVerified from it).
+  const deliveryDone =
+    isDeliveryTask &&
+    (!!task.drop_otp_verified_at ||
+      String(task.drop_status || '').toUpperCase() === 'DELIVERED' ||
+      String(task.status || '').toUpperCase() === 'DELIVERED' ||
+      !!task.drop_completed_time);
   const canComplete = isDeliveryTask
-    ? otpVerified
+    ? otpVerified && !deliveryDone
     : (task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' || task.status === 'VEHICLE_IN_TRANSIT') && otpVerified;
-  const canWriteObservation = otpVerified && (task.status === 'VEHICLE_IN_TRANSIT' || task.status === 'VEHICLE_DROPPED_AT_WORKSHOP');
+  const canWriteObservation = !isDeliveryTask && otpVerified && (task.status === 'VEHICLE_IN_TRANSIT' || task.status === 'VEHICLE_DROPPED_AT_WORKSHOP');
 
   async function handleSaveObservation() {
     const text = observationText.trim();
@@ -533,7 +552,12 @@ export default function PickupTaskDetailPage() {
             <div className="min-w-0 flex-1">
               <p className="text-xs sm:text-sm text-gray-600">Lead Status</p>
               <p className="text-lg sm:text-xl font-bold">{task.status.replace(/_/g, ' ')}</p>
-              {otpVerified && (
+              {deliveryDone && (
+                <p className="text-xs sm:text-sm text-green-600 font-semibold mt-0.5 sm:mt-1">
+                  ✓ Delivered to customer
+                </p>
+              )}
+              {otpVerified && !deliveryDone && (
                 <p className="text-xs sm:text-sm text-green-600 font-semibold mt-0.5 sm:mt-1">
                   ✓ {isDeliveryTask ? 'Delivery OTP Verified' : 'OTP Verified'}
                 </p>
@@ -618,12 +642,12 @@ export default function PickupTaskDetailPage() {
                   <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-500">
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-gray-400" />
-            Pickup Location
+            {isDeliveryTask ? 'Delivery Location' : 'Pickup Location'}
             </div>
                   </td>
                   <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-gray-900">
+                    <div className="flex flex-col gap-2 min-w-0">
+                      <span className="font-medium text-gray-900 break-words">
                         {task.address || task.customer_address || task.pickup_address || 'Address not provided'}
                       </span>
                       {(task.city || task.pincode) && (
@@ -631,14 +655,14 @@ export default function PickupTaskDetailPage() {
                           {task.city || ''}{task.pincode ? `, ${task.pincode}` : ''}
                         </span>
                       )}
-            <button
-              onClick={openGoogleMaps}
-                        className="btn-secondary bg-green-600 hover:bg-green-700 text-white flex items-center justify-center gap-1.5 text-xs px-3 py-1 rounded w-fit mt-1"
-            >
+                      <button
+                        onClick={openGoogleMaps}
+                        className="btn-secondary bg-green-600 hover:bg-green-700 text-white inline-flex items-center justify-center gap-1.5 text-xs px-3 py-1.5 rounded-full w-fit mt-1 shrink-0"
+                      >
                         <Navigation className="w-3 h-3" />
-                        Open in Google Maps
-            </button>
-          </div>
+                        Directions
+                      </button>
+                    </div>
                   </td>
                 </tr>
 
@@ -731,6 +755,66 @@ export default function PickupTaskDetailPage() {
               </tbody>
             </table>
           </div>
+        </WorkshopCard>
+
+        <WorkshopCard>
+          <h3 className="text-base sm:text-lg font-semibold text-[#023D95] mb-3 sm:mb-4">Timeline</h3>
+          {isDeliveryTask ? (
+            <ol className="space-y-3 text-sm">
+              {[
+                {
+                  title: 'Delivery assigned',
+                  done: !!(task.drop_assigned_to || task.drop_assigned_at),
+                  at: task.drop_assigned_at,
+                },
+                {
+                  title: 'Out for delivery',
+                  done: !!(task.drop_start_time || task.drop_status),
+                  at: task.drop_start_time || task.drop_out_for_delivery_at,
+                },
+                {
+                  title: 'Delivery OTP verified',
+                  done: !!task.drop_otp_verified_at,
+                  at: task.drop_otp_verified_at,
+                },
+                {
+                  title: 'Delivered to customer',
+                  done: deliveryDone,
+                  at: task.drop_completed_time || task.drop_otp_verified_at || task.delivered_at,
+                },
+              ].map((step) => (
+                <li key={step.title} className={`flex gap-3 ${step.done ? 'text-slate-900' : 'text-slate-400'}`}>
+                  <span
+                    className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 ${step.done ? 'bg-[#023D95]' : 'bg-slate-300'}`}
+                  />
+                  <div>
+                    <p className="font-semibold">{step.title}</p>
+                    {step.at ? <p className="text-xs text-slate-500">{formatDateTime(step.at)}</p> : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <ol className="space-y-3 text-sm">
+              {[
+                { title: 'Assigned', done: !!task.assigned_pickup_boy_id, at: task.pickup_assigned_at },
+                { title: 'Pickup started', done: !!task.pickup_start_time, at: task.pickup_start_time },
+                { title: 'Pickup OTP verified', done: !!task.pickup_otp_verified_at, at: task.pickup_otp_verified_at },
+                { title: 'Vehicle picked', done: !!task.pickup_picked_time, at: task.pickup_picked_time },
+                { title: 'Arrived at workshop', done: !!task.pickup_arrival_time, at: task.pickup_arrival_time },
+              ].map((step) => (
+                <li key={step.title} className={`flex gap-3 ${step.done ? 'text-slate-900' : 'text-slate-400'}`}>
+                  <span
+                    className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 ${step.done ? 'bg-[#023D95]' : 'bg-slate-300'}`}
+                  />
+                  <div>
+                    <p className="font-semibold">{step.title}</p>
+                    {step.at ? <p className="text-xs text-slate-500">{formatDateTime(step.at)}</p> : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </WorkshopCard>
 
         {/* Observations Section */}

@@ -8,6 +8,7 @@ import {
   Wrench, Award, ThumbsUp, ThumbsDown
 } from 'lucide-react';
 import { AdvisorPageHeader } from '@/components/advisor/AdvisorPageHeader';
+import { istYmd } from '@/lib/telecaller/crmDateRange';
 
 interface DailyMetrics {
   date: string;
@@ -53,9 +54,10 @@ interface IssueLog {
 
 export default function DailyReportPage() {
   const router = useRouter();
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(istYmd());
   const [metrics, setMetrics] = useState<DailyMetrics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
@@ -109,6 +111,7 @@ export default function DailyReportPage() {
         recommendations.push('Great performance! All metrics are within acceptable ranges.');
       }
 
+      setLoadError(null);
       setMetrics({
         date: selectedDate,
         totalJobs: report.total || 0,
@@ -125,7 +128,7 @@ export default function DailyReportPage() {
         leads: Array.isArray(json.leads) ? json.leads : [],
       });
     } catch (error) {
-      console.error('Error fetching daily report:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load daily report');
     } finally {
       setLoading(false);
     }
@@ -204,7 +207,7 @@ export default function DailyReportPage() {
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                max={new Date().toISOString().split('T')[0]}
+                max={istYmd()}
                 className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800"
               />
               <button
@@ -228,11 +231,19 @@ export default function DailyReportPage() {
           }
         />
 
+        {loadError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            Daily report load nahi hua: {loadError}
+          </div>
+        ) : null}
+
         {!metrics ? (
           <div className="card text-center py-8 sm:py-10 md:py-12">
             <Calendar className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-gray-400 mx-auto mb-2 sm:mb-3 md:mb-4" />
             <p className="text-lg sm:text-xl font-semibold text-gray-700">No Data Available</p>
-            <p className="text-gray-600 mt-1.5 sm:mt-2 text-xs sm:text-sm">No jobs found for selected date</p>
+            <p className="text-gray-600 mt-1.5 sm:mt-2 text-xs sm:text-sm">
+              {loadError ? 'Server se data nahi aaya.' : 'No jobs found for selected date'}
+            </p>
           </div>
         ) : (
           <>

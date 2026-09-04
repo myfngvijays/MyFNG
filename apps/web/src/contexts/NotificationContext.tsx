@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Notification as NotificationRow } from '@/shared/types/notifications';
+import { isNotificationWithinRetention, notificationRetentionCutoffIso } from '@/shared/types/notifications';
 import toast from 'react-hot-toast';
 import { ensureWebPushSubscribed } from '@/lib/push/registerWebPush';
 import { usePathname } from 'next/navigation';
@@ -182,10 +183,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     try {
       console.log('[NotificationContext] Fetching notifications for userId:', userId);
+      const cutoff = notificationRetentionCutoffIso();
+      void supabase.from('notifications').delete().eq('user_id', userId).lt('created_at', cutoff);
+
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', userId)
+        .gte('created_at', cutoff)
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -237,7 +242,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         },
         (payload) => {
           const newNotification = payload.new as NotificationRow;
-          
+          if (!isNotificationWithinRetention(newNotification.created_at)) return;
+
           // Add to notifications list
           setNotifications(prev => [newNotification, ...prev]);
           setUnreadCount(prev => prev + 1);

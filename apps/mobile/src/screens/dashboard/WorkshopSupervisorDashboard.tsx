@@ -23,7 +23,7 @@ import { formatDateTime } from '@/lib/dateFormat';
 import { useAuth } from '../../context/AuthContext';
 import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
-import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc, isQcPassed } from '../../lib/workshopJobFlow';
+import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isWaitingDeliveryAssign, isDeliveryInProgress, isPendingQc, isQcPassed, FLOOR_DONE_STATUSES } from '../../lib/workshopJobFlow';
 import { fetchWorkshopPickupBoys, type PickupBoyOption } from '../../lib/fetchWorkshopPickupBoys';
 import PickupAssignModal from '../../components/workshop/PickupAssignModal';
 
@@ -110,7 +110,33 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         (user: any) => user.role?.role_code === 'WORKSHOP_MECHANIC',
       );
 
-      const leadsData = leadsRes.data || [];
+      const leadsDataRaw = leadsRes.data || [];
+      const trackIds = leadsDataRaw
+        .filter((lead: any) => {
+          const status = String(lead.status || '').toUpperCase();
+          if (['REJECTED', 'CANCELLED', 'CLOSED'].includes(status)) return false;
+          return (
+            Boolean(lead.assigned_pickup_boy_id) ||
+            status === 'READY_FOR_DELIVERY' ||
+            status === 'COD_PENDING' ||
+            status === 'DELIVERED'
+          );
+        })
+        .map((lead: any) => lead.id);
+      let dropByLead: Record<string, any> = {};
+      if (trackIds.length) {
+        const { data: tracks } = await supabase
+          .from('pickup_tracking')
+          .select('lead_id, drop_assigned_to, drop_status, drop_otp_verified_at, drop_completed_time')
+          .in('lead_id', trackIds);
+        for (const row of tracks || []) {
+          dropByLead[String((row as any).lead_id)] = row;
+        }
+      }
+      const leadsData = leadsDataRaw.map((lead: any) => ({
+        ...lead,
+        ...(dropByLead[String(lead.id)] || {}),
+      }));
       const workshopJobs =
         jobsRes.data?.filter(
           (job: any) => job.service_leads?.workshop_id === workshopId && !job.service_leads?.deleted_at,
@@ -144,10 +170,13 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
 
       const pickupWaitingList = leadsData.filter((lead: any) => isWaitingPickupAssign(lead));
       const pickupInProgressList = leadsData.filter((lead: any) => isPickupInProgress(lead));
+      const deliveryWaitingList = leadsData.filter((lead: any) => isWaitingDeliveryAssign(lead));
+      const deliveryInProgressList = leadsData.filter((lead: any) => isDeliveryInProgress(lead));
       const mechanicWaitingList = leadsData.filter(
         (lead: any) =>
           !lead.assigned_mechanic_id &&
           isReadyForMechanicAssign(lead) &&
+          !FLOOR_DONE_STATUSES.has(String(lead.status || '').toUpperCase()) &&
           !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(
             String(lead.status || '').toUpperCase(),
           ),
@@ -155,6 +184,8 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
       const unassignedJobsList = [
         ...pickupWaitingList.map((lead: any) => ({ ...lead, assignKind: 'pickup' as const })),
         ...pickupInProgressList.map((lead: any) => ({ ...lead, assignKind: 'pickup_track' as const })),
+        ...deliveryWaitingList.map((lead: any) => ({ ...lead, assignKind: 'delivery' as const })),
+        ...deliveryInProgressList.map((lead: any) => ({ ...lead, assignKind: 'delivery_track' as const })),
         ...mechanicWaitingList.map((lead: any) => ({ ...lead, assignKind: 'mechanic' as const })),
       ];
 
@@ -164,9 +195,16 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
 
       const pendingQc = leadsData.filter((lead: any) => isPendingQc(lead)).length;
 
-      const pickupActive = leadsData.filter((lead: any) =>
-        ['ASSIGNED', 'ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT'].includes(lead.pickup_status),
-      ).length;
+      const pickupActive = leadsData.filter((lead: any) => {
+        const status = String(lead.status || '').toUpperCase();
+        if (FLOOR_DONE_STATUSES.has(status) || status === 'COD_PENDING') return false;
+        return ['ASSIGNED', 'ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT'].includes(
+          String(lead.pickup_status || '').toUpperCase(),
+        );
+      }).length;
+
+      const unassignedCount =
+        pickupWaitingList.length + mechanicWaitingList.length + deliveryWaitingList.length;
 
       const completedInRange = leadsData.filter((lead: any) => {
         if (!isQcPassed(lead)) return false;
@@ -190,8 +228,8 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         pendingLeads,
         extraJobs: extraRes.count || 0,
         pickupActive,
-        unassigned: pickupWaitingList.length + mechanicWaitingList.length,
-        pickupWaiting: pickupWaitingList.length,
+        unassigned: unassignedCount,
+        pickupWaiting: pickupWaitingList.length + deliveryWaitingList.length,
         mechanicUnassigned: mechanicWaitingList.length,
       });
 
@@ -405,7 +443,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         {[
           { key: 'mech', label: 'Mechanics', value: stats.totalMechanics, accent: '#004AAD', screen: 'TeamOverview' },
           { key: 'active', label: 'Active Jobs', value: stats.activeJobs, accent: '#D97706', screen: 'JobMonitoring' },
-          { key: 'assign', label: 'To Assign', value: stats.unassigned, accent: '#EA580C', screen: unassignedJobs.some((j) => j.assignKind === 'pickup') ? 'PickupDeliveryTracking' : 'MechanicAssignment' },
+          { key: 'assign', label: 'To Assign', value: stats.unassigned, accent: '#EA580C', screen: unassignedJobs.some((j) => ['pickup', 'delivery'].includes(String(j.assignKind))) ? 'PickupDeliveryTracking' : 'MechanicAssignment' },
           { key: 'leads', label: 'Pending Leads', value: stats.pendingLeads, accent: '#0284C7', screen: 'PendingLeads' },
           { key: 'done', label: 'Completed', value: stats.completedToday, accent: '#059669', screen: 'DailyReport' },
           { key: 'qc', label: 'Pending QC', value: stats.pendingQc, accent: '#6D28D9', screen: 'QCCheck' },
@@ -435,7 +473,9 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         <TouchableOpacity
           onPress={() =>
             go(
-              unassignedJobs.some((j) => j.assignKind === 'pickup')
+              unassignedJobs.some((j) =>
+                ['pickup', 'pickup_track', 'delivery', 'delivery_track'].includes(String(j.assignKind)),
+              )
                 ? 'PickupDeliveryTracking'
                 : 'MechanicAssignment',
             )
@@ -448,6 +488,26 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
         unassignedJobs.map((job) => {
           const pickup = job.assignKind === 'pickup';
           const pickupTrack = job.assignKind === 'pickup_track';
+          const delivery = job.assignKind === 'delivery';
+          const deliveryTrack = job.assignKind === 'delivery_track';
+          const badge = pickup
+            ? 'PICKUP'
+            : pickupTrack
+              ? 'IN PICKUP'
+              : delivery
+                ? 'DELIVERY'
+                : deliveryTrack
+                  ? 'OUT FOR DELIVERY'
+                  : 'MECHANIC';
+          const action = pickup
+            ? 'Assign pickup'
+            : pickupTrack
+              ? 'Track pickup'
+              : delivery
+                ? 'Assign delivery'
+                : deliveryTrack
+                  ? 'Track delivery'
+                  : 'Assign Mechanic';
           return (
           <View key={`${job.assignKind}-${job.id}`} style={styles.jobCard}>
             <View style={styles.jobHeader}>
@@ -456,7 +516,7 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
               </Text>
               <View style={styles.urgentBadge}>
                 <Text style={styles.urgentText}>
-                  {pickup ? 'PICKUP' : pickupTrack ? 'IN PICKUP' : 'MECHANIC'}
+                  {badge}
                 </Text>
               </View>
             </View>
@@ -480,14 +540,18 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
               onPress={() =>
                 pickup
                   ? openAssignPickup(job)
-                  : pickupTrack
+                  : pickupTrack || delivery || deliveryTrack
                     ? go('PickupDeliveryTracking')
                     : go('MechanicAssignment', { leadId: job.id })
               }
             >
-              <Ionicons name={pickupTrack ? 'navigate' : 'person-add'} size={14} color={COLORS.white} />
+              <Ionicons
+                name={pickupTrack || deliveryTrack ? 'navigate' : 'person-add'}
+                size={14}
+                color={COLORS.white}
+              />
               <Text style={styles.assignButtonText} maxFontSizeMultiplier={1.1}>
-                {pickup ? 'Assign pickup' : pickupTrack ? 'Track pickup' : 'Assign Mechanic'}
+                {action}
               </Text>
             </TouchableOpacity>
           </View>

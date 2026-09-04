@@ -562,10 +562,48 @@ export async function GET(
         .map((s) => s.trim())
         .filter((s) => s.length > 1 && !isUuid(s));
 
+    const oilTypeToken = (name: string): 'fully' | 'semi' | 'mineral' | null => {
+      const n = normalizeName(name);
+      if (!n) return null;
+      if (/\bfully\b/.test(n) || n.includes('full synthetic')) return 'fully';
+      if (/\bsemi\b/.test(n)) return 'semi';
+      if (/\bmineral\b/.test(n)) return 'mineral';
+      return null;
+    };
+
+    const serviceNamesCompatible = (a: string, b: string) => {
+      const oilA = oilTypeToken(a);
+      const oilB = oilTypeToken(b);
+      if (oilA && oilB && oilA !== oilB) return false;
+      return true;
+    };
+
     const resolveLeadServiceTypeIds = async (leadRow: any): Promise<string[]> => {
       const uuidIds = parseIdList(leadRow?.service_type_ids).filter(isUuid);
-      const nameHints = parseServiceNameHints(leadRow?.service_type);
+      const fullName = String(leadRow?.service_type || '').trim();
+      const nameHints = parseServiceNameHints(fullName);
       const found = new Set<string>(uuidIds);
+      const leadOil = oilTypeToken(fullName);
+
+      if (fullName) {
+        try {
+          const { data: exactRows } = await supabase
+            .from('service_types')
+            .select('id, name')
+            .ilike('name', fullName)
+            .limit(10);
+          for (const st of exactRows || []) {
+            const id = String((st as any)?.id || '').trim();
+            const stName = String((st as any)?.name || '');
+            if (!id) continue;
+            if (!serviceNamesCompatible(fullName, stName)) continue;
+            if (normalizeName(stName) === normalizeName(fullName)) found.add(id);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       if (nameHints.length === 0) return [...found];
       try {
         const orFilter = nameHints
@@ -575,20 +613,129 @@ export async function GET(
           .join(',');
         if (!orFilter) return [...found];
         const { data } = await supabase.from('service_types').select('id, name').or(orFilter).limit(25);
+        const scored: Array<{ id: string; name: string; score: number }> = [];
         for (const st of data || []) {
           const id = String((st as any)?.id || '').trim();
-          const stName = normalizeName(String((st as any)?.name || ''));
-          if (!id || !stName) continue;
-          const match = nameHints.some((h) => {
+          const stName = String((st as any)?.name || '');
+          const stNorm = normalizeName(stName);
+          if (!id || !stNorm) continue;
+          const stOil = oilTypeToken(stName);
+          // Lead says Semi → never pick Fully (and vice versa).
+          if (leadOil && stOil && leadOil !== stOil) continue;
+
+          let best = 0;
+          for (const h of nameHints) {
             const nh = normalizeName(h);
-            return stName === nh || stName.includes(nh) || nh.includes(stName);
-          });
-          if (match) found.add(id);
+            const hintOil = oilTypeToken(h);
+            if (hintOil && stOil && hintOil !== stOil) continue;
+            if (stNorm === nh) best = Math.max(best, 100);
+            else if (stNorm.startsWith(nh) || nh.startsWith(stNorm)) best = Math.max(best, 80);
+            else if (stNorm.includes(nh) || nh.includes(stNorm)) best = Math.max(best, 50);
+          }
+          if (best > 0) scored.push({ id, name: stName, score: best });
+        }
+        scored.sort((a, b) => b.score - a.score);
+
+        const nonOil = scored.filter((row) => !oilTypeToken(row.name));
+        const oilRows = scored.filter((row) => Boolean(oilTypeToken(row.name)));
+
+        if (leadOil) {
+          for (const row of scored) {
+            const rowOil = oilTypeToken(row.name);
+            if (rowOil && rowOil !== leadOil) continue;
+            if (row.score >= 50) found.add(row.id);
+          }
+        } else if (uuidIds.length > 0) {
+          // UUIDs already set — don't expand into every oil sibling.
+        } else if (oilRows.length > 0) {
+          // "General Service" style leads usually map to Semi/Fully packages — pick ONE (prefer Semi).
+          const prefer =
+            oilRows.find((row) => oilTypeToken(row.name) === 'semi') ||
+            oilRows.find((row) => oilTypeToken(row.name) === 'fully') ||
+            oilRows[0];
+          if (prefer) {
+            for (const id of [...found]) {
+              if (!uuidIds.includes(id)) found.delete(id);
+            }
+            found.add(prefer.id);
+          }
+        } else if (nonOil.length > 0 && nonOil[0].score >= 80) {
+          found.add(nonOil[0].id);
+        } else {
+          for (const row of scored) {
+            if (row.score >= 80) found.add(row.id);
+          }
         }
       } catch {
         // ignore
       }
       return [...found];
+    };
+
+    const buildExtraIncludedItems = (row: any) => {
+      const fromBreakdown = Array.isArray(row?.parts_breakdown) ? row.parts_breakdown : [];
+      if (fromBreakdown.length > 0) {
+        return fromBreakdown
+          .map((p: any) => {
+            const name = String(p?.name || p?.description || '').trim();
+            if (!name) return null;
+            const qty = Math.max(0.01, Number(p?.qty ?? p?.quantity ?? 1) || 1);
+            const unit_price = Math.max(0, Number(p?.unit_price ?? p?.rate ?? 0) || 0);
+            const amountRaw = Number(p?.amount);
+            const amount = Number.isFinite(amountRaw) && amountRaw >= 0 ? amountRaw : qty * unit_price;
+            return { name, quantity: qty, unit_price, amount };
+          })
+          .filter(Boolean);
+      }
+      const items: Array<{ name: string; quantity: number; unit_price: number; amount: number }> = [];
+      const partType = String(row?.part_price_type || 'OEM').toUpperCase() === 'OES' ? 'OES' : 'OEM';
+      let part =
+        partType === 'OES' ? Number(row?.oes_price ?? 0) || 0 : Number(row?.oem_price ?? 0) || 0;
+      let labour = Number(row?.labour_price ?? 0) || 0;
+      // If only lump-sum amount was saved, try master job prices for a detailed split.
+      if (part <= 0 && labour <= 0) {
+        const key = normalizeName(String(row?.description || row?.reason || ''));
+        const master = masterByName?.get(key);
+        if (master) {
+          part = partType === 'OES' ? Number(master.oes) || 0 : Number(master.oem) || 0;
+          labour = Number(master.labour) || 0;
+        }
+      }
+      const reason = String(row?.reason || row?.work_needed || '').trim();
+      if (part > 0) {
+        items.push({
+          name: partType === 'OES' ? 'Parts (OES)' : 'Parts (OEM)',
+          quantity: 1,
+          unit_price: part,
+          amount: part,
+        });
+      }
+      if (labour > 0) {
+        items.push({
+          name: 'Labour',
+          quantity: 1,
+          unit_price: labour,
+          amount: labour,
+        });
+      }
+      if (reason) {
+        items.push({
+          name: `Note: ${reason}`,
+          quantity: 1,
+          unit_price: 0,
+          amount: 0,
+        });
+      }
+      if (items.filter((x) => x.amount > 0).length === 0) {
+        const amt = Number(row?.amount ?? 0) || 0;
+        items.push({
+          name: String(row?.description || 'Additional work').trim() || 'Additional work',
+          quantity: 1,
+          unit_price: amt,
+          amount: amt,
+        });
+      }
+      return items;
     };
 
     const resolvedServiceTypeIds = await resolveLeadServiceTypeIds(leadMeta);
@@ -632,7 +779,7 @@ export async function GET(
           const { data: cm } = await supabase
             .from('car_models')
             .select('class')
-            .eq('model_name', (leadMeta as any).vehicle_model)
+            .ilike('model_name', String((leadMeta as any).vehicle_model).trim())
             .maybeSingle();
           vehicleClass = (cm as any)?.class || null;
         }
@@ -852,9 +999,26 @@ export async function GET(
           it.price_source = resolved.source;
           it.amount = (Number(resolved.unit_price || 0) || 0) * qty;
         }
+        const bomSum = items.reduce((s: number, it: any) => s + (Number(it?.amount || 0) || 0), 0);
+        if (bomSum > 0.5) {
+          (svc as any).package_price = Number(svc.service_price || 0) || 0;
+          svc.service_price = bomSum;
+        }
       }
     } catch {
       // best-effort; don't block invoice
+    }
+
+    // Approved extra work — used for detailed bill breakdown (parts + labour).
+    let approvedExtrasForBill: any[] = [];
+    try {
+      const { data: extraRowsAll } = await supabase
+        .from('lead_extra_charges')
+        .select('*')
+        .eq('lead_id', leadId);
+      approvedExtrasForBill = (extraRowsAll || []).filter(isApprovedExtra);
+    } catch {
+      approvedExtrasForBill = [];
     }
 
     // If OS/CI/TI exists but looks stale (extra work rates/amounts are 0), rebuild line_items and totals on-the-fly.
@@ -1024,7 +1188,7 @@ export async function GET(
                 const { data: cm } = await supabase
                   .from('car_models')
                   .select('class')
-                  .eq('model_name', (leadFull as any).vehicle_model)
+                  .ilike('model_name', String((leadFull as any).vehicle_model).trim())
                   .maybeSingle();
                 vehicleClass = (cm as any)?.class || null;
               }
@@ -1189,11 +1353,13 @@ export async function GET(
         const extraLines = (extraCharges || []).map((c: any) => {
           const amt = computeExtraAmount(c, String(leadFull.workshop_id));
           return {
-            description: c.description || c.reason || 'Additional Request',
+            description: c.description || c.reason || 'Additional work',
             qty: 1,
             rate: amt,
             amount: amt,
             category: 'EXTRA',
+            extra_charge_id: c.id,
+            included_items: buildExtraIncludedItems(c),
           };
         });
 
@@ -1350,18 +1516,59 @@ export async function GET(
         if (sid && sp > 0) priceByTypeId.set(sid, sp);
         if (sname && sp > 0) priceByName.set(sname, sp);
       }
+      // Attach package BOM + transparent pricing: SERVICE amount = sum(included workshop parts).
+      const includedSum = (items: any[]) =>
+        (items || []).reduce((s: number, p: any) => {
+          const qty = Number(p?.quantity || p?.qty || 1) || 1;
+          const amt = Number(p?.amount);
+          if (Number.isFinite(amt) && amt >= 0) return s + amt;
+          return s + (Number(p?.unit_price || p?.rate || 0) || 0) * qty;
+        }, 0);
+
       lineItemsForTotals = lineItemsForTotals.map((row: any) => {
         const cat = String(row?.category || '').toUpperCase();
         if (cat !== 'SERVICE') return row;
-        const amount = Number(row?.amount || 0) || 0;
-        if (amount > 0) return row;
+        if (row?.os_edited) return row;
+
         const sid = String(row?.service_type_id || '').trim();
         const keyName = normalizeName(String(row?.description || ''));
-        const price = (sid && priceByTypeId.get(sid)) || priceByName.get(keyName) || 0;
-        if (!price) return row;
+        let included = Array.isArray(row?.included_items) ? row.included_items : [];
+        if (!included.length) {
+          const match = (included_service_items || []).find((svc: any) => {
+            const svcId = String(svc?.service_type_id || '').trim();
+            const svcName = normalizeName(String(svc?.service_name || ''));
+            if (sid && svcId && sid === svcId) return true;
+            return Boolean(keyName && svcName && keyName === svcName);
+          });
+          included = Array.isArray(match?.items) ? match.items : [];
+        }
+
+        const sum = includedSum(included);
         const qty = Number(row?.qty || 1) || 1;
-        return { ...row, amount: price, rate: price / qty };
+        if (sum > 0.5) {
+          return {
+            ...row,
+            included_items: included,
+            amount: sum,
+            rate: sum / qty,
+            pricing_mode: 'TRANSPARENT_INCLUDED_SUM',
+          };
+        }
+
+        // Fallback: package workshop service price when BOM empty/zero.
+        const amount = Number(row?.amount || 0) || 0;
+        if (amount > 0) return { ...row, included_items: included.length ? included : row.included_items };
+        const price = (sid && priceByTypeId.get(sid)) || priceByName.get(keyName) || 0;
+        if (!price) return { ...row, included_items: included.length ? included : row.included_items };
+        return {
+          ...row,
+          included_items: included.length ? included : row.included_items,
+          amount: price,
+          rate: price / qty,
+        };
       });
+
+      // Keep injected/missing services consistent with transparent BOM pricing.
       const existingServiceKeys = new Set(
         lineItemsForTotals
           .filter((row: any) => String(row?.category || '').toUpperCase() === 'SERVICE')
@@ -1383,7 +1590,10 @@ export async function GET(
         const injected = missingIncluded
           .map((svc: any) => {
             const name = String(svc?.service_name || '').trim();
-            const amount = Number(svc?.service_price || 0) || 0;
+            const items = Array.isArray(svc?.items) ? svc.items : [];
+            const bomSum = includedSum(items);
+            const packagePrice = Number(svc?.service_price || 0) || 0;
+            const amount = bomSum > 0.5 ? bomSum : packagePrice;
             if (!name && amount <= 0) return null;
             return {
               description: name || 'Service',
@@ -1392,11 +1602,78 @@ export async function GET(
               amount,
               category: 'SERVICE',
               service_type_id: String(svc?.service_type_id || ''),
+              included_items: items,
+              pricing_mode: bomSum > 0.5 ? 'TRANSPARENT_INCLUDED_SUM' : 'PACKAGE_PRICE',
             };
           })
           .filter(Boolean);
         lineItemsForTotals = [...injected, ...lineItemsForTotals];
       }
+
+      // Keep service packages; only drop clear oil conflicts (Fully vs Semi).
+      const leadServiceName = String((leadMeta as any)?.service_type || '').trim();
+      const leadOil = oilTypeToken(leadServiceName);
+      const preferredOil =
+        leadOil ||
+        (() => {
+          // Prefer Semi when lead only says "General Service".
+          const hasSemiIncluded = (included_service_items || []).some(
+            (svc: any) => oilTypeToken(String(svc?.service_name || '')) === 'semi',
+          );
+          return hasSemiIncluded ? ('semi' as const) : null;
+        })();
+
+      lineItemsForTotals = lineItemsForTotals.filter((row: any) => {
+        const cat = String(row?.category || '').toUpperCase();
+        if (cat !== 'SERVICE') return true;
+        const desc = String(row?.description || '');
+        if (preferredOil) {
+          const rowOil = oilTypeToken(desc);
+          if (rowOil && rowOil !== preferredOil) return false;
+        } else if (leadOil && !serviceNamesCompatible(leadServiceName, desc)) {
+          return false;
+        }
+        return true;
+      });
+
+      // If Fully + Semi both remain, keep Semi (or the priced one).
+      {
+        const serviceRows = lineItemsForTotals.filter(
+          (row: any) => String(row?.category || '').toUpperCase() === 'SERVICE',
+        );
+        const hasSemi = serviceRows.some((row: any) => oilTypeToken(String(row?.description || '')) === 'semi');
+        const hasFully = serviceRows.some((row: any) => oilTypeToken(String(row?.description || '')) === 'fully');
+        if (hasSemi && hasFully) {
+          lineItemsForTotals = lineItemsForTotals.filter((row: any) => {
+            const cat = String(row?.category || '').toUpperCase();
+            if (cat !== 'SERVICE') return true;
+            return oilTypeToken(String(row?.description || '')) !== 'fully';
+          });
+        }
+      }
+
+      // Attach detailed parts/labour breakdown on Additional Work lines.
+      const extrasByName = new Map<string, any>();
+      for (const ex of approvedExtrasForBill) {
+        const key = normalizeName(String(ex?.description || ex?.reason || ''));
+        if (key) extrasByName.set(key, ex);
+      }
+      lineItemsForTotals = lineItemsForTotals.map((row: any) => {
+        const cat = String(row?.category || '').toUpperCase();
+        if (cat !== 'EXTRA') return row;
+        const key = normalizeName(String(row?.description || ''));
+        const ex = extrasByName.get(key);
+        const withId = ex?.id ? { ...row, extra_charge_id: row?.extra_charge_id || ex.id } : row;
+        if (Array.isArray(withId?.included_items) && withId.included_items.length > 0) {
+          // Prefer saved parts_breakdown when present.
+          if (ex && Array.isArray(ex.parts_breakdown) && ex.parts_breakdown.length > 0) {
+            return { ...withId, included_items: buildExtraIncludedItems(ex) };
+          }
+          return withId;
+        }
+        if (!ex) return withId;
+        return { ...withId, included_items: buildExtraIncludedItems(ex) };
+      });
 
       const norm = (c: any) => String(c || '').trim().toUpperCase();
       const sumCat = (cats: string[]) =>
@@ -1455,8 +1732,61 @@ export async function GET(
       }
     }
 
+    const workshopIdForMaster = String((leadMeta as any)?.workshop_id || '').trim();
+    if (workshopIdForMaster) {
+      await ensureMasterMap(workshopIdForMaster);
+    }
+
     const mappedInvoice = mapInvoice(invoice);
     const mappedInvoices = list.map(mapInvoice).filter(Boolean);
+
+    // Persist transparent SERVICE amounts onto ORDER_SUMMARY so finalize/PDF match the bill UI.
+    try {
+      for (const mapped of mappedInvoices) {
+        if (!mapped) continue;
+        if (String((mapped as any)?.invoice_type || '').toUpperCase() !== 'ORDER_SUMMARY') continue;
+        const nextLi = Array.isArray((mapped as any).line_items) ? (mapped as any).line_items : [];
+        const hasEdited = nextLi.some((row: any) => row?.os_edited);
+        if (hasEdited) continue;
+        const touched = nextLi.some(
+          (row: any) =>
+            String(row?.category || '').toUpperCase() === 'SERVICE' &&
+            String(row?.pricing_mode || '') === 'TRANSPARENT_INCLUDED_SUM',
+        );
+        if (!touched) continue;
+        const prev = list.find((x: any) => String(x?.id) === String((mapped as any).id));
+        const prevLi = Array.isArray((prev as any)?.line_items) ? (prev as any).line_items : [];
+        const prevAmt = prevLi
+          .filter((x: any) => String(x?.category || '').toUpperCase() === 'SERVICE')
+          .reduce((s: number, x: any) => s + (Number(x?.amount || 0) || 0), 0);
+        const nextAmt = nextLi
+          .filter((x: any) => String(x?.category || '').toUpperCase() === 'SERVICE')
+          .reduce((s: number, x: any) => s + (Number(x?.amount || 0) || 0), 0);
+        if (Math.abs(prevAmt - nextAmt) <= 0.5) continue;
+        const normCat = (c: any) => String(c || '').trim().toUpperCase();
+        const sumCats = (cats: string[]) =>
+          nextLi
+            .filter((x: any) => cats.includes(normCat(x?.category)))
+            .reduce((s: number, x: any) => s + (Number(x?.amount || 0) || 0), 0);
+        const base_amount = sumCats(['SERVICE', 'ADDON', 'ADD_ON', 'ADD-ON', 'LABOUR', 'LABOR']);
+        const parts_cost = sumCats(['PART', 'PARTS']);
+        const extra_charges = sumCats(['EXTRA']);
+        await supabase
+          .from('invoices')
+          .update({
+            line_items: nextLi,
+            base_amount,
+            parts_cost,
+            extra_charges,
+            sub_total: (mapped as any).sub_total,
+            final_amount: (mapped as any).final_amount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', (mapped as any).id);
+      }
+    } catch {
+      // best-effort persist; display already corrected
+    }
 
     // Preserve any creator field we attached above on the selected invoice
     if ((invoice as any).creator && mappedInvoice) {
@@ -1524,6 +1854,16 @@ export async function GET(
           } else {
             it.amount = (Number(it.unit_price || 0) || 0) * qty;
           }
+        }
+        const bomSum = ((svc as any).items || []).reduce(
+          (s: number, it: any) => s + (Number(it?.amount || 0) || 0),
+          0,
+        );
+        if (bomSum > 0.5) {
+          if ((svc as any).package_price == null) {
+            (svc as any).package_price = Number(svc.service_price || 0) || 0;
+          }
+          svc.service_price = bomSum;
         }
       }
     } catch {

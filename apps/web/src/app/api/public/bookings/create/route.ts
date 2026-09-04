@@ -18,6 +18,7 @@ import {
 } from '@/lib/booking-wallet-apply';
 import { buildPostBookingMembershipOffer } from '@/lib/post-booking-membership-offer';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
+import { markCustomerBookingAbandonedCleared } from '@/lib/services/bookingAbandonmentGuard';
 import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
 import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
 import { upsertBookingServiceLead } from '@/lib/service-lead-reopen';
@@ -436,6 +437,11 @@ export async function POST(request: NextRequest) {
         console.error('[bookings/create] TeleCRM fallback insert failed:', fallbackErr?.message || fallbackErr);
       }
     }
+
+    await markCustomerBookingAbandonedCleared(supabaseAdmin, {
+      customerId: registeredCustomer?.id || null,
+      phone: customerPhone,
+    });
 
     return NextResponse.json(
       {

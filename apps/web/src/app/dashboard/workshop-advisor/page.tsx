@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
 import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
-import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isPendingQc, isQcPassed } from '@/lib/workshop/jobFlow';
+import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isWaitingDeliveryAssign, isDeliveryInProgress, isPendingQc, isQcPassed, FLOOR_DONE_STATUSES } from '@/lib/workshop/jobFlow';
 
 type JobRow = {
   id: string;
@@ -44,7 +44,7 @@ export default function WorkshopAdvisorDashboard() {
     pickup_active: 0,
   });
   const [needsAssign, setNeedsAssign] = useState<
-    { id: string; customer_name?: string; vehicle_number?: string; lead_number?: string; kind: 'pickup' | 'pickup_track' | 'mechanic' }[]
+    { id: string; customer_name?: string; vehicle_number?: string; lead_number?: string; kind: 'pickup' | 'pickup_track' | 'delivery' | 'delivery_track' | 'mechanic' }[]
   >([]);
   const [recentJobs, setRecentJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,15 +119,40 @@ export default function WorkshopAdvisorDashboard() {
         (job: any) => job.mechanic?.workshop_id === workshopId && !job.service_leads?.deleted_at,
       ) as JobRow[];
 
-      const openLeads = ((unassignedRes.data || []) as any[]).filter(
+      const openLeadsRaw = ((unassignedRes.data || []) as any[]).filter(
         (lead) => !['REJECTED', 'CANCELLED', 'CLOSED'].includes(String(lead.status || '').toUpperCase()),
       );
+      const trackIds = openLeadsRaw
+        .filter((lead) => {
+          const status = String(lead.status || '').toUpperCase();
+          return (
+            Boolean(lead.assigned_pickup_boy_id) ||
+            status === 'READY_FOR_DELIVERY' ||
+            status === 'COD_PENDING' ||
+            status === 'DELIVERED'
+          );
+        })
+        .map((lead) => lead.id);
+      let dropByLead: Record<string, any> = {};
+      if (trackIds.length) {
+        const { data: tracks } = await supabase
+          .from('pickup_tracking')
+          .select('lead_id, drop_assigned_to, drop_status, drop_otp_verified_at, drop_completed_time')
+          .in('lead_id', trackIds);
+        for (const row of tracks || []) {
+          dropByLead[String((row as any).lead_id)] = row;
+        }
+      }
+      const openLeads = openLeadsRaw.map((lead) => ({ ...lead, ...(dropByLead[String(lead.id)] || {}) }));
       const pickupWaiting = openLeads.filter((lead) => isWaitingPickupAssign(lead));
       const pickupInProgress = openLeads.filter((lead) => isPickupInProgress(lead));
+      const deliveryWaiting = openLeads.filter((lead) => isWaitingDeliveryAssign(lead));
+      const deliveryInProgress = openLeads.filter((lead) => isDeliveryInProgress(lead));
       const mechanicWaiting = openLeads.filter(
         (lead) =>
           !lead.assigned_mechanic_id &&
           isReadyForMechanicAssign(lead) &&
+          !FLOOR_DONE_STATUSES.has(String(lead.status || '').toUpperCase()) &&
           !['WORK_COMPLETED', 'QC_APPROVED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(
             String(lead.status || '').toUpperCase(),
           ),
@@ -146,6 +171,20 @@ export default function WorkshopAdvisorDashboard() {
           vehicle_number: lead.vehicle_number,
           lead_number: lead.lead_number,
           kind: 'pickup_track' as const,
+        })),
+        ...deliveryWaiting.map((lead) => ({
+          id: lead.id,
+          customer_name: lead.customer_name,
+          vehicle_number: lead.vehicle_number,
+          lead_number: lead.lead_number,
+          kind: 'delivery' as const,
+        })),
+        ...deliveryInProgress.map((lead) => ({
+          id: lead.id,
+          customer_name: lead.customer_name,
+          vehicle_number: lead.vehicle_number,
+          lead_number: lead.lead_number,
+          kind: 'delivery_track' as const,
         })),
         ...mechanicWaiting.map((lead) => ({
           id: lead.id,
@@ -195,8 +234,14 @@ export default function WorkshopAdvisorDashboard() {
           (job) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
         ).length,
         pending_leads: pendingRes.count || 0,
-        unassigned: pickupWaiting.length + mechanicWaiting.length,
-        pickup_active: pickupRes.count || 0,
+        unassigned: pickupWaiting.length + mechanicWaiting.length + deliveryWaiting.length,
+        pickup_active: openLeads.filter((lead) => {
+          const status = String(lead.status || '').toUpperCase();
+          if (FLOOR_DONE_STATUSES.has(status) || status === 'COD_PENDING') return false;
+          return ['ASSIGNED', 'ON_THE_WAY', 'OTP_VERIFIED', 'VEHICLE_IN_TRANSIT', 'IN_TRANSIT'].includes(
+            String(lead.pickup_status || '').toUpperCase(),
+          );
+        }).length,
       });
       setLoading(false);
     }
@@ -230,7 +275,7 @@ export default function WorkshopAdvisorDashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatTile label="Mechanics" value={stats.total_mechanics} accent="#004AAD" icon={<Users className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/team-overview" onClick={router.push} />
           <StatTile label="Active Jobs" value={stats.active_jobs} accent="#D97706" icon={<Wrench className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/jobs" onClick={router.push} />
-          <StatTile label="To Assign" value={stats.unassigned} accent="#EA580C" icon={<UserPlus className="w-5 h-5" />} loading={loading} href={needsAssign.some((j) => j.kind === 'pickup') ? '/dashboard/workshop-advisor/pickup-delivery' : '/dashboard/workshop-advisor/job-assignments'} onClick={router.push} />
+          <StatTile label="To Assign" value={stats.unassigned} accent="#EA580C" icon={<UserPlus className="w-5 h-5" />} loading={loading} href={needsAssign.some((j) => j.kind === 'pickup' || j.kind === 'delivery') ? '/dashboard/workshop-advisor/pickup-delivery' : '/dashboard/workshop-advisor/job-assignments'} onClick={router.push} />
           <StatTile label="Pending Leads" value={stats.pending_leads} accent="#0284C7" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/pending-leads" onClick={router.push} />
           <StatTile label="Completed" value={stats.completed_today} accent="#059669" icon={<CheckCircle className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/daily-report" onClick={router.push} />
           <StatTile label="Pending QC" value={stats.pending_qc} accent="#6D28D9" icon={<Clock className="w-5 h-5" />} loading={loading} href="/dashboard/workshop-advisor/qc-queue" onClick={router.push} />
@@ -254,7 +299,9 @@ export default function WorkshopAdvisorDashboard() {
               type="button"
               onClick={() =>
                 router.push(
-                  needsAssign.some((j) => j.kind === 'pickup')
+                  needsAssign.some((j) =>
+                    ['pickup', 'pickup_track', 'delivery', 'delivery_track'].includes(j.kind),
+                  )
                     ? '/dashboard/workshop-advisor/pickup-delivery'
                     : '/dashboard/workshop-advisor/job-assignments',
                 )
@@ -271,13 +318,25 @@ export default function WorkshopAdvisorDashboard() {
             {needsAssign.map((job) => {
               const pickup = job.kind === 'pickup';
               const pickupTrack = job.kind === 'pickup_track';
+              const delivery = job.kind === 'delivery';
+              const deliveryTrack = job.kind === 'delivery_track';
+              const toPickupPage = pickup || pickupTrack || delivery || deliveryTrack;
+              const badge = pickup
+                ? 'PICKUP'
+                : pickupTrack
+                  ? 'IN PICKUP'
+                  : delivery
+                    ? 'DELIVERY'
+                    : deliveryTrack
+                      ? 'OUT FOR DELIVERY'
+                      : 'MECHANIC';
               return (
                 <button
                   key={`${job.kind}-${job.id}`}
                   type="button"
                   onClick={() =>
                     router.push(
-                      pickup || pickupTrack
+                      toPickupPage
                         ? '/dashboard/workshop-advisor/pickup-delivery'
                         : '/dashboard/workshop-advisor/job-assignments',
                     )
@@ -293,7 +352,7 @@ export default function WorkshopAdvisorDashboard() {
                     </p>
                   </div>
                   <span className="shrink-0 rounded-full bg-[#EA580C] px-2 py-0.5 text-[10px] font-bold text-white">
-                    {pickup ? 'PICKUP' : pickupTrack ? 'IN PICKUP' : 'MECHANIC'}
+                    {badge}
                   </span>
                 </button>
               );

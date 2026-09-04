@@ -1,5 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
+  customerHasFullBookingSince,
+  markCustomerBookingAbandonedCleared,
+} from '@/lib/services/bookingAbandonmentGuard';
+import {
   deriveCartLabelsFromItems,
   notifyCartAbandonedWhatsApp,
   type CartAbandonmentTarget,
@@ -12,59 +16,6 @@ import {
 const MS_5M = 5 * 60 * 1000;
 const MS_3H = 3 * 60 * 60 * 1000;
 const MS_12H = 12 * 60 * 60 * 1000;
-
-const TERMINAL_LEAD_STATUSES = new Set([
-  'COMPLETED',
-  'DELIVERED',
-  'CLOSED',
-  'CANCELLED',
-  'REJECTED',
-  'LOST',
-  'DUPLICATE',
-]);
-
-async function hasBookedSince(
-  supabaseAdmin: any,
-  customerId: string,
-  phone: string,
-  sinceIso: string,
-): Promise<boolean> {
-  const phone10 = String(phone || '').replace(/\D/g, '').slice(-10);
-
-  const [{ data: cart }, { data: draft }, { data: leads }] = await Promise.all([
-    supabaseAdmin
-      .from('carts')
-      .select('status, updated_at')
-      .eq('customer_id', customerId)
-      .maybeSingle(),
-    supabaseAdmin
-      .from('booking_drafts')
-      .select('status, completed_at')
-      .eq('customer_id', customerId)
-      .eq('status', 'COMPLETED')
-      .gte('completed_at', sinceIso)
-      .limit(1),
-    phone10
-      ? supabaseAdmin
-          .from('service_leads')
-          .select('id, status, created_at')
-          .eq('customer_phone', phone10)
-          .gte('created_at', sinceIso)
-          .order('created_at', { ascending: false })
-          .limit(10)
-      : Promise.resolve({ data: [] as any[] }),
-  ]);
-
-  if (cart?.status === 'CHECKED_OUT' && String(cart.updated_at || '') >= sinceIso) {
-    return true;
-  }
-  if (Array.isArray(draft) && draft.length > 0) return true;
-
-  return (leads || []).some((lead: any) => {
-    const status = String(lead.status || '').toUpperCase();
-    return status && !TERMINAL_LEAD_STATUSES.has(status);
-  });
-}
 
 type ReminderStage = '5m' | '3h' | '12h';
 
@@ -85,7 +36,18 @@ async function processTarget(
   const anchorMs = new Date(anchorIso).getTime();
   if (!Number.isFinite(anchorMs)) return stats;
 
-  if (await hasBookedSince(supabaseAdmin, target.customerId, target.phone, anchorIso)) {
+  if (
+    await customerHasFullBookingSince(supabaseAdmin, {
+      customerId: target.customerId,
+      phone: target.phone,
+      sinceIso: anchorIso,
+    })
+  ) {
+    // Stop future reminders — draft/cart still ACTIVE after successful booking.
+    await markCustomerBookingAbandonedCleared(supabaseAdmin, {
+      customerId: target.customerId,
+      phone: target.phone,
+    });
     return stats;
   }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { dispatchPushToUser } from '@/lib/push/dispatchPush';
 import type { NotificationPriority, NotificationType } from '@/shared/types/notifications';
+import { notificationRetentionCutoffIso } from '@/shared/types/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -1558,15 +1559,49 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ error: 'Unknown task', task }, { status: 400 });
 }
 
+async function purgeOldNotifications() {
+  const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+  if (adminError || !supabaseAdmin) {
+    return { ok: false as const, error: adminError || 'Admin client unavailable', deleted: 0 };
+  }
+
+  const cutoff = notificationRetentionCutoffIso();
+  let deleted = 0;
+  for (let i = 0; i < 20; i += 1) {
+    const { data: rows, error: selErr } = await supabaseAdmin
+      .from('notifications')
+      .select('id')
+      .lt('created_at', cutoff)
+      .limit(500);
+    if (selErr) {
+      return { ok: false as const, error: selErr.message, deleted, cutoff };
+    }
+    const ids = (rows || []).map((r: { id: string }) => r.id).filter(Boolean);
+    if (ids.length === 0) break;
+    const { error: delErr } = await supabaseAdmin.from('notifications').delete().in('id', ids);
+    if (delErr) {
+      return { ok: false as const, error: delErr.message, deleted, cutoff };
+    }
+    deleted += ids.length;
+    if (ids.length < 500) break;
+  }
+  return { ok: true as const, deleted, cutoff };
+}
+
 /** Vercel Cron uses GET */
 export async function GET(req: NextRequest) {
   const authErr = assertCronAuth(req);
   if (authErr) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 500 });
 
   const task = String(req.nextUrl.searchParams.get('task') || 'followup_reminder');
-  if (task === 'followup_reminder' || task === 'test_followup_reminder') {
-    const res = await runFollowupReminderCron();
+  if (task === 'purge_old') {
+    const res = await purgeOldNotifications();
     return NextResponse.json({ ...res, task }, { status: res.ok ? 200 : 500 });
+  }
+  if (task === 'followup_reminder' || task === 'test_followup_reminder') {
+    const purge = await purgeOldNotifications();
+    const res = await runFollowupReminderCron();
+    return NextResponse.json({ ...res, task, purge }, { status: res.ok ? 200 : 500 });
   }
   return NextResponse.json({ error: 'Unknown task for GET', task }, { status: 400 });
 }

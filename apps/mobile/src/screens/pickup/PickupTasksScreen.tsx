@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
+import { fetchPickupBoyLeads } from '../../lib/fetchPickupBoyLeads';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { AC } from '../../components/workshop/advisorCrmUi';
 import PickupLeadCard from '../../components/workshop/PickupLeadCard';
@@ -18,6 +19,7 @@ import PickupFilterDropdown from '../../components/workshop/PickupFilterDropdown
 import {
   isActivePickupBoyTask,
   isActiveDeliveryBoyTask,
+  isAssignedDeliveryFor,
   isPickupInTransit,
   isPickupScheduled,
   formatPickupStatusLabel,
@@ -132,26 +134,20 @@ export default function PickupTasksScreen({
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('service_leads')
-        .select('*')
-        .eq('assigned_pickup_boy_id', id)
-        .not('status', 'in', '(REJECTED,CANCELLED)')
-        .order('created_at', { ascending: false });
+      const { data, error } = await fetchPickupBoyLeads(id).then((rows) => ({ data: rows, error: null as any }));
 
       if (error) throw error;
 
       const openRows = (data || []).filter(
-        (item) => isActivePickupBoyTask(item) || isActiveDeliveryBoyTask(item),
+        (item) => isActivePickupBoyTask(item) || isAssignedDeliveryFor(item, id),
       );
 
       setTasks(
         openRows.map((item) => {
-          const rawStatus = String(item.pickup_status || item.status || 'ASSIGNED').toUpperCase();
-          const isDelivery =
-            !item.pickup_required ||
-            item.status === 'READY_FOR_DELIVERY' ||
-            item.status === 'COD_PENDING';
+          const isDelivery = isAssignedDeliveryFor(item, id);
+          const rawStatus = String(
+            isDelivery ? item.status || item.pickup_status : item.pickup_status || item.status || 'ASSIGNED',
+          ).toUpperCase();
           return {
             id: item.id,
             lead_number: item.lead_number,

@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import { AdvisorPageHeader } from '@/components/advisor/AdvisorPageHeader';
 import PhotoUpload from '@/components/PhotoUpload';
+import { latestMechanicJobForLead, resolveAdvisorLeadId } from '@/lib/workshop/jobFlow';
 
 type YesNo = 'YES' | 'NO' | null;
 
@@ -159,19 +160,32 @@ export default function QCReviewPage() {
         return out;
       };
 
-      // Fetch lead details
-      const { data: leadData, error: leadError } = await supabase
+      const supabase = createClient();
+      const resolvedId = await resolveAdvisorLeadId(supabase, { jobId, leadId: jobId });
+      if (!resolvedId) {
+        throw new Error('Lead not found');
+      }
+      const leadLookupId = resolvedId;
+
+      // Fetch lead details (url id may be a mechanic_jobs row on completed jobs)
+      let { data: leadData, error: leadError } = await supabase
         .from('service_leads')
         .select(`
           *,
           mechanic:assigned_mechanic_id(id, full_name, profile_image),
           supervisor:assigned_supervisor_id(id, full_name)
         `)
-        .eq('id', jobId)
-        .single();
+        .eq('id', leadLookupId)
+        .maybeSingle();
 
+      if (leadError || !leadData) {
+        const fallback = await supabase.from('service_leads').select('*').eq('id', leadLookupId).maybeSingle();
+        leadData = fallback.data;
+        leadError = fallback.error;
+      }
       if (leadError) throw leadError;
-      
+      if (!leadData) throw new Error('Lead not found');
+
       // Fetch service type names from service_types table (using service_type_ids JSONB)
       if (leadData?.service_type_ids) {
         try {
@@ -230,7 +244,7 @@ export default function QCReviewPage() {
           .from('users_login')
           .select('id, full_name, profile_image')
           .eq('id', leadData.assigned_mechanic_id)
-          .single();
+          .maybeSingle();
         setMechanic(mechanicData);
       }
 
@@ -244,11 +258,7 @@ export default function QCReviewPage() {
       // Fetch photos from mechanic_job_photos table (primary source)
       // IMPORTANT: In this codebase mechanic_job_photos is keyed by job_id (see mechanic manage page),
       // so querying by lead_id may return partial results.
-      const { data: mechJob } = await supabase
-        .from('mechanic_jobs')
-        .select('id, lead_id')
-        .eq('lead_id', jobId)
-        .maybeSingle();
+      const { data: mechJob } = await latestMechanicJobForLead(supabase, leadLookupId);
 
       const jobIdForPhotos = mechJob?.id || null;
 
@@ -261,7 +271,7 @@ export default function QCReviewPage() {
         : await supabase
             .from('mechanic_job_photos')
             .select('*')
-            .eq('lead_id', jobId)
+            .eq('lead_id', leadLookupId)
             .order('created_at', { ascending: false });
 
       if (!jobPhotosError && jobPhotosData) {
@@ -273,7 +283,7 @@ export default function QCReviewPage() {
       // Also try fetching from lead_media via server API (avoids client-side RLS issues)
       let photosData: any[] | null = null;
       try {
-        const res = await fetch(`/api/leads/${jobId}/media`, { method: 'GET' });
+        const res = await fetch(`/api/leads/${leadLookupId}/media`, { method: 'GET' });
         const json = await res.json().catch(() => ({}));
         if (res.ok && Array.isArray(json?.media)) {
           photosData = json.media;
@@ -359,7 +369,7 @@ export default function QCReviewPage() {
       const { data: mechanicMediaData, error: mechanicMediaError } = await supabase
         .from('mechanic_media')
         .select('*')
-        .eq('lead_id', jobId)
+        .eq('lead_id', leadLookupId)
         .order('uploaded_at', { ascending: false });
 
       if (!mechanicMediaError && mechanicMediaData) {
@@ -406,7 +416,7 @@ export default function QCReviewPage() {
       const { data: vehiclePhotosData, error: vehiclePhotosError } = await supabase
         .from('vehicle_condition_photos')
         .select('*')
-        .eq('lead_id', jobId)
+        .eq('lead_id', leadLookupId)
         // vehicle_condition_photos uses `timestamp` column (not created_at) in many installs
         .order('timestamp', { ascending: false });
 
@@ -442,7 +452,7 @@ export default function QCReviewPage() {
       }
 
       try {
-        const evRes = await fetch(`/api/supervisor/jobs/${jobId}/qc-evidence`);
+        const evRes = await fetch(`/api/supervisor/jobs/${leadLookupId}/qc-evidence`);
         const evJson = await evRes.json().catch(() => ({}));
         if (evRes.ok && evJson?.success) {
           const mapMedia = (list: any[] = [], category: string) =>
@@ -472,7 +482,7 @@ export default function QCReviewPage() {
       const { data: partsData, error: partsError } = await supabase
         .from('mechanic_parts_usage')
         .select('*')
-        .eq('lead_id', jobId)
+        .eq('lead_id', leadLookupId)
         .order('created_at', { ascending: false });
 
       if (!partsError && partsData) {
@@ -481,12 +491,15 @@ export default function QCReviewPage() {
 
       // Fetch checklist
       if (leadData?.assigned_mechanic_id) {
-        const { data: checklistData, error: checklistError } = await supabase
+        const { data: checklistRows, error: checklistError } = await supabase
           .from('service_checklists')
           .select('*')
-          .eq('lead_id', jobId)
+          .eq('lead_id', leadLookupId)
           .eq('mechanic_id', leadData.assigned_mechanic_id)
-          .maybeSingle();
+          .order('updated_at', { ascending: false })
+          .limit(1);
+
+        const checklistData = Array.isArray(checklistRows) ? checklistRows[0] : checklistRows;
 
         if (!checklistError && checklistData?.checklist_items) {
           let items = checklistData.checklist_items;
@@ -542,7 +555,7 @@ export default function QCReviewPage() {
     setProcessing(true);
 
     try {
-      const response = await fetch(`/api/supervisor/jobs/${jobId}/approve-qc`, {
+      const response = await fetch(`/api/supervisor/jobs/${lead.id}/approve-qc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -598,7 +611,7 @@ export default function QCReviewPage() {
     setProcessing(true);
 
     try {
-      const response = await fetch(`/api/supervisor/jobs/${jobId}/reject-qc`, {
+      const response = await fetch(`/api/supervisor/jobs/${lead.id}/reject-qc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1751,7 +1764,7 @@ export default function QCReviewPage() {
                                         <PhotoUpload
                                           label={`Proof for point #${idx + 1}`}
                                           maxPhotos={3}
-                                          uploadEndpoint={`/api/leads/${jobId}/upload-qc-proof`}
+                                          uploadEndpoint={`/api/leads/${lead?.id || jobId}/upload-qc-proof`}
                                           extraFormFields={{ point: String(idx + 1), serial: String(item.serial) }}
                                           onUpload={(urls) => addProofUrls(item.serial, urls)}
                                           required

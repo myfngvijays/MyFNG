@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { MapPin, User, Car, Navigation, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { fetchPickupBoyLeads } from '@/lib/workshop/fetchPickupBoyLeads';
 import toast from 'react-hot-toast';
 import { formatDateDMY, formatTime12h } from "@/lib/utils";
 import {
@@ -18,6 +19,7 @@ import {
 import {
   isActivePickupBoyTask,
   isActiveDeliveryBoyTask,
+  isAssignedDeliveryFor,
   isPickupInTransit,
   isPickupScheduled,
   isPickupLegComplete,
@@ -113,21 +115,9 @@ export default function PickupTasksPage() {
       }
 
       // Fetch all assigned leads once; filter open tasks client-side
-      const { data: allRows, error } = await supabase
-        .from('service_leads')
-        .select('*')
-        .eq('assigned_pickup_boy_id', userProfile.id)
-        .not('status', 'in', '(REJECTED,CANCELLED)')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching tasks:', error);
-        toast.error('Failed to fetch tasks');
-        return;
-      }
-
+      const allRows = await fetchPickupBoyLeads(supabase, userProfile.id);
       const openTasks = (allRows || []).filter(
-        (t) => isActivePickupBoyTask(t) || isActiveDeliveryBoyTask(t),
+        (t) => isActivePickupBoyTask(t) || isAssignedDeliveryFor(t, userProfile.id),
       );
 
       let visible = openTasks;

@@ -154,6 +154,27 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
     }
 
     if (
+      String(kind || '') === 'DELIVERY_REASSIGNED' ||
+      type === 'DELIVERY_ASSIGNED' ||
+      String(actionUrl).includes('workshop-advisor/pickup-delivery')
+    ) {
+      if (String(actionUrl).includes('workshop_pickup_boy') && leadId) {
+        try {
+          navigation.navigate('PickupJobDetail', { leadId });
+          return;
+        } catch {
+          /* fallthrough */
+        }
+      }
+      try {
+        navigation.navigate('PickupDeliveryTracking');
+        return;
+      } catch {
+        /* fallthrough */
+      }
+    }
+
+    if (
       leadId &&
       (String(actionUrl).includes('workshop_pickup_boy') ||
         String(kind || '').startsWith('PICKUP_') ||

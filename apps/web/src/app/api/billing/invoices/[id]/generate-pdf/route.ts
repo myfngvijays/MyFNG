@@ -4,13 +4,17 @@ import { formatDateDMY, formatDateTime } from "@/lib/utils";
  * Creates professional PDF invoice matching user's format
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { launchInvoiceBrowser } from '@/lib/pdf/launchPuppeteer';
 import { resolveWorkshopServicePriceBestAvailable } from '@/lib/utils/workshopServicePricing';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -20,7 +24,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
     const serviceRoleKey =
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -615,35 +619,45 @@ export async function GET(
     const baseHref = request.nextUrl.origin.endsWith('/') ? request.nextUrl.origin : `${request.nextUrl.origin}/`;
     const htmlWithBase = htmlContent.replace(/<head>/i, `<head><base href="${baseHref}">`);
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
     try {
-      const page = await browser.newPage();
-      await page.setContent(htmlWithBase, { waitUntil: 'networkidle0' });
-      await page.emulateMediaType('screen');
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' },
-      });
+      const browser = await launchInvoiceBrowser();
+      try {
+        const page = await browser.newPage();
+        await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+        await page.setContent(htmlWithBase, { waitUntil: 'load', timeout: 20000 });
+        await page.emulateMediaType('print');
+        const pdfBuffer = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' },
+        });
 
-      return new NextResponse(Buffer.from(pdfBuffer), {
+        return new NextResponse(Buffer.from(pdfBuffer), {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.pdf"`,
+            'X-Invoice-Render': 'pdf',
+          },
+        });
+      } finally {
+        await browser.close();
+      }
+    } catch (pdfError: any) {
+      console.error('[Generate PDF API] Chrome/PDF failed, returning HTML invoice:', pdfError);
+      return new NextResponse(htmlWithBase, {
         headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.pdf"`,
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.html"`,
+          'X-Invoice-Render': 'html-fallback',
         },
       });
-    } finally {
-      await browser.close();
     }
 
   } catch (error) {
     console.error('Error generating invoice PDF:', error);
+    const details = error instanceof Error ? error.message : String(error || '');
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Invoice document generate nahi hui', details: details.slice(0, 400) },
       { status: 500 }
     );
   }
@@ -694,6 +708,13 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
         : 'Tax Invoice (TI)';
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  let logoSrc = `${appUrl}/logo.png`;
+  try {
+    const logoBuf = await fs.readFile(path.join(process.cwd(), 'public', 'logo.png'));
+    logoSrc = `data:image/png;base64,${logoBuf.toString('base64')}`;
+  } catch {
+    /* keep remote URL if public/logo.png is missing at runtime */
+  }
 
   // MyFNG (Company) details for invoice header.
   // Can be overridden via env without changing code.
@@ -1862,11 +1883,18 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
     .report-header {
       display: flex;
       justify-content: space-between;
+      align-items: flex-start;
       gap: 24px;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 16px;
+    }
+    .brand-block { flex: 1; min-width: 0; }
+    .brand-contact {
+      display: grid;
+      gap: 2px;
+      margin-top: 6px;
     }
     .brand-row {
       display: flex;
@@ -1903,11 +1931,13 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
       color: #111827;
     }
     .workshop-block {
-      width: 320px;
+      flex: 0 1 260px;
+      min-width: 0;
       font-size: 11px;
       color: #4b5563;
       line-height: 1.4;
     }
+    .table-scroll { width: 100%; overflow-x: auto; }
     .report-meta-row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -2060,21 +2090,23 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
       border: 1px solid #e2e8f0;
     }
     /* Print-safe pagination for long invoices */
-    .report-header,
-    .report-meta-row,
-    .detail-grid,
-    .detail-card { break-inside: avoid; page-break-inside: avoid; }
-    .line-items-table thead { display: table-header-group; }
-    .line-items-table tfoot { display: table-footer-group; }
-    .line-items-table tr { break-inside: avoid; page-break-inside: avoid; }
+    @media print {
+      .report-header,
+      .report-meta-row,
+      .detail-grid,
+      .detail-card { break-inside: avoid; page-break-inside: avoid; }
+      .line-items-table thead { display: table-header-group; }
+      .line-items-table tfoot { display: table-footer-group; }
+      .line-items-table tr { break-inside: avoid; page-break-inside: avoid; }
+      .section-row { break-after: avoid; page-break-after: avoid; }
+      .payment-info,
+      .bank-details,
+      .notes-section,
+      .gst-table,
+      .total-table,
+      .declaration { break-inside: avoid; page-break-inside: avoid; }
+    }
     .line-items-table td { vertical-align: top; }
-    .section-row { break-after: avoid; page-break-after: avoid; }
-    .payment-info,
-    .bank-details,
-    .notes-section,
-    .gst-table,
-    .total-table,
-    .declaration { break-inside: avoid; page-break-inside: avoid; }
     .gst-table {
       width: 100%;
       border-collapse: collapse;
@@ -2213,9 +2245,43 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
     @media print {
       body { padding: 0; }
       .invoice-container { border: none; padding: 0; max-width: none; }
-      /* Ensure tables can flow to next pages */
       .line-items-table { page-break-inside: auto; }
       .line-items-table thead { display: table-header-group; }
+      .col-type, .col-hsn, .col-gst, .col-taxable { display: table-cell !important; }
+    }
+    @media screen and (max-width: 720px) {
+      body { padding: 12px 12px 20px; font-size: 13px; background: #f1f5f9; }
+      .invoice-container {
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        max-width: none;
+      }
+      .report-header {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .workshop-block {
+        flex: none;
+        width: 100%;
+        padding-top: 12px;
+        border-top: 1px solid #e5e7eb;
+      }
+      .report-meta-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .report-meta-row .meta-right { text-align: left; }
+      .detail-grid { grid-template-columns: 1fr; gap: 10px; }
+      .line-items-table { font-size: 12px; margin: 12px 0; }
+      .line-items-table th, .line-items-table td { padding: 8px 6px; }
+      .col-type, .col-hsn, .col-gst, .col-taxable { display: none; }
+      .gst-table, .total-table { font-size: 12px; }
+      .total-table .grand-total-row td { font-size: 15px; padding: 12px 8px; }
+      .table-scroll { margin: 0; }
     }
   </style>
 </head>
@@ -2225,7 +2291,7 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
     <div class="report-header">
       <div class="brand-block">
         <div class="brand-row">
-          <img src="${appUrl}/logo.png" alt="MyFNG Logo" style="width: 64px; height: 64px; object-fit: contain;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'64\\' height=\\'64\\'%3E%3Crect fill=\\'%232563eb\\' width=\\'64\\' height=\\'64\\'/%3E%3Ctext fill=\\'white\\' font-family=\\'Arial\\' font-size=\\'16\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3EMYFNG%3C/text%3E%3C/svg%3E';" />
+          <img src="${logoSrc}" alt="MyFNG Logo" style="width: 64px; height: 64px; object-fit: contain;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'64\\' height=\\'64\\'%3E%3Crect fill=\\'%232563eb\\' width=\\'64\\' height=\\'64\\'/%3E%3Ctext fill=\\'white\\' font-family=\\'Arial\\' font-size=\\'16\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3EMYFNG%3C/text%3E%3C/svg%3E';" />
           <div>
             <div class="brand-sub">${docLabel}</div>
           </div>
@@ -2234,11 +2300,11 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
           <div class="brand-head">${company.legalName}</div>
           <div>${company.headOfficeAddress}</div>
           <div class="brand-contact">
-            <span><strong>Phone:</strong> ${company.phone}</span> |
-            <span><strong>Email:</strong> ${company.email}</span> |
-            <span><strong>Website:</strong> ${company.website}</span> |
-            <span><strong>PAN:</strong> ${company.pan}</span> |
-            <span><strong>GSTIN:</strong> ${company.gstin}</span>
+            <div><strong>Phone:</strong> ${company.phone}</div>
+            <div><strong>Email:</strong> ${company.email}</div>
+            <div><strong>Website:</strong> ${company.website}</div>
+            <div><strong>PAN:</strong> ${company.pan}</div>
+            <div><strong>GSTIN:</strong> ${company.gstin}</div>
           </div>
         </div>
       </div>
@@ -2289,18 +2355,19 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
     </div>
 
     <!-- Line Items Table -->
+    <div class="table-scroll">
     <table class="line-items-table">
       <thead>
         <tr>
-          <th style="width: 60px;">S.NO.</th>
-          <th>Part / Service</th>
-          <th style="width: 90px;">Type</th>
-          <th style="width: 90px;">HSN / SAC</th>
-          ${showItemGstCols ? `<th style="width: 70px;" class="text-right">GST %</th>` : ''}
-          ${showItemGstCols ? `<th style="width: 110px;" class="text-right">Taxable (₹)</th>` : ''}
-          <th style="width: 70px;" class="text-right">Qty</th>
-          <th style="width: 110px;" class="text-right">Unit Price (₹)</th>
-          <th style="width: 110px;" class="text-right">Total (₹)</th>
+          <th class="col-sr" style="width: 48px;">S.NO.</th>
+          <th class="col-name">Part / Service</th>
+          <th class="col-type" style="width: 90px;">Type</th>
+          <th class="col-hsn" style="width: 90px;">HSN / SAC</th>
+          ${showItemGstCols ? `<th class="col-gst text-right" style="width: 70px;">GST %</th>` : ''}
+          ${showItemGstCols ? `<th class="col-taxable text-right" style="width: 110px;">Taxable (₹)</th>` : ''}
+          <th class="col-qty text-right" style="width: 56px;">Qty</th>
+          <th class="col-unit text-right" style="width: 96px;">Unit (₹)</th>
+          <th class="col-total text-right" style="width: 96px;">Total (₹)</th>
         </tr>
       </thead>
       <tbody>
@@ -2317,44 +2384,46 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
                 if (r.kind === 'group') {
                   return `
           <tr class="group-row">
-            <td></td>
+            <td class="col-sr"></td>
             <td colspan="${itemTableColCount - 1}">${r.titleHtml}</td>
           </tr>
         `;
                 }
                 return `
           <tr>
-            <td>${r.sr}</td>
-            <td>${r.nameHtml}</td>
-            <td>${r.typeLabel}</td>
-            <td>${esc(r.hsn)}</td>
-            ${showItemGstCols ? `<td class="text-right">${money(r.gstRate)}</td>` : ''}
-            ${showItemGstCols ? `<td class="text-right">${money(r.taxable)}</td>` : ''}
-            <td class="text-right">${money(r.qty)}</td>
-            <td class="text-right">${money(r.unitPrice)}</td>
-            <td class="text-right">${money(r.total)}</td>
+            <td class="col-sr">${r.sr}</td>
+            <td class="col-name">${r.nameHtml}</td>
+            <td class="col-type">${r.typeLabel}</td>
+            <td class="col-hsn">${esc(r.hsn)}</td>
+            ${showItemGstCols ? `<td class="col-gst text-right">${money(r.gstRate)}</td>` : ''}
+            ${showItemGstCols ? `<td class="col-taxable text-right">${money(r.taxable)}</td>` : ''}
+            <td class="col-qty text-right">${money(r.qty)}</td>
+            <td class="col-unit text-right">${money(r.unitPrice)}</td>
+            <td class="col-total text-right">${money(r.total)}</td>
           </tr>
         `;
               })
               .join('')
           : `
           <tr>
-            <td>1</td>
-            <td>Service Charges (Labour)</td>
-            <td>Labour</td>
-            <td>998714</td>
-            ${showItemGstCols ? `<td class="text-right">18.00</td>` : ''}
-            ${showItemGstCols ? `<td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>` : ''}
-            <td class="text-right">1.00</td>
-            <td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
-            <td class="text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
+            <td class="col-sr">1</td>
+            <td class="col-name">Service Charges (Labour)</td>
+            <td class="col-type">Labour</td>
+            <td class="col-hsn">998714</td>
+            ${showItemGstCols ? `<td class="col-gst text-right">18.00</td>` : ''}
+            ${showItemGstCols ? `<td class="col-taxable text-right">${(invoice.base_amount || 0).toFixed(2)}</td>` : ''}
+            <td class="col-qty text-right">1.00</td>
+            <td class="col-unit text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
+            <td class="col-total text-right">${(invoice.base_amount || 0).toFixed(2)}</td>
           </tr>
         `}
       </tbody>
     </table>
+    </div>
 
     ${showGstBreakup ? `
     <!-- GST Breakdown Table -->
+    <div class="table-scroll">
     <table class="gst-table">
       <thead>
         <tr>
@@ -2392,6 +2461,7 @@ async function generateInvoiceHTML(invoice: any, supabaseAdmin: any): Promise<st
         </tr>
       </tbody>
     </table>
+    </div>
     ` : ''}
 
     <!-- Invoice Total Table -->

@@ -49,6 +49,22 @@ export function isReadyForMechanicAssign(lead: {
   return PICKUP_DONE.has(pickup) || PICKUP_DONE.has(status);
 }
 
+function isPastPickupCard(lead: {
+  pickup_status?: string | null;
+  status?: string | null;
+  drop_status?: string | null;
+  drop_otp_verified_at?: string | null;
+  drop_completed_time?: string | null;
+}) {
+  const status = String(lead.status || '').toUpperCase();
+  const pickup = String(lead.pickup_status || '').toUpperCase();
+  if (CLOSED.has(status) || FLOOR_DONE_STATUSES.has(status) || status === 'COD_PENDING') return true;
+  if (['DELIVERED', 'OUT_FOR_DELIVERY'].includes(pickup)) return true;
+  if (lead.drop_otp_verified_at || lead.drop_completed_time) return true;
+  if (String(lead.drop_status || '').toUpperCase() === 'DELIVERED') return true;
+  return false;
+}
+
 /** Advisor still needs to assign a pickup boy. */
 export function isWaitingPickupAssign(lead: {
   pickup_required?: boolean | null;
@@ -58,8 +74,7 @@ export function isWaitingPickupAssign(lead: {
 }) {
   if (!lead.pickup_required) return false;
   if (lead.assigned_pickup_boy_id) return false;
-  const status = String(lead.status || '').toUpperCase();
-  if (CLOSED.has(status)) return false;
+  if (isPastPickupCard(lead)) return false;
   if (isReadyForMechanicAssign(lead)) return false;
   return true;
 }
@@ -73,9 +88,39 @@ export function isPickupInProgress(lead: {
 }) {
   if (!lead.pickup_required) return false;
   if (!lead.assigned_pickup_boy_id) return false;
-  const status = String(lead.status || '').toUpperCase();
-  if (CLOSED.has(status)) return false;
+  if (isPastPickupCard(lead)) return false;
   if (isReadyForMechanicAssign(lead)) return false;
+  return true;
+}
+
+export function isWaitingDeliveryAssign(lead: {
+  status?: string | null;
+  drop_assigned_to?: string | null;
+  drop_status?: string | null;
+  drop_otp_verified_at?: string | null;
+  drop_completed_time?: string | null;
+}) {
+  const status = String(lead.status || '').toUpperCase();
+  if (status !== 'READY_FOR_DELIVERY' && status !== 'COD_PENDING') return false;
+  if (String(lead.drop_assigned_to || '').trim()) return false;
+  if (lead.drop_otp_verified_at || lead.drop_completed_time) return false;
+  if (String(lead.drop_status || '').toUpperCase() === 'DELIVERED') return false;
+  return true;
+}
+
+export function isDeliveryInProgress(lead: {
+  status?: string | null;
+  drop_assigned_to?: string | null;
+  drop_status?: string | null;
+  drop_otp_verified_at?: string | null;
+  drop_completed_time?: string | null;
+}) {
+  const status = String(lead.status || '').toUpperCase();
+  if (status === 'DELIVERED' || status === 'DELIVERED_TO_CUSTOMER') return false;
+  if (status !== 'READY_FOR_DELIVERY' && status !== 'COD_PENDING') return false;
+  if (!String(lead.drop_assigned_to || '').trim()) return false;
+  if (lead.drop_otp_verified_at || lead.drop_completed_time) return false;
+  if (String(lead.drop_status || '').toUpperCase() === 'DELIVERED') return false;
   return true;
 }
 
@@ -111,4 +156,40 @@ export function qcQueueTab(lead: {
   if (qc === 'FAILED') return 'FAILED';
   if (qc === 'REWORK_REQUIRED' || qc === 'REWORK') return 'REWORK';
   return 'OTHER';
+}
+
+type LeadLookupClient = {
+  from: (table: string) => {
+    select: (cols: string) => any;
+  };
+};
+
+/** QC Review / job screens may receive a lead UUID or a mechanic_jobs UUID. */
+export async function resolveAdvisorLeadId(
+  client: LeadLookupClient,
+  ids: { leadId?: string | null; jobId?: string | null },
+): Promise<string | null> {
+  const unique = [...new Set([ids.leadId, ids.jobId].map((x) => String(x || '').trim()).filter(Boolean))];
+  for (const id of unique) {
+    const { data } = await client.from('service_leads').select('id').eq('id', id).maybeSingle();
+    if (data?.id) return String(data.id);
+  }
+  for (const id of unique) {
+    const { data } = await client.from('mechanic_jobs').select('lead_id').eq('id', id).limit(1);
+    const leadId = Array.isArray(data) ? data[0]?.lead_id : (data as any)?.lead_id;
+    if (leadId) return String(leadId);
+  }
+  return unique[0] || null;
+}
+
+export async function latestMechanicJobForLead(client: LeadLookupClient, leadId: string) {
+  const { data, error } = await client
+    .from('mechanic_jobs')
+    .select('id, lead_id, mechanic_id, mechanic_status, started_at, work_notes, updated_at, created_at')
+    .eq('lead_id', leadId)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+  if (error) return { data: null, error };
+  const row = Array.isArray(data) ? data[0] : data;
+  return { data: row || null, error: null };
 }

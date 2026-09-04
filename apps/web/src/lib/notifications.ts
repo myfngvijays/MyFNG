@@ -39,6 +39,42 @@ interface CreateNotificationParams {
   metadata?: Record<string, any>;
 }
 
+const NOTIFICATION_TYPE_FALLBACK: Record<string, string> = {
+  DELIVERY_ASSIGNED: 'PICKUP_SCHEDULED',
+  DELIVERY_COMPLETED: 'PICKUP_COMPLETED',
+  DELIVERY_FAILED: 'SLA_WARNING',
+  PICKUP_TASK_ASSIGNED: 'PICKUP_SCHEDULED',
+  PICKUP_REASSIGNED: 'PICKUP_SCHEDULED',
+  SYSTEM_ALERT: 'SLA_WARNING',
+};
+
+function isInvalidNotificationTypeError(error: { message?: string; code?: string } | null): boolean {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('invalid input value for enum') ||
+    msg.includes('notification_type') ||
+    ['22P02', '23514'].includes(String(error?.code || ''))
+  );
+}
+
+function notificationRow(params: CreateNotificationParams, typeOverride?: string) {
+  return {
+    user_id: params.userId,
+    type: typeOverride || params.type,
+    title: params.title,
+    message: params.message,
+    priority: params.priority || 'MEDIUM',
+    lead_id: params.leadId,
+    lead_number: params.leadNumber,
+    related_user_id: params.relatedUserId,
+    related_user_name: params.relatedUserName,
+    action_url: params.actionUrl,
+    metadata: params.metadata,
+    is_read: false,
+    created_at: new Date().toISOString(),
+  };
+}
+
 export async function createNotification(params: CreateNotificationParams) {
   const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
 
@@ -48,25 +84,23 @@ export async function createNotification(params: CreateNotificationParams) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('notifications')
-      .insert({
-        user_id: params.userId,
-        type: params.type,
-        title: params.title,
-        message: params.message,
-        priority: params.priority || 'MEDIUM',
-        lead_id: params.leadId,
-        lead_number: params.leadNumber,
-        related_user_id: params.relatedUserId,
-        related_user_name: params.relatedUserName,
-        action_url: params.actionUrl,
-        metadata: params.metadata,
-        is_read: false,
-        created_at: new Date().toISOString()
-      })
+      .insert(notificationRow(params))
       .select()
       .single();
+
+    if (error && isInvalidNotificationTypeError(error)) {
+      const fallback = NOTIFICATION_TYPE_FALLBACK[String(params.type)] || 'PICKUP_SCHEDULED';
+      console.warn('Notification type rejected, retrying with fallback:', params.type, '→', fallback, error.message);
+      const retry = await supabaseAdmin
+        .from('notifications')
+        .insert(notificationRow(params, fallback))
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       console.error('Error creating notification:', error);
@@ -110,10 +144,17 @@ export async function createBulkNotifications(notifications: CreateNotificationP
       created_at: new Date().toISOString()
     }));
 
-    const { data, error } = await supabaseAdmin
-      .from('notifications')
-      .insert(notificationsData)
-      .select();
+    let { data, error } = await supabaseAdmin.from('notifications').insert(notificationsData).select();
+
+    if (error && isInvalidNotificationTypeError(error)) {
+      console.warn('Bulk notification type rejected, inserting one-by-one with fallback:', error.message);
+      const created: any[] = [];
+      for (const params of notifications) {
+        const row = await createNotification(params);
+        if (row) created.push(row);
+      }
+      return created;
+    }
 
     if (error) {
       console.error('Error creating bulk notifications:', error);

@@ -4,7 +4,7 @@
  * NOTE: This is a stepping stone towards true PDF generation (puppeteer/pdfkit) later.
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -18,7 +18,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -105,6 +105,16 @@ export async function POST(
         reason: 'generate_failed',
         status: pdfRes.status,
         details: text.slice(0, 500),
+        fallback_url: fallbackUrl,
+      });
+    }
+
+    const generatedType = String(pdfRes.headers.get('content-type') || '').toLowerCase();
+    if (!generatedType.includes('application/pdf')) {
+      return NextResponse.json({
+        success: false,
+        reason: 'not_pdf',
+        details: 'Generator returned HTML (Chrome PDF engine unavailable). Use generate-pdf URL to print.',
         fallback_url: fallbackUrl,
       });
     }

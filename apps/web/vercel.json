@@ -49,6 +49,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/notifications?task=purge_old",
+      "schedule": "20 4 * * *"
+    },
+    {
       "path": "/api/cron/smartflo-recordings",
       "schedule": "*/5 * * * *"
     },

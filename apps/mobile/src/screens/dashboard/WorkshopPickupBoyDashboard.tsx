@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } 
 import { AC } from '../../components/workshop/advisorCrmUi';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
+import { fetchPickupBoyLeads } from '../../lib/fetchPickupBoyLeads';
 import WorkshopCrmShell from '../../components/workshop/WorkshopCrmShell';
 import {
   PICKUP_CRM_NAV,
@@ -22,6 +23,7 @@ import PickupLeadCard from '../../components/workshop/PickupLeadCard';
 import {
   isActivePickupBoyTask,
   isActiveDeliveryBoyTask,
+  isAssignedDeliveryFor,
   isPickupLegComplete,
   isHistoryTaskCompleted,
   classifyPickupBoyDashboardTask,
@@ -99,19 +101,10 @@ export default function WorkshopPickupBoyDashboard() {
     }
 
     try {
-      // ✅ FIX: Fetch from service_leads table (like web)
-      const { data: allTasks, error: tasksError } = await supabase
-        .from('service_leads')
-        .select('*')
-        .eq('assigned_pickup_boy_id', pickupBoyId)
-        .not('status', 'in', '(REJECTED,CANCELLED)');
-
-      if (tasksError) {
-        return;
-      }
+      const allTasks = await fetchPickupBoyLeads(pickupBoyId);
 
       const openTasks = (allTasks || []).filter(
-        (t) => isActivePickupBoyTask(t) || isActiveDeliveryBoyTask(t),
+        (t) => isActivePickupBoyTask(t) || isAssignedDeliveryFor(t, pickupBoyId),
       );
 
       const upcoming = openTasks.filter((t) => classifyPickupBoyDashboardTask(t) === 'upcoming');
@@ -286,11 +279,10 @@ export default function WorkshopPickupBoyDashboard() {
 
   const renderTaskCard = (task: any, index: number, isCompleted = false) => {
     const address = task.customer_address || task.pickup_address || task.address;
-    const status = String(task.pickup_status || task.status || 'ASSIGNED');
-    const isDelivery =
-      !task.pickup_required ||
-      task.status === 'READY_FOR_DELIVERY' ||
-      task.status === 'COD_PENDING';
+    const isDelivery = isActiveDeliveryBoyTask(task);
+    const status = String(
+      isDelivery ? task.status || task.pickup_status : task.pickup_status || task.status || 'ASSIGNED',
+    );
     const taskType = isDelivery ? 'DELIVERY' : 'PICKUP';
     const completedAt = getPickupHistoryCompletedAt(task);
 

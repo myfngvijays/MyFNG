@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { Alert } from 'react-native';
+import { isNotificationWithinRetention, notificationRetentionCutoffIso } from '../../../../shared/types/notifications';
 
 export interface Notification {
   id: string;
@@ -97,10 +98,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      const cutoff = notificationRetentionCutoffIso();
+      void supabase.from('notifications').delete().eq('user_id', userId).lt('created_at', cutoff);
+
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', userId)
+        .gte('created_at', cutoff)
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -165,6 +170,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           (payload) => {
             if (__DEV__) console.log('New notification received');
             const newNotification = payload.new as Notification;
+            if (!isNotificationWithinRetention(newNotification.created_at)) return;
 
             // Add to notifications list
             setNotifications(prev => [newNotification, ...prev]);

@@ -53,7 +53,7 @@ VALUES
     'Maharashtra',
     'MH12DUM201',
     'Maruti',
-    'Swift',
+    'WAGON R',
     2020,
     'General Service',
     'Dummy lead — full flow test (oil service + inspection)',

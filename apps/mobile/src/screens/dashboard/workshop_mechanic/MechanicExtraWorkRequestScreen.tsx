@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,42 @@ export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: {
   const [otherCategory, setOtherCategory] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [partRows, setPartRows] = useState<
+    Array<{ name: string; qty: string; kind: 'PART' | 'LABOUR' }>
+  >([]);
+  const [jobQuery, setJobQuery] = useState('');
+  const [jobHits, setJobHits] = useState<Array<{ id: string; name: string; category: string }>>([]);
+  const [relatedParts, setRelatedParts] = useState<Array<{ name: string; kind: 'PART' | 'LABOUR' }>>([]);
+  const [pickedRelated, setPickedRelated] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const q = jobQuery.trim() || description.trim();
+      apiFetch<{
+        jobs?: Array<{ id: string; name: string; category: string }>;
+        related_parts?: Array<{ name: string; kind: 'PART' | 'LABOUR' }>;
+        kit_title?: string;
+      }>(`/api/mechanic/additional-job-kits?q=${encodeURIComponent(q)}&job=${encodeURIComponent(description.trim())}`)
+        .then((json) => {
+          setJobHits(Array.isArray(json.jobs) ? json.jobs : []);
+          const rel = Array.isArray(json.related_parts) ? json.related_parts : [];
+          setRelatedParts(rel);
+          setPickedRelated((prev) => {
+            const sameSet =
+              rel.length > 0 &&
+              rel.every((p) => Object.prototype.hasOwnProperty.call(prev, p.name)) &&
+              Object.keys(prev).length === rel.length;
+            const next: Record<string, boolean> = {};
+            rel.forEach((p) => {
+              next[p.name] = sameSet ? Boolean(prev[p.name]) : true;
+            });
+            return next;
+          });
+        })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [jobQuery, description]);
 
   const handleCategoryChange = (value: string | number) => {
     const next = String(value);
@@ -45,8 +81,21 @@ export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: {
   };
 
   const handleSubmit = async () => {
-    if (!description.trim() || !reason.trim() || !estimatedCost.trim()) {
-      Alert.alert('Required', 'Please fill description, reason, and estimated cost');
+    const fromKit = relatedParts
+      .filter((p) => pickedRelated[p.name])
+      .map((p) => ({ name: p.name, qty: 1, unit_price: 0, amount: 0, kind: p.kind }));
+    const extraLines = partRows
+      .map((row) => {
+        const name = row.name.trim();
+        if (!name) return null;
+        const qty = Math.max(0.01, Number(row.qty) || 1);
+        return { name, qty, unit_price: 0, amount: 0, kind: row.kind };
+      })
+      .filter(Boolean);
+    const parts_breakdown = [...fromKit, ...extraLines];
+
+    if (!description.trim() || !reason.trim()) {
+      Alert.alert('Required', 'Please fill description and reason');
       return;
     }
 
@@ -55,9 +104,13 @@ export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: {
       return;
     }
 
-    const cost = Number(estimatedCost);
-    if (Number.isNaN(cost) || cost <= 0) {
+    const cost = estimatedCost.trim() ? Number(estimatedCost) : 0;
+    if (estimatedCost.trim() && (Number.isNaN(cost) || cost < 0)) {
       Alert.alert('Invalid cost', 'Please enter a valid estimated cost');
+      return;
+    }
+    if (cost <= 0 && parts_breakdown.length === 0) {
+      Alert.alert('Required', 'Parts list daalo (pricing optional) ya estimated cost.');
       return;
     }
 
@@ -73,6 +126,7 @@ export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: {
           category,
           other_category: category === 'OTHER' ? otherCategory.trim() : undefined,
           is_urgent: isUrgent,
+          parts_breakdown,
         }),
       });
 
@@ -112,21 +166,70 @@ export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: {
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.hint}>
-            Request extra work for advisor approval. Job stays on hold until this is approved or rejected.
+            Job select karo (jaise Clutch). Related parts tick karo, advisor prices check karke customer approval bhejega. Customer OK ke baad additional kaam start.
           </Text>
 
           <View style={styles.card}>
             <Text style={styles.label}>
-              Description <Text style={styles.required}>*</Text>
+              Additional job <Text style={styles.required}>*</Text>
             </Text>
+            <TextInput
+              style={styles.input}
+              value={jobQuery}
+              onChangeText={setJobQuery}
+              placeholder="Search e.g. Clutch, Brake, AC"
+              placeholderTextColor={COLORS.gray[400]}
+            />
+            {jobHits.length > 0 ? (
+              <View style={styles.hitList}>
+                {jobHits.slice(0, 8).map((hit) => (
+                  <TouchableOpacity
+                    key={hit.id}
+                    style={[styles.hitRow, description === hit.name && styles.hitRowOn]}
+                    onPress={() => {
+                      setDescription(hit.name);
+                      setJobQuery(hit.name);
+                      setPickedRelated({});
+                    }}
+                  >
+                    <Text style={styles.hitName}>{hit.name}</Text>
+                    {hit.category ? <Text style={styles.hitCat}>{hit.category}</Text> : null}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
             <TextInput
               style={[styles.input, styles.textArea]}
               value={description}
               onChangeText={setDescription}
-              placeholder="Describe the additional work required..."
+              placeholder="Or type job name (e.g. Clutch Replace)"
               placeholderTextColor={COLORS.gray[400]}
               multiline
             />
+
+            {relatedParts.length > 0 ? (
+              <>
+                <Text style={styles.label}>Related parts / labour — select what is needed</Text>
+                <Text style={styles.partHint}>Prices advisor bharega. Customer approval ke baad kaam start.</Text>
+                {relatedParts.map((p) => {
+                  const on = Boolean(pickedRelated[p.name]);
+                  return (
+                    <TouchableOpacity
+                      key={p.name}
+                      style={styles.checkRow}
+                      onPress={() => setPickedRelated((prev) => ({ ...prev, [p.name]: !on }))}
+                    >
+                      <View style={[styles.checkBox, on && styles.checkBoxOn]}>
+                        <Text style={styles.checkMark}>{on ? '✓' : ''}</Text>
+                      </View>
+                      <Text style={styles.checkLabel}>
+                        {p.name} <Text style={styles.kindTag}>{p.kind}</Text>
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            ) : null}
 
             <Text style={styles.label}>
               Reason <Text style={styles.required}>*</Text>
@@ -141,7 +244,7 @@ export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: {
             />
 
             <Text style={styles.label}>
-              Estimated cost <Text style={styles.required}>*</Text>
+              Estimated cost <Text style={styles.optional}>(optional — advisor prices)</Text>
             </Text>
             <View style={styles.costRow}>
               <Text style={styles.costPrefix}>₹</Text>
@@ -154,6 +257,51 @@ export default function MechanicExtraWorkRequestScreen({ hideChrome = false }: {
                 keyboardType="decimal-pad"
               />
             </View>
+
+            <Text style={styles.label}>Parts / labour used</Text>
+            <Text style={styles.partHint}>Clutch jaise job pe har item alag line: name + qty. Rate advisor bharega.</Text>
+            {partRows.map((row, i) => (
+              <View key={`mech-part-${i}`} style={styles.partBlock}>
+                <TextInput
+                  style={styles.input}
+                  value={row.name}
+                  onChangeText={(txt) =>
+                    setPartRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, name: txt } : r)))
+                  }
+                  placeholder="e.g. Flywheel / Clutch plate / Clutch wire"
+                  placeholderTextColor={COLORS.gray[400]}
+                />
+                <View style={styles.partMeta}>
+                  <TextInput
+                    style={[styles.input, styles.qtyInput]}
+                    value={row.qty}
+                    onChangeText={(txt) =>
+                      setPartRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, qty: txt } : r)))
+                    }
+                    placeholder="Qty"
+                    placeholderTextColor={COLORS.gray[400]}
+                    keyboardType="decimal-pad"
+                  />
+                  <TouchableOpacity
+                    style={styles.kindBtn}
+                    onPress={() =>
+                      setPartRows((prev) =>
+                        prev.map((r, idx) =>
+                          idx === i ? { ...r, kind: r.kind === 'LABOUR' ? 'PART' : 'LABOUR' } : r,
+                        ),
+                      )
+                    }
+                  >
+                    <Text style={styles.kindBtnTxt}>{row.kind}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+            <TouchableOpacity
+              onPress={() => setPartRows((prev) => [...prev, { name: '', qty: '1', kind: 'PART' }])}
+            >
+              <Text style={styles.addPart}>+ Add part / labour line</Text>
+            </TouchableOpacity>
 
             <Text style={styles.label}>Category</Text>
             <CustomPicker
@@ -262,6 +410,49 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   required: { color: COLORS.danger },
+  optional: { color: COLORS.textSecondary, fontWeight: '500' },
+  partHint: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  partBlock: { marginBottom: 8 },
+  partMeta: { flexDirection: 'row', gap: 8, marginTop: -8, marginBottom: 8 },
+  qtyInput: { flex: 1, marginBottom: 0 },
+  kindBtn: {
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+  },
+  kindBtnTxt: { color: COLORS.white, fontWeight: '800', fontSize: 12 },
+  addPart: { color: COLORS.primary, fontWeight: '800', fontSize: 13, marginBottom: 16 },
+  hitList: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  hitRow: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.gray[100] },
+  hitRowOn: { backgroundColor: '#EFF6FF' },
+  hitName: { fontWeight: '700', color: COLORS.textHeading },
+  hitCat: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  checkBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkBoxOn: { backgroundColor: COLORS.primary },
+  checkMark: { color: COLORS.white, fontWeight: '800', fontSize: 12 },
+  checkLabel: { flex: 1, fontSize: 14, color: COLORS.textHeading, fontWeight: '600' },
+  kindTag: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '700' },
   input: {
     borderWidth: 1,
     borderColor: COLORS.gray[200],

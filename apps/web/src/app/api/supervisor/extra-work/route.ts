@@ -4,6 +4,49 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
+async function mapExtraWorkRows(rows: any[] | null, reader: any) {
+  const requesterIds = Array.from(
+    new Set((rows || []).map((r: any) => r.requested_by).filter(Boolean)),
+  );
+  const nameById = new Map<string, string>();
+  if (requesterIds.length > 0) {
+    const { data: people } = await reader
+      .from('users_login')
+      .select('id, full_name')
+      .in('id', requesterIds);
+    (people || []).forEach((p: any) => nameById.set(p.id, p.full_name || 'Mechanic'));
+  }
+
+  const requests = (rows || []).map((req: any) => {
+    const lead = Array.isArray(req.service_leads) ? req.service_leads[0] : req.service_leads;
+    return {
+      id: req.id,
+      lead_id: req.lead_id,
+      lead_number: lead?.lead_number || '',
+      customer_name: lead?.customer_name || 'Customer',
+      vehicle_number: lead?.vehicle_number || '',
+      mechanic_name: nameById.get(req.requested_by) || 'Mechanic',
+      description: req.description,
+      reason: req.reason,
+      amount: Number(req.amount) || 0,
+      category: req.category || 'EXTRA_WORK',
+      is_urgent: !!req.is_urgent,
+      created_at: req.created_at,
+      status: String(req.status || 'PENDING').toUpperCase(),
+      image_url: req.image_url || null,
+      parts_breakdown: Array.isArray(req.parts_breakdown) ? req.parts_breakdown : [],
+    };
+  });
+
+  return NextResponse.json({
+    success: true,
+    requests,
+    pending_count: requests.filter((r) => r.status === 'PENDING').length,
+    approved_count: requests.filter((r) => r.status === 'APPROVED').length,
+    rejected_count: requests.filter((r) => r.status === 'REJECTED').length,
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -58,6 +101,7 @@ export async function GET(request: NextRequest) {
         status,
         requested_by,
         image_url,
+        parts_breakdown,
         service_leads!inner (
           lead_number,
           customer_name,
@@ -76,6 +120,44 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: rows, error } = await query;
+    if (error && /parts_breakdown/i.test(String(error.message || ''))) {
+      query = reader
+        .from('lead_extra_charges')
+        .select(
+          `
+        id,
+        lead_id,
+        description,
+        reason,
+        amount,
+        category,
+        is_urgent,
+        created_at,
+        status,
+        requested_by,
+        image_url,
+        service_leads!inner (
+          lead_number,
+          customer_name,
+          vehicle_number,
+          workshop_id,
+          deleted_at
+        )
+      `,
+        )
+        .in('status', ['PENDING', 'APPROVED', 'REJECTED'])
+        .is('service_leads.deleted_at', null)
+        .order('created_at', { ascending: false });
+      if (workshopId) query = query.eq('service_leads.workshop_id', workshopId);
+      const retry = await query;
+      if (retry.error) {
+        return NextResponse.json(
+          { error: 'Failed to load additional jobs', details: retry.error.message },
+          { status: 500 },
+        );
+      }
+      return await mapExtraWorkRows(retry.data, reader);
+    }
     if (error) {
       return NextResponse.json(
         { error: 'Failed to load additional jobs', details: error.message },
@@ -83,45 +165,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const requesterIds = Array.from(
-      new Set((rows || []).map((r: any) => r.requested_by).filter(Boolean)),
-    );
-    const nameById = new Map<string, string>();
-    if (requesterIds.length > 0) {
-      const { data: people } = await reader
-        .from('users_login')
-        .select('id, full_name')
-        .in('id', requesterIds);
-      (people || []).forEach((p: any) => nameById.set(p.id, p.full_name || 'Mechanic'));
-    }
-
-    const requests = (rows || []).map((req: any) => {
-      const lead = Array.isArray(req.service_leads) ? req.service_leads[0] : req.service_leads;
-      return {
-        id: req.id,
-        lead_id: req.lead_id,
-        lead_number: lead?.lead_number || '',
-        customer_name: lead?.customer_name || 'Customer',
-        vehicle_number: lead?.vehicle_number || '',
-        mechanic_name: nameById.get(req.requested_by) || 'Mechanic',
-        description: req.description,
-        reason: req.reason,
-        amount: Number(req.amount) || 0,
-        category: req.category || 'EXTRA_WORK',
-        is_urgent: !!req.is_urgent,
-        created_at: req.created_at,
-        status: String(req.status || 'PENDING').toUpperCase(),
-        image_url: req.image_url || null,
-      };
-    });
-
-    return NextResponse.json({
-      success: true,
-      requests,
-      pending_count: requests.filter((r) => r.status === 'PENDING').length,
-      approved_count: requests.filter((r) => r.status === 'APPROVED').length,
-      rejected_count: requests.filter((r) => r.status === 'REJECTED').length,
-    });
+    return await mapExtraWorkRows(rows, reader);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: 'Failed to load additional jobs', details: message }, { status: 500 });

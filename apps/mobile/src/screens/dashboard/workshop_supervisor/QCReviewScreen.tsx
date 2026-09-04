@@ -20,6 +20,7 @@ import { COLORS } from '../../../constants/theme';
 import { ENV } from '../../../config/environment';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import { apiFetch } from '../../../lib/api';
+import { isQcPassed, resolveAdvisorLeadId } from '../../../lib/workshopJobFlow';
 
 interface Photo {
   id: string;
@@ -44,7 +45,8 @@ interface ChecklistItem {
 export default function QCReviewScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { jobId } = route.params as { jobId: string };
+  const params = (route.params || {}) as { jobId?: string; leadId?: string };
+  const [leadKey, setLeadKey] = useState(String(params.leadId || params.jobId || '').trim());
 
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -95,34 +97,43 @@ export default function QCReviewScreen() {
   }, [navigation]);
 
   useEffect(() => {
-    if (jobId) {
-      fetchJobDetails();
-    }
-  }, [jobId]);
+    fetchJobDetails();
+  }, [params.jobId, params.leadId]);
 
   async function fetchJobDetails() {
     try {
       setLoading(true);
 
       const supabaseClient = supabase;
+      const resolvedId = await resolveAdvisorLeadId(supabaseClient, {
+        leadId: params.leadId,
+        jobId: params.jobId,
+      });
+      if (!resolvedId) {
+        setLead(null);
+        return;
+      }
+      setLeadKey(resolvedId);
 
-      // Fetch lead details
       const { data: leadData, error: leadError } = await supabaseClient
         .from('service_leads')
         .select('*')
-        .eq('id', jobId)
-        .single();
+        .eq('id', resolvedId)
+        .maybeSingle();
 
       if (leadError) throw leadError;
+      if (!leadData) {
+        setLead(null);
+        return;
+      }
       setLead(leadData);
 
-      // Fetch mechanic details
       if (leadData?.assigned_mechanic_id) {
         const { data: mechanicData } = await supabaseClient
           .from('users_login')
           .select('id, full_name, profile_image')
           .eq('id', leadData.assigned_mechanic_id)
-          .single();
+          .maybeSingle();
         setMechanic(mechanicData);
       }
 
@@ -148,7 +159,7 @@ export default function QCReviewScreen() {
             amount?: number | null;
             proof?: any[];
           }>;
-        }>(`/api/supervisor/jobs/${jobId}/qc-evidence`);
+        }>(`/api/supervisor/jobs/${resolvedId}/qc-evidence`);
         setBeforePhotos((evidence.photos?.before || []).map((item) => toPhoto(item, 'before')));
         setDuringPhotos((evidence.photos?.during || []).map((item) => toPhoto(item, 'during')));
         setAfterPhotos((evidence.photos?.after || []).map((item) => toPhoto(item, 'after')));
@@ -169,32 +180,32 @@ export default function QCReviewScreen() {
         setExtraWork([]);
       }
 
-      // Fetch parts used
       const { data: partsData, error: partsError } = await supabaseClient
         .from('mechanic_parts_usage')
         .select('*')
-        .eq('lead_id', jobId)
+        .eq('lead_id', resolvedId)
         .order('created_at', { ascending: false });
 
       if (!partsError && partsData) {
         setPartsUsed(partsData);
       }
 
-      // Fetch checklist
       if (leadData?.assigned_mechanic_id) {
-        const { data: checklistData, error: checklistError } = await supabaseClient
+        const { data: checklistRows, error: checklistError } = await supabaseClient
           .from('service_checklists')
           .select('*')
-          .eq('lead_id', jobId)
+          .eq('lead_id', resolvedId)
           .eq('mechanic_id', leadData.assigned_mechanic_id)
-          .maybeSingle();
+          .order('updated_at', { ascending: false })
+          .limit(1);
 
+        const checklistData = Array.isArray(checklistRows) ? checklistRows[0] : checklistRows;
         if (!checklistError && checklistData?.checklist_items) {
           let items = checklistData.checklist_items;
           if (typeof items === 'string') {
             try {
               items = JSON.parse(items);
-            } catch (e) {
+            } catch {
               items = [];
             }
           }
@@ -203,7 +214,7 @@ export default function QCReviewScreen() {
       }
     } catch (err: any) {
       console.error('Error fetching job details:', err);
-      Alert.alert('Error', err.message || 'Failed to load job details');
+      Alert.alert('Error', err?.message || 'Failed to load QC review');
     } finally {
       setLoading(false);
     }
@@ -220,7 +231,7 @@ export default function QCReviewScreen() {
       if (!token) throw new Error('Not authenticated');
 
       const response = await fetch(
-        `${ENV.API_URL}/api/supervisor/jobs/${jobId}/approve-qc`,
+        `${ENV.API_URL}/api/supervisor/jobs/${leadKey}/approve-qc`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -265,7 +276,7 @@ export default function QCReviewScreen() {
       if (!token) throw new Error('Not authenticated');
 
       const response = await fetch(
-        `${ENV.API_URL}/api/supervisor/jobs/${jobId}/reject-qc`,
+        `${ENV.API_URL}/api/supervisor/jobs/${leadKey}/reject-qc`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -332,7 +343,7 @@ export default function QCReviewScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Error loading job details</Text>
+          <Text style={styles.errorText}>QC review load nahi hui. Lead dubara open karo.</Text>
           <TouchableOpacity style={styles.backButtonStyle} onPress={() => navigation.goBack()}>
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
@@ -475,6 +486,15 @@ export default function QCReviewScreen() {
           </View>
         )}
 
+        {isQcPassed(lead) ? (
+          <View style={[AC.whiteCard, { backgroundColor: '#ECFDF5', borderColor: '#BBF7D0', borderWidth: 1 }]}>
+            <Text style={styles.sectionTitle}>QC already completed</Text>
+            <Text style={styles.bodyLine}>
+              Status: {String(lead.qc_status || lead.status || 'PASSED').replace(/_/g, ' ')}
+            </Text>
+            <Text style={styles.mutedLabel}>Photos, extra work, and checklist upar review ke liye hain. Naya PASS/FAIL nahi chahiye.</Text>
+          </View>
+        ) : (
         <View style={AC.whiteCard}>
           <Text style={styles.sectionTitle}>QC decision</Text>
 
@@ -538,6 +558,7 @@ export default function QCReviewScreen() {
             </Text>
           )}
         </View>
+        )}
       </ScrollView>
 
       {/* Reject Modal */}

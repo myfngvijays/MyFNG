@@ -1,4 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import {
+  customerHasFullBookingSince,
+  markCustomerBookingAbandonedCleared,
+} from '@/lib/services/bookingAbandonmentGuard';
 import { notifyBookingIncompleteWhatsApp } from '@/lib/services/bookingIncompleteWhatsApp';
 import {
   assertAutomationCronJobAllowed,
@@ -48,7 +52,7 @@ export async function runBookingIncompleteReminderJob() {
   const { data, error } = await supabaseAdmin
     .from('booking_drafts')
     .select(
-      'id, customer_id, customer_phone, customer_name, car_label, service_label, draft_payload, last_activity_at'
+      'id, customer_id, customer_phone, customer_name, car_label, service_label, draft_payload, last_activity_at, created_at'
     )
     .eq('status', 'ACTIVE')
     .lte('last_activity_at', cutoff)
@@ -58,7 +62,23 @@ export async function runBookingIncompleteReminderJob() {
   if (error) return { processed: 0, sent: 0, error: error.message };
 
   let sent = 0;
+  let skippedBooked = 0;
   for (const row of data || []) {
+    const alreadyBooked = await customerHasFullBookingSince(supabaseAdmin, {
+      customerId: String(row.customer_id || ''),
+      phone: String(row.customer_phone || ''),
+      // Any real booking after this draft was created should suppress the reminder.
+      sinceIso: String(row.created_at || row.last_activity_at || new Date(0).toISOString()),
+    });
+    if (alreadyBooked) {
+      skippedBooked += 1;
+      await markCustomerBookingAbandonedCleared(supabaseAdmin, {
+        customerId: String(row.customer_id || ''),
+        phone: String(row.customer_phone || ''),
+      });
+      continue;
+    }
+
     const result = await notifyBookingIncompleteWhatsApp(row);
     if (result.sent) {
       sent += 1;
@@ -73,7 +93,7 @@ export async function runBookingIncompleteReminderJob() {
     }
   }
 
-  return { processed: (data || []).length, sent };
+  return { processed: (data || []).length, sent, skippedBooked };
 }
 
 export async function runAdminDailySummaryJob(force = false) {

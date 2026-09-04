@@ -29,6 +29,7 @@ export function isHistoryTaskCompleted(lead: {
   status?: string | null;
 }) {
   if (isHistoryTaskCancelled(lead)) return false;
+  if (isActiveDeliveryBoyTask(lead)) return false;
   if (isPickupLegComplete(lead)) return true;
   const status = String(lead.status || '').toUpperCase();
   const pickup = String(lead.pickup_status || '').toUpperCase();
@@ -68,6 +69,7 @@ export function getPickupHistoryCompletedAt(lead: {
 export function formatPickupStatusLabel(status: string): string {
   const s = String(status || '').toUpperCase();
   if (s === 'COMPLETED' || isPickupLegComplete({ status: s })) return 'Completed';
+  if (s === 'READY_FOR_DELIVERY' || s === 'COD_PENDING') return 'Ready for delivery';
   if (s === 'CANCELLED' || s === 'REJECTED') return 'Cancelled';
   if (['VEHICLE_IN_TRANSIT', 'IN_TRANSIT', 'ON_THE_WAY', 'PICKED', 'PICKED_UP'].includes(s)) {
     return 'In transit';
@@ -105,17 +107,47 @@ export function isActivePickupBoyTask(lead: {
   return true;
 }
 
-export function isActiveDeliveryBoyTask(lead: {
+type DeliveryLead = {
   status?: string | null;
   pickup_status?: string | null;
-}) {
+  drop_assigned_to?: string | null;
+  drop_status?: string | null;
+  drop_otp_verified_at?: string | null;
+  drop_completed_time?: string | null;
+};
+
+export function isDeliveryStage(lead: DeliveryLead) {
   const status = String(lead.status || '').toUpperCase();
   const pickup = String(lead.pickup_status || '').toUpperCase();
-  return (
-    status === 'READY_FOR_DELIVERY' ||
-    status === 'COD_PENDING' ||
-    pickup === 'OUT_FOR_DELIVERY'
-  );
+  return status === 'READY_FOR_DELIVERY' || status === 'COD_PENDING' || pickup === 'OUT_FOR_DELIVERY';
+}
+
+export function isDeliveryJob(lead: DeliveryLead) {
+  if (isDeliveryStage(lead)) return true;
+  const status = String(lead.status || '').toUpperCase();
+  const pickup = String(lead.pickup_status || '').toUpperCase();
+  const drop = String(lead.drop_status || '').toUpperCase();
+  if (['DELIVERED', 'DELIVERED_TO_CUSTOMER'].includes(status)) return true;
+  if (pickup === 'DELIVERED' || pickup === 'OUT_FOR_DELIVERY') return true;
+  if (String(lead.drop_assigned_to || '').trim()) return true;
+  if (lead.drop_otp_verified_at || lead.drop_completed_time) return true;
+  return ['ASSIGNED', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'ARRIVED_AT_CUSTOMER', 'DELIVERED'].includes(drop);
+}
+
+export function isUnassignedDeliveryTask(lead: DeliveryLead) {
+  return isDeliveryStage(lead) && !String(lead.drop_assigned_to || '').trim();
+}
+
+export function isAssignedDeliveryFor(lead: DeliveryLead, userId?: string | null) {
+  if (!isDeliveryStage(lead)) return false;
+  const assigned = String(lead.drop_assigned_to || '').trim();
+  if (!assigned) return false;
+  if (!userId) return true;
+  return assigned === String(userId);
+}
+
+export function isActiveDeliveryBoyTask(lead: DeliveryLead) {
+  return isAssignedDeliveryFor(lead);
 }
 
 export function isPickupBoyHistoryTask(lead: {
@@ -191,6 +223,10 @@ export function classifyPickupBoyDashboardTask(lead: {
   pickup_status?: string | null;
   status?: string | null;
 }): PickupDashboardBucket | null {
+  if (isActiveDeliveryBoyTask(lead)) {
+    if (isDeliveryInTransit(lead)) return 'ongoing';
+    return 'upcoming';
+  }
   if (isHistoryTaskCompleted(lead)) return 'completed';
   if (!isActivePickupBoyTask(lead) && !isActiveDeliveryBoyTask(lead)) return null;
   if (isPickupInTransit(lead) || isDeliveryInTransit(lead)) return 'ongoing';

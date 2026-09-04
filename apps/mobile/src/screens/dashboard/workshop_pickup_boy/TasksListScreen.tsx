@@ -14,12 +14,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
+import { fetchPickupBoyLeads } from '../../../lib/fetchPickupBoyLeads';
 import { useNavigation } from '@react-navigation/native';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useNotifications } from '../../../context/NotificationContext';
 import {
   isActivePickupBoyTask,
   isActiveDeliveryBoyTask,
+  isAssignedDeliveryFor,
   isPickupInTransit,
   isPickupScheduled,
   isPickupLegComplete,
@@ -147,19 +149,10 @@ export default function TasksListScreen({ hideChrome = false }: { hideChrome?: b
       if (!userId) return;
 
       // ✅ FIX: Use assigned_pickup_boy_id (like web)
-      const { data, error } = await supabase
-        .from('service_leads')
-        .select('*')
-        .eq('assigned_pickup_boy_id', userId)
-        .not('status', 'in', '(REJECTED,CANCELLED)')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw error;
-      }
+      const data = await fetchPickupBoyLeads(userId);
 
       const openRows = (data || []).filter(
-        (item) => isActivePickupBoyTask(item) || isActiveDeliveryBoyTask(item),
+        (item) => isActivePickupBoyTask(item) || isAssignedDeliveryFor(item, userId),
       );
 
       const formattedTasks = openRows.map(item => ({

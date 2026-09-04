@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 type RoleCode = 'WORKSHOP_ADMIN' | 'WORKSHOP_SUPERVISOR' | 'SUPER_ADMIN';
 
-async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClient>>) {
+async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClientFromRequest>>) {
   const {
     data: { user },
     error: authError,
@@ -35,7 +35,7 @@ function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     const { profile, roleCode, error } = await getAuthedProfile(supabase);
     if (error === 'Unauthorized') return NextResponse.json({ error }, { status: 401 });
     if (!profile) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });

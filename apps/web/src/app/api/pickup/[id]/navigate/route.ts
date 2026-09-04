@@ -53,15 +53,25 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    // Verify task is assigned to this pickup boy
-    if (lead.assigned_pickup_boy_id !== userProfile.id) {
+    const deliveryReadyStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
+    const isDeliveryNav = deliveryReadyStatuses.includes(String(lead.status || '').toUpperCase());
+
+    if (isDeliveryNav) {
+      const { data: dropTrack } = await supabase
+        .from('pickup_tracking')
+        .select('drop_assigned_to')
+        .eq('lead_id', leadId)
+        .maybeSingle();
+      if ((dropTrack as any)?.drop_assigned_to !== userProfile.id) {
+        return NextResponse.json({ error: 'Delivery not assigned to you' }, { status: 403 });
+      }
+    } else if (lead.assigned_pickup_boy_id !== userProfile.id) {
       return NextResponse.json({ error: 'Pickup task not assigned to you' }, { status: 403 });
     }
 
     // If lead is in delivery-ready state, navigating should start DELIVERY flow (DROP),
     // not pickup flow. Do NOT attempt to change lead.status back to ON_THE_WAY.
-    const deliveryReadyStatuses = ['READY_FOR_DELIVERY', 'COD_PENDING'];
-    if (deliveryReadyStatuses.includes(lead.status)) {
+    if (isDeliveryNav) {
       const now = new Date().toISOString();
 
       // Ensure pickup_tracking row exists and assign drop to this pickup boy (allows same pickup boy delivery)

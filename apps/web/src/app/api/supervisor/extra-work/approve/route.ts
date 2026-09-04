@@ -2,6 +2,11 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyExtraWorkDecision, notifyWorkshopRoles, notifyTelecallerForLead, resolveLeadMechanicId } from '@/lib/notifications';
+import {
+  normalizeExtraWorkPartLines,
+  splitExtraWorkPartTotals,
+  supabaseWriteDropUnknownColumns,
+} from '@/lib/workshop/extraWorkParts';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,8 +38,8 @@ async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClient
   return { profile, roleCode, error: profile ? null : ('User profile not found' as const) };
 }
 
-function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
-  return roleCode === 'WORKSHOP_SUPERVISOR';
+function isRoleAllowed(roleCode: string | null) {
+  return ['WORKSHOP_SUPERVISOR', 'WORKSHOP_ADMIN', 'SUPER_ADMIN'].includes(String(roleCode || ''));
 }
 
 export async function POST(request: NextRequest) {
@@ -70,20 +75,32 @@ export async function POST(request: NextRequest) {
     const oem_price_in = body?.oem_price;
     const oes_price_in = body?.oes_price;
     const labour_price_in = body?.labour_price;
+    const partsLines = normalizeExtraWorkPartLines(body?.parts_breakdown ?? body?.parts ?? body?.items);
+    const partsTotals = partsLines.length > 0 ? splitExtraWorkPartTotals(partsLines) : null;
 
     const parsedPricing = {
       oem_price:
-        oem_price_in === undefined || oem_price_in === null || oem_price_in === ''
-          ? null
-          : Number(oem_price_in),
+        partsTotals
+          ? part_price_type === 'OEM'
+            ? partsTotals.parts
+            : 0
+          : oem_price_in === undefined || oem_price_in === null || oem_price_in === ''
+            ? null
+            : Number(oem_price_in),
       oes_price:
-        oes_price_in === undefined || oes_price_in === null || oes_price_in === ''
-          ? null
-          : Number(oes_price_in),
+        partsTotals
+          ? part_price_type === 'OES'
+            ? partsTotals.parts
+            : 0
+          : oes_price_in === undefined || oes_price_in === null || oes_price_in === ''
+            ? null
+            : Number(oes_price_in),
       labour_price:
-        labour_price_in === undefined || labour_price_in === null || labour_price_in === ''
-          ? null
-          : Number(labour_price_in),
+        partsTotals
+          ? partsTotals.labour
+          : labour_price_in === undefined || labour_price_in === null || labour_price_in === ''
+            ? null
+            : Number(labour_price_in),
     };
 
     for (const [k, v] of Object.entries(parsedPricing)) {
@@ -146,6 +163,7 @@ export async function POST(request: NextRequest) {
     const labour = parsedPricing.labour_price !== null ? parsedPricing.labour_price : Number(reqRow?.labour_price ?? 0);
     const legacyAmount = Number(reqRow?.amount ?? 0);
     const computedTotal = (() => {
+      if (partsTotals) return partsTotals.total;
       // If new price breakdown exists, compute based on selected part type.
       // Rule: if selected part price is 0, do NOT add labour into that option total.
       if (Number.isFinite(oem) || Number.isFinite(oes) || Number.isFinite(labour)) {
@@ -178,6 +196,7 @@ export async function POST(request: NextRequest) {
       oem_price: Number.isFinite(oem) ? oem : undefined,
       oes_price: Number.isFinite(oes) ? oes : undefined,
       labour_price: Number.isFinite(labour) ? labour : undefined,
+      parts_breakdown: partsLines.length > 0 ? partsLines : undefined,
       customer_approved: false,
       customer_approved_at: isCustomerRejected ? reqRow.customer_approved_at : null,
       rejection_reason: isCustomerRejected ? (reqRow.rejection_reason ?? null) : null,
@@ -188,7 +207,13 @@ export async function POST(request: NextRequest) {
     Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
     let updErr: any = null;
-    const upd1 = await updater.from('lead_extra_charges').update(payload).eq('id', id);
+    const upd1 = await supabaseWriteDropUnknownColumns(
+      updater,
+      'lead_extra_charges',
+      'update',
+      payload,
+      { eq: { column: 'id', value: id } },
+    );
     updErr = upd1.error;
 
     if (updErr && (updErr as any)?.code === '42703') {

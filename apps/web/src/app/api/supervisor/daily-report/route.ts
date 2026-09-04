@@ -61,23 +61,61 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     const reader = supabaseAdmin || supabase;
 
-    let leadQuery = reader
-      .from('service_leads')
-      .select(
-        `id, lead_number, customer_name, vehicle_number, status, qc_status, qc_performed_at,
-         mechanic_completed_at, assigned_mechanic_id, assigned_pickup_boy_id, pickup_status,
-         pickup_required, created_at, updated_at, workshop_id`,
-      )
-      .is('deleted_at', null)
-      .or(
-        `created_at.gte.${startIso},updated_at.gte.${startIso},qc_performed_at.gte.${startIso},mechanic_completed_at.gte.${startIso}`,
-      )
-      .limit(800);
+    const LEAD_SELECT_FULL =
+      `id, lead_number, customer_name, vehicle_number, status, qc_status, qc_performed_at,
+       mechanic_completed_at, assigned_mechanic_id, assigned_pickup_boy_id, pickup_status,
+       pickup_required, created_at, updated_at, workshop_id`;
+    const LEAD_SELECT_MIN =
+      `id, lead_number, customer_name, vehicle_number, status, qc_status,
+       assigned_mechanic_id, assigned_pickup_boy_id, pickup_status, pickup_required,
+       created_at, updated_at, workshop_id`;
 
-    if (workshopId) leadQuery = leadQuery.eq('workshop_id', workshopId);
+    const OPEN_STATUSES = [
+      'ACCEPTED',
+      'ASSIGNED',
+      'IN_PROGRESS',
+      'WORK_IN_PROGRESS',
+      'QC_PENDING',
+      'PENDING_QC',
+      'QC_APPROVED',
+      'READY_FOR_BILLING',
+      'INVOICE_GENERATED',
+      'PAYMENT_AWAITING',
+      'AWAITING_PAYMENT',
+      'READY_FOR_DELIVERY',
+    ];
 
-    const [leadsRes, staffRes, extraRes] = await Promise.all([
-      leadQuery,
+    const loadLeads = async (mode: 'activity' | 'open') => {
+      const tries = [
+        { select: LEAD_SELECT_FULL, deleted: true, minActivity: false },
+        { select: LEAD_SELECT_FULL, deleted: false, minActivity: false },
+        { select: LEAD_SELECT_MIN, deleted: true, minActivity: true },
+        { select: LEAD_SELECT_MIN, deleted: false, minActivity: true },
+      ];
+      for (const t of tries) {
+        let q = reader.from('service_leads').select(t.select).limit(800);
+        if (workshopId) q = q.eq('workshop_id', workshopId);
+        if (t.deleted) q = q.is('deleted_at', null);
+        if (mode === 'activity') {
+          if (t.minActivity) {
+            q = q.gte('updated_at', startIso);
+          } else {
+            q = q.or(
+              `created_at.gte.${startIso},updated_at.gte.${startIso},qc_performed_at.gte.${startIso},mechanic_completed_at.gte.${startIso}`,
+            );
+          }
+        } else {
+          q = q.in('status', OPEN_STATUSES);
+        }
+        const res = await q;
+        if (!res.error) return (res.data || []) as any[];
+        console.warn('Daily report lead query:', mode, res.error);
+      }
+      return [] as any[];
+    };
+
+    const [activityLeads, staffRes, extraRes] = await Promise.all([
+      loadLeads('activity'),
       workshopId
         ? reader
             .from('users_login')
@@ -94,25 +132,20 @@ export async function GET(request: NextRequest) {
         : Promise.resolve({ count: 0 }),
     ]);
 
-    let allLeads = ((leadsRes as any)?.data || []) as any[];
-    if ((leadsRes as any)?.error) {
-      console.warn('Daily report lead query:', (leadsRes as any).error);
-      let fallback = reader
-        .from('service_leads')
-        .select(
-          `id, lead_number, customer_name, vehicle_number, status, qc_status, qc_performed_at,
-           mechanic_completed_at, assigned_mechanic_id, assigned_pickup_boy_id, pickup_status,
-           pickup_required, created_at, updated_at, workshop_id`,
-        )
-        .is('deleted_at', null)
-        .gte('updated_at', startIso)
-        .limit(800);
-      if (workshopId) fallback = fallback.eq('workshop_id', workshopId);
-      const retry = await fallback;
-      if (retry.error) console.warn('Daily report lead fallback:', retry.error);
-      allLeads = retry.data || [];
+    let allLeads = activityLeads;
+    // Today: also include open floor/billing jobs so dummy / in-progress work is visible.
+    if (date === istYmd()) {
+      const openLeads = await loadLeads('open');
+      const byId = new Map<string, any>();
+      for (const row of [...allLeads, ...openLeads]) {
+        const id = String(row?.id || '');
+        if (id) byId.set(id, row);
+      }
+      allLeads = [...byId.values()];
     }
+    const isToday = date === istYmd();
     const todayLeads = allLeads.filter((lead) => {
+      if (isToday && OPEN_STATUSES.includes(String(lead.status || '').toUpperCase())) return true;
       return (
         inRange(lead.created_at, startMs, endMs) ||
         inRange(lead.updated_at, startMs, endMs) ||

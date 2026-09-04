@@ -23,6 +23,17 @@ import { ENV } from '../../../config/environment';
 import { openInAppPickupNavigation, resolvePickupNavFromLead } from '../../../lib/pickupNavigation';
 import * as Location from 'expo-location';
 import { useNotifications } from '../../../context/NotificationContext';
+import { isDeliveryJob } from '../../../lib/pickupTaskFlow';
+
+function asDeliveryLead(lead: any, tracking: any) {
+  return {
+    ...lead,
+    drop_assigned_to: tracking?.drop_assigned_to ?? lead?.drop_assigned_to,
+    drop_status: tracking?.drop_status ?? lead?.drop_status,
+    drop_otp_verified_at: tracking?.drop_otp_verified_at ?? lead?.drop_otp_verified_at,
+    drop_completed_time: tracking?.drop_completed_time ?? lead?.drop_completed_time,
+  };
+}
 
 function isDummyPickupLead(lead: any): boolean {
   const num = String(lead?.lead_number || '').toUpperCase();
@@ -181,7 +192,7 @@ export default function PickupJobDetailScreen(props: any) {
         if (!leadId || !locationPermGranted) return;
         if (!lead || !tracking) return;
 
-        const isDelivery = isDeliveryLead(lead);
+        const isDelivery = isDeliveryJob(asDeliveryLead(lead, tracking));
         const pickupStatus = String((tracking as any)?.pickup_status || (lead as any)?.pickup_status || '').toUpperCase();
         const dropStatus = String((tracking as any)?.drop_status || '').toUpperCase();
 
@@ -289,11 +300,8 @@ export default function PickupJobDetailScreen(props: any) {
     }
   };
 
-  const isDeliveryLead = (ld: any) =>
-    ['READY_FOR_DELIVERY', 'COD_PENDING'].includes(String(ld?.status || '').toUpperCase());
-
   const handleNavigateToLocation = () => {
-    const deliveryMode = isDeliveryLead(lead);
+    const deliveryMode = isDeliveryJob(asDeliveryLead(lead, tracking));
     const ok = openInAppPickupNavigation(
       navigation,
       resolvePickupNavFromLead(lead, tracking, deliveryMode),
@@ -343,8 +351,9 @@ export default function PickupJobDetailScreen(props: any) {
 
   const handleStartNavigateFlow = async () => {
     try {
-      await postJson(`/api/pickup/${leadId}/navigate`, {});
-      Alert.alert('Success', 'Started. OTP generated (if applicable).');
+      const delivery = isDeliveryJob(asDeliveryLead(lead, tracking));
+      await postJson(delivery ? `/api/pickup/tasks/${leadId}/drop/start` : `/api/pickup/${leadId}/navigate`, {});
+      Alert.alert('Success', delivery ? 'Delivery started. OTP generated.' : 'Started. OTP generated (if applicable).');
       await fetchLeadDetails();
       await fetchPhotoCount();
     } catch (e: any) {
@@ -408,6 +417,10 @@ export default function PickupJobDetailScreen(props: any) {
       IN_TRANSIT: COLORS.primary,
       ARRIVED_AT_WORKSHOP: COLORS.success,
       DROPPED: COLORS.success,
+      READY_FOR_DELIVERY: COLORS.info,
+      ASSIGNED: COLORS.info,
+      OUT_FOR_DELIVERY: COLORS.primary,
+      DELIVERED: COLORS.success,
       FAILED_PICKUP: COLORS.danger,
     };
     return statusMap[status] || COLORS.gray[500];
@@ -424,17 +437,18 @@ export default function PickupJobDetailScreen(props: any) {
       ARRIVED_AT_WORKSHOP: 'Arrived at Workshop',
       DROPPED: 'Dropped',
       FAILED_PICKUP: 'Failed',
+      READY_FOR_DELIVERY: 'Ready for Delivery',
+      OUT_FOR_DELIVERY: 'Out for Delivery',
+      ARRIVED_AT_CUSTOMER: 'At Customer',
+      DELIVERED: 'Delivered',
+      ASSIGNED: 'Assigned',
     };
     return labelMap[status] || status;
   };
 
-  const renderFlowSteps = (flow: ReturnType<typeof getPickupFlowState>, onOtpPress?: () => void) => {
-    const steps = [
-      { key: 'nav', label: 'Navigate', done: flow.started },
-      { key: 'otp', label: 'OTP', done: flow.otpVerified, onPress: onOtpPress },
-      { key: 'photos', label: 'Photos', done: flow.photosOk },
-      { key: 'workshop', label: 'Workshop', done: flow.atWorkshop },
-    ];
+  const renderFlowSteps = (
+    steps: { key: string; label: string; done: boolean; onPress?: () => void }[],
+  ) => {
     return (
       <View style={styles.stepRow}>
         {steps.map((s, i) => {
@@ -473,63 +487,95 @@ export default function PickupJobDetailScreen(props: any) {
   const renderActionButton = () => {
     if (!lead) return null;
 
-    const isDelivery = isDeliveryLead(lead);
     const ld = lead as any;
     const tr = tracking as any;
+    const isDelivery = isDeliveryJob(asDeliveryLead(ld, tr));
+    const dropStatus = String(tr?.drop_status || '').toUpperCase();
+    const leadStatus = String(ld?.status || '').toUpperCase();
     const dropOtpVerified = !!(tr?.drop_otp_verified_at || ld?.drop_otp_verified_at);
+    const dropDone =
+      dropOtpVerified ||
+      dropStatus === 'DELIVERED' ||
+      Boolean(tr?.drop_completed_time) ||
+      leadStatus === 'DELIVERED' ||
+      leadStatus === 'DELIVERED_TO_CUSTOMER';
+    const dropStarted = Boolean(tr?.drop_start_time) || Boolean(dropStatus);
     const flow = getPickupFlowState(ld, tr, pickupPhotoCount);
     const otpVerified = isDelivery ? dropOtpVerified : flow.otpVerified;
-    const minPhotosOk = isDelivery ? dropPhotoCount >= 3 : flow.photosOk;
+    const minPhotosOk = isDelivery ? isDummyPickupLead(ld) || dropPhotoCount >= 3 : flow.photosOk;
 
-    // Delivery flow (READY_FOR_DELIVERY / COD_PENDING)
     if (isDelivery) {
+      const goDropOtp = () => {
+        if (onVerifyOTP) {
+          onVerifyOTP();
+          return;
+        }
+        (navigation as any).navigate?.('PickupOtp', { leadId, otpType: 'DROP' });
+      };
       return (
-        <>
-          {!((tracking as any)?.drop_status) && (
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-              onPress={onNavigate || handleStartNavigateFlow}
-            >
-              <Text style={styles.actionButtonText}>🚚 Start Delivery</Text>
-            </TouchableOpacity>
-          )}
+        <View style={AC.whiteCard}>
+          <Text style={styles.nextTitle}>Delivery steps</Text>
+          {renderFlowSteps([
+            { key: 'nav', label: 'Navigate', done: dropStarted || dropDone },
+            { key: 'otp', label: 'OTP', done: dropOtpVerified || dropDone, onPress: goDropOtp },
+            { key: 'photos', label: 'Photos', done: minPhotosOk || dropDone },
+            { key: 'done', label: 'Delivered', done: dropDone },
+          ])}
 
-          {!!((tracking as any)?.drop_status) && !otpVerified && (
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.info }]}
-              onPress={
-                onVerifyOTP ||
-                (() => (navigation as any).navigate?.('PickupOtp', { leadId, otpType: 'DROP' }))
-              }
-            >
-              <Text style={styles.actionButtonText}>🔐 Verify Delivery OTP</Text>
-            </TouchableOpacity>
-          )}
-
-          {otpVerified && (
+          {dropDone ? (
+            <View style={styles.doneBanner}>
+              <Text style={styles.doneBannerTxt}>✓ Delivered to customer</Text>
+            </View>
+          ) : (
             <>
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: COLORS.secondary }]}
-                onPress={
-                  onUploadPhotos ||
-                  (() => (navigation as any).navigate?.('PickupPhotoUpload', { leadId, photoCategory: 'DROP' }))
-                }
-              >
-                <Text style={styles.actionButtonText}>
-                  📸 Upload Delivery Photos ({dropPhotoCount}/3+) • Receiver Photo ({dropHandoverPhotoCount}/1)
-                </Text>
-              </TouchableOpacity>
-              {minPhotosOk && (
+              {!dropStarted && (
                 <TouchableOpacity
-                  style={[styles.actionButton, { backgroundColor: COLORS.success }]}
-                  onPress={handleCompleteDelivery}
+                  style={[styles.flowBtn, { backgroundColor: COLORS.primary }]}
+                  onPress={onNavigate || handleStartNavigateFlow}
                 >
-                  <Text style={styles.actionButtonText}>✅ Complete Delivery</Text>
+                  <Text style={styles.flowBtnTxt}>Start Delivery / Navigate</Text>
                 </TouchableOpacity>
+              )}
+              {dropStarted && !otpVerified && (
+                <TouchableOpacity
+                  style={[styles.flowBtn, { backgroundColor: '#0284C7' }]}
+                  onPress={goDropOtp}
+                >
+                  <Text style={styles.flowBtnTxt}>Verify Delivery OTP</Text>
+                </TouchableOpacity>
+              )}
+              {otpVerified && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.flowBtn, { backgroundColor: '#EA580C' }]}
+                    onPress={
+                      onUploadPhotos ||
+                      (() =>
+                        (navigation as any).navigate?.('PickupPhotoUpload', {
+                          leadId,
+                          photoCategory: 'DROP',
+                        }))
+                    }
+                  >
+                    <Text style={styles.flowBtnTxt}>
+                      Upload Delivery Photos ({dropPhotoCount}/3+) • Receiver ({dropHandoverPhotoCount}/1)
+                    </Text>
+                  </TouchableOpacity>
+                  {minPhotosOk ? (
+                    <TouchableOpacity
+                      style={[styles.flowBtn, { backgroundColor: COLORS.success }]}
+                      onPress={handleCompleteDelivery}
+                    >
+                      <Text style={styles.flowBtnTxt}>Complete Delivery</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.flowHint}>Upload delivery photos, then complete delivery</Text>
+                  )}
+                </>
               )}
             </>
           )}
-        </>
+        </View>
       );
     }
 
@@ -541,11 +587,15 @@ export default function PickupJobDetailScreen(props: any) {
       (navigation as any).navigate?.('PickupOtp', { leadId, otpType: 'PICKUP' });
     };
 
-    // Pickup flow — Navigate → OTP → Photos → Workshop
     return (
       <View style={AC.whiteCard}>
         <Text style={styles.nextTitle}>Next Steps</Text>
-        {renderFlowSteps(flow, goOtp)}
+        {renderFlowSteps([
+          { key: 'nav', label: 'Navigate', done: flow.started },
+          { key: 'otp', label: 'OTP', done: flow.otpVerified, onPress: goOtp },
+          { key: 'photos', label: 'Photos', done: flow.photosOk },
+          { key: 'workshop', label: 'Workshop', done: flow.atWorkshop },
+        ])}
 
         {!otpVerified && (
           <>
@@ -631,12 +681,18 @@ export default function PickupJobDetailScreen(props: any) {
     );
   }
 
-  const deliveryMode = isDeliveryLead(lead as any);
+  const deliveryMode = isDeliveryJob(asDeliveryLead(lead as any, tracking as any));
   const ld = lead as any;
   const tr = tracking as any;
   const statusForUi = deliveryMode
-    ? String((tracking as any)?.drop_status || (lead as any)?.status || '')
-    : String((tracking as any)?.pickup_status || (lead as any)?.status || '');
+    ? String(
+        tr?.drop_status ||
+          (tr?.drop_otp_verified_at || String(ld?.status || '').toUpperCase() === 'DELIVERED'
+            ? 'DELIVERED'
+            : ld?.status) ||
+          'READY_FOR_DELIVERY',
+      ).toUpperCase()
+    : String(tr?.pickup_status || ld?.status || '');
 
   const observationRequired = !deliveryMode && !!(lead as any)?.pickup_observation_required;
   const observationDone = !!String((lead as any)?.pickup_observation || '').trim();
@@ -666,7 +722,7 @@ export default function PickupJobDetailScreen(props: any) {
         ) : null}
 
         {/* Hero — advisor navy card */}
-        <View style={AC.navy}>
+        <View style={[AC.navy, { marginBottom: 16 }]}>
           <View style={AC.navyRow}>
             <Text style={AC.navyName} numberOfLines={1}>
               {lead.customer_name || 'Customer'}
@@ -716,7 +772,7 @@ export default function PickupJobDetailScreen(props: any) {
           renderActionButton()
         )}
 
-        <Text style={AC.section}>Details</Text>
+        <Text style={[AC.section, styles.detailsHeading]}>Details</Text>
 
         {/* Customer Details */}
         <View style={AC.whiteCard}>
@@ -770,7 +826,18 @@ export default function PickupJobDetailScreen(props: any) {
 
         {/* Pickup Information */}
         <View style={AC.whiteCard}>
-          <Text style={styles.cardTitle}>{deliveryMode ? 'Delivery Location' : 'Pickup Location'}</Text>
+          <View style={styles.locationHead}>
+            <Text style={[styles.cardTitle, styles.locationTitle]} numberOfLines={2}>
+              {deliveryMode ? 'Delivery Location' : 'Pickup Location'}
+            </Text>
+            <TouchableOpacity
+              style={styles.dirBtn}
+              onPress={handleNavigateToLocation}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.dirBtnTxt}>🧭 Directions</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Address</Text>
             <Text style={styles.detailValue} numberOfLines={3}>
@@ -808,7 +875,48 @@ export default function PickupJobDetailScreen(props: any) {
         {/* Status Timeline */}
         <View style={AC.whiteCard}>
           <Text style={styles.cardTitle}>Timeline</Text>
-          {!tracking && !(lead as any)?.pickup_otp_verified_at ? (
+          {deliveryMode ? (
+            <View style={styles.timeline}>
+              {[
+                {
+                  title: 'Delivery assigned',
+                  done: !!(tr?.drop_assigned_to || tr?.drop_assigned_at),
+                  at: tr?.drop_assigned_at,
+                },
+                {
+                  title: 'Out for delivery',
+                  done: !!(tr?.drop_start_time || tr?.drop_status),
+                  at: tr?.drop_start_time || tr?.drop_out_for_delivery_at,
+                },
+                {
+                  title: 'Delivery OTP verified',
+                  done: !!(tr?.drop_otp_verified_at || ld?.drop_otp_verified_at),
+                  at: tr?.drop_otp_verified_at || ld?.drop_otp_verified_at,
+                },
+                {
+                  title: 'Delivered to customer',
+                  done:
+                    String(tr?.drop_status || '').toUpperCase() === 'DELIVERED' ||
+                    String(ld?.status || '').toUpperCase() === 'DELIVERED' ||
+                    !!tr?.drop_completed_time,
+                  at: tr?.drop_completed_time || tr?.drop_otp_verified_at || ld?.delivered_at,
+                },
+              ].map((step) => (
+                <View
+                  key={step.title}
+                  style={[styles.timelineItem, step.done && styles.timelineItemCompleted]}
+                >
+                  <View style={styles.timelineDot} />
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.timelineTitle}>{step.title}</Text>
+                    {step.at ? (
+                      <Text style={styles.timelineTime}>{formatDateTime(step.at)}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : !tracking && !(lead as any)?.pickup_otp_verified_at ? (
             <Text style={styles.infoText}>Start pickup to begin tracking.</Text>
           ) : (
           <View style={styles.timeline}>
@@ -846,18 +954,16 @@ export default function PickupJobDetailScreen(props: any) {
             <View
               style={[
                 styles.timelineItem,
-                (tr?.pickup_otp_verified_at || tr?.drop_otp_verified_at || ld?.pickup_otp_verified_at) &&
+                (tr?.pickup_otp_verified_at || ld?.pickup_otp_verified_at) &&
                   styles.timelineItemCompleted,
               ]}
             >
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
-                <Text style={styles.timelineTitle}>OTP Verified</Text>
-                {(tr?.pickup_otp_verified_at || tr?.drop_otp_verified_at || ld?.pickup_otp_verified_at) && (
+                <Text style={styles.timelineTitle}>Pickup OTP Verified</Text>
+                {(tr?.pickup_otp_verified_at || ld?.pickup_otp_verified_at) && (
                   <Text style={styles.timelineTime}>
-                    {formatDateTime(
-                      (tr?.drop_otp_verified_at || tr?.pickup_otp_verified_at || ld?.pickup_otp_verified_at) as any,
-                    )}
+                    {formatDateTime((tr?.pickup_otp_verified_at || ld?.pickup_otp_verified_at) as any)}
                   </Text>
                 )}
               </View>
@@ -905,17 +1011,8 @@ export default function PickupJobDetailScreen(props: any) {
           <Text style={styles.incidentBtnTxt}>⚠️ Report Incident</Text>
         </TouchableOpacity>
 
-        <View style={{ height: SPACING.xxl + 80 }} />
+        <View style={{ height: SPACING.xxl + insets.bottom }} />
       </ScrollView>
-
-      <TouchableOpacity
-        style={[styles.navFab, { bottom: insets.bottom + 16 }]}
-        onPress={handleNavigateToLocation}
-        activeOpacity={0.9}
-      >
-        <Text style={styles.navFabIcon}>🧭</Text>
-        <Text style={styles.navFabTxt}>Directions</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -1072,11 +1169,39 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
   },
   heroCallBtn: {
-    marginTop: 14,
+    marginTop: 16,
     backgroundColor: '#fff',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
+  },
+  detailsHeading: {
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  locationHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: SPACING.sm,
+  },
+  locationTitle: {
+    flex: 1,
+    minWidth: 0,
+    marginBottom: 0,
+  },
+  dirBtn: {
+    flexShrink: 0,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  dirBtnTxt: {
+    color: COLORS.white,
+    fontWeight: '800',
+    fontSize: 12,
   },
   detailRow: {
     flexDirection: 'row',
@@ -1150,6 +1275,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     marginHorizontal: 16,
   },
+  actionsWrap: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 8,
+  },
   actionButton: {
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
@@ -1186,21 +1316,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.primary,
   },
-  navFab: {
-    position: 'absolute',
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 999,
-    ...SHADOWS.small,
-    elevation: 6,
-  },
-  navFabIcon: { fontSize: 18 },
-  navFabTxt: { color: COLORS.white, fontWeight: '800', fontSize: 14 },
   incidentBtn: {
     marginHorizontal: 16,
     paddingVertical: 14,
