@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -101,6 +101,10 @@ export default function CrmHomeTab({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<any>(null);
+  const [loadError, setLoadError] = useState('');
+  const inFlight = useRef(false);
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('last_7_days');
   const [customStartLocal, setCustomStartLocal] = useState(istYmd());
   const [customEndLocal, setCustomEndLocal] = useState(istYmd());
@@ -118,7 +122,9 @@ export default function CrmHomeTab({
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    if (inFlight.current && !force) return;
+    inFlight.current = true;
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const params = new URLSearchParams();
@@ -128,12 +134,20 @@ export default function CrmHomeTab({
         params.set('from', range.start);
         params.set('to', range.end);
       }
-      const res = await apiFetch<any>(`/api/telecaller/crm/dashboard?${params.toString()}`);
+      const res = await apiFetch<any>(`/api/telecaller/crm/dashboard?${params.toString()}`, {
+        timeoutMs: 45000,
+      });
       setData(res);
+      setLoadError('');
       onRemindersCount?.(Number(res?.kpis?.reminders_pending || 0));
     } catch (e) {
-      console.error('CRM dashboard failed', e);
+      const message = e instanceof Error ? e.message : 'Could not load CRM';
+      setLoadError(message);
+      if (!dataRef.current) {
+        console.warn('CRM dashboard failed', message);
+      }
     } finally {
+      inFlight.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -141,10 +155,10 @@ export default function CrmHomeTab({
 
   useEffect(() => {
     if (!isActive) return;
-    void load();
+    void load(true);
     const id = setInterval(() => {
-      void load();
-    }, 20000);
+      void load(false);
+    }, 40000);
     return () => clearInterval(id);
   }, [load, isActive]);
 
@@ -159,11 +173,13 @@ export default function CrmHomeTab({
   if (!data) {
     return (
       <View style={styles.center}>
-        <Text style={styles.muted}>Could not load CRM. Check your connection.</Text>
+        <Text style={[styles.muted, { textAlign: 'center', paddingHorizontal: 24 }]}>
+          {loadError || 'Could not load CRM. Check your connection.'}
+        </Text>
         <TouchableOpacity
           onPress={() => {
             setLoading(true);
-            void load();
+            void load(true);
           }}
           style={{ marginTop: 16, paddingHorizontal: 20, paddingVertical: 10 }}
         >
@@ -215,7 +231,7 @@ export default function CrmHomeTab({
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} colors={[COLORS.primary]} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(true); }} colors={[COLORS.primary]} />}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
@@ -311,7 +327,7 @@ export default function CrmHomeTab({
                   style={styles.applyBtn}
                   onPress={() => {
                     setDateOpen(false);
-                    load();
+                    load(true);
                   }}
                 >
                   <Text style={styles.applyBtnText}>Apply</Text>
@@ -326,7 +342,7 @@ export default function CrmHomeTab({
         onSessionChange={(s) => setAanshActive(Boolean(s?.session_token))}
         onClaimed={() => {
           setRefreshing(true);
-          load();
+          load(true);
         }}
       />
 
@@ -409,7 +425,7 @@ export default function CrmHomeTab({
         })}
       </View>
 
-      <View style={styles.navyCard}>
+      <View style={styles.listCardFresh}>
         <View style={styles.navyHead}>
           <Text style={styles.navyTitle}>Fresh leads</Text>
           <TouchableOpacity onPress={() => onNavigate('queue', { filter: 'new' })} activeOpacity={0.8}>
@@ -459,11 +475,11 @@ export default function CrmHomeTab({
         )}
       </View>
 
-      <View style={styles.navyCard}>
+      <View style={styles.listCardRemind}>
         <View style={styles.navyHead}>
-          <Text style={styles.navyTitle}>Upcoming reminders</Text>
+          <Text style={styles.remindTitle}>Upcoming reminders</Text>
           <TouchableOpacity onPress={() => onNavigate('TelecallerFollowUps')} activeOpacity={0.8}>
-            <Text style={styles.navyViewAll}>View all</Text>
+            <Text style={styles.remindViewAll}>View all</Text>
           </TouchableOpacity>
         </View>
         {reminders.length === 0 ? (
@@ -493,14 +509,14 @@ export default function CrmHomeTab({
                     {r.reason || 'Follow-up'}
                     {phone ? ` · ${phone}` : ''}
                   </Text>
-                  <Text style={[styles.navyAgo, overdue && { color: '#FECACA' }]}>
+                  <Text style={[styles.navyAgo, overdue ? { color: '#DC2626' } : { color: '#C2410C' }]}>
                     {overdue ? 'Overdue · ' : ''}
                     {formatReminderClock(r.scheduled_time)}
                   </Text>
                 </TouchableOpacity>
                 {phone ? (
                   <TouchableOpacity
-                    style={styles.navyCall}
+                    style={styles.remindCall}
                     onPress={() =>
                       void clickToCallCustomer({
                         customerPhone: phone,
@@ -509,7 +525,7 @@ export default function CrmHomeTab({
                     }
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Ionicons name="call" size={16} color={COLORS.primary} />
+                    <Ionicons name="call" size={16} color="#C2410C" />
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -712,13 +728,30 @@ const styles = StyleSheet.create({
   perfItem: { flex: 1, alignItems: 'center' },
   perfValue: { fontSize: 20, fontWeight: '800', color: COLORS.primary },
   perfLabel: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
-  navyCard: {
-    backgroundColor: COLORS.primary,
+  listCardFresh: {
+    backgroundColor: '#F3F7FF',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 6,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#C7D7F5',
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
+    ...SHADOWS.small,
+  },
+  listCardRemind: {
+    backgroundColor: '#FFF8F1',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 6,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F3D5B5',
+    borderLeftWidth: 4,
+    borderLeftColor: '#EA580C',
     ...SHADOWS.small,
   },
   navyHead: {
@@ -727,11 +760,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 4,
   },
-  navyTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  navyViewAll: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
+  navyTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textHeading },
+  navyViewAll: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
+  remindTitle: { fontSize: 15, fontWeight: '800', color: '#9A3412' },
+  remindViewAll: { fontSize: 12, fontWeight: '800', color: '#C2410C' },
   navyEmpty: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
+    color: COLORS.textSecondary,
     textAlign: 'center',
     paddingVertical: 16,
   },
@@ -741,18 +776,26 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.18)',
+    borderBottomColor: 'rgba(15, 23, 42, 0.08)',
   },
   navyRowLast: { borderBottomWidth: 0 },
   navyBody: { flex: 1, minWidth: 0 },
-  navyName: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  navyMeta: { fontSize: 12, color: 'rgba(255,255,255,0.78)', marginTop: 2 },
-  navyAgo: { fontSize: 11, fontWeight: '700', color: '#BFDBFE', marginTop: 3 },
+  navyName: { fontSize: 14, fontWeight: '800', color: COLORS.textHeading },
+  navyMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  navyAgo: { fontSize: 11, fontWeight: '700', color: COLORS.primary, marginTop: 3 },
   navyCall: {
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: '#fff',
+    backgroundColor: '#DCE8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  remindCall: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#FFEDD5',
     alignItems: 'center',
     justifyContent: 'center',
   },

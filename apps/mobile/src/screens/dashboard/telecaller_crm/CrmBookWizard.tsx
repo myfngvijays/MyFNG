@@ -513,10 +513,8 @@ export default function CrmBookWizard({
     const pin = form.pincode.replace(/\D/g, '').slice(0, 6);
     const statusOpt =
       LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
-    if (statusOpt.id === 'LOST' && !lostReason.trim()) {
-      Alert.alert('Lost reason', 'Lost select kiya hai — reason choose karo');
-      return;
-    }
+    const resolvedLostReason =
+      statusOpt.id === 'LOST' ? lostReason.trim() || 'Other Reasons' : '';
     // Date/Time = kab baat hui (call activity); for CALLBACK this also schedules the reminder
     const activityIso =
       activityDate && activityTime ? `${activityDate}T${activityTime}:00+05:30` : null;
@@ -530,9 +528,7 @@ export default function CrmBookWizard({
       return;
     }
     const statusLabel =
-      statusOpt.id === 'LOST' && lostReason
-        ? `Lost · ${lostReason}`
-        : statusOpt.label;
+      statusOpt.id === 'LOST' ? `Lost · ${resolvedLostReason}` : statusOpt.label;
 
     setSaving(true);
     try {
@@ -561,7 +557,7 @@ export default function CrmBookWizard({
           call_result: statusOpt.id,
           call_label: statusLabel,
           call_notes: form.problem_description || null,
-          lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
+          lost_reason: statusOpt.id === 'LOST' ? resolvedLostReason : null,
           activity_at: activityIso,
           tag_ids: selectedTagIds,
           coupon_meta: {
@@ -939,7 +935,7 @@ export default function CrmBookWizard({
 
             {leadStatusId === 'LOST' ? (
               <>
-                <Text style={styles.sectionLabel}>Lost reason *</Text>
+                <Text style={styles.sectionLabel}>Lost reason</Text>
                 <TouchableOpacity
                   style={styles.selectBtn}
                   onPress={() => setLostMenuOpen(true)}

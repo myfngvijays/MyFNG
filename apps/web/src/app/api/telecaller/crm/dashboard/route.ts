@@ -10,6 +10,21 @@ import {
 import { applyCrmNewLeadFilter } from '@/lib/telecaller/crmLeadFilters';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+async function runInChunks<T>(fns: Array<() => Promise<T>>, chunkSize = 5): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < fns.length; i += chunkSize) {
+    const chunk = await Promise.all(fns.slice(i, i + chunkSize).map((fn) => fn()));
+    results.push(...chunk);
+  }
+  return results;
+}
+
+function countOf(res: { count?: number | null; error?: { message?: string } | null } | null | undefined) {
+  if (res?.error) return 0;
+  return Number(res?.count || 0);
+}
 
 function dayBoundsFromParam(raw: string | null, fallbackYmd: string) {
   const v = String(raw || '').trim();
@@ -145,6 +160,11 @@ export async function GET(request: NextRequest) {
       if (rangeStart && rangeEnd) return q.gte('created_at', rangeStart).lte('created_at', rangeEnd);
       return q;
     };
+    const applyCallAssignee = (q: any) => {
+      if (!seesAll) return q.eq('telecaller_id', teleCallerId);
+      if (telecallerFilter) return q.eq('telecaller_id', telecallerFilter);
+      return q;
+    };
 
     const leadBase = () =>
       applyAssignee(
@@ -163,21 +183,6 @@ export async function GET(request: NextRequest) {
           .is('deleted_at', null),
       );
 
-    const freshPreviewQuery = applyCreatedRange(
-      applyCrmNewLeadFilter(
-        applyAssignee(
-          db
-            .from('service_leads')
-            .select(
-              'id, lead_number, customer_name, customer_phone, city, created_at, vehicle_make, vehicle_model',
-            )
-            .is('deleted_at', null),
-        ),
-      ),
-    )
-      .order('created_at', { ascending: false })
-      .limit(5);
-
     const todayStartIso = `${today}T00:00:00.000+05:30`;
     const todayEndIso = `${today}T23:59:59.999+05:30`;
     const pendingFollowUpCount = () =>
@@ -188,6 +193,9 @@ export async function GET(request: NextRequest) {
             .select('id', { count: 'exact', head: true })
             .eq('telecaller_id', teleCallerId)
             .eq('status', 'PENDING');
+
+    const metricsSelect =
+      'date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate';
 
     const [
       totalLeads,
@@ -203,105 +211,133 @@ export async function GET(request: NextRequest) {
       overdueCallbacks,
       followUps,
       pendingReminders,
-      rangeCalls,
+      callTotal,
+      callAnswered,
+      callDurRows,
       metrics,
       attendance,
       freshPreview,
-    ] = await Promise.all([
-      applyCreatedRange(leadBase()),
-      // Same filters as /api/telecaller/crm/leads?filter=…
-      applyCreatedRange(applyCrmNewLeadFilter(leadBase())),
-      applyCreatedRange(leadBase().eq('is_incomplete', true)),
-      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED')),
-      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT')),
-      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK')),
-      applyCreatedRange(leadBase().eq('status', 'VALIDATED')),
-      applyCreatedRange(leadBase().eq('status', 'IN_PROGRESS')),
-      applyCreatedRange(leadBase().eq('status', 'COMPLETED')),
-      applyCreatedRange(leadBase().eq('status', 'REJECTED')),
-      applyFuRange(followUpBase().lte('next_follow_up_at', new Date().toISOString())),
-      pendingFollowUpCount().gte('scheduled_time', todayStartIso).lte('scheduled_time', todayEndIso),
-      pendingFollowUpCount(),
-      seesAll
-        ? applyCallRange(db.from('telecaller_call_logs').select('call_status, call_duration'))
-        : applyCallRange(
+      reminderRes,
+      rankRes,
+    ] = await runInChunks([
+      () => applyCreatedRange(leadBase()),
+      () => applyCreatedRange(applyCrmNewLeadFilter(leadBase())),
+      () => applyCreatedRange(leadBase().eq('is_incomplete', true)),
+      () =>
+        applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED')),
+      () =>
+        applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT')),
+      () =>
+        applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK')),
+      () => applyCreatedRange(leadBase().eq('status', 'VALIDATED')),
+      () => applyCreatedRange(leadBase().eq('status', 'IN_PROGRESS')),
+      () => applyCreatedRange(leadBase().eq('status', 'COMPLETED')),
+      () => applyCreatedRange(leadBase().eq('status', 'REJECTED')),
+      () => applyFuRange(followUpBase().lte('next_follow_up_at', new Date().toISOString())),
+      () => pendingFollowUpCount().gte('scheduled_time', todayStartIso).lte('scheduled_time', todayEndIso),
+      () => pendingFollowUpCount(),
+      () =>
+        applyCallRange(
+          applyCallAssignee(db.from('telecaller_call_logs').select('id', { count: 'exact', head: true })),
+        ),
+      () =>
+        applyCallRange(
+          applyCallAssignee(
             db
               .from('telecaller_call_logs')
-              .select('call_status, call_duration')
-              .eq('telecaller_id', teleCallerId),
+              .select('id', { count: 'exact', head: true })
+              .eq('call_status', 'ANSWERED'),
           ),
-      seesAll
-        ? db
-            .from('telecaller_performance_metrics')
-            .select(
-              'date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate',
-            )
-            .gte('date', weekStart)
-            .lte('date', today)
-            .order('date', { ascending: true })
-        : db
-            .from('telecaller_performance_metrics')
-            .select(
-              'date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate',
-            )
-            .eq('telecaller_id', teleCallerId)
-            .gte('date', weekStart)
-            .lte('date', today)
-            .order('date', { ascending: true }),
-      seesAll
-        ? Promise.resolve({ data: null })
-        : db
-            .from('telecaller_attendance')
-            .select('*')
-            .eq('telecaller_id', teleCallerId)
-            .is('punch_out_at', null)
-            .maybeSingle(),
-      freshPreviewQuery,
+        ),
+      () =>
+        applyCallRange(
+          applyCallAssignee(
+            db
+              .from('telecaller_call_logs')
+              .select('call_duration')
+              .gt('call_duration', 0)
+              .limit(800),
+          ),
+        ),
+      () =>
+        seesAll
+          ? db
+              .from('telecaller_performance_metrics')
+              .select(metricsSelect)
+              .gte('date', weekStart)
+              .lte('date', today)
+              .order('date', { ascending: true })
+              .limit(400)
+          : db
+              .from('telecaller_performance_metrics')
+              .select(metricsSelect)
+              .eq('telecaller_id', teleCallerId)
+              .gte('date', weekStart)
+              .lte('date', today)
+              .order('date', { ascending: true }),
+      () =>
+        seesAll
+          ? Promise.resolve({ data: null })
+          : db
+              .from('telecaller_attendance')
+              .select('*')
+              .eq('telecaller_id', teleCallerId)
+              .is('punch_out_at', null)
+              .order('punch_in_at', { ascending: false })
+              .limit(1)
+              .then((r: { data?: any[] | null; error?: unknown }) => ({
+                data: Array.isArray(r.data) ? r.data[0] || null : null,
+              })),
+      () =>
+        applyCreatedRange(
+          applyCrmNewLeadFilter(
+            applyAssignee(
+              db
+                .from('service_leads')
+                .select(
+                  'id, lead_number, customer_name, customer_phone, city, created_at, vehicle_make, vehicle_model',
+                )
+                .is('deleted_at', null),
+            ),
+          ),
+        )
+          .order('created_at', { ascending: false })
+          .limit(5),
+      () => {
+        let remQ = db
+          .from('telecaller_follow_ups')
+          .select(
+            'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, customer_name, customer_phone)',
+          )
+          .eq('status', 'PENDING')
+          .gte('scheduled_time', todayStartIso)
+          .lte('scheduled_time', todayEndIso)
+          .order('scheduled_time', { ascending: true })
+          .limit(3);
+        if (!seesAll) remQ = remQ.eq('telecaller_id', teleCallerId);
+        return remQ;
+      },
+      () =>
+        db
+          .from('telecaller_performance_metrics')
+          .select('telecaller_id, total_calls')
+          .eq('date', today)
+          .order('total_calls', { ascending: false })
+          .limit(200),
     ]);
 
-    const calls = rangeCalls.data || [];
-    const answered = calls.filter((c: any) => c.call_status === 'ANSWERED').length;
-    const talkDurationSeconds = calls.reduce(
-      (sum: number, c: any) => sum + (Number(c.call_duration) || 0),
+    const todayCalls = countOf(callTotal);
+    const answered = countOf(callAnswered);
+    const talkDurationSeconds = (Array.isArray(callDurRows?.data) ? callDurRows.data : []).reduce(
+      (sum: number, c: { call_duration?: number }) => sum + (Number(c.call_duration) || 0),
       0,
     );
 
-    // Upcoming reminders — top 3 pending for today (IST)
-    let upcomingReminders: any[] = [];
-    try {
-      let remQ = db
-        .from('telecaller_follow_ups')
-        .select(
-          'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, customer_name, customer_phone)',
-        )
-        .eq('status', 'PENDING')
-        .gte('scheduled_time', todayStartIso)
-        .lte('scheduled_time', todayEndIso)
-        .order('scheduled_time', { ascending: true })
-        .limit(3);
-      if (!seesAll) remQ = remQ.eq('telecaller_id', teleCallerId);
-      const remRes = await remQ;
-      upcomingReminders = remRes.data || [];
-    } catch {
-      upcomingReminders = [];
-    }
-
-    // My rank today (by calls among telecallers with metrics today)
-    let myRank: number | null = null;
-    let leaderboardSize = 0;
-    try {
-      const { data: rankRows } = await db
-        .from('telecaller_performance_metrics')
-        .select('telecaller_id, total_calls')
-        .eq('date', today)
-        .order('total_calls', { ascending: false });
-      const rows = Array.isArray(rankRows) ? rankRows : [];
-      leaderboardSize = rows.length;
-      const idx = rows.findIndex((r: any) => String(r.telecaller_id) === teleCallerId);
-      myRank = idx >= 0 ? idx + 1 : null;
-    } catch {
-      myRank = null;
-    }
+    const upcomingReminders = Array.isArray(reminderRes?.data) ? reminderRes.data : [];
+    const rankRows = Array.isArray(rankRes?.data) ? rankRes.data : [];
+    const leaderboardSize = rankRows.length;
+    const idx = rankRows.findIndex((r: any) => String(r.telecaller_id) === teleCallerId);
+    const myRank = idx >= 0 ? idx + 1 : null;
 
     const seriesMap: Record<string, any> = {};
     for (let i = 6; i >= 0; i--) {
@@ -338,10 +374,10 @@ export async function GET(request: NextRequest) {
     });
 
     const trend = Object.values(seriesMap);
-    if (!(metrics.data || []).length && calls.length && fromYmd === today && toYmd === today && !allTime) {
+    if (!(metrics.data || []).length && todayCalls && fromYmd === today && toYmd === today && !allTime) {
       const todayPoint = trend[trend.length - 1] as any;
       if (todayPoint) {
-        todayPoint.calls = calls.length;
+        todayPoint.calls = todayCalls;
         todayPoint.answered = answered;
       }
     }
@@ -350,25 +386,25 @@ export async function GET(request: NextRequest) {
       success: true,
       range: { from: fromYmd, to: toYmd, all_time: allTime },
       kpis: {
-        total_leads: totalLeads.count || 0,
-        new_leads: newLeads.count || 0,
-        incomplete: incomplete.count || 0,
-        interested: interested.count || 0,
-        will_visit: willVisit.count || 0,
-        callbacks: callbackStatus.count || 0,
-        booking_confirmed: bookingConfirmed.count || 0,
-        in_service: inService.count || 0,
-        service_done: serviceDone.count || 0,
-        lost: lost.count || 0,
+        total_leads: countOf(totalLeads),
+        new_leads: countOf(newLeads),
+        incomplete: countOf(incomplete),
+        interested: countOf(interested),
+        will_visit: countOf(willVisit),
+        callbacks: countOf(callbackStatus),
+        booking_confirmed: countOf(bookingConfirmed),
+        in_service: countOf(inService),
+        service_done: countOf(serviceDone),
+        lost: countOf(lost),
         // aliases / ops queues (still useful elsewhere)
-        booked: bookingConfirmed.count || 0,
-        rejected: lost.count || 0,
-        overdue_callbacks: overdueCallbacks.count || 0,
-        followups_today: followUps.count || 0,
-        reminders_pending: pendingReminders.count || 0,
-        today_calls: calls.length,
+        booked: countOf(bookingConfirmed),
+        rejected: countOf(lost),
+        overdue_callbacks: countOf(overdueCallbacks),
+        followups_today: countOf(followUps),
+        reminders_pending: countOf(pendingReminders),
+        today_calls: todayCalls,
         answered_calls: answered,
-        answer_rate: calls.length ? Math.round((answered / calls.length) * 100) : 0,
+        answer_rate: todayCalls ? Math.round((answered / todayCalls) * 100) : 0,
         talk_duration_seconds: talkDurationSeconds,
         my_rank: myRank,
         leaderboard_size: leaderboardSize,

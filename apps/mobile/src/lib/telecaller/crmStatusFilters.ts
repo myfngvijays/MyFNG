@@ -61,3 +61,14 @@ export function mergeCrmStatusFilters(
   }
   return out;
 }
+
+/**
+ * Booking / workshop pipeline needs vehicle, PIN and address.
+ * Soft CRM statuses (Fresh, Ringing, Interested, Follow-up, Lost) do not.
+ */
+export function crmDispositionNeedsFullProfile(result: unknown): boolean {
+  const a = String(result || '')
+    .trim()
+    .toUpperCase();
+  return a === 'BOOKING_CONFIRMED' || a === 'IN_SERVICE' || a === 'SERVICE_DONE';
+}

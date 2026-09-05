@@ -400,14 +400,8 @@ function LeadDetailContent() {
       const selected =
         activityOptions.find((o) => o.id === callLogData.activity) || activityOptions[0];
       const needsLost = Boolean(selected.requires_lost_reason) || selected.id === 'LOST';
-      if (needsLost && !callLogData.lost_reason.trim()) {
-        alert('Please select a lost reason');
-        return;
-      }
-      const statusLabel =
-        needsLost && callLogData.lost_reason
-          ? `Lost · ${callLogData.lost_reason}`
-          : selected.label;
+      const resolvedLost = needsLost ? callLogData.lost_reason.trim() || 'Other Reasons' : '';
+      const statusLabel = needsLost ? `Lost · ${resolvedLost}` : selected.label;
       const notesParts = [`[${statusLabel}]`, callLogData.notes.trim() || null].filter(Boolean);
 
       const res = await fetch('/api/telecaller/calls/log', {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
@@ -185,6 +185,9 @@ export default function TelecallerCrmHomePage() {
   );
   const [customEnd, setCustomEnd] = useState(() => loadTelecallerCrmFilterPrefs().customEnd);
   const [dateOpen, setDateOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const inFlight = useRef(false);
 
   const persistDate = (next: {
     datePreset?: CrmDatePreset;
@@ -204,7 +207,9 @@ export default function TelecallerCrmHomePage() {
   const dateLabel =
     CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    if (inFlight.current && !force) return;
+    inFlight.current = true;
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const params = new URLSearchParams();
@@ -214,18 +219,34 @@ export default function TelecallerCrmHomePage() {
         params.set('from', range.start);
         params.set('to', range.end);
       }
-      const res = await fetch(`/api/telecaller/crm/dashboard?${params.toString()}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Failed');
-      setKpis(json.kpis || {});
-      setTrend(Array.isArray(json.trend) ? json.trend : []);
-      setUpcomingReminders(Array.isArray(json.upcoming_reminders) ? json.upcoming_reminders : []);
-      setFreshLeads(Array.isArray(json.fresh_leads) ? json.fresh_leads : []);
-      setProfileName(json?.profile?.name || 'Telecaller');
-      setPunchedIn(Boolean(json?.attendance?.is_punched_in));
-    } catch (e) {
-      console.error(e);
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 45000);
+      try {
+        const res = await fetch(`/api/telecaller/crm/dashboard?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed');
+        setKpis(json.kpis || {});
+        setTrend(Array.isArray(json.trend) ? json.trend : []);
+        setUpcomingReminders(Array.isArray(json.upcoming_reminders) ? json.upcoming_reminders : []);
+        setFreshLeads(Array.isArray(json.fresh_leads) ? json.fresh_leads : []);
+        setProfileName(json?.profile?.name || 'Telecaller');
+        setPunchedIn(Boolean(json?.attendance?.is_punched_in));
+        setLoadError(null);
+        setReady(true);
+      } finally {
+        window.clearTimeout(timer);
+      }
+    } catch (e: any) {
+      const aborted = e?.name === 'AbortError';
+      setLoadError(
+        aborted
+          ? 'Could not reach the server. Check your connection and try again.'
+          : e?.message || 'Could not load CRM',
+      );
     } finally {
+      inFlight.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -233,13 +254,13 @@ export default function TelecallerCrmHomePage() {
 
   useEffect(() => {
     setLoading(true);
-    void load();
+    void load(true);
   }, [load]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      void load();
-    }, 20000);
+      void load(false);
+    }, 40000);
     return () => window.clearInterval(id);
   }, [load]);
 
@@ -266,7 +287,7 @@ export default function TelecallerCrmHomePage() {
       if (!res.ok) throw new Error(json?.error || 'Punch failed');
       setPunchedIn(!punchedIn);
       setRefreshing(true);
-      void load();
+      void load(true);
     } catch (e: any) {
       alert(e?.message || 'Punch failed');
     } finally {
@@ -446,7 +467,7 @@ export default function TelecallerCrmHomePage() {
                           persistDate({ datePreset: 'custom', customStart, customEnd });
                           setDateOpen(false);
                           setRefreshing(true);
-                          void load();
+                          void load(true);
                         }}
                         className="rounded-lg bg-[#004AAD] px-3 py-1.5 text-xs font-bold text-white"
                       >
@@ -461,7 +482,7 @@ export default function TelecallerCrmHomePage() {
             <TelecallerAanshBar
               onClaimed={() => {
                 setRefreshing(true);
-                void load();
+                void load(true);
               }}
             />
           </div>
@@ -471,6 +492,20 @@ export default function TelecallerCrmHomePage() {
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-slate-500">
             <Loader2 className="h-6 w-6 animate-spin text-[#004AAD]" />
             <span className="text-sm">Loading MyFNG CRM...</span>
+          </div>
+        ) : loadError && !ready ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-20 text-center px-4">
+            <p className="text-sm font-semibold text-slate-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                void load(true);
+              }}
+              className="text-sm font-bold text-[#004AAD]"
+            >
+              Retry
+            </button>
           </div>
         ) : (
           <>
@@ -507,17 +542,17 @@ export default function TelecallerCrmHomePage() {
               })}
             </div>
 
-            <div className="rounded-2xl bg-[#004AAD] p-3.5 sm:p-4 shadow-sm">
+            <div className="rounded-2xl bg-[#F3F7FF] p-3.5 sm:p-4 shadow-sm border border-[#C7D7F5] border-l-4 border-l-[#004AAD]">
               <div className="mb-2.5 flex items-center justify-between gap-2">
-                <h2 className="text-[14px] font-bold text-white">Fresh leads</h2>
-                <Link href={`${base}/leads?filter=new`} className="text-xs font-bold text-white/85">
+                <h2 className="text-[14px] font-bold text-[#023D95]">Fresh leads</h2>
+                <Link href={`${base}/leads?filter=new`} className="text-xs font-bold text-[#004AAD]">
                   View all →
                 </Link>
               </div>
               {freshLeads.length === 0 ? (
-                <p className="py-4 text-center text-sm text-white/75">No fresh leads right now</p>
+                <p className="py-4 text-center text-sm text-slate-500">No fresh leads right now</p>
               ) : (
-                <ul className="divide-y divide-white/15">
+                <ul className="divide-y divide-slate-100">
                   {freshLeads.map((lead) => {
                     const phone = String(lead.customer_phone || '').trim();
                     const vehicle = [lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ');
@@ -525,14 +560,14 @@ export default function TelecallerCrmHomePage() {
                     return (
                       <li key={lead.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
                         <Link href={`${base}/leads/${lead.id}`} className="min-w-0 flex-1 hover:opacity-90">
-                          <p className="truncate text-sm font-bold text-white">
+                          <p className="truncate text-sm font-bold text-slate-900">
                             {String(lead.customer_name || 'Customer').trim()}
                           </p>
-                          <p className="mt-0.5 truncate text-xs text-white/75">
+                          <p className="mt-0.5 truncate text-xs text-slate-500">
                             {phone || '—'}
                             {meta ? ` · ${meta}` : ''}
                           </p>
-                          <p className="mt-0.5 text-[11px] font-bold text-blue-100">
+                          <p className="mt-0.5 text-[11px] font-bold text-[#004AAD]">
                             {formatLeadAgo(lead.created_at)}
                           </p>
                         </Link>
@@ -541,7 +576,7 @@ export default function TelecallerCrmHomePage() {
                             href={`tel:${phone}`}
                             title="Call"
                             aria-label="Call"
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#004AAD]"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#DCE8FF] text-[#004AAD]"
                           >
                             <Phone className="h-3.5 w-3.5" />
                           </a>
@@ -553,17 +588,17 @@ export default function TelecallerCrmHomePage() {
               )}
             </div>
 
-            <div className="rounded-2xl bg-[#004AAD] p-3.5 sm:p-4 shadow-sm">
+            <div className="rounded-2xl bg-[#FFF8F1] p-3.5 sm:p-4 shadow-sm border border-[#F3D5B5] border-l-4 border-l-[#EA580C]">
               <div className="mb-2.5 flex items-center justify-between gap-2">
-                <h2 className="text-[14px] font-bold text-white">Upcoming reminders</h2>
-                <Link href={`${base}/followups`} className="text-xs font-bold text-white/85">
+                <h2 className="text-[14px] font-bold text-[#9A3412]">Upcoming reminders</h2>
+                <Link href={`${base}/followups`} className="text-xs font-bold text-[#C2410C]">
                   View all →
                 </Link>
               </div>
               {upcomingReminders.length === 0 ? (
-                <p className="py-4 text-center text-sm text-white/75">No reminders today</p>
+                <p className="py-4 text-center text-sm text-slate-500">No reminders today</p>
               ) : (
-                <ul className="divide-y divide-white/15">
+                <ul className="divide-y divide-slate-100">
                   {upcomingReminders.slice(0, 3).map((r) => {
                     const overdue = r.scheduled_time
                       ? new Date(r.scheduled_time).getTime() < Date.now()
@@ -573,14 +608,14 @@ export default function TelecallerCrmHomePage() {
                     return (
                       <li key={r.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
                         <Link href={leadHref} className="min-w-0 flex-1 hover:opacity-90">
-                          <p className="truncate text-sm font-bold text-white">
+                          <p className="truncate text-sm font-bold text-slate-900">
                             {r.lead?.customer_name || 'Customer'}
                           </p>
-                          <p className="mt-0.5 truncate text-xs text-white/75">
+                          <p className="mt-0.5 truncate text-xs text-slate-500">
                             {r.reason || 'Follow-up'}
                             {phone ? ` · ${phone}` : ''}
                           </p>
-                          <p className={`mt-0.5 text-[11px] font-bold ${overdue ? 'text-red-200' : 'text-blue-100'}`}>
+                          <p className={`mt-0.5 text-[11px] font-bold ${overdue ? 'text-red-600' : 'text-[#C2410C]'}`}>
                             {overdue ? 'Overdue · ' : ''}
                             {formatReminderClock(r.scheduled_time)}
                           </p>
@@ -590,7 +625,7 @@ export default function TelecallerCrmHomePage() {
                             href={`tel:${phone}`}
                             title="Call"
                             aria-label="Call"
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#004AAD]"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#FFEDD5] text-[#C2410C]"
                           >
                             <Phone className="h-3.5 w-3.5" />
                           </a>

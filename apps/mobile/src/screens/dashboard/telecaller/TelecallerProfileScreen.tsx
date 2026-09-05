@@ -63,7 +63,7 @@ export default function TelecallerProfileScreen({ navigation, embedded = false }
   const fetchQuickStats = async () => {
     setStatsLoading(true);
     try {
-      const data = await apiFetch<any>('/api/telecaller/crm/dashboard?all=1');
+      const data = await apiFetch<any>('/api/telecaller/crm/dashboard?all=1', { timeoutMs: 45000 });
       const k = data?.kpis || {};
       const total = Number(k.total_leads || 0);
       const done = Number(k.service_done || 0);

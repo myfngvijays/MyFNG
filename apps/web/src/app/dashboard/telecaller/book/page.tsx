@@ -10,6 +10,7 @@ import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import CrmReferredByField from '@/components/telecaller/crm/CrmReferredByField';
 import { serializeReferredBy, type CrmReferredBy } from '@/lib/telecaller/crmLeadReference';
+import { crmDispositionNeedsFullProfile } from '@/lib/telecaller/crmLeadFilters';
 import {
   emptySecondCar,
   serializeSecondCar,
@@ -470,19 +471,17 @@ function TelecallerCrmBookContent() {
   }, [form, quote, catalogMeta, bookingTypeLabel, needsPickupStep]);
 
   const canSaveLead = useMemo(() => {
-    const pinOk = /^\d{6}$/.test(form.pincode.trim());
     const phoneOk = form.customer_phone.trim().replace(/\D/g, '').length >= 10;
-    const lostOk = leadStatusId !== 'LOST' || Boolean(lostReason.trim());
+    const pinOk = crmDispositionNeedsFullProfile(leadStatusId)
+      ? /^\d{6}$/.test(form.pincode.trim())
+      : true;
     const activityOk = Boolean(activityDate && activityTime);
-    return (
-      form.customer_name.trim().length > 0 && phoneOk && pinOk && lostOk && activityOk
-    );
+    return form.customer_name.trim().length > 0 && phoneOk && pinOk && activityOk;
   }, [
     form.customer_name,
     form.customer_phone,
     form.pincode,
     leadStatusId,
-    lostReason,
     activityDate,
     activityTime,
   ]);
@@ -523,16 +522,18 @@ function TelecallerCrmBookContent() {
 
   const saveAsLead = async () => {
     if (!canSaveLead) {
-      setError('Name, 10-digit phone, 6-digit pincode, status and call date/time required.');
+      setError(
+        crmDispositionNeedsFullProfile(leadStatusId)
+          ? 'Name, 10-digit phone, 6-digit pincode, status and call date/time required.'
+          : 'Name, 10-digit phone, status and call date/time required.',
+      );
       return;
     }
     const pin = form.pincode.replace(/\D/g, '').slice(0, 6);
     const statusOpt =
       LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
-    if (statusOpt.id === 'LOST' && !lostReason.trim()) {
-      setError('Lost select kiya hai — reason choose karo');
-      return;
-    }
+    const resolvedLostReason =
+      statusOpt.id === 'LOST' ? lostReason.trim() || 'Other Reasons' : '';
     // Date/Time = kab baat hui (call activity), NOT follow-up schedule
     const activityIso =
       activityDate && activityTime ? `${activityDate}T${activityTime}:00+05:30` : null;
@@ -541,8 +542,8 @@ function TelecallerCrmBookContent() {
       return;
     }
     const statusLabel =
-      statusOpt.id === 'LOST' && lostReason
-        ? `Lost · ${lostReason}`
+      statusOpt.id === 'LOST'
+        ? `Lost · ${resolvedLostReason}`
         : statusOpt.label;
 
     setSaving(true);
@@ -573,7 +574,7 @@ function TelecallerCrmBookContent() {
           call_result: statusOpt.id,
           call_label: statusLabel,
           call_notes: form.problem_description || null,
-          lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
+          lost_reason: statusOpt.id === 'LOST' ? resolvedLostReason : null,
           activity_at: activityIso,
           tag_ids: selectedTagIds,
           coupon_meta: {
@@ -1046,7 +1047,7 @@ function TelecallerCrmBookContent() {
                   {leadStatusId === 'LOST' ? (
                     <div>
                       <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
-                        Lost reason *
+                        Lost reason
                       </label>
                       <select
                         value={lostReason}
@@ -1465,7 +1466,9 @@ function TelecallerCrmBookContent() {
         {!canNext ? (
           <p className="mt-3 text-xs font-semibold text-amber-600">
             {mode === 'lead' &&
-              'Name, 10-digit phone, 6-digit pincode, status and call date/time required.'}
+              (crmDispositionNeedsFullProfile(leadStatusId)
+                ? 'Name, 10-digit phone, 6-digit pincode, status and call date/time required.'
+                : 'Name, 10-digit phone, status and call date/time required.')}
             {mode === 'book' && step === 0 && 'Select city and car model (type to search).'}
             {mode === 'book' && step === 1 && 'Name, 10-digit phone and 6-digit pincode required.'}
             {mode === 'book' && step === 2 && 'Select at least one service / plan.'}

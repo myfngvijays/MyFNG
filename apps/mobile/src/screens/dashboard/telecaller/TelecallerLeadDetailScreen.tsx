@@ -43,6 +43,7 @@ import {
 } from '../../../lib/crmLeadReference';
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
+import { crmDispositionNeedsFullProfile } from '../../../lib/telecaller/crmStatusFilters';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
@@ -694,8 +695,7 @@ export default function TelecallerLeadDetailScreen({
       Alert.alert('Missing info', 'Valid 10-digit phone required');
       return;
     }
-    const markingLost = String(activityData.result || '').toUpperCase() === 'LOST';
-    if (!markingLost) {
+    if (crmDispositionNeedsFullProfile(activityData.result)) {
       if (!editForm.city_id && !editForm.city) {
         Alert.alert('Missing info', 'City required');
         return;
@@ -742,13 +742,6 @@ export default function TelecallerLeadDetailScreen({
     const selectedForSave =
       statusOptions.find((r) => r.id === activityData.result) || RINGING;
     if (
-      (activityData.result === 'LOST' || selectedForSave.requires_lost_reason) &&
-      !activityData.lostReason
-    ) {
-      Alert.alert('Missing info', 'Select lost reason');
-      return;
-    }
-    if (
       (activityData.result === 'CALLBACK' || selectedForSave.requires_follow_up) &&
       (!activityData.date || !activityData.time)
     ) {
@@ -791,12 +784,13 @@ export default function TelecallerLeadDetailScreen({
           statusOptions.find((r) => r.id === activityData.result) || RINGING;
         const statusLabel =
           selected.id === 'LOST'
-            ? `Lost · ${activityData.lostReason}`
+            ? `Lost · ${activityData.lostReason.trim() || 'Other Reasons'}`
             : selected.label;
         nextMeta.last_call_status = selected.call_status;
         nextMeta.last_call_result = selected.id;
         nextMeta.last_call_label = statusLabel;
-        nextMeta.last_lost_reason = selected.id === 'LOST' ? activityData.lostReason : null;
+        nextMeta.last_lost_reason =
+          selected.id === 'LOST' ? activityData.lostReason.trim() || 'Other Reasons' : null;
         nextMeta.last_call_at = new Date().toISOString();
         if (selected.lead_status) dispositionStatus = selected.lead_status;
       }
@@ -1642,10 +1636,6 @@ export default function TelecallerLeadDetailScreen({
   const handleSaveActivity = async () => {
     try {
       const selected = selectedResult;
-      if (selected.id === 'LOST' && !activityData.lostReason) {
-        Alert.alert('Lost reason', 'Please select a lost reason.');
-        return;
-      }
       if (selected.id === 'CALLBACK' && (!activityData.date || !activityData.time)) {
         Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
         return;
@@ -1654,7 +1644,7 @@ export default function TelecallerLeadDetailScreen({
       const whenIso = combineDateAndTime(activityData.date, activityData.time);
       const statusLabel =
         selected.id === 'LOST'
-          ? `Lost · ${activityData.lostReason}`
+          ? `Lost · ${activityData.lostReason.trim() || 'Other Reasons'}`
           : selected.label;
       const notesParts = [
         `[${statusLabel}]`,
@@ -1694,7 +1684,7 @@ export default function TelecallerLeadDetailScreen({
         last_call_status: selected.call_status,
         last_call_result: selected.id,
         last_call_label: statusLabel,
-        last_lost_reason: selected.id === 'LOST' ? activityData.lostReason : null,
+        last_lost_reason: selected.id === 'LOST' ? activityData.lostReason.trim() || 'Other Reasons' : null,
         last_call_at: new Date().toISOString(),
         profile_history: [historyEntry, ...prevHistory].slice(0, 50),
       };

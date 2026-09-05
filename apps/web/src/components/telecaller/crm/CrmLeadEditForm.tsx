@@ -41,6 +41,7 @@ import {
 import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import { formatDateTime } from '@/lib/utils';
+import { crmDispositionNeedsFullProfile } from '@/lib/telecaller/crmLeadFilters';
 
 const PIPELINE = [
   { id: 'FRESH', label: 'Fresh' },
@@ -336,6 +337,7 @@ export default function CrmLeadEditForm({
     callback_date: '',
     callback_time: '',
   });
+  const needsFullProfile = crmDispositionNeedsFullProfile(formData.activity_result);
 
   useEffect(() => {
     fetchLeadDetails();
@@ -803,7 +805,7 @@ export default function CrmLeadEditForm({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    const markingLost = formData.activity_result === 'LOST';
+    const needsFullProfile = crmDispositionNeedsFullProfile(formData.activity_result);
 
     // Customer validation
     if (!formData.customer_name.trim()) newErrors.customer_name = 'Customer name is required';
@@ -811,7 +813,7 @@ export default function CrmLeadEditForm({
     if (formData.customer_phone && formData.customer_phone.replace(/\D/g, '').length < 10) {
       newErrors.customer_phone = 'Please enter valid 10-digit phone number';
     }
-    if (!markingLost) {
+    if (needsFullProfile) {
       if (!formData.area.trim() && !formData.flat_number.trim()) {
         newErrors.area = 'Address (flat / area) is required';
       }
@@ -884,10 +886,10 @@ export default function CrmLeadEditForm({
         ACTIVITY_OPTIONS.find((o) => o.id === formData.activity_result) || ACTIVITY_OPTIONS[0];
       const prevMeta =
         lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+      const resolvedLost =
+        selectedActivity.id === 'LOST' ? formData.lost_reason.trim() || 'Other Reasons' : '';
       const statusLabel =
-        selectedActivity.id === 'LOST' && formData.lost_reason
-          ? `Lost · ${formData.lost_reason}`
-          : selectedActivity.label;
+        selectedActivity.id === 'LOST' ? `Lost · ${resolvedLost}` : selectedActivity.label;
       const historyEntry = {
         at: new Date().toISOString(),
         summary: `Updated ${statusLabel}`,
@@ -911,7 +913,7 @@ export default function CrmLeadEditForm({
         last_call_at: new Date().toISOString(),
         telecaller_remarks: formData.activity_notes.trim() || null,
         last_lost_reason:
-          selectedActivity.id === 'LOST' ? formData.lost_reason || null : (prevMeta as any).last_lost_reason || null,
+          selectedActivity.id === 'LOST' ? resolvedLost : (prevMeta as any).last_lost_reason || null,
         profile_history: [historyEntry, ...prevHistory].slice(0, 50),
         flat_number: formData.flat_number.trim() || null,
         landmark: formData.landmark.trim() || null,
@@ -1247,7 +1249,7 @@ export default function CrmLeadEditForm({
               </div>
             </div>
             <div>
-              <FieldLabel required>Pincode</FieldLabel>
+              <FieldLabel required={needsFullProfile}>Pincode</FieldLabel>
               <div className="relative">
                 <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -1284,7 +1286,7 @@ export default function CrmLeadEditForm({
               <input type="text" name="flat_number" value={formData.flat_number} onChange={handleChange} className={fieldCls()} placeholder="Flat / house no." />
             </div>
             <div>
-              <FieldLabel required>Area / Street</FieldLabel>
+              <FieldLabel required={needsFullProfile}>Area / Street</FieldLabel>
               <input type="text" name="area" value={formData.area} onChange={handleChange} className={fieldCls(Boolean(errors.area))} placeholder="Society, road, locality" />
               {errors.area ? <p className="mt-1 text-xs text-rose-600">{errors.area}</p> : null}
             </div>
@@ -1389,7 +1391,7 @@ export default function CrmLeadEditForm({
         <SectionCard title="Vehicle Details" icon={Car} tone="sky">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="col-span-2 lg:col-span-1">
-              <FieldLabel required>Vehicle Number</FieldLabel>
+              <FieldLabel required={needsFullProfile}>Vehicle Number</FieldLabel>
               <input
                 type="text"
                 name="vehicle_number"
@@ -1407,7 +1409,7 @@ export default function CrmLeadEditForm({
             </div>
             <div className="col-span-2 lg:col-span-3">
               <CrmCarSearch
-                label="Car Model *"
+                label={needsFullProfile ? 'Car Model *' : 'Car Model'}
                 placeholder="Type model (e.g. Swift, City, Rapid)"
                 displayValue={carDisplay}
                 onSelect={(car) => {
@@ -1513,7 +1515,7 @@ export default function CrmLeadEditForm({
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <div className="col-span-2 lg:col-span-1">
-                  <FieldLabel required>Vehicle Number</FieldLabel>
+                  <FieldLabel required={needsFullProfile}>Vehicle Number</FieldLabel>
                   <input
                     type="text"
                     value={secondCar.vehicle_number}
@@ -1532,7 +1534,7 @@ export default function CrmLeadEditForm({
                 </div>
                 <div className="col-span-2 lg:col-span-3">
                   <CrmCarSearch
-                    label="Car Model *"
+                    label={needsFullProfile ? 'Car Model *' : 'Car Model'}
                     placeholder="Type second car model"
                     displayValue={secondCarDisplay}
                     onSelect={(car) => {
