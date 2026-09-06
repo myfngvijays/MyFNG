@@ -63,7 +63,7 @@ const STATUS_UI: Record<
   ready: {
     label: 'Ready',
     className: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    hint: 'Paste the HTTPS URL into Claude Connectors. Local file path is only for Cursor on this Mac.',
+    hint: 'Paste the HTTPS URL into Claude Connectors, then Connect and Approve as Super Admin.',
   },
   needs_build: {
     label: 'Needs build (local stdio only)',
@@ -222,8 +222,12 @@ export default function MyFngMcpApp() {
                 URL: <code className="rounded bg-slate-100 px-1">{claude.connector_url}</code>
               </li>
               <li>
-                Authentication: <strong>None</strong>. Request header <code className="rounded bg-slate-100 px-1">authorization</code> ={' '}
-                <code className="rounded bg-slate-100 px-1">Bearer &lt;token&gt;</code>
+                Authentication: <strong>Always required</strong> (Detected). OAuth client:{' '}
+                <strong>Use Anthropic&apos;s hosted client metadata</strong>
+              </li>
+              <li>
+                <strong>Add</strong>, then <strong>Connect</strong>. Super Admin se login karke{' '}
+                <strong>Approve</strong> dabao
               </li>
             </ol>
 
@@ -231,7 +235,7 @@ export default function MyFngMcpApp() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
                   <KeyRound className="h-4 w-4 text-[#004AAD]" />
-                  Bearer token
+                  Optional Bearer token
                 </h3>
                 <button
                   type="button"
@@ -247,8 +251,8 @@ export default function MyFngMcpApp() {
                 {claude.from_env
                   ? 'Token comes from MYFNG_MCP_TOKEN env — change it on the server, not here.'
                   : claude.has_token
-                    ? `Saved (${claude.hint}). Generate again only if you lost it — old token stops working.`
-                    : 'Generate once, then paste Bearer + token in Claude request headers.'}
+                    ? `Saved (${claude.hint}). Claude.ai OAuth use karta hai; yeh token Cursor / Claude Code headers ke liye hai.`
+                    : 'Claude.ai ke liye token zaroori nahi. Cursor / Claude Code ke liye generate karo.'}
               </p>
               {freshToken ? (
                 <div className="mt-3 space-y-2">

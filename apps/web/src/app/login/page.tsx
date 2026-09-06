@@ -54,7 +54,15 @@ export default function LoginPage() {
       } = await import('@/lib/telecaller/ensurePunchInOnLogin');
       const { getRoleDashboardHome } = await import('@/lib/dashboard/roleHome');
       const roleCode = userProfile.role.role_code;
-      router.push(getRoleDashboardHome(roleCode));
+      const nextRaw = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : '';
+      const oauthNext =
+        nextRaw &&
+        nextRaw.startsWith('/api/mcp/oauth/authorize') &&
+        !nextRaw.startsWith('//') &&
+        !nextRaw.includes('://')
+          ? nextRaw
+          : null;
+      router.push(oauthNext || getRoleDashboardHome(roleCode));
 
       void (async () => {
         try {

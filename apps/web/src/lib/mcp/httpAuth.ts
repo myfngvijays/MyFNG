@@ -32,7 +32,7 @@ export async function saveMcpHttpToken(token: string, userId?: string | null): P
     setting_value: token.trim(),
     setting_type: 'STRING',
     category: 'INTEGRATIONS',
-    description: 'Bearer token for Claude remote MCP (POST https://…/api/mcp)',
+    description: 'Optional static Bearer token for Cursor / Claude Code MCP (Claude.ai uses OAuth)',
     is_editable: true,
     updated_by: userId || null,
     updated_at: new Date().toISOString(),
@@ -72,7 +72,7 @@ export function mcpCorsHeaders(): Record<string, string> {
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers':
       'Authorization, Content-Type, Accept, MCP-Session-Id, MCP-Protocol-Version, Last-Event-ID, x-api-key',
-    'Access-Control-Expose-Headers': 'MCP-Session-Id, MCP-Protocol-Version',
+    'Access-Control-Expose-Headers': 'MCP-Session-Id, MCP-Protocol-Version, WWW-Authenticate',
   };
 }
 

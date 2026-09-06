@@ -6,6 +6,7 @@ import {
   mcpCorsHeaders,
   withCors,
 } from '@/lib/mcp/httpAuth';
+import { isValidMcpAccessToken, mcpUnauthorizedResponse } from '@/lib/mcp/oauth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,30 +17,12 @@ async function handleMcp(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: mcpCorsHeaders() });
   }
 
-  const expected = await getMcpHttpToken();
-  if (!expected) {
-    return withCors(
-      Response.json(
-        {
-          error: 'MCP token not configured',
-          hint: 'Super Admin → MyFNG MCP → Generate Claude token (or set MYFNG_MCP_TOKEN).',
-        },
-        { status: 503 },
-      ),
-    );
-  }
-
   const provided = extractMcpTokenFromRequest(req);
-  if (provided !== expected) {
-    return withCors(
-      new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'WWW-Authenticate': 'Bearer',
-        },
-      }),
-    );
+  const expected = await getMcpHttpToken();
+  const staticOk = Boolean(expected && provided && provided === expected);
+  const oauthOk = provided ? await isValidMcpAccessToken(provided) : false;
+  if (!staticOk && !oauthOk) {
+    return mcpUnauthorizedResponse();
   }
 
   const server = await createMyfngMcpServer();

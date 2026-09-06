@@ -3204,40 +3204,67 @@ async function checkMetaAdsMcp(): Promise<HealthCheck> {
 
 async function checkMcpRemote(): Promise<HealthCheck> {
   const start = Date.now();
+  const url = `${MCP_PUBLIC_ORIGIN}/api/mcp`;
+  const asUrl = `${MCP_PUBLIC_ORIGIN}/.well-known/oauth-authorization-server`;
+  const prUrl = `${MCP_PUBLIC_ORIGIN}/.well-known/oauth-protected-resource/api/mcp`;
+  const quickFix = {
+    label: 'Open MyFNG MCP',
+    action: 'internal-link' as const,
+    actionPayload: { url: '/dashboard/super_admin/myfng-mcp' },
+  };
   try {
     const token = await getMcpHttpToken();
-    const url = `${MCP_PUBLIC_ORIGIN}/api/mcp`;
-    if (!token) {
+    const signal = AbortSignal.timeout(8000);
+    const [asRes, prRes, mcpRes] = await Promise.all([
+      fetch(asUrl, { signal, cache: 'no-store' }),
+      fetch(prUrl, { signal, cache: 'no-store' }),
+      fetch(url, { signal, cache: 'no-store' }),
+    ]);
+    const www = mcpRes.headers.get('www-authenticate') || '';
+    const discoveryOk = asRes.ok && prRes.ok;
+    const challengeOk = mcpRes.status === 401 && /resource_metadata=/i.test(www);
+    const responseTime = Date.now() - start;
+
+    if (!discoveryOk) {
+      return {
+        name: 'MyFNG MCP (Claude)',
+        category: 'AI',
+        status: 'down',
+        responseTime,
+        message: 'Claude OAuth discovery endpoints are missing',
+        reason: `AS ${asRes.status} · PR ${prRes.status}. Deploy the MCP OAuth well-known routes, then reconnect in Claude.`,
+        quickFix,
+        lastChecked: new Date().toISOString(),
+        details: { url, asUrl, prUrl, asStatus: asRes.status, prStatus: prRes.status },
+      };
+    }
+
+    if (!challengeOk) {
       return {
         name: 'MyFNG MCP (Claude)',
         category: 'AI',
         status: 'degraded',
-        responseTime: Date.now() - start,
-        message: 'Remote MCP URL is live but token is missing',
-        reason: 'Generate a bearer token on Super Admin → MyFNG MCP, then paste https://myfng.in/api/mcp into Claude Connectors.',
-        quickFix: {
-          label: 'Open MyFNG MCP',
-          action: 'internal-link',
-          actionPayload: { url: '/dashboard/super_admin/myfng-mcp' },
-        },
+        responseTime,
+        message: 'MCP is up but the 401 OAuth challenge is incomplete',
+        reason: `MCP returned ${mcpRes.status} without resource_metadata. Claude cannot find the authorization server.`,
+        quickFix,
         lastChecked: new Date().toISOString(),
-        details: { url },
+        details: { url, mcpStatus: mcpRes.status, wwwAuthenticate: www },
       };
     }
+
     return {
       name: 'MyFNG MCP (Claude)',
       category: 'AI',
       status: 'healthy',
-      responseTime: Date.now() - start,
-      message: `Claude connector ${url}`,
-      reason: 'Bearer token is set. Add this HTTPS URL in Claude → Connectors (not a local file path).',
-      quickFix: {
-        label: 'Open MyFNG MCP',
-        action: 'internal-link',
-        actionPayload: { url: '/dashboard/super_admin/myfng-mcp' },
-      },
+      responseTime,
+      message: `Claude OAuth ready · ${url}`,
+      reason: token
+        ? 'Discovery + 401 challenge OK. Claude.ai uses Connect / Approve. Bearer token is optional for Cursor.'
+        : 'Discovery + 401 challenge OK. Claude.ai uses Connect / Approve.',
+      quickFix,
       lastChecked: new Date().toISOString(),
-      details: { url, hasToken: true },
+      details: { url, hasToken: Boolean(token), oauth: true },
     };
   } catch (e: any) {
     return {
@@ -3247,6 +3274,7 @@ async function checkMcpRemote(): Promise<HealthCheck> {
       responseTime: Date.now() - start,
       message: e?.message || 'Check failed',
       reason: String(e?.message || e),
+      quickFix,
       lastChecked: new Date().toISOString(),
     };
   }

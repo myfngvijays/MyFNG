@@ -37,10 +37,12 @@ Claude does **not** use a Mac file path. It needs the public HTTPS connector:
 
 `https://myfng.in/api/mcp`
 
-1. Super Admin → **MyFNG MCP** → **Generate token**
-2. Open [Claude Connectors](https://claude.ai/settings/connectors) → Add custom connector → **Web**
-3. Paste the URL above
-4. Auth: **None**. Request header `authorization` = `Bearer <token>`
+1. Open [Claude Connectors](https://claude.ai/settings/connectors) → Add custom connector → **Web**
+2. Paste the URL above
+3. Auth: **Always required**. OAuth client: Anthropic hosted client metadata
+4. **Connect**, then sign in as Super Admin and **Approve**
+
+Optional for Cursor / Claude Code: Super Admin → **MyFNG MCP** → Generate token, then send `authorization: Bearer <token>`.
 
 `localhost` and `node /Users/.../run-with-env.mjs` will not work in Claude.ai (Anthropic’s servers call the URL).
 

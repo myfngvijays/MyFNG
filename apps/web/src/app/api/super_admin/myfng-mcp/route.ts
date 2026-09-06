@@ -118,9 +118,11 @@ export async function GET(request: NextRequest) {
         connector_url: productionUrl,
         this_host_url: thisHostUrl,
         localhost_blocked: /localhost|127\.0\.0\.1/i.test(origin),
-        auth: 'none_plus_header',
+        auth: 'oauth_cimd',
         header_name: 'authorization',
         header_value_prefix: 'Bearer ',
+        oauth_authorize_url: `${MCP_PUBLIC_ORIGIN}/api/mcp/oauth/authorize`,
+        oauth_metadata_url: `${MCP_PUBLIC_ORIGIN}/.well-known/oauth-authorization-server`,
         ...tokenInfo,
       },
       sample_mcp_config: {
@@ -145,10 +147,10 @@ export async function GET(request: NextRequest) {
       tools: MYFNG_MCP_TOOLS,
       by_area: byArea,
       setup_steps: [
-        'Generate a Claude token on this page (or set MYFNG_MCP_TOKEN in server env)',
         `Claude → Customize → Connectors → Add custom connector → Web → paste ${productionUrl}`,
-        'Authentication: None. Request header authorization = Bearer <token>',
-        'Claude.ai cannot use localhost or a Mac file path — it must call the public HTTPS URL',
+        'Authentication: Always required (Detected). OAuth client: Anthropic hosted client metadata',
+        'Add, then Connect. Sign in as Super Admin and Approve',
+        'Optional: generate a Bearer token on this page for Cursor / Claude Code headers',
       ],
       checked_at: new Date().toISOString(),
     });
