@@ -15,12 +15,16 @@ export async function ensureTelecallerPunchInOnLogin(): Promise<void> {
 /** On logout — close open punch so Live Floor shows Off Duty. Call before auth.signOut(). */
 export async function ensureTelecallerPunchOutOnLogout(): Promise<void> {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
     await fetch('/api/telecaller/crm/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'punch_out' }),
       credentials: 'include',
+      signal: controller.signal,
     });
+    clearTimeout(timer);
   } catch {
     /* best-effort — still allow logout */
   }

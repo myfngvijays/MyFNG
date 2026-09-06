@@ -936,7 +936,7 @@ export default function CrmLeadEditForm({
         city: formData.city || null,
         pincode: formData.pincode || null,
 
-        vehicle_number: formData.vehicle_number.trim().toUpperCase() || null,
+        vehicle_number: formData.vehicle_number.trim().toUpperCase() || lead?.vehicle_number || 'PENDING',
         vehicle_make: formData.vehicle_make,
         model_id: formData.model_id || null,
         vehicle_model: formData.vehicle_model,

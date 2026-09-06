@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import { formatDateDMY } from '../../../lib/dateFormat';
 
@@ -42,6 +43,7 @@ type Props = {
 };
 
 export default function CrmMeTab({ navigation, active = true }: Props) {
+  const { logout: authLogout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
   const [attendance, setAttendance] = useState<any>(null);
@@ -201,17 +203,17 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
     setIsEditing(false);
   };
 
-  const logout = async () => {
-    try {
-      await apiFetch('/api/telecaller/crm/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'punch_out' }),
-      });
-    } catch {
-      /* continue */
-    }
-    await supabase.auth.signOut();
+  const logout = () => {
+    Alert.alert('Logout', 'Logout karna hai?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: () => {
+          void authLogout();
+        },
+      },
+    ]);
   };
 
   const history = Array.isArray(attendance?.history) ? attendance.history : [];

@@ -39,16 +39,27 @@ export function buildAppleAppSiteAssociation() {
 }
 
 /**
+ * Play App Signing SHA-256 (Play Console → Protected with Play →
+ * Play Store protection → Manage Play app signing → App signing key).
+ * This is a public certificate fingerprint, not a secret.
+ */
+export const PLAY_APP_SIGNING_SHA256 =
+  '1E:D5:18:AA:81:DA:52:B1:05:06:79:28:91:82:29:AA:1B:DC:AA:38:DD:5D:9F:04:13:93:4A:5F:9A:C4:60:68';
+
+/**
  * Android App Links fingerprints (SHA-256 of signing cert, colon-separated hex).
- * Set ANDROID_APP_LINK_SHA256 (comma-separated) in env — Play App Signing + upload key.
+ * Always includes Play App Signing. Extra keys via ANDROID_APP_LINK_SHA256 (upload/debug).
  */
 export function getAndroidAppLinkFingerprints(): string[] {
-  const raw = String(process.env.ANDROID_APP_LINK_SHA256 || '').trim();
-  if (!raw) return [];
-  return raw
-    .split(/[,;\s]+/)
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean);
+  // Bracket access so Next.js does not inline this at `next build`.
+  const raw = String(process.env['ANDROID_APP_LINK_SHA256'] || '').trim();
+  const fromEnv = raw
+    ? raw
+        .split(/[,;\s]+/)
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean)
+    : [];
+  return [...new Set([PLAY_APP_SIGNING_SHA256, ...fromEnv])];
 }
 
 export function buildAndroidAssetLinks() {

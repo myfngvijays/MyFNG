@@ -45,6 +45,7 @@ import {
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { crmDispositionNeedsFullProfile } from '../../../lib/telecaller/crmStatusFilters';
+import { serviceLeadVehicleNumber } from '../../../lib/telecaller/serviceLeadVehicleNumber';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
@@ -869,7 +870,7 @@ export default function TelecallerLeadDetailScreen({
         city_id: editForm.city_id || null,
         city: editForm.city || null,
         pincode: editForm.pincode || null,
-        vehicle_number: editForm.vehicle_number.toUpperCase().trim() || null,
+        vehicle_number: serviceLeadVehicleNumber(editForm.vehicle_number, lead?.vehicle_number),
         vehicle_make: editForm.vehicle_make,
         model_id: editForm.model_id || null,
         vehicle_model: editForm.vehicle_model,

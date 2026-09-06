@@ -18,8 +18,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
-import { apiFetch } from '../../../lib/api';
 import { useNotifications } from '../../../context/NotificationContext';
+import { useAuth } from '../../../context/AuthContext';
 import { setAndroidShellBackHandler } from '../../../lib/androidShellBack';
 import TelecallerWhatsAppInbox, {
   TelecallerWhatsAppFab,
@@ -477,6 +477,7 @@ export default function TelecallerAdvancedCRM() {
   const stackNav = useNavigation<any>();
   const route = useRoute();
   const { unreadCount, refreshNotifications } = useNotifications();
+  const { logout: authLogout } = useAuth();
   const isLeadManager = String(route?.name || '').includes('LeadManager');
   const insets = useSafeAreaInsets();
   const drawerNav = isLeadManager ? LM_NAV : TC_NAV;
@@ -808,18 +809,9 @@ export default function TelecallerAdvancedCRM() {
       {
         text: 'Logout',
         style: 'destructive',
-        onPress: async () => {
+        onPress: () => {
           setMenuOpen(false);
-          try {
-            await apiFetch('/api/telecaller/crm/attendance', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'punch_out' }),
-            });
-          } catch {
-            /* continue */
-          }
-          await supabase.auth.signOut();
+          void authLogout();
         },
       },
     ]);
@@ -920,6 +912,8 @@ export default function TelecallerAdvancedCRM() {
             <TouchableOpacity
               style={styles.menuBtn}
               onPress={handleLogout}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityLabel="Logout"
               accessibilityRole="button"
             >
@@ -1301,14 +1295,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
-    zIndex: 1,
+    zIndex: 6,
+    elevation: 8,
   },
   topSideRight: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    zIndex: 1,
+    zIndex: 6,
+    elevation: 8,
   },
   topCenter: {
     position: 'absolute',
@@ -1318,8 +1314,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 4,
-    elevation: 6,
+    zIndex: 0,
+    elevation: 0,
   },
   topLogo: {
     width: 108,

@@ -160,7 +160,6 @@ export default function QCReviewPage() {
         return out;
       };
 
-      const supabase = createClient();
       const resolvedId = await resolveAdvisorLeadId(supabase, { jobId, leadId: jobId });
       if (!resolvedId) {
         throw new Error('Lead not found');

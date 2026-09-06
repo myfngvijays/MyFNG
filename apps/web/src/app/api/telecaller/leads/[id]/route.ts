@@ -11,6 +11,7 @@ import {
   serviceLabelFromQuote,
 } from '@/lib/telecaller/crmQuote';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
+import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
 
 const LEAD_SELECT_FULL =
   'id, lead_number, status, customer_name, customer_phone, customer_id, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, service_type, service_type_ids, subservice_ids, estimated_amount, discount_amount, coupon_code, preferred_slot_start, preferred_slot_end, pickup_required, pickup_address, customer_address, city, city_id, pincode, workshop_id, coupon_meta';
@@ -235,7 +236,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       city: body?.city ?? null,
       pincode: body?.pincode ?? null,
 
-      vehicle_number: body?.vehicle_number ?? null,
+      vehicle_number: serviceLeadVehicleNumber(body?.vehicle_number, (existingLead as any).vehicle_number),
       vehicle_make: body?.vehicle_make ?? null,
       model_id: body?.model_id ?? null,
       vehicle_model: body?.vehicle_model ?? null,

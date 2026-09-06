@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { createMyfngMcpServer } from '../../../../../../packages/myfng-mcp/dist/createServer.js';
+import { createMyfngMcpServer } from '../../../../../../packages/myfng-mcp/src/createServer';
 import {
   extractMcpTokenFromRequest,
   getMcpHttpToken,

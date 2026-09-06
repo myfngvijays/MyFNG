@@ -540,7 +540,7 @@ export default function PickupTaskDetailPage() {
         </div>
 
         {/* Status Banner */}
-        <div className={`p-3 sm:p-4 rounded-2xl border border-slate-200 border-l-4 ${}
+        <div className={`p-3 sm:p-4 rounded-2xl border border-slate-200 border-l-4 ${
           task.status === 'ON_THE_WAY' ? 'bg-blue-50 border-blue-500' :
           task.status === 'VEHICLE_IN_TRANSIT' ? 'bg-purple-50 border-purple-500' :
           task.status === 'VEHICLE_DROPPED_AT_WORKSHOP' ? 'bg-green-50 border-green-500' :

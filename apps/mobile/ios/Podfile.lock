@@ -277,6 +277,8 @@ PODS:
     - Yoga
   - ExpoAsset (11.1.7):
     - ExpoModulesCore
+  - ExpoAudio (0.4.9):
+    - ExpoModulesCore
   - ExpoClipboard (7.1.5):
     - ExpoModulesCore
   - ExpoContacts (14.2.6):
@@ -2235,6 +2237,7 @@ DEPENDENCIES:
   - expo-dev-menu (from `../node_modules/expo-dev-menu`)
   - expo-dev-menu-interface (from `../node_modules/expo-dev-menu-interface/ios`)
   - ExpoAsset (from `../node_modules/expo-asset/ios`)
+  - ExpoAudio (from `../node_modules/expo-audio/ios`)
   - ExpoClipboard (from `../node_modules/expo-clipboard/ios`)
   - ExpoContacts (from `../node_modules/expo-contacts/ios`)
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios`)
@@ -2386,6 +2389,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-dev-menu-interface/ios"
   ExpoAsset:
     :path: "../node_modules/expo-asset/ios"
+  ExpoAudio:
+    :path: "../node_modules/expo-audio/ios"
   ExpoClipboard:
     :path: "../node_modules/expo-clipboard/ios"
   ExpoContacts:
@@ -2591,6 +2596,7 @@ SPEC CHECKSUMS:
   expo-dev-menu: b2554d3971b251b2c1f0f5c9c3da50855150f195
   expo-dev-menu-interface: 609c35ae8b97479cdd4c9e23c8cf6adc44beea0e
   ExpoAsset: 7bdbbacf4e6752ae6e3cf70555cee076f6229e6e
+  ExpoAudio: 052e187744415b4e04fc5c9bec08a51058983122
   ExpoClipboard: 6b9aae54fd48a579473fb101051ad693435b9294
   ExpoContacts: f774b9f9ec96cb6123addd9d96c98d6e53c6a5ca
   ExpoFileSystem: 9681caebda23fa1b38a12a9c68b2bade7072ce20

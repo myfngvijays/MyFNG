@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { notFound } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -8,15 +7,14 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { findServiceBySlug, makeShortDescription, MARKETING_SLUG_TO_INTERNAL } from '@/lib/services/catalog';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
-
-export const revalidate = 300;
-
-const AppDownloadPopup = dynamic(() => import('@/components/landing/AppDownloadPopup'), { ssr: false });
+import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import { SITE_URL } from '@/lib/seo/metadata';
 import { breadcrumbSchema, serviceSchema } from '@/lib/seo/schemas';
 import JsonLd from '@/components/seo/JsonLd';
 import { buildManagedServicePageMetadata } from '@/lib/service-page-seo';
 import { toSiteMediaSrc, toSiteMediaUrl } from '@/lib/media/public-url';
+
+export const revalidate = 300;
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }

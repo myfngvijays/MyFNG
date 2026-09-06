@@ -38,6 +38,7 @@ import {
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import { ReferralCodeModal } from '../components/ReferralCodeModal';
 import { InstallCouponModal } from '../components/InstallCouponModal';
+import AnimatedOtpInput, { type OtpAnimStatus } from '../components/AnimatedOtpInput';
 import { getPendingReferralCode, clearPendingReferralCode } from '../lib/referralDeepLink';
 import {
   AuthVerifyResponse,
@@ -72,6 +73,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const isNewCustomerRef = useRef(false);
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const pendingWelcomePhoneRef = useRef<string | null>(null);
+  const [otpAnim, setOtpAnim] = useState<OtpAnimStatus>('idle');
+  const otpVerifyLock = useRef(false);
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   // Phone numbers we register in Firebase Console as "Phone numbers for testing".
   // Includes the App Store reviewer demo number so OTP works without APNs/SMS.
@@ -268,50 +273,60 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     }
   };
 
-  const handleCustomerOtpVerify = async () => {
+  const handleCustomerOtpVerify = async (code?: string) => {
     setErrorText('');
+    const otp = (code ?? customerOtp).replace(/\D/g, '');
     const cleanPhone = customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       setErrorText('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (!customerConfirmation && !/^\d{6}$/.test(customerOtp.trim())) {
-      setErrorText('Please enter the 6-digit OTP sent to your number');
+    if (!customerConfirmation && !/^\d{6}$/.test(otp)) {
       return;
     }
-    if (customerConfirmation && customerOtp.trim().length < 4) {
-      setErrorText('Please enter the OTP sent to your number');
+    if (customerConfirmation && otp.length < 4) {
       return;
     }
-
+    if (otpVerifyLock.current) return;
+    otpVerifyLock.current = true;
+    setOtpAnim('mixing');
     setLoading(true);
+    const started = Date.now();
     try {
-      const authResult = await verifySmsOtp(cleanPhone, customerOtp.trim(), customerConfirmation);
+      const authResult = await verifySmsOtp(cleanPhone, otp, customerConfirmation);
+      await sleep(Math.max(0, 1400 - (Date.now() - started)));
+      setOtpAnim('success');
+      await sleep(850);
       await persistSessionAndGoHome(authResult.session_token, authResult);
     } catch (error: any) {
+      setOtpAnim('error');
       setErrorText(error?.message || 'Invalid OTP');
     } finally {
       setLoading(false);
+      otpVerifyLock.current = false;
     }
   };
 
-  const handleWhatsAppOtpVerify = async () => {
+  const handleWhatsAppOtpVerify = async (code?: string) => {
     setErrorText('');
+    const otp = (code ?? customerOtp).replace(/\D/g, '');
     const cleanPhone = customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       setErrorText('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (!/^\d{6}$/.test(customerOtp.trim())) {
-      setErrorText('Please enter the 6-digit OTP sent on WhatsApp');
+    if (!/^\d{6}$/.test(otp)) {
       return;
     }
-
+    if (otpVerifyLock.current) return;
+    otpVerifyLock.current = true;
+    setOtpAnim('mixing');
     setLoading(true);
+    const started = Date.now();
     try {
       const payload = JSON.stringify({
         phone: cleanPhone,
-        otp: customerOtp.trim(),
+        otp,
       });
       const headers = {
         'Content-Type': 'application/json',
@@ -360,11 +375,16 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         throw new Error('WhatsApp OTP verified, but login session endpoint is not available. Please deploy latest backend APIs.');
       }
 
+      await sleep(Math.max(0, 1400 - (Date.now() - started)));
+      setOtpAnim('success');
+      await sleep(850);
       await persistSessionAndGoHome(String(json.session_token), json);
     } catch (error: any) {
+      setOtpAnim('error');
       setErrorText(error?.message || 'Invalid WhatsApp OTP');
     } finally {
       setLoading(false);
+      otpVerifyLock.current = false;
     }
   };
 
@@ -497,6 +517,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       setPhoneOtpChannel('sms');
       setErrorText('');
       setResendInSec(0);
+      setOtpAnim('idle');
+      otpVerifyLock.current = false;
     }
   };
 
@@ -507,6 +529,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     setPhoneOtpChannel('sms');
     setErrorText('');
     setResendInSec(0);
+    setOtpAnim('idle');
+    otpVerifyLock.current = false;
   };
 
   const submitOtp = phoneOtpChannel === 'sms' ? handleCustomerOtpVerify : handleWhatsAppOtpVerify;
@@ -686,10 +710,17 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
             ) : (
               <View style={styles.formSection}>
                 <View style={styles.otpHelpWrap}>
-                  <Text style={styles.otpHelp}>
-                    OTP sent via {loginMethod === 'phone' ? (phoneOtpChannel === 'sms' ? 'SMS' : 'WhatsApp') : 'Email'} to{' '}
-                    {loginMethod === 'phone' ? `+91 ${customerPhone}` : email}
-                  </Text>
+                  <View style={styles.otpSentBadge}>
+                    <Ionicons
+                      name={phoneOtpChannel === 'whatsapp' ? 'logo-whatsapp' : 'chatbox-ellipses'}
+                      size={16}
+                      color={phoneOtpChannel === 'whatsapp' ? '#25D366' : '#004AAD'}
+                    />
+                    <Text style={styles.otpHelp}>
+                      OTP sent via {loginMethod === 'phone' ? (phoneOtpChannel === 'sms' ? 'SMS' : 'WhatsApp') : 'Email'} to{' '}
+                      {loginMethod === 'phone' ? `+91 ${customerPhone}` : email}
+                    </Text>
+                  </View>
                   <TouchableOpacity
                     onPress={resetPhoneOtpAndGoInput}
                     activeOpacity={0.8}
@@ -698,16 +729,18 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                   </TouchableOpacity>
                 </View>
                 <Text style={[styles.inputLabel, styles.otpLabel]}>Enter 6-Digit OTP</Text>
-                <TextInput
-                  style={styles.otpInput}
-                  placeholder="123456"
-                  placeholderTextColor="#9CA3AF"
+                <AnimatedOtpInput
                   value={customerOtp}
-                  onChangeText={(text) => setCustomerOtp(text.replace(/\D/g, ''))}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  editable={!loading}
-                  textAlign="center"
+                  onChange={(next) => {
+                    setCustomerOtp(next);
+                    if (otpAnim === 'error') setOtpAnim('idle');
+                    setErrorText('');
+                  }}
+                  status={otpAnim}
+                  onFilled={(code) => {
+                    void submitOtp(code);
+                  }}
+                  editable={!loading && otpAnim !== 'success'}
                 />
                 {errorText ? <Text style={[styles.errorText, { textAlign: 'center' }]}>{errorText}</Text> : null}
                 {isFirebaseTestPhone(customerPhone) && firebaseTestOtpHint(customerPhone) ? (
@@ -929,6 +962,16 @@ const styles = StyleSheet.create({
   otpHelpWrap: {
     alignItems: 'center',
     marginBottom: 8,
+  },
+  otpSentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EEF5FF',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 6,
   },
   inputLabel: {
     fontSize: 10,

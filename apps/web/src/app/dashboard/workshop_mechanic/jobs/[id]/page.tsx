@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from '@/lib/utils';
@@ -3238,7 +3238,8 @@ function MechanicJobDetailPageContent() {
                                 const busy = Boolean(submittingJobIds[it.id]);
                                 const noteMissing = pr === 'HIGH' && !note.trim();
                                 return (
-                                  <tr key={it.id} className="hover:bg-gray-50">
+                                  <Fragment key={it.id}>
+                                  <tr className="hover:bg-gray-50">
                                     <td className="p-3">
                                       <div className="font-semibold text-gray-900">{it.name}</div>
                                       <div className="text-[10px] sm:text-xs text-gray-500">{it.category || '-'}</div>
@@ -3312,6 +3313,7 @@ function MechanicJobDetailPageContent() {
                                       </td>
                                     </tr>
                                   ) : null}
+                                  </Fragment>
                                 );
                               })}
                             </tbody>

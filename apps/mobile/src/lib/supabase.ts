@@ -51,8 +51,12 @@ let cachedAccessToken: string | undefined;
 let tokenInFlight: Promise<string | undefined> | null = null;
 
 export function rememberAccessToken(token?: string | null) {
-  if (!token) return;
-  cachedAccessToken = token;
+  cachedAccessToken = token || undefined;
+}
+
+export function clearAccessToken() {
+  cachedAccessToken = undefined;
+  tokenInFlight = null;
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

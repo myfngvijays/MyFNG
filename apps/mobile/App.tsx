@@ -67,7 +67,7 @@ import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 import { AppFooterProvider } from './src/context/AppFooterContext';
 import { NotificationProvider } from './src/context/NotificationContext';
-import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout } from './src/lib/supabase';
+import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout, clearAccessToken } from './src/lib/supabase';
 import { ENV } from './src/config/environment';
 import { getCustomerSessionToken } from './src/lib/customerSession';
 import { storeReferralCode, checkPlayStoreReferrer } from './src/lib/referralDeepLink';
@@ -324,17 +324,17 @@ function AppContent() {
           return;
         }
         if (event === 'SIGNED_OUT') {
+          clearAccessToken();
           void (async () => {
             try {
-              const token = await getSupabaseAccessToken(4000);
-              if (token) return;
               const hasCustomerSession = await fetchCustomerSessionProfile();
               if (!hasCustomerSession) {
                 setUser(null);
                 setUserProfile(null);
               }
             } catch {
-              /* keep existing session on the screen */
+              setUser(null);
+              setUserProfile(null);
             }
           })();
           return;

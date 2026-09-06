@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
-import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout } from '../lib/supabase';
+import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout, clearAccessToken } from '../lib/supabase';
 import { registerAndSyncFcmPushToken } from '../services/pushNotifications';
 
 function normalizeProfile(data: any) {
@@ -113,11 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         if (event === 'SIGNED_OUT') {
-          void getSupabaseAccessToken(4000).then((token) => {
-            if (token) return;
-            setUser(null);
-            setUserProfile(null);
-          });
+          setUser(null);
+          setUserProfile(null);
           return;
         }
         if (session?.user) {
@@ -172,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = async () => {
+    clearAccessToken();
     // Punch out before session ends so Live Floor flips to Off Duty
     try {
       const roleCode = String(
@@ -181,16 +179,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ).toUpperCase();
       if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
         const { apiFetch } = await import('../lib/api');
-        await apiFetch('/api/telecaller/crm/attendance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'punch_out' }),
-        });
+        await Promise.race([
+          apiFetch('/api/telecaller/crm/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'punch_out' }),
+            timeoutMs: 4000,
+          }),
+          new Promise((resolve) => setTimeout(resolve, 4000)),
+        ]);
       }
     } catch {
       /* best-effort */
     }
-    await supabase.auth.signOut();
+    try {
+      await withTimeout(supabase.auth.signOut(), 5000, 'Sign out');
+    } catch {
+      /* session already gone */
+    }
+    clearAccessToken();
     setUser(null);
     setUserProfile(null);
   };

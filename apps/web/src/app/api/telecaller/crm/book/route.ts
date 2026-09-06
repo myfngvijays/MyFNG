@@ -4,6 +4,7 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { toServiceLeadType } from '@/lib/customer-service-leads';
+import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
 import {
   buildTelecallerCrmQuote,
   resolveServiceTypeNames,
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
       city_id: body?.city_id || null,
       city: body?.city || null,
       pincode: body?.pincode || null,
-      vehicle_number: body?.vehicle_number || null,
+      vehicle_number: serviceLeadVehicleNumber(body?.vehicle_number),
       vehicle_make: body?.vehicle_make || null,
       model_id: body?.model_id || null,
       vehicle_model: body?.vehicle_model || null,

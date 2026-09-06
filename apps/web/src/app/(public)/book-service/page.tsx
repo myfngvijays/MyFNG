@@ -20,6 +20,7 @@ import ConsentCheckboxes, {
   requiredConsentsGranted,
   type ConsentMap,
 } from '@/components/dpdp/ConsentCheckboxes';
+import AnimatedOtpBoxes, { type OtpAnimStatus } from '@/components/auth/AnimatedOtpBoxes';
 
 interface BookingFormData {
   city: any | null;
@@ -125,6 +126,8 @@ export default function BookServicePage() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpAnim, setOtpAnim] = useState<OtpAnimStatus>('idle');
+  const otpVerifyLock = useRef(false);
   const [bookingConsent, setBookingConsent] = useState<ConsentMap>({});
   const [consentError, setConsentError] = useState('');
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -939,6 +942,8 @@ export default function BookServicePage() {
     setOtpVerified(false);
     setOtpTimer(0);
     setOtpError(null);
+    setOtpAnim('idle');
+    otpVerifyLock.current = false;
   };
 
   const handlePhoneInputChange = (rawValue: string) => {
@@ -980,6 +985,8 @@ export default function BookServicePage() {
       setOtpSent(true);
       setOtpVerified(false);
       setOtpCode('');
+      setOtpAnim('idle');
+      otpVerifyLock.current = false;
       setOtpTimer(30);
       toast.success('OTP sent on WhatsApp');
       setTimeout(() => otpInputRefs.current[0]?.focus(), 60);
@@ -992,26 +999,31 @@ export default function BookServicePage() {
     }
   };
 
-  const verifyOtpCode = async () => {
-    if (!/^\d{6}$/.test(otpCode)) {
-      setOtpError('Please enter a valid 6-digit OTP');
-      toast.error('Please enter a valid 6-digit OTP');
+  const verifyOtpCode = async (code?: string) => {
+    const otp = (code ?? otpCode).replace(/\D/g, '');
+    if (!/^\d{6}$/.test(otp)) {
       return;
     }
-
+    if (otpVerifyLock.current) return;
+    otpVerifyLock.current = true;
+    setOtpAnim('mixing');
     setOtpLoading(true);
     setOtpError(null);
+    const started = Date.now();
     try {
       const res = await fetch('/api/booking/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formData.customerPhone, otp: otpCode }),
+        body: JSON.stringify({ phone: formData.customerPhone, otp }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.verified) {
         throw new Error(json?.error || 'Invalid or expired OTP');
       }
 
+      const wait = Math.max(0, 1400 - (Date.now() - started));
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      setOtpAnim('success');
       setOtpVerified(true);
       setOtpError(null);
       toast.success('Mobile number verified');
@@ -1022,14 +1034,16 @@ export default function BookServicePage() {
           scrollToStepTop();
           setIsAnimating(false);
         }, 300);
-      }, 600);
+      }, 900);
     } catch (error: any) {
       setOtpVerified(false);
+      setOtpAnim('error');
       const message = error?.message || 'OTP verification failed';
       setOtpError(message);
       toast.error(message);
     } finally {
       setOtpLoading(false);
+      otpVerifyLock.current = false;
     }
   };
 
@@ -2310,38 +2324,23 @@ export default function BookServicePage() {
                           </button>
                         </div>
 
-                        <div className="flex gap-2 sm:gap-3">
-                          {Array.from({ length: 6 }).map((_, index) => (
-                            <input
-                              key={`otp-${index}`}
-                              id={`booking-otp-${index}`}
-                              name={`bookingOtp${index}`}
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={1}
-                              value={otpCode[index] || ''}
-                              onChange={(e) => handleOtpDigitChange(index, e.target.value)}
-                              onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                              onPaste={handleOtpPaste}
-                              ref={(el) => {
-                                otpInputRefs.current[index] = el;
-                              }}
-                              className={`w-10 h-11 sm:w-12 sm:h-12 text-center text-lg font-bold rounded-xl border-2 outline-none ${
-                                otpVerified
-                                  ? 'border-green-500 bg-green-100 text-green-700'
-                                  : 'border-gray-300 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20'
-                              }`}
-                            />
-                          ))}
-                        </div>
+                        <AnimatedOtpBoxes
+                          value={otpCode}
+                          onChange={(next) => {
+                            setOtpCode(next);
+                            if (otpAnim === 'error') setOtpAnim('idle');
+                            setOtpError(null);
+                          }}
+                          status={otpAnim}
+                          onFilled={(code) => {
+                            void verifyOtpCode(code);
+                          }}
+                          disabled={otpVerified || otpAnim === 'success'}
+                        />
 
-                        {otpError && <p className="text-xs text-red-600">{otpError}</p>}
-                        {otpVerified && (
-                          <p className="text-sm font-semibold text-green-700 flex items-center gap-2">
-                            <CheckCircle className="w-4 h-4" />
-                            OTP verified successfully
-                          </p>
-                        )}
+                        {otpError && otpAnim === 'error' ? (
+                          <p className="text-xs text-red-600">{otpError}</p>
+                        ) : null}
 
                         <div className="flex items-center gap-2 flex-wrap">
                           {!otpVerified && (

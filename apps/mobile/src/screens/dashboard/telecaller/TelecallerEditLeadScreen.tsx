@@ -37,6 +37,7 @@ import {
   resolveVehicleClass,
   resolveVehicleClassByMakeModel,
 } from '@/lib/servicePricing';
+import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
 
@@ -481,7 +482,7 @@ export default function TelecallerEditLeadScreen({
         city_id: form.city_id || null,
         city: form.city || null,
         pincode: form.pincode || null,
-        vehicle_number: form.vehicle_number.toUpperCase().trim() || null,
+        vehicle_number: serviceLeadVehicleNumber(form.vehicle_number),
         vehicle_make: form.vehicle_make,
         model_id: form.model_id || null,
         vehicle_model: form.vehicle_model,

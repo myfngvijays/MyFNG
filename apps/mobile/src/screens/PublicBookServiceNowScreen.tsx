@@ -32,6 +32,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import { getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
+import AnimatedOtpInput, { type OtpAnimStatus } from '../components/AnimatedOtpInput';
 import { submitServiceBooking } from '../lib/serviceBooking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -421,6 +422,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [otpValue, setOtpValue] = useState('');
   const [otpConfirmation, setOtpConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
+  const [otpAnim, setOtpAnim] = useState<OtpAnimStatus>('idle');
+  const otpVerifyLock = useRef(false);
   const [otpLoading, setOtpLoading] = useState(false);
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
@@ -2483,12 +2486,17 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const handleSendOtp = handleSendWhatsAppOtp;
 
-  const handleVerifyOtp = async () => {
-    if (otpValue.trim().length < 4) {
-      Alert.alert('Invalid OTP', 'Please enter the OTP sent to your number');
+  const handleVerifyOtp = async (code?: string) => {
+    const otp = (code ?? otpValue).replace(/\D/g, '');
+    if (otp.length < 4) {
       return;
     }
+    if (otpVerifyLock.current) return;
+    otpVerifyLock.current = true;
+    setOtpAnim('mixing');
     setOtpLoading(true);
+    const started = Date.now();
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     try {
       let sessionToken: string | null = null;
       let authResponse: AuthVerifyResponse | null = null;
@@ -2497,7 +2505,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         const cleanPhone = form.customerPhone.replace(/\D/g, '');
         const payload = JSON.stringify({
           phone: cleanPhone,
-          otp: otpValue.trim(),
+          otp,
           displayName: form.customerName?.trim() || undefined,
           platform: Platform.OS,
         });
@@ -2539,10 +2547,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         authResponse = json;
       } else {
         const cleanPhone = form.customerPhone.replace(/\D/g, '');
-        const authResult = await verifySmsOtp(cleanPhone, otpValue.trim(), otpConfirmation);
+        const authResult = await verifySmsOtp(cleanPhone, otp, otpConfirmation);
         sessionToken = authResult.session_token ?? null;
         authResponse = authResult;
       }
+
+      await sleep(Math.max(0, 1400 - (Date.now() - started)));
+      setOtpAnim('success');
+      await sleep(850);
 
       // Save session and auto-login
       if (sessionToken) {
@@ -2582,9 +2594,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         setTimeout(() => goStep(2), 300);
       }
     } catch (error: any) {
+      setOtpAnim('error');
       Alert.alert('Verification Failed', error?.message || 'Invalid OTP. Please try again.');
     } finally {
       setOtpLoading(false);
+      otpVerifyLock.current = false;
     }
   };
 
@@ -3038,7 +3052,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     value={form.customerPhone}
                     onChangeText={(t) => {
                       setForm((p) => ({ ...p, customerPhone: t.replace(/\D/g, '').slice(0, 10) }));
-                      if (otpSent) { setOtpSent(false); setOtpVerified(false); setOtpValue(''); setOtpChannel('whatsapp'); }
+                      if (otpSent) { setOtpSent(false); setOtpVerified(false); setOtpValue(''); setOtpChannel('whatsapp'); setOtpAnim('idle'); otpVerifyLock.current = false; }
                     }}
                     style={styles.input}
                     placeholder="10-digit mobile number"
@@ -3079,15 +3093,17 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       </Text>
                     </View>
                     <Text style={styles.label}>Enter OTP *</Text>
-                    <TextInput
+                    <AnimatedOtpInput
                       value={otpValue}
-                      onChangeText={setOtpValue}
-                      style={styles.input}
-                      placeholder="Enter 6-digit OTP"
-                      placeholderTextColor={COLORS.gray[500]}
-                      keyboardType="number-pad"
-                      maxLength={6}
-                      onFocus={(e) => scrollToInput(e.target)}
+                      onChange={(next) => {
+                        setOtpValue(next);
+                        if (otpAnim === 'error') setOtpAnim('idle');
+                      }}
+                      status={otpAnim}
+                      onFilled={(code) => {
+                        void handleVerifyOtp(code);
+                      }}
+                      editable={!otpLoading && otpAnim !== 'success'}
                     />
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
                       <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendWhatsAppOtp : handleSendSmsOtp} disabled={otpLoading}>
