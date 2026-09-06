@@ -1,11 +1,10 @@
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { createMyfngMcpServer } from '@/lib/mcp/createMyfngMcpServer';
 import {
   extractMcpTokenFromRequest,
   getMcpHttpToken,
   mcpCorsHeaders,
   withCors,
 } from '@/lib/mcp/httpAuth';
+import { handleAuthenticatedMcp } from '@/lib/mcp/httpSession';
 import { isValidMcpAccessToken, mcpUnauthorizedResponse } from '@/lib/mcp/oauth';
 
 export const runtime = 'nodejs';
@@ -25,14 +24,19 @@ async function handleMcp(req: Request): Promise<Response> {
     return mcpUnauthorizedResponse();
   }
 
-  const server = await createMyfngMcpServer();
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  });
-  await server.connect(transport);
-  const res = await transport.handleRequest(req);
-  return withCors(res);
+  try {
+    return await handleAuthenticatedMcp(req);
+  } catch (e: any) {
+    return withCors(
+      Response.json(
+        {
+          error: 'MCP server failed',
+          hint: e?.message || 'initialize/tools request failed',
+        },
+        { status: 500 },
+      ),
+    );
+  }
 }
 
 export const GET = handleMcp;

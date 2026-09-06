@@ -6,6 +6,7 @@ import {
   issueAuthorizationCode,
   loginRedirectForAuthorize,
   MCP_OAUTH_SCOPE,
+  mcpIssuer,
   mcpResourceUrl,
   oauthError,
   redirectHostname,
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest) {
       codeChallenge: input.codeChallenge,
       scope: MCP_OAUTH_SCOPE,
     });
-    return oauthRedirect(input.redirectUri, { code, state: input.state }, 303);
+    return oauthRedirect(input.redirectUri, { code, state: input.state, iss: mcpIssuer() }, 303);
   } catch (e: any) {
     return htmlPage('MCP OAuth error', `<h1>Could not issue code</h1><p>${esc(e?.message || 'Server error')}</p>`, 500);
   }

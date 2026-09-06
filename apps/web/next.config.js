@@ -61,6 +61,10 @@ const nextConfig = {
   outputFileTracingExcludes: {
     '*': ['.next/cache/**', '**/.next/cache/**'],
   },
+  outputFileTracingIncludes: {
+    '/api/mcp': ['../../packages/myfng-mcp/dist/**/*'],
+    '/api/mcp/oauth/*': ['../../packages/myfng-mcp/dist/**/*'],
+  },
 
   // For Hostinger deployment - use `next start` (loads .env at runtime).
   // Standalone bundle is optional via `npm run start:standalone`.

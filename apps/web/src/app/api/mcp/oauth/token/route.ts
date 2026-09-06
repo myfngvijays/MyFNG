@@ -1,5 +1,6 @@
 import {
   exchangeAuthorizationCode,
+  mcpResourceUrl,
   oauthCorsHeaders,
   oauthError,
   oauthJson,
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
         redirectUri: String(params.get('redirect_uri') || ''),
         codeVerifier: String(params.get('code_verifier') || ''),
       });
-      return oauthJson(tokens);
+      return oauthJson({ ...tokens, resource: mcpResourceUrl() });
     }
 
     if (grantType === 'refresh_token') {
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
         refreshToken: String(params.get('refresh_token') || ''),
         clientId,
       });
-      return oauthJson(tokens);
+      return oauthJson({ ...tokens, resource: mcpResourceUrl() });
     }
 
     return oauthError('unsupported_grant_type', 'Use authorization_code or refresh_token');
