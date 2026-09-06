@@ -11,11 +11,55 @@ export type PostBookingLeadContext = {
   bundleDiscount: number;
 };
 
+export type ResolvePostBookingLeadOptions = {
+  /** After subscribe the new Prime row is already ACTIVE — skip that purchase-time guard. */
+  skipActiveMembershipCheck?: boolean;
+  ignoreMembershipId?: string | null;
+};
+
+function parseLeadMeta(lead: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  return lead?.meta && typeof lead.meta === 'object' && !Array.isArray(lead.meta)
+    ? { ...(lead.meta as Record<string, unknown>) }
+    : {};
+}
+
+function stampPaidBookingMembershipBundle(
+  meta: Record<string, unknown>,
+  opts: {
+    membershipId: string;
+    customerId: string;
+    appliedAt: string;
+    discountAmount: number;
+    serviceSubtotal: number;
+    existingBundle?: Record<string, unknown>;
+  },
+) {
+  const nextBundle = { ...(opts.existingBundle || {}) };
+  delete nextBundle.expired_at;
+  meta.booking_membership_bundle = {
+    ...nextBundle,
+    include_membership: true,
+    discount_amount: opts.discountAmount,
+    post_booking: true,
+    membership_id: opts.membershipId,
+    applied_at: opts.appliedAt,
+    service_subtotal: opts.serviceSubtotal,
+  };
+  meta.customer_id = opts.customerId;
+  const offer = meta.post_booking_membership_offer;
+  if (offer && typeof offer === 'object' && !Array.isArray(offer)) {
+    const nextOffer = { ...(offer as Record<string, unknown>) };
+    delete nextOffer.expired_at;
+    meta.post_booking_membership_offer = nextOffer;
+  }
+}
+
 export async function resolvePostBookingLeadContext(
   supabaseAdmin: any,
   customer: { id: string; phone?: string | null },
   leadId: string,
   serviceSubtotalInput?: number,
+  options?: ResolvePostBookingLeadOptions,
 ): Promise<{ ok: true; ctx: PostBookingLeadContext } | { ok: false; error: string; status: number }> {
   if (!leadId) return { ok: false, error: 'lead_id is required', status: 400 };
 
@@ -49,18 +93,22 @@ export async function resolvePostBookingLeadContext(
     return { ok: false, error: 'Membership discount already applied to this booking', status: 400 };
   }
 
-  const nowIso = new Date().toISOString();
-  const { data: activeMembership } = await supabaseAdmin
-    .from('customer_memberships')
-    .select('id')
-    .eq('customer_id', customer.id)
-    .eq('status', 'ACTIVE')
-    .gt('ends_at', nowIso)
-    .limit(1)
-    .maybeSingle();
+  if (!options?.skipActiveMembershipCheck) {
+    const nowIso = new Date().toISOString();
+    let activeQuery = supabaseAdmin
+      .from('customer_memberships')
+      .select('id')
+      .eq('customer_id', customer.id)
+      .eq('status', 'ACTIVE')
+      .gt('ends_at', nowIso);
+    if (options?.ignoreMembershipId) {
+      activeQuery = activeQuery.neq('id', options.ignoreMembershipId);
+    }
+    const { data: activeMembership } = await activeQuery.limit(1).maybeSingle();
 
-  if (activeMembership) {
-    return { ok: false, error: 'You already have an active membership', status: 400 };
+    if (activeMembership) {
+      return { ok: false, error: 'You already have an active membership', status: 400 };
+    }
   }
 
   let serviceSubtotal = Number(serviceSubtotalInput || 0);
@@ -100,6 +148,10 @@ export async function applyBookingMembershipBundleToLead(
     { id: opts.customerId },
     opts.leadId,
     opts.serviceSubtotal,
+    {
+      skipActiveMembershipCheck: true,
+      ignoreMembershipId: opts.membershipId,
+    },
   );
   if (!resolved.ok) throw new Error(resolved.error);
 
@@ -107,10 +159,7 @@ export async function applyBookingMembershipBundleToLead(
   const discountToApply = opts.bundleDiscount > 0 ? opts.bundleDiscount : bundleDiscount;
   if (discountToApply <= 0) return { bundleDiscount: 0, walletCredit: 0 };
 
-  const meta =
-    lead.meta && typeof lead.meta === 'object'
-      ? { ...(lead.meta as Record<string, unknown>) }
-      : {};
+  const meta = parseLeadMeta(lead);
   const previousAmount = Number(lead.estimated_amount || lead.actual_amount || 0);
   const previousDiscount = Number(lead.discount_amount || 0);
   const existingBundle = meta.booking_membership_bundle as Record<string, unknown> | undefined;
@@ -122,16 +171,14 @@ export async function applyBookingMembershipBundleToLead(
   const appliedAt = new Date().toISOString();
 
   if (alreadyDiscountedAtBooking) {
-    meta.booking_membership_bundle = {
-      ...existingBundle,
-      include_membership: true,
-      discount_amount: Number(existingBundle?.discount_amount || discountToApply),
-      post_booking: true,
-      membership_id: opts.membershipId,
-      applied_at: appliedAt,
-      service_subtotal: opts.serviceSubtotal,
-    };
-    meta.customer_id = opts.customerId;
+    stampPaidBookingMembershipBundle(meta, {
+      membershipId: opts.membershipId,
+      customerId: opts.customerId,
+      appliedAt,
+      discountAmount: Number(existingBundle?.discount_amount || discountToApply),
+      serviceSubtotal: opts.serviceSubtotal,
+      existingBundle,
+    });
 
     const { error: updateError } = await supabaseAdmin
       .from('service_leads')
@@ -153,15 +200,14 @@ export async function applyBookingMembershipBundleToLead(
   const newDiscount = previousDiscount + discountToApply;
   const newAmount = Math.max(0, previousAmount - discountToApply);
 
-  meta.booking_membership_bundle = {
-    include_membership: true,
-    discount_amount: discountToApply,
-    post_booking: true,
-    membership_id: opts.membershipId,
-    applied_at: appliedAt,
-    service_subtotal: opts.serviceSubtotal,
-  };
-  meta.customer_id = opts.customerId;
+  stampPaidBookingMembershipBundle(meta, {
+    membershipId: opts.membershipId,
+    customerId: opts.customerId,
+    appliedAt,
+    discountAmount: discountToApply,
+    serviceSubtotal: opts.serviceSubtotal || Number(existingBundle?.service_subtotal || 0),
+    existingBundle,
+  });
 
   const { error: updateError } = await supabaseAdmin
     .from('service_leads')
@@ -207,4 +253,75 @@ export async function applyBookingMembershipBundleToLead(
   }
 
   return { bundleDiscount: discountToApply, walletCredit, newAmount };
+}
+
+/**
+ * If the customer already paid Prime for this booking (source_lead_id) but the
+ * bundle was never locked (subscribe applied after insert), attach the discount
+ * instead of treating the offer as unpaid.
+ */
+export async function relinkPaidPostBookingMembershipIfNeeded(
+  supabaseAdmin: any,
+  lead: Record<string, unknown>,
+): Promise<boolean> {
+  const leadId = String(lead.id || '').trim();
+  const meta = parseLeadMeta(lead);
+  const bundle = meta.booking_membership_bundle as Record<string, unknown> | undefined;
+  if (!leadId) return false;
+  if (bundle?.applied_at || bundle?.membership_id) return false;
+
+  const customerId = String(meta.customer_id || '').trim();
+  if (!customerId) return false;
+
+  const nowIso = new Date().toISOString();
+  const { data: membership, error } = await supabaseAdmin
+    .from('customer_memberships')
+    .select('id')
+    .eq('customer_id', customerId)
+    .eq('source_lead_id', leadId)
+    .eq('status', 'ACTIVE')
+    .gt('ends_at', nowIso)
+    .maybeSingle();
+
+  if (error || !membership?.id) return false;
+
+  const offer =
+    meta.post_booking_membership_offer && typeof meta.post_booking_membership_offer === 'object'
+      ? (meta.post_booking_membership_offer as Record<string, unknown>)
+      : {};
+  const bundleDiscount = Number(offer.bundle_discount || bundle?.discount_amount || 0);
+  const serviceSubtotal = Number(
+    meta.service_subtotal || offer.service_subtotal || bundle?.service_subtotal || 0,
+  );
+  if (bundleDiscount <= 0) return false;
+
+  try {
+    const applied = await applyBookingMembershipBundleToLead(supabaseAdmin, {
+      customerId,
+      leadId,
+      membershipId: String(membership.id),
+      serviceSubtotal,
+      bundleDiscount,
+    });
+    const { data: refreshed } = await supabaseAdmin
+      .from('service_leads')
+      .select('estimated_amount, actual_amount, discount_amount, meta')
+      .eq('id', leadId)
+      .maybeSingle();
+    if (refreshed) {
+      lead.estimated_amount = refreshed.estimated_amount;
+      lead.actual_amount = refreshed.actual_amount;
+      lead.discount_amount = refreshed.discount_amount;
+      lead.meta = refreshed.meta;
+    } else if (applied.newAmount != null) {
+      lead.estimated_amount = applied.newAmount;
+      lead.actual_amount = applied.newAmount;
+    }
+    return true;
+  } catch (err: any) {
+    if (/already applied/i.test(String(err?.message || ''))) return true;
+    console.error('[relinkPaidPostBookingMembershipIfNeeded]', err?.message || err);
+    // Paid Prime exists for this booking — never strip the offer as unpaid.
+    return true;
+  }
 }

@@ -441,6 +441,10 @@ export async function expireUnpaidBookingMembershipBundleIfNeeded(
   const hasOfferMeta = Boolean(meta.post_booking_membership_offer);
   if (!bundle && !hasOfferMeta) return;
 
+  const { relinkPaidPostBookingMembershipIfNeeded } = await import('@/lib/booking-post-membership');
+  const relinked = await relinkPaidPostBookingMembershipIfNeeded(supabaseAdmin, lead);
+  if (relinked) return;
+
   const pricing = await resolveExpiredUnpaidMembershipBookingPricing(supabaseAdmin, lead, config);
   if (!pricing) return;
 
