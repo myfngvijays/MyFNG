@@ -717,8 +717,10 @@ function TelecallerCrmLeadsContent() {
       }
     } catch (e) {
       console.error(e);
-      if (!bootedRef.current) setLeads([]);
-      setTotalLeads(0);
+      if (!bootedRef.current) {
+        setLeads([]);
+        setTotalLeads(0);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);

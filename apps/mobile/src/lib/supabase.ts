@@ -29,6 +29,32 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label = 'Request
   });
 }
 
+function decodeJwtExpMs(token: string): number | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const padded = part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (part.length % 4)) % 4);
+    const json = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof json.exp === 'number' ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function tokenIsFresh(token: string, skewMs = 45_000): boolean {
+  const exp = decodeJwtExpMs(token);
+  if (!exp) return true;
+  return exp - skewMs > Date.now();
+}
+
+let cachedAccessToken: string | undefined;
+let tokenInFlight: Promise<string | undefined> | null = null;
+
+export function rememberAccessToken(token?: string | null) {
+  if (!token) return;
+  cachedAccessToken = token;
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
@@ -45,24 +71,53 @@ void supabase.auth.startAutoRefresh();
 AppState.addEventListener('change', (state: AppStateStatus) => {
   if (state === 'active') {
     void supabase.auth.startAutoRefresh();
-    void withTimeout(supabase.auth.refreshSession(), 8000, 'Auth refresh').catch(() => undefined);
+    // Force a fresh JWT so CRM polls after idle do not send an expired bearer (zeros / 401).
+    void getSupabaseAccessToken(8000, true).catch(() => undefined);
     return;
   }
-  void supabase.auth.stopAutoRefresh();
+  // Keep auto-refresh running in background. Stopping it lets the JWT expire, then
+  // getSession deadlocks on the RN lock and dashboards paint 0/0 until a full restart.
 });
 
 /** Never hang UI on RN auth lock / token refresh after background. */
-export async function getSupabaseAccessToken(timeoutMs = 4000): Promise<string | undefined> {
-  try {
-    const { data } = await withTimeout(supabase.auth.getSession(), timeoutMs, 'Auth session');
-    if (data.session?.access_token) return data.session.access_token;
-  } catch {
-    /* try refresh */
+export async function getSupabaseAccessToken(
+  timeoutMs = 4000,
+  forceRefresh = false,
+): Promise<string | undefined> {
+  if (!forceRefresh && cachedAccessToken && tokenIsFresh(cachedAccessToken)) {
+    return cachedAccessToken;
   }
-  try {
-    const { data } = await withTimeout(supabase.auth.refreshSession(), timeoutMs, 'Auth refresh');
-    return data.session?.access_token;
-  } catch {
-    return undefined;
-  }
+  if (tokenInFlight) return tokenInFlight;
+
+  tokenInFlight = (async () => {
+    try {
+      if (!forceRefresh) {
+        try {
+          const { data } = await withTimeout(supabase.auth.getSession(), timeoutMs, 'Auth session');
+          const token = data.session?.access_token;
+          if (token && tokenIsFresh(token)) {
+            rememberAccessToken(token);
+            return token;
+          }
+        } catch {
+          /* try refresh */
+        }
+      }
+      const { data } = await withTimeout(
+        supabase.auth.refreshSession(),
+        Math.max(timeoutMs, 8000),
+        'Auth refresh',
+      );
+      const token = data.session?.access_token;
+      rememberAccessToken(token);
+      return token;
+    } catch {
+      if (cachedAccessToken && tokenIsFresh(cachedAccessToken, 0)) return cachedAccessToken;
+      return undefined;
+    } finally {
+      tokenInFlight = null;
+    }
+  })();
+
+  return tokenInFlight;
 }

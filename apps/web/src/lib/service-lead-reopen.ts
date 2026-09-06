@@ -11,6 +11,7 @@ import {
 import type { LeadDistributionChannelId } from '@/lib/enquiry/leadChannels';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { addLeadTags, ensureTagIdsByNames, mergeLeadTagsFromLosers } from '@/lib/telecaller/crmLeadTagsApply';
+import { isDisposableOtpStubLead, isPlaceholderCustomerName } from '@/lib/otp-stub-lead';
 
 export type LeadHistoryEntry = {
   at: string;
@@ -90,13 +91,7 @@ export async function findLatestServiceLeadByPhone(
   return data || null;
 }
 
-export function isPlaceholderCustomerName(name: string | null | undefined): boolean {
-  const n = String(name || '').trim();
-  if (!n || n.length < 2) return true;
-  if (/^customer[_\s-]?\d*$/i.test(n)) return true;
-  if (/^whatsapp\s*customer$/i.test(n)) return true;
-  return false;
-}
+export { isPlaceholderCustomerName } from '@/lib/otp-stub-lead';
 
 export function looksLikePersonName(raw: string | null | undefined): boolean {
   const t = String(raw || '').trim();
@@ -475,15 +470,6 @@ export async function upsertBookingServiceLead(
   };
 }
 
-const ACTIVE_BOOKING_STATUSES = new Set([
-  'VALIDATED',
-  'ASSIGNED',
-  'ACCEPTED',
-  'IN_PROGRESS',
-  'ASSIGNED_TO_WORKSHOP',
-  'COMPLETED',
-]);
-
 export type EnsureOtpVerifiedLeadResult = {
   leadId: string | null;
   leadNumber: string | null;
@@ -492,22 +478,53 @@ export type EnsureOtpVerifiedLeadResult = {
 };
 
 function isWebsiteOtpIncompleteLead(row: any): boolean {
-  if (!row?.id) return false;
-  const status = String(row.status || '').toUpperCase();
-  if (ACTIVE_BOOKING_STATUSES.has(status)) return false;
-  const meta =
-    row.coupon_meta && typeof row.coupon_meta === 'object'
-      ? (row.coupon_meta as Record<string, unknown>)
-      : {};
-  const otpFlag =
-    Boolean(meta.website_otp_verified) ||
-    Boolean(meta.website_booking_abandoned) ||
-    String(meta.last_call_result || '').toUpperCase() === 'OTP_VERIFIED';
-  const incomplete = row.is_incomplete === true || status === 'NEW' || status === 'REJECTED';
-  return otpFlag && incomplete;
+  return isDisposableOtpStubLead(row);
 }
 
 const OTP_STUB_REUSE_MS = 2 * 60 * 60 * 1000; // same-session re-verify within 2h
+const RECENT_REAL_BOOKING_MS = 24 * 60 * 60 * 1000;
+
+async function findRecentRealLeadByPhone(
+  supabaseAdmin: any,
+  phone10: string,
+): Promise<any | null> {
+  try {
+    let query = supabaseAdmin
+      .from('service_leads')
+      .select(
+        'id, lead_number, status, is_incomplete, coupon_meta, customer_name, customer_phone, created_at, updated_at',
+      )
+      .or(phoneOrFilter(phone10))
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(15);
+    let { data, error } = await query;
+    if (error && /deleted_at|is_incomplete/i.test(String(error.message || ''))) {
+      ({ data, error } = await supabaseAdmin
+        .from('service_leads')
+        .select(
+          'id, lead_number, status, coupon_meta, customer_name, customer_phone, created_at, updated_at',
+        )
+        .or(phoneOrFilter(phone10))
+        .order('updated_at', { ascending: false })
+        .limit(15));
+    }
+    if (error || !data?.length) return null;
+    const now = Date.now();
+    return (
+      (data as any[]).find((row) => {
+        if (isWebsiteOtpIncompleteLead(row)) return false;
+        if (row.is_incomplete === true) return false;
+        const status = String(row.status || '').toUpperCase();
+        if (status === 'REJECTED' || status === 'CANCELLED') return false;
+        const t = new Date(row.updated_at || row.created_at || 0).getTime();
+        return Number.isFinite(t) && now - t <= RECENT_REAL_BOOKING_MS;
+      }) || null
+    );
+  } catch {
+    return null;
+  }
+}
 
 /** Newest open website-OTP incomplete stub for this phone (if any). */
 async function findOpenWebsiteOtpLead(
@@ -821,7 +838,7 @@ async function insertWebsiteOtpIncompleteLead(
 /**
  * After booking OTP verify (web, mobile, or MISA): create/refresh an incomplete lead so it
  * shows in admin bookings + telecaller CRM even if booking is abandoned.
- * Never overwrites an existing active booking — inserts a separate OTP stub instead.
+ * If this phone already has a real booking from the last 24h, do not spawn Customer_XXXX.
  */
 export async function ensureWebsiteOtpVerifiedLead(
   supabaseAdmin: any,
@@ -849,6 +866,35 @@ export async function ensureWebsiteOtpVerifiedLead(
     misa_otp_verified: options?.origin === 'misa',
     misa_channel: ch.misa_channel,
   };
+
+  const recentReal = await findRecentRealLeadByPhone(supabaseAdmin, phone10);
+  if (recentReal?.id) {
+    const prevMeta =
+      recentReal.coupon_meta && typeof recentReal.coupon_meta === 'object'
+        ? (recentReal.coupon_meta as Record<string, unknown>)
+        : {};
+    const nextMeta = appendLeadProfileHistory(
+      { ...prevMeta, otp_verified_at: nowIso, otp_channel: channel },
+      {
+        at: nowIso,
+        summary: `${ch.historySummary} — existing booking reused (no extra stub)`,
+        status: String(recentReal.status || '') || 'NEW',
+        event: ch.historyEvent,
+        previous_status: String(recentReal.status || '') || null,
+      },
+    );
+    await supabaseAdmin
+      .from('service_leads')
+      .update({ coupon_meta: nextMeta, updated_at: nowIso })
+      .eq('id', recentReal.id);
+    await softDeleteStaleWebsiteOtpStubs(supabaseAdmin, phone10, String(recentReal.id));
+    return {
+      leadId: String(recentReal.id),
+      leadNumber: String(recentReal.lead_number || '') || null,
+      created: false,
+      skipped: 'existing_recent_booking',
+    };
+  }
 
   // Reuse only a *recent* OTP stub (same session). Older stubs sit mid-list by created_at
   // — insert a fresh lead so it appears at the top of admin bookings.
@@ -961,16 +1007,7 @@ export async function ensureWebsiteOtpVerifiedLead(
 /** Prefer actionable OTP/incomplete/NEW over Lost/Done when collapsing by phone. */
 function leadDedupeRank(row: any): number {
   const status = String(row?.status || '').toUpperCase();
-  const meta =
-    row?.coupon_meta && typeof row.coupon_meta === 'object'
-      ? (row.coupon_meta as Record<string, unknown>)
-      : {};
-  const otp =
-    String(meta.last_call_result || '').toUpperCase() === 'OTP_VERIFIED' ||
-    Boolean(meta.website_otp_verified) ||
-    Boolean(meta.website_booking_abandoned) ||
-    Boolean(row?.is_incomplete);
-  if (otp && (status === 'NEW' || row?.is_incomplete)) return 100;
+  if (isWebsiteOtpIncompleteLead(row)) return 20;
   if (status === 'IN_PROGRESS' || status === 'ACCEPTED' || status === 'ASSIGNED') return 95;
   if (status === 'NEW' || status === 'CONTACTED') return 80;
   if (status === 'VALIDATED') return 70;
@@ -992,9 +1029,9 @@ export function dedupeLeadsByPhone<T extends { customer_phone?: string | null; u
   const seen = new Set<string>();
   const out: T[] = [];
   const sorted = [...rows].sort((a, b) => {
-    const timeDiff = leadRecencyMs(b) - leadRecencyMs(a);
-    if (timeDiff !== 0) return timeDiff;
-    return leadDedupeRank(b) - leadDedupeRank(a);
+    const rankDiff = leadDedupeRank(b) - leadDedupeRank(a);
+    if (rankDiff !== 0) return rankDiff;
+    return leadRecencyMs(b) - leadRecencyMs(a);
   });
   for (const row of sorted) {
     const key = normalizeCustomerPhone(row.customer_phone) || `id:${(row as any).id}`;

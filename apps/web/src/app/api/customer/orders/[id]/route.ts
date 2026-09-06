@@ -41,18 +41,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
-  await expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, lead as Record<string, unknown>, pbConfig);
-
   const nowIso = new Date().toISOString();
-  const { data: activeMembership } = await supabaseAdmin
+  const { data: activeMemberships } = await supabaseAdmin
     .from('customer_memberships')
-    .select('id')
+    .select('id, source_lead_id')
     .eq('customer_id', customer.id)
     .eq('status', 'ACTIVE')
     .gt('ends_at', nowIso)
-    .limit(1)
-    .maybeSingle();
-  const hasActiveMembership = Boolean(activeMembership?.id);
+    .limit(8);
+  const hasActiveMembership = Boolean((activeMemberships || []).length);
+  const paidMembershipId =
+    (activeMemberships || []).find(
+      (row: { source_lead_id?: string }) => String(row.source_lead_id || '') === String(lead.id),
+    )?.id || null;
+  await expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, lead as Record<string, unknown>, pbConfig, {
+    knownPaidMembershipId: paidMembershipId ? String(paidMembershipId) : null,
+  });
   const postBookingMembership = hasActiveMembership
     ? null
     : resolvePostBookingMembershipOfferStatus(lead as Record<string, unknown>, pbConfig);

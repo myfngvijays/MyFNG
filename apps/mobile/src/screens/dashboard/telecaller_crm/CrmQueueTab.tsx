@@ -12,6 +12,7 @@ import {
   Linking,
   ScrollView,
   Pressable,
+  AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
@@ -293,16 +294,15 @@ export default function CrmQueueTab({
       try {
         const { data } = await supabase
           .from('users_login')
-          .select('id, full_name, roles!role_id(role_code)')
+          .select('id, full_name, roles!role_id!inner(role_code)')
           .eq('is_active', true)
+          .eq('roles.role_code', 'TELECALLER')
           .order('full_name');
         setTelecallers(
-          (data || [])
-            .filter((t: any) => String(t?.roles?.role_code || '').toUpperCase() === 'TELECALLER')
-            .map((t: any) => ({
-              id: String(t.id),
-              full_name: t.full_name ? String(t.full_name) : null,
-            })),
+          (data || []).map((t: any) => ({
+            id: String(t.id),
+            full_name: t.full_name ? String(t.full_name) : null,
+          })),
         );
       } catch {
         setTelecallers([]);
@@ -409,7 +409,9 @@ export default function CrmQueueTab({
         params.set('from', range.start);
         params.set('to', range.end);
       }
-      const data = await apiFetch<any>(`/api/telecaller/crm/leads?${params.toString()}`);
+      const data = await apiFetch<any>(`/api/telecaller/crm/leads?${params.toString()}`, {
+        timeoutMs: 25000,
+      });
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
     } catch (e) {
       console.error('queue load failed', e);
@@ -435,6 +437,13 @@ export default function CrmQueueTab({
     if (!localPrefsReady) return;
     setLoading(true);
     load();
+  }, [load, localPrefsReady]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && localPrefsReady) void load();
+    });
+    return () => sub.remove();
   }, [load, localPrefsReady]);
 
   useEffect(() => {

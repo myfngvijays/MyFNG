@@ -12,7 +12,7 @@ import { applyCrmNewLeadFilter } from '@/lib/telecaller/crmLeadFilters';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-async function runInChunks<T>(fns: Array<() => Promise<T>>, chunkSize = 5): Promise<T[]> {
+async function runInChunks<T>(fns: Array<() => Promise<T>>, chunkSize = 12): Promise<T[]> {
   const results: T[] = [];
   for (let i = 0; i < fns.length; i += chunkSize) {
     const chunk = await Promise.all(fns.slice(i, i + chunkSize).map((fn) => fn()));
@@ -21,9 +21,19 @@ async function runInChunks<T>(fns: Array<() => Promise<T>>, chunkSize = 5): Prom
   return results;
 }
 
-function countOf(res: { count?: number | null; error?: { message?: string } | null } | null | undefined) {
-  if (res?.error) return 0;
+function countOf(
+  res: { count?: number | null; error?: { message?: string } | null } | null | undefined,
+  errors: string[],
+) {
+  if (res?.error) {
+    errors.push(String(res.error.message || 'count failed'));
+    return null;
+  }
   return Number(res?.count || 0);
+}
+
+function n(v: number | null | undefined) {
+  return v == null ? 0 : v;
 }
 
 function dayBoundsFromParam(raw: string | null, fallbackYmd: string) {
@@ -72,7 +82,10 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const profile = await resolveUserProfile(supabase, user);
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const db = (supabaseAdmin ?? supabase) as any;
+
+    const profile = await resolveUserProfile(supabase, user, supabaseAdmin);
     const teleCallerId = String(profile?.id || '').trim();
     if (!teleCallerId) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
@@ -82,9 +95,6 @@ export async function GET(request: NextRequest) {
     }
     const seesAll = crmSeesAllLeads(roleCode);
     const telecallerFilter = String(new URL(request.url).searchParams.get('telecaller_id') || '').trim();
-
-    const { supabaseAdmin } = getSupabaseAdmin();
-    const db = (supabaseAdmin ?? supabase) as any;
 
     const url = new URL(request.url);
     const allTime =
@@ -256,7 +266,7 @@ export async function GET(request: NextRequest) {
               .from('telecaller_call_logs')
               .select('call_duration')
               .gt('call_duration', 0)
-              .limit(800),
+              .limit(80),
           ),
         ),
       () =>
@@ -323,11 +333,20 @@ export async function GET(request: NextRequest) {
           .select('telecaller_id, total_calls')
           .eq('date', today)
           .order('total_calls', { ascending: false })
-          .limit(200),
+          .limit(80),
     ]);
 
-    const todayCalls = countOf(callTotal);
-    const answered = countOf(callAnswered);
+    const countErrors: string[] = [];
+    const todayCalls = n(countOf(callTotal, countErrors));
+    const answered = n(countOf(callAnswered, countErrors));
+    const totalLeadsN = countOf(totalLeads, countErrors);
+    const newLeadsN = countOf(newLeads, countErrors);
+    if (countErrors.length >= 6 || (totalLeadsN == null && newLeadsN == null)) {
+      return NextResponse.json(
+        { error: 'Dashboard counts failed', details: countErrors.slice(0, 4).join('; ') },
+        { status: 503 },
+      );
+    }
     const talkDurationSeconds = (Array.isArray(callDurRows?.data) ? callDurRows.data : []).reduce(
       (sum: number, c: { call_duration?: number }) => sum + (Number(c.call_duration) || 0),
       0,
@@ -386,22 +405,22 @@ export async function GET(request: NextRequest) {
       success: true,
       range: { from: fromYmd, to: toYmd, all_time: allTime },
       kpis: {
-        total_leads: countOf(totalLeads),
-        new_leads: countOf(newLeads),
-        incomplete: countOf(incomplete),
-        interested: countOf(interested),
-        will_visit: countOf(willVisit),
-        callbacks: countOf(callbackStatus),
-        booking_confirmed: countOf(bookingConfirmed),
-        in_service: countOf(inService),
-        service_done: countOf(serviceDone),
-        lost: countOf(lost),
+        total_leads: n(totalLeadsN),
+        new_leads: n(newLeadsN),
+        incomplete: n(countOf(incomplete, countErrors)),
+        interested: n(countOf(interested, countErrors)),
+        will_visit: n(countOf(willVisit, countErrors)),
+        callbacks: n(countOf(callbackStatus, countErrors)),
+        booking_confirmed: n(countOf(bookingConfirmed, countErrors)),
+        in_service: n(countOf(inService, countErrors)),
+        service_done: n(countOf(serviceDone, countErrors)),
+        lost: n(countOf(lost, countErrors)),
         // aliases / ops queues (still useful elsewhere)
-        booked: countOf(bookingConfirmed),
-        rejected: countOf(lost),
-        overdue_callbacks: countOf(overdueCallbacks),
-        followups_today: countOf(followUps),
-        reminders_pending: countOf(pendingReminders),
+        booked: n(countOf(bookingConfirmed, countErrors)),
+        rejected: n(countOf(lost, countErrors)),
+        overdue_callbacks: n(countOf(overdueCallbacks, countErrors)),
+        followups_today: n(countOf(followUps, countErrors)),
+        reminders_pending: n(countOf(pendingReminders, countErrors)),
         today_calls: todayCalls,
         answered_calls: answered,
         answer_rate: todayCalls ? Math.round((answered / todayCalls) * 100) : 0,

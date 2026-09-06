@@ -54,7 +54,13 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const profile = await resolveUserProfile(supabase, user);
+    const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+    const db = supabaseAdmin || supabase;
+    if (!supabaseAdmin && adminError) {
+      console.warn('[crm/leads] admin unavailable, using user client:', adminError);
+    }
+
+    const profile = await resolveUserProfile(supabase, user, supabaseAdmin);
     const teleCallerId = String(profile?.id || '').trim();
     if (!teleCallerId) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
@@ -76,12 +82,6 @@ export async function GET(request: NextRequest) {
       } catch (syncErr) {
         console.warn('[crm/leads] whatsapp sync skipped', syncErr);
       }
-    }
-
-    const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
-    const db = supabaseAdmin || supabase;
-    if (!supabaseAdmin && adminError) {
-      console.warn('[crm/leads] admin unavailable, using user client:', adminError);
     }
 
     const sp = request.nextUrl.searchParams;
@@ -261,29 +261,31 @@ export async function GET(request: NextRequest) {
     let rows = data || [];
     // Skip healLeadDispositions on list (extra call-log queries + writes). Badges use coupon_meta as-is.
 
-    // Same phone → keep latest lead; older duplicates go to history + soft-delete (TeleCRM merge)
-    try {
-      const phones = Array.from(
-        new Set(
-          rows
-            .map((r: any) => normalizeCustomerPhone(r?.customer_phone))
-            .filter(Boolean),
-        ),
-      );
-      if (phones.length) {
-        const { deletedIds, winnerMetaById } = await consolidateDuplicateLeadsByPhones(db, phones);
-        if (deletedIds.length) {
-          const gone = new Set(deletedIds);
-          rows = rows
-            .filter((r: any) => !gone.has(String(r.id)))
-            .map((r: any) => {
-              const meta = winnerMetaById.get(String(r.id));
-              return meta ? { ...r, coupon_meta: meta } : r;
-            });
+    // Same phone → keep latest lead in-memory. DB merge is opt-in (writes on GET made the list hang).
+    if (request.nextUrl.searchParams.get('heal_dupes') === '1') {
+      try {
+        const phones = Array.from(
+          new Set(
+            rows
+              .map((r: any) => normalizeCustomerPhone(r?.customer_phone))
+              .filter(Boolean),
+          ),
+        );
+        if (phones.length) {
+          const { deletedIds, winnerMetaById } = await consolidateDuplicateLeadsByPhones(db, phones);
+          if (deletedIds.length) {
+            const gone = new Set(deletedIds);
+            rows = rows
+              .filter((r: any) => !gone.has(String(r.id)))
+              .map((r: any) => {
+                const meta = winnerMetaById.get(String(r.id));
+                return meta ? { ...r, coupon_meta: meta } : r;
+              });
+          }
         }
+      } catch (mergeErr) {
+        console.warn('[crm/leads] phone duplicate consolidate skipped', mergeErr);
       }
-    } catch (mergeErr) {
-      console.warn('[crm/leads] phone duplicate consolidate skipped', mergeErr);
     }
 
     const deduped = dedupeLeadsByPhone(rows);

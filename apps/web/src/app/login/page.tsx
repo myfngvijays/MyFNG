@@ -48,28 +48,33 @@ export default function LoginPage() {
       }
 
       const { getLoginGeoHint, postRecordLogin } = await import('@/lib/auth/postRecordLogin');
-      const geo = await getLoginGeoHint(3500);
-      await postRecordLogin({
-        platform: 'web',
-        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-        accessToken: authData.session?.access_token || null,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
-        location_label: geo.location_label,
-        city: geo.city,
-      });
-
-      // Redirect based on role
-      const roleCode = userProfile.role.role_code;
       const {
         ensureTelecallerPunchInOnLogin,
         isTelecallerFloorRole,
       } = await import('@/lib/telecaller/ensurePunchInOnLogin');
-      if (isTelecallerFloorRole(roleCode)) {
-        await ensureTelecallerPunchInOnLogin();
-      }
       const { getRoleDashboardHome } = await import('@/lib/dashboard/roleHome');
+      const roleCode = userProfile.role.role_code;
       router.push(getRoleDashboardHome(roleCode));
+
+      void (async () => {
+        try {
+          const geo = await getLoginGeoHint(2500);
+          await postRecordLogin({
+            platform: 'web',
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+            accessToken: authData.session?.access_token || null,
+            latitude: geo.latitude,
+            longitude: geo.longitude,
+            location_label: geo.location_label,
+            city: geo.city,
+          });
+          if (isTelecallerFloorRole(roleCode)) {
+            await ensureTelecallerPunchInOnLogin();
+          }
+        } catch {
+          /* audit / punch-in must not bounce the user after login */
+        }
+      })();
       
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');

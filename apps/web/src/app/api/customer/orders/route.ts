@@ -65,19 +65,26 @@ export async function GET(request: Request) {
 
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
   const nowIso = new Date().toISOString();
-  const { data: activeMembership } = await supabaseAdmin
+  const { data: activeMemberships } = await supabaseAdmin
     .from('customer_memberships')
-    .select('id')
+    .select('id, source_lead_id')
     .eq('customer_id', customer.id)
     .eq('status', 'ACTIVE')
     .gt('ends_at', nowIso)
-    .limit(1)
-    .maybeSingle();
-  const hasActiveMembership = Boolean(activeMembership?.id);
+    .limit(8);
+  const hasActiveMembership = Boolean((activeMemberships || []).length);
+  const paidMembershipByLeadId = new Map<string, string>();
+  for (const row of activeMemberships || []) {
+    const leadId = String((row as { source_lead_id?: string }).source_lead_id || '').trim();
+    const membershipId = String((row as { id?: string }).id || '').trim();
+    if (leadId && membershipId) paidMembershipByLeadId.set(leadId, membershipId);
+  }
 
   await Promise.all(
     rows.map((row: Record<string, unknown>) =>
-      expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, row, pbConfig),
+      expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, row, pbConfig, {
+        knownPaidMembershipId: paidMembershipByLeadId.get(String(row.id || '')) || null,
+      }),
     ),
   );
   const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

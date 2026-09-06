@@ -49,6 +49,7 @@ import {
   collapseCheckoutChildLeads,
   resolveCheckoutPrimary,
 } from '@/lib/admin-checkout-lead-group';
+import { hideOtpStubsWhenNamedBookingExists } from '@/lib/otp-stub-lead';
 import { parseCustomRepairItems } from '@/lib/custom-repair-items';
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
@@ -1909,7 +1910,9 @@ function SuperAdminBookingsPage() {
       const db = new Date(b.created_at || 0).getTime();
       return listSort === 'oldest' ? da - db : db - da;
     });
-    return collapseCheckoutChildLeads(sorted, serviceLeads, checkoutIndex);
+    return hideOtpStubsWhenNamedBookingExists(
+      collapseCheckoutChildLeads(sorted, serviceLeads, checkoutIndex),
+    );
   }, [baseFilteredServiceLeads, chartDrill, listSort, serviceLeads, checkoutIndex]);
 
   /** All loaded leads for a phone (for Bookings count + modal). */
@@ -1934,7 +1937,7 @@ function SuperAdminBookingsPage() {
   const collapsedBookingsByPhone = useMemo(() => {
     const map = new Map<string, ServiceLead[]>();
     for (const [phone, list] of bookingsByPhone) {
-      map.set(phone, collapseCheckoutChildLeads(list, list, checkoutIndex));
+      map.set(phone, hideOtpStubsWhenNamedBookingExists(collapseCheckoutChildLeads(list, list, checkoutIndex)));
     }
     return map;
   }, [bookingsByPhone, checkoutIndex]);

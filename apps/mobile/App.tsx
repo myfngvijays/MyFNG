@@ -67,7 +67,7 @@ import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 import { AppFooterProvider } from './src/context/AppFooterContext';
 import { NotificationProvider } from './src/context/NotificationContext';
-import { supabase } from './src/lib/supabase';
+import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout } from './src/lib/supabase';
 import { ENV } from './src/config/environment';
 import { getCustomerSessionToken } from './src/lib/customerSession';
 import { storeReferralCode, checkPlayStoreReferrer } from './src/lib/referralDeepLink';
@@ -95,9 +95,9 @@ import { apiFetch } from './src/lib/api';
 
 const Stack = createNativeStackNavigator();
 
-/** Hard cap so splash never exceeds ~4–5s even if auth/update is slow. */
-const SPLASH_MAX_MS = 4500;
-const SPLASH_ANIMATION_MS = 4000;
+/** Hard cap so splash never exceeds ~2s even if auth/update is slow. */
+const SPLASH_MAX_MS = 2000;
+const SPLASH_ANIMATION_MS = 1800;
 
 function AppContent() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
@@ -124,8 +124,6 @@ function AppContent() {
   useEffect(() => {
     const capTimer = setTimeout(() => {
       setShowSplash(false);
-      setAuthReady(true);
-      setUpdateCheckDone(true);
     }, SPLASH_MAX_MS);
     return () => clearTimeout(capTimer);
   }, []);
@@ -322,13 +320,14 @@ function AppContent() {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       setTimeout(() => {
         if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          if (session?.access_token) rememberAccessToken(session.access_token);
           return;
         }
         if (event === 'SIGNED_OUT') {
           void (async () => {
             try {
-              const { data: { session: current } } = await supabase.auth.getSession();
-              if (current?.user) return;
+              const token = await getSupabaseAccessToken(4000);
+              if (token) return;
               const hasCustomerSession = await fetchCustomerSessionProfile();
               if (!hasCustomerSession) {
                 setUser(null);
@@ -341,6 +340,7 @@ function AppContent() {
           return;
         }
         if (session?.user) {
+          rememberAccessToken(session.access_token);
           setUser((prev: any) => (prev?.id === session.user.id ? prev : session.user));
           void fetchUserProfile(session.user.id);
         }
@@ -354,12 +354,29 @@ function AppContent() {
 
   const checkUser = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      try {
+        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 4000, 'Session');
+        if (session?.user) {
+          rememberAccessToken(session.access_token);
+          setUser(session.user);
+          void fetchUserProfile(session.user.id);
+          return;
+        }
+      } catch {
+        /* refresh and retry once */
+      }
 
-      if (session?.user) {
-        setUser(session.user);
-        void fetchUserProfile(session.user.id);
-        return;
+      const token = await getSupabaseAccessToken(4000, true);
+      if (token) {
+        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 3000, 'Session').catch(
+          () => ({ data: { session: null as any } }),
+        );
+        if (session?.user) {
+          rememberAccessToken(session.access_token);
+          setUser(session.user);
+          void fetchUserProfile(session.user.id);
+          return;
+        }
       }
 
       await fetchCustomerSessionProfile();
@@ -458,7 +475,7 @@ function AppContent() {
     return <SplashScreen durationMs={SPLASH_ANIMATION_MS} onComplete={handleSplashComplete} />;
   }
 
-  if (!authReady || !updateCheckDone) {
+  if (!authReady) {
     return (
       <View style={{ flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
         <CarLoading size="compact" label="Loading MyFNG..." />

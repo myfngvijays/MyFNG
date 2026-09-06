@@ -11,6 +11,7 @@ import {
   Alert,
   Switch,
   Platform,
+  AppState,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -996,10 +997,15 @@ export function LeadManagerTelecallerIdsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<any>('/api/lead-manager/telecallers');
+      const data = await apiFetch<any>('/api/lead-manager/telecallers', { timeoutMs: 20000 });
       setRows(Array.isArray(data?.telecallers) ? data.telecallers : []);
     } catch (e: any) {
-      Alert.alert('Telecaller IDs', e?.message || 'Failed to load');
+      setRows((prev) => {
+        if (!prev.length) {
+          Alert.alert('Telecaller IDs', e?.message || 'Failed to load');
+        }
+        return prev;
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1008,6 +1014,13 @@ export function LeadManagerTelecallerIdsScreen() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load();
+    });
+    return () => sub.remove();
   }, [load]);
 
   const genPassword = () => {

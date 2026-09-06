@@ -435,15 +435,24 @@ export async function expireUnpaidBookingMembershipBundleIfNeeded(
   supabaseAdmin: any,
   lead: Record<string, unknown>,
   config: PostBookingMembershipConfig = DEFAULT_POST_BOOKING_MEMBERSHIP_CONFIG,
+  options?: { knownPaidMembershipId?: string | null },
 ): Promise<void> {
   const meta = parseMetaObject(lead.meta);
   const bundle = meta.booking_membership_bundle as Record<string, unknown> | undefined;
   const hasOfferMeta = Boolean(meta.post_booking_membership_offer);
   if (!bundle && !hasOfferMeta) return;
+  if (bundle?.applied_at || bundle?.membership_id) return;
 
-  const { relinkPaidPostBookingMembershipIfNeeded } = await import('@/lib/booking-post-membership');
-  const relinked = await relinkPaidPostBookingMembershipIfNeeded(supabaseAdmin, lead);
-  if (relinked) return;
+  const knownPaidMembershipId = options?.knownPaidMembershipId;
+  const skipLookup = options != null && 'knownPaidMembershipId' in options;
+  if (knownPaidMembershipId || !skipLookup) {
+    const { relinkPaidPostBookingMembershipIfNeeded } = await import('@/lib/booking-post-membership');
+    const relinked = await relinkPaidPostBookingMembershipIfNeeded(supabaseAdmin, lead, {
+      knownMembershipId: knownPaidMembershipId || null,
+      skipLookup,
+    });
+    if (relinked) return;
+  }
 
   const pricing = await resolveExpiredUnpaidMembershipBookingPricing(supabaseAdmin, lead, config);
   if (!pricing) return;
@@ -780,8 +789,17 @@ export async function listPostBookingMembershipAdminRows(
   if (error) throw new Error(error.message || 'Could not load bookings');
 
   const leads = (data || []) as Record<string, unknown>[];
+  const { loadPaidMembershipIdsBySourceLead } = await import('@/lib/booking-post-membership');
+  const paidByLeadId = await loadPaidMembershipIdsBySourceLead(
+    supabaseAdmin,
+    leads.map((lead) => String(lead.id || '')),
+  );
   await Promise.all(
-    leads.map((lead) => expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, lead, config)),
+    leads.map((lead) =>
+      expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, lead, config, {
+        knownPaidMembershipId: paidByLeadId.get(String(lead.id || '')) || null,
+      }),
+    ),
   );
 
   const rows: PostBookingMembershipAdminRow[] = [];

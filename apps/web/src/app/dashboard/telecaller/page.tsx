@@ -32,7 +32,7 @@ import {
   LogIn,
   LogOut,
 } from 'lucide-react';
-import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
+import { shouldKeepPreviousDashboardKpis } from '@/lib/telecaller/crmDashboardGuard';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 type Kpis = {
@@ -188,6 +188,8 @@ export default function TelecallerCrmHomePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const inFlight = useRef(false);
+  const kpisRef = useRef<Kpis>({});
+  kpisRef.current = kpis;
 
   const persistDate = (next: {
     datePreset?: CrmDatePreset;
@@ -227,10 +229,17 @@ export default function TelecallerCrmHomePage() {
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || 'Failed');
-        setKpis(json.kpis || {});
-        setTrend(Array.isArray(json.trend) ? json.trend : []);
-        setUpcomingReminders(Array.isArray(json.upcoming_reminders) ? json.upcoming_reminders : []);
-        setFreshLeads(Array.isArray(json.fresh_leads) ? json.fresh_leads : []);
+        const nextKpis = json.kpis || {};
+        const nextFresh = Array.isArray(json.fresh_leads) ? json.fresh_leads : [];
+        if (
+          force ||
+          !shouldKeepPreviousDashboardKpis(kpisRef.current, nextKpis, nextFresh.length)
+        ) {
+          setKpis(nextKpis);
+          setTrend(Array.isArray(json.trend) ? json.trend : []);
+          setUpcomingReminders(Array.isArray(json.upcoming_reminders) ? json.upcoming_reminders : []);
+          setFreshLeads(nextFresh);
+        }
         setProfileName(json?.profile?.name || 'Telecaller');
         setPunchedIn(Boolean(json?.attendance?.is_punched_in));
         setLoadError(null);
@@ -261,7 +270,14 @@ export default function TelecallerCrmHomePage() {
     const id = window.setInterval(() => {
       void load(false);
     }, 40000);
-    return () => window.clearInterval(id);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void load(false);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [load]);
 
   useEffect(() => {

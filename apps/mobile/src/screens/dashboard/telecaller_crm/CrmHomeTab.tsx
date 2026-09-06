@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
+import { shouldKeepPreviousDashboard } from '../../../lib/crmDashboardGuard';
 import { useNotifications } from '../../../context/NotificationContext';
 import CarLoading from '../../../components/CarLoading';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
@@ -135,9 +137,11 @@ export default function CrmHomeTab({
         params.set('to', range.end);
       }
       const res = await apiFetch<any>(`/api/telecaller/crm/dashboard?${params.toString()}`, {
-        timeoutMs: 45000,
+        timeoutMs: 25000,
       });
-      setData(res);
+      if (force || !shouldKeepPreviousDashboard(dataRef.current, res)) {
+        setData(res);
+      }
       setLoadError('');
       onRemindersCount?.(Number(res?.kpis?.reminders_pending || 0));
     } catch (e) {
@@ -159,7 +163,13 @@ export default function CrmHomeTab({
     const id = setInterval(() => {
       void load(false);
     }, 40000);
-    return () => clearInterval(id);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load(false);
+    });
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
   }, [load, isActive]);
 
   if (loading && !data) {

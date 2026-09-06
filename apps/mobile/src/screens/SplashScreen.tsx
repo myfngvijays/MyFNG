@@ -37,8 +37,8 @@ const USP_ITEMS = [
 const ROAD_DASH_COUNT = 12;
 const SERVICE_SLOT = 62;
 const ACTIVE_SERVICE_INDEX = 2; // Periodic Service — fixed center
-/** Keep splash short (~4s). App.tsx also hard-caps at 4.5s. */
-const SPLASH_DURATION_MS = 4000;
+/** Keep splash short (~1.8s). App.tsx also hard-caps at 2s. */
+const SPLASH_DURATION_MS = 1800;
 const USP_INITIAL_DELAY_MS = 280;
 const USP_STAGGER_MS = 340;
 const USP_ENTER_DURATION_MS = 320;

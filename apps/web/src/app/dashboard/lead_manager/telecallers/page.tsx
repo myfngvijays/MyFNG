@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Plus, RefreshCw, UserPlus, Copy, Check } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import PageHelpIcon from '@/components/PageHelpIcon';
@@ -30,8 +30,11 @@ export default function LeadManagerTelecallerIdsPage() {
     password: '',
   });
 
+  const rowsRef = useRef<TelecallerRow[]>([]);
+  rowsRef.current = rows;
+
   const load = useCallback(async () => {
-    setLoading(true);
+    setLoading(rowsRef.current.length === 0);
     setError(null);
     try {
       const res = await fetch('/api/lead-manager/telecallers');
@@ -39,7 +42,7 @@ export default function LeadManagerTelecallerIdsPage() {
       if (!res.ok) throw new Error(json?.error || 'Failed to load');
       setRows(Array.isArray(json.telecallers) ? json.telecallers : []);
     } catch (e: any) {
-      setError(e?.message || 'Failed to load');
+      if (!rowsRef.current.length) setError(e?.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
@@ -47,6 +50,11 @@ export default function LeadManagerTelecallerIdsPage() {
 
   useEffect(() => {
     void load();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, [load]);
 
   const activeCount = useMemo(

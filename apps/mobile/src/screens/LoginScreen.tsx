@@ -16,7 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import { supabase } from '../lib/supabase';
+import { rememberAccessToken, supabase } from '../lib/supabase';
 import { apiFetch } from '../lib/api';
 import { ENV } from '../config/environment';
 import { isLikelyNetworkError, staffLoginNetworkMessage } from '../lib/networkError';
@@ -387,6 +387,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       if (!authData.user) {
         throw new Error('No user returned');
       }
+      rememberAccessToken(authData.session?.access_token);
 
       // ✅ FIX: Fetch profile with correct role join (like web)
       const { data: profile, error: profileError } = await supabase
@@ -400,66 +401,67 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
       if (profileError) throw profileError;
 
-      try {
-        let latitude: number | null = null;
-        let longitude: number | null = null;
-        let location_label: string | null = null;
-        try {
-          const Location = await import('expo-location');
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status === 'granted') {
-            const last = await Location.getLastKnownPositionAsync().catch(() => null);
-            const loc =
-              last ||
-              (await Promise.race([
-                Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-                new Promise<null>((r) => setTimeout(() => r(null), 3500)),
-              ]));
-            if (loc?.coords) {
-              latitude = loc.coords.latitude;
-              longitude = loc.coords.longitude;
-              location_label = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-            }
-          }
-        } catch {
-          /* geo optional */
-        }
-        await apiFetch('/api/auth/record-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            platform: 'mobile',
-            user_agent: 'MyFNG Mobile App',
-            device_label: 'MyFNG Mobile App',
-            latitude,
-            longitude,
-            location_label,
-          }),
-        });
-      } catch (histErr) {
-        console.warn('Login history write skipped', histErr);
-      }
-
-      // Telecaller / LM: auto punch-in → On Floor
-      try {
-        const roleCode = String(
-          (profile as any)?.role?.role_code || (profile as any)?.roles?.role_code || '',
-        ).toUpperCase();
-        if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
-          await apiFetch('/api/telecaller/crm/attendance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'punch_in' }),
-          });
-        }
-      } catch (punchErr) {
-        console.warn('Auto punch-in skipped', punchErr);
-      }
-
-      // Success: AuthContext will react to the new session. If a callback is provided, call it.
+      // Enter dashboard immediately — geo / login history / punch-in must not block the UI.
       if (typeof onLoginSuccess === 'function') {
         onLoginSuccess(authData.user, profile);
       }
+
+      void (async () => {
+        try {
+          let latitude: number | null = null;
+          let longitude: number | null = null;
+          let location_label: string | null = null;
+          try {
+            const Location = await import('expo-location');
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+              const last = await Location.getLastKnownPositionAsync().catch(() => null);
+              const loc =
+                last ||
+                (await Promise.race([
+                  Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+                  new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+                ]));
+              if (loc?.coords) {
+                latitude = loc.coords.latitude;
+                longitude = loc.coords.longitude;
+                location_label = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+              }
+            }
+          } catch {
+            /* geo optional */
+          }
+          await apiFetch('/api/auth/record-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              platform: 'mobile',
+              user_agent: 'MyFNG Mobile App',
+              device_label: 'MyFNG Mobile App',
+              latitude,
+              longitude,
+              location_label,
+            }),
+          });
+        } catch (histErr) {
+          console.warn('Login history write skipped', histErr);
+        }
+
+        try {
+          const roleCode = String(
+            (profile as any)?.role?.role_code || (profile as any)?.roles?.role_code || '',
+          ).toUpperCase();
+          if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
+            await apiFetch('/api/telecaller/crm/attendance', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'punch_in' }),
+            });
+          }
+        } catch (punchErr) {
+          console.warn('Auto punch-in skipped', punchErr);
+        }
+      })();
     } catch (error: any) {
       console.error('Login error:', error);
       Alert.alert(

@@ -255,6 +255,29 @@ export async function applyBookingMembershipBundleToLead(
   return { bundleDiscount: discountToApply, walletCredit, newAmount };
 }
 
+export async function loadPaidMembershipIdsBySourceLead(
+  supabaseAdmin: any,
+  leadIds: string[],
+): Promise<Map<string, string>> {
+  const ids = Array.from(new Set(leadIds.map((id) => String(id || '').trim()).filter(Boolean)));
+  const map = new Map<string, string>();
+  if (ids.length === 0) return map;
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('customer_memberships')
+    .select('id, source_lead_id')
+    .in('source_lead_id', ids)
+    .eq('status', 'ACTIVE')
+    .gt('ends_at', nowIso);
+  if (error) return map;
+  for (const row of data || []) {
+    const leadId = String((row as { source_lead_id?: string }).source_lead_id || '').trim();
+    const membershipId = String((row as { id?: string }).id || '').trim();
+    if (leadId && membershipId) map.set(leadId, membershipId);
+  }
+  return map;
+}
+
 /**
  * If the customer already paid Prime for this booking (source_lead_id) but the
  * bundle was never locked (subscribe applied after insert), attach the discount
@@ -263,6 +286,7 @@ export async function applyBookingMembershipBundleToLead(
 export async function relinkPaidPostBookingMembershipIfNeeded(
   supabaseAdmin: any,
   lead: Record<string, unknown>,
+  options?: { knownMembershipId?: string | null; skipLookup?: boolean },
 ): Promise<boolean> {
   const leadId = String(lead.id || '').trim();
   const meta = parseLeadMeta(lead);
@@ -273,17 +297,21 @@ export async function relinkPaidPostBookingMembershipIfNeeded(
   const customerId = String(meta.customer_id || '').trim();
   if (!customerId) return false;
 
-  const nowIso = new Date().toISOString();
-  const { data: membership, error } = await supabaseAdmin
-    .from('customer_memberships')
-    .select('id')
-    .eq('customer_id', customerId)
-    .eq('source_lead_id', leadId)
-    .eq('status', 'ACTIVE')
-    .gt('ends_at', nowIso)
-    .maybeSingle();
-
-  if (error || !membership?.id) return false;
+  let membershipId = String(options?.knownMembershipId || '').trim();
+  if (!membershipId) {
+    if (options?.skipLookup) return false;
+    const nowIso = new Date().toISOString();
+    const { data: membership, error } = await supabaseAdmin
+      .from('customer_memberships')
+      .select('id')
+      .eq('customer_id', customerId)
+      .eq('source_lead_id', leadId)
+      .eq('status', 'ACTIVE')
+      .gt('ends_at', nowIso)
+      .maybeSingle();
+    if (error || !membership?.id) return false;
+    membershipId = String(membership.id);
+  }
 
   const offer =
     meta.post_booking_membership_offer && typeof meta.post_booking_membership_offer === 'object'
@@ -299,7 +327,7 @@ export async function relinkPaidPostBookingMembershipIfNeeded(
     const applied = await applyBookingMembershipBundleToLead(supabaseAdmin, {
       customerId,
       leadId,
-      membershipId: String(membership.id),
+      membershipId,
       serviceSubtotal,
       bundleDiscount,
     });

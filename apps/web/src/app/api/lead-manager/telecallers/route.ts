@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,27 +14,25 @@ async function requireManager(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (error || !user) return { ok: false as const, status: 401, error: 'Unauthorized' };
 
-  const { data: profile } = await supabase
-    .from('users_login')
-    .select('id, full_name, roles!role_id(role_code)')
-    .eq('id', user.id)
-    .maybeSingle();
-
+  const { supabaseAdmin } = getSupabaseAdmin();
+  const profile = await resolveUserProfile(supabase, user, supabaseAdmin);
   const roleCode = String(
     (profile as { roles?: { role_code?: string } } | null)?.roles?.role_code || '',
   )
     .trim()
     .toUpperCase();
 
-  if (!['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
+  if (!profile?.id || !['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 
   return {
     ok: true as const,
-    userId: user.id,
+    userId: String(profile.id),
+    authUserId: user.id,
     roleCode,
     managerName: String((profile as any)?.full_name || '').trim(),
+    supabaseAdmin,
   };
 }
 
@@ -46,12 +45,9 @@ export async function GET(request: NextRequest) {
     const gate = await requireManager(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
-    const { supabaseAdmin, error: adminErr } = getSupabaseAdmin();
+    const supabaseAdmin = gate.supabaseAdmin || getSupabaseAdmin().supabaseAdmin;
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: adminErr || 'Admin client unavailable' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Admin client unavailable' }, { status: 500 });
     }
 
     const { data: roleRow } = await supabaseAdmin
@@ -72,7 +68,13 @@ export async function GET(request: NextRequest) {
       .order('full_name', { ascending: true });
 
     if (gate.roleCode === 'LEAD_MANAGER') {
-      query = query.eq('assigned_manager_id', gate.userId);
+      if (gate.authUserId && gate.authUserId !== gate.userId) {
+        query = query.or(
+          `assigned_manager_id.eq.${gate.userId},assigned_manager_id.eq.${gate.authUserId}`,
+        );
+      } else {
+        query = query.eq('assigned_manager_id', gate.userId);
+      }
     }
 
     const { data, error } = await query;

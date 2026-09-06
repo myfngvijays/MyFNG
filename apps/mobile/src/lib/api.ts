@@ -8,16 +8,10 @@ type JsonValue = Record<string, any> | any[] | null;
 
 const FETCH_TIMEOUT_MS = 20000;
 
-export async function apiFetch<T = JsonValue>(
-  path: string,
-  options: RequestInit & { timeoutMs?: number } = {}
-): Promise<T> {
-  // Each token source is resolved independently so a failure in one
-  // (e.g. Firebase native module unavailable, token refresh error) never
-  // breaks an authenticated request when another valid token exists.
+async function resolveAuthHeaders(forceRefresh = false): Promise<Record<string, string>> {
   let bearerToken: string | undefined;
   try {
-    bearerToken = await getSupabaseAccessToken();
+    bearerToken = await getSupabaseAccessToken(4000, forceRefresh);
   } catch {
     bearerToken = undefined;
   }
@@ -29,46 +23,71 @@ export async function apiFetch<T = JsonValue>(
     customerSessionToken = null;
   }
 
+  // Only pay for Firebase ID token when we have no staff/customer session.
   let firebaseIdToken: string | null = null;
-  try {
-    const firebaseUser = auth().currentUser;
-    firebaseIdToken = firebaseUser
-      ? await withTimeout(firebaseUser.getIdToken(), 4000, 'Firebase token')
-      : null;
-  } catch {
-    firebaseIdToken = null;
+  if (!bearerToken && !customerSessionToken) {
+    try {
+      const firebaseUser = auth().currentUser;
+      firebaseIdToken = firebaseUser
+        ? await withTimeout(firebaseUser.getIdToken(), 4000, 'Firebase token')
+        : null;
+    } catch {
+      firebaseIdToken = null;
+    }
   }
 
-  if (!bearerToken && !customerSessionToken && !firebaseIdToken) throw new Error('Not authenticated');
+  if (!bearerToken && !customerSessionToken && !firebaseIdToken) {
+    throw new Error('Not authenticated');
+  }
 
-  const { timeoutMs = FETCH_TIMEOUT_MS, headers: optionHeaders, ...fetchOptions } = options;
   const headers: Record<string, string> = {
-    ...(optionHeaders as Record<string, string> | undefined),
     'X-App-Platform': Platform.OS,
     'x-mobile-client': 'true',
   };
   if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
   if (customerSessionToken) headers['x-customer-session'] = customerSessionToken;
   if (firebaseIdToken) headers['x-firebase-id-token'] = firebaseIdToken;
+  return headers;
+}
 
-  const controller = new AbortController();
-  const fetchTimer = setTimeout(() => controller.abort(), timeoutMs);
-  const res = await fetch(`${ENV.API_URL}${path}`, {
-    ...fetchOptions,
-    headers,
-    signal: controller.signal,
-  }).catch((err: unknown) => {
-    const raw = String((err as Error)?.message || err || '');
-    const aborted = (err as { name?: string })?.name === 'AbortError';
-    if (aborted || /network request failed|failed to fetch|networkerror|timed?\s*out/i.test(raw)) {
-      throw new Error(
-        'Could not reach the server. Check your internet connection and try again.',
-      );
-    }
-    throw err instanceof Error ? err : new Error(raw || 'Request failed');
-  }).finally(() => {
-    clearTimeout(fetchTimer);
-  });
+export async function apiFetch<T = JsonValue>(
+  path: string,
+  options: RequestInit & { timeoutMs?: number } = {}
+): Promise<T> {
+  const { timeoutMs = FETCH_TIMEOUT_MS, headers: optionHeaders, ...fetchOptions } = options;
+
+  const run = async (forceRefresh: boolean) => {
+    const authHeaders = await resolveAuthHeaders(forceRefresh);
+    const headers: Record<string, string> = {
+      ...(optionHeaders as Record<string, string> | undefined),
+      ...authHeaders,
+    };
+
+    const controller = new AbortController();
+    const fetchTimer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${ENV.API_URL}${path}`, {
+      ...fetchOptions,
+      headers,
+      signal: controller.signal,
+    }).catch((err: unknown) => {
+      const raw = String((err as Error)?.message || err || '');
+      const aborted = (err as { name?: string })?.name === 'AbortError';
+      if (aborted || /network request failed|failed to fetch|networkerror|timed?\s*out/i.test(raw)) {
+        throw new Error(
+          'Could not reach the server. Check your internet connection and try again.',
+        );
+      }
+      throw err instanceof Error ? err : new Error(raw || 'Request failed');
+    }).finally(() => {
+      clearTimeout(fetchTimer);
+    });
+    return res;
+  };
+
+  let res = await run(false);
+  if (res.status === 401) {
+    res = await run(true);
+  }
 
   const text = await res.text().catch(() => '');
   let json: Record<string, unknown> = {};
