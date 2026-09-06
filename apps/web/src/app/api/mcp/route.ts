@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { createMyfngMcpServer } from '../../../../../../packages/myfng-mcp/src/createServer';
+import { createMyfngMcpServer } from '@/lib/mcp/createMyfngMcpServer';
 import {
   extractMcpTokenFromRequest,
   getMcpHttpToken,
@@ -42,7 +42,7 @@ async function handleMcp(req: Request): Promise<Response> {
     );
   }
 
-  const server = createMyfngMcpServer();
+  const server = await createMyfngMcpServer();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

@@ -9,7 +9,7 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./create-server": "./src/createServer.ts"
+    "./create-server": "./dist/createServer.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -25,6 +25,10 @@ function build() {
   });
 }
 
+spawnSync(process.execPath, [join(root, 'scripts/ensure-myfng-mcp.mjs')], {
+  stdio: 'inherit',
+});
+
 clean();
 let result = build();
 if ((result.status ?? 1) !== 0) {
