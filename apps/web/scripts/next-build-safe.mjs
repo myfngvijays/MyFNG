@@ -25,6 +25,12 @@ function build() {
   });
 }
 
+function syncStandaloneAssets() {
+  spawnSync(process.execPath, [join(root, 'scripts/sync-standalone-assets.mjs')], {
+    stdio: 'inherit',
+  });
+}
+
 spawnSync(process.execPath, [join(root, 'scripts/ensure-myfng-mcp.mjs')], {
   stdio: 'inherit',
 });
@@ -35,5 +41,8 @@ if ((result.status ?? 1) !== 0) {
   console.warn('[next-build-safe] first build failed — clearing cache and retrying once');
   clean();
   result = build();
+}
+if ((result.status ?? 1) === 0) {
+  syncStandaloneAssets();
 }
 process.exit(result.status ?? 1);
