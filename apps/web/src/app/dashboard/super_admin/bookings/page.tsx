@@ -40,6 +40,7 @@ import {
   computeServiceLeadOverview,
   type LeadSourceBadgeKind,
 } from '@/lib/booking-lead-utils';
+import { formatPreferredSlotLabel } from '@/lib/preferred-slot';
 import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
 import AppActivityTimeline from '@/components/admin/AppActivityTimeline';
 import {
@@ -1184,7 +1185,10 @@ function ServiceLeadDetailContent({
               <InlineTextField label="Service" field="service_type" value={serviceLabel} onPatch={onPatch} />
             )}
             <InlineTextField label="Service Type" field="service_type" value={item.service_type} onPatch={onPatch} />
-            <DetailFieldCard label="Preferred Slot" value={formatDateTime(item.preferred_slot_start)} />
+            <DetailFieldCard
+              label="Preferred Slot"
+              value={formatPreferredSlotLabel(item) || formatDateTime(item.preferred_slot_start)}
+            />
             <InlineDateField
               label="Preferred Date"
               field="preferred_date"
@@ -3916,7 +3920,7 @@ function SuperAdminBookingsPage() {
                         ) : null}
                         {showCol('preferredSlot') ? (
                           <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">
-                            {lead.preferred_slot_start ? formatDateTime(lead.preferred_slot_start) : '—'}
+                            {formatPreferredSlotLabel(lead) || '—'}
                           </td>
                         ) : null}
                         {showCol('problemDescription') ? (

@@ -5,6 +5,7 @@ import { LEAD_SOURCES, normalizeLeadSource } from '@/lib/enquiry/createLead';
 import { PANEL_ACCESS_ROLES } from '@/lib/super-admin-auth';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { buildAdminCrmStatusCouponMeta, adminCrmMappedWorkshopStatus } from '@/lib/telecaller/leadDisplayStatus';
+import { buildPreferredSlot } from '@/lib/preferred-slot';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -212,17 +213,16 @@ export async function PATCH(
         .select('preferred_date, preferred_time_slot, preferred_slot_start')
         .eq('id', id)
         .maybeSingle();
-      const dateStr = String(
-        body.preferred_date !== undefined ? body.preferred_date : current?.preferred_date || '',
-      ).slice(0, 10);
-      const timeStr = String(
+      const dateStr =
+        body.preferred_date !== undefined ? body.preferred_date : current?.preferred_date || '';
+      const timeStr =
         body.preferred_time_slot !== undefined
           ? body.preferred_time_slot
-          : current?.preferred_time_slot || '',
-      ).slice(0, 5);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) && /^\d{2}:\d{2}/.test(timeStr)) {
-        update.preferred_slot_start = `${dateStr}T${timeStr}:00+05:30`;
-      }
+          : current?.preferred_time_slot || '';
+      const slot = buildPreferredSlot(dateStr, timeStr);
+      if (slot.date) update.preferred_date = slot.date;
+      if (slot.timeHm) update.preferred_time_slot = slot.timeHm;
+      if (slot.iso) update.preferred_slot_start = slot.iso;
     }
 
     if (body.crm_status !== undefined) {

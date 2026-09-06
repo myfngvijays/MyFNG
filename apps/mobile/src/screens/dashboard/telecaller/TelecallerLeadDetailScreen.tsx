@@ -22,6 +22,7 @@ import { Icon } from '../../../components/Icon';
 import { supabase, withTimeout } from '../../../lib/supabase';
 import CarLoading from '../../../components/CarLoading';
 import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
+import { formatPreferredSlotLabel } from '../../../lib/preferredSlot';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
@@ -3841,26 +3842,14 @@ function formatLeadAddress(
 }
 
 function formatLeadSchedule(lead: any): string {
-  if (lead?.preferred_slot_start) {
-    const formatted = formatDateTime(lead.preferred_slot_start);
-    if (formatted) return formatted;
-  }
   const meta = lead?.coupon_meta || {};
-  const date = String(meta.pickup_date || lead?.preferred_date || '').trim();
-  const time = String(meta.pickup_time || lead?.preferred_time_slot || '').trim();
-  if (date && time) {
-    try {
-      return formatDateTime(`${date}T${time}:00+05:30`) || `${date} ${time}`;
-    } catch {
-      return `${date} ${time}`;
-    }
-  }
-  const problem = String(lead?.problem_description || '');
-  const m = problem.match(/(pickup|visit)\s*:\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})/i);
-  if (m) {
-    return formatDateTime(`${m[2]}T${m[3]}:00+05:30`) || `${m[2]} ${m[3]}`;
-  }
-  return '';
+  return (
+    formatPreferredSlotLabel({
+      preferred_slot_start: lead?.preferred_slot_start,
+      preferred_date: meta.pickup_date || lead?.preferred_date,
+      preferred_time_slot: meta.pickup_time || lead?.preferred_time_slot,
+    }) || ''
+  );
 }
 
 function getStatusBg(status: string): string {

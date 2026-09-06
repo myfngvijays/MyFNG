@@ -11,6 +11,7 @@ import {
   resolveMisaServicesPricing,
   type MisaResolvedService,
 } from './misa-service-pricing';
+import { buildPreferredSlot } from '@/lib/preferred-slot';
 
 
 export interface BookingData {
@@ -133,6 +134,7 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
         ? bookingData.service_type_ids
         : misaServices.map((service) => service.service_type_id).filter(Boolean);
 
+    const slot = buildPreferredSlot(bookingData.preferred_date, bookingData.preferred_time);
     const payload: Record<string, any> = {
       lead_number: leadNumber,
       lead_type: 'NORMAL',
@@ -150,8 +152,9 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       address: bookingData.address || null,
       pickup_address: bookingData.address || null,
       pincode: bookingData.pincode || null,
-      preferred_date: bookingData.preferred_date || null,
-      preferred_time_slot: bookingData.preferred_time || null,
+      preferred_date: slot.date || bookingData.preferred_date || null,
+      preferred_time_slot: slot.timeHm || bookingData.preferred_time || null,
+      preferred_slot_start: slot.iso || null,
       estimated_amount: quotedPrice,
       created_at: nowIso,
     };

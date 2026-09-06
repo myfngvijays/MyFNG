@@ -178,6 +178,44 @@ export async function updateLeadCustomerNameByPhone(
   return { updated: true, leadId: String(lead.id), name };
 }
 
+/** Persist preferred date/time on the canonical CRM lead as soon as MISA collects them. */
+export async function updateLeadScheduleByPhone(
+  supabaseAdmin: any,
+  phone: string | null | undefined,
+  input: { preferred_date?: unknown; preferred_time?: unknown },
+): Promise<{ updated: boolean; leadId: string | null }> {
+  const phone10 = normalizeCustomerPhone(phone);
+  if (!phone10) return { updated: false, leadId: null };
+
+  const { buildPreferredSlot } = await import('@/lib/preferred-slot');
+  const slot = buildPreferredSlot(input.preferred_date, input.preferred_time);
+  if (!slot.date && !slot.timeHm && !String(input.preferred_date || '').trim() && !String(input.preferred_time || '').trim()) {
+    return { updated: false, leadId: null };
+  }
+
+  const lead = await findLatestServiceLeadByPhone(supabaseAdmin, phone10);
+  if (!lead?.id) return { updated: false, leadId: null };
+
+  const nowIso = new Date().toISOString();
+  const patch: Record<string, unknown> = { updated_at: nowIso };
+  if (slot.date) patch.preferred_date = slot.date;
+  else if (input.preferred_date != null && String(input.preferred_date).trim()) {
+    patch.preferred_date = String(input.preferred_date).trim().slice(0, 40);
+  }
+  if (slot.timeHm) patch.preferred_time_slot = slot.timeHm;
+  else if (input.preferred_time != null && String(input.preferred_time).trim()) {
+    patch.preferred_time_slot = String(input.preferred_time).trim().slice(0, 40);
+  }
+  if (slot.iso) patch.preferred_slot_start = slot.iso;
+
+  const { error } = await supabaseAdmin.from('service_leads').update(patch).eq('id', lead.id);
+  if (error) {
+    console.warn('[service-lead-reopen] schedule update failed:', error.message);
+    return { updated: false, leadId: String(lead.id) };
+  }
+  return { updated: true, leadId: String(lead.id) };
+}
+
 /** Soft-delete other leads for same phone (keep keeper). Skip active workshop jobs. */
 async function softDeleteSiblingLeads(
   supabaseAdmin: any,

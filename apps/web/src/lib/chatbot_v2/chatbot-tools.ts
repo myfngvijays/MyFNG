@@ -184,6 +184,33 @@ export const CHATBOT_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'set_preferred_schedule',
+      description:
+        'Save the customer preferred service date and/or pickup time as soon as they share it. Call immediately — do not wait for create_booking. Date as YYYY-MM-DD when possible; time like 10 AM or 14:00.',
+      parameters: {
+        type: 'object',
+        properties: {
+          preferred_date: {
+            type: 'string',
+            description: 'Preferred service date (YYYY-MM-DD, tomorrow, or 7 September)',
+          },
+          preferred_time: {
+            type: 'string',
+            description: "Preferred pickup time (e.g. '10 AM', '2 PM', '14:00')",
+          },
+          phone_number: {
+            type: 'string',
+            description: 'Optional 10-digit phone if already known/verified',
+            pattern: '^[0-9]{10}$',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'send_booking_otp',
       description:
         'Send a 6-digit OTP on WhatsApp to verify the customer mobile number. Call ONLY after service type, car model, and PIN code are collected — immediately before showing pricing.',
@@ -578,6 +605,49 @@ export async function executeToolCall(
         };
       }
 
+      case 'set_preferred_schedule': {
+        const preferredDate = String(args.preferred_date || '').trim();
+        const preferredTime = String(args.preferred_time || '').trim();
+        if (!preferredDate && !preferredTime) {
+          return { success: false, message: 'Need a date or a time to save the schedule.' };
+        }
+
+        const phone =
+          normalizeBookingPhone(args.phone_number) ||
+          normalizeBookingPhone(opts?.sessionData?.bookingState?.phoneNumber) ||
+          normalizeBookingPhone(getVerifiedPhoneFromSession(opts?.sessionData)) ||
+          normalizeBookingPhone(opts?.channelPhone);
+
+        if (opts?.sessionData) {
+          opts.sessionData.bookingState = {
+            ...(opts.sessionData.bookingState || {}),
+            ...(preferredDate ? { preferredDate } : {}),
+            ...(preferredTime ? { preferredTime } : {}),
+          };
+        }
+
+        try {
+          const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+          const { updateLeadScheduleByPhone } = await import('@/lib/service-lead-reopen');
+          const { supabaseAdmin } = getSupabaseAdmin();
+          if (supabaseAdmin && phone.length === 10) {
+            await updateLeadScheduleByPhone(supabaseAdmin, phone, {
+              preferred_date: preferredDate || opts?.sessionData?.bookingState?.preferredDate,
+              preferred_time: preferredTime || opts?.sessionData?.bookingState?.preferredTime,
+            });
+          }
+        } catch (err) {
+          console.warn('[TOOL] set_preferred_schedule lead update failed', err);
+        }
+
+        return {
+          success: true,
+          preferred_date: preferredDate || null,
+          preferred_time: preferredTime || null,
+          message: 'Schedule saved on the CRM lead. Continue the booking flow.',
+        };
+      }
+
       case 'send_booking_otp': {
         const phone = normalizeBookingPhone(args.phone_number);
         if (phone.length !== 10) {
@@ -739,8 +809,8 @@ export async function executeToolCall(
           car_model: args.car_model,
           city: city,
           pincode: args.pincode,
-          preferred_date: args.preferred_date,
-          preferred_time: args.preferred_time,
+          preferred_date: args.preferred_date || opts?.sessionData?.bookingState?.preferredDate,
+          preferred_time: args.preferred_time || opts?.sessionData?.bookingState?.preferredTime,
           quoted_price: quotedPrice,
           misa_services: resolvedServices.services,
           service_type_ids: resolvedServices.serviceTypeIds,

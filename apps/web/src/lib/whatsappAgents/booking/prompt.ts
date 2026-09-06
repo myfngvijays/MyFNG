@@ -12,6 +12,7 @@ const WHATSAPP_BOOKING_RULES = `
 - For RSA/towing/breakdown, tell customer a human agent will help — do not start booking flow.
 - Never arrange a callback yourself. If they want a person, they must use the Human agent button — do not invent support scripts.
 - Booking order: car model → pincode → mobile OTP verify → service/pricing → plan select → name → address → date → time → vehicle number (set_vehicle_number) → summary → book.
+- As soon as the customer shares a date or time, call set_preferred_schedule so CRM shows Preferred Slot even if they have not confirmed the booking yet.
 - NEVER call get_service_pricing before mobile OTP verified (all services).
 - ALWAYS collect vehicle registration number just BEFORE booking summary — not before pricing.
 - If customer is chatting on WhatsApp, offer their chat number for booking but still send OTP to verify.
