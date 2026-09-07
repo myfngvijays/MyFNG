@@ -16,13 +16,14 @@ if (!existsSync(join(pkg, 'package.json'))) {
   process.exit(0);
 }
 
-if (existsSync(out)) {
-  console.log('[ensure-myfng-mcp] dist already present');
+const zodHere = join(pkg, 'node_modules/zod/package.json');
+if (existsSync(out) && existsSync(zodHere)) {
+  console.log('[ensure-myfng-mcp] dist and zod already present');
   process.exit(0);
 }
 
 const sdkHere = join(pkg, 'node_modules/@modelcontextprotocol/sdk');
-if (!existsSync(sdkHere)) {
+if (!existsSync(sdkHere) || !existsSync(zodHere)) {
   console.log('[ensure-myfng-mcp] installing package dependencies');
   const install = spawnSync('npm', ['install', '--omit=dev'], {
     cwd: pkg,

@@ -44,7 +44,16 @@ if (existsSync(join(mcpDist, 'createServer.js'))) {
   const tracedMcp = join(destRoot, '../../packages/myfng-mcp/dist');
   mkdirSync(tracedMcp, { recursive: true });
   cpSync(mcpDist, tracedMcp, { recursive: true });
-  console.log('[sync-standalone-assets] copied packages/myfng-mcp/dist');
+  const mcpNm = join(destRoot, 'packages/myfng-mcp/node_modules');
+  mkdirSync(mcpNm, { recursive: true });
+  for (const dep of ['zod', '@supabase/supabase-js']) {
+    const from = join(webRoot, 'node_modules', dep);
+    if (!existsSync(from)) continue;
+    const to = join(mcpNm, dep);
+    mkdirSync(dirname(to), { recursive: true });
+    cpSync(from, to, { recursive: true });
+  }
+  console.log('[sync-standalone-assets] copied packages/myfng-mcp/dist + zod/supabase');
 }
 
 for (const envfile of ['.env', '.env.local', '.env.production', '.env.production.local']) {
