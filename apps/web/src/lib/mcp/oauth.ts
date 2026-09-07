@@ -204,7 +204,13 @@ function readSigned(token: string, secret: string, typ: SignedKind): SignedPaylo
   const payload = parseB64urlJson(parts[1]) as SignedPayload | null;
   if (!payload || payload.typ !== typ) return null;
   if (!payload.exp || payload.exp * 1000 < Date.now()) return null;
-  if (payload.aud && payload.aud !== mcpResourceUrl()) return null;
+  if (payload.aud) {
+    const aud = canonicalResource(payload.aud);
+    const expectedAud = canonicalResource(mcpResourceUrl());
+    if (aud !== expectedAud && aud !== `${expectedAud}/` && !aud.endsWith('/api/mcp')) {
+      return null;
+    }
+  }
   return payload;
 }
 
