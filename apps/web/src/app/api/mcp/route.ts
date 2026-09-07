@@ -16,9 +16,8 @@ async function handleMcp(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: mcpCorsHeaders() });
   }
 
-  // Claude opens a GET SSE after OAuth. A 401 here looks like a drop, so keep
-  // the stream alive. POST still requires a token.
-  if (req.method === 'GET') {
+  // Claude opens GET SSE after OAuth. 401/closed stream looks like a drop.
+  if (req.method === 'GET' || req.method === 'DELETE') {
     return handleAuthenticatedMcp(req);
   }
 

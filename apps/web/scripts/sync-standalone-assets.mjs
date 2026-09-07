@@ -36,6 +36,17 @@ if (existsSync(publicSrc)) {
   console.log('[sync-standalone-assets] copied public');
 }
 
+const mcpDist = join(webRoot, '../../packages/myfng-mcp/dist');
+if (existsSync(join(mcpDist, 'createServer.js'))) {
+  const standaloneMcp = join(destRoot, 'packages/myfng-mcp/dist');
+  mkdirSync(standaloneMcp, { recursive: true });
+  cpSync(mcpDist, standaloneMcp, { recursive: true });
+  const tracedMcp = join(destRoot, '../../packages/myfng-mcp/dist');
+  mkdirSync(tracedMcp, { recursive: true });
+  cpSync(mcpDist, tracedMcp, { recursive: true });
+  console.log('[sync-standalone-assets] copied packages/myfng-mcp/dist');
+}
+
 for (const envfile of ['.env', '.env.local', '.env.production', '.env.production.local']) {
   const from = join(webRoot, envfile);
   if (existsSync(from)) {

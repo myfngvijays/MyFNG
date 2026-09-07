@@ -66,7 +66,10 @@ export async function handleAuthenticatedMcp(req: Request): Promise<Response> {
   });
   await server.connect(transport);
   try {
-    return withCors(await transport.handleRequest(withMcpAccept(req), { parsedBody }));
+    const res = await transport.handleRequest(withMcpAccept(req), { parsedBody });
+    const body = await res.text();
+    const headers = new Headers(res.headers);
+    return withCors(new Response(body, { status: res.status, statusText: res.statusText, headers }));
   } finally {
     void transport.close().catch(() => undefined);
   }
