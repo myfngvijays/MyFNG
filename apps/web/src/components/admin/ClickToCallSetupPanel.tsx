@@ -828,8 +828,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
         </h2>
         <p className="text-sm text-slate-500 mb-3">
           {section === 'leave'
-            ? 'Emergency ya planned leave pe nayi lead is person ko nahi — cover telecaller auto-assign.'
-            : 'Weekly off pe nayi lead is person ko nahi jayegi — cover telecaller auto-assign. Fresh auto-dial alag on/off. Manual Call kabhi block nahi.'}
+            ? 'Emergency ya planned leave pe nayi lead is person ko nahi — cover telecaller auto-assign. 7:00 PM IST ke baad usi din ki leads unko wapas assign hongi.'
+            : 'Weekly off pe 7:00 PM IST tak nayi lead is person ko nahi jayegi — cover telecaller auto-assign. 7:00 PM ke baad off-day leads unko milengi. Fresh auto-dial alag on/off. Manual Call kabhi block nahi.'}
         </p>
 
         {section === 'days' ? (
@@ -1122,7 +1122,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
                       <p className="text-[11px] text-slate-600 mt-0.5">
                         Leave from–to wahi planned leave hai jo pehle se bol ke lete hain.
                         Emergency pe bhi date zaroori — 1 din default, extra din Leave to se.
-                        Past date select nahi hogi.
+                        Past date select nahi hogi. 7:00 PM IST ke baad usi din ki nayi leads unko milengi.
                       </p>
                       <label className="mt-2 inline-flex items-start gap-2 text-sm text-slate-800">
                         <input

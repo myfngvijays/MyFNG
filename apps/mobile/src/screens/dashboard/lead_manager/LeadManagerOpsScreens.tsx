@@ -730,7 +730,7 @@ export function LeadManagerTeamScreen() {
   return (
     <OpsShell title="Team">
       <Text style={[styles.hint, { paddingTop: 8 }]}>
-        Har telecaller ka from-number, shift, weekly off, aur leave alag set hota hai.
+        Har telecaller ka from-number, shift, weekly off, aur leave alag set hota hai. Weekly off / leave pe 7:00 PM IST tak cover ko lead; 7 PM ke baad unko wapas.
       </Text>
       <View style={[styles.phoneRow, { paddingHorizontal: SPACING.md, flexWrap: 'wrap', gap: 6 }]}>
         {([
@@ -850,7 +850,7 @@ export function LeadManagerTeamScreen() {
               {teamTab === 'leave' ? (
               <>
               <Text style={[styles.meta, { marginTop: 8 }]}>
-                Leave from–to = planned (bol ke). Emergency pe bhi date zaroori.
+                Leave from–to = planned (bol ke). Emergency pe bhi date zaroori. 7:00 PM IST ke baad usi din ki leads unko wapas.
               </Text>
               <View style={[styles.phoneRow, { marginTop: 8, justifyContent: 'space-between' }]}>
                 <Text style={styles.meta}>On leave today (emergency)</Text>

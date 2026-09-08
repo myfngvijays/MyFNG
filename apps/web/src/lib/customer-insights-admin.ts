@@ -242,6 +242,26 @@ export function phoneChatbotFilter(phone: string | null | undefined) {
 const CUSTOMER_BOOKING_LEAD_FIELDS =
   'customer_phone, coupon_code, discount_amount, deleted_at, lead_source, created_from, service_type, is_incomplete, meta, coupon_meta';
 
+function isConfirmedServiceBooking(lead: {
+  is_incomplete?: boolean | null;
+  created_from?: string | null;
+  meta?: unknown;
+  coupon_meta?: unknown;
+} | null | undefined): boolean {
+  if (!lead || lead.is_incomplete === true) return false;
+  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+  const couponMeta =
+    lead.coupon_meta && typeof lead.coupon_meta === 'object'
+      ? (lead.coupon_meta as Record<string, unknown>)
+      : {};
+  const createdFrom = String(lead.created_from || '').trim().toUpperCase();
+  if (lead.is_incomplete === false) return true;
+  if (Boolean(meta.wallet_applied) || Number(meta.wallet_deduction || 0) > 0) return true;
+  if (String(couponMeta.last_call_result || '').toUpperCase() === 'BOOKING_CONFIRMED') return true;
+  if (createdFrom === 'MOBILE_APP' || createdFrom === 'MOBILE_PUBLIC' || createdFrom === 'WEB') return true;
+  return false;
+}
+
 function isEnquiryLeadNotBooking(lead: {
   lead_source?: string | null;
   created_from?: string | null;
@@ -251,6 +271,9 @@ function isEnquiryLeadNotBooking(lead: {
   coupon_meta?: unknown;
 } | null | undefined): boolean {
   if (!lead) return false;
+  // App/web booking can merge onto an old WhatsApp/website enquiry. Once it's a
+  // confirmed booking (wallet used, OTP completed, is_incomplete=false), show it.
+  if (isConfirmedServiceBooking(lead)) return false;
   if (isWhatsAppEnquiryLead(lead)) return true;
   if (isIncomingSarvLeadSource(String(lead.lead_source || ''))) return true;
 

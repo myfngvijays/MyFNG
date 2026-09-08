@@ -11,6 +11,8 @@ export const AUTO_DIAL_TZ = 'Asia/Kolkata';
 export const DEFAULT_AUTO_DIAL_DAYS = [1, 2, 3, 4, 5, 6];
 export const DEFAULT_AUTO_DIAL_START = '10:00';
 export const DEFAULT_AUTO_DIAL_END = '19:00';
+/** Weekly off / leave blocks assignment until this IST time; after this, the person can take new leads again. */
+export const ASSIGNMENT_RESUME_AFTER_OFF_HHMM = '19:00';
 
 export type TelecallerHourOverride = {
   start: string;
@@ -364,7 +366,13 @@ export type AssignmentAvailability = {
   today_ymd: string;
 };
 
-/** Lead assignment (not auto-dial): skip weekly off + leave. Hours / autodial toggle ignored. */
+export function isAfterAssignmentResume(now: Date = new Date()): boolean {
+  const resume = hhmmToMinutes(ASSIGNMENT_RESUME_AFTER_OFF_HHMM);
+  if (resume == null) return false;
+  return getIstClock(now).minutes >= resume;
+}
+
+/** Lead assignment (not auto-dial): skip weekly off + leave until 7:00 PM IST. Hours / autodial toggle ignored. */
 export function getAssignmentAvailability(
   cfg: ClickToCallConfig,
   telecallerId?: string | null,
@@ -375,8 +383,9 @@ export function getAssignmentAvailability(
   const clock = getIstClock(now);
   const today_ymd = getIstYmd(now);
   const custom = tid ? cfg.telecaller_hours?.[tid] : null;
+  const resumeAfterOff = isAfterAssignmentResume(now);
 
-  if (tid && isOnLeave(custom || window, today_ymd)) {
+  if (tid && isOnLeave(custom || window, today_ymd) && !resumeAfterOff) {
     return {
       available: false,
       reason: 'on_leave',
@@ -386,7 +395,7 @@ export function getAssignmentAvailability(
     };
   }
 
-  if (tid && !window.days.includes(clock.weekday)) {
+  if (tid && !window.days.includes(clock.weekday) && !resumeAfterOff) {
     return {
       available: false,
       reason: 'off_day',

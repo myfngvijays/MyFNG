@@ -198,6 +198,7 @@ export const SA_NAV: SaNavRow[] = [
       { id: 'audit', label: 'Audit Logs', icon: 'document-text-outline', target: 'AuditLogs', kind: 'stack' },
       { id: 'security', label: 'Security Events', icon: 'alert-circle-outline', target: 'SecurityEvents', kind: 'stack' },
       { id: 'config', label: 'Config Changes', icon: 'time-outline', target: 'ConfigChanges', kind: 'stack' },
+      { id: 'data_rights', label: 'Data Rights', icon: 'scale-outline', target: 'SuperAdminDataRights', kind: 'stack' },
       { id: 'compliance', label: 'Compliance Reports', icon: 'checkbox-outline', target: 'ComplianceReports', kind: 'stack' },
       { id: 'finance', label: 'Finance', icon: 'cash-outline', target: 'FinancePayout', kind: 'stack' },
       { id: 'brands', label: 'Car Brand Images', icon: 'car-outline', target: 'Brands', kind: 'stack' },

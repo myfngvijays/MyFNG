@@ -71,7 +71,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Sirf gateway URL hit hota hai (?from=&to=&did=&provider=). Call button aur Fresh auto-dial dono same URL.\n\nDID + from-number + calling hours yahan set karo. Auto-dial Fresh ON = naya lead assign pe call, lekin sirf assigned IST hours mein.',
     tips: [
       'Assigned DID exclusive hai — Ajit / Mahendra ke numbers koi aur use nahi kar sakta.',
-      'Working day / leave pe lead cover telecaller ko auto-assign. Fresh auto-dial alag on/off. On-floor login se dikhta hai.',
+      'Working day / leave pe 7:00 PM IST tak lead cover telecaller ko auto-assign; 7 PM ke baad off/leave person ko wapas. Fresh auto-dial alag on/off. On-floor login se dikhta hai.',
       'Manual Call button hours ke bahar bhi chalega — sirf auto-dial rukta hai.',
     ],
   },
@@ -131,6 +131,15 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Claude cloud localhost / /Users/... path use nahi kar sakta.',
       'Claude.ai OAuth use karta hai. Bearer token Cursor / Claude Code ke liye optional hai.',
       'Sirf SELECT — koi write tool nahi.',
+    ],
+  },
+  '/dashboard/super_admin/data-rights': {
+    title: 'Data Rights',
+    body:
+      'Website /data-rights form se aayi DPDP requests yahan padti hain — access, correct, erase, withdraw, nominate, grievance.\n\nStatus PENDING → In progress → Done / Rejected. Officer notes save ho sakte hain.',
+    tips: [
+      'Public form email officer ko automatically nahi bhejta — yeh inbox dekho.',
+      'Erase / withdraw pe legally 30 din ke andar respond karna hai.',
     ],
   },
   '/dashboard/super_admin/meta-ads-mcp': {

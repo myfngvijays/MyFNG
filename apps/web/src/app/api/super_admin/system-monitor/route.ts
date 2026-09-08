@@ -3309,7 +3309,7 @@ async function checkDpdpCompliance(): Promise<HealthCheck> {
         message: consents.error?.message || rights.error?.message || 'Tables missing',
         reason: 'Run database/356_dpdp_consent_and_rights.sql so consent and data-rights requests persist.',
         lastChecked: new Date().toISOString(),
-        quickFix: { label: 'Open Privacy Notice', action: 'internal-link', actionPayload: { href: '/privacy-notice' } },
+        quickFix: { label: 'Open Data Rights inbox', action: 'internal-link', actionPayload: { href: '/dashboard/super_admin/data-rights' } },
       };
     }
     return {
@@ -3321,6 +3321,7 @@ async function checkDpdpCompliance(): Promise<HealthCheck> {
       reason: 'dpdp_consent_records and data_rights_requests are available.',
       lastChecked: new Date().toISOString(),
       details: { consents: consents.count || 0, rights: rights.count || 0 },
+      quickFix: { label: 'Open Data Rights inbox', action: 'internal-link', actionPayload: { href: '/dashboard/super_admin/data-rights' } },
     };
   } catch (e: any) {
     return {

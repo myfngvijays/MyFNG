@@ -68,6 +68,7 @@ import {
   BookOpen,
   Mail,
   Hash,
+  Scale,
 } from 'lucide-react';
 
 type NavItem = {
@@ -729,6 +730,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/config-changes',
     icon: History,
     description: 'System Configuration History'
+  },
+  {
+    name: 'Data Rights',
+    href: '/dashboard/super_admin/data-rights',
+    icon: Scale,
+    description: 'DPDP access, erase, withdraw & grievances',
   },
   {
     name: 'Compliance Reports',
