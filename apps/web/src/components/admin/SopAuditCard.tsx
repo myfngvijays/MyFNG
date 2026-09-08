@@ -3,9 +3,15 @@
 import { useState } from 'react';
 import type { CallIqSopAudit } from '@/lib/telecaller/callIqSop';
 import { MYFNG_USPS, toCrmSuggestedStatus } from '@/lib/telecaller/callIqSop';
+import { collectCallIqRedFlags } from '@/lib/telecaller/callIqRedFlags';
 
-function tone(ok?: string) {
+function tone(ok?: string, invertYes = false) {
   const u = String(ok || '');
+  if (invertYes) {
+    if (u === 'Yes') return 'bg-rose-100 text-rose-800';
+    if (u === 'No') return 'bg-emerald-100 text-emerald-800';
+    return 'bg-slate-100 text-slate-700';
+  }
   if (u === 'Yes' || u === 'Strong' || u === 'Clear Ask' || u === 'High' || u === 'Closing' || u === 'Listened Well') {
     return 'bg-emerald-100 text-emerald-800';
   }
@@ -15,10 +21,10 @@ function tone(ok?: string) {
   return 'bg-slate-100 text-slate-700';
 }
 
-function Pill({ value }: { value?: string | null }) {
+function Pill({ value, invertYes = false }: { value?: string | null; invertYes?: boolean }) {
   const v = value || '—';
   return (
-    <span className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[11px] font-semibold leading-none ${tone(v)}`}>
+    <span className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[11px] font-semibold leading-none ${tone(v, invertYes)}`}>
       {v}
     </span>
   );
@@ -34,16 +40,18 @@ function Row({
   label,
   value,
   text,
+  invertYes = false,
 }: {
   label: string;
   value?: string | null;
   text?: string | null;
+  invertYes?: boolean;
 }) {
   return (
     <div className="grid grid-cols-[112px_1fr] items-center gap-2 border-b border-slate-100 py-1 last:border-0">
       <span className="text-[11px] font-medium text-slate-500">{label}</span>
       <div className="min-w-0 flex items-center gap-1.5">
-        {value != null ? <Pill value={value} /> : null}
+        {value != null ? <Pill value={value} invertYes={invertYes} /> : null}
         {text ? (
           <span className="truncate text-[12px] text-slate-800" title={text}>
             {clip(text, 80)}
@@ -64,9 +72,24 @@ const TABS = [
 function FieldGrid({ sop }: { sop: CallIqSopAudit }) {
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('sop');
   const hit = new Set(sop.usps_highlighted || []);
+  const flags = collectCallIqRedFlags({ sop_audit: sop });
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white">
+    <div className={`rounded-lg border bg-white ${flags.length ? 'border-rose-300' : 'border-slate-200'}`}>
+      {flags.length ? (
+        <div className="flex flex-wrap gap-1 border-b border-rose-100 bg-rose-50 px-2 py-1.5">
+          {flags.map((f) => (
+            <span
+              key={f.id}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                f.severity === 'high' ? 'bg-rose-600 text-white' : 'bg-rose-100 text-rose-800'
+              }`}
+            >
+              {f.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="flex items-center gap-1 border-b border-slate-100 px-2 py-1.5">
         {TABS.map((t) => (
           <button
@@ -110,6 +133,16 @@ function FieldGrid({ sop }: { sop: CallIqSopAudit }) {
             <Row
               label="Suggested"
               text={`${toCrmSuggestedStatus(sop.suggested_lead_status)}${sop.lead_status_updated ? ` · CRM ${sop.lead_status_updated}` : ''}${sop.lost_reason ? ` · ${sop.lost_reason}` : ''}`}
+            />
+            <p className="mt-2 mb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              Workshop compliance
+            </p>
+            <Row label="Prior workshop" text={sop.original_workshop_name || 'Not named'} />
+            <Row
+              label="Claimed ours"
+              value={sop.claimed_own_workshops || 'Unknown'}
+              text={sop.own_workshop_claim_quote || undefined}
+              invertYes
             />
           </div>
         </div>

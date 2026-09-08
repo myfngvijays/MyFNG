@@ -16,6 +16,7 @@ import {
 } from '@/lib/telecaller/smartfloCdr';
 import { getClickToCallConfig, ownerOfDid, poolDidPhoneSet } from '@/lib/telecaller/clickToCallConfig';
 import { normalizePhone10 } from '@/lib/telecaller/initiateClickToCall';
+import { collectCallIqRedFlags } from '@/lib/telecaller/callIqRedFlags';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -205,6 +206,7 @@ export async function GET(request: NextRequest) {
 
       if (durationBucket === 'CONNECTED') {
         next = next.gt('call_duration', 0);
+        next = next.not('recording_url', 'is', null);
       } else if (durationBucket === 'ZERO') {
         next = next.or('call_duration.is.null,call_duration.eq.0');
       } else if (durationBucket === 'SHORT') {
@@ -299,6 +301,10 @@ export async function GET(request: NextRequest) {
           return false;
         }
         if (!r.lead_id) return false;
+        if (durationBucket === 'CONNECTED') {
+          if (!(Number(r.call_duration || 0) > 0)) return false;
+          if (!String(r.recording_url || '').trim()) return false;
+        }
         if (assignedDids.size > 0) {
           const did10 = normalizePhone10(r.did_number);
           if (did10 && !assignedDids.has(did10)) return false;
@@ -483,9 +489,40 @@ export async function GET(request: NextRequest) {
       sync = { can_sync: canSync, overdue: false };
     }
 
+    const analysesById: Record<string, any> = {};
+    const logIdsForAnalysis = Array.from(
+      new Set(mapped.map((r) => String(r.call_log_id || '').trim()).filter(Boolean)),
+    );
+    if (logIdsForAnalysis.length) {
+      const { data: analyses } = await db
+        .from('telecaller_call_analyses')
+        .select(
+          'call_log_id, quality_score, quality_grade, quality_flags, sentiment, summary, conversation_tags, customer_problem, agent_solution, solution_adequacy, coaching_tips, query_resolutions, overall_resolution, queries_resolved, queries_total, queries_unresolved, unresolved_gaps, engine, sop_audit',
+        )
+        .in('call_log_id', logIdsForAnalysis);
+      for (const a of Array.isArray(analyses) ? analyses : []) {
+        const key = String(a.call_log_id || '').trim();
+        if (key) analysesById[key] = { ...a, red_flags: collectCallIqRedFlags(a) };
+      }
+      const missing = logIdsForAnalysis.filter((id) => {
+        const hit = analysesById[id];
+        const engine = String(hit?.engine || hit?.sop_audit?.engine || '');
+        return !engine.includes('openai');
+      });
+      if (missing.length) {
+        const { enqueueCallIqOnRecordingCompleted } = await import(
+          '@/lib/telecaller/callIqWorkflow'
+        );
+        for (const id of missing.slice(0, 4)) {
+          enqueueCallIqOnRecordingCompleted(id, true);
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       rows: mapped,
+      analyses_by_id: analysesById,
       page,
       limit,
       total,

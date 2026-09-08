@@ -1,6 +1,6 @@
 /**
- * TeleCRM-style Call IQ flowchart:
- * On call recording completed → Check If Lead (status) → duration >= 90s → Call Audit SOP
+ * Auto Call IQ: every connected recording is audited (Deep AI when possible).
+ * Lead-status / 90s flowchart gates no longer skip a real conversation.
  */
 
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
@@ -24,59 +24,6 @@ export {
   DEFAULT_CALL_IQ_LEAD_STATUSES,
 } from '@/lib/telecaller/salesPlaybookDefaults';
 export type { CallIqWorkflowConfig, CallIqNamedWorkflow } from '@/lib/telecaller/salesPlaybookDefaults';
-
-function normStatus(s?: string | null) {
-  return String(s || '')
-    .toUpperCase()
-    .replace(/[_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-const STATUS_ALIASES: Record<string, string[]> = {
-  FRESH: ['FRESH', 'NEW', 'INCOMPLETE'],
-  INTERESTED: ['INTERESTED'],
-  'HE WILL VISIT': ['HE WILL VISIT', 'WILL VISIT', 'WILL_VISIT'],
-  'FOLLOW-UP': ['FOLLOW-UP', 'FOLLOW UP', 'CALLBACK'],
-  'BOOKING CONFIRMED': ['BOOKING CONFIRMED', 'VALIDATED'],
-  'IN SERVICE': ['IN SERVICE', 'IN_PROGRESS'],
-  'SERVICE DONE': ['SERVICE DONE', 'COMPLETED'],
-  LOST: ['LOST', 'REJECTED'],
-  RINGING: ['RINGING', 'RINGING / NO ANSWER', 'NO ANSWER'],
-};
-
-function expandAllowed(statuses: string[]) {
-  const out = new Set<string>();
-  for (const raw of statuses) {
-    const n = normStatus(raw);
-    out.add(n);
-    for (const [key, aliases] of Object.entries(STATUS_ALIASES)) {
-      if (n === key || aliases.includes(n) || n.includes(key) || key.includes(n)) {
-        aliases.forEach((a) => out.add(a));
-        out.add(key);
-      }
-    }
-  }
-  return out;
-}
-
-function leadMatchesWorkflow(lead: any, cfg: CallIqWorkflowConfig): boolean {
-  if (!cfg.lead_statuses.length) return true;
-  const allowed = expandAllowed(cfg.lead_statuses);
-  const candidates = [
-    lead?.status,
-    lead?.coupon_meta?.last_call_result,
-    lead?.coupon_meta?.last_call_label,
-  ].map(normStatus).filter(Boolean);
-  if (!candidates.length) return allowed.has('FRESH') || allowed.has('NEW');
-  return candidates.some((c) => {
-    if (allowed.has(c)) return true;
-    for (const a of allowed) {
-      if (c.includes(a) || a.includes(c)) return true;
-    }
-    return false;
-  });
-}
 
 async function persistAnalysis(db: any, analysis: CallAnalysisResult, trigger: string) {
   const payload = {
@@ -144,9 +91,10 @@ export async function runCallIqOnRecordingCompleted(
 
   const playbook = opts?.playbook || (await loadSalesPlaybook(db));
   const store = mergeCallIqWorkflow((playbook as any).call_iq_workflow);
-  const enabledFlows = listCallIqWorkflows(store).filter((w) => w.enabled);
-  if (!playbook.call_iq_enabled || !store.enabled || !enabledFlows.length) {
-    return { ran: false, skipped: 'disabled', call_log_id: id };
+  const enabledFlows = listCallIqWorkflows(store);
+  const cfg = enabledFlows.find((w) => w.enabled) || enabledFlows[0];
+  if (!cfg) {
+    return { ran: false, skipped: 'no_workflow', call_log_id: id };
   }
 
   const { data: log, error } = await db
@@ -169,19 +117,15 @@ export async function runCallIqOnRecordingCompleted(
   if (!recording) return { ran: false, skipped: 'no_recording', call_log_id: id };
 
   const duration = Number(log.call_duration) || 0;
-  const lead = Array.isArray(log.lead) ? log.lead[0] : log.lead;
-  if (!lead?.id) return { ran: false, skipped: 'not_a_lead', call_log_id: id };
+  const status = String(log.call_status || '').toUpperCase();
+  const answered =
+    duration > 0 ||
+    status === 'ANSWERED' ||
+    status === 'COMPLETED' ||
+    status === 'CONNECTED';
+  if (!answered) return { ran: false, skipped: 'not_connected', call_log_id: id };
 
-  const cfg: CallIqNamedWorkflow | undefined = enabledFlows.find(
-    (w) => duration >= w.min_duration_sec && leadMatchesWorkflow(lead, w),
-  );
-  if (!cfg) {
-    if (!enabledFlows.some((w) => leadMatchesWorkflow(lead, w))) {
-      return { ran: false, skipped: 'lead_status_filtered', call_log_id: id };
-    }
-    const need = Math.min(...enabledFlows.map((w) => w.min_duration_sec));
-    return { ran: false, skipped: `duration_${duration}_lt_${need}`, call_log_id: id };
-  }
+  const lead = Array.isArray(log.lead) ? log.lead[0] : log.lead;
 
   let existingTranscript: string | null = null;
   const { data: existing } = await db
@@ -218,7 +162,11 @@ export async function runCallIqOnRecordingCompleted(
     city: lead?.city || null,
   };
 
-  const allowDeep = opts?.allowDeep !== false && cfg.use_deep_ai && Boolean(recording);
+  const allowDeep =
+    opts?.allowDeep !== false &&
+    cfg.use_deep_ai !== false &&
+    Boolean(recording) &&
+    duration >= 15;
   let hydrated = input;
   if (allowDeep) {
     const attached = await attachTranscriptToSopInput(input, recording, existingTranscript);
@@ -247,34 +195,47 @@ export function enqueueCallIqOnRecordingCompleted(callLogId: string, allowDeep =
   });
 }
 
-/** Backstop: recordings that passed filters but never got SOP. */
-export async function sweepCallIqWorkflow(limit = 6): Promise<{ scanned: number; ran: number; skipped: number }> {
+/** Backstop: connected recordings that never got Deep SOP. */
+export async function sweepCallIqWorkflow(limit = 8): Promise<{ scanned: number; ran: number; skipped: number }> {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { scanned: 0, ran: 0, skipped: 0 };
   const playbook = await loadSalesPlaybook(supabaseAdmin);
-  const store = mergeCallIqWorkflow((playbook as any).call_iq_workflow);
-  const enabledFlows = listCallIqWorkflows(store).filter((w) => w.enabled);
-  if (!playbook.call_iq_enabled || !store.enabled || !enabledFlows.length) {
-    return { scanned: 0, ran: 0, skipped: 0 };
-  }
-  const minDur = Math.min(...enabledFlows.map((w) => w.min_duration_sec));
 
   const { data: logs } = await supabaseAdmin
     .from('telecaller_call_logs')
-    .select('id, call_duration, call_recording_url, lead_id')
+    .select('id, call_duration, call_recording_url')
     .not('call_recording_url', 'is', null)
     .neq('call_recording_url', '')
-    .gte('call_duration', minDur)
-    .not('lead_id', 'is', null)
+    .gte('call_duration', 15)
     .order('created_at', { ascending: false })
-    .limit(40);
+    .limit(80);
 
   const rows = Array.isArray(logs) ? logs : [];
+  const ids = rows.map((r: any) => String(r.id)).filter(Boolean);
+  const done = new Set<string>();
+  if (ids.length) {
+    const { data: existing } = await supabaseAdmin
+      .from('telecaller_call_analyses')
+      .select('call_log_id, engine, sop_audit')
+      .in('call_log_id', ids);
+    for (const row of Array.isArray(existing) ? existing : []) {
+      const engine = String(row?.engine || row?.sop_audit?.engine || '');
+      if (engine.includes('openai_sop') || engine.includes('openai_deep')) {
+        done.add(String(row.call_log_id));
+      }
+    }
+  }
+
   let ran = 0;
   let skipped = 0;
   for (const row of rows) {
     if (ran >= limit) break;
-    const result = await runCallIqOnRecordingCompleted(String(row.id), {
+    const id = String(row.id);
+    if (done.has(id)) {
+      skipped += 1;
+      continue;
+    }
+    const result = await runCallIqOnRecordingCompleted(id, {
       allowDeep: true,
       playbook,
     });

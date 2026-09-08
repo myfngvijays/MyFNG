@@ -86,10 +86,17 @@ export function LeadManagerRecordingsScreen() {
           preset: datePreset || 'last_7_days',
           page: String(pageNum),
           limit: '30',
+          call_status: 'ANSWERED',
+          duration: 'CONNECTED',
         });
         if (appliedQ.trim()) params.set('q', appliedQ.trim());
         const data = await apiFetch<any>(`/api/super_admin/recordings?${params}`);
-        const next = Array.isArray(data?.rows) ? data.rows : Array.isArray(data?.data) ? data.data : [];
+        const raw = Array.isArray(data?.rows) ? data.rows : Array.isArray(data?.data) ? data.data : [];
+        const analyses = data?.analyses_by_id && typeof data.analyses_by_id === 'object' ? data.analyses_by_id : {};
+        const next = raw.map((row: any) => {
+          const hit = analyses[String(row.call_log_id || '')] || analyses[String(row.id || '')] || null;
+          return { ...row, analysis: hit };
+        });
         setRows((prev) => (replace ? next : [...prev, ...next]));
         setPage(Number(data?.page || pageNum) || pageNum);
         setTotalPages(Math.max(1, Number(data?.total_pages || 1) || 1));
@@ -146,7 +153,7 @@ export function LeadManagerRecordingsScreen() {
 
       {summary ? (
         <Text style={styles.metaLine}>
-          {summary.total ?? rows.length} calls
+          {summary.total ?? rows.length} talk recordings
           {summary.answered != null ? ` · ${summary.answered} answered` : ''}
           {' · Last 7 days'}
         </Text>
@@ -180,8 +187,15 @@ export function LeadManagerRecordingsScreen() {
           renderItem={({ item }) => {
             const id = String(item.id);
             const hasRec = Boolean(item.has_recording || item.call_recording_url);
+            const hit = item.analysis || {};
+            const flags: Array<{ id?: string; label?: string; severity?: string }> = Array.isArray(
+              hit.red_flags,
+            )
+              ? hit.red_flags
+              : [];
+            const hot = flags.some((f) => f.severity === 'high') || hit.sop_audit?.claimed_own_workshops === 'Yes';
             return (
-              <View style={styles.card}>
+              <View style={[styles.card, hot ? styles.cardHot : null]}>
                 <View style={styles.cardTop}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.cardTitle} numberOfLines={1}>
@@ -196,7 +210,13 @@ export function LeadManagerRecordingsScreen() {
                 </View>
                 <Text style={styles.statusLine}>
                   {String(item.call_status || item.outcome || '—').replace(/_/g, ' ')}
+                  {hit.quality_grade ? ` · ${hit.quality_grade} ${hit.quality_score ?? ''}` : ' · Auto…'}
                 </Text>
+                {flags.length ? (
+                  <Text style={styles.flagLine} numberOfLines={2}>
+                    {flags.map((f) => f.label).filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
                 {hasRec ? (
                   playingId === id ? (
                     <CallRecordingInlinePlayer callLogId={id} onClose={() => setPlayingId(null)} />
@@ -557,8 +577,12 @@ export function LeadManagerCallIntelligenceScreen() {
           ListEmptyComponent={<Text style={styles.empty}>No SOP audits in range</Text>}
           renderItem={({ item }) => {
             const sop = item.sop_audit || {};
+            const hot =
+              sop.claimed_own_workshops === 'Yes' ||
+              sop.professionalism === 'No' ||
+              (Number(sop.overall_score) > 0 && Number(sop.overall_score) < 55);
             return (
-              <View style={[styles.card, { paddingVertical: 8 }]}>
+              <View style={[styles.card, { paddingVertical: 8 }, hot ? styles.cardHot : null]}>
                 <Text style={styles.cardTitle} numberOfLines={1}>
                   {item.customer_name || item.phone_number || 'Call'}
                 </Text>
@@ -566,6 +590,26 @@ export function LeadManagerCallIntelligenceScreen() {
                   SOP {sop.overall_score ?? '—'} · {sop.suggested_lead_status || '—'} ·{' '}
                   {sop.customer_intent_level || '—'}
                 </Text>
+                {sop.original_workshop_name ? (
+                  <Text style={styles.cardSub} numberOfLines={1}>
+                    Prior WS: {sop.original_workshop_name}
+                  </Text>
+                ) : null}
+                {sop.claimed_own_workshops === 'Yes' ||
+                sop.professionalism === 'No' ||
+                (Number(sop.overall_score) > 0 && Number(sop.overall_score) < 55) ? (
+                  <Text style={styles.flagLine} numberOfLines={2}>
+                    {[
+                      sop.claimed_own_workshops === 'Yes' ? 'Claimed own workshops' : '',
+                      sop.professionalism === 'No' ? 'Unprofessional' : '',
+                      Number(sop.overall_score) > 0 && Number(sop.overall_score) < 55
+                        ? `SOP ${sop.overall_score}/100`
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                ) : null}
               </View>
             );
           }}
@@ -1212,6 +1256,16 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  cardHot: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#E11D48',
+  },
+  flagLine: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#BE123C',
   },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   cardTitle: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary, flexShrink: 1 },

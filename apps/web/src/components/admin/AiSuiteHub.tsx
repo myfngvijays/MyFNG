@@ -33,7 +33,7 @@ export default function AiSuiteHub({
       title: 'Workflow',
       badge: 'Auto',
       icon: GitBranch,
-      body: 'Recording complete → CRM lead status → duration ≥ 90s → Call Audit SOP. Status chips Lead Status page se aate hain.',
+      body: 'Connected recording auto-runs Deep AI SOP (transcript + red flags). No manual Analyze needed.',
       cta: 'Open workflow',
     },
     {
@@ -49,7 +49,7 @@ export default function AiSuiteHub({
       title: 'Recordings',
       badge: 'QA',
       icon: Activity,
-      body: 'Recording list se Analyze (free SOP) ya Deep AI (TeleCRM prompt + playbook). Audio auto-transcribe nahi.',
+      body: 'Recordings auto-transcribe and score. Red flags (own-workshop claim, no close, weak SOP) show in red.',
       cta: 'Open recordings',
     },
   ];

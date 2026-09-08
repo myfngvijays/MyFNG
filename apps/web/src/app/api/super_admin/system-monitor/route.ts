@@ -2278,7 +2278,7 @@ async function checkCallIntelligence(): Promise<HealthCheck> {
       status: 'healthy',
       responseTime: Date.now() - start,
       message: 'Call IQ + Lead IQ tables ready',
-      reason: `${typeof count === 'number' ? count : 0} call analyses. SOP + playbook + Lead IQ ready. Recording-complete workflow (duration ≥90s) auto-runs Call Audit SOP.`,
+      reason: `${typeof count === 'number' ? count : 0} call analyses. Connected recordings auto-run Deep AI SOP (cron + recording attach). Red flags persist on sop_audit.`,
       lastChecked: new Date().toISOString(),
       quickFix: {
         label: 'Open AI Suite',

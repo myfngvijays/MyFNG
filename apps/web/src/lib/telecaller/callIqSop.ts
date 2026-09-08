@@ -113,6 +113,14 @@ export type CallIqSopAudit = {
   client_overview: string | null;
   customer_intent_level: IntentLevel;
   decision_stage: DecisionStage;
+  /** Prior / authorized / local centre named on the call (not MyFNG). */
+  original_workshop_name: string | null;
+  /**
+   * Yes = FAIL — agent claimed MyFNG *owns* the workshops
+   * (“haan humare / apne workshop”). Correct script is partner / A-grade network.
+   */
+  claimed_own_workshops: YesNoUnknown;
+  own_workshop_claim_quote: string | null;
   overall_score: number;
   section_scores: {
     reception: number;
@@ -181,6 +189,58 @@ const FOMO_RE = /\b(weekend|slot.*(fill|full)|weekday|jaldi book|limited)\b/i;
 const TRUST_HANDLE_RE = /\b(warranty|photo|video|oem|oes|proof|transparent)\b/i;
 const VALUE_HANDLE_RE = /\b(value|warranty|pickup|oem|parts|quality|package)\b/i;
 const DISCOUNT_RE = /\b(discount|kam karo|sasta|offer de do)\b/i;
+
+const MYFNG_SELF_RE = /\b(my\s*fng|humare|apna|apne|partner|a-?grade|50\+|verified)\b/i;
+const PRIOR_WORKSHOP_BRAND_RE =
+  /\b((?:maruti|honda|hyundai|tata|mahindra|toyota|kia|skoda|volkswagen|vw)\s+(?:true\s*value|first\s*choice|authorized|authorised|service(?:\s+(?:center|centre))?)|first\s*choice|true\s*value|3m\s+car\s+care|bosch\s+car\s+service|carzspa)\b/i;
+const ASK_OWN_WORKSHOP_RE =
+  /(?:workshop|service\s*cent(?:er|re)|garage|वर्कशॉप).{0,32}(?:aapke|aap ka|apna|apne|tumhare|your(?:\s+own)?|owned|company|आपके|अपना|अपने)|(?:aapke|aap ka|apna|apne|tumhare|your(?:\s+own)?|owned|आपके|अपना|अपने).{0,32}(?:workshop|service\s*cent(?:er|re)|garage|वर्कशॉप)/i;
+const CLAIM_OWN_WORKSHOP_RE =
+  /(?:haan|yes|ji|हाँ|हां)\s*,?\s*(?:wo\s+)?(?:humare|apne|apna|our|हमारे|अपने|अपना)\s+(?:hi\s+)?(?:own\s+)?(?:workshop|वर्कशॉप)|(?:humare|apne|apna|हमारे|अपने)\s+(?:hi\s+)?(?:workshop|वर्कशॉप)\s+(?:hai|hain|he|है|हैं)|(?:our|company)\s+(?:own\s+)?workshop/i;
+const PARTNER_WORKSHOP_RE =
+  /\b(partner|network|verified|tie[\s-]?up|associate|a-?grade|franchise\s+nahi|owned\s+nahi|apne\s+nahi|पार्टनर)\b/i;
+
+function extractOriginalWorkshop(text: string): string | null {
+  const brand = text.match(PRIOR_WORKSHOP_BRAND_RE);
+  if (brand) {
+    const name = clip((brand[1] || brand[0]).replace(/[.,;:]+$/, '').trim(), 60);
+    if (name && !MYFNG_SELF_RE.test(name)) return name;
+  }
+  const patterns = [
+    /(?:pehle|pehle se|normally|usually|regular(?:ly)?|authorized|authorised|local)\s+(?:workshop|garage|service\s*(?:center|centre)|mechanic)?[:\s]*(?:pe|par|mein|me|at|the)?\s*([A-Za-z][A-Za-z0-9 .&'-]{1,36}?)(?=\s+(?:pe|par|mein|me|at|se|ka|ki|ke|karwate|karwata|jaata|jata|service|last|hai|hain)\b|[.,;]|$)/i,
+    /(?:workshop|garage|service\s*(?:center|centre))\s+(?:ka naam|name|called)?[:\s]+([A-Za-z][A-Za-z0-9 .&'-]{1,36}?)(?=\s+(?:pe|par|hai|hain)\b|[.,;]|$)/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (!m) continue;
+    const name = clip((m[1] || m[0]).replace(/[.,;:]+$/, '').trim(), 60);
+    if (name && !MYFNG_SELF_RE.test(name)) return name;
+  }
+  return null;
+}
+
+function detectOwnWorkshopClaim(text: string): {
+  claimed: YesNoUnknown;
+  quote: string | null;
+} {
+  const asked = ASK_OWN_WORKSHOP_RE.test(text);
+  const claimMatch = text.match(CLAIM_OWN_WORKSHOP_RE);
+  const partner = PARTNER_WORKSHOP_RE.test(text);
+  if (claimMatch) {
+    const idx = claimMatch.index ?? 0;
+    const win = text.slice(Math.max(0, idx - 36), idx + claimMatch[0].length + 48);
+    if (!PARTNER_WORKSHOP_RE.test(win)) {
+      return { claimed: 'Yes', quote: clip(win.replace(/\s+/g, ' '), 140) };
+    }
+  }
+  if (asked && partner) {
+    return { claimed: 'No', quote: 'Correctly said partner / network workshops' };
+  }
+  if (asked) {
+    return { claimed: 'Unknown', quote: 'Customer asked if workshops are ours — answer unclear' };
+  }
+  return { claimed: 'Unknown', quote: null };
+}
 
 const USP_PATTERNS: Array<{ label: (typeof MYFNG_USPS)[number]; re: RegExp }> = [
   { label: 'Free pickup & drop', re: /\b(pickup|pick up|pick-up|drop)\b/i },
@@ -266,15 +326,24 @@ export function analyzeSopFree(input: AnalyzeSopInput): CallIqSopAudit {
       : 'Low';
   const decision = decisionFrom(text, closing, intent);
 
+  const originalWorkshop = extractOriginalWorkshop(text);
+  const ownClaim = detectOwnWorkshopClaim(text);
+
   const qualYes = [askedLocation, askedCar, askedLast, askedUrg, regBeforePrice, svcConfirmed].filter((x) => x === 'Yes').length;
   const reception = input.lead_source ? 10 : empty ? 4 : 2;
   const qualification = Math.round((qualYes / 6) * 25);
-  const pitch = Math.min(20, (intro ? 6 : 0) + uspsHighlighted.length * 2);
+  let pitch = Math.min(20, (intro ? 6 : 0) + uspsHighlighted.length * 2);
   const objectionsScore =
     objQuality === 'Strong' ? 15 : objQuality === 'Average' ? 10 : objQuality === 'Weak' ? 4 : answered ? 10 : 5;
   const closingScore = closing === 'Clear Ask' ? 15 : closing === 'Weak Ask' ? 8 : answered ? 3 : 6;
-  const soft = answered && notes.length >= 20 ? 8 : answered ? 5 : 4;
+  let soft = answered && notes.length >= 20 ? 8 : answered ? 5 : 4;
   const outcome = suggested === 'Unknown' ? 2 : 5;
+  let professionalism: YesNoUnknown = answered ? 'Yes' : 'Unknown';
+  if (ownClaim.claimed === 'Yes') {
+    pitch = Math.max(0, pitch - 8);
+    soft = Math.max(0, soft - 3);
+    professionalism = 'No';
+  }
   const overall = Math.max(0, Math.min(100, reception + qualification + pitch + objectionsScore + closingScore + soft + outcome));
 
   const improvements: string[] = [];
@@ -286,6 +355,11 @@ export function analyzeSopFree(input: AnalyzeSopInput): CallIqSopAudit {
   if (uspsMissed.length >= 4) improvements.push('Pitch more USPs (pickup, photos, warranty, OEM/OES)');
   if (closing === 'No Ask' && answered) improvements.push('Ask for booking confirmation / hold a slot');
   if (pickupAsked !== 'Yes' && answered) improvements.push('Offer free pickup & drop');
+  if (ownClaim.claimed === 'Yes') {
+    improvements.push(
+      'Do not say “humare / apne workshop”. Say verified partner A-grade workshops — MyFNG does not own them.',
+    );
+  }
 
   const highlights: string[] = [];
   if (intro) highlights.push('MY FNG / workshop network introduced');
@@ -293,6 +367,8 @@ export function analyzeSopFree(input: AnalyzeSopInput): CallIqSopAudit {
   if (closing === 'Clear Ask') highlights.push('Clear booking ask');
   if (objQuality === 'Strong') highlights.push('Objection handled with value, not discount');
   if (regHit) highlights.push('Registration captured');
+  if (originalWorkshop) highlights.push(`Prior workshop: ${originalWorkshop}`);
+  if (ownClaim.claimed === 'No') highlights.push('Correctly said partner / network workshops');
 
   const pref: ServicePref = pickupAsked && !visitPref ? 'Pickup' : visitPref ? 'Workshop Visit' : 'Not Decided';
 
@@ -331,7 +407,10 @@ export function analyzeSopFree(input: AnalyzeSopInput): CallIqSopAudit {
     language_adaptability: /[\u0900-\u097F]|\b(haan|ji|theek|accha)\b/i.test(text)
       ? 'Yes Customers Language'
       : 'Yes Customers Language',
-    professionalism: answered ? 'Yes' : 'Unknown',
+    professionalism,
+    original_workshop_name: originalWorkshop,
+    claimed_own_workshops: ownClaim.claimed,
+    own_workshop_claim_quote: ownClaim.quote,
     lead_status_updated: clean(input.lead_status) || null,
     suggested_lead_status: suggested,
     lost_reason: suggested === 'Lost' ? clip(text, 120) : null,
@@ -398,6 +477,9 @@ function sopJsonSchemaHint() {
   "client_overview": "string",
   "customer_intent_level": "Low|Medium|High",
   "decision_stage": "Only Checking|Consideration|Closing",
+  "original_workshop_name": "string|null",
+  "claimed_own_workshops": "Yes|No|Unknown",
+  "own_workshop_claim_quote": "string|null",
   "overall_score": 0,
   "section_scores": { "reception": 0, "qualification": 0, "pitch": 0, "objections": 0, "closing": 0, "soft_skills": 0, "outcome": 0 },
   "positive_highlights": ["..."],
@@ -454,7 +536,9 @@ function normalizeSop(parsed: any, fallback: CallIqSopAudit): CallIqSopAudit {
     tone_and_confidence: pick('tone_and_confidence', ['Polite and Confident', 'Rushed', 'Unclear', 'Poor']) as ToneConfidence,
     listening_vs_talking: pick('listening_vs_talking', ['Listened Well', 'Interrupted Often', 'Unknown']) as ListeningVsTalking,
     language_adaptability: pick('language_adaptability', ['Yes Customers Language', 'No']) as LanguageAdapt,
-    professionalism: pick('professionalism', ynA) as YesNoUnknown,
+    professionalism: (parsed?.claimed_own_workshops === 'Yes' || fallback.claimed_own_workshops === 'Yes'
+      ? 'No'
+      : pick('professionalism', ynA)) as YesNoUnknown,
     lead_status_updated: parsed?.lead_status_updated != null ? String(parsed.lead_status_updated) : fallback.lead_status_updated,
     suggested_lead_status: toCrmSuggestedStatus(
       parsed?.suggested_lead_status ?? fallback.suggested_lead_status,
@@ -464,6 +548,18 @@ function normalizeSop(parsed: any, fallback: CallIqSopAudit): CallIqSopAudit {
     client_overview: parsed?.client_overview != null ? String(parsed.client_overview) : fallback.client_overview,
     customer_intent_level: pick('customer_intent_level', ['Low', 'Medium', 'High']) as IntentLevel,
     decision_stage: pick('decision_stage', ['Only Checking', 'Consideration', 'Closing']) as DecisionStage,
+    original_workshop_name:
+      parsed?.original_workshop_name != null && String(parsed.original_workshop_name).trim()
+        ? clip(String(parsed.original_workshop_name), 80)
+        : fallback.original_workshop_name,
+    claimed_own_workshops:
+      parsed?.claimed_own_workshops === 'Yes' || fallback.claimed_own_workshops === 'Yes'
+        ? 'Yes'
+        : (pick('claimed_own_workshops', ynA) as YesNoUnknown),
+    own_workshop_claim_quote:
+      parsed?.own_workshop_claim_quote != null && String(parsed.own_workshop_claim_quote).trim()
+        ? clip(String(parsed.own_workshop_claim_quote), 160)
+        : fallback.own_workshop_claim_quote,
     overall_score: score,
     section_scores: {
       reception: Number(ss.reception) || fallback.section_scores.reception,
@@ -477,9 +573,19 @@ function normalizeSop(parsed: any, fallback: CallIqSopAudit): CallIqSopAudit {
     positive_highlights: Array.isArray(parsed?.positive_highlights)
       ? parsed.positive_highlights.map(String).slice(0, 8)
       : fallback.positive_highlights,
-    improvement_suggestions: Array.isArray(parsed?.improvement_suggestions)
-      ? parsed.improvement_suggestions.map(String).slice(0, 8)
-      : fallback.improvement_suggestions,
+    improvement_suggestions: (() => {
+      const base = Array.isArray(parsed?.improvement_suggestions)
+        ? parsed.improvement_suggestions.map(String)
+        : fallback.improvement_suggestions;
+      const claimedYes =
+        parsed?.claimed_own_workshops === 'Yes' || fallback.claimed_own_workshops === 'Yes';
+      const tip =
+        'Do not say “humare / apne workshop”. Say verified partner A-grade workshops — MyFNG does not own them.';
+      if (claimedYes && !base.some((s) => /humare|partner workshop/i.test(s))) {
+        return [tip, ...base].slice(0, 8);
+      }
+      return base.slice(0, 8);
+    })(),
     engine: 'openai_sop_v1',
     audit_source: fallback.audit_source,
     call_transcript: fallback.call_transcript,
@@ -536,6 +642,10 @@ Rules:
 - If recording_transcript is present, that IS the call. Score SOP from the transcript (listen via text).
 - Do NOT invent facts not present in the transcript / notes / lead fields.
 - Agent notes are secondary. Prefer the transcript when they conflict.
+- MY FNG workshops are PARTNER workshops, not company-owned. If the customer asks “workshop aapke hai / aapke workshop / your workshop?”, the correct answer is verified partner / A-grade network — never “haan humare / apne / our own workshop”.
+- claimed_own_workshops = Yes ONLY if the agent claimed MyFNG owns the workshops. Yes is a FAIL: ding professionalism + pitch, add an improvement suggestion to say partner workshops.
+- original_workshop_name = prior / authorized / local service centre named on the call (not MyFNG). Null if none named.
+- own_workshop_claim_quote = short evidence snippet when claimed_own_workshops is Yes or the customer asked.
 - Return ONLY valid JSON matching the schema.`;
 
   try {
@@ -577,10 +687,16 @@ export function attachSopToAnalysis(
 ): CallAnalysisResult {
   const quality = Math.round(analysis.quality_score * 0.45 + sop.overall_score * 0.55);
   const grade = quality >= 85 ? 'A' : quality >= 70 ? 'B' : quality >= 55 ? 'C' : quality >= 40 ? 'D' : 'F';
+  const extraFlags: string[] = [];
+  if (sop.claimed_own_workshops === 'Yes') extraFlags.push('Claimed MyFNG owns workshops');
+  if (sop.professionalism === 'No') extraFlags.push('Unprofessional / script fail');
+  if (sop.closing_attempt === 'No Ask') extraFlags.push('No booking ask');
+  if (sop.registration_before_pricing === 'No') extraFlags.push('Quoted without registration');
   return {
     ...analysis,
     quality_score: quality,
     quality_grade: grade,
+    quality_flags: Array.from(new Set([...(analysis.quality_flags || []), ...extraFlags])),
     buying_intent:
       sop.customer_intent_level === 'High'
         ? 'HIGH'

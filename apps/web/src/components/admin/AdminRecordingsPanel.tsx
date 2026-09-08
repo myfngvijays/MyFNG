@@ -2,7 +2,7 @@
 
 /** Recordings list: Deep AI expands under Play. Customer opens Bookings, not lead-history. */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Brain,
@@ -24,6 +24,7 @@ import CallRecordingPlayer, {
 } from '@/components/telecaller/CallRecordingPlayer';
 import DeepAiCallResult from '@/components/admin/DeepAiCallResult';
 import type { CallIqSopAudit } from '@/lib/telecaller/callIqSop';
+import { callHasRedFlags, collectCallIqRedFlags } from '@/lib/telecaller/callIqRedFlags';
 import {
   istYmd,
   type ReportDatePreset,
@@ -58,6 +59,7 @@ type AnalysisHit = {
   sentiment: string;
   summary: string;
   conversation_tags: string[];
+  quality_flags?: string[];
   customer_problem?: string | null;
   agent_solution?: string | null;
   solution_adequacy?: string;
@@ -72,9 +74,34 @@ type AnalysisHit = {
   overall_resolution?: string | null;
   queries_resolved?: number;
   queries_total?: number;
+  queries_unresolved?: number;
+  unresolved_gaps?: string[];
   engine?: string;
   sop_audit?: CallIqSopAudit | null;
 };
+
+function toAnalysisHit(a: any): AnalysisHit {
+  return {
+    quality_score: a.quality_score,
+    quality_grade: a.quality_grade,
+    sentiment: a.sentiment,
+    summary: a.summary,
+    conversation_tags: a.conversation_tags || [],
+    quality_flags: a.quality_flags || [],
+    customer_problem: a.customer_problem || null,
+    agent_solution: a.agent_solution || null,
+    solution_adequacy: a.solution_adequacy || 'UNKNOWN',
+    coaching_tips: a.coaching_tips || [],
+    query_resolutions: a.query_resolutions || [],
+    overall_resolution: a.overall_resolution || null,
+    queries_resolved: a.queries_resolved,
+    queries_total: a.queries_total,
+    queries_unresolved: a.queries_unresolved,
+    unresolved_gaps: a.unresolved_gaps || [],
+    engine: a.engine || null,
+    sop_audit: a.sop_audit || null,
+  };
+}
 
 type TelecallerOpt = { id: string; full_name: string };
 
@@ -264,8 +291,8 @@ export default function AdminRecordingsPanel({
   const [preset, setPreset] = useState<ReportDatePreset>('last_30_days');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
-  const [callStatus, setCallStatus] = useState<string>('ALL');
-  const [duration, setDuration] = useState<string>('ALL');
+  const [callStatus, setCallStatus] = useState<string>('ANSWERED');
+  const [duration, setDuration] = useState<string>('CONNECTED');
   const [leadLink, setLeadLink] = useState<string>('WITH_LEAD');
   const [telecallerId, setTelecallerId] = useState<string>('ALL');
   const [groupBy, setGroupBy] = useState<'date' | 'telecaller' | 'none'>('date');
@@ -293,15 +320,16 @@ export default function AdminRecordingsPanel({
   const [syncMeta, setSyncMeta] = useState<SyncMeta | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [analysisById, setAnalysisById] = useState<Record<string, AnalysisHit>>({});
+  const analysisPolls = useRef(0);
   const pathname = usePathname() || '';
   const intelligenceHref = pathname.includes('/lead_manager')
     ? '/dashboard/lead_manager/call-intelligence'
     : '/dashboard/super_admin/call-intelligence';
 
+  const isTalkDefault =
+    callStatus === 'ANSWERED' && duration === 'CONNECTED' && leadLink === 'WITH_LEAD';
   const hasActiveFilters =
-    callStatus !== 'ALL' ||
-    duration !== 'ALL' ||
-    leadLink !== 'WITH_LEAD' ||
+    !isTalkDefault ||
     telecallerId !== 'ALL' ||
     qApplied.trim() ||
     preset !== 'last_30_days';
@@ -347,8 +375,8 @@ export default function AdminRecordingsPanel({
     ],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setLoading(true);
     setError(null);
     const ac = new AbortController();
     const kill = window.setTimeout(() => ac.abort(), 20_000);
@@ -363,7 +391,8 @@ export default function AdminRecordingsPanel({
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || 'Failed to load recordings');
       }
-      setRows(Array.isArray(json.rows) ? json.rows : []);
+      const nextRows: RecordingRow[] = Array.isArray(json.rows) ? json.rows : [];
+      setRows(nextRows);
       setTotal(Number(json.total) || 0);
       setTotalPages(Number(json.total_pages) || 1);
       setRangeLabel(String(json.range_label || ''));
@@ -380,6 +409,18 @@ export default function AdminRecordingsPanel({
       if (json.sync && typeof json.sync === 'object') {
         setSyncMeta(json.sync);
       }
+      const byId = json.analyses_by_id && typeof json.analyses_by_id === 'object' ? json.analyses_by_id : {};
+      setAnalysisById((prev) => {
+        const next = { ...prev };
+        for (const [id, raw] of Object.entries(byId)) {
+          next[id] = toAnalysisHit(raw);
+        }
+        for (const row of nextRows) {
+          const logId = String(row.call_log_id || '').trim();
+          if (logId && byId[logId]) next[row.id] = toAnalysisHit(byId[logId]);
+        }
+        return next;
+      });
     } catch (e: any) {
       const aborted = e?.name === 'AbortError' || /aborted/i.test(String(e?.message || ''));
       setError(
@@ -395,8 +436,23 @@ export default function AdminRecordingsPanel({
   }, [buildFilterParams]);
 
   useEffect(() => {
+    analysisPolls.current = 0;
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const missing = rows.some((row) => {
+      if (!row.has_recording || !(Number(row.call_duration) > 0)) return false;
+      const key = String(row.call_log_id || row.id);
+      return !(analysisById[key] || analysisById[row.id]);
+    });
+    if (!missing || analysisPolls.current >= 8) return;
+    const t = window.setTimeout(() => {
+      analysisPolls.current += 1;
+      void load({ quiet: true });
+    }, 8000);
+    return () => window.clearTimeout(t);
+  }, [rows, analysisById, load]);
 
   // Live search: debounce typing → apply filter
   useEffect(() => {
@@ -519,23 +575,7 @@ export default function AdminRecordingsPanel({
       }
       const next: Record<string, AnalysisHit> = { ...analysisById };
       for (const a of list) {
-        const payload: AnalysisHit = {
-          quality_score: a.quality_score,
-          quality_grade: a.quality_grade,
-          sentiment: a.sentiment,
-          summary: a.summary,
-          conversation_tags: a.conversation_tags || [],
-          customer_problem: a.customer_problem || null,
-          agent_solution: a.agent_solution || null,
-          solution_adequacy: a.solution_adequacy || 'UNKNOWN',
-          coaching_tips: a.coaching_tips || [],
-          query_resolutions: a.query_resolutions || [],
-          overall_resolution: a.overall_resolution || null,
-          queries_resolved: a.queries_resolved,
-          queries_total: a.queries_total,
-          engine: a.engine || json.engine || null,
-          sop_audit: a.sop_audit || null,
-        };
+        const payload = toAnalysisHit({ ...a, engine: a.engine || json.engine || null });
         const logId = String(a.call_log_id || '').trim();
         if (logId) next[logId] = payload;
         for (const requested of ids) next[requested] = payload;
@@ -558,8 +598,8 @@ export default function AdminRecordingsPanel({
     setPreset('last_30_days');
     setCustomStart('');
     setCustomEnd('');
-    setCallStatus('ALL');
-    setDuration('ALL');
+    setCallStatus('ANSWERED');
+    setDuration('CONNECTED');
     setLeadLink('WITH_LEAD');
     setTelecallerId('ALL');
     setGroupBy('date');
@@ -683,10 +723,11 @@ export default function AdminRecordingsPanel({
             type="button"
             onClick={() => {
               setCallStatus('ANSWERED');
+              setDuration('CONNECTED');
               setPage(1);
             }}
             className={`rounded-full px-3 py-1.5 text-xs font-bold ring-1 ${
-              callStatus === 'ANSWERED'
+              callStatus === 'ANSWERED' && duration === 'CONNECTED'
                 ? 'bg-emerald-600 text-white ring-emerald-600'
                 : 'bg-emerald-50 text-emerald-800 ring-emerald-200 hover:bg-emerald-100'
             }`}
@@ -1093,11 +1134,16 @@ function SectionRows({
         const phone = row.customer_phone || row.phone_number || '—';
         const open = expandedId === row.id;
         const isSelected = selectedIds.has(row.id);
+        const hit = analysisById[String(row.call_log_id || row.id)] || analysisById[row.id];
+        const flags = collectCallIqRedFlags(hit);
+        const hot = callHasRedFlags(hit);
         const zebra = isSelected
           ? 'bg-blue-50'
-          : idx % 2 === 0
-            ? 'bg-white'
-            : 'bg-slate-50';
+          : hot
+            ? 'bg-rose-50'
+            : idx % 2 === 0
+              ? 'bg-white'
+              : 'bg-slate-50';
         const disp = row.lead_id
           ? leadDisplayStatus({ status: row.lead_status } as any) || row.lead_status
           : null;
@@ -1110,7 +1156,13 @@ function SectionRows({
         );
         return (
           <FragmentRow key={row.id}>
-            <tr className={`border-b border-gray-100 h-10 ${zebra} hover:bg-sky-50/70`}>
+            <tr
+              className={`border-b h-10 ${zebra} ${
+                hot
+                  ? 'border-rose-200 border-l-4 border-l-rose-600 hover:bg-rose-100/80'
+                  : 'border-gray-100 hover:bg-sky-50/70'
+              }`}
+            >
               <td
                 className="px-2 py-1 align-middle w-10"
                 onClick={(e) => e.stopPropagation()}
@@ -1180,55 +1232,42 @@ function SectionRows({
               <td className="px-2 py-1 align-middle" onClick={(e) => e.stopPropagation()}>
                 {(() => {
                   const key = String(row.call_log_id || row.id);
-                  const hit = analysisById[key] || analysisById[row.id];
                   const busy = analyzing && (analyzingKey === row.id || analyzingKey === key);
                   const isDeep =
                     String(hit?.engine || '').includes('openai') ||
                     String(hit?.sop_audit?.engine || '').includes('openai');
                   if (hit) {
                     return (
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${
-                            isDeep ? 'bg-indigo-700' : 'bg-violet-700'
-                          }`}
-                          title={hit.summary || ''}
-                        >
-                          {isDeep ? 'Deep ' : ''}
-                          {hit.quality_grade} {hit.quality_score}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={analyzing}
-                          onClick={() => onDeepAnalyze(row)}
-                          className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-800 disabled:opacity-50"
-                          title="Transcribe recording and run Deep AI SOP"
-                        >
-                          {busy ? '…' : 'Deep AI'}
-                        </button>
+                      <div className="flex max-w-[220px] flex-col gap-0.5">
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${
+                              hot ? 'bg-rose-600' : isDeep ? 'bg-indigo-700' : 'bg-violet-700'
+                            }`}
+                            title={hit.summary || ''}
+                          >
+                            {isDeep ? 'Deep ' : 'Auto '}
+                            {hit.quality_grade} {hit.quality_score}
+                          </span>
+                          {hot ? (
+                            <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                              FLAG
+                            </span>
+                          ) : null}
+                        </div>
+                        {flags.length ? (
+                          <p className="truncate text-[10px] font-semibold text-rose-700" title={flags.map((f) => f.label).join(' · ')}>
+                            {flags[0].label}
+                            {flags.length > 1 ? ` +${flags.length - 1}` : ''}
+                          </p>
+                        ) : null}
                       </div>
                     );
                   }
                   return (
-                    <div className="flex items-center gap-1 whitespace-nowrap">
-                      <button
-                        type="button"
-                        disabled={analyzing}
-                        onClick={() => onAnalyze(row)}
-                        className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-                      >
-                        <Brain className="h-3 w-3" />
-                        {busy ? '…' : 'Analyze'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={analyzing}
-                        onClick={() => onDeepAnalyze(row)}
-                        className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
-                      >
-                        {busy ? '…' : 'Deep AI'}
-                      </button>
-                    </div>
+                    <span className="text-[10px] font-semibold text-slate-500">
+                      {busy ? 'Analyzing…' : row.has_recording ? 'Auto…' : '—'}
+                    </span>
                   );
                 })()}
               </td>

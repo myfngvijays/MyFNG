@@ -97,9 +97,18 @@ async function handle(req: NextRequest) {
 
   await markSmartfloRecordingsCronRun({ ok: Boolean(result.ok), summary });
 
+  let callIq: { scanned?: number; ran?: number; skipped?: number } | null = null;
+  try {
+    const { sweepCallIqWorkflow } = await import('@/lib/telecaller/callIqWorkflow');
+    callIq = await sweepCallIqWorkflow(5);
+  } catch {
+    callIq = null;
+  }
+
   return NextResponse.json(
     {
       ...result,
+      call_iq: callIq,
       skipped: false,
       force: Boolean(force),
       enabled: settings.enabled,

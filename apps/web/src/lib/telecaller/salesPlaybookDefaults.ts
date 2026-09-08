@@ -51,12 +51,18 @@ Map those TeleCRM labels onto MY FNG CRM statuses when you return suggested_lead
 - Appointment Scheduled → Booking confirmed
 - Interested → Interested
 - Lost → Lost
+8. Workshop compliance (mandatory)
+- If the customer names their original / previous / authorized / local workshop, capture original_workshop_name.
+- MY FNG does NOT own workshops — they are verified partner / A-grade network workshops.
+- If the customer asks “workshop aapke hai / aapke workshop / your workshop?” and the agent says “haan humare / apne / our own”, set claimed_own_workshops = Yes (FAIL). Correct script: partner workshops, not company-owned.
 Extra Capture:
 - Customer answers (Location, Car Model, Last Service, Urgency, Reg. no.)
 - Customer problems/issues & objections
 - Which USPs highlighted vs missed
 - Pickup option offered (Y/N)
 - Customer need & preference (Pickup/Visit)
+- Original / prior workshop name if mentioned
+- Whether the agent falsely claimed MyFNG owns the workshops
 - Call summary & client overview
 - Customer intent (Low/Medium/High)
 - Decision stage (Checking / Consideration / Closing)
@@ -105,7 +111,8 @@ export const DEFAULT_PRODUCT_FEATURES = `MY FNG is a technology-enabled car serv
 7. Fixed & Transparent Pricing — estimates before work, no hidden charges.
 8. Mechanical Repairs — engine, suspension, brakes, AC by experienced technicians.
 9. Denting & Painting — professional body repairs and paint restoration.
-10. Free inspection & top-up within 6 months / 5,000 km.`;
+10. Free inspection & top-up within 6 months / 5,000 km.
+11. Workshops are a verified multi-brand A-grade PARTNER network — MY FNG does not own them. Never say “humare / apne / our own workshop”. Say “verified partner / A-grade workshops”.`;
 
 export const DEFAULT_PRICING = `MY FNG pricing is transparent and depends on car make, model, fuel type, year, and the job.
 
@@ -170,13 +177,17 @@ export const ALL_CRM_LEAD_STATUS_NAMES = [
   'Lost',
 ] as const;
 
-/** Default workflow filter — open pipeline (not won/lost/in-service) */
+/** Auto-audit every CRM status — connected recordings are not filtered out. */
 export const DEFAULT_CALL_IQ_LEAD_STATUSES = [
   'Fresh',
   'Interested',
   'He will visit',
   'Follow-up',
+  'Booking confirmed',
+  'In Service',
   'Ringing / No answer',
+  'Service Done',
+  'Lost',
 ];
 
 const LEGACY_TELECRM_STATUS =
@@ -256,7 +267,7 @@ export function newCallIqWorkflowId() {
 export function defaultCallIqWorkflow(): CallIqWorkflowConfig {
   return {
     enabled: true,
-    min_duration_sec: 90,
+    min_duration_sec: 15,
     lead_statuses: [...DEFAULT_CALL_IQ_LEAD_STATUSES],
     use_deep_ai: true,
     skip_if_sop_exists: true,

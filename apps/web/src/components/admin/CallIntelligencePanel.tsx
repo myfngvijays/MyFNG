@@ -22,6 +22,7 @@ import { type ReportDatePreset } from '@/lib/report-date-range';
 import SopAuditCard from '@/components/admin/SopAuditCard';
 import type { CallIqSopAudit } from '@/lib/telecaller/callIqSop';
 import { toCrmSuggestedStatus } from '@/lib/telecaller/callIqSop';
+import { callHasRedFlags, collectCallIqRedFlags } from '@/lib/telecaller/callIqRedFlags';
 
 type AgentRow = {
   telecaller_id: string;
@@ -1114,10 +1115,18 @@ export default function CallIntelligencePanel({
                     <tbody>
                       {recentPage.slice.map((row, i) => {
                         const open = openSopId === String(row.call_log_id);
+                        const flags = collectCallIqRedFlags(row);
+                        const hot = callHasRedFlags(row);
                         return (
                           <Fragment key={row.call_log_id}>
                             <tr
-                              className={`border-b border-slate-100 ${i % 2 ? 'bg-slate-50/70' : 'bg-white'}`}
+                              className={`border-b ${
+                                hot
+                                  ? 'border-rose-200 bg-rose-50'
+                                  : i % 2
+                                    ? 'border-slate-100 bg-slate-50/70'
+                                    : 'border-slate-100 bg-white'
+                              }`}
                             >
                               <td className="px-3 py-1.5">
                                 <p className="font-semibold text-slate-900 text-[13px] leading-tight">
@@ -1131,9 +1140,21 @@ export default function CallIntelligencePanel({
                                 {row.telecaller_name || '—'}
                               </td>
                               <td className="px-3 py-1.5">
-                                <span className="rounded-full bg-violet-700 px-2 py-0.5 text-[10px] font-bold text-white">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${
+                                    hot ? 'bg-rose-600' : 'bg-violet-700'
+                                  }`}
+                                >
                                   {row.sop_audit?.overall_score ?? row.quality_score}/100
                                 </span>
+                                {flags.slice(0, 2).map((f) => (
+                                  <span
+                                    key={f.id}
+                                    className="ml-1 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white"
+                                  >
+                                    {f.label}
+                                  </span>
+                                ))}
                               </td>
                               <td className="px-3 py-1.5 text-[11px] font-semibold text-slate-700 whitespace-nowrap">
                                 {row.sop_audit

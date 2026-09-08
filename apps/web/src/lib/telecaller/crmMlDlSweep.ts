@@ -14,7 +14,18 @@ export async function sweepCrmMlDl(opts?: { dlLimit?: number; mlLimit?: number }
     scored: 0,
     warning: e?.message || 'ml sweep failed',
   }));
-  return { dl, ml };
+  let callIq: { scanned: number; ran: number; skipped: number; warning?: string } = {
+    scanned: 0,
+    ran: 0,
+    skipped: 0,
+  };
+  try {
+    const { sweepCallIqWorkflow } = await import('@/lib/telecaller/callIqWorkflow');
+    callIq = await sweepCallIqWorkflow(6);
+  } catch (e: any) {
+    callIq = { scanned: 0, ran: 0, skipped: 0, warning: e?.message || 'call iq sweep failed' };
+  }
+  return { dl, ml, callIq };
 }
 
 export async function refreshLeadBrain(leadId: string, opts?: { processDl?: boolean }) {

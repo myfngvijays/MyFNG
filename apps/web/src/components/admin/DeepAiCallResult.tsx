@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { CallIqSopAudit } from '@/lib/telecaller/callIqSop';
 import { toCrmSuggestedStatus } from '@/lib/telecaller/callIqSop';
+import { collectCallIqRedFlags } from '@/lib/telecaller/callIqRedFlags';
 import SopAuditCard from '@/components/admin/SopAuditCard';
 
 type QueryItem = {
@@ -25,6 +26,10 @@ export type DeepAiCallResultHit = {
   queries_resolved?: number;
   queries_total?: number;
   engine?: string;
+  quality_flags?: string[];
+  sentiment?: string | null;
+  queries_unresolved?: number;
+  unresolved_gaps?: string[];
   sop_audit?: CallIqSopAudit | null;
 };
 
@@ -82,10 +87,11 @@ export default function DeepAiCallResult({ hit }: { hit: DeepAiCallResultHit }) 
   const queries = hit.query_resolutions || [];
   const suggested = sop ? toCrmSuggestedStatus(sop.suggested_lead_status) : null;
   const scores = sop?.section_scores;
+  const redFlags = collectCallIqRedFlags(hit);
 
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-indigo-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 border-b border-indigo-100 bg-indigo-50/80 px-3 py-2.5">
+    <div className={`mt-3 overflow-hidden rounded-xl border bg-white shadow-sm ${redFlags.length ? 'border-rose-300' : 'border-indigo-200'}`}>
+      <div className={`flex flex-wrap items-center gap-2 border-b px-3 py-2.5 ${redFlags.length ? 'border-rose-100 bg-rose-50' : 'border-indigo-100 bg-indigo-50/80'}`}>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${gradeTone(hit.quality_grade)}`}>
           {hit.quality_grade} {hit.quality_score}
         </span>
@@ -124,6 +130,50 @@ export default function DeepAiCallResult({ hit }: { hit: DeepAiCallResultHit }) 
       </div>
 
       <div className="space-y-3 p-3">
+        {redFlags.length ? (
+          <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-rose-700">
+              Red flags
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {redFlags.map((f) => (
+                <span
+                  key={f.id}
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                    f.severity === 'high' ? 'bg-rose-600 text-white' : 'bg-rose-100 text-rose-800'
+                  }`}
+                >
+                  {f.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {sop?.claimed_own_workshops === 'Yes' ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-rose-700">
+              Workshop claim — fail
+            </p>
+            <p className="mt-0.5 text-[13px] text-rose-900">
+              Agent said MyFNG owns the workshops. Correct script: verified partner / A-grade network — not
+              company-owned.
+            </p>
+            {sop.own_workshop_claim_quote ? (
+              <p className="mt-1 text-[12px] italic text-rose-800">“{sop.own_workshop_claim_quote}”</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {sop?.original_workshop_name ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              Prior / original workshop
+            </p>
+            <p className="mt-0.5 text-[13px] font-semibold text-slate-900">{sop.original_workshop_name}</p>
+          </div>
+        ) : null}
+
         {summary ? (
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Call summary</p>

@@ -111,12 +111,17 @@ export const DEFAULT_SOP_NEW_FIELDS: CallIqAgentField[] = [
   f('client_overview', 'Client Overview', 'text'),
   f('customer_intent_level', 'Customer Intent Level', 'dropdown', ['Low', 'Medium', 'High']),
   f('decision_stage', 'Decision Stage', 'dropdown', ['Only Checking', 'Consideration', 'Closing']),
+  f('original_workshop_name', 'Original / Prior Workshop Name', 'text'),
+  f('claimed_own_workshops', 'Claimed MyFNG Owns Workshops', 'dropdown', ['Yes', 'No', 'Unknown']),
+  f('own_workshop_claim_quote', 'Own-workshop Claim Quote', 'text'),
   f('overall_score', 'Overall Score', 'number'),
   f('positive_highlights', 'Positive Highlights', 'text'),
   f('improvement_suggestions', 'Improvement Suggestions', 'text'),
 ];
 
 export const DEFAULT_SOP_NEW_INSTRUCTION = `- Overall score out of 100
+- Capture original / prior workshop name if the customer names one
+- MyFNG workshops are partner workshops, not company-owned. claimed_own_workshops = Yes is a FAIL if the agent said “humare / apne / our own workshop”
 Return results strictly in structured fields.`;
 
 const TRANS_INSTRUCTION = `Listen via the call transcript first.
