@@ -17,7 +17,14 @@ import {
   CallRecordingCardRow,
   formatCallLogDuration,
 } from '@/components/telecaller/CallRecordingPlayer';
-import { leadStatusCardColors } from '@/lib/telecaller/leadDisplayStatus';
+import {
+  ADMIN_CRM_STATUS_OPTIONS,
+  leadStatusCardColors,
+  resolveAdminCrmStatusId,
+} from '@/lib/telecaller/leadDisplayStatus';
+import { looksLikeRingingText } from '@/lib/telecaller/callDisposition';
+import CrmFollowUpDateTime from '@/components/telecaller/crm/CrmFollowUpDateTime';
+import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
 
 type ProfileHistoryItem = {
   at?: string;
@@ -197,9 +204,12 @@ export default function LeadTimelinePanel({
 
   const couponMeta = getLeadCouponMeta(lead);
   const profileHistory = getProfileHistory(lead);
-  const latestLabel = prettifyDisposition(
-    (couponMeta.last_call_label as string) || (couponMeta.last_call_result as string) || null,
-  );
+  const crmStatusId = resolveAdminCrmStatusId(lead);
+  const latestLabel =
+    ADMIN_CRM_STATUS_OPTIONS.find((opt) => opt.id === crmStatusId)?.label ||
+    prettifyDisposition(
+      (couponMeta.last_call_label as string) || (couponMeta.last_call_result as string) || null,
+    );
   const latestRemark =
     String((lead as any)?.telecaller_remarks || couponMeta.telecaller_remarks || '').trim() || null;
 
@@ -234,9 +244,38 @@ export default function LeadTimelinePanel({
     return items;
   }, [profileHistory, callLogs]);
 
+  const pinnedStatusLabel =
+    crmStatusId && crmStatusId !== 'FRESH'
+      ? latestLabel
+      : looksLikeRingingText(latestRemark)
+        ? 'Ringing / No answer'
+        : null;
+  const pinnedStatusAt = String(
+    couponMeta.last_call_at || (lead as any)?.updated_at || profileHistory[0]?.at || '',
+  );
+  const pinnedStatusRow = pinnedStatusLabel
+    ? {
+        id: `disp-pinned-${leadId}`,
+        kind: 'system' as const,
+        at: pinnedStatusAt || new Date().toISOString(),
+        title: `Lead updated · ${pinnedStatusLabel}`,
+        body: latestRemark,
+        meta: { status: crmStatusId || 'RINGING', status_label: pinnedStatusLabel },
+      }
+    : null;
+
+  const displayTimelineItems = useMemo(() => {
+    return timelineItems.filter((it) => {
+      const title = String(it.title || '').toLowerCase();
+      const id = String(it.id || '');
+      return !(id.startsWith('disp-') || title.startsWith('lead updated ·'));
+    });
+  }, [timelineItems]);
+
   const usingApiFeed = timelineItems.length > 0;
-  const feedCount = usingApiFeed ? timelineItems.length : activityFeed.length;
-  const visibleApiItems = activityShowAll ? timelineItems : timelineItems.slice(0, 10);
+  const feedCount =
+    (usingApiFeed ? displayTimelineItems.length : activityFeed.length) + (pinnedStatusRow ? 1 : 0);
+  const visibleApiItems = activityShowAll ? displayTimelineItems : displayTimelineItems.slice(0, 10);
   const hasAny =
     feedCount > 0 || Boolean(latestLabel) || Boolean(latestRemark);
 
@@ -276,7 +315,15 @@ export default function LeadTimelinePanel({
         telecallerId = data?.id ? String(data.id) : user.id;
       }
 
-      const scheduledIso = new Date(taskForm.scheduled_time).toISOString();
+      const scheduledRaw = String(taskForm.scheduled_time || '');
+      const scheduledIso = istDateTimeToIso(
+        scheduledRaw.slice(0, 10),
+        scheduledRaw.includes('T') ? scheduledRaw.slice(11, 16) : '',
+      );
+      if (!scheduledIso) {
+        alert('Pick due date/time');
+        return;
+      }
       const { error } = await supabase.from('telecaller_follow_ups').insert([
         {
           lead_id: leadId,
@@ -447,6 +494,36 @@ export default function LeadTimelinePanel({
                 aria-hidden
               />
               <ul className="relative space-y-2">
+              {pinnedStatusRow ? (
+                <li className="relative flex items-start gap-2.5">
+                  <span className="relative z-10 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-white ring-2 ring-teal-50">
+                    <History className="h-2.5 w-2.5" />
+                  </span>
+                  <div className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+                    <div className="flex items-start gap-2">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                        <span className="break-words text-[11px] font-semibold text-gray-900">
+                          {pinnedStatusRow.title}
+                        </span>
+                        <span
+                          className="inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                          style={dispositionBadgeStyle(pinnedStatusRow.meta.status_label)}
+                        >
+                          {pinnedStatusRow.meta.status_label}
+                        </span>
+                      </div>
+                      <span className="shrink-0 whitespace-nowrap pt-0.5 text-[9px] tabular-nums text-gray-400">
+                        {fmtAt(pinnedStatusRow.at)}
+                      </span>
+                    </div>
+                    {pinnedStatusRow.body ? (
+                      <p className="mt-0.5 break-words text-[11px] leading-snug text-gray-700">
+                        {pinnedStatusRow.body}
+                      </p>
+                    ) : null}
+                  </div>
+                </li>
+              ) : null}
               {usingApiFeed
                 ? visibleApiItems.map((row) => {
                     const kind = row.kind;
@@ -679,11 +756,16 @@ export default function LeadTimelinePanel({
                 <option value="INFO_PENDING">Info pending</option>
                 <option value="SLOT_CONFIRMATION">Slot confirmation</option>
               </select>
-              <input
-                type="datetime-local"
-                className="w-full rounded-lg border px-2 py-1.5 text-sm"
-                value={taskForm.scheduled_time}
-                onChange={(e) => setTaskForm({ ...taskForm, scheduled_time: e.target.value })}
+              <CrmFollowUpDateTime
+                date={taskForm.scheduled_time.slice(0, 10)}
+                time={taskForm.scheduled_time.includes('T') ? taskForm.scheduled_time.slice(11, 16) : ''}
+                required
+                onChange={({ date, time }) =>
+                  setTaskForm({
+                    ...taskForm,
+                    scheduled_time: date && time ? `${date}T${time}` : '',
+                  })
+                }
               />
               <textarea
                 className="w-full rounded-lg border px-2 py-1.5 text-sm"

@@ -7,28 +7,14 @@
 import {
   DISPOSITION_LABEL,
   DISPOSITION_TO_LEAD_STATUS,
+  activityLooksLikeRinging,
   parseCallDisposition,
 } from '@/lib/telecaller/callDisposition';
 
 const EARLY_STATUSES = new Set(['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'ASSIGNED', 'VALIDATED']);
 const SOFT_RESULT = new Set(['', 'FRESH']);
 
-function looksLikeRingingText(raw: unknown): boolean {
-  return /\bringing\b|\bno\s*answer\b/i.test(String(raw || ''));
-}
-
-/** Activity / remarks say Ringing but last_call_result was never saved (old save skip). */
-export function activityLooksLikeRinging(meta: any): boolean {
-  if (looksLikeRingingText(meta?.last_call_label) || looksLikeRingingText(meta?.telecaller_remarks)) {
-    return true;
-  }
-  const hist = Array.isArray(meta?.profile_history) ? meta.profile_history : [];
-  for (const entry of hist) {
-    if (String(entry?.status || '').toUpperCase() === 'RINGING') return true;
-    if (looksLikeRingingText(entry?.remark) || looksLikeRingingText(entry?.summary)) return true;
-  }
-  return false;
-}
+export { activityLooksLikeRinging } from '@/lib/telecaller/callDisposition';
 
 function latestDispositionFromMeta(meta: any): {
   result: string;
@@ -96,6 +82,12 @@ function latestDispositionFromMeta(meta: any): {
   return null;
 }
 
+function historyHasStatus(meta: Record<string, unknown>, statusId: string): boolean {
+  const hist = Array.isArray(meta.profile_history) ? meta.profile_history : [];
+  const want = String(statusId || '').toUpperCase();
+  return hist.some((entry: any) => String(entry?.status || '').toUpperCase() === want);
+}
+
 function applyDispositionToRow(
   row: any,
   disp: { result: string; label: string; lostReason: string | null },
@@ -104,20 +96,38 @@ function applyDispositionToRow(
   const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? { ...row.coupon_meta } : {};
   const current = String(row?.status || '').toUpperCase();
   const nextPipeline = DISPOSITION_TO_LEAD_STATUS[disp.result] || null;
+  const now = new Date().toISOString();
+  const at = String(meta.last_call_at || now);
+  const remark =
+    String(row?.telecaller_remarks || meta.telecaller_remarks || '').trim() || null;
 
   const already =
     String(meta.last_call_result || '').toUpperCase() === disp.result &&
     String(meta.last_call_label || '').trim() &&
+    historyHasStatus(meta, disp.result) &&
     (!nextPipeline || current === nextPipeline);
   if (already) return null;
+
+  const prevHistory = Array.isArray(meta.profile_history) ? meta.profile_history : [];
+  const historyEntry = {
+    at,
+    summary: `Lead updated · ${disp.label}`,
+    remark,
+    status: disp.result,
+    event: 'STATUS',
+  };
 
   const nextMeta = {
     ...meta,
     last_call_result: disp.result,
     last_call_label: disp.label,
     last_call_status: callStatus || meta.last_call_status || 'ANSWERED',
-    last_call_at: meta.last_call_at || new Date().toISOString(),
+    last_call_at: at,
+    telecaller_remarks: remark || meta.telecaller_remarks || null,
     ...(disp.lostReason ? { last_lost_reason: disp.lostReason } : {}),
+    profile_history: historyHasStatus(meta, disp.result)
+      ? prevHistory
+      : [historyEntry, ...prevHistory].slice(0, 50),
   };
 
   const patch: Record<string, unknown> = {
@@ -243,7 +253,7 @@ export function applyStuckRingingPatch(row: any): Record<string, unknown> | null
   const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
   const result = String(meta.last_call_result || '').toUpperCase();
   if (result && result !== 'FRESH') return null;
-  if (!activityLooksLikeRinging(meta)) return null;
+  if (!activityLooksLikeRinging(meta, row?.telecaller_remarks)) return null;
   return applyDispositionToRow(
     row,
     { result: 'RINGING', label: 'Ringing', lostReason: null },
@@ -262,7 +272,7 @@ export async function healStuckRingingFromActivity(db: any, limit = 1500): Promi
   for (let from = 0; from < limit; from += pageSize) {
     let q = db
       .from('service_leads')
-      .select('id, status, coupon_meta, total_calls')
+      .select('id, status, coupon_meta, total_calls, telecaller_remarks')
       .eq('status', 'NEW')
       .or('coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH')
       .range(from, from + pageSize - 1);
@@ -270,7 +280,7 @@ export async function healStuckRingingFromActivity(db: any, limit = 1500): Promi
     if (error && /deleted_at/i.test(String(error.message || ''))) {
       ({ data, error } = await db
         .from('service_leads')
-        .select('id, status, coupon_meta, total_calls')
+        .select('id, status, coupon_meta, total_calls, telecaller_remarks')
         .eq('status', 'NEW')
         .or('coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH')
         .range(from, from + pageSize - 1));
@@ -284,7 +294,7 @@ export async function healStuckRingingFromActivity(db: any, limit = 1500): Promi
     const writes: Array<Promise<unknown>> = [];
     for (const row of rows) {
       const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
-      if (!activityLooksLikeRinging(meta)) continue;
+      if (!activityLooksLikeRinging(meta, row?.telecaller_remarks)) continue;
       const patch = applyDispositionToRow(
         row,
         { result: 'RINGING', label: 'Ringing', lostReason: null },

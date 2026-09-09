@@ -11,6 +11,8 @@ import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import CrmReferredByField from '@/components/telecaller/crm/CrmReferredByField';
 import { serializeReferredBy, type CrmReferredBy } from '@/lib/telecaller/crmLeadReference';
 import { crmDispositionNeedsFullProfile } from '@/lib/telecaller/crmLeadFilters';
+import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '@/components/telecaller/crm/CrmFollowUpDateTime';
+import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
 import {
   emptySecondCar,
   serializeSecondCar,
@@ -96,16 +98,11 @@ const STEP_META = [
 ];
 
 function todayDateStr() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return istYmd();
 }
 
 function nowTimeStr() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return snapTimeToTenMinutes(istHm()) || istHm();
 }
 
 type FormState = {
@@ -536,7 +533,7 @@ function TelecallerCrmBookContent() {
       statusOpt.id === 'LOST' ? lostReason.trim() || 'Other Reasons' : '';
     // Date/Time = kab baat hui (call activity), NOT follow-up schedule
     const activityIso =
-      activityDate && activityTime ? `${activityDate}T${activityTime}:00+05:30` : null;
+      activityDate && activityTime ? istDateTimeToIso(activityDate, activityTime) : null;
     if (!activityIso) {
       setError('Kab baat hui — date & time dalo');
       return;
@@ -576,6 +573,14 @@ function TelecallerCrmBookContent() {
           call_notes: form.problem_description || null,
           lost_reason: statusOpt.id === 'LOST' ? resolvedLostReason : null,
           activity_at: activityIso,
+          ...((statusOpt.id === 'CALLBACK' ||
+          (['INTERESTED', 'WILL_VISIT', 'RINGING'].includes(statusOpt.id) &&
+            new Date(activityIso).getTime() > Date.now() + 60_000))
+            ? {
+                follow_up_required: true,
+                next_follow_up_at: activityIso,
+              }
+            : {}),
           tag_ids: selectedTagIds,
           coupon_meta: {
             referred_by: serializeReferredBy(referredBy),
@@ -1088,22 +1093,18 @@ function TelecallerCrmBookContent() {
                       className=""
                     />
                   </div>
-                  <div>
-                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">Call date</p>
-                    <input
-                      type="date"
-                      value={activityDate}
-                      onChange={(e) => setActivityDate(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                    />
-                  </div>
-                  <div>
-                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">Call time</p>
-                    <input
-                      type="time"
-                      value={activityTime}
-                      onChange={(e) => setActivityTime(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                  <div className="sm:col-span-2">
+                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
+                      Call / next-call date & time (IST)
+                    </p>
+                    <CrmFollowUpDateTime
+                      date={activityDate}
+                      time={activityTime}
+                      required
+                      onChange={({ date, time }) => {
+                        setActivityDate(date);
+                        setActivityTime(time);
+                      }}
                     />
                   </div>
                 </div>

@@ -55,7 +55,7 @@ import { parseCustomRepairItems } from '@/lib/custom-repair-items';
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
-import { leadStatusCardColors, leadDisplayStatus, ADMIN_CRM_STATUS_OPTIONS, resolveAdminCrmStatusId, LOST_REASON_FILTERS } from '@/lib/telecaller/leadDisplayStatus';
+import { leadStatusCardColors, leadDisplayStatus, ADMIN_CRM_STATUS_OPTIONS, resolveAdminCrmStatusId, LOST_REASON_FILTERS, type AdminCrmStatusId } from '@/lib/telecaller/leadDisplayStatus';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import BookingsSavedViews from '@/components/admin/bookings/BookingsSavedViews';
 import {
@@ -82,6 +82,8 @@ type ServiceLead = Record<string, any>;
 type CsvRow = Record<string, string>;
 
 const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
+type CrmLeadStatusFilter = 'ALL' | AdminCrmStatusId;
+const CRM_LEAD_STATUS_IDS = new Set<string>(ADMIN_CRM_STATUS_OPTIONS.map((opt) => opt.id));
 const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const RECORDING_OPTIONS = ['ALL', 'YES', 'NO'] as const;
 const SOURCE_OPTIONS = [
@@ -115,7 +117,7 @@ const BOOKINGS_TABLE_COLUMNS = [
   { key: 'leadStatus', label: 'Lead Status', group: 'Core', onByDefault: true, width: 130 },
   { key: 'leadNumber', label: 'Lead #', group: 'Core', onByDefault: false, width: 120 },
   { key: 'customer', label: 'Customer', group: 'Core', onByDefault: true, width: 180 },
-  { key: 'message', label: 'Message', group: 'Core', onByDefault: true, width: 140 },
+  { key: 'message', label: 'Message', group: 'Core', onByDefault: true, width: 280 },
   { key: 'leadsCount', label: 'Leads #', group: 'Core', onByDefault: true, width: 100 },
   { key: 'vehicle', label: 'Vehicle', group: 'Core', onByDefault: false, width: 120 },
   { key: 'city', label: 'City', group: 'Core', onByDefault: false, width: 120 },
@@ -1562,6 +1564,7 @@ function SuperAdminBookingsPage() {
   const [showUploadCrm, setShowUploadCrm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
+  const [leadStatusFilter, setLeadStatusFilter] = useState<CrmLeadStatusFilter>('ALL');
   const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_OPTIONS)[number]>('ALL');
   const [sourceLabelFilter, setSourceLabelFilter] = useState('');
   const [leadTypeFilter, setLeadTypeFilter] = useState('');
@@ -1829,6 +1832,9 @@ function SuperAdminBookingsPage() {
     if (statusFilter !== 'ALL') {
       leads = leads.filter((lead) => String(lead.status || 'NEW').toUpperCase() === statusFilter);
     }
+    if (leadStatusFilter !== 'ALL') {
+      leads = leads.filter((lead) => resolveAdminCrmStatusId(lead) === leadStatusFilter);
+    }
     if (leadTypeFilter) {
       const want = leadTypeFilter.toUpperCase();
       leads = leads.filter((lead) => String(lead.lead_type || '').toUpperCase() === want);
@@ -1889,6 +1895,7 @@ function SuperAdminBookingsPage() {
     couponFilter,
     searchTerm,
     statusFilter,
+    leadStatusFilter,
     leadTypeFilter,
     assigneeFilter,
     messageTriggerFilter,
@@ -1976,7 +1983,7 @@ function SuperAdminBookingsPage() {
   // Reset to first page whenever filters / search change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, messageTriggerFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter, tagIds, listSort]);
+  }, [sourceFilter, couponFilter, statusFilter, leadStatusFilter, assigneeFilter, messageTriggerFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter, tagIds, listSort]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -2028,6 +2035,7 @@ function SuperAdminBookingsPage() {
     sourceFilter !== 'ALL' ||
     couponFilter !== 'ALL' ||
     statusFilter !== 'ALL' ||
+    leadStatusFilter !== 'ALL' ||
     recordingFilter !== 'ALL' ||
     assigneeFilter.length > 0 ||
     messageTriggerFilter.length > 0 ||
@@ -2069,6 +2077,7 @@ function SuperAdminBookingsPage() {
       normalizeBookingsViewFilters({
         source: sourceFilter,
         status: statusFilter,
+        leadStatus: leadStatusFilter,
         coupon: couponFilter,
         recording: recordingFilter,
         assignees: assigneeFilter,
@@ -2086,6 +2095,7 @@ function SuperAdminBookingsPage() {
     [
       sourceFilter,
       statusFilter,
+      leadStatusFilter,
       couponFilter,
       recordingFilter,
       assigneeFilter,
@@ -2112,6 +2122,11 @@ function SuperAdminBookingsPage() {
     setStatusFilter(
       (STATUS_OPTIONS as readonly string[]).includes(next.status)
         ? (next.status as (typeof STATUS_OPTIONS)[number])
+        : 'ALL',
+    );
+    setLeadStatusFilter(
+      next.leadStatus === 'ALL' || CRM_LEAD_STATUS_IDS.has(next.leadStatus)
+        ? (next.leadStatus as CrmLeadStatusFilter)
         : 'ALL',
     );
     setCouponFilter(
@@ -2207,6 +2222,13 @@ function SuperAdminBookingsPage() {
       .toUpperCase();
     if ((STATUS_OPTIONS as readonly string[]).includes(status)) {
       setStatusFilter(status as (typeof STATUS_OPTIONS)[number]);
+    }
+
+    const leadStatus = String(searchParams.get('lead_status') || '')
+      .trim()
+      .toUpperCase();
+    if (leadStatus === 'ALL' || CRM_LEAD_STATUS_IDS.has(leadStatus)) {
+      setLeadStatusFilter(leadStatus as CrmLeadStatusFilter);
     }
 
     const source = String(searchParams.get('source') || '')
@@ -2806,6 +2828,7 @@ function SuperAdminBookingsPage() {
         if (customEnd) params.set('end', customEnd);
       }
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (leadStatusFilter !== 'ALL') params.set('lead_status', leadStatusFilter);
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
       if (sourceFilter !== 'ALL') params.set('source', sourceFilter);
       if (couponFilter !== 'ALL') params.set('has_coupon', couponFilter);
@@ -3034,8 +3057,15 @@ function SuperAdminBookingsPage() {
                 }))}
                 statusOptions={STATUS_OPTIONS.map((status) => ({
                   value: status,
-                  label: status === 'ALL' ? 'All statuses' : status.replace(/_/g, ' '),
+                  label: status === 'ALL' ? 'All booking statuses' : status.replace(/_/g, ' '),
                 }))}
+                leadStatusOptions={[
+                  { value: 'ALL', label: 'All lead statuses' },
+                  ...ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({
+                    value: opt.id,
+                    label: opt.label,
+                  })),
+                ]}
                 couponOptions={COUPON_OPTIONS.map((coupon) => ({
                   value: coupon,
                   label: couponFilterLabel(coupon),
@@ -3089,14 +3119,28 @@ function SuperAdminBookingsPage() {
                     </FilterSelect>
 
                     <FilterSelect
-                      label="Status"
+                      label="Booking status"
                       value={statusFilter}
                       onChange={(v) => setStatusFilter(v as (typeof STATUS_OPTIONS)[number])}
-                      className="min-w-[130px]"
+                      className="min-w-[150px]"
                     >
                       {STATUS_OPTIONS.map((status) => (
                         <option key={status} value={status}>
-                          {status === 'ALL' ? 'All statuses' : status.replace(/_/g, ' ')}
+                          {status === 'ALL' ? 'All booking statuses' : status.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </FilterSelect>
+
+                    <FilterSelect
+                      label="Lead status"
+                      value={leadStatusFilter}
+                      onChange={(v) => setLeadStatusFilter(v as CrmLeadStatusFilter)}
+                      className="min-w-[160px]"
+                    >
+                      <option value="ALL">All lead statuses</option>
+                      {ADMIN_CRM_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label}
                         </option>
                       ))}
                     </FilterSelect>
@@ -3143,6 +3187,7 @@ function SuperAdminBookingsPage() {
                 {(sourceFilter !== 'ALL' ||
                   couponFilter !== 'ALL' ||
                   statusFilter !== 'ALL' ||
+                  leadStatusFilter !== 'ALL' ||
                   recordingFilter !== 'ALL' ||
                   assigneeFilter.length > 0 ||
                   messageTriggerFilter.length > 0 ||
@@ -3654,7 +3699,7 @@ function SuperAdminBookingsPage() {
                       {showCol('leadStatus') ? <th className="px-3 py-3 whitespace-nowrap min-w-[130px]">Lead Status</th> : null}
                       {showCol('leadNumber') ? <th className="px-3 py-3 whitespace-nowrap min-w-[120px]">Lead #</th> : null}
                       {showCol('customer') ? <th className="px-3 py-3 whitespace-nowrap min-w-[180px]">Customer</th> : null}
-                      {showCol('message') ? <th className="px-3 py-3 whitespace-nowrap min-w-[140px]">Message</th> : null}
+                      {showCol('message') ? <th className="px-3 py-3 whitespace-nowrap min-w-[220px]">Message</th> : null}
                       {showCol('leadsCount') ? (
                         <th className="px-3 py-3 whitespace-nowrap min-w-[100px]" title="How many lead rows exist for this phone">
                           Leads #
@@ -3775,8 +3820,8 @@ function SuperAdminBookingsPage() {
                           </td>
                         ) : null}
                         {showCol('message') ? (
-                          <td className="px-3 py-3 text-sm text-gray-700 min-w-[140px] max-w-[220px]">
-                            <span className="block truncate" title={getLeadInboundWhatsAppMessage(lead) || ''}>
+                          <td className="px-3 py-2.5 min-w-[220px] max-w-[360px] align-top">
+                            <span className="block whitespace-pre-wrap break-words text-[11px] leading-snug text-gray-700">
                               {getLeadInboundWhatsAppMessage(lead) || '—'}
                             </span>
                           </td>

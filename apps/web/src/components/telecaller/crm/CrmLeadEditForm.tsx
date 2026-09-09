@@ -40,6 +40,7 @@ import {
 } from '@/lib/telecaller/crmLeadReference';
 import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
 import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '@/components/telecaller/crm/CrmFollowUpDateTime';
+import { isoToIstParts, istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import { formatDateTime } from '@/lib/utils';
 import { crmDispositionNeedsFullProfile } from '@/lib/telecaller/crmLeadFilters';
@@ -715,28 +716,12 @@ export default function CrmLeadEditForm({
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
         activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
         callback_date: (() => {
-          const raw = leadData.next_follow_up_at;
-          if (!raw) return '';
-          try {
-            const d = new Date(raw);
-            if (Number.isNaN(d.getTime())) return '';
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          } catch {
-            return '';
-          }
+          const parts = isoToIstParts(leadData.next_follow_up_at);
+          return parts?.ymd || '';
         })(),
         callback_time: (() => {
-          const raw = leadData.next_follow_up_at;
-          if (!raw) return '';
-          try {
-            const d = new Date(raw);
-            if (Number.isNaN(d.getTime())) return '';
-            return snapTimeToTenMinutes(
-              `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
-            );
-          } catch {
-            return '';
-          }
+          const parts = isoToIstParts(leadData.next_follow_up_at);
+          return parts ? snapTimeToTenMinutes(parts.hm) : '';
         })(),
       });
       setCarDisplay(
@@ -1009,10 +994,10 @@ export default function CrmLeadEditForm({
       };
 
       if (formData.callback_date && formData.callback_time) {
-        const local = new Date(`${formData.callback_date}T${formData.callback_time}:00`);
-        if (!Number.isNaN(local.getTime())) {
+        const iso = istDateTimeToIso(formData.callback_date, formData.callback_time);
+        if (iso) {
           payload.follow_up_required = true;
-          payload.next_follow_up_at = local.toISOString();
+          payload.next_follow_up_at = iso;
         }
       }
 

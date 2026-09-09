@@ -1,4 +1,5 @@
 import { enrichBookingLead, filterBookingLeads, enrichLeadsServiceDisplay, getLeadServiceLabel, getLeadDisplayAmount } from './booking-lead-utils';
+import { resolveAdminCrmStatusId } from './telecaller/leadDisplayStatus';
 import {
   applyExcludeReferralTestDummies,
   enrichCustomerListRows,
@@ -75,6 +76,7 @@ export async function exportServiceLeadsCsv(
   opts: DateRangeOpts & {
     search?: string;
     status?: string;
+    leadStatus?: string;
     source?: string;
     hasCoupon?: string;
   },
@@ -121,6 +123,10 @@ export async function exportServiceLeadsCsv(
     hasCoupon: String(opts.hasCoupon || 'ALL').trim().toUpperCase(),
     search: '',
   });
+  const leadStatus = String(opts.leadStatus || 'ALL').trim().toUpperCase();
+  if (leadStatus && leadStatus !== 'ALL') {
+    leads = leads.filter((lead: Record<string, unknown>) => resolveAdminCrmStatusId(lead) === leadStatus);
+  }
 
   await enrichLeadsServiceDisplay(supabaseAdmin, leads);
 

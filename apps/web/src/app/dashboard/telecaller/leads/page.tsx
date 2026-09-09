@@ -1687,11 +1687,10 @@ function TelecallerCrmLeadsContent() {
                             </td>
                           ) : null}
                           {showCol('message') ? (
-                            <td
-                              className="px-2 py-2 text-slate-600 max-w-[180px] truncate text-[12px]"
-                              title={String(msg)}
-                            >
-                              {String(msg)}
+                            <td className="px-2 py-2 text-slate-600 max-w-[320px] align-top">
+                              <span className="block whitespace-pre-wrap break-words text-[11px] leading-snug">
+                                {String(msg)}
+                              </span>
                             </td>
                           ) : null}
                           {showCol('regNo') ? (

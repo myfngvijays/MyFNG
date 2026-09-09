@@ -14,8 +14,9 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '../../../lib/api';
+import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '../../../components/telecaller/CrmFollowUpDateTime';
+import { istDateTimeToIso, istHm, istYmd } from '../../../lib/crmDateRange';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import CrmBookingCatalog, { type CrmCatalogSelection } from '../../../components/telecaller/CrmBookingCatalog';
@@ -99,16 +100,11 @@ const LOST_REASONS = [
 ];
 
 function todayDateStr() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return istYmd();
 }
 
 function nowTimeStr() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return snapTimeToTenMinutes(istHm()) || istHm();
 }
 
 const STEP_META = [
@@ -155,7 +151,6 @@ export default function CrmBookWizard({
   const [lostMenuOpen, setLostMenuOpen] = useState(false);
   const [activityDate, setActivityDate] = useState(todayDateStr);
   const [activityTime, setActivityTime] = useState(nowTimeStr);
-  const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [referredBy, setReferredBy] = useState<CrmReferredBy | null>(null);
   const [referrerQuery, setReferrerQuery] = useState('');
@@ -517,7 +512,7 @@ export default function CrmBookWizard({
       statusOpt.id === 'LOST' ? lostReason.trim() || 'Other Reasons' : '';
     // Date/Time = kab baat hui (call activity); for CALLBACK this also schedules the reminder
     const activityIso =
-      activityDate && activityTime ? `${activityDate}T${activityTime}:00+05:30` : null;
+      activityDate && activityTime ? istDateTimeToIso(activityDate, activityTime) : null;
     if (!activityIso) {
       Alert.alert(
         statusOpt.id === 'CALLBACK' ? 'Follow-up time' : 'Call time',
@@ -564,7 +559,9 @@ export default function CrmBookWizard({
             referred_by: serializeReferredBy(referredBy),
             second_car: showSecondCar ? serializeSecondCar(secondCar) : null,
           },
-          ...(statusOpt.id === 'CALLBACK'
+          ...((statusOpt.id === 'CALLBACK' ||
+          (['INTERESTED', 'WILL_VISIT', 'RINGING'].includes(statusOpt.id) &&
+            new Date(activityIso).getTime() > Date.now() + 60_000))
             ? {
                 follow_up_required: true,
                 next_follow_up_at: activityIso,
@@ -1036,23 +1033,16 @@ export default function CrmBookWizard({
               style={[styles.input, { minHeight: 72, textAlignVertical: 'top' }]}
             />
 
-            <Text style={styles.sectionLabel}>Call date & time (kab baat hui)</Text>
-            <View style={styles.dateTimeRow}>
-              <TouchableOpacity
-                style={[styles.selectBtn, { flex: 1 }]}
-                onPress={() => setPickerMode('date')}
-              >
-                <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.selectBtnText}>{activityDate || 'Date'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.selectBtn, { flex: 1 }]}
-                onPress={() => setPickerMode('time')}
-              >
-                <Ionicons name="time-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.selectBtnText}>{activityTime || 'Time'}</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.sectionLabel}>Call / next-call date & time (IST)</Text>
+            <CrmFollowUpDateTime
+              date={activityDate}
+              time={activityTime}
+              required
+              onChange={({ date, time }) => {
+                setActivityDate(date);
+                setActivityTime(time);
+              }}
+            />
 
             <View style={styles.infoBox}>
               <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
@@ -1491,42 +1481,6 @@ export default function CrmBookWizard({
           </TouchableOpacity>
         </View>
       </View>
-
-      {pickerMode ? (
-        <DateTimePicker
-          value={
-            pickerMode === 'date'
-              ? activityDate
-                ? new Date(`${activityDate}T12:00:00`)
-                : new Date()
-              : activityTime
-                ? new Date(`1970-01-01T${activityTime}:00`)
-                : new Date()
-          }
-          mode={pickerMode}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_e, date) => {
-            const modeNow = pickerMode;
-            if (Platform.OS === 'android') setPickerMode(null);
-            if (!date) {
-              if (Platform.OS === 'ios') setPickerMode(null);
-              return;
-            }
-            if (modeNow === 'date') {
-              const y = date.getFullYear();
-              const m = String(date.getMonth() + 1).padStart(2, '0');
-              const d = String(date.getDate()).padStart(2, '0');
-              setActivityDate(`${y}-${m}-${d}`);
-              if (Platform.OS === 'ios') setPickerMode(null);
-            } else {
-              setActivityTime(
-                `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
-              );
-              if (Platform.OS === 'ios') setPickerMode(null);
-            }
-          }}
-        />
-      ) : null}
 
       <Modal
         visible={statusMenuOpen}

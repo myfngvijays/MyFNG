@@ -43,6 +43,10 @@ import {
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { crmDispositionNeedsFullProfile } from '../../../lib/telecaller/crmStatusFilters';
+import {
+  ADMIN_CRM_STATUS_OPTIONS,
+  resolveAdminCrmStatusId,
+} from '../../../lib/telecaller/adminCrmStatus';
 import { serviceLeadVehicleNumber } from '../../../lib/telecaller/serviceLeadVehicleNumber';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CarModelSearchField from '../../../components/CarModelSearchField';
@@ -51,7 +55,8 @@ import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanP
 import CrmPickupVisitStep, {
   type CrmPickupVisitValue,
 } from '../../../components/telecaller/CrmPickupVisitStep';
-import CrmFollowUpDateTime from '../../../components/telecaller/CrmFollowUpDateTime';
+import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '../../../components/telecaller/CrmFollowUpDateTime';
+import { isoToIstParts, istDateTimeToIso, istHm, istYmd } from '../../../lib/crmDateRange';
 import TelecallerWhatsAppChat from '../../../components/telecaller/TelecallerWhatsAppChat';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
 import {
@@ -378,20 +383,9 @@ const DEFAULT_LOST_REASONS = [
 
 function combineDateAndTime(dateYmd: string, timeHm: string): string | null {
   if (!dateYmd && !timeHm) return null;
-  const now = new Date();
-  const ymd =
-    dateYmd ||
-    [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-    ].join('-');
-  const hm =
-    timeHm ||
-    `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const iso = new Date(`${ymd}T${hm}:00`);
-  if (Number.isNaN(iso.getTime())) return null;
-  return iso.toISOString();
+  const ymd = dateYmd || istYmd();
+  const hm = snapTimeToTenMinutes(timeHm) || timeHm || istHm();
+  return istDateTimeToIso(ymd, hm);
 }
 
 function activityResultFromLead(data: any): string {
@@ -633,10 +627,13 @@ export default function TelecallerLeadDetailScreen({
     setInitialServiceAddons(next.service_addons);
     const hist = Array.isArray(meta.profile_history) ? meta.profile_history : [];
     setProfileHistory(hist);
+    const followUp = isoToIstParts(data?.next_follow_up_at);
     setActivityData((prev) => ({
       ...prev,
       result: activityResultFromLead(data),
       lostReason: String(meta.last_lost_reason || ''),
+      date: followUp?.ymd || '',
+      time: followUp ? snapTimeToTenMinutes(followUp.hm) : '',
     }));
   };
 
@@ -1139,6 +1136,32 @@ export default function TelecallerLeadDetailScreen({
           : '',
         noRecordingYet: isCall && !hasRecording,
       });
+    }
+
+    const crmId = resolveAdminCrmStatusId(lead);
+    const crmLabel =
+      ADMIN_CRM_STATUS_OPTIONS.find((opt) => opt.id === crmId)?.label || crmId;
+    const lastCallAt = String(couponMeta.last_call_at || '').trim();
+    if (crmId && crmId !== 'FRESH' && lastCallAt) {
+      const already = out.some(
+        (row) =>
+          String(row.title || '').toLowerCase().includes(crmLabel.toLowerCase()) ||
+          (crmId === 'RINGING' && /\bringing\b/i.test(String(row.title || ''))),
+      );
+      if (!already) {
+        pushUnique(out, {
+          id: `disp-local-${crmId}-${lastCallAt}`,
+          kind: 'update',
+          callLogId: '',
+          hasRecording: false,
+          sortAt: lastCallAt,
+          title: `Lead updated · ${crmLabel}`,
+          notes: String(lead?.telecaller_remarks || couponMeta.telecaller_remarks || '').trim(),
+          badgeColor: COLORS.orange + '22',
+          timeLabel: formatDateTime(lastCallAt),
+          noRecordingYet: false,
+        });
+      }
     }
 
     // 2) Local User History (coupon_meta.profile_history) — merge into Activity

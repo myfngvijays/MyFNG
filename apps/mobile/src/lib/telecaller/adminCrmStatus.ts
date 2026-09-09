@@ -22,10 +22,41 @@ export const ADMIN_CRM_LOST_REASONS = [
   'Other Reasons',
 ] as const;
 
+function looksLikeRingingText(raw: unknown): boolean {
+  return /\bringing\b|\bno\s*answer\b|\bcall\s+not\s+received\b|\bnot\s+received\b|\bdidn'?t\s+(pick|receive|answer)\b|\bnot\s+picking\b|\bno\s+response\b|\bcall\s+cut\b|\bcut\s+the\s+call\b/i.test(
+    String(raw || ''),
+  );
+}
+
+function activityLooksLikeRinging(meta: any, extraRemark?: unknown): boolean {
+  if (
+    looksLikeRingingText(meta?.last_call_label) ||
+    looksLikeRingingText(meta?.telecaller_remarks) ||
+    looksLikeRingingText(extraRemark)
+  ) {
+    return true;
+  }
+  const hist = Array.isArray(meta?.profile_history) ? meta.profile_history : [];
+  for (const entry of hist) {
+    if (String(entry?.status || '').toUpperCase() === 'RINGING') return true;
+    if (looksLikeRingingText(entry?.remark) || looksLikeRingingText(entry?.summary)) return true;
+  }
+  return false;
+}
+
 export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
   const result = String(lead?.coupon_meta?.last_call_result || '').trim().toUpperCase();
   if (result === 'COMPLETED') return 'SERVICE_DONE';
-  if (ADMIN_CRM_STATUS_OPTIONS.some((o) => o.id === result)) return result as AdminCrmStatusId;
+  if (
+    (!result || result === 'FRESH' || result === 'RINGING') &&
+    activityLooksLikeRinging(lead?.coupon_meta, lead?.telecaller_remarks)
+  ) {
+    return 'RINGING';
+  }
+  if (result === 'RINGING') return 'RINGING';
+  if (result && result !== 'FRESH' && ADMIN_CRM_STATUS_OPTIONS.some((o) => o.id === result)) {
+    return result as AdminCrmStatusId;
+  }
   const label = String(
     lead?.coupon_meta?.last_call_label || lead?.display_status || lead?.status || '',
   )

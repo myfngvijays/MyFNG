@@ -18,6 +18,7 @@ import { COLORS, SPACING } from '../constants/theme';
 export type MobileSavedViewFilters = {
   source?: string;
   status?: string;
+  leadStatus?: string;
   coupon?: string;
   recording?: string;
   assignees?: string[];

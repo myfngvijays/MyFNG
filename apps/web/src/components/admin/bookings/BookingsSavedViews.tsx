@@ -57,7 +57,8 @@ const CONDITION_CATALOG: Array<{
   { key: 'created_on', label: 'Created On', hint: 'When the lead was created', icon: Calendar },
   { key: 'assignee', label: 'Assignee', hint: 'Assigned telecaller', icon: UserRound },
   { key: 'message_trigger', label: 'Message Trigger', hint: 'Meta / WhatsApp prefill campaign', icon: MessageCircle },
-  { key: 'status', label: 'Lead Status', hint: 'Booking status', icon: ClipboardList },
+  { key: 'status', label: 'Booking Status', hint: 'NEW, ASSIGNED, REJECTED…', icon: ClipboardList },
+  { key: 'lead_status', label: 'Lead Status', hint: 'Fresh, Ringing, Follow-up, Lost…', icon: ClipboardList },
   { key: 'source', label: 'Source', hint: 'App, Website, MISA, Sarv…', icon: Globe },
   { key: 'discount', label: 'Discount', hint: 'Promo / referral / none', icon: Ticket },
   { key: 'recording', label: 'Recording', hint: 'Has a call recording', icon: Phone },
@@ -149,6 +150,7 @@ export default function BookingsSavedViews({
   onApply,
   sourceOptions,
   statusOptions,
+  leadStatusOptions,
   couponOptions,
   recordingOptions,
   assigneeOptions,
@@ -158,6 +160,7 @@ export default function BookingsSavedViews({
   onApply: (next: BookingsViewSnapshot) => void;
   sourceOptions: Option[];
   statusOptions: Option[];
+  leadStatusOptions: Option[];
   couponOptions: Option[];
   recordingOptions: Option[];
   assigneeOptions: Option[];
@@ -614,6 +617,19 @@ export default function BookingsSavedViews({
                     className="max-w-[160px] rounded border-0 bg-white py-0.5 text-xs font-semibold"
                   >
                     {statusOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {key === 'lead_status' ? (
+                  <select
+                    value={snapshot.leadStatus}
+                    onChange={(e) => patch({ leadStatus: e.target.value })}
+                    className="max-w-[180px] rounded border-0 bg-white py-0.5 text-xs font-semibold"
+                  >
+                    {leadStatusOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>

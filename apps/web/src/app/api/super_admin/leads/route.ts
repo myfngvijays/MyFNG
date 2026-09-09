@@ -2,6 +2,8 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { enrichBookingLead, filterBookingLeads, enrichLeadsServiceDisplay } from '@/lib/booking-lead-utils';
+import { resolveAdminCrmStatusId } from '@/lib/telecaller/leadDisplayStatus';
+import { applyStuckRingingPatch } from '@/lib/telecaller/healLeadDispositions';
 import { getPostBookingMembershipConfig } from '@/lib/post-booking-membership-config';
 import { enrichServiceLeadPricingForAdmin } from '@/lib/post-booking-membership-offer';
 import { exportServiceLeadsCsv } from '@/lib/admin-exports';
@@ -53,6 +55,7 @@ const LEADS_LIST_SELECT = [
   'description',
   'workshop_id',
   'assigned_telecaller_id',
+  'telecaller_remarks',
   'meta',
   'utm_source',
   'utm_medium',
@@ -111,6 +114,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = String(searchParams.get('search') || '').trim();
     const status = String(searchParams.get('status') || 'ALL').trim().toUpperCase();
+    const leadStatus = String(searchParams.get('lead_status') || 'ALL').trim().toUpperCase();
     const source = String(searchParams.get('source') || 'ALL').trim().toUpperCase();
     const hasCoupon = String(searchParams.get('has_coupon') || 'ALL').trim().toUpperCase();
     // Default high enough for admin board; paginate below (was hard-capped at 200).
@@ -128,6 +132,7 @@ export async function GET(request: NextRequest) {
       const result = await exportServiceLeadsCsv(supabaseAdmin, {
         search,
         status,
+        leadStatus,
         source,
         hasCoupon,
         preset,
@@ -254,7 +259,17 @@ export async function GET(request: NextRequest) {
 
     let leads = (data || []).map((lead) => enrichBookingLead(lead as Record<string, any>));
 
+    const ringingWrites: Array<Promise<unknown>> = [];
+    for (const lead of leads) {
+      const patch = applyStuckRingingPatch(lead);
+      if (patch) ringingWrites.push(supabaseAdmin.from('service_leads').update(patch).eq('id', lead.id));
+    }
+    if (ringingWrites.length) void Promise.allSettled(ringingWrites);
+
     leads = filterBookingLeads(leads, { source, hasCoupon, search: '' });
+    if (leadStatus && leadStatus !== 'ALL') {
+      leads = leads.filter((lead) => resolveAdminCrmStatusId(lead) === leadStatus);
+    }
 
     // List view: enrich pricing in-memory only. Do NOT run per-lead expire/sync DB writes
     // (that made App Ops / Super Admin bookings hang for a long time on "Loading records...").

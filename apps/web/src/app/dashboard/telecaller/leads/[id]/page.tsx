@@ -22,13 +22,15 @@ import {
   leadDisplayStatus,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { redactLeadSourceForTelecaller } from '@/lib/telecaller/redactLeadSource';
-import { parseCallDisposition } from '@/lib/telecaller/callDisposition';
+import { activityLooksLikeRinging, parseCallDisposition } from '@/lib/telecaller/callDisposition';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { parseSecondCar, secondCarLabel } from '@/lib/telecaller/crmSecondCar';
 import { parseReferredBy, referredByLabel } from '@/lib/telecaller/crmLeadReference';
 import { requestClickToCall } from '@/lib/telecaller/clickToCall';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
+import CrmFollowUpDateTime from '@/components/telecaller/crm/CrmFollowUpDateTime';
+import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
 
 function LeadDetailContent() {
   const params = useParams();
@@ -307,15 +309,43 @@ function LeadDetailContent() {
         safeLead?.coupon_meta && typeof safeLead.coupon_meta === 'object'
           ? safeLead.coupon_meta
           : {};
-      const hasDisposition = Boolean(meta.last_call_result || meta.last_call_label);
-      if (!hasDisposition && logs.length > 0) {
+      const existingResult = String(meta.last_call_result || '').trim().toUpperCase();
+      const existingLabel = String(meta.last_call_label || '').trim();
+      const hasDisposition =
+        (existingResult && existingResult !== 'FRESH') ||
+        (existingLabel && !/^fresh$/i.test(existingLabel) && !/^new$/i.test(existingLabel));
+      if (!hasDisposition && activityLooksLikeRinging(meta, (safeLead as any)?.telecaller_remarks)) {
+        try {
+          const healRes = await fetch(`/api/telecaller/leads/${leadId}/heal-disposition`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              last_call_result: 'RINGING',
+              last_call_label: 'Ringing',
+              last_lost_reason: null,
+              last_call_status: 'NO_ANSWER',
+              telecaller_remarks:
+                String((safeLead as any)?.telecaller_remarks || meta.telecaller_remarks || '').trim() || null,
+              total_calls: Math.max(Number(leadData?.total_calls || 0), logs.length),
+            }),
+          });
+          if (healRes.ok) {
+            const healed = await healRes.json().catch(() => ({}));
+            if (healed?.lead) {
+              setLead(sanitizeLead(healed.lead as Record<string, any>));
+            }
+          }
+        } catch (e) {
+          console.warn('heal ringing from remarks failed', e);
+        }
+      } else if (!hasDisposition && logs.length > 0) {
         for (const log of logs) {
           const disp = parseCallDisposition({
             notes: log?.notes,
             outcome: log?.outcome,
             call_status: log?.call_status,
           });
-          if (!disp || disp.result === 'RINGING') continue;
+          if (!disp) continue;
           try {
             const healRes = await fetch(`/api/telecaller/leads/${leadId}/heal-disposition`, {
               method: 'POST',
@@ -467,13 +497,14 @@ function LeadDetailContent() {
         : { data: null as any };
       const userProfile = byEmail || byPhone || byId;
 
-      // Convert datetime-local -> ISO UTC for consistent storage
-      // datetime-local gives "YYYY-MM-DDTHH:mm" (no timezone, treated as browser's local time)
-      // new Date() interprets it as local time, toISOString() converts to UTC automatically
-      const scheduledLocal = followUpData.scheduled_time;
-      const scheduledIso = scheduledLocal 
-        ? new Date(scheduledLocal).toISOString()
-        : null;
+      const scheduledRaw = String(followUpData.scheduled_time || '');
+      const scheduledYmd = scheduledRaw.slice(0, 10);
+      const scheduledHm = scheduledRaw.includes('T') ? scheduledRaw.slice(11, 16) : '';
+      const scheduledIso = istDateTimeToIso(scheduledYmd, scheduledHm);
+      if (!scheduledIso) {
+        alert('Pick follow-up date and time');
+        return;
+      }
 
       const { error } = await supabase
         .from('telecaller_follow_ups')
@@ -768,11 +799,16 @@ function LeadDetailContent() {
                       <option value="INFO_PENDING">Info Pending</option>
                       <option value="SLOT_CONFIRMATION">Slot Confirmation</option>
                     </select>
-                    <input
-                      type="datetime-local"
-                      value={followUpData.scheduled_time}
-                      onChange={(e) => setFollowUpData({ ...followUpData, scheduled_time: e.target.value })}
-                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
+                    <CrmFollowUpDateTime
+                      date={followUpData.scheduled_time.slice(0, 10)}
+                      time={followUpData.scheduled_time.includes('T') ? followUpData.scheduled_time.slice(11, 16) : ''}
+                      required
+                      onChange={({ date, time }) =>
+                        setFollowUpData({
+                          ...followUpData,
+                          scheduled_time: date && time ? `${date}T${time}` : '',
+                        })
+                      }
                     />
                     <textarea
                       placeholder="Reason / notes..."
@@ -1308,7 +1344,17 @@ function LeadDetailContent() {
                     <option value="INFO_PENDING">Info Pending</option>
                     <option value="SLOT_CONFIRMATION">Slot Confirmation</option>
                   </select>
-                  <input type="datetime-local" value={followUpData.scheduled_time} onChange={(e) => setFollowUpData({ ...followUpData, scheduled_time: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-lg" />
+                  <CrmFollowUpDateTime
+                    date={followUpData.scheduled_time.slice(0, 10)}
+                    time={followUpData.scheduled_time.includes('T') ? followUpData.scheduled_time.slice(11, 16) : ''}
+                    required
+                    onChange={({ date, time }) =>
+                      setFollowUpData({
+                        ...followUpData,
+                        scheduled_time: date && time ? `${date}T${time}` : '',
+                      })
+                    }
+                  />
                   <textarea placeholder="Reason..." value={followUpData.reason} onChange={(e) => setFollowUpData({ ...followUpData, reason: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-lg" rows={2} />
                   <select value={followUpData.priority} onChange={(e) => setFollowUpData({ ...followUpData, priority: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-lg">
                     <option value="LOW">Low</option>

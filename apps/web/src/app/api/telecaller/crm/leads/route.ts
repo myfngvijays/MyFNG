@@ -35,11 +35,11 @@ function leadMessagePreview(lead: Record<string, any>): string | null {
   const fromMeta = extractInboundCustomerMessage(
     String(meta.last_inbound_message || meta.first_message || '').trim(),
   );
-  if (fromMeta) return fromMeta.slice(0, 180);
+  if (fromMeta) return fromMeta;
   const fromProblem = extractInboundCustomerMessage(lead?.problem_description);
-  if (fromProblem) return fromProblem.slice(0, 180);
+  if (fromProblem) return fromProblem;
   const fromDesc = extractInboundCustomerMessage(lead?.description);
-  if (fromDesc) return fromDesc.slice(0, 180);
+  if (fromDesc) return fromDesc;
   return null;
 }
 

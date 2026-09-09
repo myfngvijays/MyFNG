@@ -8,6 +8,8 @@ export type BookingsViewSnapshot = {
   v: 1;
   source: string;
   status: string;
+  /** CRM disposition: Fresh, Ringing, Follow-up, Lost… (table Lead Status). */
+  leadStatus: string;
   coupon: string;
   recording: string;
   assignees: string[];
@@ -27,6 +29,7 @@ export const EMPTY_BOOKINGS_VIEW: BookingsViewSnapshot = {
   v: 1,
   source: 'ALL',
   status: 'ALL',
+  leadStatus: 'ALL',
   coupon: 'ALL',
   recording: 'ALL',
   assignees: [],
@@ -47,6 +50,7 @@ export type BookingsViewConditionKey =
   | 'created_on'
   | 'assignee'
   | 'status'
+  | 'lead_status'
   | 'source'
   | 'discount'
   | 'recording'
@@ -77,6 +81,7 @@ export function normalizeBookingsViewFilters(raw: unknown): BookingsViewSnapshot
     v: 1,
     source: asString(src.source, 'ALL').toUpperCase() || 'ALL',
     status: asString(src.status, 'ALL').toUpperCase() || 'ALL',
+    leadStatus: asString(src.leadStatus || src.lead_status, 'ALL').toUpperCase() || 'ALL',
     coupon: asString(src.coupon, 'ALL').toUpperCase() || 'ALL',
     recording: asString(src.recording, 'ALL').toUpperCase() || 'ALL',
     assignees: asStringList(src.assignees),
@@ -101,6 +106,7 @@ export function bookingsViewFiltersEqual(a: BookingsViewSnapshot, b: BookingsVie
   return (
     a.source === b.source &&
     a.status === b.status &&
+    a.leadStatus === b.leadStatus &&
     a.coupon === b.coupon &&
     a.recording === b.recording &&
     a.search === b.search &&
@@ -131,6 +137,7 @@ export function conditionsFromSnapshot(snapshot: BookingsViewSnapshot): Bookings
   if (snapshot.assignees.length > 0) keys.push('assignee');
   if (snapshot.messageTriggers.length > 0) keys.push('message_trigger');
   if (snapshot.status !== 'ALL') keys.push('status');
+  if (snapshot.leadStatus !== 'ALL') keys.push('lead_status');
   if (snapshot.source !== 'ALL' || snapshot.sourceLabel) keys.push('source');
   if (snapshot.coupon !== 'ALL') keys.push('discount');
   if (snapshot.recording !== 'ALL') keys.push('recording');
@@ -153,6 +160,8 @@ export function resetCondition(
       return { ...snapshot, messageTriggers: [] };
     case 'status':
       return { ...snapshot, status: 'ALL' };
+    case 'lead_status':
+      return { ...snapshot, leadStatus: 'ALL' };
     case 'source':
       return { ...snapshot, source: 'ALL', sourceLabel: '' };
     case 'discount':

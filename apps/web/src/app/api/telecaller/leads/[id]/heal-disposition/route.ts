@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const body = await request.json().catch(() => ({}));
     const result = String(body?.last_call_result || '').trim().toUpperCase();
-    if (!result || result === 'RINGING') {
+    if (!result) {
       return NextResponse.json({ error: 'Nothing to heal' }, { status: 400 });
     }
 
@@ -48,7 +48,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const meta = lead.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
-    if (meta.last_call_result || meta.last_call_label) {
+    const existingResult = String(meta.last_call_result || '').trim().toUpperCase();
+    const existingLabel = String(meta.last_call_label || '').trim();
+    const prevHistoryCheck = Array.isArray(meta.profile_history) ? meta.profile_history : [];
+    const hasMatchingHistory = prevHistoryCheck.some(
+      (entry: any) => String(entry?.status || '').toUpperCase() === result,
+    );
+    const hasRealDisposition =
+      (existingResult && existingResult !== 'FRESH') ||
+      (existingLabel && !/^fresh$/i.test(existingLabel) && !/^new$/i.test(existingLabel));
+    if (hasRealDisposition && hasMatchingHistory) {
       return NextResponse.json({ success: true, healed: false, lead });
     }
 
@@ -64,14 +73,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       (nextStatus === 'REJECTED' ||
         ['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'ASSIGNED'].includes(current));
 
+    const at = String(meta.last_call_at || new Date().toISOString());
+    const remark =
+      body?.telecaller_remarks != null
+        ? String(body.telecaller_remarks).trim() || null
+        : String(meta.telecaller_remarks || lead.telecaller_remarks || '').trim() || null;
+    const prevHistory = Array.isArray(meta.profile_history) ? meta.profile_history : [];
+    const hasHist = prevHistory.some(
+      (entry: any) => String(entry?.status || '').toUpperCase() === result,
+    );
+    const historyEntry = {
+      at,
+      summary: `Lead updated · ${label}`,
+      remark,
+      status: result,
+      event: 'STATUS',
+    };
     const nextMeta = {
       ...meta,
       last_call_result: result,
       last_call_label: label,
       last_call_status: body?.last_call_status || meta.last_call_status || 'ANSWERED',
-      last_call_at: meta.last_call_at || new Date().toISOString(),
+      last_call_at: at,
       last_lost_reason: lostReason || meta.last_lost_reason || null,
-      telecaller_remarks: body?.telecaller_remarks ?? meta.telecaller_remarks ?? null,
+      telecaller_remarks: remark ?? meta.telecaller_remarks ?? null,
+      profile_history: hasHist ? prevHistory : [historyEntry, ...prevHistory].slice(0, 50),
     };
 
     const patch: Record<string, unknown> = {

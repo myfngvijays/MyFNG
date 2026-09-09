@@ -30,8 +30,31 @@ const NOTE_TAG_TO_RESULT: Array<{ re: RegExp; id: string }> = [
   { re: /booking\s*confirmed/i, id: 'BOOKING_CONFIRMED' },
   { re: /^in\s*service\b/i, id: 'IN_SERVICE' },
   { re: /service\s*done/i, id: 'SERVICE_DONE' },
-  { re: /ringing|no\s*answer/i, id: 'RINGING' },
+  { re: /ringing|no\s*answer|call\s+not\s+received|didn'?t\s+(pick|receive|answer)|not\s+picking|no\s+response|call\s+cut/i, id: 'RINGING' },
 ];
+
+/** Remarks / history that mean the customer did not pick up. */
+export function looksLikeRingingText(raw: unknown): boolean {
+  return /\bringing\b|\bno\s*answer\b|\bcall\s+not\s+received\b|\bnot\s+received\b|\bdidn'?t\s+(pick|receive|answer)\b|\bnot\s+picking\b|\bno\s+response\b|\bcall\s+cut\b|\bcut\s+the\s+call\b/i.test(
+    String(raw || ''),
+  );
+}
+
+export function activityLooksLikeRinging(meta: any, extraRemark?: unknown): boolean {
+  if (
+    looksLikeRingingText(meta?.last_call_label) ||
+    looksLikeRingingText(meta?.telecaller_remarks) ||
+    looksLikeRingingText(extraRemark)
+  ) {
+    return true;
+  }
+  const hist = Array.isArray(meta?.profile_history) ? meta.profile_history : [];
+  for (const entry of hist) {
+    if (String(entry?.status || '').toUpperCase() === 'RINGING') return true;
+    if (looksLikeRingingText(entry?.remark) || looksLikeRingingText(entry?.summary)) return true;
+  }
+  return false;
+}
 
 const OUTCOME_TO_RESULT: Record<string, string> = {
   NOT_INTERESTED: 'LOST',

@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
           updated_at: now,
         };
 
-        if (disposition && disposition.result !== 'RINGING') {
+        if (disposition) {
           const historyEntry = {
             at: now,
             summary: `Call: ${disposition.label}`,

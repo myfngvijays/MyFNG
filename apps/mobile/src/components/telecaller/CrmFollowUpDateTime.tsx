@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Icon } from '../Icon';
 import { COLORS } from '../../constants/theme';
+import { istYmd } from '../../lib/crmDateRange';
 
 const MINUTE_STEPS = [0, 10, 20, 30, 40, 50] as const;
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -94,11 +95,16 @@ type Props = {
 export default function CrmFollowUpDateTime({ date, time, onChange, required }: Props) {
   const [showDate, setShowDate] = useState(false);
   const [showTime, setShowTime] = useState(false);
-  const [monthCursor, setMonthCursor] = useState(() => parseYmd(date) || new Date());
+  const [monthCursor, setMonthCursor] = useState(() => parseYmd(date) || parseYmd(istYmd()) || new Date());
 
   const cells = useMemo(() => buildMonthCells(monthCursor), [monthCursor]);
-  const todayYmd = toYmd(new Date());
+  const todayYmd = istYmd();
   const selectedTime = snapTimeToTenMinutes(time);
+
+  useEffect(() => {
+    const d = parseYmd(date);
+    if (d) setMonthCursor(d);
+  }, [date]);
 
   return (
     <View>
@@ -106,7 +112,7 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
         <TouchableOpacity
           style={styles.fieldBtn}
           onPress={() => {
-            setMonthCursor(parseYmd(date) || new Date());
+            setMonthCursor(parseYmd(date) || parseYmd(istYmd()) || new Date());
             setShowDate(true);
           }}
         >
@@ -131,8 +137,9 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
       ) : null}
 
       <Modal visible={showDate} transparent animationType="fade" onRequestClose={() => setShowDate(false)}>
-        <Pressable style={styles.overlay} onPress={() => setShowDate(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.overlay} pointerEvents="box-none">
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowDate(false)} />
+          <View style={styles.sheet}>
             <Text style={styles.title}>Select date</Text>
             <View style={styles.monthNav}>
               <TouchableOpacity
@@ -166,10 +173,16 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
                 const value = toYmd(cell);
                 const selected = date === value;
                 const isToday = value === todayYmd;
+                const isPast = value < todayYmd;
                 return (
                   <TouchableOpacity
                     key={value}
-                    style={[styles.dayCell, selected && styles.daySelected, isToday && !selected && styles.dayToday]}
+                    style={[
+                      styles.dayCell,
+                      selected && styles.daySelected,
+                      isToday && !selected && styles.dayToday,
+                      isPast && !selected && styles.dayPast,
+                    ]}
                     onPress={() => {
                       onChange({ date: value, time });
                       setShowDate(false);
@@ -180,6 +193,7 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
                         styles.dayText,
                         selected && styles.dayTextSelected,
                         isToday && !selected && styles.dayTextToday,
+                        isPast && !selected && styles.dayTextPast,
                       ]}
                     >
                       {cell.getDate()}
@@ -191,22 +205,22 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
             <TouchableOpacity
               style={styles.todayLink}
               onPress={() => {
-                const today = toYmd(new Date());
-                onChange({ date: today, time });
+                onChange({ date: todayYmd, time });
                 setShowDate(false);
               }}
             >
-              <Text style={styles.clearText}>Today</Text>
+              <Text style={styles.clearText}>Today (IST)</Text>
             </TouchableOpacity>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={showTime} transparent animationType="fade" onRequestClose={() => setShowTime(false)}>
-        <Pressable style={styles.overlay} onPress={() => setShowTime(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.title}>Select time</Text>
-            <Text style={styles.sub}>Tap a slot · every 10 minutes</Text>
+        <View style={styles.overlay} pointerEvents="box-none">
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowTime(false)} />
+          <View style={styles.sheet}>
+            <Text style={styles.title}>Select time (IST)</Text>
+            <Text style={styles.sub}>Tap a slot · every 10 minutes · 8:00 AM – 10:00 PM</Text>
             <ScrollView style={styles.slotList} keyboardShouldPersistTaps="handled">
               <View style={styles.slotGrid}>
                 {TIME_SLOTS.map((slot) => {
@@ -216,7 +230,7 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
                       <TouchableOpacity
                         style={[styles.slotChip, active && styles.slotChipActive]}
                         onPress={() => {
-                          onChange({ date: date || toYmd(new Date()), time: slot.value });
+                          onChange({ date: date || todayYmd, time: slot.value });
                           setShowTime(false);
                         }}
                       >
@@ -229,8 +243,8 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
                 })}
               </View>
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -295,9 +309,11 @@ const styles = StyleSheet.create({
   },
   daySelected: { backgroundColor: COLORS.primary, borderRadius: 20 },
   dayToday: { borderWidth: 1, borderColor: COLORS.primary, borderRadius: 20 },
+  dayPast: { opacity: 0.85 },
   dayText: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
   dayTextSelected: { color: '#fff' },
   dayTextToday: { color: COLORS.primary },
+  dayTextPast: { color: '#94A3B8' },
   todayLink: { alignSelf: 'center', marginTop: 10 },
   slotList: { maxHeight: 380 },
   slotGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingBottom: 8 },

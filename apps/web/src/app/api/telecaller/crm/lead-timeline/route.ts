@@ -369,15 +369,6 @@ export async function GET(request: NextRequest) {
       (lead as any).coupon_meta && typeof (lead as any).coupon_meta === 'object'
         ? (lead as any).coupon_meta
         : {};
-    if (meta.last_call_label || meta.last_call_result) {
-      items.push({
-        id: `disp-${leadId}`,
-        kind: 'system',
-        at: String((lead as any).updated_at || (lead as any).created_at),
-        title: `Status · ${meta.last_call_label || meta.last_call_result}`,
-        body: (lead as any).telecaller_remarks || null,
-      });
-    }
 
     const hist = Array.isArray(meta.profile_history) ? meta.profile_history : [];
     const histMergeIds = new Set<string>();
@@ -495,6 +486,41 @@ export async function GET(request: NextRequest) {
         title: String((ev as any).event_type || 'Event').replace(/_/g, ' '),
         body: String((ev as any).description || '').trim() || null,
       });
+    }
+
+    const crmId = resolveAdminCrmStatusId(lead);
+    const crmLabel = crmStatusLabel(lead);
+    const dispAt = String(
+      meta.last_call_at || (lead as any).updated_at || (lead as any).created_at || '',
+    );
+    const dispRemark =
+      String((lead as any).telecaller_remarks || meta.telecaller_remarks || '').trim() || null;
+    if (crmId && crmId !== 'FRESH' && dispAt) {
+      const dispTs = Date.parse(dispAt);
+      const alreadyLogged = items.some((it) => {
+        const title = String(it.title || '').toLowerCase();
+        const status = String(it.meta?.status || '').toUpperCase();
+        const itTs = Date.parse(String(it.at || ''));
+        const closeInTime =
+          Number.isFinite(dispTs) &&
+          Number.isFinite(itTs) &&
+          Math.abs(itTs - dispTs) < 3 * 60 * 1000;
+        return (
+          status === crmId ||
+          title.includes(`lead updated · ${crmLabel.toLowerCase()}`) ||
+          (closeInTime && (title.includes(crmLabel.toLowerCase()) || /\bringing\b/.test(title)))
+        );
+      });
+      if (!alreadyLogged) {
+        items.push({
+          id: `disp-${leadId}`,
+          kind: 'system',
+          at: dispAt,
+          title: `Lead updated · ${crmLabel}`,
+          body: dispRemark,
+          meta: { status: crmId, status_label: crmLabel },
+        });
+      }
     }
 
     items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());

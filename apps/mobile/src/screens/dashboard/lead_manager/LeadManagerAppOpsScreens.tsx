@@ -22,7 +22,7 @@ import CrmSavedViewsSheet, { type MobileSavedViewFilters } from '../../../compon
 import { leadStatusKpiColors } from '../../../lib/telecaller/leadStatusColors';
 import { formatDateDMY } from '@/lib/dateFormat';
 import AdminCrmStatusPicker from '../../../components/admin/AdminCrmStatusPicker';
-import { resolveAdminCrmStatusId } from '../../../lib/telecaller/adminCrmStatus';
+import { ADMIN_CRM_STATUS_OPTIONS, resolveAdminCrmStatusId } from '../../../lib/telecaller/adminCrmStatus';
 import {
   buildCheckoutLeadIndex,
   checkoutSiblingsFor,
@@ -162,6 +162,11 @@ const COUPON_CHIPS = [
   { id: 'NO', label: 'No coupon' },
 ] as const;
 
+const LEAD_STATUS_CHIPS = [
+  { id: 'ALL', label: 'All lead statuses' },
+  ...ADMIN_CRM_STATUS_OPTIONS,
+] as const;
+
 function leadServiceLabel(item: any): string {
   return String(
     item.service_display ||
@@ -184,6 +189,7 @@ export function LeadManagerAppBookingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
   const [statusChip, setStatusChip] = useState('ALL');
+  const [leadStatusChip, setLeadStatusChip] = useState('ALL');
   const [rows, setRows] = useState<any[]>([]);
   const [viewsOpen, setViewsOpen] = useState(false);
   const [viewName, setViewName] = useState('All Leads');
@@ -275,6 +281,8 @@ export function LeadManagerAppBookingsScreen() {
     }
     const status = String(applied.status || statusChip || 'ALL').toUpperCase();
     if (status && status !== 'ALL' && String(item.status || 'NEW').toUpperCase() !== status) return false;
+    const leadStatus = String(applied.leadStatus || leadStatusChip || 'ALL').toUpperCase();
+    if (leadStatus && leadStatus !== 'ALL' && resolveAdminCrmStatusId(item) !== leadStatus) return false;
     const source = String(applied.source || 'ALL').toUpperCase();
     if (source && source !== 'ALL') {
       const leadSource = String(item.lead_source || item.source || '').toUpperCase();
@@ -443,10 +451,21 @@ export function LeadManagerAppBookingsScreen() {
           }}
         />
         <FilterDropdown
-          label="Status"
+          label="Booking status"
           value={statusChip}
           options={STATUS_CHIPS}
           onChange={(id) => setStatusChip(id)}
+        />
+      </View>
+      <View style={styles.filterRow}>
+        <FilterDropdown
+          label="Lead status"
+          value={leadStatusChip}
+          options={LEAD_STATUS_CHIPS}
+          onChange={(id) => {
+            setLeadStatusChip(id);
+            setApplied((prev) => ({ ...prev, leadStatus: id }));
+          }}
         />
       </View>
 
@@ -541,6 +560,7 @@ export function LeadManagerAppBookingsScreen() {
           search: q,
           datePreset: datePreset,
           status: statusChip,
+          leadStatus: leadStatusChip,
           source: sourceFilter,
           coupon: couponFilter,
         }}
@@ -549,12 +569,14 @@ export function LeadManagerAppBookingsScreen() {
           setViewName(name || 'Saved view');
           if (filters?.search) setQ(String(filters.search));
           if (filters?.status) setStatusChip(String(filters.status).toUpperCase());
+          if (filters?.leadStatus) setLeadStatusChip(String(filters.leadStatus).toUpperCase());
           if (filters?.source) setSourceChip(String(filters.source).toUpperCase());
           if (filters?.coupon) setCouponChip(String(filters.coupon).toUpperCase());
           if (filters?.datePreset) setDateChip(String(filters.datePreset));
           if (!filters || Object.keys(filters).length === 0) {
             setQ('');
             setStatusChip('ALL');
+            setLeadStatusChip('ALL');
             setSourceChip('ALL');
             setCouponChip('ALL');
             setDateChip('all_time');

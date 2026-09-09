@@ -1,3 +1,5 @@
+import { activityLooksLikeRinging } from '@/lib/telecaller/callDisposition';
+
 /** Match lead detail "Select status" + All / New — colors aligned with mobile CrmQueueTab */
 
 export const LEAD_STATUS_FILTERS = [
@@ -126,11 +128,18 @@ const PIPELINE_LABEL: Record<string, string> = {
 
 /** Friendly CRM status for list/detail badges (not raw ANSWERED / NEW). */
 export function leadDisplayStatus(lead: any): string {
+  const ringingStuck =
+    activityLooksLikeRinging(lead?.coupon_meta, lead?.telecaller_remarks) &&
+    !['INTERESTED', 'WILL_VISIT', 'CALLBACK', 'BOOKING_CONFIRMED', 'IN_SERVICE', 'SERVICE_DONE', 'LOST'].includes(
+      String(lead?.coupon_meta?.last_call_result || '').toUpperCase(),
+    );
+
   if (lead && typeof lead === 'object' && Boolean(lead.is_incomplete)) {
     const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
     if (result && RESULT_LABEL[result] && result !== 'FRESH') {
       return RESULT_LABEL[result];
     }
+    if (ringingStuck) return 'Ringing';
     const label = String(lead?.coupon_meta?.last_call_label || '').trim();
     if (label && !/^fresh$/i.test(label) && !/^new$/i.test(label) && !/^incomplete$/i.test(label)) {
       return shortLeadStatusLabel(label);
@@ -138,12 +147,17 @@ export function leadDisplayStatus(lead: any): string {
     return 'Fresh';
   }
 
+  const resultEarly = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+  if (ringingStuck && (!resultEarly || resultEarly === 'FRESH' || resultEarly === 'RINGING')) {
+    return 'Ringing';
+  }
+
   const label = String(lead?.coupon_meta?.last_call_label || '').trim();
   if (label && /otp verified/i.test(label)) return label;
-  if (label) return shortLeadStatusLabel(label);
+  if (label && !/^fresh$/i.test(label) && !/^new$/i.test(label)) return shortLeadStatusLabel(label);
 
   const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
-  if (result && RESULT_LABEL[result]) return RESULT_LABEL[result];
+  if (result && RESULT_LABEL[result] && result !== 'FRESH') return RESULT_LABEL[result];
 
   const hist = Array.isArray(lead?.coupon_meta?.profile_history)
     ? lead.coupon_meta.profile_history
@@ -283,7 +297,16 @@ export function adminCrmMappedWorkshopStatus(
 export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
   const result = String(lead?.coupon_meta?.last_call_result || '').trim().toUpperCase();
   if (result === 'COMPLETED') return 'SERVICE_DONE';
-  if (ADMIN_CRM_STATUS_OPTIONS.some((o) => o.id === result)) return result as AdminCrmStatusId;
+  if (
+    (!result || result === 'FRESH' || result === 'RINGING') &&
+    activityLooksLikeRinging(lead?.coupon_meta, lead?.telecaller_remarks)
+  ) {
+    return 'RINGING';
+  }
+  if (result === 'RINGING') return 'RINGING';
+  if (result && result !== 'FRESH' && ADMIN_CRM_STATUS_OPTIONS.some((o) => o.id === result)) {
+    return result as AdminCrmStatusId;
+  }
   const label = String(leadDisplayStatus(lead) || '').trim().toLowerCase();
   if (label.startsWith('lost')) return 'LOST';
   if (label === 'completed' || label === 'service done') return 'SERVICE_DONE';
