@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatDateTime, formatDateDMY } from "@/lib/dateFormat";
+import { formatDateTime } from "@/lib/dateFormat";
 import {
   View,
   Text,
@@ -16,8 +16,6 @@ import {
   Pressable,
   KeyboardAvoidingView,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase, withTimeout } from '../../../lib/supabase';
 import CarLoading from '../../../components/CarLoading';
@@ -53,6 +51,7 @@ import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanP
 import CrmPickupVisitStep, {
   type CrmPickupVisitValue,
 } from '../../../components/telecaller/CrmPickupVisitStep';
+import CrmFollowUpDateTime from '../../../components/telecaller/CrmFollowUpDateTime';
 import TelecallerWhatsAppChat from '../../../components/telecaller/TelecallerWhatsAppChat';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
 import {
@@ -326,6 +325,7 @@ const RINGING: CallDisposition = {
 
 const DEFAULT_STATUS_OPTIONS: CallDisposition[] = [
   { id: 'FRESH', label: 'Fresh', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
+  { id: 'RINGING', label: 'Ringing', call_status: 'NO_ANSWER', outcome: null },
   { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   {
@@ -394,22 +394,17 @@ function combineDateAndTime(dateYmd: string, timeHm: string): string | null {
   return iso.toISOString();
 }
 
-function formatDisplayDate(ymd: string): string {
-  if (!ymd) return 'Select date';
-  const [y, m, d] = ymd.split('-').map(Number);
-  if (!y || !m || !d) return ymd;
-  return formatDateDMY(new Date(y, m - 1, d)) || ymd;
-}
-
-function formatDisplayTime(hm: string): string {
-  if (!hm) return 'Select time';
-  const [hStr, mStr] = hm.split(':');
-  let h = Number(hStr);
-  const m = Number(mStr);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return hm;
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+function activityResultFromLead(data: any): string {
+  const raw = String(data?.coupon_meta?.last_call_result || '')
+    .toUpperCase()
+    .trim();
+  if (raw) return raw;
+  const st = String(data?.status || '').toUpperCase();
+  if (st === 'VALIDATED') return 'BOOKING_CONFIRMED';
+  if (st === 'IN_PROGRESS') return 'IN_SERVICE';
+  if (st === 'COMPLETED') return 'SERVICE_DONE';
+  if (st === 'REJECTED') return 'LOST';
+  return 'FRESH';
 }
 
 export default function TelecallerLeadDetailScreen({
@@ -445,7 +440,6 @@ export default function TelecallerLeadDetailScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(true);
   const [showActivityForm, setShowActivityForm] = useState(false);
-  const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showLostMenu, setShowLostMenu] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
@@ -478,7 +472,7 @@ export default function TelecallerLeadDetailScreen({
   const [profileHistory, setProfileHistory] = useState<any[]>([]);
 
   const [activityData, setActivityData] = useState({
-    result: 'RINGING',
+    result: 'FRESH',
     lostReason: '',
     notes: '',
     date: '',
@@ -500,18 +494,19 @@ export default function TelecallerLeadDetailScreen({
         const data = await apiFetch<any>('/api/lead-manager/statuses');
         const rows = Array.isArray(data?.statuses) ? data.statuses : [];
         if (!cancelled && rows.length) {
-          const mapped: CallDisposition[] = rows
-            .filter((r: any) => String(r.code || '').toUpperCase() !== 'RINGING')
-            .map((r: any) => ({
-              id: String(r.code || '').toUpperCase(),
-              label: String(r.name || r.code),
-              call_status: String(r.call_status || 'ANSWERED').toUpperCase(),
-              outcome: r.outcome ? String(r.outcome).toUpperCase() : null,
-              lead_status: r.pipeline_status ? String(r.pipeline_status).toUpperCase() : null,
-              requires_follow_up: Boolean(r.requires_follow_up),
-              requires_lost_reason:
-                Boolean(r.requires_lost_reason) || String(r.code).toUpperCase() === 'LOST',
-            }));
+          const mapped: CallDisposition[] = rows.map((r: any) => ({
+            id: String(r.code || '').toUpperCase(),
+            label: String(r.name || r.code),
+            call_status: String(r.call_status || 'ANSWERED').toUpperCase(),
+            outcome: r.outcome ? String(r.outcome).toUpperCase() : null,
+            lead_status: r.pipeline_status ? String(r.pipeline_status).toUpperCase() : null,
+            requires_follow_up: Boolean(r.requires_follow_up),
+            requires_lost_reason:
+              Boolean(r.requires_lost_reason) || String(r.code).toUpperCase() === 'LOST',
+          }));
+          if (!mapped.some((o) => o.id === 'RINGING')) {
+            mapped.splice(1, 0, RINGING);
+          }
           if (mapped.length) setStatusOptions(mapped);
         }
         const reasons = Array.isArray(data?.lost_reasons) ? data.lost_reasons : [];
@@ -638,6 +633,11 @@ export default function TelecallerLeadDetailScreen({
     setInitialServiceAddons(next.service_addons);
     const hist = Array.isArray(meta.profile_history) ? meta.profile_history : [];
     setProfileHistory(hist);
+    setActivityData((prev) => ({
+      ...prev,
+      result: activityResultFromLead(data),
+      lostReason: String(meta.last_lost_reason || ''),
+    }));
   };
 
   /** Fill city_id / vehicle_class so package prices can resolve (Wagon R etc.). */
@@ -781,21 +781,19 @@ export default function TelecallerLeadDetailScreen({
       };
 
       let dispositionStatus: string | null = null;
-      if (activityData.result !== 'RINGING') {
-        const selected =
-          statusOptions.find((r) => r.id === activityData.result) || RINGING;
-        const statusLabel =
-          selected.id === 'LOST'
-            ? `Lost · ${activityData.lostReason.trim() || 'Other Reasons'}`
-            : selected.label;
-        nextMeta.last_call_status = selected.call_status;
-        nextMeta.last_call_result = selected.id;
-        nextMeta.last_call_label = statusLabel;
-        nextMeta.last_lost_reason =
-          selected.id === 'LOST' ? activityData.lostReason.trim() || 'Other Reasons' : null;
-        nextMeta.last_call_at = new Date().toISOString();
-        if (selected.lead_status) dispositionStatus = selected.lead_status;
-      }
+      const selected =
+        statusOptions.find((r) => r.id === activityData.result) || RINGING;
+      const statusLabel =
+        selected.id === 'LOST'
+          ? `Lost · ${activityData.lostReason.trim() || 'Other Reasons'}`
+          : selected.label;
+      nextMeta.last_call_status = selected.call_status;
+      nextMeta.last_call_result = selected.id;
+      nextMeta.last_call_label = statusLabel;
+      nextMeta.last_lost_reason =
+        selected.id === 'LOST' ? activityData.lostReason.trim() || 'Other Reasons' : null;
+      nextMeta.last_call_at = new Date().toISOString();
+      if (selected.lead_status) dispositionStatus = selected.lead_status;
       const servicesChangedLocal = servicesIdsChanged(
         initialServiceTypes,
         editForm.service_types,
@@ -819,18 +817,16 @@ export default function TelecallerLeadDetailScreen({
       }
       if (String(lead?.workshop_id || '') !== String(editForm.workshop_id || '')) changeBits.push('workshop');
       if (servicesChangedLocal) changeBits.push('services');
-      if (activityData.result !== 'RINGING') {
-        const lbl =
-          statusOptions.find((r) => r.id === activityData.result)?.label || activityData.result;
-        changeBits.push(lbl);
-      }
+      const lbl =
+        statusOptions.find((r) => r.id === activityData.result)?.label || activityData.result;
+      changeBits.push(lbl);
       if (bookingConfirmed) changeBits.push('booking');
 
       const historyEntry = {
         at: new Date().toISOString(),
         summary: changeBits.length ? `Updated ${changeBits.join(', ')}` : 'Profile updated',
         remark: activityData.notes.trim() || null,
-        status: activityData.result !== 'RINGING' ? activityData.result : null,
+        status: activityData.result,
         workshop_id: editForm.workshop_id || null,
         workshop_name: editForm.workshop_name || null,
         city: editForm.city || null,
@@ -975,102 +971,95 @@ export default function TelecallerLeadDetailScreen({
             ? '\nBooking saved — WhatsApp confirmation not sent.'
             : '';
 
-      // Persist activity disposition when set during edit
-      if (activityData.result !== 'RINGING') {
-        try {
-          const selected =
-            activityData.result === 'RINGING'
-              ? RINGING
-              : statusOptions.find((r) => r.id === activityData.result) || RINGING;
-          const statusLabel =
-            selected.requires_lost_reason || selected.id === 'LOST'
-              ? `Lost · ${activityData.lostReason}`
-              : selected.label;
-          const whenIso =
-            selected.requires_follow_up || selected.id === 'CALLBACK'
-              ? combineDateAndTime(activityData.date, activityData.time)
-              : null;
-          if ((selected.requires_follow_up || selected.id === 'CALLBACK') && !whenIso) {
-            Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
-            setSaving(false);
-            return;
-          }
-          const notesParts = [
-            `[${statusLabel}]`,
-            activityData.notes.trim() || null,
-          ].filter(Boolean);
-          await apiFetch('/api/telecaller/calls/log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              lead_id: leadId,
-              call_type: 'OUTBOUND',
-              call_status: selected.call_status,
-              call_duration: null,
-              outcome: selected.outcome,
-              activity: selected.id,
-              pipeline_status: selected.lead_status || null,
-              notes: notesParts.join(' '),
-              phone_number: editForm.customer_phone || lead?.customer_phone,
-              next_action: whenIso ? 'FOLLOW_UP' : null,
-              next_action_time: whenIso,
-            }),
-          });
-          const nextCallMeta = {
-            ...nextMeta,
-            last_call_status: selected.call_status,
-            last_call_result: selected.id,
-            last_call_label: statusLabel,
-            last_lost_reason:
-              selected.requires_lost_reason || selected.id === 'LOST'
-                ? activityData.lostReason
-                : null,
-            last_call_at: new Date().toISOString(),
-          };
-          const leadUpdate: Record<string, unknown> = {
-            last_call_at: new Date().toISOString(),
-            total_calls: (lead?.total_calls || 0) + 1,
-            coupon_meta: nextCallMeta,
-            updated_at: new Date().toISOString(),
-          };
-          if (selected.lead_status) leadUpdate.status = selected.lead_status;
-          if (whenIso) {
-            leadUpdate.follow_up_required = true;
-            leadUpdate.next_follow_up_at = whenIso;
-          }
-          await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
-
-          if (whenIso) {
-            const { data: profile } = await supabase
-              .from('users_login')
-              .select('id')
-              .eq('email', user?.email)
-              .single();
-            await supabase
-              .from('telecaller_follow_ups')
-              .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
-              .eq('lead_id', leadId)
-              .eq('status', 'PENDING');
-            await supabase.from('telecaller_follow_ups').insert([
-              {
-                lead_id: leadId,
-                telecaller_id: profile?.id,
-                follow_up_type: 'CALLBACK',
-                scheduled_time: whenIso,
-                reason: activityData.notes || statusLabel,
-                priority: 'NORMAL',
-                status: 'PENDING',
-              },
-            ]);
-          }
-        } catch (actErr) {
-          console.warn('[LeadDetail] activity log during save failed', actErr);
+      // Persist activity disposition (including Ringing)
+      try {
+        const selected =
+          statusOptions.find((r) => r.id === activityData.result) || RINGING;
+        const statusLabel =
+          selected.requires_lost_reason || selected.id === 'LOST'
+            ? `Lost · ${activityData.lostReason}`
+            : selected.label;
+        const whenIso = combineDateAndTime(activityData.date, activityData.time);
+        if ((selected.requires_follow_up || selected.id === 'CALLBACK') && !whenIso) {
+          Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
+          setSaving(false);
+          return;
         }
+        const notesParts = [
+          `[${statusLabel}]`,
+          activityData.notes.trim() || null,
+        ].filter(Boolean);
+        await apiFetch('/api/telecaller/calls/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lead_id: leadId,
+            call_type: 'OUTBOUND',
+            call_status: selected.call_status,
+            call_duration: null,
+            outcome: selected.outcome,
+            activity: selected.id,
+            pipeline_status: selected.lead_status || null,
+            notes: notesParts.join(' '),
+            phone_number: editForm.customer_phone || lead?.customer_phone,
+            next_action: whenIso ? 'FOLLOW_UP' : null,
+            next_action_time: whenIso,
+          }),
+        });
+        const nextCallMeta = {
+          ...nextMeta,
+          last_call_status: selected.call_status,
+          last_call_result: selected.id,
+          last_call_label: statusLabel,
+          last_lost_reason:
+            selected.requires_lost_reason || selected.id === 'LOST'
+              ? activityData.lostReason
+              : null,
+          last_call_at: new Date().toISOString(),
+        };
+        const leadUpdate: Record<string, unknown> = {
+          last_call_at: new Date().toISOString(),
+          total_calls: (lead?.total_calls || 0) + 1,
+          coupon_meta: nextCallMeta,
+          updated_at: new Date().toISOString(),
+        };
+        if (selected.lead_status) leadUpdate.status = selected.lead_status;
+        if (whenIso) {
+          leadUpdate.follow_up_required = true;
+          leadUpdate.next_follow_up_at = whenIso;
+        }
+        await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
+
+        if (whenIso) {
+          const { data: profile } = await supabase
+            .from('users_login')
+            .select('id')
+            .eq('email', user?.email)
+            .single();
+          await supabase
+            .from('telecaller_follow_ups')
+            .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+            .eq('lead_id', leadId)
+            .eq('status', 'PENDING');
+          await supabase.from('telecaller_follow_ups').insert([
+            {
+              lead_id: leadId,
+              telecaller_id: profile?.id,
+              follow_up_type: 'CALLBACK',
+              scheduled_time: whenIso,
+              reason: activityData.notes || statusLabel,
+              priority: 'NORMAL',
+              status: 'PENDING',
+            },
+          ]);
+        }
+      } catch (actErr) {
+        console.warn('[LeadDetail] activity log during save failed', actErr);
       }
 
       setActivityData({
-        result: 'RINGING',
-        lostReason: '',
+        result: activityData.result,
+        lostReason: activityData.result === 'LOST' ? activityData.lostReason : '',
         notes: '',
         date: '',
         time: '',
@@ -1087,9 +1076,7 @@ export default function TelecallerLeadDetailScreen({
   };
 
   const selectedResult: CallDisposition =
-    activityData.result === 'RINGING'
-      ? RINGING
-      : statusOptions.find((r) => r.id === activityData.result) || RINGING;
+    statusOptions.find((r) => r.id === activityData.result) || RINGING;
 
   const activityItems = React.useMemo(() => {
     type Item = {
@@ -1159,8 +1146,11 @@ export default function TelecallerLeadDetailScreen({
       const h = profileHistory[i] || {};
       const at = String(h.at || '').trim();
       if (!at) continue;
-      const title = String(h.summary || h.event || 'Updated').slice(0, 80);
       const notes = h.remark ? String(h.remark).trim() : '';
+      let title = String(h.summary || h.event || 'Updated').slice(0, 80);
+      if (String(h.status || '').toUpperCase() === 'RINGING' || /\bringing\b/i.test(notes)) {
+        title = 'Ringing';
+      }
       pushUnique(out, {
         id: `hist-local-${i}-${at}`,
         kind: 'update',
@@ -1612,29 +1602,6 @@ export default function TelecallerLeadDetailScreen({
     void fetchActivityTimeline();
   };
 
-  const handlePickerChange = (_event: any, selectedDate?: Date) => {
-    const mode = pickerMode;
-    if (Platform.OS === 'android') setPickerMode(null);
-    if (!selectedDate || !mode) {
-      if (Platform.OS === 'ios') setPickerMode(null);
-      return;
-    }
-    if (mode === 'date') {
-      const ymd = [
-        selectedDate.getFullYear(),
-        String(selectedDate.getMonth() + 1).padStart(2, '0'),
-        String(selectedDate.getDate()).padStart(2, '0'),
-      ].join('-');
-      setActivityData((prev) => ({ ...prev, date: ymd }));
-    } else {
-      const hm = `${String(selectedDate.getHours()).padStart(2, '0')}:${String(
-        selectedDate.getMinutes(),
-      ).padStart(2, '0')}`;
-      setActivityData((prev) => ({ ...prev, time: hm }));
-    }
-    if (Platform.OS === 'ios') setPickerMode(null);
-  };
-
   const handleSaveActivity = async () => {
     try {
       const selected = selectedResult;
@@ -1696,7 +1663,7 @@ export default function TelecallerLeadDetailScreen({
         total_calls: (lead?.total_calls || 0) + 1,
         coupon_meta: nextMeta,
         updated_at: new Date().toISOString(),
-        ...(selected.id !== 'RINGING' ? { is_incomplete: false } : {}),
+        is_incomplete: false,
       };
       if (selected.lead_status) {
         leadUpdate.status = selected.lead_status;
@@ -1735,8 +1702,8 @@ export default function TelecallerLeadDetailScreen({
       }
 
       setActivityData({
-        result: 'RINGING',
-        lostReason: '',
+        result: selected.id,
+        lostReason: selected.id === 'LOST' ? activityData.lostReason : '',
         notes: '',
         date: '',
         time: '',
@@ -2949,13 +2916,8 @@ export default function TelecallerLeadDetailScreen({
                   setShowStatusMenu(true);
                 }}
               >
-                <Text
-                  style={[
-                    styles.selectBtnText,
-                    activityData.result === 'RINGING' && { color: COLORS.textSecondary },
-                  ]}
-                >
-                  {activityData.result === 'RINGING' ? 'Select status' : selectedResult.label}
+                <Text style={styles.selectBtnText}>
+                  {selectedResult.label}
                 </Text>
                 <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
@@ -2988,34 +2950,16 @@ export default function TelecallerLeadDetailScreen({
                   ? 'Follow-up date & time (required)'
                   : 'Date & time (optional)'}
               </Text>
-              <View style={styles.dateTimeRow}>
-                <TouchableOpacity
-                  style={[styles.datetimeButton, { flex: 1 }]}
-                  onPress={() => setPickerMode('date')}
-                >
-                  <Text style={styles.datetimeButtonText}>{formatDisplayDate(activityData.date)}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.datetimeButton, { flex: 1 }]}
-                  onPress={() => setPickerMode('time')}
-                >
-                  <Text style={styles.datetimeButtonText}>{formatDisplayTime(activityData.time)}</Text>
-                </TouchableOpacity>
-              </View>
+              <CrmFollowUpDateTime
+                date={activityData.date}
+                time={activityData.time}
+                required={activityData.result === 'CALLBACK'}
+                onChange={({ date, time }) => setActivityData((prev) => ({ ...prev, date, time }))}
+              />
               {activityData.result === 'CALLBACK' ? (
                 <Text style={{ color: COLORS.textSecondary, fontSize: 11, marginBottom: 8 }}>
                   Is time pe telecaller ko in-app + push reminder milega.
                 </Text>
-              ) : null}
-              {activityData.date || activityData.time ? (
-                <TouchableOpacity
-                  onPress={() => setActivityData({ ...activityData, date: '', time: '' })}
-                  style={{ marginBottom: 8 }}
-                >
-                  <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '600' }}>
-                    Clear date & time
-                  </Text>
-                </TouchableOpacity>
               ) : null}
 
               <Text style={styles.formLabel}>Remark</Text>
@@ -3246,13 +3190,8 @@ export default function TelecallerLeadDetailScreen({
                 setShowStatusMenu(true);
               }}
             >
-              <Text
-                style={[
-                  styles.selectBtnText,
-                  activityData.result === 'RINGING' && { color: COLORS.textSecondary },
-                ]}
-              >
-                {activityData.result === 'RINGING' ? 'Select status' : selectedResult.label}
+              <Text style={styles.selectBtnText}>
+                {selectedResult.label}
               </Text>
               <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
@@ -3285,34 +3224,16 @@ export default function TelecallerLeadDetailScreen({
                 ? 'Follow-up date & time (required)'
                 : 'Date & time (optional)'}
             </Text>
-            <View style={styles.dateTimeRow}>
-              <TouchableOpacity
-                style={[styles.datetimeButton, { flex: 1 }]}
-                onPress={() => setPickerMode('date')}
-              >
-                <Text style={styles.datetimeButtonText}>{formatDisplayDate(activityData.date)}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.datetimeButton, { flex: 1 }]}
-                onPress={() => setPickerMode('time')}
-              >
-                <Text style={styles.datetimeButtonText}>{formatDisplayTime(activityData.time)}</Text>
-              </TouchableOpacity>
-            </View>
+            <CrmFollowUpDateTime
+              date={activityData.date}
+              time={activityData.time}
+              required={activityData.result === 'CALLBACK'}
+              onChange={({ date, time }) => setActivityData((prev) => ({ ...prev, date, time }))}
+            />
             {activityData.result === 'CALLBACK' ? (
               <Text style={{ color: COLORS.textSecondary, fontSize: 11, marginBottom: 8 }}>
                 Is time pe telecaller ko in-app + push reminder milega.
               </Text>
-            ) : null}
-            {activityData.date || activityData.time ? (
-              <TouchableOpacity
-                onPress={() => setActivityData({ ...activityData, date: '', time: '' })}
-                style={{ marginBottom: 8 }}
-              >
-                <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '600' }}>
-                  Clear date & time
-                </Text>
-              </TouchableOpacity>
             ) : null}
 
             <Text style={styles.formLabel}>Remark</Text>
@@ -3467,21 +3388,6 @@ export default function TelecallerLeadDetailScreen({
         </View>
       )}
     </ScrollView>
-
-    {pickerMode ? (
-      <DateTimePicker
-        value={
-          pickerMode === 'date'
-            ? (activityData.date ? new Date(`${activityData.date}T12:00:00`) : new Date())
-            : (activityData.time
-                ? new Date(`1970-01-01T${activityData.time}:00`)
-                : new Date())
-        }
-        mode={pickerMode}
-        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-        onChange={handlePickerChange}
-      />
-    ) : null}
 
     <Modal visible={showStatusMenu} transparent animationType="fade" onRequestClose={() => setShowStatusMenu(false)}>
       <Pressable style={styles.menuOverlay} onPress={() => setShowStatusMenu(false)}>
@@ -3727,8 +3633,10 @@ function resolveLeadDisplayStatus(lead: any, callLogs?: any[]): string {
     resolved = metaLabel;
   } else {
     const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
-    if (result && result !== 'RINGING') {
-      const fromOpt = statusOptions.find((o) => o.id === result);
+    if (result === 'RINGING') {
+      resolved = 'Ringing';
+    } else if (result) {
+      const fromOpt = DEFAULT_STATUS_OPTIONS.find((o) => o.id === result);
       if (fromOpt) resolved = fromOpt.label;
     }
 
@@ -3738,8 +3646,12 @@ function resolveLeadDisplayStatus(lead: any, callLogs?: any[]): string {
         : [];
       for (const entry of hist) {
         const s = String(entry?.status || '').toUpperCase();
-        if (s && s !== 'RINGING') {
-          const fromOpt = statusOptions.find((o) => o.id === s);
+        if (s === 'RINGING') {
+          resolved = 'Ringing';
+          break;
+        }
+        if (s) {
+          const fromOpt = DEFAULT_STATUS_OPTIONS.find((o) => o.id === s);
           if (fromOpt) {
             resolved = fromOpt.label;
             break;

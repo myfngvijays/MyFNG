@@ -8,6 +8,7 @@ import {
   normalizeRoleCode,
 } from '@/lib/telecaller/crmRoles';
 import { applyCrmNewLeadFilter } from '@/lib/telecaller/crmLeadFilters';
+import { healStuckRingingFromActivity } from '@/lib/telecaller/healLeadDispositions';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -84,6 +85,9 @@ export async function GET(request: NextRequest) {
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
+    void healStuckRingingFromActivity(db).catch((err) =>
+      console.warn('[crm/dashboard] ringing heal skipped', err),
+    );
 
     const profile = await resolveUserProfile(supabase, user, supabaseAdmin);
     const teleCallerId = String(profile?.id || '').trim();

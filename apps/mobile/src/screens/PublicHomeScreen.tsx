@@ -508,9 +508,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
   useEffect(() => {
     const count = heroBanners.length;
     const timer = setInterval(() => {
-      Animated.timing(heroFade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        setHeroIndex((prev) => (prev + 1) % Math.max(count, 1));
-        Animated.timing(heroFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      Animated.timing(heroFade, { toValue: 0, duration: 200, useNativeDriver: true }).start(({ finished }) => {
+        if (!finished) return;
+        setTimeout(() => {
+          setHeroIndex((prev) => (prev + 1) % Math.max(count, 1));
+          Animated.timing(heroFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+        }, 0);
       });
     }, 5000);
     return () => clearInterval(timer);
@@ -518,9 +521,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      Animated.timing(headlineFade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
-        setHeadlineIndex((prev) => (prev + 1) % HEADLINES.length);
-        Animated.timing(headlineFade, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+      Animated.timing(headlineFade, { toValue: 0, duration: 250, useNativeDriver: true }).start(({ finished }) => {
+        if (!finished) return;
+        setTimeout(() => {
+          setHeadlineIndex((prev) => (prev + 1) % HEADLINES.length);
+          Animated.timing(headlineFade, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+        }, 0);
       });
     }, 4000);
     return () => clearInterval(timer);
@@ -528,9 +534,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      Animated.timing(loanFade, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
-        setLoanIndex((prev) => (prev + 1) % Math.max(promoBanners.length, 1));
-        Animated.timing(loanFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      Animated.timing(loanFade, { toValue: 0, duration: 300, useNativeDriver: true }).start(({ finished }) => {
+        if (!finished) return;
+        setTimeout(() => {
+          setLoanIndex((prev) => (prev + 1) % Math.max(promoBanners.length, 1));
+          Animated.timing(loanFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+        }, 0);
       });
     }, 4000);
     return () => clearInterval(timer);
@@ -541,13 +550,16 @@ export default function PublicHomeScreen({ navigation }: Props) {
       Animated.parallel([
         Animated.timing(howFade, { toValue: 0, duration: 250, useNativeDriver: true }),
         Animated.timing(howSlide, { toValue: -30, duration: 250, useNativeDriver: true }),
-      ]).start(() => {
-        setHowIndex((prev) => (prev + 1) % HOW_IT_WORKS.length);
-        howSlide.setValue(30);
-        Animated.parallel([
-          Animated.timing(howFade, { toValue: 1, duration: 350, useNativeDriver: true }),
-          Animated.timing(howSlide, { toValue: 0, duration: 350, useNativeDriver: true }),
-        ]).start();
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        setTimeout(() => {
+          setHowIndex((prev) => (prev + 1) % HOW_IT_WORKS.length);
+          howSlide.setValue(30);
+          Animated.parallel([
+            Animated.timing(howFade, { toValue: 1, duration: 350, useNativeDriver: true }),
+            Animated.timing(howSlide, { toValue: 0, duration: 350, useNativeDriver: true }),
+          ]).start();
+        }, 0);
       });
     }, 3000);
     return () => clearInterval(timer);

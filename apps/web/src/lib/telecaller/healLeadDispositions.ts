@@ -11,6 +11,24 @@ import {
 } from '@/lib/telecaller/callDisposition';
 
 const EARLY_STATUSES = new Set(['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'ASSIGNED', 'VALIDATED']);
+const SOFT_RESULT = new Set(['', 'FRESH']);
+
+function looksLikeRingingText(raw: unknown): boolean {
+  return /\bringing\b|\bno\s*answer\b/i.test(String(raw || ''));
+}
+
+/** Activity / remarks say Ringing but last_call_result was never saved (old save skip). */
+export function activityLooksLikeRinging(meta: any): boolean {
+  if (looksLikeRingingText(meta?.last_call_label) || looksLikeRingingText(meta?.telecaller_remarks)) {
+    return true;
+  }
+  const hist = Array.isArray(meta?.profile_history) ? meta.profile_history : [];
+  for (const entry of hist) {
+    if (String(entry?.status || '').toUpperCase() === 'RINGING') return true;
+    if (looksLikeRingingText(entry?.remark) || looksLikeRingingText(entry?.summary)) return true;
+  }
+  return false;
+}
 
 function latestDispositionFromMeta(meta: any): {
   result: string;
@@ -18,6 +36,12 @@ function latestDispositionFromMeta(meta: any): {
   lostReason: string | null;
 } | null {
   const fromResult = String(meta?.last_call_result || '').toUpperCase();
+  if (SOFT_RESULT.has(fromResult) && activityLooksLikeRinging(meta)) {
+    return { result: 'RINGING', label: 'Ringing', lostReason: null };
+  }
+  if (fromResult === 'RINGING') {
+    return { result: 'RINGING', label: 'Ringing', lostReason: null };
+  }
   if (fromResult && fromResult !== 'RINGING') {
     const label =
       String(meta?.last_call_label || '').trim() ||
@@ -213,4 +237,65 @@ export async function healLeadDispositions(db: any, rows: any[]): Promise<void> 
       db.from('service_leads').update(patch).eq('id', id),
     ),
   );
+}
+
+export function applyStuckRingingPatch(row: any): Record<string, unknown> | null {
+  const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
+  const result = String(meta.last_call_result || '').toUpperCase();
+  if (result && result !== 'FRESH') return null;
+  if (!activityLooksLikeRinging(meta)) return null;
+  return applyDispositionToRow(
+    row,
+    { result: 'RINGING', label: 'Ringing', lostReason: null },
+    'NO_ANSWER',
+  );
+}
+
+/**
+ * One-shot: Fresh / blank CRM leads whose activity remarks already say Ringing.
+ * Returns how many rows were patched.
+ */
+export async function healStuckRingingFromActivity(db: any, limit = 1500): Promise<number> {
+  if (!db) return 0;
+  const pageSize = 500;
+  let patched = 0;
+  for (let from = 0; from < limit; from += pageSize) {
+    let q = db
+      .from('service_leads')
+      .select('id, status, coupon_meta, total_calls')
+      .eq('status', 'NEW')
+      .or('coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH')
+      .range(from, from + pageSize - 1);
+    let { data, error } = await q.is('deleted_at', null);
+    if (error && /deleted_at/i.test(String(error.message || ''))) {
+      ({ data, error } = await db
+        .from('service_leads')
+        .select('id, status, coupon_meta, total_calls')
+        .eq('status', 'NEW')
+        .or('coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH')
+        .range(from, from + pageSize - 1));
+    }
+    if (error) {
+      console.warn('[healStuckRinging] fetch failed', error.message);
+      break;
+    }
+    const rows = data || [];
+    if (!rows.length) break;
+    const writes: Array<Promise<unknown>> = [];
+    for (const row of rows) {
+      const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
+      if (!activityLooksLikeRinging(meta)) continue;
+      const patch = applyDispositionToRow(
+        row,
+        { result: 'RINGING', label: 'Ringing', lostReason: null },
+        'NO_ANSWER',
+      );
+      if (!patch) continue;
+      writes.push(db.from('service_leads').update(patch).eq('id', row.id));
+      patched += 1;
+    }
+    if (writes.length) await Promise.allSettled(writes);
+    if (rows.length < pageSize) break;
+  }
+  return patched;
 }

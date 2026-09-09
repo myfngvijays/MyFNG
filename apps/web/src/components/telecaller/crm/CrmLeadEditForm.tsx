@@ -39,6 +39,7 @@ import {
   type CrmReferredBy,
 } from '@/lib/telecaller/crmLeadReference';
 import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
+import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '@/components/telecaller/crm/CrmFollowUpDateTime';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import { formatDateTime } from '@/lib/utils';
 import { crmDispositionNeedsFullProfile } from '@/lib/telecaller/crmLeadFilters';
@@ -713,6 +714,30 @@ export default function CrmLeadEditForm({
         })(),
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
         activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
+        callback_date: (() => {
+          const raw = leadData.next_follow_up_at;
+          if (!raw) return '';
+          try {
+            const d = new Date(raw);
+            if (Number.isNaN(d.getTime())) return '';
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          } catch {
+            return '';
+          }
+        })(),
+        callback_time: (() => {
+          const raw = leadData.next_follow_up_at;
+          if (!raw) return '';
+          try {
+            const d = new Date(raw);
+            if (Number.isNaN(d.getTime())) return '';
+            return snapTimeToTenMinutes(
+              `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+            );
+          } catch {
+            return '';
+          }
+        })(),
       });
       setCarDisplay(
         [leadData.vehicle_make, leadData.vehicle_model].filter(Boolean).join(' '),
@@ -983,7 +1008,7 @@ export default function CrmLeadEditForm({
         applied_coupon: nextApplied || null,
       };
 
-      if (selectedActivity.id === 'CALLBACK' && formData.callback_date && formData.callback_time) {
+      if (formData.callback_date && formData.callback_time) {
         const local = new Date(`${formData.callback_date}T${formData.callback_time}:00`);
         if (!Number.isNaN(local.getTime())) {
           payload.follow_up_required = true;
@@ -999,7 +1024,7 @@ export default function CrmLeadEditForm({
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to update lead');
 
-      if (selectedActivity.id === 'CALLBACK' && payload.next_follow_up_at) {
+      if (payload.next_follow_up_at) {
         try {
           await fetch('/api/telecaller/follow-ups', {
             method: 'POST',
@@ -1136,9 +1161,13 @@ export default function CrmLeadEditForm({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {lead.is_incomplete ? (
+            {lead.is_incomplete && formData.activity_result === 'FRESH' ? (
               <span className="rounded-full bg-amber-400 text-amber-950 px-3 py-1 text-xs font-black">
                 Fresh
+              </span>
+            ) : formData.activity_result === 'RINGING' ? (
+              <span className="rounded-full bg-slate-200 text-slate-700 px-3 py-1 text-xs font-black">
+                Ringing
               </span>
             ) : null}
             <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
@@ -1351,36 +1380,16 @@ export default function CrmLeadEditForm({
                 </select>
               </div>
             ) : null}
-            {formData.activity_result === 'CALLBACK' ? (
-              <>
-                <div>
-                  <FieldLabel required>Follow-up date</FieldLabel>
-                  <input
-                    type="date"
-                    name="callback_date"
-                    value={formData.callback_date}
-                    onChange={handleChange}
-                    className={fieldCls(Boolean(errors.callback_date))}
-                  />
-                  {errors.callback_date ? (
-                    <p className="mt-1 text-xs text-rose-600">{errors.callback_date}</p>
-                  ) : null}
-                </div>
-                <div>
-                  <FieldLabel required>Follow-up time</FieldLabel>
-                  <input
-                    type="time"
-                    name="callback_time"
-                    value={formData.callback_time}
-                    onChange={handleChange}
-                    className={fieldCls(Boolean(errors.callback_time))}
-                  />
-                  {errors.callback_time ? (
-                    <p className="mt-1 text-xs text-rose-600">{errors.callback_time}</p>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
+            <CrmFollowUpDateTime
+              date={formData.callback_date}
+              time={formData.callback_time}
+              required={formData.activity_result === 'CALLBACK'}
+              dateError={Boolean(errors.callback_date)}
+              timeError={Boolean(errors.callback_time)}
+              onChange={({ date, time }) =>
+                setFormData((prev) => ({ ...prev, callback_date: date, callback_time: time }))
+              }
+            />
             <div className="col-span-2 lg:col-span-4">
               <FieldLabel>Remarks</FieldLabel>
               <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Call notes / remarks for this lead" />

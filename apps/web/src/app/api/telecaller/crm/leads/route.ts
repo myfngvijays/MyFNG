@@ -20,6 +20,7 @@ import {
   applyCrmNewLeadFilter,
   resolveCrmLeadOrderColumn,
 } from '@/lib/telecaller/crmLeadFilters';
+import { applyStuckRingingPatch } from '@/lib/telecaller/healLeadDispositions';
 import {
   computeServiceLeadOverview,
   enrichBookingLead,
@@ -259,7 +260,20 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
     let rows = data || [];
-    // Skip healLeadDispositions on list (extra call-log queries + writes). Badges use coupon_meta as-is.
+    // Skip full healLeadDispositions on list (extra call-log queries). Ringing-from-activity is cheap.
+    try {
+      const ringingWrites: Array<Promise<unknown>> = [];
+      rows = rows.filter((row: any) => {
+        const patch = applyStuckRingingPatch(row);
+        if (!patch) return true;
+        ringingWrites.push(db.from('service_leads').update(patch).eq('id', row.id));
+        if (filter === 'new' || filter === 'fresh') return false;
+        return true;
+      });
+      if (ringingWrites.length) void Promise.allSettled(ringingWrites);
+    } catch (ringErr) {
+      console.warn('[crm/leads] ringing activity heal skipped', ringErr);
+    }
 
     // Same phone → keep latest lead in-memory. DB merge is opt-in (writes on GET made the list hang).
     if (request.nextUrl.searchParams.get('heal_dupes') === '1') {
