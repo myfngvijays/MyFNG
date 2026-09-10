@@ -28,6 +28,7 @@ export type ProductAnalyticsConfig = {
   web_tracking: {
     meta_pixel_id: string;
     gtm_container_id: string;
+    openai_ads_pixel_id: string;
   };
   platforms: Record<AnalyticsPlatform, PlatformAnalyticsSettings>;
   mobile_build: {
@@ -60,6 +61,7 @@ export type ProductAnalyticsPublicConfig = {
   web_tracking: {
     meta_pixel_id: string;
     gtm_container_id: string;
+    openai_ads_pixel_id: string;
   };
   platforms: Record<AnalyticsPlatform, PlatformAnalyticsSettings>;
 };
@@ -70,6 +72,7 @@ export const DEFAULT_WEB_GA4_MEASUREMENT_ID = 'G-S493ENTH9Z';
 export const DEFAULT_CLARITY_PROJECT_ID = 'x0kwaiy8aa';
 export const DEFAULT_META_PIXEL_ID = '845395791020784';
 export const DEFAULT_WEB_GTM_CONTAINER_ID = 'GTM-N2N59TBR';
+export const DEFAULT_OPENAI_ADS_PIXEL_ID = 'U2kxzksZVZarMY9GCy9jJV';
 
 /** Website Clarity is live on myfng.in via Google Tag Manager (not a direct layout script). */
 export const WEBSITE_CLARITY_LIVE = true;
@@ -104,6 +107,7 @@ export const DEFAULT_PRODUCT_ANALYTICS_CONFIG: ProductAnalyticsConfig = {
   web_tracking: {
     meta_pixel_id: DEFAULT_META_PIXEL_ID,
     gtm_container_id: DEFAULT_WEB_GTM_CONTAINER_ID,
+    openai_ads_pixel_id: DEFAULT_OPENAI_ADS_PIXEL_ID,
   },
   platforms: {
     android: defaultPlatformSettings({ gtag_enabled: false, meta_pixel_enabled: false }),
@@ -218,6 +222,11 @@ export function normalizeProductAnalyticsConfig(raw: unknown): ProductAnalyticsC
     web_tracking: {
       meta_pixel_id: toText(webTracking.meta_pixel_id, base.web_tracking.meta_pixel_id, 64),
       gtm_container_id: toText(webTracking.gtm_container_id, base.web_tracking.gtm_container_id, 32),
+      openai_ads_pixel_id: toText(
+        webTracking.openai_ads_pixel_id,
+        base.web_tracking.openai_ads_pixel_id,
+        64,
+      ),
     },
     platforms: {
       android: mergePlatformSettings(platforms.android, base.platforms.android),
@@ -310,6 +319,7 @@ export function productAnalyticsToPublicPayload(config: ProductAnalyticsConfig):
     web_tracking: {
       meta_pixel_id: config.web_tracking.meta_pixel_id,
       gtm_container_id: config.web_tracking.gtm_container_id,
+      openai_ads_pixel_id: config.web_tracking.openai_ads_pixel_id,
     },
     platforms: config.platforms,
   };

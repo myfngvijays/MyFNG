@@ -47,6 +47,7 @@ import {
   Smartphone,
   Crown,
   Gift,
+  Code2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -853,6 +854,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/super_admin/lead-tags', icon: <Tag className="w-5 h-5" />, label: 'Lead Tags' },
         { href: '/dashboard/super_admin/lead-statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead Status' },
         { href: '/dashboard/super_admin/analytics-hub?section=overview', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics Hub' },
+        { href: '/dashboard/super_admin/tracking-scripts', icon: <Code2 className="w-5 h-5" />, label: 'Tracking Scripts' },
         { href: '/dashboard/super_admin/reports', icon: <TrendingUp className="w-5 h-5" />, label: 'Reports & Analytics' },
         { href: '/dashboard/super_admin/audit-logs', icon: <Shield className="w-5 h-5" />, label: 'Audit Logs' },
         { href: '/dashboard/super_admin/settings', icon: <Settings className="w-5 h-5" />, label: 'System Settings' },

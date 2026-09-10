@@ -142,6 +142,16 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Erase / withdraw pe legally 30 din ke andar respond karna hai.',
     ],
   },
+  '/dashboard/super_admin/tracking-scripts': {
+    title: 'Tracking Scripts',
+    body:
+      'Website ke Head / Body tags yahan paste karo — GTM, Pixel, Clarity, custom HTML.\n\nJo already live hai (GTM, GA4, Pixel) woh dikhta hai. Naya snippet All pages ya selected pages pe laga sakte ho.',
+    tips: [
+      'Head = Google wala <script> box. Body = GTM noscript iframe.',
+      'Cookie consent: Analytics / Ads / Always.',
+      'Save ke baad production website refresh karo.',
+    ],
+  },
   '/dashboard/super_admin/meta-ads-mcp': {
     title: 'Meta Ads',
     body:

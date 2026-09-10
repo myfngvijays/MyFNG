@@ -33,6 +33,7 @@ import {
   SuperAdminDltSmsScreen,
   SuperAdminMetaAdsMcpScreen,
   SuperAdminDataRightsScreen,
+  SuperAdminTrackingScriptsScreen,
 } from '../screens/dashboard/superadmin/SuperAdminMoreScreens';
 import {
   SuperAdminWalletLogicScreen,
@@ -1439,6 +1440,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         <Stack.Screen name="SuperAdminDataRights" component={SuperAdminDataRightsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminMetaAdsMcp" component={SuperAdminMetaAdsMcpScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminDltSms" component={SuperAdminDltSmsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminTrackingScripts" component={SuperAdminTrackingScriptsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminWalletLogic" component={SuperAdminWalletLogicScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminWalletHistory" component={SuperAdminWalletHistoryScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminApiModule" component={SuperAdminApiModuleScreen} options={{ headerShown: false }} />

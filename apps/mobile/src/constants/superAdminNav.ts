@@ -194,6 +194,7 @@ export const SA_NAV: SaNavRow[] = [
       { id: 'meta_ads_mcp', label: 'Meta Ads', icon: 'megaphone-outline', target: 'SuperAdminMetaAdsMcp', kind: 'stack' },
       { id: 'api_map', label: 'API Services Map', icon: 'layers-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'API Services Map', path: '/api/super_admin/api-services' } },
       { id: 'analytics', label: 'Analytics Hub', icon: 'analytics-outline', target: 'SuperAdminAnalytics', kind: 'stack' },
+      { id: 'tracking_scripts', label: 'Tracking Scripts', icon: 'code-slash-outline', target: 'SuperAdminTrackingScripts', kind: 'stack' },
       { id: 'reports', label: 'Reports', icon: 'bar-chart-outline', target: 'ReportsAnalytics', kind: 'stack' },
       { id: 'audit', label: 'Audit Logs', icon: 'document-text-outline', target: 'AuditLogs', kind: 'stack' },
       { id: 'security', label: 'Security Events', icon: 'alert-circle-outline', target: 'SecurityEvents', kind: 'stack' },

@@ -3336,6 +3336,78 @@ async function checkDpdpCompliance(): Promise<HealthCheck> {
   }
 }
 
+async function checkWebsiteTracking(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return {
+        name: 'Website tracking scripts',
+        category: 'Third Party',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Admin DB client missing',
+        reason: 'Cannot read website_tracking_scripts / product_analytics_config.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    const { loadProductAnalyticsConfig } = await import('@/lib/analytics/productAnalyticsConfig');
+    const { loadWebsiteTrackingScripts } = await import('@/lib/analytics/websiteTrackingScripts');
+    const analytics = await loadProductAnalyticsConfig(supabaseAdmin, { bypassCache: true });
+    const scripts = await loadWebsiteTrackingScripts(supabaseAdmin);
+    const enabledCustom = scripts.custom.filter((row) => row.enabled);
+    const emptyEnabled = enabledCustom.filter((row) => !String(row.html || '').trim());
+    const responseTime = Date.now() - start;
+    if (emptyEnabled.length > 0) {
+      return {
+        name: 'Website tracking scripts',
+        category: 'Third Party',
+        status: 'degraded',
+        responseTime,
+        message: `${emptyEnabled.length} enabled snippet(s) have empty code`,
+        reason: 'Turn them off or paste Head/Body HTML in Tracking Scripts.',
+        lastChecked: new Date().toISOString(),
+        quickFix: {
+          label: 'Open Tracking Scripts',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/tracking-scripts' },
+        },
+      };
+    }
+    return {
+      name: 'Website tracking scripts',
+      category: 'Third Party',
+      status: 'healthy',
+      responseTime,
+      message: `GTM ${analytics.web_tracking.gtm_container_id} · OpenAI Ads ${analytics.web_tracking.openai_ads_pixel_id} · ${enabledCustom.length} custom snippet(s)`,
+      reason: 'Built-in GTM/GA4/Pixel/OpenAI Ads plus optional Head/Body snippets from Super Admin → Tracking Scripts.',
+      lastChecked: new Date().toISOString(),
+      details: {
+        gtm: analytics.web_tracking.gtm_container_id,
+        ga4: analytics.firebase.web_measurement_id,
+        openai_ads: analytics.web_tracking.openai_ads_pixel_id,
+        openai_ads_enabled: scripts.openai_ads_enabled !== false,
+        custom: enabledCustom.length,
+      },
+      quickFix: {
+        label: 'Open Tracking Scripts',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/tracking-scripts' },
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Website tracking scripts',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -3379,6 +3451,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkCallIntelligence(),
     checkCrmMlDl(),
     checkDpdpCompliance(),
+    checkWebsiteTracking(),
   ]);
 }
 

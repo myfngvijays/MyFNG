@@ -479,6 +479,12 @@ const navigationItems: NavItem[] = [
         icon: Code2,
         description: 'Files & tracking reference',
       },
+      {
+        name: 'Tracking Scripts',
+        href: '/dashboard/super_admin/tracking-scripts',
+        icon: Code2,
+        description: 'Head / Body paste, GTM, Pixel, pages',
+      },
     ],
   },
   {
@@ -922,7 +928,10 @@ function SuperAdminLayoutInner({
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Shared Content': true }));
     }
-    if (pathname?.startsWith('/dashboard/super_admin/analytics-hub')) {
+    if (
+      pathname?.startsWith('/dashboard/super_admin/analytics-hub') ||
+      pathname?.startsWith('/dashboard/super_admin/tracking-scripts')
+    ) {
       setOpenGroups((prev) => ({ ...prev, Analytics: true }));
     }
     if (

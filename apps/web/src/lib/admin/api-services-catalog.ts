@@ -225,6 +225,7 @@ export const ADMIN_MENU_API_SUMMARY: Array<{
   { menu: 'Universal Link', href: '/dashboard/super_admin/universal-link', tier: 'free', services: ['Supabase'] },
   { menu: 'Push Notifications', href: '/dashboard/super_admin/advance-notifications', tier: 'free', services: ['Supabase', 'FCM on send'] },
   { menu: 'Analytics Hub', href: '/dashboard/super_admin/analytics-hub', tier: 'paid', services: ['Supabase', 'GA4 API', 'Clarity config'] },
+  { menu: 'Tracking Scripts', href: '/dashboard/super_admin/tracking-scripts', tier: 'free', services: ['Supabase settings', 'GTM / Pixel / custom HTML'] },
   { menu: 'MISA AI Dashboard', href: '/dashboard/super_admin/misa-ai', tier: 'paid', services: ['OpenAI', 'Supabase usage logs'] },
   { menu: 'Admin AI Chat', href: '/dashboard/super_admin/admin-ai-chat', tier: 'paid', services: ['OpenAI'] },
   { menu: 'DLT SMS', href: '/dashboard/super_admin/dlt-sms', tier: 'paid', services: ['Own operator HTTP', 'Jio TrueConnect DLT'] },

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   DEFAULT_TRACKER_CONSENT,
   readTrackerConsent,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/dpdp/trackerConsent';
 
 export default function CookieConsentBanner() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [customize, setCustomize] = useState(false);
   const [analytics, setAnalytics] = useState(false);
@@ -38,6 +40,7 @@ export default function CookieConsentBanner() {
     }).catch(() => undefined);
   }
 
+  if (pathname === '/tracking-test') return null;
   if (!open) return null;
 
   return (

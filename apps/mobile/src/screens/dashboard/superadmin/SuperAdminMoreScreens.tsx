@@ -1368,6 +1368,179 @@ export function SuperAdminSystemMonitorScreen() {
   );
 }
 
+export function SuperAdminTrackingScriptsScreen() {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [gtm, setGtm] = useState('');
+  const [ga4, setGa4] = useState('');
+  const [pixel, setPixel] = useState('');
+  const [openaiAds, setOpenaiAds] = useState('U2kxzksZVZarMY9GCy9jJV');
+  const [clarity, setClarity] = useState('');
+  const [gtmOn, setGtmOn] = useState(true);
+  const [ga4On, setGa4On] = useState(true);
+  const [pixelOn, setPixelOn] = useState(true);
+  const [openaiOn, setOpenaiOn] = useState(true);
+  const [custom, setCustom] = useState<any[]>([]);
+  const [testing, setTesting] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await apiFetch<any>('/api/super_admin/tracking-scripts');
+      setGtm(String(data?.analytics?.gtm_container_id || ''));
+      setGa4(String(data?.analytics?.web_measurement_id || ''));
+      setPixel(String(data?.analytics?.meta_pixel_id || ''));
+      setOpenaiAds(String(data?.analytics?.openai_ads_pixel_id || 'U2kxzksZVZarMY9GCy9jJV'));
+      setClarity(String(data?.analytics?.clarity_project_id || ''));
+      setGtmOn(data?.analytics?.gtm_enabled !== false);
+      setGa4On(data?.analytics?.gtag_enabled !== false);
+      setPixelOn(data?.analytics?.meta_pixel_enabled !== false);
+      setOpenaiOn(data?.analytics?.openai_ads_enabled !== false);
+      setCustom(Array.isArray(data?.custom) ? data.custom : []);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load tracking scripts');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await apiFetch('/api/super_admin/tracking-scripts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analytics: {
+            gtm_container_id: gtm,
+            web_measurement_id: ga4,
+            meta_pixel_id: pixel,
+            openai_ads_pixel_id: openaiAds,
+            clarity_project_id: clarity,
+            gtm_enabled: gtmOn,
+            gtag_enabled: ga4On,
+            meta_pixel_enabled: pixelOn,
+            openai_ads_enabled: openaiOn,
+          },
+          custom,
+        }),
+      });
+      await load();
+      Alert.alert('Saved', 'Tracking scripts updated');
+    } catch (e: any) {
+      Alert.alert('Save failed', e?.message || 'Could not save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Shell title="Tracking Scripts">
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.body}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void load();
+              }}
+            />
+          }
+        >
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Text style={styles.sectionTitle}>Already live (IDs)</Text>
+          <Text style={styles.hint}>GTM / GA4 / Pixel / Clarity. Head-Body full paste website admin pe karo.</Text>
+          <TextInput style={styles.input} value={gtm} onChangeText={setGtm} placeholder="GTM-XXXX" autoCapitalize="characters" />
+          <TextInput style={styles.input} value={ga4} onChangeText={setGa4} placeholder="G-XXXX" autoCapitalize="characters" />
+          <TextInput style={styles.input} value={pixel} onChangeText={setPixel} placeholder="Meta Pixel ID" />
+          <TextInput style={styles.input} value={openaiAds} onChangeText={setOpenaiAds} placeholder="OpenAI Ads Pixel ID" />
+          <TextInput style={styles.input} value={clarity} onChangeText={setClarity} placeholder="Clarity project ID" />
+          <View style={[styles.row, { marginTop: 12 }]}>
+            <TouchableOpacity onPress={() => setGtmOn((v) => !v)}>
+              <Text style={styles.cardMeta}>GTM {gtmOn ? 'ON' : 'OFF'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setGa4On((v) => !v)}>
+              <Text style={styles.cardMeta}>GA4 {ga4On ? 'ON' : 'OFF'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPixelOn((v) => !v)}>
+              <Text style={styles.cardMeta}>Pixel {pixelOn ? 'ON' : 'OFF'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setOpenaiOn((v) => !v)}>
+              <Text style={styles.cardMeta}>OpenAI {openaiOn ? 'ON' : 'OFF'}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>Custom snippets</Text>
+          {custom.length === 0 ? (
+            <Text style={styles.empty}>Koi extra snippet nahi. Website Tracking Scripts pe Head/Body paste karo.</Text>
+          ) : (
+            custom.map((row) => (
+              <View key={row.id} style={styles.card}>
+                <View style={styles.row}>
+                  <Text style={styles.cardTitle}>{row.name || 'Script'}</Text>
+                  <Text style={[styles.badge, { backgroundColor: row.enabled ? '#D1FAE5' : '#FEE2E2', color: row.enabled ? '#065F46' : '#991B1B' }]}>
+                    {row.enabled ? 'ON' : 'OFF'}
+                  </Text>
+                </View>
+                <Text style={styles.cardMeta}>
+                  {row.placement === 'body' ? 'Body' : 'Head'} · {row.scope === 'pages' ? (row.paths || []).join(', ') || 'pages' : 'All pages'}
+                </Text>
+              </View>
+            ))
+          )}
+          <TouchableOpacity
+            style={[styles.saveBtn, { backgroundColor: '#D97706' }]}
+            onPress={async () => {
+              setTesting(true);
+              try {
+                const json = await apiFetch<any>('/api/super_admin/tracking-scripts/test', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    analytics: {
+                      gtm_container_id: gtm,
+                      web_measurement_id: ga4,
+                      meta_pixel_id: pixel,
+                      openai_ads_pixel_id: openaiAds,
+                      gtm_enabled: gtmOn,
+                      gtag_enabled: ga4On,
+                      meta_pixel_enabled: pixelOn,
+                      openai_ads_enabled: openaiOn,
+                    },
+                    custom,
+                  }),
+                });
+                const lines = (json.checks || []).map((c: any) => `${c.ok ? 'PASS' : 'FAIL'} ${c.name}: ${c.message}`);
+                Alert.alert(json.ok ? 'Test pass' : 'Test fail', lines.join('\n') || 'No checks');
+              } catch (e: any) {
+                Alert.alert('Test failed', e?.message || 'Could not test');
+              } finally {
+                setTesting(false);
+              }
+            }}
+            disabled={testing}
+          >
+            <Text style={styles.saveBtnText}>{testing ? 'Testing…' : 'Test IDs'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.saveBtn} onPress={() => void save()} disabled={saving}>
+            <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save IDs'}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+    </Shell>
+  );
+}
+
 const styles = StyleSheet.create({
   shell: { flex: 1, backgroundColor: '#F8FAFC' },
   topBar: {
@@ -1388,6 +1561,8 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   body: { padding: SPACING.md, paddingBottom: 40 },
+  sectionTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 6 },
+  hint: { fontSize: 12, color: '#64748B', marginBottom: 8 },
   chipRow: { paddingHorizontal: SPACING.md, paddingVertical: 10, gap: 8 },
   chip: {
     borderWidth: 1,

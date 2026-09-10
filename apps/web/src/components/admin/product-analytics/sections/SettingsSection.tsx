@@ -24,6 +24,7 @@ type ConfigForm = {
   web_tracking: {
     meta_pixel_id: string;
     gtm_container_id: string;
+    openai_ads_pixel_id: string;
   };
   platforms: Record<
     PlatformKey,
@@ -56,7 +57,7 @@ const EMPTY: ConfigForm = {
     console_url: '',
   },
   clarity: { project_id: '', dashboard_url: '' },
-  web_tracking: { meta_pixel_id: '', gtm_container_id: '' },
+  web_tracking: { meta_pixel_id: '', gtm_container_id: '', openai_ads_pixel_id: 'U2kxzksZVZarMY9GCy9jJV' },
   platforms: {
     android: {
       firebase_analytics_enabled: true,
@@ -131,7 +132,11 @@ export default function SettingsSection() {
         toast.error(json.error || 'Failed to load settings');
         return;
       }
-      setForm({ ...EMPTY, ...json.config });
+      setForm({
+        ...EMPTY,
+        ...json.config,
+        web_tracking: { ...EMPTY.web_tracking, ...json.config?.web_tracking },
+      });
       setCanEdit(Boolean(json.can_edit));
     } finally {
       setLoading(false);
@@ -316,6 +321,16 @@ export default function SettingsSection() {
               />
             </div>
             <div>
+              <label className="analytics-label">OpenAI Ads Pixel ID</label>
+              <input
+                className="analytics-input font-mono text-xs"
+                value={form.web_tracking.openai_ads_pixel_id}
+                onChange={(e) => updateWebTracking('openai_ads_pixel_id', e.target.value)}
+                placeholder="U2kxzksZVZarMY9GCy9jJV"
+                disabled={!canEdit}
+              />
+            </div>
+            <div>
               <label className="analytics-label">GTM Container ID</label>
               <input
                 className="analytics-input font-mono text-xs"
@@ -327,7 +342,11 @@ export default function SettingsSection() {
             </div>
           </div>
           <p className="text-[11px] text-gray-500 mt-2">
-            Website par Clarity GTM ke through load hoti hai. Meta Pixel aur GA4 layout file mein hardcoded hain — future mein yahan se dynamically read karwa sakte hain.
+            Website par Clarity GTM ke through load hoti hai. Head/Body snippet paste{' '}
+            <a href="/dashboard/super_admin/tracking-scripts" className="font-semibold text-violet-700 underline">
+              Tracking Scripts
+            </a>{' '}
+            menu se karo — IDs yahan aur wahan dono sync hain.
           </p>
         </div>
 
