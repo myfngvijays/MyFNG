@@ -1,28 +1,35 @@
-import { getFundsTracker, getSpendSummary, listCampaigns } from './tools';
+import {
+  getFundsTracker,
+  getInsightsBreakdown,
+  getSpendSummary,
+  listCampaignInsights,
+  listEntityInsights,
+} from './tools';
+import { money, num, pct, reportToPrintHtml } from './reportView';
 
 export type ReportPeriod = 'today' | 'last_7d' | 'last_30d' | 'briefing';
 
-const PERIOD_LABEL: Record<Exclude<ReportPeriod, 'briefing'>, string> = {
-  today: 'Today',
-  last_7d: 'Last 7 days',
-  last_30d: 'Last 30 days',
+export type ReportQuery = {
+  period?: ReportPeriod | string;
+  date_preset?: string;
+  since?: string;
+  until?: string;
 };
 
-function inr(n: number, currency = 'INR') {
-  try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 2,
-    }).format(Number(n) || 0);
-  } catch {
-    return `${currency} ${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
-  }
-}
-
-function num(n: number) {
-  return Math.round(Number(n) || 0).toLocaleString('en-IN');
-}
+const PERIOD_LABEL: Record<string, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  last_7d: 'Last 7 days',
+  last_14d: 'Last 14 days',
+  last_28d: 'Last 28 days',
+  last_30d: 'Last 30 days',
+  this_week_mon_today: 'This week',
+  last_week_mon_sun: 'Last week',
+  this_month: 'This month',
+  last_month: 'Last month',
+  maximum: 'Maximum',
+  briefing: 'Full briefing',
+};
 
 function periodBlock(label: string, row: any, currency: string) {
   if (!row) return `${label}: data nahi mili`;
@@ -32,16 +39,16 @@ function periodBlock(label: string, row: any, currency: string) {
   const cpr = row.cpr || row.cpl || 0;
   return [
     `${label}`,
-    `  Spend: ${inr(row.spend, currency)}`,
+    `  Spend: ${money(row.spend, currency)}`,
     `  Results: ${num(results)}${wa ? ` (${num(wa)} WA chats)` : leads ? ` (${num(leads)} leads)` : ''}`,
-    `  CPR: ${inr(cpr, currency)}`,
-    `  Clicks: ${num(row.clicks)} · Impr: ${num(row.impressions)} · CTR: ${Number(row.ctr || 0).toFixed(2)}%`,
+    `  CPR: ${money(cpr, currency)} · CPL: ${money(row.cpl, currency)}`,
+    `  Clicks: ${num(row.clicks)} · Impr: ${num(row.impressions)} · CTR: ${pct(row.ctr)} · CPC: ${money(row.cpc, currency)} · CPM: ${money(row.cpm, currency)} · Reach: ${num(row.reach)}`,
   ].join('\n');
 }
 
 export function guessReportPeriod(message: string): ReportPeriod | null {
   const q = String(message || '').toLowerCase();
-  const wantsReport = /report|briefing|\bpdf\b|report nikal|report banao|poori report|ads report|summary bhej|summary nikal/.test(
+  const wantsReport = /report|briefing|\bpdf\b|excel|csv|report nikal|report banao|poori report|ads report|summary bhej|summary nikal/.test(
     q,
   );
   if (!wantsReport) return null;
@@ -51,98 +58,153 @@ export function guessReportPeriod(message: string): ReportPeriod | null {
   return 'briefing';
 }
 
-export async function generateMetaAdsReport(period: ReportPeriod = 'briefing') {
+export function normalizeReportQuery(input: ReportPeriod | ReportQuery | string = 'last_7d'): ReportQuery {
+  if (typeof input === 'string') {
+    if (input === 'briefing') return { period: 'briefing', date_preset: 'last_30d' };
+    return { period: input, date_preset: input === 'last_7d' || input === 'today' || input === 'last_30d' ? input : input };
+  }
+  const since = String(input.since || '').slice(0, 10);
+  const until = String(input.until || '').slice(0, 10);
+  if (since && until) return { period: input.period || 'custom', since, until };
+  const datePreset = String(input.date_preset || input.period || 'last_7d');
+  if (datePreset === 'briefing') return { period: 'briefing', date_preset: 'last_30d' };
+  return { period: input.period || datePreset, date_preset: datePreset };
+}
+
+function dateLabel(q: ReportQuery) {
+  if (q.since && q.until) return `${q.since} – ${q.until}`;
+  return PERIOD_LABEL[String(q.date_preset || q.period)] || String(q.date_preset || q.period);
+}
+
+async function safeBreakdown(label: string, params: Parameters<typeof getInsightsBreakdown>[0]) {
+  const pack = await getInsightsBreakdown(params);
+  if (pack && pack.ok === false && pack.error) {
+    return { rows: [] as any[], error: `${label}: ${pack.error}` };
+  }
+  return { rows: Array.isArray(pack?.rows) ? pack.rows : [], error: '' };
+}
+
+export async function generateMetaAdsReport(input: ReportPeriod | ReportQuery | string = 'briefing') {
+  const query = normalizeReportQuery(input);
+  const isBriefing = query.period === 'briefing';
   const spend = await getSpendSummary();
   const currency = spend?.currency || spend?.account?.currency || 'INR';
-  const campaigns = await listCampaigns({ status: 'ACTIVE', limit: 20 });
-  const funds = period === 'briefing' ? await getFundsTracker(spend?.account?.id) : null;
+  const time = { date_preset: query.date_preset, since: query.since, until: query.until };
+  const breakdownErrors: string[] = [];
+
+  const [campaignPack, adsetPack, adPack, accountPack, placementPack, platformPack, agePack, genderPack, countryPack, devicePack, hourPack, devicePlatPack, funds] =
+    await Promise.all([
+      listCampaignInsights({ status: 'ALL', limit: 100, ...time }).catch((e: any) => {
+        breakdownErrors.push(e?.message || 'Campaigns failed');
+        return { campaigns: [] as any[] };
+      }),
+      listEntityInsights({ level: 'adset', ...time }).catch((e: any) => {
+        breakdownErrors.push(e?.message || 'Ad sets failed');
+        return { rows: [] as any[] };
+      }),
+      listEntityInsights({ level: 'ad', ...time }).catch((e: any) => {
+        breakdownErrors.push(e?.message || 'Ads failed');
+        return { rows: [] as any[] };
+      }),
+      getInsightsBreakdown({ ...time, level: 'account' }).catch(() => ({ rows: [] as any[] })),
+      safeBreakdown('Placement', { ...time, level: 'campaign', breakdowns: 'publisher_platform,platform_position' }),
+      safeBreakdown('Platform', { ...time, level: 'campaign', breakdowns: 'publisher_platform' }),
+      safeBreakdown('Age', { ...time, level: 'campaign', breakdowns: 'age' }),
+      safeBreakdown('Gender', { ...time, level: 'campaign', breakdowns: 'gender' }),
+      safeBreakdown('Country', { ...time, level: 'campaign', breakdowns: 'country' }),
+      safeBreakdown('Device', { ...time, level: 'campaign', breakdowns: 'impression_device' }),
+      safeBreakdown('Time of day', { ...time, level: 'campaign', breakdowns: 'hourly_stats_aggregated_by_advertiser_time_zone' }),
+      safeBreakdown('Platform + device', { ...time, level: 'campaign', breakdowns: 'device_platform' }),
+      isBriefing ? getFundsTracker(spend?.account?.id) : Promise.resolve(null),
+    ]);
+
+  for (const pack of [placementPack, platformPack, agePack, genderPack, countryPack, devicePack, hourPack, devicePlatPack]) {
+    if (pack.error) breakdownErrors.push(pack.error);
+  }
 
   const accountName = spend?.account?.name || 'My FNG Car Service';
   const accountId = spend?.account?.id || '';
   const stamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const title =
-    period === 'briefing'
-      ? `${accountName} — Ads briefing`
-      : `${accountName} — ${PERIOD_LABEL[period]} report`;
+  const rangeLabel = dateLabel(query);
+  const title = isBriefing ? `${accountName} — Ads briefing` : `${accountName} — ${rangeLabel} report`;
 
-  const focusKeys: Array<'today' | 'last_7d' | 'last_30d'> =
-    period === 'today' ? ['today'] : period === 'last_7d' ? ['last_7d'] : period === 'last_30d' ? ['last_30d'] : ['today', 'last_7d', 'last_30d'];
+  const rangeInsight = Array.isArray((accountPack as any)?.rows) ? (accountPack as any).rows[0] : null;
+  const selectedInsight =
+    rangeInsight || spend?.periods?.[String(query.date_preset)] || spend?.periods?.last_7d;
+
+  const summary = isBriefing
+    ? [
+        { period: 'Today', ...(spend?.periods?.today || {}) },
+        { period: 'Last 7 days', ...(spend?.periods?.last_7d || {}) },
+        { period: 'Last 30 days', ...(spend?.periods?.last_30d || {}) },
+      ]
+    : [{ period: rangeLabel, ...(selectedInsight || {}) }];
+
+  const campaigns = (Array.isArray(campaignPack?.campaigns) ? campaignPack.campaigns : []).map((c: any) => ({
+    ...c,
+    last_7d: c.metrics || c.last_7d,
+  }));
+  const adsets = Array.isArray(adsetPack?.rows) ? adsetPack.rows : [];
+  const ads = Array.isArray(adPack?.rows) ? adPack.rows : [];
 
   const lines: string[] = [
     title,
     `Generated ${stamp} IST`,
     accountId ? `Account ${accountId}` : '',
+    `Range: ${rangeLabel}`,
     '',
     'SPEND',
-    ...focusKeys.map((key) => periodBlock(PERIOD_LABEL[key], spend?.periods?.[key], currency)),
-  ].filter((line, i, arr) => line !== '' || arr[i - 1] !== '');
+    ...summary.map((row) => periodBlock(String(row.period), row, currency)),
+    '',
+    `CAMPAIGNS (${campaigns.length}) · AD SETS (${adsets.length}) · ADS (${ads.length})`,
+  ];
 
-  const campRows = Array.isArray(campaigns?.campaigns) ? campaigns.campaigns : [];
-  lines.push('', 'ACTIVE CAMPAIGNS (7d)');
-  if (!campRows.length) {
-    lines.push('Koi active campaign nahi mili.');
-  } else {
-    for (const c of campRows.slice(0, 12)) {
-      const p = c.last_7d || {};
-      const wa = p.messaging || p.leads || 0;
-      lines.push(
-        `• ${c.name} — ${c.effective_status || c.status || '—'} — ${inr(p.spend || 0, currency)} — ${num(wa)} results`,
-      );
-    }
-  }
-
-  if (funds) {
+  for (const c of campaigns.filter((row: any) => String(row.effective_status || row.status) === 'ACTIVE').slice(0, 20)) {
+    const p = c.metrics || {};
     lines.push(
-      '',
-      'BILLING',
-      `Current due: ${inr(funds.amount_due || funds.balance || 0, currency)}`,
-      `Spend cap: ${funds.spend_cap ? inr(funds.spend_cap, currency) : 'No cap'}`,
-      `Pay method: ${funds.account?.funding || '—'}`,
-      `Prepaid Funds: ${funds.funds_from_api ? inr(funds.funds, currency) : 'Ads Manager (API nahi deta)'}`,
+      `• ${c.name} — ACTIVE — ${money(p.spend, currency)} — ${num(p.results)} results — CTR ${pct(p.ctr)}`,
     );
   }
 
   lines.push('', 'MyFNG Meta Ads — read-only live numbers.');
-  const markdown = lines.join('\n');
-  const slug = period === 'briefing' ? 'briefing' : period.replace(/_/g, '-');
-  const filename = `myfng-ads-${slug}-${new Date().toISOString().slice(0, 10)}.html`;
+  const slug = (query.since && query.until ? `${query.since}_${query.until}` : String(query.date_preset || query.period || 'report')).replace(
+    /[^a-z0-9_-]+/gi,
+    '-',
+  );
+  const filename = `myfng-ads-${slug}-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
   return {
     ok: true,
-    period,
+    period: query.period || query.date_preset || 'last_7d',
+    date_preset: query.date_preset || null,
+    since: query.since || null,
+    until: query.until || null,
+    range_label: rangeLabel,
     title,
-    markdown,
+    markdown: lines.join('\n'),
     filename,
     generated_at: new Date().toISOString(),
     account: { name: accountName, id: accountId, currency },
     periods: spend?.periods || {},
-    campaigns: campRows,
+    summary,
+    campaigns,
+    adsets,
+    ads,
+    placements: placementPack.rows,
+    platforms: platformPack.rows,
+    ages: agePack.rows,
+    genders: genderPack.rows,
+    demographics: [...agePack.rows, ...genderPack.rows],
+    countries: countryPack.rows,
+    devices: devicePack.rows,
+    hours: hourPack.rows,
+    device_platforms: devicePlatPack.rows,
     funds: funds || null,
     rate_limited: Boolean(spend?.rate_limited),
+    breakdown_errors: breakdownErrors.filter(Boolean),
   };
 }
 
 export function reportToHtml(report: { title: string; markdown: string; generated_at?: string }) {
-  const body = String(report.markdown || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${String(report.title || 'MyFNG Ads Report').replace(/</g, '')}</title>
-  <style>
-    body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 760px; margin: 40px auto; color: #0f172a; padding: 0 20px; }
-    h1 { color: #004AAD; font-size: 22px; margin-bottom: 8px; }
-    pre { white-space: pre-wrap; font-family: inherit; line-height: 1.55; font-size: 14px; }
-    .foot { margin-top: 32px; font-size: 11px; color: #64748b; }
-  </style>
-</head>
-<body>
-  <h1>MyFNG · Meta Ads</h1>
-  <pre>${body}</pre>
-  <p class="foot">Live Marketing API · read-only</p>
-</body>
-</html>`;
+  return reportToPrintHtml(report);
 }

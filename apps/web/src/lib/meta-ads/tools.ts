@@ -1,4 +1,10 @@
-import { DEFAULT_INSIGHT_FIELDS, graphGet, resolveAccountId, summarizeInsights } from './graph';
+import {
+  BREAKDOWN_INSIGHT_FIELDS,
+  DEFAULT_INSIGHT_FIELDS,
+  graphGet,
+  resolveAccountId,
+  summarizeInsights,
+} from './graph';
 import { getMetaAdsSettings, normalizeAdAccountId } from './settings';
 
 export type MetaAdsToolArea = 'Account' | 'Campaigns' | 'Ads' | 'Insights' | 'Funds' | 'Pages' | 'Pixel';
@@ -100,6 +106,17 @@ export const META_ADS_TOOLS: MetaAdsToolDef[] = [
     ],
   },
   {
+    name: 'get_insights_breakdown',
+    area: 'Insights',
+    description: 'Campaign results by placement, age/gender, or device',
+    params: [
+      { key: 'object_id', label: 'Object ID', placeholder: 'blank = saved account' },
+      { key: 'level', label: 'Level', placeholder: 'campaign' },
+      { key: 'date_preset', label: 'Date preset', placeholder: 'last_7d' },
+      { key: 'breakdowns', label: 'Breakdowns', placeholder: 'publisher_platform,platform_position' },
+    ],
+  },
+  {
     name: 'get_spend_summary',
     area: 'Insights',
     description: 'Today / 7d / 30d spend, clicks, leads, CPL',
@@ -172,11 +189,22 @@ function limitOf(raw: unknown, fallback = 25): number {
   return Math.min(100, Math.max(1, Math.floor(n)));
 }
 
+export function insightTimeParams(q: { date_preset?: string; since?: string; until?: string } = {}) {
+  const since = String(q.since || '').slice(0, 10);
+  const until = String(q.until || '').slice(0, 10);
+  if (since && until) return { time_range: JSON.stringify({ since, until }) };
+  return { date_preset: String(q.date_preset || 'last_7d') };
+}
+
 async function firstInsight(path: string, extra: Record<string, string | number | undefined> = {}) {
+  const { date_preset, since, until, time_range, ...rest } = extra;
+  const time = time_range
+    ? { time_range }
+    : insightTimeParams({ date_preset: date_preset ? String(date_preset) : undefined, since: since ? String(since) : undefined, until: until ? String(until) : undefined });
   const json = await graphGet<{ data?: any[] }>(path, {
     fields: DEFAULT_INSIGHT_FIELDS,
-    date_preset: String(extra.date_preset || 'last_7d'),
-    ...extra,
+    ...rest,
+    ...time,
   });
   return json?.data?.[0] || null;
 }
@@ -523,6 +551,239 @@ export async function listCampaigns(params: { account_id?: string; status?: stri
   return { ok: true, count: campaigns.length, campaigns };
 }
 
+export async function listCampaignInsights(params: {
+  account_id?: string;
+  date_preset?: string;
+  since?: string;
+  until?: string;
+  status?: string;
+  limit?: unknown;
+} = {}) {
+  const act = await resolveAccountId(params.account_id);
+  const datePreset = String(params.date_preset || 'last_7d').trim() || 'last_7d';
+  const time = insightTimeParams(params);
+  const limit = limitOf(params.limit, 100);
+  const status = String(params.status || '').trim().toUpperCase();
+  const json = await graphGet<{ data?: any[] }>(`${act}/campaigns`, {
+    fields: 'id,name,status,effective_status,objective,daily_budget,lifetime_budget,created_time,updated_time',
+    limit,
+    ...(status && status !== 'ALL' ? { effective_status: `["${status}"]` } : {}),
+  });
+  let insightById = new Map<string, ReturnType<typeof summarizeInsights> & { campaign_name?: string }>();
+  try {
+    const insights = await graphGet<{ data?: any[] }>(`${act}/insights`, {
+      fields: `${DEFAULT_INSIGHT_FIELDS},campaign_id,campaign_name`,
+      ...time,
+      level: 'campaign',
+      limit: 100,
+    });
+    for (const row of insights.data || []) {
+      if (row.campaign_id) {
+        insightById.set(String(row.campaign_id), {
+          ...summarizeInsights(row),
+          campaign_name: row.campaign_name,
+        });
+      }
+    }
+  } catch {
+    insightById = new Map();
+  }
+
+  const seen = new Set<string>();
+  const campaigns = (json.data || []).map((row) => {
+    const id = String(row.id);
+    seen.add(id);
+    const metrics = insightById.get(id) || summarizeInsights(null);
+    return {
+      id,
+      name: row.name,
+      status: row.status,
+      effective_status: row.effective_status,
+      objective: row.objective || null,
+      daily_budget: row.daily_budget ? Number(row.daily_budget) / 100 : null,
+      lifetime_budget: row.lifetime_budget ? Number(row.lifetime_budget) / 100 : null,
+      created_time: row.created_time,
+      metrics,
+      last_7d: datePreset === 'last_7d' ? metrics : undefined,
+    };
+  });
+
+  for (const [id, metrics] of insightById) {
+    if (seen.has(id)) continue;
+    campaigns.push({
+      id,
+      name: String((metrics as any).campaign_name || id),
+      status: 'PAUSED',
+      effective_status: 'WITH_SPEND',
+      objective: null,
+      daily_budget: null,
+      lifetime_budget: null,
+      created_time: null,
+      metrics,
+      last_7d: datePreset === 'last_7d' ? metrics : undefined,
+    });
+  }
+
+  campaigns.sort((a, b) => Number(b.metrics?.spend || 0) - Number(a.metrics?.spend || 0));
+  return { ok: true, date_preset: datePreset, count: campaigns.length, campaigns };
+}
+
+export async function getInsightsBreakdown(params: {
+  object_id?: string;
+  level?: string;
+  date_preset?: string;
+  since?: string;
+  until?: string;
+  breakdowns?: string;
+  limit?: unknown;
+} = {}) {
+  const objectId = String(params.object_id || '').trim() || (await resolveAccountId());
+  const level = String(params.level || 'campaign').trim().toLowerCase() || 'campaign';
+  const datePreset = String(params.date_preset || 'last_7d').trim() || 'last_7d';
+  const breakdowns = String(params.breakdowns || '').trim();
+  const time = insightTimeParams(params);
+  const limit = Math.min(500, Math.max(1, Number(params.limit) || 200));
+  const fieldSets = [
+    `${BREAKDOWN_INSIGHT_FIELDS},campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name`,
+    `${BREAKDOWN_INSIGHT_FIELDS},campaign_id,campaign_name`,
+    BREAKDOWN_INSIGHT_FIELDS,
+  ];
+
+  let lastError = '';
+  for (const fields of fieldSets) {
+    try {
+      const json = await graphGet<{ data?: any[] }>(`${objectId}/insights`, {
+        fields,
+        ...time,
+        ...(breakdowns ? { breakdowns } : {}),
+        ...(level && level !== 'account' ? { level } : {}),
+        limit,
+      });
+      const rows = (json.data || []).map((row) => ({
+        ...summarizeInsights(row),
+        campaign_id: row.campaign_id || null,
+        campaign_name: row.campaign_name || null,
+        adset_id: row.adset_id || null,
+        adset_name: row.adset_name || null,
+        ad_id: row.ad_id || null,
+        ad_name: row.ad_name || null,
+        publisher_platform: row.publisher_platform || '',
+        platform_position: row.platform_position || '',
+        age: row.age || '',
+        gender: row.gender || '',
+        country: row.country || '',
+        region: row.region || '',
+        impression_device: row.impression_device || '',
+        device_platform: row.device_platform || '',
+        hour: row.hourly_stats_aggregated_by_advertiser_time_zone || '',
+      }));
+      return {
+        ok: true,
+        object_id: objectId,
+        level,
+        date_preset: datePreset,
+        breakdowns,
+        count: rows.length,
+        rows,
+      };
+    } catch (e: any) {
+      lastError = e?.message || String(e);
+    }
+  }
+  return {
+    ok: false,
+    object_id: objectId,
+    level,
+    date_preset: datePreset,
+    breakdowns,
+    error: lastError || 'Breakdown failed',
+    count: 0,
+    rows: [],
+  };
+}
+
+export async function listEntityInsights(params: {
+  account_id?: string;
+  level: 'adset' | 'ad';
+  date_preset?: string;
+  since?: string;
+  until?: string;
+} = { level: 'adset' }) {
+  const act = await resolveAccountId(params.account_id);
+  const level = params.level === 'ad' ? 'ad' : 'adset';
+  const time = insightTimeParams(params);
+  const [list, insights] = await Promise.all([
+    graphGet<{ data?: any[] }>(`${act}/${level === 'ad' ? 'ads' : 'adsets'}`, {
+      fields:
+        level === 'ad'
+          ? 'id,name,status,effective_status,campaign_id,adset_id'
+          : 'id,name,status,effective_status,campaign_id',
+      limit: 100,
+    }).catch(() => ({ data: [] as any[] })),
+    graphGet<{ data?: any[] }>(`${act}/insights`, {
+      fields:
+        level === 'ad'
+          ? `${DEFAULT_INSIGHT_FIELDS},campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name`
+          : `${DEFAULT_INSIGHT_FIELDS},campaign_id,campaign_name,adset_id,adset_name`,
+      ...time,
+      level,
+      limit: 100,
+    }).catch(() => ({ data: [] as any[] })),
+  ]);
+
+  const byId = new Map<string, ReturnType<typeof summarizeInsights>>();
+  const names = new Map<string, { campaign_id?: string; campaign_name?: string; adset_id?: string; adset_name?: string; name?: string }>();
+  for (const row of insights.data || []) {
+    const id = String(level === 'ad' ? row.ad_id : row.adset_id || '');
+    if (!id) continue;
+    byId.set(id, summarizeInsights(row));
+    names.set(id, {
+      campaign_id: row.campaign_id,
+      campaign_name: row.campaign_name,
+      adset_id: row.adset_id,
+      adset_name: row.adset_name,
+      name: level === 'ad' ? row.ad_name : row.adset_name,
+    });
+  }
+
+  const seen = new Set<string>();
+  const rows = (list.data || []).map((row) => {
+    const id = String(row.id);
+    seen.add(id);
+    const extra = names.get(id) || {};
+    return {
+      id,
+      name: row.name,
+      status: row.status,
+      effective_status: row.effective_status,
+      campaign_id: row.campaign_id || extra.campaign_id || null,
+      campaign_name: extra.campaign_name || '',
+      adset_id: row.adset_id || extra.adset_id || (level === 'adset' ? id : null),
+      adset_name: extra.adset_name || (level === 'adset' ? row.name : ''),
+      metrics: byId.get(id) || summarizeInsights(null),
+    };
+  });
+
+  for (const [id, metrics] of byId) {
+    if (seen.has(id)) continue;
+    const extra = names.get(id) || {};
+    rows.push({
+      id,
+      name: extra.name || id,
+      status: 'UNKNOWN',
+      effective_status: 'WITH_SPEND',
+      campaign_id: extra.campaign_id || null,
+      campaign_name: extra.campaign_name || '',
+      adset_id: extra.adset_id || (level === 'adset' ? id : null),
+      adset_name: extra.adset_name || '',
+      metrics,
+    });
+  }
+
+  rows.sort((a, b) => Number(b.metrics?.spend || 0) - Number(a.metrics?.spend || 0));
+  return { ok: true, level, count: rows.length, rows };
+}
+
 async function runGetAccountInfo(params: Record<string, unknown>) {
   const act = await resolveAccountId(params.account_id as string | undefined);
   const account = await graphGet(act, {
@@ -789,6 +1050,8 @@ export async function runMetaAdsTool(name: string, params: Record<string, unknow
       return getAdPerformance(params);
     case 'get_insights':
       return runGetInsights(params);
+    case 'get_insights_breakdown':
+      return getInsightsBreakdown(params);
     case 'get_spend_summary':
       return getSpendSummary(params.account_id as string | undefined);
     case 'get_funds_tracker':

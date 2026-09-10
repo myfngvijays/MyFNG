@@ -25,6 +25,8 @@ import {
   Terminal,
   Wallet,
 } from 'lucide-react';
+import MetaAdsReportPanel, { ReportBusyNote } from './MetaAdsReportPanel';
+import { downloadReportCsv, downloadReportExcel, printReportHtml } from '@/lib/meta-ads/reportView';
 
 type Tool = { name: string; area: string; description: string; params: { key: string; label: string; required?: boolean; placeholder?: string }[] };
 
@@ -133,32 +135,12 @@ const ASK_CHIPS = [
   'Due kitna hai?',
 ];
 
-function reportHtml(report: { title?: string; markdown?: string }) {
-  const body = String(report.markdown || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${String(report.title || 'MyFNG Ads Report').replace(/</g, '')}</title>
-<style>body{font-family:ui-sans-serif,system-ui,sans-serif;max-width:760px;margin:40px auto;color:#0f172a;padding:0 24px}h1{color:#004AAD;font-size:22px}pre{white-space:pre-wrap;font-family:inherit;line-height:1.55;font-size:14px}.foot{margin-top:28px;font-size:11px;color:#64748b}</style>
-</head><body><h1>MyFNG · Meta Ads</h1><pre>${body}</pre><p class="foot">Live Marketing API · read-only</p></body></html>`;
+function downloadReportFile(report: any) {
+  void downloadReportExcel(report);
 }
 
-function downloadReportFile(report: { title?: string; markdown?: string; filename?: string }) {
-  const blob = new Blob([reportHtml(report)], { type: 'text/html;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = report.filename || 'myfng-ads-report.html';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-function printReportFile(report: { title?: string; markdown?: string }) {
-  const w = window.open('', '_blank', 'noopener,noreferrer');
-  if (!w) return;
-  w.document.write(reportHtml(report));
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 250);
+function printReportFile(report: any) {
+  printReportHtml(report);
 }
 
 function pickRecorderMime() {
@@ -508,10 +490,17 @@ function ChatMessageBody({
         <div className="flex flex-wrap gap-1.5 border-t border-slate-100 px-2.5 py-2">
           <button
             type="button"
-            onClick={() => downloadReportFile(report)}
+            onClick={() => void downloadReportExcel(report)}
             className="inline-flex items-center gap-1 rounded-full bg-[#004AAD]/10 px-2 py-0.5 text-[10px] font-bold text-[#004AAD]"
           >
-            <Download className="h-3 w-3" /> Download
+            <Download className="h-3 w-3" /> Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadReportCsv(report)}
+            className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700"
+          >
+            <Download className="h-3 w-3" /> CSV
           </button>
           <button
             type="button"
@@ -1218,11 +1207,22 @@ export default function MetaAdsMcpApp() {
     }
   };
 
-  const generateReport = async (period: 'today' | 'last_7d' | 'last_30d' | 'briefing') => {
+  const generateReport = async (query: {
+    period?: string;
+    date_preset?: string;
+    since?: string;
+    until?: string;
+  }) => {
     setReportBusy(true);
     setError(null);
     try {
-      const json = await post({ action: 'generate_report', period });
+      const json = await post({
+        action: 'generate_report',
+        period: query.period || query.date_preset || 'last_7d',
+        date_preset: query.date_preset || query.period,
+        since: query.since,
+        until: query.until,
+      });
       setGeneratedReport(json.report);
     } catch (e: any) {
       setError(e?.message || 'Report failed');
@@ -1934,7 +1934,10 @@ export default function MetaAdsMcpApp() {
           <div className="space-y-4">
             <div>
               <h2 className="text-lg font-black text-slate-900">Generate report</h2>
-              <p className="text-sm text-slate-500">Live Meta numbers se HTML report — Print se PDF bhi nikal sakte ho.</p>
+              <p className="text-sm text-slate-500">
+                Meta-style dates, Active/Paused filter, campaign / ad set / ads, aur placement-age-country breakdowns.
+                Ek campaign select karke export usi ka nikalta hai.
+              </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {(
@@ -1949,7 +1952,7 @@ export default function MetaAdsMcpApp() {
                   key={item.id}
                   type="button"
                   disabled={reportBusy || !data.settings.ready}
-                  onClick={() => void generateReport(item.id)}
+                  onClick={() => void generateReport({ period: item.id, date_preset: item.id === 'briefing' ? 'last_30d' : item.id })}
                   className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#004AAD]/40 hover:shadow-md disabled:opacity-50"
                 >
                   <FileBarChart className="h-5 w-5 text-[#004AAD]" />
@@ -1958,44 +1961,15 @@ export default function MetaAdsMcpApp() {
                 </button>
               ))}
             </div>
-            {reportBusy ? (
-              <p className="flex items-center gap-2 text-sm text-slate-500">
-                <Loader2 className="h-4 w-4 animate-spin" /> Report nikal raha hoon — Meta pe 10–20 sec lag sakte hain.
-              </p>
-            ) : null}
+            {reportBusy ? <ReportBusyNote /> : null}
             {generatedReport ? (
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-                  <p className="text-sm font-bold text-slate-900">{generatedReport.title}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => downloadReportFile(generatedReport)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#004AAD] px-3 py-1.5 text-xs font-semibold text-white"
-                    >
-                      <Download className="h-3.5 w-3.5" /> Download
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => printReportFile(generatedReport)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                    >
-                      <Printer className="h-3.5 w-3.5" /> Print / PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void copy('report', generatedReport.markdown || '')}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                      {copied === 'report' ? 'Copied' : 'Copy'}
-                    </button>
-                  </div>
-                </div>
-                <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap bg-slate-50 px-4 py-4 text-sm leading-relaxed text-slate-800">
-                  {generatedReport.markdown}
-                </pre>
-              </div>
+              <MetaAdsReportPanel
+                report={generatedReport}
+                copied={copied}
+                onCopy={(text) => void copy('report', text)}
+                busy={reportBusy}
+                onGenerate={(query) => void generateReport(query)}
+              />
             ) : (
               <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                 Card choose karo, ya Ask ads mein bolo “7 din ki report banao”.

@@ -91,6 +91,18 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
+    'get_insights_breakdown',
+    'Campaign results broken down by placement, age/gender, or device.',
+    {
+      object_id: z.string().optional(),
+      level: z.string().optional(),
+      date_preset: z.string().optional(),
+      breakdowns: z.string().optional(),
+    },
+    async (args) => wrap('get_insights_breakdown', args),
+  );
+
+  server.tool(
     'get_spend_summary',
     'Today / 7d / 30d spend, clicks, leads, and CPL.',
     { account_id: z.string().optional() },

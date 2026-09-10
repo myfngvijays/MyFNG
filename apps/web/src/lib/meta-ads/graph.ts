@@ -6,6 +6,10 @@ export const META_ADS_GRAPH_BASE = `https://graph.facebook.com/${META_ADS_GRAPH_
 const INSIGHT_FIELDS =
   'spend,impressions,clicks,ctr,cpc,cpm,reach,frequency,actions,cost_per_action_type,inline_link_clicks';
 
+/** Reach/frequency often fail when breakdowns are requested. */
+export const BREAKDOWN_INSIGHT_FIELDS =
+  'spend,impressions,clicks,ctr,cpc,cpm,actions,cost_per_action_type,inline_link_clicks';
+
 export type GraphError = { message: string; code?: number; type?: string };
 
 export type InsightRow = {
@@ -26,6 +30,12 @@ export type InsightRow = {
   ad_id?: string;
   date_start?: string;
   date_stop?: string;
+  publisher_platform?: string;
+  platform_position?: string;
+  age?: string;
+  gender?: string;
+  impression_device?: string;
+  device_platform?: string;
 };
 
 function graphErrorMessage(json: any, status: number): string {

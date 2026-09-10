@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Share,
+  Platform,
+  Linking,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -582,16 +585,597 @@ function AskAnswerCard({ content, report }: { content: string; report?: any }) {
         </View>
       ) : null}
       {report ? (
-        <TouchableOpacity
-          onPress={async () => {
-            await Clipboard.setStringAsync(report.markdown || content);
-            Alert.alert('Copied', 'Report clipboard pe aa gayi');
-          }}
-          style={{ paddingHorizontal: 14, paddingVertical: 10 }}
-        >
-          <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 12 }}>Copy report</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingVertical: 10 }}>
+          <TouchableOpacity
+            onPress={async () => {
+              await Clipboard.setStringAsync(report.markdown || content);
+              Alert.alert('Copied', 'Report clipboard pe aa gayi');
+            }}
+          >
+            <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 12 }}>Copy</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void shareMetaAdsFile(report, 'xlsx')}>
+            <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 12 }}>Excel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => void shareMetaAdsFile(report, 'csv')}>
+            <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 12 }}>CSV</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
+    </View>
+  );
+}
+
+async function shareMetaAdsFile(report: any, format: 'xlsx' | 'csv') {
+  const json = await apiFetch<any>('/api/super_admin/meta-ads-mcp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'export_report', format, report, period: report?.period }),
+    timeoutMs: 45000,
+  });
+  const filename = String(json.filename || `myfng-ads.${format}`);
+  const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+  const path = `${dir}${filename}`;
+  if (format === 'csv') {
+    await FileSystem.writeAsStringAsync(path, String(json.content || ''));
+  } else {
+    await FileSystem.writeAsStringAsync(path, String(json.base64 || ''), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+  }
+  let openUri = path;
+  if (Platform.OS === 'android' && typeof (FileSystem as any).getContentUriAsync === 'function') {
+    openUri = await (FileSystem as any).getContentUriAsync(path);
+  }
+  try {
+    await Share.share({
+      title: filename,
+      url: openUri,
+      message: Platform.OS === 'android' ? filename : undefined,
+    });
+  } catch {
+    const opened = await Linking.canOpenURL(openUri);
+    if (opened) await Linking.openURL(openUri);
+    else Alert.alert('Saved', `${filename} cache mein save ho gayi.`);
+  }
+}
+
+function moneyShort(n: unknown, currency = 'INR') {
+  return `${currency} ${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
+}
+
+function prettyHour(value: unknown) {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  if (/\b(am|pm)\b/i.test(raw)) return raw.replace(/\s*[-–—]\s*/g, ' – ');
+  const parts = raw.split(/\s*[-–—]\s*/).map((part) => {
+    const m = part.trim().match(/^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?$/);
+    if (!m) return '';
+    const hour24 = Number(m[1]);
+    if (!Number.isFinite(hour24) || hour24 < 0 || hour24 > 23) return '';
+    const minutes = m[2] || '00';
+    const suffix = hour24 >= 12 ? 'PM' : 'AM';
+    return `${hour24 % 12 || 12}:${minutes} ${suffix}`;
+  }).filter(Boolean);
+  return parts.length ? parts.join(' – ') : raw;
+}
+
+function bucketStatus(value: unknown) {
+  const s = String(value || '').toUpperCase();
+  if (s === 'ACTIVE') return 'active';
+  if (s.includes('PAUSE')) return 'paused';
+  return 'inactive';
+}
+
+function scopeReport(report: any, campaignId: string, status: string) {
+  let campaigns: any[] = Array.isArray(report?.campaigns) ? [...report.campaigns] : [];
+  if (campaignId !== 'all') campaigns = campaigns.filter((c) => String(c.id) === campaignId);
+  else if (status !== 'all') campaigns = campaigns.filter((c) => bucketStatus(c.effective_status || c.status) === status);
+  const ids = new Set(campaigns.map((c) => String(c.id)));
+  const pick = (key: string) =>
+    Array.isArray(report?.[key]) ? report[key].filter((row: any) => ids.has(String(row.campaign_id || row.id))) : [];
+  return {
+    ...report,
+    campaigns,
+    adsets: pick('adsets'),
+    ads: pick('ads'),
+    placements: pick('placements'),
+    platforms: pick('platforms'),
+    ages: pick('ages'),
+    genders: pick('genders'),
+    countries: pick('countries'),
+    devices: pick('devices'),
+    hours: pick('hours').map((row: any) => ({ ...row, hour: prettyHour(row.hour) })),
+    device_platforms: pick('device_platforms'),
+    filename:
+      campaignId !== 'all'
+        ? String(report?.filename || 'myfng-ads.xlsx').replace(/\.xlsx$/i, `-${campaignId.slice(-6)}.xlsx`)
+        : report?.filename,
+  };
+}
+
+const NESTED_TABS: Record<string, string> = {
+  placement: 'publisher_platform,platform_position',
+  platform: 'publisher_platform',
+  age: 'age',
+  gender: 'gender',
+  country: 'country',
+  device: 'impression_device',
+  hour: 'hourly_stats_aggregated_by_advertiser_time_zone',
+  device_platform: 'device_platform',
+};
+
+function rowTotals(list: any[]) {
+  const spend = list.reduce((s, r) => s + Number((r.metrics || r).spend || 0), 0);
+  const results = list.reduce((s, r) => s + Number((r.metrics || r).results || 0), 0);
+  const clicks = list.reduce((s, r) => s + Number((r.metrics || r).clicks || 0), 0);
+  const impressions = list.reduce((s, r) => s + Number((r.metrics || r).impressions || 0), 0);
+  return {
+    spend,
+    results,
+    clicks,
+    impressions,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+    cpr: results > 0 ? spend / results : 0,
+  };
+}
+
+function MetaAdsReportTables({ report }: { report: any }) {
+  const [tab, setTab] = useState('campaigns');
+  const [status, setStatus] = useState('active');
+  const [campaignId, setCampaignId] = useState('all');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'active' | 'inactive'>('active');
+  const [pickerQ, setPickerQ] = useState('');
+  const [openCampaigns, setOpenCampaigns] = useState<Record<string, boolean>>({});
+  const [openAdsets, setOpenAdsets] = useState<Record<string, boolean>>({});
+  const [childCache, setChildCache] = useState<Record<string, { adsets: any[]; ads: any[]; loading?: boolean; error?: string }>>({});
+  const currency = report?.account?.currency || 'INR';
+  const scoped = scopeReport(report, campaignId, status);
+  const campaigns: any[] = scoped.campaigns || [];
+  const allCampaigns: any[] = Array.isArray(report?.campaigns) ? report.campaigns : [];
+  const summary: any[] = Array.isArray(report?.summary) ? report.summary : [];
+  const map: Record<string, any[]> = {
+    campaigns,
+    adsets: scoped.adsets || [],
+    ads: scoped.ads || [],
+    placement: scoped.placements || [],
+    platform: scoped.platforms || [],
+    age: scoped.ages || [],
+    gender: scoped.genders || [],
+    country: scoped.countries || [],
+    device: scoped.devices || [],
+    hour: scoped.hours || [],
+    device_platform: scoped.device_platforms || [],
+  };
+  const rows = map[tab] || campaigns;
+  const selected = allCampaigns.find((c) => String(c.id) === campaignId);
+  const activeCount = allCampaigns.filter((c) => bucketStatus(c.effective_status || c.status) === 'active').length;
+  const pickerList = allCampaigns.filter((c) => {
+    const bucket = bucketStatus(c.effective_status || c.status);
+    if (pickerMode === 'active' ? bucket !== 'active' : bucket === 'active') return false;
+    const hay = `${c.name} ${c.id}`.toLowerCase();
+    return !pickerQ.trim() || hay.includes(pickerQ.trim().toLowerCase());
+  });
+  const nested = Boolean(NESTED_TABS[tab]);
+  const grouped = nested
+    ? Object.values(
+        rows.reduce((acc: Record<string, { id: string; name: string; rows: any[] }>, row) => {
+          const id = String(row.campaign_id || 'unknown');
+          const name = String(row.campaign_name || campaigns.find((c) => String(c.id) === id)?.name || id);
+          if (!acc[id]) acc[id] = { id, name, rows: [] };
+          acc[id].rows.push(row);
+          return acc;
+        }, {}),
+      ).sort((a, b) => Number(rowTotals(b.rows).spend) - Number(rowTotals(a.rows).spend))
+    : [];
+  const totals = rowTotals(nested ? grouped.flatMap((g) => g.rows) : rows.map((r) => r.metrics || r.last_7d || r));
+
+  const headers =
+    tab === 'campaigns'
+      ? ['Campaign', 'Status', 'Spend', 'Results', 'CPR', 'Clicks', 'CTR']
+      : tab === 'adsets'
+        ? ['Ad set', 'Status', 'Spend', 'Results', 'CTR']
+        : tab === 'ads'
+          ? ['Ad', 'Status', 'Spend', 'Results', 'CTR']
+          : tab === 'placement'
+            ? ['Name', 'Platform', 'Placement', 'Spend', 'Results', 'CTR']
+            : tab === 'platform'
+              ? ['Name', 'Platform', 'Spend', 'Results', 'CTR']
+              : tab === 'age'
+                ? ['Name', 'Age', 'Spend', 'Results', 'CTR']
+                : tab === 'gender'
+                  ? ['Name', 'Gender', 'Spend', 'Results', 'CTR']
+                  : tab === 'country'
+                    ? ['Name', 'Country', 'Spend', 'Results', 'CTR']
+                    : tab === 'hour'
+                      ? ['Name', 'Hour', 'Spend', 'Results', 'CTR']
+                      : ['Name', 'Device', 'Spend', 'Results', 'CTR'];
+
+  const metricCells = (m: any, extra: string[] = []) => [
+    ...extra,
+    moneyShort(m.spend, currency),
+    String(m.results || 0),
+    tab === 'campaigns' ? moneyShort(m.cpr, currency) : `${Number(m.ctr || 0).toFixed(2)}%`,
+    ...(tab === 'campaigns' ? [String(m.clicks || 0), `${Number(m.ctr || 0).toFixed(2)}%`] : []),
+  ];
+
+  const loadChildren = async (id: string) => {
+    const key = `${tab}:${id}`;
+    if (childCache[key]?.loading || (childCache[key] && !childCache[key].error)) return;
+    setChildCache((prev) => ({ ...prev, [key]: { adsets: [], ads: [], loading: true } }));
+    try {
+      const json = await apiFetch<any>('/api/super_admin/meta-ads-mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'insights_breakdown',
+          object_id: id,
+          breakdowns: NESTED_TABS[tab],
+          date_preset: report.date_preset,
+          since: report.since,
+          until: report.until,
+        }),
+        timeoutMs: 45000,
+      });
+      setChildCache((prev) => ({
+        ...prev,
+        [key]: { adsets: json.adsets || [], ads: json.ads || [], loading: false, error: json.error || '' },
+      }));
+    } catch (e: any) {
+      setChildCache((prev) => ({
+        ...prev,
+        [key]: { adsets: [], ads: [], loading: false, error: e?.message || 'Failed' },
+      }));
+    }
+  };
+
+  const toggleCampaign = (id: string) => {
+    const next = !openCampaigns[id];
+    setOpenCampaigns((prev) => ({ ...prev, [id]: next }));
+    if (next && nested) void loadChildren(id);
+  };
+
+  const renderCells = (cells: string[], key: string, opts?: { bold?: boolean; bg?: string; indent?: number; color?: string }) => (
+    <View
+      key={key}
+      style={{
+        flexDirection: 'row',
+        backgroundColor: opts?.bg || '#fff',
+        paddingVertical: 7,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E2E8F0',
+        paddingLeft: opts?.indent || 0,
+      }}
+    >
+      {cells.map((cell, i) => (
+        <Text
+          key={`${key}-${i}`}
+          numberOfLines={2}
+          style={{ color: opts?.color || '#0F172A', fontSize: 10, width: 92, paddingHorizontal: 6, fontWeight: opts?.bold || i === 0 ? '700' : '500' }}
+        >
+          {cell}
+        </Text>
+      ))}
+    </View>
+  );
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{report.title}</Text>
+      <Text style={styles.cardMeta}>
+        {report.date_preset || report.period} · {campaigns.length} campaigns
+      </Text>
+      {summary.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+          {summary.map((row) => (
+            <View key={String(row.period)} style={[styles.summaryCard, { minWidth: 140, marginRight: 8 }]}>
+              <Text style={styles.summaryLbl}>{row.period}</Text>
+              <Text style={styles.summaryVal}>{moneyShort(row.spend, currency)}</Text>
+              <Text style={styles.cardMeta}>
+                {row.results || 0} res · {row.clicks || 0} clk · CTR {Number(row.ctr || 0).toFixed(2)}%
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+      ) : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        {(['active', 'paused', 'inactive', 'all'] as const).map((id) => (
+          <TouchableOpacity
+            key={id}
+            onPress={() => setStatus(id)}
+            style={{
+              backgroundColor: status === id ? '#0F172A' : '#F1F5F9',
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: status === id ? '#fff' : '#334155', fontSize: 11, fontWeight: '800', textTransform: 'capitalize' }}>
+              {id}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <TouchableOpacity
+        onPress={() => setPickerOpen((v) => !v)}
+        style={{ marginTop: 10, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}
+      >
+        <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }} numberOfLines={1}>
+          {campaignId === 'all' ? 'All campaigns' : selected?.name || 'Campaign'}
+        </Text>
+      </TouchableOpacity>
+      {pickerOpen ? (
+        <View style={{ marginTop: 8, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, maxHeight: 280, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', gap: 8, padding: 8 }}>
+            <TouchableOpacity
+              onPress={() => setPickerMode('active')}
+              style={{ backgroundColor: pickerMode === 'active' ? '#059669' : '#F1F5F9', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}
+            >
+              <Text style={{ color: pickerMode === 'active' ? '#fff' : '#334155', fontSize: 11, fontWeight: '800' }}>Active {activeCount}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setPickerMode('inactive')}
+              style={{ backgroundColor: pickerMode === 'inactive' ? '#0F172A' : '#F1F5F9', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}
+            >
+              <Text style={{ color: pickerMode === 'inactive' ? '#fff' : '#334155', fontSize: 11, fontWeight: '800' }}>
+                Inactive {allCampaigns.length - activeCount}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            value={pickerQ}
+            onChangeText={setPickerQ}
+            placeholder="Search campaign…"
+            placeholderTextColor="#94A3B8"
+            style={{ borderTopWidth: 1, borderColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 8, fontSize: 12 }}
+          />
+          <ScrollView style={{ maxHeight: 180 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setCampaignId('all');
+                setPickerOpen(false);
+              }}
+              style={{ paddingHorizontal: 10, paddingVertical: 8 }}
+            >
+              <Text style={{ fontWeight: '800', fontSize: 12, color: campaignId === 'all' ? COLORS.primary : '#0F172A' }}>All campaigns</Text>
+            </TouchableOpacity>
+            {pickerList.map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                onPress={() => {
+                  setCampaignId(String(c.id));
+                  setPickerOpen(false);
+                }}
+                style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: campaignId === String(c.id) ? '#EFF6FF' : '#fff' }}
+              >
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                  {c.name}
+                </Text>
+                <Text style={{ fontSize: 10, color: '#64748B', textTransform: 'capitalize' }}>{bucketStatus(c.effective_status || c.status)}</Text>
+              </TouchableOpacity>
+            ))}
+            {!pickerList.length ? <Text style={[styles.cardMeta, { padding: 10 }]}>No campaigns.</Text> : null}
+          </ScrollView>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        {(
+          [
+            ['campaigns', `Campaigns ${campaigns.length}`],
+            ['adsets', `Ad sets ${(scoped.adsets || []).length}`],
+            ['ads', `Ads ${(scoped.ads || []).length}`],
+            ['placement', `Placement ${(scoped.placements || []).length}`],
+            ['platform', `Platform ${(scoped.platforms || []).length}`],
+            ['age', `Age ${(scoped.ages || []).length}`],
+            ['gender', `Gender ${(scoped.genders || []).length}`],
+            ['country', `Country ${(scoped.countries || []).length}`],
+            ['device', `Device ${(scoped.devices || []).length}`],
+            ['hour', `Time ${(scoped.hours || []).length}`],
+            ['device_platform', `Platform+device ${(scoped.device_platforms || []).length}`],
+          ] as const
+        ).map(([id, label]) => (
+          <TouchableOpacity
+            key={id}
+            onPress={() => {
+              setTab(id);
+              setOpenCampaigns({});
+              setOpenAdsets({});
+            }}
+            style={{
+              backgroundColor: tab === id ? COLORS.primary : '#F1F5F9',
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: tab === id ? '#fff' : '#334155', fontSize: 11, fontWeight: '800' }}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <ScrollView horizontal style={{ marginTop: 10 }}>
+        <View>
+          <View style={{ flexDirection: 'row', backgroundColor: '#0F172A', paddingVertical: 8 }}>
+            {headers.map((h) => (
+              <Text key={h} style={{ color: '#fff', fontSize: 10, fontWeight: '800', width: 92, paddingHorizontal: 6 }}>
+                {h}
+              </Text>
+            ))}
+          </View>
+          {tab === 'campaigns' && campaigns.length
+            ? campaigns.map((row, idx) => {
+                const id = String(row.id);
+                const open = Boolean(openCampaigns[id]);
+                const m = row.metrics || row.last_7d || row;
+                const adsets = (scoped.adsets || []).filter((item: any) => String(item.campaign_id) === id);
+                return (
+                  <View key={id}>
+                    <TouchableOpacity onPress={() => toggleCampaign(id)}>
+                      {renderCells(
+                        [`${open ? '▾' : '▸'} ${row.name}`, bucketStatus(row.effective_status || row.status), ...metricCells(m).slice(0)],
+                        `c-${id}`,
+                        { bold: true, bg: idx % 2 ? '#F8FAFC' : '#fff' },
+                      )}
+                    </TouchableOpacity>
+                    {open
+                      ? adsets.map((adset: any) => {
+                          const aKey = `${id}:${adset.id}`;
+                          const aOpen = Boolean(openAdsets[aKey]);
+                          const am = adset.metrics || adset;
+                          const ads = (scoped.ads || []).filter(
+                            (item: any) =>
+                              String(item.campaign_id) === id &&
+                              (item.adset_id ? String(item.adset_id) === String(adset.id) : String(item.adset_name || '') === String(adset.name || '')),
+                          );
+                          return (
+                            <View key={aKey}>
+                              <TouchableOpacity onPress={() => setOpenAdsets((prev) => ({ ...prev, [aKey]: !aOpen }))}>
+                                {renderCells(
+                                  [`${aOpen ? '▾' : '▸'} Ad set · ${adset.name}`, bucketStatus(adset.effective_status || adset.status), moneyShort(am.spend, currency), String(am.results || 0), moneyShort(am.cpr, currency), String(am.clicks || 0), `${Number(am.ctr || 0).toFixed(2)}%`],
+                                  aKey,
+                                  { bg: '#EEF2FF', indent: 8 },
+                                )}
+                              </TouchableOpacity>
+                              {aOpen
+                                ? ads.map((ad: any) => {
+                                    const dm = ad.metrics || ad;
+                                    return renderCells(
+                                      [`Ad · ${ad.name}`, bucketStatus(ad.effective_status || ad.status), moneyShort(dm.spend, currency), String(dm.results || 0), moneyShort(dm.cpr, currency), String(dm.clicks || 0), `${Number(dm.ctr || 0).toFixed(2)}%`],
+                                      `${aKey}-${ad.id}`,
+                                      { bg: '#F0F9FF', indent: 16 },
+                                    );
+                                  })
+                                : null}
+                            </View>
+                          );
+                        })
+                      : null}
+                  </View>
+                );
+              })
+            : nested && grouped.length
+              ? grouped.map((group) => {
+                  const open = Boolean(openCampaigns[group.id]);
+                  const agg = rowTotals(group.rows);
+                  const child = childCache[`${tab}:${group.id}`];
+                  const adsetGroups: Record<string, { id: string; name: string; rows: any[] }> = {};
+                  for (const row of child?.adsets || []) {
+                    const id = String(row.adset_id || row.adset_name || 'adset');
+                    if (!adsetGroups[id]) adsetGroups[id] = { id, name: String(row.adset_name || id), rows: [] };
+                    adsetGroups[id].rows.push(row);
+                  }
+                  return (
+                    <View key={group.id}>
+                      <TouchableOpacity onPress={() => toggleCampaign(group.id)}>
+                        {renderCells(
+                          [`${open ? '▾' : '▸'} ${group.name}`, '', moneyShort(agg.spend, currency), String(agg.results || 0), `${Number(agg.ctr || 0).toFixed(2)}%`],
+                          `g-${group.id}`,
+                          { bold: true, bg: '#F1F5F9' },
+                        )}
+                      </TouchableOpacity>
+                      {open
+                        ? group.rows.map((row, idx) =>
+                            renderCells(
+                              tab === 'placement'
+                                ? [row.publisher_platform || '—', row.publisher_platform || '—', row.platform_position || '—', moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`]
+                                : tab === 'platform'
+                                  ? [row.publisher_platform || '—', row.publisher_platform || '—', moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`]
+                                  : tab === 'age'
+                                    ? [row.age || '—', row.age || '—', moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`]
+                                    : tab === 'gender'
+                                      ? [row.gender || '—', row.gender || '—', moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`]
+                                      : tab === 'country'
+                                        ? [row.country || '—', row.country || '—', moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`]
+                                        : tab === 'hour'
+                                          ? [prettyHour(row.hour), prettyHour(row.hour), moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`]
+                                          : [row.impression_device || row.device_platform || '—', row.impression_device || row.device_platform || '—', moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`],
+                              `${group.id}-r-${idx}`,
+                              { indent: 8, bg: idx % 2 ? '#F8FAFC' : '#fff' },
+                            ),
+                          )
+                        : null}
+                      {open && child?.loading ? <Text style={[styles.cardMeta, { padding: 8 }]}>Ad sets / ads load ho rahe hain…</Text> : null}
+                      {open && child?.error ? <Text style={[styles.cardMeta, { padding: 8, color: '#B45309' }]}>{child.error}</Text> : null}
+                      {open
+                        ? Object.values(adsetGroups).map((adset) => {
+                            const aKey = `${group.id}:${adset.id}`;
+                            const aOpen = Boolean(openAdsets[aKey]);
+                            const am = rowTotals(adset.rows);
+                            const ads = (child?.ads || []).filter((row) => String(row.adset_id || '') === adset.id);
+                            return (
+                              <View key={aKey}>
+                                <TouchableOpacity onPress={() => setOpenAdsets((prev) => ({ ...prev, [aKey]: !aOpen }))}>
+                                  {renderCells(
+                                    [`${aOpen ? '▾' : '▸'} Ad set · ${adset.name}`, '', moneyShort(am.spend, currency), String(am.results || 0), `${Number(am.ctr || 0).toFixed(2)}%`],
+                                    aKey,
+                                    { bg: '#EEF2FF', indent: 8 },
+                                  )}
+                                </TouchableOpacity>
+                                {aOpen
+                                  ? ads.map((row, idx) =>
+                                      renderCells(
+                                        [`Ad · ${row.ad_name || row.ad || 'Ad'}`, row.publisher_platform || row.age || row.gender || row.country || row.impression_device || prettyHour(row.hour), moneyShort(row.spend, currency), String(row.results || 0), `${Number(row.ctr || 0).toFixed(2)}%`],
+                                        `${aKey}-ad-${idx}`,
+                                        { bg: '#F0F9FF', indent: 16 },
+                                      ),
+                                    )
+                                  : null}
+                              </View>
+                            );
+                          })
+                        : null}
+                    </View>
+                  );
+                })
+              : rows.length
+                ? rows.slice(0, 40).map((row, idx) => {
+                    const m = row.metrics || row.last_7d || row;
+                    const cells =
+                      tab === 'adsets' || tab === 'ads'
+                        ? [row.name, bucketStatus(row.effective_status || row.status), moneyShort(m.spend, currency), String(m.results || 0), `${Number(m.ctr || 0).toFixed(2)}%`]
+                        : [row.name || '—', '', moneyShort(m.spend, currency), String(m.results || 0), `${Number(m.ctr || 0).toFixed(2)}%`];
+                    return renderCells(cells, `${tab}-${idx}`, { bg: idx % 2 ? '#F8FAFC' : '#fff' });
+                  })
+                : (
+                  <Text style={[styles.cardMeta, { padding: 12 }]}>Is tab pe data nahi aaya.</Text>
+                )}
+          {rows.length || grouped.length
+            ? renderCells(
+                ['Total', '', moneyShort(totals.spend, currency), String(totals.results || 0), tab === 'campaigns' ? moneyShort(totals.cpr, currency) : `${Number(totals.ctr || 0).toFixed(2)}%`, ...(tab === 'campaigns' ? [String(totals.clicks || 0), `${Number(totals.ctr || 0).toFixed(2)}%`] : [])],
+                'total',
+                { bold: true, bg: '#0F172A', color: '#fff' },
+              )
+            : null}
+        </View>
+      </ScrollView>
+      {rows.length || grouped.length ? (
+        <Text style={[styles.cardMeta, { marginTop: 6 }]}>
+          Total · {nested ? grouped.length : rows.length} · Campaign click = ad sets / ads
+        </Text>
+      ) : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <TouchableOpacity
+          style={[styles.saveBtn, { flex: 1 }]}
+          onPress={() => void shareMetaAdsFile(scoped, 'xlsx')}
+        >
+          <Text style={styles.saveBtnText}>Excel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.saveBtn, { flex: 1, backgroundColor: '#0F172A' }]}
+          onPress={() => void shareMetaAdsFile(scoped, 'csv')}
+        >
+          <Text style={styles.saveBtnText}>CSV</Text>
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity
+        style={{ marginTop: 8 }}
+        onPress={async () => {
+          await Clipboard.setStringAsync(report.markdown || '');
+          Alert.alert('Copied', 'Text report clipboard pe aa gayi');
+        }}
+      >
+        <Text style={{ color: COLORS.primary, fontWeight: '800', textAlign: 'center' }}>Copy text</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -883,10 +1467,13 @@ export function SuperAdminMetaAdsMcpScreen() {
     }
   };
 
-  const generateReport = async (period: 'today' | 'last_7d' | 'last_30d' | 'briefing') => {
+  const generateReport = async (period: string, datePreset?: string) => {
     setReportBusy(true);
     try {
-      const json = await postAction({ action: 'generate_report', period }, 60000);
+      const json = await postAction(
+        { action: 'generate_report', period, date_preset: datePreset || (period === 'briefing' ? 'last_30d' : period) },
+        70000,
+      );
       setGeneratedReport(json.report);
     } catch (e: any) {
       Alert.alert('Report', e?.message || 'Could not generate');
@@ -1042,8 +1629,13 @@ export function SuperAdminMetaAdsMcpScreen() {
                 {(
                   [
                     ['today', 'Today'],
+                    ['yesterday', 'Yesterday'],
                     ['last_7d', 'Last 7 days'],
+                    ['last_14d', 'Last 14 days'],
+                    ['last_28d', 'Last 28 days'],
                     ['last_30d', 'Last 30 days'],
+                    ['this_month', 'This month'],
+                    ['last_month', 'Last month'],
                     ['briefing', 'Full briefing'],
                   ] as const
                 ).map(([id, label]) => (
@@ -1057,21 +1649,7 @@ export function SuperAdminMetaAdsMcpScreen() {
                     <Text style={styles.cardMeta}>{reportBusy ? 'Generating…' : 'Tap to generate live report'}</Text>
                   </TouchableOpacity>
                 ))}
-                {generatedReport ? (
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>{generatedReport.title}</Text>
-                    <Text style={[styles.cardMeta, { marginTop: 8 }]}>{generatedReport.markdown}</Text>
-                    <TouchableOpacity
-                      style={styles.saveBtn}
-                      onPress={async () => {
-                        await Clipboard.setStringAsync(generatedReport.markdown || '');
-                        Alert.alert('Copied', 'Report clipboard pe aa gayi');
-                      }}
-                    >
-                      <Text style={styles.saveBtnText}>Copy report</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
+                {generatedReport ? <MetaAdsReportTables report={generatedReport} /> : null}
               </>
             ) : null}
 

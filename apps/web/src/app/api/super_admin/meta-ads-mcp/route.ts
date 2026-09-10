@@ -23,7 +23,9 @@ import {
   testMetaAdsConnection,
 } from '@/lib/meta-ads/tools';
 import { answerMetaAdsChat } from '@/lib/meta-ads/chat';
-import { generateMetaAdsReport } from '@/lib/meta-ads/report';
+import { generateMetaAdsReport, type ReportPeriod } from '@/lib/meta-ads/report';
+import { reportFileSlug, reportToCsv } from '@/lib/meta-ads/reportView';
+import { reportToXlsxArrayBuffer } from '@/lib/meta-ads/reportWorkbook';
 import { getMetaAdsPlaybook, saveMetaAdsPlaybook } from '@/lib/meta-ads/playbook';
 
 export const dynamic = 'force-dynamic';
@@ -187,11 +189,70 @@ export async function POST(request: NextRequest) {
       if (!settings.accessToken) {
         return NextResponse.json({ error: 'Connect a Meta access token first' }, { status: 400 });
       }
-      const periodRaw = String(body?.period || 'briefing');
-      const period =
-        periodRaw === 'today' || periodRaw === 'last_7d' || periodRaw === 'last_30d' ? periodRaw : 'briefing';
-      const report = await generateMetaAdsReport(period);
+      const periodRaw = String(body?.period || body?.date_preset || 'last_7d');
+      const report = await generateMetaAdsReport({
+        period: periodRaw,
+        date_preset: String(body?.date_preset || (periodRaw === 'briefing' ? 'last_30d' : periodRaw)),
+        since: body?.since,
+        until: body?.until,
+      });
       return NextResponse.json({ success: true, report });
+    }
+
+    if (action === 'insights_breakdown') {
+      const settings = await getMetaAdsSettings();
+      if (!settings.accessToken) {
+        return NextResponse.json({ error: 'Connect a Meta access token first' }, { status: 400 });
+      }
+      const objectId = String(body?.object_id || '').trim();
+      if (!objectId) return NextResponse.json({ error: 'Campaign id missing' }, { status: 400 });
+      const { getInsightsBreakdown } = await import('@/lib/meta-ads/tools');
+      const time = {
+        date_preset: body?.date_preset,
+        since: body?.since,
+        until: body?.until,
+      };
+      const breakdowns = String(body?.breakdowns || 'publisher_platform,platform_position');
+      const [adsets, ads] = await Promise.all([
+        getInsightsBreakdown({ object_id: objectId, level: 'adset', breakdowns, ...time }),
+        getInsightsBreakdown({ object_id: objectId, level: 'ad', breakdowns, ...time }),
+      ]);
+      return NextResponse.json({
+        success: true,
+        adsets: adsets.rows || [],
+        ads: ads.rows || [],
+        error: [adsets.error, ads.error].filter(Boolean).join(' · ') || null,
+      });
+    }
+
+    if (action === 'export_report') {
+      const settings = await getMetaAdsSettings();
+      if (!settings.accessToken) {
+        return NextResponse.json({ error: 'Connect a Meta access token first' }, { status: 400 });
+      }
+      const periodRaw = String(body?.period || body?.report?.period || 'briefing');
+      const period: ReportPeriod =
+        periodRaw === 'today' || periodRaw === 'last_7d' || periodRaw === 'last_30d' ? periodRaw : 'briefing';
+      const report =
+        body?.report && (Array.isArray(body.report.campaigns) || Array.isArray(body.report.summary))
+          ? body.report
+          : await generateMetaAdsReport(period);
+      const format = String(body?.format || 'xlsx').toLowerCase();
+      if (format === 'csv') {
+        return NextResponse.json({
+          success: true,
+          filename: reportFileSlug(report, 'csv'),
+          mime: 'text/csv;charset=utf-8',
+          content: reportToCsv(report),
+        });
+      }
+      const buf = Buffer.from(reportToXlsxArrayBuffer(report));
+      return NextResponse.json({
+        success: true,
+        filename: reportFileSlug(report, 'xlsx'),
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        base64: buf.toString('base64'),
+      });
     }
 
     if (action === 'transcribe') {
