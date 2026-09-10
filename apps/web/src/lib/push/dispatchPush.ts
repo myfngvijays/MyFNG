@@ -75,9 +75,16 @@ export async function dispatchPushToUser(userId: string, notification: Notificat
 
   const title = notification.title;
   const body = notification.message;
+  const meta = (notification as any)?.metadata || {};
   const data = {
     notification_id: notification.id,
     type: notification.type,
+    kind: String(meta.kind || ''),
+    direction: String(meta.direction || ''),
+    customer_name: String(meta.customer_name || ''),
+    customer_phone: String(meta.customer_phone || ''),
+    place: String(meta.place || ''),
+    session_id: String(meta.session_id || ''),
     action_url: notification.action_url || null,
     lead_id: notification.lead_id || null,
     lead_number: notification.lead_number || null,
@@ -94,6 +101,7 @@ export async function dispatchPushToUser(userId: string, notification: Notificat
           title,
           body,
           data,
+          priority: String(meta.kind || '') === 'CALLER_ID' ? 'high' : 'default',
         })),
       );
       if (delivery.invalidTokens.length) {

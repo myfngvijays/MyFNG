@@ -149,6 +149,20 @@ export async function POST(request: NextRequest) {
             .select('id')
             .maybeSingle();
 
+          if (resolvedLeadId) {
+            try {
+              const { notifyTelecallerClickToCallRinging } = await import('@/lib/notifications');
+              await notifyTelecallerClickToCallRinging({
+                telecallerId: profileId,
+                leadId: resolvedLeadId,
+                sessionId,
+                direction: 'outbound',
+              });
+            } catch (e) {
+              console.warn('[click-to-call] caller-id notify failed:', e);
+            }
+          }
+
           if (inserted?.id && sessionId) {
             const { getSupabaseAdmin: getAdmin } = await import('@/lib/push/supabaseAdmin');
             const { supabaseAdmin: admin } = getAdmin();

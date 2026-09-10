@@ -271,6 +271,7 @@ export async function notifyTelecallerClickToCallRinging(params: {
   telecallerId: string;
   leadId: string;
   sessionId?: string | null;
+  direction?: 'outbound' | 'inbound';
 }) {
   const telecallerId = String(params.telecallerId || '').trim();
   const leadId = String(params.leadId || '').trim();
@@ -281,7 +282,7 @@ export async function notifyTelecallerClickToCallRinging(params: {
 
   const { data: lead } = await supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, customer_name, vehicle_number, vehicle_make, vehicle_model, city')
+    .select('id, lead_number, customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, city')
     .eq('id', leadId)
     .maybeSingle();
 
@@ -296,20 +297,49 @@ export async function notifyTelecallerClickToCallRinging(params: {
     .filter(Boolean)
     .join(' ');
   const city = String((lead as any)?.city || '').trim();
-  const bits = [leadNumber, name, vehicle || null, city || null].filter(Boolean);
+  const inbound = params.direction === 'inbound';
+  const bits = [leadNumber, vehicle || null, city || null].filter(Boolean);
+
+  try {
+    const since = new Date(Date.now() - 45_000).toISOString();
+    const { data: recent } = await supabaseAdmin
+      .from('notifications')
+      .select('id, metadata')
+      .eq('user_id', telecallerId)
+      .eq('lead_id', leadId)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(8);
+    const already = (recent || []).some((row) => {
+      const meta = (row as { metadata?: { kind?: string; direction?: string } }).metadata || {};
+      return (
+        String(meta.kind || '') === 'CALLER_ID' &&
+        String(meta.direction || '') === (inbound ? 'inbound' : 'outbound')
+      );
+    });
+    if (already) return;
+  } catch {
+    /* still send */
+  }
 
   await createNotification({
     userId: telecallerId,
     type: 'LEAD_ASSIGNED',
-    title: 'Phone ringing — this lead',
-    message: `${bits.join(' · ')}. Phone pe DID dikhega — CRM mein yeh lead open karo.`,
+    title: inbound ? `${name} calling` : `Calling ${name}`,
+    message: bits.length
+      ? `MyFNG customer · ${bits.join(' · ')}`
+      : 'MyFNG customer — tap to open lead',
     priority: 'URGENT',
     leadId,
     leadNumber,
     actionUrl: `/dashboard/telecaller/leads/${leadId}`,
     metadata: {
-      kind: 'CLICK_TO_CALL_RINGING',
+      kind: 'CALLER_ID',
+      direction: inbound ? 'inbound' : 'outbound',
       session_id: params.sessionId || null,
+      customer_name: name,
+      customer_phone: String((lead as any)?.customer_phone || ''),
+      place: [vehicle || null, city || null].filter(Boolean).join(' · '),
     },
   });
 }

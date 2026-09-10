@@ -316,6 +316,19 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
       data: remoteMessage.data,
       messageId: remoteMessage.messageId,
     });
+    const data = remoteMessage.data || {};
+    const kind = String(data.kind || '');
+    if (kind === 'CALLER_ID') {
+      const { emitCallerIdCard } = require('../components/telecaller/IncomingCallLeadOverlay');
+      emitCallerIdCard({
+        leadId: String(data.lead_id || ''),
+        leadNumber: String(data.lead_number || ''),
+        customerName: String(data.customer_name || ''),
+        direction: String(data.direction || ''),
+        sessionId: String(data.session_id || ''),
+      });
+      return;
+    }
     if (Platform.OS === 'android') {
       // Android requires explicit local notification display for foreground messages.
       // iOS uses setForegroundNotificationPresentationOptions above.

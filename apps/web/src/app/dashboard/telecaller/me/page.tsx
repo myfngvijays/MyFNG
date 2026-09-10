@@ -422,6 +422,17 @@ export default function TelecallerMyProfilePage() {
               </div>
             </section>
 
+            <section className="rounded-2xl border border-blue-100 bg-[#F0F7FF] p-4 sm:p-5 shadow-sm space-y-2">
+              <h2 className="text-base font-bold text-[#023D95]">Caller ID (phone app)</h2>
+              <p className="text-sm text-slate-600">
+                <span className="font-semibold">Android:</span> call screen ke upar MyFNG card — app → Me → Display over other apps.
+              </p>
+              <p className="text-sm text-slate-600">
+                <span className="font-semibold">iPhone:</span> native call pe customer ka naam — Settings → Phone → Call Blocking & Identification → MyFNG ON, phir app → Me → Sync my leads.
+                Web browser call screen ke upar kuch nahi laga sakta.
+              </p>
+            </section>
+
             {/* Attendance */}
             <section className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm space-y-3">
               <h2 className="text-base font-bold text-[#023D95]">Attendance</h2>

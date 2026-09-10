@@ -368,7 +368,7 @@ export async function getDialSession(sessionId: string): Promise<DialSessionRow 
   return data as DialSessionRow;
 }
 
-function classifyWebhookEvent(body: Record<string, unknown>): {
+export function classifyWebhookEvent(body: Record<string, unknown>): {
   kind: 'answered' | 'ringing' | 'ended' | 'missed' | 'unknown';
   label: string;
 } {
@@ -474,7 +474,13 @@ async function findOpenSession(opts: {
  */
 export async function applyWebhookToDialSession(
   body: Record<string, unknown>,
-): Promise<{ updated: boolean; sessionId?: string; status?: string }> {
+): Promise<{
+  updated: boolean;
+  sessionId?: string;
+  status?: string;
+  telecallerId?: string | null;
+  leadId?: string | null;
+}> {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { updated: false };
 
@@ -567,6 +573,8 @@ export async function applyWebhookToDialSession(
     updated: true,
     sessionId: session.id,
     status: String(patch.status || session.status),
+    telecallerId: session.telecaller_id || null,
+    leadId: session.lead_id || null,
   };
 }
 
@@ -598,7 +606,7 @@ export async function loadDialLeadSummary(leadId?: string | null): Promise<DialL
   return data as DialLeadSummary;
 }
 
-async function lookupLeadByPhone(opts: {
+export async function lookupLeadByPhone(opts: {
   phone?: string | null;
   telecallerId?: string | null;
 }): Promise<DialLeadSummary | null> {
@@ -710,4 +718,55 @@ export function publicDialSessionPayload(
         }
       : null,
   };
+}
+
+/** Customer callback / inbound DID — notify assigned telecaller even without a click-to-call session. */
+export async function maybeNotifyInboundCallerId(
+  body: Record<string, unknown>,
+  live: {
+    updated: boolean;
+    sessionId?: string;
+    status?: string;
+    telecallerId?: string | null;
+    leadId?: string | null;
+  },
+  recordingLeadId?: string | null,
+) {
+  const { kind } = classifyWebhookEvent(body);
+  if (kind !== 'ringing' && kind !== 'answered') return;
+
+  const dir = String(body.direction || body.$direction || '').toLowerCase();
+  const explicitOutbound = dir.includes('out') && !dir.includes('in');
+  const explicitInbound = dir.includes('in') && !dir.includes('out');
+  if (explicitOutbound) return;
+  if (!explicitInbound && live.updated) return;
+
+  let leadId = String(live.leadId || recordingLeadId || '').trim();
+  let telecallerId = String(live.telecallerId || '').trim();
+  if (!leadId) {
+    const customer = pickBody(
+      body.customer_number_with_prefix,
+      body.$customer_number_with_prefix,
+      body.client_number,
+      body.$client_number,
+      body.call_from_number,
+      body.$call_from_number,
+      body.call_from,
+      body.$call_from,
+    );
+    const hit = await lookupLeadByPhone({ phone: customer });
+    leadId = String(hit?.id || '').trim();
+    if (!telecallerId) {
+      telecallerId = String((hit as { assigned_telecaller_id?: string | null })?.assigned_telecaller_id || '').trim();
+    }
+  }
+  if (!leadId || !telecallerId) return;
+
+  const { notifyTelecallerClickToCallRinging } = await import('@/lib/notifications');
+  await notifyTelecallerClickToCallRinging({
+    telecallerId,
+    leadId,
+    sessionId: live.sessionId || null,
+    direction: 'inbound',
+  });
 }

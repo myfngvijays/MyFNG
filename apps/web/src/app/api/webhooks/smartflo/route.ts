@@ -3,7 +3,10 @@ import {
   normalizeWebhookPayload,
   upsertSmartfloRecording,
 } from '@/lib/telecaller/smartfloCdr';
-import { applyWebhookToDialSession } from '@/lib/telecaller/smartfloDialSessions';
+import {
+  applyWebhookToDialSession,
+  maybeNotifyInboundCallerId,
+} from '@/lib/telecaller/smartfloDialSessions';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -113,6 +116,12 @@ export async function POST(request: NextRequest) {
     let recording: Awaited<ReturnType<typeof upsertSmartfloRecording>> | null = null;
     if (rec) {
       recording = await upsertSmartfloRecording(rec, 'webhook');
+    }
+
+    try {
+      await maybeNotifyInboundCallerId(body, live, recording?.leadId || null);
+    } catch (e) {
+      console.warn('[webhooks/smartflo] caller-id notify:', e);
     }
 
     if (!live.updated && !recording) {

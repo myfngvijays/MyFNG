@@ -248,8 +248,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           setNotifications(prev => [newNotification, ...prev]);
           setUnreadCount(prev => prev + 1);
 
-          // Show toast notification
-          if (newNotification.priority === 'URGENT') {
+          const kind = String((newNotification as any)?.metadata?.kind || '');
+          if (kind === 'CALLER_ID' && typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('crm:callerId', {
+                detail: {
+                  leadId: (newNotification as any)?.lead_id || null,
+                  leadNumber: (newNotification as any)?.lead_number || null,
+                  customerName: (newNotification as any)?.metadata?.customer_name || null,
+                  direction: (newNotification as any)?.metadata?.direction || null,
+                  sessionId: (newNotification as any)?.metadata?.session_id || null,
+                },
+              }),
+            );
+          } else if (newNotification.priority === 'URGENT') {
             toast.error(newNotification.title, {
               duration: 5000,
               icon: '🚨'

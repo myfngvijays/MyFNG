@@ -277,7 +277,14 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
       require('../components/telecaller/IncomingCallLeadOverlay').default;
     return (
       <View style={{ flex: 1 }}>
-      <Stack.Navigator ref={crmStackRef} screenOptions={screenOptions}>
+      <Stack.Navigator
+        ref={crmStackRef}
+        screenOptions={screenOptions}
+        screenListeners={({ navigation }) => {
+          crmStackRef.current = navigation;
+          return {};
+        }}
+      >
         <Stack.Screen
           name="TelecallerDashboard"
           component={TelecallerAdvancedCRM}
@@ -394,7 +401,14 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
       require('../components/telecaller/IncomingCallLeadOverlay').default;
     return (
       <View style={{ flex: 1 }}>
-      <Stack.Navigator ref={crmStackRef} screenOptions={screenOptions}>
+      <Stack.Navigator
+        ref={crmStackRef}
+        screenOptions={screenOptions}
+        screenListeners={({ navigation }) => {
+          crmStackRef.current = navigation;
+          return {};
+        }}
+      >
         <Stack.Screen
           name="LeadManagerAdvancedCRM"
           component={TelecallerAdvancedCRM}

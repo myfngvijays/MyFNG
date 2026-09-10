@@ -14,12 +14,25 @@
 		7A1B2C3D4E5F60718293A4B5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4B6 /* PrivacyInfo.xcprivacy */; };
 		7A1B2C3D4E5F60718293A4C5 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4C6 /* GoogleService-Info.plist */; };
 		AA0100000000000000000A01 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0100000000000000000A02 /* AppDelegate.swift */; };
+		CD0100000000000000000015 /* CallerIdModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD0100000000000000000014 /* CallerIdModule.swift */; };
+		CD0100000000000000000017 /* CallerIdModuleBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = CD0100000000000000000016 /* CallerIdModuleBridge.m */; };
+		CD0100000000000000000005 /* CallDirectoryHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD0100000000000000000001 /* CallDirectoryHandler.swift */; };
+		CD0100000000000000000007 /* CallKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CD0100000000000000000006 /* CallKit.framework */; };
+		CD0100000000000000000018 /* CallKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CD0100000000000000000006 /* CallKit.framework */; };
+		CD0100000000000000000011 /* MyFNGCallerId.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = CD0100000000000000000004 /* MyFNGCallerId.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* MyFNG.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MyFNG.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD0100000000000000000001 /* CallDirectoryHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDirectoryHandler.swift; sourceTree = "<group>"; };
+		CD0100000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CD0100000000000000000003 /* MyFNGCallerId.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MyFNGCallerId.entitlements; sourceTree = "<group>"; };
+		CD0100000000000000000004 /* MyFNGCallerId.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MyFNGCallerId.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD0100000000000000000006 /* CallKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CallKit.framework; path = System/Library/Frameworks/CallKit.framework; sourceTree = SDKROOT; };
+		CD0100000000000000000014 /* CallerIdModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CallerIdModule.swift; path = MyFNG/CallerIdModule.swift; sourceTree = "<group>"; };
+		CD0100000000000000000016 /* CallerIdModuleBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = CallerIdModuleBridge.m; path = MyFNG/CallerIdModuleBridge.m; sourceTree = "<group>"; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = MyFNG/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = MyFNG/Info.plist; sourceTree = "<group>"; };
 		366CF4BFE18940358B91DB83 /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "MyFNG/noop-file.swift"; sourceTree = "<group>"; };
@@ -42,6 +55,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				009E570AF814CE36D396524C /* Pods_MyFNG.framework in Frameworks */,
+				CD0100000000000000000018 /* CallKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CD010000000000000000000B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD0100000000000000000007 /* CallKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -60,14 +82,27 @@
 				E24291962B8A44329E3870B7 /* MyFNG-Bridging-Header.h */,
 				7A1B2C3D4E5F60718293A4B6 /* PrivacyInfo.xcprivacy */,
 				7A1B2C3D4E5F60718293A4C6 /* GoogleService-Info.plist */,
+				CD0100000000000000000014 /* CallerIdModule.swift */,
+				CD0100000000000000000016 /* CallerIdModuleBridge.m */,
 			);
 			name = MyFNG;
+			sourceTree = "<group>";
+		};
+		CD0100000000000000000008 /* MyFNGCallerId */ = {
+			isa = PBXGroup;
+			children = (
+				CD0100000000000000000001 /* CallDirectoryHandler.swift */,
+				CD0100000000000000000002 /* Info.plist */,
+				CD0100000000000000000003 /* MyFNGCallerId.entitlements */,
+			);
+			path = MyFNGCallerId;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
+				CD0100000000000000000006 /* CallKit.framework */,
 				8622AD54FB08CA90720AC133 /* Pods_MyFNG.framework */,
 			);
 			name = Frameworks;
@@ -84,6 +119,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* MyFNG */,
+				CD0100000000000000000008 /* MyFNGCallerId */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -99,6 +135,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* MyFNG.app */,
+				CD0100000000000000000004 /* MyFNGCallerId.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -153,15 +190,34 @@
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
 				D2E582AB9904C85B5BB26E8C /* [CP] Embed Pods Frameworks */,
 				AA4FA49C2AA7249C2649296C /* [CP-User] [RNFB] Core Configuration */,
+				CD0100000000000000000010 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				CD0100000000000000000012 /* PBXTargetDependency */,
 			);
 			name = MyFNG;
 			productName = MyFNG;
 			productReference = 13B07F961A680F5B00A75B9A /* MyFNG.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CD0100000000000000000009 /* MyFNGCallerId */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CD010000000000000000000F /* Build configuration list for PBXNativeTarget "MyFNGCallerId" */;
+			buildPhases = (
+				CD010000000000000000000A /* Sources */,
+				CD010000000000000000000B /* Frameworks */,
+				CD010000000000000000000C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MyFNGCallerId;
+			productName = MyFNGCallerId;
+			productReference = CD0100000000000000000004 /* MyFNGCallerId.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -173,6 +229,10 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
+					};
+					CD0100000000000000000009 = {
+						CreatedOnToolsVersion = 16.0;
+						LastSwiftMigration = 1600;
 					};
 				};
 			};
@@ -190,6 +250,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* MyFNG */,
+				CD0100000000000000000009 /* MyFNGCallerId */,
 			);
 		};
 /* End PBXProject section */
@@ -207,7 +268,28 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CD010000000000000000000C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CD0100000000000000000010 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				CD0100000000000000000011 /* MyFNGCallerId.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */ = {
@@ -387,12 +469,40 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0100000000000000000A01 /* AppDelegate.swift in Sources */,
+				CD0100000000000000000015 /* CallerIdModule.swift in Sources */,
+				CD0100000000000000000017 /* CallerIdModuleBridge.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
 				3EE65DB8911F4D4E9960CAF3 /* noop-file.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CD010000000000000000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD0100000000000000000005 /* CallDirectoryHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		CD0100000000000000000013 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CD0100000000000000000009;
+			remoteInfo = MyFNGCallerId;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		CD0100000000000000000012 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CD0100000000000000000009 /* MyFNGCallerId */;
+			targetProxy = CD0100000000000000000013 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -402,7 +512,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = MyFNG/MyFNG.entitlements;
-				CURRENT_PROJECT_VERSION = 42;
+				CURRENT_PROJECT_VERSION = 43;
 				DEVELOPMENT_TEAM = JUN6TX4JD3;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -416,7 +526,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.3;
+				MARKETING_VERSION = 1.3.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -440,7 +550,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = MyFNG/MyFNG.entitlements;
-				CURRENT_PROJECT_VERSION = 42;
+				CURRENT_PROJECT_VERSION = 43;
 				DEVELOPMENT_TEAM = JUN6TX4JD3;
 				INFOPLIST_FILE = MyFNG/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
@@ -449,7 +559,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.3;
+				MARKETING_VERSION = 1.3.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -617,6 +727,57 @@
 			};
 			name = Release;
 		};
+		CD010000000000000000000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = MyFNGCallerId/MyFNGCallerId.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 43;
+				DEVELOPMENT_TEAM = JUN6TX4JD3;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MyFNGCallerId/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3.4;
+				PRODUCT_BUNDLE_IDENTIFIER = com.myfng.app.callerid;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CD010000000000000000000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = MyFNGCallerId/MyFNGCallerId.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 43;
+				DEVELOPMENT_TEAM = JUN6TX4JD3;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MyFNGCallerId/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3.4;
+				PRODUCT_BUNDLE_IDENTIFIER = com.myfng.app.callerid;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -634,6 +795,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CD010000000000000000000F /* Build configuration list for PBXNativeTarget "MyFNGCallerId" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CD010000000000000000000D /* Debug */,
+				CD010000000000000000000E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

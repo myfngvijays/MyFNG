@@ -2,17 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
-    <key>aps-environment</key>
-    <string>production</string>
+    <key>com.apple.developer.callkit.call-directory</key>
+    <true/>
     <key>com.apple.security.application-groups</key>
     <array>
       <string>group.com.myfng.app</string>
-    </array>
-    <key>com.apple.developer.associated-domains</key>
-    <array>
-      <string>applinks:myfng.in</string>
-      <string>applinks:www.myfng.in</string>
-      <string>applinks:myfng.astric.ai</string>
     </array>
   </dict>
 </plist>

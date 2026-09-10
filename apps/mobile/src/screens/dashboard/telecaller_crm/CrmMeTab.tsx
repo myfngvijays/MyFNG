@@ -10,6 +10,8 @@ import {
   RefreshControl,
   TextInput,
   Image,
+  Platform,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +20,16 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import { formatDateDMY } from '../../../lib/dateFormat';
+import {
+  getCallerIdStatus,
+  isCallerIdNativeSupported,
+  openCallerIdOverlaySettings,
+  openIosCallerIdSettings,
+  previewCallerIdOverlay,
+  requestCallerIdPhonePermissions,
+  setCallerIdEnabled,
+  syncIosCallerDirectory,
+} from '../../../lib/callerIdNative';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 
@@ -27,6 +39,113 @@ function splitFullName(full: string): { first: string; last: string } {
   const i = t.indexOf(' ');
   if (i < 0) return { first: t, last: '' };
   return { first: t.slice(0, i), last: t.slice(i + 1).trim() };
+}
+
+function CallerIdSettingsCard() {
+  const [overlay, setOverlay] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const [count, setCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const ios = Platform.OS === 'ios';
+
+  const refresh = useCallback(async () => {
+    const status = await getCallerIdStatus();
+    setOverlay(Boolean(ios ? status.directoryEnabled || status.enabled : status.overlay));
+    setEnabled(status.enabled !== false);
+    setCount(Number(status.count || 0));
+  }, [ios]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  if (!isCallerIdNativeSupported()) return null;
+
+  return (
+    <View style={styles.callerCard}>
+      <Text style={styles.section}>{ios ? 'iPhone Caller ID' : 'Caller ID overlay'}</Text>
+      <Text style={styles.subTight}>
+        {ios
+          ? 'Call aate hi iPhone ki call screen pe MyFNG customer ka naam dikhega. Settings → Phone → Call Blocking & Identification → MyFNG ON karo, phir Sync dabao.'
+          : 'Truecaller / TeleCRM jaisa: MyFNG band ho tab bhi phone call ke upar customer card.'}
+      </Text>
+      {!ios ? (
+        <View style={styles.callerRow}>
+          <Text style={styles.callerLabel}>Show on incoming call</Text>
+          <Switch
+            value={enabled}
+            onValueChange={(v) => {
+              setEnabled(v);
+              setCallerIdEnabled(v);
+            }}
+            trackColor={{ true: COLORS.primary }}
+          />
+        </View>
+      ) : null}
+      <TouchableOpacity
+        style={[styles.callerBtn, overlay ? styles.callerOk : styles.callerNeed]}
+        onPress={() => {
+          if (ios) openIosCallerIdSettings();
+          else openCallerIdOverlaySettings();
+          setTimeout(() => void refresh(), 800);
+        }}
+      >
+        <Ionicons name={overlay ? 'checkmark-circle' : 'phone-portrait-outline'} size={16} color="#fff" />
+        <Text style={styles.callerBtnText}>
+          {ios
+            ? overlay
+              ? 'Call Identification — ON'
+              : 'Open Call Identification settings'
+            : overlay
+              ? 'Display over apps — ON'
+              : 'Enable “Display over other apps”'}
+        </Text>
+      </TouchableOpacity>
+      {ios ? (
+        <TouchableOpacity
+          style={styles.callerBtnGhost}
+          disabled={syncing}
+          onPress={() => {
+            setSyncing(true);
+            void syncIosCallerDirectory()
+              .then((r) => {
+                setCount(r.count);
+                Alert.alert(
+                  r.ok ? 'Synced' : 'Sync pending',
+                  r.ok
+                    ? `${r.count} customers iPhone caller ID pe aa gaye.`
+                    : r.error || 'Settings mein MyFNG Caller ID ON karke dubara try karo.',
+                );
+              })
+              .finally(() => {
+                setSyncing(false);
+                void refresh();
+              });
+          }}
+        >
+          <Text style={styles.callerGhostText}>
+            {syncing ? 'Syncing…' : count ? `Sync leads (${count})` : 'Sync my leads'}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <>
+          <TouchableOpacity
+            style={styles.callerBtnGhost}
+            onPress={() => {
+              void requestCallerIdPhonePermissions();
+            }}
+          >
+            <Text style={styles.callerGhostText}>Allow phone / call-log permission</Text>
+          </TouchableOpacity>
+          {overlay ? (
+            <TouchableOpacity style={styles.callerBtnGhost} onPress={() => previewCallerIdOverlay()}>
+              <Text style={styles.callerGhostText}>Preview card</Text>
+            </TouchableOpacity>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
 }
 
 function joinName(first: string, last: string): string {
@@ -444,6 +563,8 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
         ))
       )}
 
+      <CallerIdSettingsCard />
+
       <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
         <Ionicons name="log-out-outline" size={18} color={COLORS.white} />
         <Text style={styles.logoutText}>Logout</Text>
@@ -665,6 +786,32 @@ const styles = StyleSheet.create({
   },
   rowDate: { fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 },
   rowTime: { fontSize: 12, color: COLORS.textSecondary },
+  callerCard: { marginBottom: 16 },
+  callerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  callerLabel: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  callerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  callerOk: { backgroundColor: COLORS.green },
+  callerNeed: { backgroundColor: COLORS.primary },
+  callerBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  callerBtnGhost: { alignItems: 'center', paddingVertical: 8 },
+  callerGhostText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
   logoutBtn: {
     marginTop: 20,
     flexDirection: 'row',

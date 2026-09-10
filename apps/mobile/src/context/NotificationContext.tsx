@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
-import { Alert } from 'react-native';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import { isNotificationWithinRetention, notificationRetentionCutoffIso } from '../../../../shared/types/notifications';
 
 export interface Notification {
@@ -225,17 +225,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                   pickupKind.startsWith('DROP_') ||
                   pickupKind === 'VEHICLE_PICKED');
               if (isPickupImpacting) setPickupRefreshTick((t) => t + 1);
+
+              if (String(kind || '') === 'CALLER_ID') {
+                DeviceEventEmitter.emit('crm:callerId', {
+                  leadId: (newNotification as any)?.lead_id,
+                  leadNumber: (newNotification as any)?.lead_number,
+                  customerName: (newNotification as any)?.metadata?.customer_name,
+                  direction: (newNotification as any)?.metadata?.direction,
+                  sessionId: (newNotification as any)?.metadata?.session_id,
+                });
+              } else if (newNotification.priority === 'URGENT' || newNotification.priority === 'HIGH') {
+                Alert.alert(
+                  getPriorityIcon(newNotification.priority) + ' ' + newNotification.title,
+                  newNotification.message,
+                  [{ text: 'OK' }]
+                );
+              }
             } catch {
               // ignore
-            }
-
-            // Show native alert for important notifications
-            if (newNotification.priority === 'URGENT' || newNotification.priority === 'HIGH') {
-              Alert.alert(
-                getPriorityIcon(newNotification.priority) + ' ' + newNotification.title,
-                newNotification.message,
-                [{ text: 'OK' }]
-              );
             }
           }
         )

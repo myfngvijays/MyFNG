@@ -12,6 +12,7 @@ import {
   Image,
   Alert,
   BackHandler,
+  DeviceEventEmitter,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,11 @@ import TelecallerWhatsAppInbox, {
   TelecallerWhatsAppFab,
 } from '../../../components/telecaller/TelecallerWhatsAppInbox';
 import TelecallerLeadDetailScreen from '../telecaller/TelecallerLeadDetailScreen';
+import {
+  CRM_OPEN_LEAD_EVENT,
+  takePendingOpenCrmLead,
+} from '../../../components/telecaller/IncomingCallLeadOverlay';
+import { syncIosCallerDirectory } from '../../../lib/callerIdNative';
 import CrmHomeTab from './CrmHomeTab';
 import CrmQueueTab from './CrmQueueTab';
 import CrmBookWizard from './CrmBookWizard';
@@ -653,9 +659,29 @@ export default function TelecallerAdvancedCRM() {
   };
 
   const openLead = (leadId: string, _editing = true) => {
+    const id = String(leadId || '').trim();
+    if (!id) return;
+    setWhatsAppOpen(false);
+    setMenuOpen(false);
+    setBookMode(null);
     setDetailEditing(true);
-    setDetailLeadId(leadId);
+    setDetailLeadId(id);
   };
+
+  useEffect(() => {
+    const pending = takePendingOpenCrmLead();
+    if (pending) openLead(pending, true);
+    const sub = DeviceEventEmitter.addListener(CRM_OPEN_LEAD_EVENT, (payload: { leadId?: string }) => {
+      const id = String(payload?.leadId || '').trim();
+      if (id) openLead(id, true);
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    void syncIosCallerDirectory();
+  }, []);
 
   const dateProps = {
     datePreset,

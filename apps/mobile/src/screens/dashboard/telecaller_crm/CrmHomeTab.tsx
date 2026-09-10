@@ -473,6 +473,8 @@ export default function CrmHomeTab({
                     void clickToCallCustomer({
                       customerPhone: lead.customer_phone,
                       leadId: lead.id,
+                      customerName: lead.customer_name,
+                      leadNumber: lead.lead_number,
                     })
                   }
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

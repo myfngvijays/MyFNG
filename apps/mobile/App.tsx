@@ -164,7 +164,24 @@ function AppContent() {
     const handlePushNotificationOpen = (remoteMessage: { data?: Record<string, string> }) => {
       const data = remoteMessage?.data || {};
       const type = String(data.type || '');
+      const kind = String(data.kind || '');
+      const leadId = String(data.lead_id || '').trim();
       const nav = navigationRef.current;
+
+      if (leadId && kind === 'CALLER_ID') {
+        const { requestOpenCrmLead, emitCallerIdCard } =
+          require('./src/components/telecaller/IncomingCallLeadOverlay');
+        emitCallerIdCard({
+          leadId,
+          leadNumber: String(data.lead_number || ''),
+          customerName: String(data.customer_name || ''),
+          direction: String(data.direction || ''),
+          sessionId: String(data.session_id || ''),
+        });
+        requestOpenCrmLead(leadId);
+        return;
+      }
+
       if (!nav?.isReady?.()) return;
 
       if (type === 'REFERRAL_MILESTONE' || type === 'REFERRAL_UPDATE') {
@@ -222,6 +239,11 @@ function AppContent() {
 
     const handleDeepLink = (event: { url: string }) => {
       const url = event.url;
+      const leadMatch = url.match(/crm\/lead\/([0-9a-fA-F-]{8,})/);
+      if (leadMatch?.[1]) {
+        const { requestOpenCrmLead } = require('./src/components/telecaller/IncomingCallLeadOverlay');
+        requestOpenCrmLead(leadMatch[1]);
+      }
       // Match https://myfng.in/refer/CODE, com.myfng.app://refer/CODE, myfng://refer/CODE, ?code=
       const pathMatch = url.match(/\/refer\/([A-Za-z0-9]+)/i);
       const queryMatch = url.match(/[?&]code=([^&]+)/i);
