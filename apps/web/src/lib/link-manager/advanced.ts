@@ -132,9 +132,15 @@ export function resolveAdvancedDestination(opts: {
   return opts.longUrl;
 }
 
+export function isAppDownloadDestination(url: string | null | undefined): boolean {
+  const raw = String(url || '').toLowerCase();
+  return /\/go\/(myfngapp|myfng|app)(\b|\/|\?|#|$)/.test(raw) || /\/download-app(\b|\/|\?|#|$)/.test(raw);
+}
+
 export function linkNeedsInteractiveGate(link: {
   password_hash?: string | null;
   enable_landing?: boolean | null;
+  long_url?: string | null;
   app_deep_link?: string | null;
   pixel_meta_id?: string | null;
   pixel_google_id?: string | null;
@@ -142,11 +148,10 @@ export function linkNeedsInteractiveGate(link: {
   og_description?: string | null;
   og_image_url?: string | null;
 }): boolean {
+  // Password is the only user-facing stop. OG / pixels / deep-link must not
+  // put humans on a Continue interstitial — especially app download /go links.
   if (link.password_hash) return true;
-  if (link.enable_landing) return true;
-  if (link.app_deep_link) return true;
-  if (link.pixel_meta_id || link.pixel_google_id) return true;
-  if (link.og_title || link.og_description || link.og_image_url) return true;
+  if (link.enable_landing && !isAppDownloadDestination(link.long_url)) return true;
   return false;
 }
 

@@ -88,6 +88,11 @@ const nextConfig = {
         source: '/p/:slug',
         destination: '/pricing/:slug',
       },
+      // ChatGPT / ads vanity URL → same smart app download as /go/myfngapp
+      {
+        source: '/download-app',
+        destination: '/go/myfngapp',
+      },
     ];
   },
 

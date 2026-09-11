@@ -2,12 +2,17 @@ import { randomBytes } from 'crypto';
 import {
   buildQrShortUrl,
   buildShortUrl,
+  DEFAULT_SHORT_HOST,
   isBrokenStoredQrUrl,
   isLocalOrPrivateUrl,
   isValidHttpUrl,
   normalizeLongUrl,
+  normalizeShortBaseUrl,
   normalizeStoredDestinationUrl,
   sanitizeCustomCode,
+  shortBaseFromLinkMeta,
+  shortHostLabel,
+  trackShortBaseUrl,
 } from '@/lib/link-manager/utils';
 import { generateBrandedQrDataUrl } from '@/lib/link-manager/qr-generator';
 import type { QrStyleOptions } from '@/lib/link-manager/qr-types';
@@ -76,19 +81,52 @@ export async function resolveManagedShortLinkRedirect(
   return null;
 }
 
+export async function assertShortCodeAvailable(
+  supabaseAdmin: any,
+  preferred: string,
+  exceptLinkId?: string | null,
+): Promise<string> {
+  const custom = sanitizeCustomCode(preferred);
+  if (custom.length < 2) {
+    throw new Error('Slug at least 2 characters (a-z, 0-9, - _)');
+  }
+
+  let query = supabaseAdmin.from('managed_short_links').select('id').eq('short_code', custom);
+  if (exceptLinkId) query = query.neq('id', exceptLinkId);
+  const { data: existing } = await query.maybeSingle();
+  if (existing) throw new Error('This slug is already used');
+  return custom;
+}
+
+export async function shortCodeMetaFor(
+  shortCode: string,
+  currentMeta?: Record<string, unknown> | null,
+) {
+  const shareBase = shortBaseFromLinkMeta(currentMeta);
+  const trackBase = trackShortBaseUrl();
+  const shortUrl = buildShortUrl(shortCode, shareBase);
+  const trackUrl = buildShortUrl(shortCode, trackBase);
+  return {
+    short_code: shortCode,
+    short_url: shortUrl,
+    track_url: trackUrl,
+    meta: {
+      ...(currentMeta || {}),
+      public_short_url: shortUrl,
+      track_url: trackUrl,
+      share_url: shortUrl,
+      qr_payload: buildQrShortUrl(shortCode, trackBase),
+    },
+  };
+}
+
 export async function ensureUniqueShortCode(
   supabaseAdmin: any,
   preferred?: string | null,
 ): Promise<string> {
   const custom = sanitizeCustomCode(preferred || '');
   if (custom) {
-    const { data: existing } = await supabaseAdmin
-      .from('managed_short_links')
-      .select('id')
-      .eq('short_code', custom)
-      .maybeSingle();
-    if (!existing) return custom;
-    throw new Error('Custom short code already taken');
+    return assertShortCodeAvailable(supabaseAdmin, custom);
   }
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -129,8 +167,9 @@ export async function ensureLinkQrUsesPublicUrl(
   link: ManagedShortLink,
   baseUrl?: string | null,
 ): Promise<ManagedShortLink> {
-  const expectedShortUrl = buildShortUrl(link.short_code, baseUrl);
-  const expectedQrPayload = buildQrShortUrl(link.short_code);
+  const shareBase = baseUrl || shortBaseFromLinkMeta(link.meta);
+  const expectedShortUrl = buildShortUrl(link.short_code, shareBase);
+  const expectedQrPayload = buildQrShortUrl(link.short_code, trackShortBaseUrl());
   const meta = (link.meta || {}) as Record<string, unknown>;
   const createMode = String(meta.create_mode || '');
   const isLinkOnly = createMode === 'link_only' || (!createMode && !link.qr_code_url);
@@ -192,6 +231,7 @@ export async function createManagedShortLink(
     created_by?: string;
     qr_style?: QrStyleOptions | null;
     baseUrl?: string | null;
+    short_domain?: string | null;
     create_mode?: ManagedShortLinkCreateMode;
     password?: string | null;
     max_clicks?: number | null;
@@ -220,8 +260,12 @@ export async function createManagedShortLink(
   const createMode: ManagedShortLinkCreateMode =
     input.create_mode === 'qr_only' ? 'qr_only' : input.create_mode === 'both' ? 'both' : 'link_only';
   const shortCode = await ensureUniqueShortCode(supabaseAdmin, input.custom_code);
-  const shortUrl = buildShortUrl(shortCode, input.baseUrl);
-  const qrPayload = buildQrShortUrl(shortCode);
+  const trackBase = trackShortBaseUrl();
+  const brandHost = shortHostLabel(input.short_domain || input.baseUrl);
+  const shareBase = brandHost && brandHost !== DEFAULT_SHORT_HOST ? normalizeShortBaseUrl(brandHost) : trackBase;
+  const trackUrl = buildShortUrl(shortCode, trackBase);
+  const shortUrl = buildShortUrl(shortCode, shareBase);
+  const qrPayload = buildQrShortUrl(shortCode, trackBase);
   const qrStyle = input.qr_style || null;
   const wantsQr = createMode === 'qr_only' || createMode === 'both';
   const qrCodeUrl = wantsQr ? await generateBrandedQrDataUrl(qrPayload, qrStyle) : null;
@@ -231,6 +275,9 @@ export async function createManagedShortLink(
 
   const meta: Record<string, unknown> = {
     public_short_url: shortUrl,
+    track_url: trackUrl,
+    short_domain: brandHost && brandHost !== DEFAULT_SHORT_HOST ? brandHost : DEFAULT_SHORT_HOST,
+    share_url: shortUrl,
     qr_payload: wantsQr ? qrPayload : null,
     create_mode: createMode,
     ab_variants: abVariants,
@@ -293,5 +340,6 @@ export async function createManagedShortLink(
   return {
     ...data,
     short_url: shortUrl,
+    track_url: trackUrl,
   };
 }

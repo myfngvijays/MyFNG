@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { ensureLinkDestinationIsPublic, ensureLinkQrUsesPublicUrl, generateQrDataUrl } from '@/lib/link-manager/service';
+import {
+  assertShortCodeAvailable,
+  ensureLinkDestinationIsPublic,
+  ensureLinkQrUsesPublicUrl,
+  generateQrDataUrl,
+  shortCodeMetaFor,
+} from '@/lib/link-manager/service';
 import {
   buildQrShortUrl,
   buildShortUrl,
   normalizeLongUrl,
   normalizeStoredDestinationUrl,
+  sanitizeCustomCode,
+  shortBaseFromLinkMeta,
 } from '@/lib/link-manager/utils';
 import type { QrStyleOptions } from '@/lib/link-manager/qr-types';
 
@@ -50,7 +58,8 @@ export async function GET(
     if (error || !link) return NextResponse.json({ error: 'Link not found' }, { status: 404 });
 
     const withDestination = await ensureLinkDestinationIsPublic(supabaseAdmin, link);
-    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, null);
+    const base = shortBaseFromLinkMeta(withDestination.meta);
+    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, base);
 
     const { data: clicks } = await supabaseAdmin
       .from('managed_short_link_clicks')
@@ -60,7 +69,7 @@ export async function GET(
       .limit(100);
 
     return NextResponse.json({
-      link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code) },
+      link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code, base) },
       clicks: clicks || [],
     });
   } catch (e: any) {
@@ -95,6 +104,30 @@ export async function PATCH(
       }
     }
 
+    const requestedSlug = body?.short_code ?? body?.custom_code;
+    if (requestedSlug !== undefined) {
+      const { data: current, error: currentErr } = await supabaseAdmin
+        .from('managed_short_links')
+        .select('short_code, meta')
+        .eq('id', id)
+        .single();
+      if (currentErr || !current) {
+        return NextResponse.json({ error: 'Link not found' }, { status: 404 });
+      }
+      try {
+        const nextCode = await assertShortCodeAvailable(supabaseAdmin, String(requestedSlug || ''), id);
+        if (nextCode !== sanitizeCustomCode(String(current.short_code || ''))) {
+          const next = await shortCodeMetaFor(nextCode, current.meta as Record<string, unknown> | null);
+          patch.short_code = next.short_code;
+          patch.meta = next.meta;
+        }
+      } catch (slugErr: any) {
+        const message = slugErr?.message || 'Invalid slug';
+        const taken = /already (taken|used)/i.test(message);
+        return NextResponse.json({ error: message }, { status: taken ? 409 : 400 });
+      }
+    }
+
     const { data: link, error } = await supabaseAdmin
       .from('managed_short_links')
       .update(patch)
@@ -103,9 +136,10 @@ export async function PATCH(
       .single();
     if (error || !link) return NextResponse.json({ error: error?.message || 'Update failed' }, { status: 500 });
 
+    const linkBase = shortBaseFromLinkMeta(link.meta);
     if (body?.regenerate_qr) {
-      const shortUrl = buildShortUrl(link.short_code);
-      const qrPayload = buildQrShortUrl(link.short_code);
+      const shortUrl = buildShortUrl(link.short_code, linkBase);
+      const qrPayload = buildQrShortUrl(link.short_code, linkBase);
       const savedStyle = (link.meta as any)?.qr_style as QrStyleOptions | undefined;
       const qrStyle = body?.qr_style && typeof body.qr_style === 'object' ? body.qr_style : savedStyle;
       const qrCodeUrl = await generateQrDataUrl(qrPayload, qrStyle || null);
@@ -125,8 +159,10 @@ export async function PATCH(
     }
 
     const withDestination = await ensureLinkDestinationIsPublic(supabaseAdmin, link);
-    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, null);
-    return NextResponse.json({ link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code) } });
+    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, linkBase);
+    return NextResponse.json({
+      link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code, linkBase) },
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
   }

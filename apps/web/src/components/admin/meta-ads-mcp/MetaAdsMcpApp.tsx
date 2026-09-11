@@ -97,7 +97,22 @@ const STATUS_UI: Record<Payload['status'], { label: string; className: string }>
 
 type SectionId = 'overview' | 'ask' | 'reports' | 'brain' | 'funds' | 'campaigns' | 'assets' | 'connect' | 'tools';
 
-type ChatMsg = { role: 'user' | 'assistant'; content: string; report?: any };
+type ChatCardMetric = { label: string; value: string };
+type ChatCardItem = { name: string; tags?: string[]; headline?: string; metrics: ChatCardMetric[] };
+type ChatCards = { kind?: 'ads' | 'campaigns'; title?: string; summary?: ChatCardMetric[]; items: ChatCardItem[] };
+type ChatMsg = { role: 'user' | 'assistant'; content: string; report?: any; cards?: ChatCards | null };
+
+function splitPipeName(name: string): { title: string; tags: string[] } {
+  const parts = String(name || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.replace(/\s+AD$/i, '').trim());
+  if (parts.length < 2) return { title: String(name || 'Ad').trim() || 'Ad', tags: [] };
+  const [first, ...rest] = parts;
+  if (/^[A-Z0-9]$/i.test(first)) return { title: `Ad ${first.toUpperCase()}`, tags: rest };
+  return { title: first, tags: rest };
+}
 
 const ADS_NAV: {
   id: SectionId;
@@ -255,13 +270,14 @@ const ADVICE_UI: Record<AdviceKind, { label: string; className: string }> = {
 };
 
 type MetricTile = { label: string; value: string };
-type AnswerKind = 'billing' | 'spend' | 'advice' | 'campaigns' | 'report' | 'answer';
+type AnswerKind = 'billing' | 'spend' | 'advice' | 'campaigns' | 'ads' | 'report' | 'answer';
 
 const ANSWER_KIND_UI: Record<AnswerKind, { title: string; bar: string; Icon: typeof Wallet }> = {
   billing: { title: 'Billing', bar: 'from-amber-600 to-orange-500', Icon: Wallet },
   spend: { title: 'Spend', bar: 'from-[#012A66] to-[#004AAD]', Icon: BarChart3 },
   advice: { title: 'Copy advice', bar: 'from-emerald-700 to-teal-600', Icon: Brain },
   campaigns: { title: 'Campaigns', bar: 'from-indigo-700 to-violet-600', Icon: Megaphone },
+  ads: { title: 'Ads', bar: 'from-indigo-700 to-violet-600', Icon: Megaphone },
   report: { title: 'Report', bar: 'from-slate-800 to-slate-600', Icon: FileBarChart },
   answer: { title: 'Answer', bar: 'from-[#012A66] to-[#004AAD]', Icon: Sparkles },
 };
@@ -368,14 +384,72 @@ function detectAnswerKind(input: {
   return 'answer';
 }
 
+function ChatMetricGrid({ metrics }: { metrics: ChatCardMetric[] }) {
+  if (!metrics.length) return null;
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {metrics.map((m) => (
+        <div key={`${m.label}-${m.value}`} className="rounded-lg bg-white px-2.5 py-1.5 ring-1 ring-slate-200">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{m.label}</p>
+          <p className="truncate text-sm font-bold text-slate-900">{m.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AskDataCards({ cards }: { cards: ChatCards }) {
+  return (
+    <div className="space-y-2 px-3 pb-3">
+      {cards.title ? <p className="text-xs font-semibold leading-snug text-slate-600">{cards.title}</p> : null}
+      {cards.summary?.length ? (
+        <div className="grid grid-cols-3 gap-2">
+          {cards.summary.map((m) => (
+            <div key={`${m.label}-${m.value}`} className="rounded-xl bg-[#004AAD]/5 px-2.5 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{m.label}</p>
+              <p className="truncate text-sm font-bold text-slate-900">{m.value}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {cards.items.map((item, i) => {
+        const parsed = item.tags?.length ? { title: item.name, tags: item.tags } : splitPipeName(item.name);
+        return (
+          <div key={`${parsed.title}-${i}`} className="rounded-xl bg-slate-50 px-3 py-2.5">
+            <p className="text-sm font-bold leading-snug text-slate-900">{parsed.title}</p>
+            {parsed.tags.length ? (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {parsed.tags.map((tag) => (
+                  <span key={tag} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <ChatMetricGrid metrics={item.metrics} />
+            {item.headline ? (
+              <p className="mt-2 text-xs leading-snug text-slate-600">
+                <span className="font-semibold text-slate-400">Headline </span>
+                {item.headline}
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChatMessageBody({
   role,
   content,
   report,
+  cards,
 }: {
   role: 'user' | 'assistant';
   content: string;
   report?: any;
+  cards?: ChatCards | null;
 }) {
   const [open, setOpen] = useState(false);
   const isUser = role === 'user';
@@ -396,23 +470,38 @@ function ChatMessageBody({
     );
   }
 
-  const parsed = parseCampaignReply(content);
+  const structured = cards?.items?.length ? cards : null;
+  const parsed = structured ? { intro: content.split(/\n(?=\s*\d+[\.\)]\s+)/)[0] || content, campaigns: [] as ChatCampaign[] } : parseCampaignReply(content);
+  const fallbackCards: ChatCards | null =
+    !structured && parsed.campaigns.length
+      ? {
+          kind: 'ads',
+          items: parsed.campaigns.slice(0, 8).map((c) => {
+            const bits = splitPipeName(c.name);
+            return { name: bits.title, tags: bits.tags, metrics: c.metrics };
+          }),
+        }
+      : null;
+  const dataCards = structured || fallbackCards;
   const advice = parseAdvice(content);
   const kv = parseKvMetrics(parsed.intro);
-  const kind = detectAnswerKind({
-    advice: advice.advice.length,
-    campaigns: parsed.campaigns.length,
-    metrics: kv.metrics,
-    report,
-  });
+  const kind: AnswerKind =
+    dataCards?.kind === 'ads' && !advice.advice.length
+      ? 'ads'
+      : detectAnswerKind({
+          advice: advice.advice.length,
+          campaigns: dataCards?.items.length || 0,
+          metrics: kv.metrics,
+          report,
+        });
   const ui = ANSWER_KIND_UI[kind];
   const Icon = ui.Icon;
-  const tiles = kv.metrics;
-  const prose = kv.hints.filter((h) => !/^hint:/i.test(h));
-  const wide = kind === 'advice' || kind === 'campaigns' || Boolean(report);
+  const tiles = dataCards ? kv.metrics.filter((m) => !/^(spend|clicks|ctr|results|impr|cpc|cpm)$/i.test(m.label)) : kv.metrics;
+  const prose = kv.hints.filter((h) => !/^hint:/i.test(h) && !/^\d+[\.\)]\s+/.test(h));
+  const wide = Boolean(dataCards) || kind === 'advice' || kind === 'campaigns' || Boolean(report);
 
   return (
-    <article className={`w-fit overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${wide ? 'max-w-[20rem]' : 'max-w-[16.5rem]'}`}>
+    <article className={`w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${wide ? 'max-w-xl' : 'max-w-sm'}`}>
       <div className={`flex items-center gap-1.5 bg-gradient-to-r ${ui.bar} px-3 py-1.5 text-white`}>
         <Icon className="h-3.5 w-3.5 shrink-0 opacity-90" />
         <p className="text-[10px] font-bold uppercase tracking-[0.12em]">{ui.title}</p>
@@ -448,27 +537,9 @@ function ChatMessageBody({
         </div>
       ) : null}
 
-      {parsed.campaigns.length > 0 ? (
-        <div className="space-y-1.5 px-2.5 pb-2.5">
-          {parsed.campaigns.slice(0, 6).map((c, i) => (
-            <div key={`${c.name}-${i}`} className="rounded-lg bg-slate-50 px-2.5 py-1.5">
-              <p className="text-xs font-bold leading-snug text-slate-900">{c.name}</p>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {c.metrics.map((m) => (
-                  <span
-                    key={`${m.label}-${m.value}`}
-                    className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200"
-                  >
-                    {m.label} {m.value}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {dataCards ? <AskDataCards cards={dataCards} /> : null}
 
-      {!tiles.length && !advice.advice.length && !parsed.campaigns.length ? (
+      {!tiles.length && !advice.advice.length && !dataCards ? (
         <div className="space-y-1 px-3 py-2 text-xs leading-snug text-slate-700">
           {introText.split('\n').filter(Boolean).map((line, i) => (
             <p key={i}>{line.replace(/^\s*[-•]\s*/, '• ')}</p>
@@ -476,7 +547,7 @@ function ChatMessageBody({
         </div>
       ) : null}
 
-      {prose.length > 0 ? (
+      {prose.length > 0 && !dataCards ? (
         <div className="border-t border-slate-100 px-3 py-1.5">
           {prose.map((h) => (
             <p key={h} className="truncate text-[10px] text-slate-400" title={h}>
@@ -1079,7 +1150,7 @@ export default function MetaAdsMcpApp() {
       });
       setChat([
         ...next,
-        { role: 'assistant', content: json.reply || 'No reply', report: json.report || null },
+        { role: 'assistant', content: json.reply || 'No reply', report: json.report || null, cards: json.cards || null },
       ]);
     } catch (e: any) {
       setChat([...next, { role: 'assistant', content: e?.message || 'Chat failed' }]);
@@ -1824,11 +1895,11 @@ export default function MetaAdsMcpApp() {
                   <div key={`${m.role}-${i}`} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {m.role === 'user' ? (
                       <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#004AAD] px-4 py-2.5 text-sm text-white shadow-sm">
-                        <ChatMessageBody role={m.role} content={m.content} report={m.report} />
+                        <ChatMessageBody role={m.role} content={m.content} report={m.report} cards={m.cards} />
                       </div>
                     ) : (
-                      <div className="w-fit max-w-[16.5rem]">
-                        <ChatMessageBody role={m.role} content={m.content} report={m.report} />
+                      <div className="w-full max-w-xl">
+                        <ChatMessageBody role={m.role} content={m.content} report={m.report} cards={m.cards} />
                       </div>
                     )}
                   </div>

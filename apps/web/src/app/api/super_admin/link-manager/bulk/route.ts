@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
           utm_campaign: body?.utm_campaign || undefined,
           utm_term: body?.utm_term || undefined,
           utm_content: body?.utm_content || undefined,
+          short_domain: body?.short_domain || body?.base_url || null,
         });
         created.push(link);
       } catch (e: any) {

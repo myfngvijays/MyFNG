@@ -3,24 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import ReportDateRangeFilter, { type ReportDateRangeValue } from '@/components/admin/ReportDateRangeFilter';
 import type { ReportDatePreset } from '@/lib/report-date-range';
-import { ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
-
-function formatEventDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatEventTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  });
-}
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import OpenEventsList from '../OpenEventsList';
 
 export default function RecentOpensSection() {
   const [loading, setLoading] = useState(true);
@@ -94,7 +78,8 @@ export default function RecentOpensSection() {
       <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-5 py-4">
         <h2 className="text-xl font-black text-gray-900">Recent Opens</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Saare link clicks & QR scans — date, type, platform, UTM filters ke saath.
+          Har row = ek baar kisi ne short link khola ya QR scan kiya. Campaign / From / How woh tags hain jo link
+          banate time set kiye the.
         </p>
       </div>
 
@@ -109,55 +94,59 @@ export default function RecentOpensSection() {
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-gray-600">Event type</span>
+            <span className="text-xs font-semibold text-gray-600">What happened</span>
             <select
               value={eventType}
               onChange={(e) => setEventType(e.target.value)}
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
             >
-              <option value="all">All</option>
-              <option value="click">Link click</option>
-              <option value="qr_scan">QR scan</option>
+              <option value="all">Link opens + QR scans</option>
+              <option value="click">Only link opens</option>
+              <option value="qr_scan">Only QR scans</option>
             </select>
           </label>
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-gray-600">Platform</span>
-            <input
+            <span className="text-xs font-semibold text-gray-600">Device</span>
+            <select
               value={platform}
               onChange={(e) => setPlatform(e.target.value)}
-              placeholder="ios / android / desktop"
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-            />
+            >
+              <option value="">All devices</option>
+              <option value="android">Android phone</option>
+              <option value="ios">iPhone / iPad</option>
+              <option value="desktop">Computer</option>
+            </select>
           </label>
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-gray-600">UTM source</span>
+            <span className="text-xs font-semibold text-gray-600">From (source)</span>
             <input
               value={utmSource}
               onChange={(e) => setUtmSource(e.target.value)}
-              placeholder="whatsapp_qr"
+              placeholder="Search source…"
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-gray-600">UTM medium</span>
+            <span className="text-xs font-semibold text-gray-600">How (medium)</span>
             <input
               value={utmMedium}
               onChange={(e) => setUtmMedium(e.target.value)}
-              placeholder="offline"
+              placeholder="Search medium…"
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-gray-600">UTM campaign</span>
+            <span className="text-xs font-semibold text-gray-600">Campaign</span>
             <input
               value={utmCampaign}
               onChange={(e) => setUtmCampaign(e.target.value)}
-              placeholder="society_qr"
+              placeholder="Search campaign…"
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-gray-600">Search</span>
+            <span className="text-xs font-semibold text-gray-600">Link name</span>
             <div className="flex gap-1">
               <input
                 value={qInput}
@@ -165,7 +154,7 @@ export default function RecentOpensSection() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') setQ(qInput.trim());
                 }}
-                placeholder="title / code"
+                placeholder="Standee 3 / download-app"
                 className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
               />
               <button
@@ -183,7 +172,7 @@ export default function RecentOpensSection() {
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
           <p className="text-sm font-semibold text-gray-700">
-            {total.toLocaleString('en-IN')} events · showing {from}–{to}
+            {total.toLocaleString('en-IN')} opens · showing {from}–{to}
           </p>
           <select
             value={pageSize}
@@ -197,71 +186,11 @@ export default function RecentOpensSection() {
             ))}
           </select>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Type</th>
-                <th className="px-4 py-3 font-semibold">Link</th>
-                <th className="px-4 py-3 font-semibold">Date</th>
-                <th className="px-4 py-3 font-semibold">Time</th>
-                <th className="px-4 py-3 font-semibold">Platform</th>
-                <th className="px-4 py-3 font-semibold">Source</th>
-                <th className="px-4 py-3 font-semibold">UTM Source</th>
-                <th className="px-4 py-3 font-semibold">UTM Medium</th>
-                <th className="px-4 py-3 font-semibold">UTM Campaign</th>
-                <th className="px-4 py-3 font-semibold">Referrer</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
-                    <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                  </td>
-                </tr>
-              ) : events.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-gray-500">
-                    No events match these filters
-                  </td>
-                </tr>
-              ) : (
-                events.map((ev) => (
-                  <tr key={ev.id} className="border-t border-gray-100">
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          ev.event_type === 'qr_scan'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {ev.event_type === 'qr_scan' ? 'QR scan' : 'Link click'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{ev.link_title || '—'}</div>
-                      <div className="text-xs text-blue-700">{ev.short_code ? `/s/${ev.short_code}` : '—'}</div>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-700">
-                      {ev.created_at ? formatEventDate(ev.created_at) : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-700">
-                      {ev.created_at ? formatEventTime(ev.created_at) : '—'}
-                    </td>
-                    <td className="px-4 py-3 capitalize text-gray-800">{ev.platform || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.source || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.utm_source || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.utm_medium || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.utm_campaign || '—'}</td>
-                    <td className="max-w-xs truncate px-4 py-3 text-gray-500">{ev.referrer || '—'}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <OpenEventsList
+          events={events}
+          loading={loading}
+          empty="Is filter / date range me koi open nahi mila."
+        />
         <div className="flex flex-col gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-gray-700">
             Page <span className="text-blue-700">{page}</span> of {totalPages}

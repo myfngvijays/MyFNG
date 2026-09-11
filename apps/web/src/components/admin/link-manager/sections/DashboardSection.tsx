@@ -9,23 +9,7 @@ import AdminGradientBanner, {
 } from '@/components/admin/AdminGradientBanner';
 import { ArrowRight, BarChart3, BookOpen, Link2, MousePointerClick, QrCode, Tags, Users } from 'lucide-react';
 import { buildProductionShortUrl } from '@/lib/link-manager/utils';
-
-function formatEventDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatEventTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-IN', {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  });
-}
+import OpenEventsList from '../OpenEventsList';
 
 type StatsPayload = {
   range?: { label: string };
@@ -297,7 +281,7 @@ export default function DashboardSection({
           <div>
             <h3 className="font-semibold text-gray-900">Recent opens</h3>
             <p className="text-sm text-gray-500">
-              Latest 20 in selected period · filters / full history Recent Opens tab me
+              Last 20 opens in this period — kaunsa link, kab, kaunsa phone, kaunsi campaign
             </p>
           </div>
           <button
@@ -310,66 +294,7 @@ export default function DashboardSection({
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Type</th>
-                <th className="px-4 py-3 font-semibold">Date</th>
-                <th className="px-4 py-3 font-semibold">Time</th>
-                <th className="px-4 py-3 font-semibold">Platform</th>
-                <th className="px-4 py-3 font-semibold">Source</th>
-                <th className="px-4 py-3 font-semibold">UTM Source</th>
-                <th className="px-4 py-3 font-semibold">UTM Medium</th>
-                <th className="px-4 py-3 font-semibold">UTM Campaign</th>
-                <th className="px-4 py-3 font-semibold">Referrer</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
-                    Loading…
-                  </td>
-                </tr>
-              ) : events.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                    No events in this period
-                  </td>
-                </tr>
-              ) : (
-                events.map((ev) => (
-                  <tr key={ev.id} className="border-t border-gray-100">
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          ev.event_type === 'qr_scan'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {ev.event_type === 'qr_scan' ? 'QR scan' : 'Link click'}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-700">
-                      {ev.created_at ? formatEventDate(ev.created_at) : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-700">
-                      {ev.created_at ? formatEventTime(ev.created_at) : '—'}
-                    </td>
-                    <td className="px-4 py-3 capitalize text-gray-800">{ev.platform || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.source || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.utm_source || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.utm_medium || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{ev.utm_campaign || '—'}</td>
-                    <td className="max-w-xs truncate px-4 py-3 text-gray-500">{ev.referrer || '—'}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <OpenEventsList events={events} loading={loading} empty="Is period me koi open nahi mila." />
       </div>
     </div>
   );

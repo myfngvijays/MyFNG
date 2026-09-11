@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
+import { isAppDownloadDestination } from '@/lib/link-manager/advanced';
 import {
   getManagedShortLinkPublic,
   resolveManagedShortLink,
@@ -43,7 +44,10 @@ export default async function ShortLinkLandingPage({ params, searchParams }: Pro
   const headerStore = await headers();
   const userAgent = headerStore.get('user-agent');
   const isQrScan = String(sp.via || '') === 'qr';
-  const continueNow = String(sp.go || '') === '1' && (!link.password_hash || unlocked);
+  const skipInterstitial =
+    !needsPassword && (!link.enable_landing || isAppDownloadDestination(link.long_url));
+  const continueNow =
+    skipInterstitial || (String(sp.go || '') === '1' && (!link.password_hash || unlocked));
 
   if (continueNow) {
     const ip =

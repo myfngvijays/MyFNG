@@ -14,10 +14,27 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
+import ReportDateRangeFilter, { type ReportDateRangeValue } from '@/components/admin/ReportDateRangeFilter';
+import type { ReportDatePreset } from '@/lib/report-date-range';
 import LinkQrPreview, { getLinkQrDownloadUrl } from '../LinkQrPreview';
+import SlugInput from '../SlugInput';
 import { downloadDataUrl } from '../QrLivePreview';
 import SplitWithPreview from '../SplitWithPreview';
-import { buildClientQrShortUrl, buildProductionShortUrl, buildQrShortUrl } from '@/lib/link-manager/utils';
+import {
+  buildClientQrShortUrl,
+  buildProductionShortUrl,
+  buildQrShortUrl,
+  sanitizeCustomCode,
+} from '@/lib/link-manager/utils';
+
+function formatCreatedAt(iso?: string) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
 type LinkRow = {
   id: string;
@@ -62,10 +79,18 @@ export default function LinksListSection() {
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [rangeLabel, setRangeLabel] = useState('');
+  const [dateRange, setDateRange] = useState<ReportDateRangeValue>({
+    preset: 'all_time',
+    customStart: '',
+    customEnd: '',
+  });
   const [selected, setSelected] = useState<LinkRow | null>(null);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [editLongUrl, setEditLongUrl] = useState('');
   const [editTitle, setEditTitle] = useState('');
+  const [editSlug, setEditSlug] = useState('');
+  const [slugTaken, setSlugTaken] = useState(false);
   const [editUtm, setEditUtm] = useState({
     utm_source: '',
     utm_medium: '',
@@ -77,6 +102,7 @@ export default function LinksListSection() {
   useEffect(() => {
     setEditLongUrl(selected?.long_url || '');
     setEditTitle(selected?.title || '');
+    setEditSlug(selected?.short_code || '');
     setEditUtm({
       utm_source: selected?.utm_source || '',
       utm_medium: selected?.utm_medium || '',
@@ -84,12 +110,30 @@ export default function LinksListSection() {
       utm_term: selected?.utm_term || '',
       utm_content: selected?.utm_content || '',
     });
-  }, [selected?.id, selected?.long_url, selected?.title, selected?.utm_source, selected?.utm_medium, selected?.utm_campaign, selected?.utm_term, selected?.utm_content]);
+  }, [
+    selected?.id,
+    selected?.long_url,
+    selected?.title,
+    selected?.short_code,
+    selected?.utm_source,
+    selected?.utm_medium,
+    selected?.utm_campaign,
+    selected?.utm_term,
+    selected?.utm_content,
+  ]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+        preset: dateRange.preset,
+      });
+      if (dateRange.preset === 'custom') {
+        if (dateRange.customStart) params.set('from', dateRange.customStart);
+        if (dateRange.customEnd) params.set('to', dateRange.customEnd);
+      }
       if (q.trim()) params.set('q', q.trim());
       const res = await fetch(`/api/super_admin/link-manager?${params.toString()}`);
       const json = await res.json();
@@ -97,6 +141,7 @@ export default function LinksListSection() {
       setLinks(json.links || []);
       setTotal(Number(json.total) || 0);
       setTotalPages(Math.max(1, Number(json.totalPages) || 1));
+      setRangeLabel(json.range?.label || '');
       setSelected((prev) => {
         if (!prev) return prev;
         return (json.links || []).find((l: LinkRow) => l.id === prev.id) || prev;
@@ -106,11 +151,15 @@ export default function LinksListSection() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, q]);
+  }, [page, pageSize, q, dateRange]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dateRange.preset, dateRange.customStart, dateRange.customEnd, q, pageSize]);
 
   async function copyText(text: string) {
     try {
@@ -143,8 +192,17 @@ export default function LinksListSection() {
   async function saveLinkDetails() {
     if (!selected) return;
     const nextUrl = editLongUrl.trim();
+    const nextSlug = sanitizeCustomCode(editSlug);
     if (!nextUrl) {
       toast.error('Enter a destination URL');
+      return;
+    }
+    if (nextSlug.length < 2) {
+      toast.error('Slug at least 2 characters (a-z, 0-9, - _)');
+      return;
+    }
+    if (slugTaken) {
+      toast.error('This slug is already used');
       return;
     }
     setWorkingId(selected.id);
@@ -152,7 +210,12 @@ export default function LinksListSection() {
       const res = await fetch(`/api/super_admin/link-manager/${selected.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ long_url: nextUrl, title: editTitle.trim() || null, ...editUtm }),
+        body: JSON.stringify({
+          long_url: nextUrl,
+          title: editTitle.trim() || null,
+          short_code: nextSlug,
+          ...editUtm,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Update failed');
@@ -166,9 +229,12 @@ export default function LinksListSection() {
     }
   }
 
+  const previewSlug = sanitizeCustomCode(editSlug) || selected?.short_code || '';
+  const slugChanged = selected ? previewSlug !== selected.short_code : false;
   const linkDetailsDirty = selected
     ? editLongUrl.trim() !== selected.long_url ||
       editTitle.trim() !== (selected.title || '') ||
+      slugChanged ||
       editUtm.utm_source.trim() !== (selected.utm_source || '') ||
       editUtm.utm_medium.trim() !== (selected.utm_medium || '') ||
       editUtm.utm_campaign.trim() !== (selected.utm_campaign || '') ||
@@ -237,6 +303,7 @@ export default function LinksListSection() {
             <h2 className="text-lg font-black text-gray-900">My Links</h2>
             <p className="text-sm text-gray-500">
               {total.toLocaleString('en-IN')} total · showing {from}–{to}
+              {rangeLabel ? ` · ${rangeLabel}` : ''}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -281,6 +348,15 @@ export default function LinksListSection() {
             </select>
           </div>
         </div>
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          <ReportDateRangeFilter
+            preset={dateRange.preset as ReportDatePreset}
+            customStart={dateRange.customStart}
+            customEnd={dateRange.customEnd}
+            onChange={setDateRange}
+          />
+          <p className="mt-2 text-xs text-gray-500">Links created in this period.</p>
+        </div>
       </div>
 
       <SplitWithPreview
@@ -292,35 +368,62 @@ export default function LinksListSection() {
             </div>
           ) : links.length === 0 ? (
             <div className="px-4 py-16 text-center text-sm text-gray-500">
-              No links on this page. Create one from Create Link tab.
+              No links in this date range. Try All time, or create one from Create Link.
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
-              {links.map((link) => {
-                const active = selected?.id === link.id;
-                const mode = String(link.meta?.create_mode || '');
-                return (
-                  <div
-                    key={link.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelected(link)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelected(link);
-                      }
-                    }}
-                    className={`w-full cursor-pointer px-4 py-3.5 text-left transition hover:bg-blue-50/50 ${
-                      active ? 'bg-blue-50' : 'bg-white'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-sm font-bold text-blue-700 break-all">
-                            {shortUrlFor(link)}
-                          </span>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3">Short URL</th>
+                    <th className="px-4 py-3">Title</th>
+                    <th className="px-4 py-3">Destination</th>
+                    <th className="px-4 py-3">Created</th>
+                    <th className="px-4 py-3">Clicks</th>
+                    <th className="px-4 py-3">QR</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {links.map((link) => {
+                    const active = selected?.id === link.id;
+                    const mode = String(link.meta?.create_mode || '');
+                    const hasQr = mode === 'both' || mode === 'qr_only' || Boolean(link.qr_code_url);
+                    return (
+                      <tr
+                        key={link.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelected(link)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelected(link);
+                          }
+                        }}
+                        className={`cursor-pointer border-t border-gray-100 align-top ${
+                          active ? 'bg-blue-50' : 'bg-white hover:bg-blue-50/40'
+                        }`}
+                      >
+                        <td className="min-w-[12rem] px-4 py-3">
+                          <p className="font-mono text-xs font-bold text-blue-700 break-all">{shortUrlFor(link)}</p>
+                          {link.folder ? <p className="mt-0.5 text-[11px] text-gray-400">{link.folder}</p> : null}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-gray-900">{link.title || 'Untitled'}</td>
+                        <td className="max-w-[14rem] px-4 py-3">
+                          <p className="truncate text-xs text-gray-600" title={link.long_url}>
+                            {link.long_url}
+                          </p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                          {formatCreatedAt(link.created_at)}
+                        </td>
+                        <td className="px-4 py-3 font-black text-blue-700">{link.clicks || 0}</td>
+                        <td className="px-4 py-3 font-black text-violet-700">
+                          {hasQr ? link.qr_scans || 0 : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                               link.is_active
@@ -330,77 +433,55 @@ export default function LinksListSection() {
                           >
                             {link.is_active ? 'Active' : 'Paused'}
                           </span>
-                          {mode === 'both' || mode === 'qr_only' || link.qr_code_url ? (
-                            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
-                              QR
-                            </span>
-                          ) : null}
-                          {link.folder ? (
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">
-                              {link.folder}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-1 text-sm font-semibold text-gray-900">
-                          {link.title || 'Untitled'}
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-gray-500">{link.long_url}</p>
-                      </div>
-                      <div className="flex shrink-0 gap-3 text-center">
-                        <div>
-                          <div className="text-base font-black text-blue-700">{link.clicks || 0}</div>
-                          <div className="text-[10px] font-semibold uppercase text-gray-400">Clicks</div>
-                        </div>
-                        <div>
-                          <div className="text-base font-black text-violet-700">{link.qr_scans || 0}</div>
-                          <div className="text-[10px] font-semibold uppercase text-gray-400">QR</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        title="Copy"
-                        onClick={() => void copyText(shortUrlFor(link))}
-                        className="rounded-lg border border-gray-200 p-1.5 hover:bg-white"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <a
-                        href={shortUrlFor(link)}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Open"
-                        className="inline-flex rounded-lg border border-gray-200 p-1.5 hover:bg-white"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                      <button
-                        type="button"
-                        title={link.is_active ? 'Pause' : 'Activate'}
-                        disabled={workingId === link.id}
-                        onClick={() => void toggleActive(link)}
-                        className="rounded-lg border border-gray-200 p-1.5 hover:bg-white"
-                      >
-                        {link.is_active ? (
-                          <PauseCircle className="h-3.5 w-3.5" />
-                        ) : (
-                          <PlayCircle className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        title="Delete"
-                        disabled={workingId === link.id}
-                        onClick={() => void deleteLink(link.id)}
-                        className="rounded-lg border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              title="Copy"
+                              onClick={() => void copyText(shortUrlFor(link))}
+                              className="rounded-lg border border-gray-200 p-1.5 hover:bg-white"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                            <a
+                              href={shortUrlFor(link)}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open"
+                              className="inline-flex rounded-lg border border-gray-200 p-1.5 hover:bg-white"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                            <button
+                              type="button"
+                              title={link.is_active ? 'Pause' : 'Activate'}
+                              disabled={workingId === link.id}
+                              onClick={() => void toggleActive(link)}
+                              className="rounded-lg border border-gray-200 p-1.5 hover:bg-white"
+                            >
+                              {link.is_active ? (
+                                <PauseCircle className="h-3.5 w-3.5" />
+                              ) : (
+                                <PlayCircle className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              title="Delete"
+                              disabled={workingId === link.id}
+                              onClick={() => void deleteLink(link.id)}
+                              className="rounded-lg border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
 
@@ -466,9 +547,24 @@ export default function LinksListSection() {
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Selected</p>
                   <h3 className="mt-1 break-all font-mono text-sm font-bold text-blue-700">
-                    {shortUrlFor(selected)}
+                    {previewSlug ? buildProductionShortUrl(previewSlug) : shortUrlFor(selected)}
                   </h3>
                 </div>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-gray-600">Slug</span>
+                  <SlugInput
+                    value={editSlug}
+                    onChange={setEditSlug}
+                    exceptId={selected.id}
+                    placeholder="app-download"
+                    onStatusChange={(s) => setSlugTaken(s.taken)}
+                  />
+                  {slugChanged && !slugTaken ? (
+                    <p className="text-[11px] text-amber-700">
+                      Old URL / printed QR will stop working after save.
+                    </p>
+                  ) : null}
+                </label>
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold text-gray-600">Title</span>
                   <input
@@ -504,7 +600,7 @@ export default function LinksListSection() {
                 </div>
                 <button
                   type="button"
-                  disabled={workingId === selected.id || !linkDetailsDirty}
+                  disabled={workingId === selected.id || !linkDetailsDirty || slugTaken}
                   onClick={() => void saveLinkDetails()}
                   className="w-full rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white disabled:opacity-50"
                 >

@@ -46,12 +46,8 @@ export default function ShortLinkLandingClient({
 
   useEffect(() => {
     if (!needsPassword && appDeepLink && platform !== 'desktop') {
-      const timer = setTimeout(() => {
-        window.location.href = appDeepLink;
-      }, 400);
-      return () => clearTimeout(timer);
+      window.location.href = appDeepLink;
     }
-    return undefined;
   }, [needsPassword, appDeepLink, platform]);
 
   async function unlock() {

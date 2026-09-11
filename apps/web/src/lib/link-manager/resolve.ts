@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   fireLinkWebhook,
+  isAppDownloadDestination,
   linkNeedsInteractiveGate,
   parseAbVariants,
   parseGeoRules,
@@ -164,16 +165,12 @@ export async function resolveManagedShortLink(
   }
 
   const needsPassword = Boolean(link.password_hash);
-  const needsGate = linkNeedsInteractiveGate(link);
-  if (!request?.forceRedirect && needsGate) {
+  if (!request?.forceRedirect && linkNeedsInteractiveGate(link)) {
     if (needsPassword && !request?.passwordUnlocked) {
       return { kind: 'gate', shortCode, unlocked: false };
     }
-    if (!needsPassword || request?.passwordUnlocked) {
-      // Still show landing/pixels/deep-link interstitial when enabled
-      if (link.enable_landing || link.app_deep_link || link.pixel_meta_id || link.pixel_google_id || link.og_title) {
-        return { kind: 'gate', shortCode, unlocked: true };
-      }
+    if (link.enable_landing && !isAppDownloadDestination(link.long_url)) {
+      return { kind: 'gate', shortCode, unlocked: Boolean(!needsPassword || request?.passwordUnlocked) };
     }
   }
 

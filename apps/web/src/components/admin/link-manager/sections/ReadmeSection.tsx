@@ -34,7 +34,7 @@ const SECTIONS = [
     body: [
       'Jab naya short link ya QR banana ho, yeh tab use karo.',
       'Output type: sirf Short link, sirf QR, ya dono (Link + QR) — jo chaho select karo.',
-      'Basics me Destination URL zaroori hai (jaahan user finally jayega). Title, custom slug (/s/saket-wp), tags, folder, notes optional.',
+      'Destination = jahan user jayega (koi bhi website). Short URL hamesha myfng.in/s/{slug} pe banti hai.',
       'UTM (source, medium, campaign…) marketing track karne ke liye — destination URL pe chipak jate hain.',
       'Expiry: kab tak link chale (never / 7 / 30 / 90 / 365 days).',
       'Right side pe live preview rehta hai — URL / QR pehle se dikhega. Neeche Create button se save hota hai.',
@@ -72,9 +72,9 @@ const SECTIONS = [
     icon: MousePointerClick,
     title: 'Recent Opens tab — full click log',
     body: [
-      'Overview pe sirf latest 20 dikhte hain. Poora log is tab me hai.',
-      'Filters: date range, event type (click / QR), platform, UTM source/medium/campaign, search title/code.',
-      'Pagination 10 / 25 / 50 per page.',
+      'Overview pe last 20 opens. Poori history is tab me.',
+      'Har row: QR scanned / Link opened, link name, date-time, phone, campaign tags (From / How).',
+      'Filters: date, device, campaign, source, medium. 10 / 25 / 50 per page.',
     ],
   },
   {
@@ -92,7 +92,8 @@ const SECTIONS = [
     icon: MousePointerClick,
     title: 'My Links — manage / edit',
     body: [
-      'Saare bane hue links yahan list me dikhte hain. Search se title, code ya URL dhoondo.',
+      'Saare bane hue links yahan list me dikhte hain. Date filter se created period chuno (Today / 7 days / custom / All time).',
+      'Search se title, code ya URL dhoondo.',
       '10 / 20 / 50 per page; neeche Prev / Next / page numbers.',
       'Koi row select karo → right side preview: QR, clicks, title / destination / UTM edit, QR download.',
       'Copy, open, pause (band), activate, delete — row actions se.',
@@ -106,7 +107,7 @@ const SECTIONS = [
     body: [
       '/s/code — normal short link. Share karo WhatsApp pe; simple link seedha destination pe le jata hai.',
       'QR ke andar alag track URL hoti hai — scan count alag se Overview me “QR scans” me aata hai.',
-      '/l/code — branded landing page. Password, OG preview, deep link, ya landing on hone pe use hoti hai.',
+      '/l/code — sirf password-protected links, ya jab landing checkbox on ho. OG title / pixels se Continue page nahi aata. /go app-download links hamesha seedha store/app pe jaate hain.',
       'Link click ≠ QR scan — dono alag count. Campaign me dono dekhna ho to Overview dekho.',
     ],
   },

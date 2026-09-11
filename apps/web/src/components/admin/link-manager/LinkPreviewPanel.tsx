@@ -6,8 +6,6 @@ import {
   buildPreviewShortCode,
   buildProductionShortUrl,
   buildQrShortUrl,
-  buildShortUrl,
-  clientAppBaseUrl,
   isValidHttpUrl,
   normalizeLongUrl,
 } from '@/lib/link-manager/utils';
@@ -41,7 +39,7 @@ export default function LinkPreviewPanel({
   onCopy?: (text: string, label: string) => void;
 }) {
   const previewCode = buildPreviewShortCode(form.custom_code);
-  const shortUrl = buildShortUrl(previewCode, clientAppBaseUrl());
+  const shortUrl = buildProductionShortUrl(previewCode);
   const qrPreviewUrl = buildQrShortUrl(previewCode);
   const style = qrStyle || DEFAULT_QR_STYLE;
   const createdMode = created?.create_mode === 'qr_only' || created?.meta?.create_mode === 'qr_only'
@@ -61,9 +59,11 @@ export default function LinkPreviewPanel({
         </div>
 
         {createdMode === 'link' ? (
-          <div className="rounded-xl bg-white border p-3">
-            <p className="text-xs text-gray-500 mb-1">Your short URL</p>
-            <p className="text-sm font-semibold text-blue-700 break-all">{created.short_url}</p>
+          <div className="space-y-2">
+            <div className="rounded-xl bg-white border p-3">
+              <p className="text-xs text-gray-500 mb-1">Share this</p>
+              <p className="text-sm font-semibold text-blue-700 break-all">{created.short_url}</p>
+            </div>
           </div>
         ) : null}
 
@@ -136,7 +136,7 @@ export default function LinkPreviewPanel({
       <div className="space-y-4">
         {mode === 'link' ? (
           <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
-            <p className="text-xs font-semibold text-blue-700 mb-1">Short URL preview</p>
+            <p className="text-xs font-semibold text-blue-700 mb-1">Share short URL</p>
             <p className="text-base font-bold text-blue-800 break-all">{shortUrl}</p>
             {!form.custom_code ? (
               <p className="text-xs text-blue-600 mt-1">Random code assigned on shorten</p>

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ArrowRight,
+  Copy,
   Eye,
   EyeOff,
   Link2,
@@ -22,7 +23,12 @@ import LinkPreviewPanel from '../LinkPreviewPanel';
 import QrCustomizer from '../QrCustomizer';
 import SplitWithPreview from '../SplitWithPreview';
 import { DEFAULT_QR_STYLE, type QrStyleOptions } from '@/lib/link-manager/qr-types';
-import { isValidHttpUrl, normalizeLongUrl } from '@/lib/link-manager/utils';
+import { MYFNG_APP_DOWNLOAD_URL } from '@/shared/constants/appDownload';
+import SlugInput from '../SlugInput';
+import {
+  isValidHttpUrl,
+  normalizeLongUrl,
+} from '@/lib/link-manager/utils';
 
 type Mode = 'link' | 'qr' | 'both';
 type AdvTab = 'targeting' | 'security' | 'social' | 'abgeo' | 'tracking' | 'bulk';
@@ -127,6 +133,7 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
   });
   const [qrStyle, setQrStyle] = useState<QrStyleOptions>({ ...DEFAULT_QR_STYLE });
   const [form, setForm] = useState(emptyForm);
+  const [slugTaken, setSlugTaken] = useState(false);
 
   const expiresLabel = EXPIRY_OPTIONS.find((o) => o.value === form.expires_option)?.label || 'Never expires';
   const normalizedUrl = useMemo(() => normalizeLongUrl(form.long_url), [form.long_url]);
@@ -198,6 +205,10 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
     const longUrl = normalizeLongUrl(form.long_url);
     if (!longUrl || !isValidHttpUrl(longUrl)) {
       toast.error('Enter a valid http/https URL');
+      return;
+    }
+    if (slugTaken) {
+      toast.error('This slug is already used');
       return;
     }
     setCreating(true);
@@ -315,6 +326,18 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
         <p className="mt-1 text-sm text-gray-600">
           Basics left pe · advanced options neeche tabs me · live preview right pe.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200/70 bg-white/80 px-3 py-2">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Universal link</span>
+          <code className="min-w-0 flex-1 break-all text-sm font-semibold text-blue-900">{MYFNG_APP_DOWNLOAD_URL}</code>
+          <button
+            type="button"
+            onClick={() => void copyText(MYFNG_APP_DOWNLOAD_URL, 'Universal link')}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            Copy
+          </button>
+        </div>
       </div>
 
       <SplitWithPreview
@@ -360,21 +383,20 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
               label="Destination URL *"
               value={form.long_url}
               onChange={(v) => patch('long_url', v)}
-              placeholder="https://example.com/campaign"
+              placeholder="https://myfng.in/go/myfngapp"
+              hint="Jahan user finally jayega — koi bhi website."
             />
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Title" value={form.title} onChange={(v) => patch('title', v)} placeholder="Saket WhatsApp" />
+              <Field label="Title" value={form.title} onChange={(v) => patch('title', v)} placeholder="App download" />
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold text-gray-700">Custom slug</span>
-                <div className="flex overflow-hidden rounded-xl border border-gray-200">
-                  <span className="bg-gray-50 px-3 py-2.5 text-xs text-gray-500 border-r">/s/</span>
-                  <input
-                    value={form.custom_code}
-                    onChange={(e) => patch('custom_code', e.target.value)}
-                    placeholder="saket-wp"
-                    className="w-full px-3 py-2.5 text-sm outline-none"
-                  />
-                </div>
+                <SlugInput
+                  value={form.custom_code}
+                  onChange={(v) => patch('custom_code', v)}
+                  prefix="myfng.in/s/"
+                  placeholder="app-download"
+                  onStatusChange={(s) => setSlugTaken(s.taken)}
+                />
               </label>
               <Field label="Tags" value={form.tags} onChange={(v) => patch('tags', v)} placeholder="whatsapp, saket" />
               <Field label="Folder" value={form.folder} onChange={(v) => patch('folder', v)} placeholder="Workshops" />
@@ -455,7 +477,7 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
                       checked={form.enable_landing}
                       onChange={(e) => patch('enable_landing', e.target.checked)}
                     />
-                    Branded landing page (/l/…) before redirect
+                    Branded landing page (/l/…) before redirect — not used for /go app-download links
                   </label>
                 </>
               ) : null}
@@ -693,7 +715,7 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
           <div className="sticky bottom-3 z-10 rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-lg backdrop-blur">
             <button
               type="button"
-              disabled={creating || !urlReady}
+              disabled={creating || !urlReady || slugTaken}
               onClick={() => void handleCreate()}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-50 sm:w-auto"
             >

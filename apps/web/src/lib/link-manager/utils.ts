@@ -63,14 +63,61 @@ export function clientAppBaseUrl(): string {
 export const QR_TRACKING_PARAM = 'via';
 export const QR_TRACKING_VALUE = 'qr';
 
-export function buildProductionShortUrl(shortCode: string) {
+export const DEFAULT_SHORT_HOST = 'myfng.in';
+
+/** Turn host or URL into https://host. Empty / local → MyFNG. */
+export function normalizeShortBaseUrl(raw?: string | null): string {
+  const value = String(raw || '').trim();
+  if (!value) return `https://${DEFAULT_SHORT_HOST}`;
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (!host || LOCAL_HOSTS.has(host) || !host.includes('.')) return `https://${DEFAULT_SHORT_HOST}`;
+    return `https://${host}`;
+  } catch {
+    return `https://${DEFAULT_SHORT_HOST}`;
+  }
+}
+
+export function shortHostLabel(raw?: string | null): string {
+  try {
+    return new URL(normalizeShortBaseUrl(raw)).hostname;
+  } catch {
+    return DEFAULT_SHORT_HOST;
+  }
+}
+
+export function shortBaseFromLinkMeta(meta?: Record<string, unknown> | null): string {
+  const stored = String(meta?.short_domain || meta?.share_url || meta?.public_short_url || '').trim();
+  return normalizeShortBaseUrl(stored);
+}
+
+export function trackShortBaseUrl() {
+  return `https://${DEFAULT_SHORT_HOST}`;
+}
+
+export function hostFromDestination(raw?: string | null): string {
+  try {
+    return new URL(normalizeLongUrl(String(raw || ''))).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+export function brandRedirectHint(brandHost: string) {
+  const host = shortHostLabel(brandHost);
+  if (!host || host === DEFAULT_SHORT_HOST) return '';
+  return `${host}/s/*  →  https://${DEFAULT_SHORT_HOST}/s/*`;
+}
+
+export function buildProductionShortUrl(shortCode: string, baseUrl?: string | null) {
   const code = String(shortCode || '').trim();
-  return `${SITE_URL.replace(/\/$/, '')}/s/${code}`;
+  return `${normalizeShortBaseUrl(baseUrl)}/s/${code}`;
 }
 
 /** Short URL encoded inside QR codes — dedicated /qr path so scanners never drop tracking params. */
-export function buildQrShortUrl(shortCode: string) {
-  return `${buildProductionShortUrl(shortCode)}/qr`;
+export function buildQrShortUrl(shortCode: string, baseUrl?: string | null) {
+  return `${buildProductionShortUrl(shortCode, baseUrl)}/qr`;
 }
 
 /** Client-side QR encode URL — uses current host on LAN dev so phone scans hit your local server. */
@@ -141,8 +188,7 @@ export function linkEventSourceLabel(eventType: string): string {
 }
 
 export function buildShortUrl(shortCode: string, baseUrl?: string | null) {
-  void baseUrl;
-  return buildProductionShortUrl(shortCode);
+  return buildProductionShortUrl(shortCode, baseUrl);
 }
 
 /** Read encoded URL from legacy qrserver.com image links stored in DB. */

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { createManagedShortLink, ensureLinkDestinationIsPublic, ensureLinkQrUsesPublicUrl } from '@/lib/link-manager/service';
-import { buildShortUrl } from '@/lib/link-manager/utils';
+import { buildShortUrl, shortBaseFromLinkMeta } from '@/lib/link-manager/utils';
+import { applyReportDateRangeFilter, resolveReportDateRange } from '@/lib/report-date-range';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,11 +41,15 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(params.get('page') || 1));
     const pageSize = Math.min(100, Math.max(10, Number(params.get('pageSize') || 25)));
     const q = String(params.get('q') || '').trim();
+    const preset = params.get('preset') || 'all_time';
+    const range = resolveReportDateRange(preset, params.get('from'), params.get('to'));
 
     let query = supabaseAdmin
       .from('managed_short_links')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
+
+    query = applyReportDateRangeFilter(query, 'created_at', preset, params.get('from'), params.get('to'));
 
     if (q) {
       query = query.or(
@@ -59,10 +64,11 @@ export async function GET(request: NextRequest) {
     const links = await Promise.all(
       (data || []).map(async (row: any) => {
         const withDestination = await ensureLinkDestinationIsPublic(supabaseAdmin, row);
-        const fixed = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, null);
+        const base = shortBaseFromLinkMeta(withDestination.meta);
+        const fixed = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, base);
         return {
           ...fixed,
-          short_url: buildShortUrl(fixed.short_code),
+          short_url: buildShortUrl(fixed.short_code, base),
         };
       }),
     );
@@ -73,6 +79,7 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil((count || 0) / pageSize)),
+      range,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
@@ -121,7 +128,8 @@ export async function POST(request: NextRequest) {
         (createMode === 'qr_only' || createMode === 'both') && body?.qr_style && typeof body.qr_style === 'object'
           ? body.qr_style
           : null,
-      baseUrl: null,
+      baseUrl: body?.short_domain || body?.base_url || null,
+      short_domain: body?.short_domain || body?.base_url || null,
       create_mode: createMode,
       password: body?.password,
       max_clicks: body?.max_clicks,
