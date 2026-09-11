@@ -82,3 +82,22 @@ export function applyPeriodicFilterWording<T>(items: T[], ctx: PeriodicFilterCon
     return item;
   });
 }
+
+/** Store Replace on Premium/Platinum master templates (most cars). Display still switches to Clean for Premium SUV/Luxury. */
+export function rewriteStoredFilterNamesToReplace<T>(items: T[]): T[] {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  return items.map((item) => {
+    const label = itemLabel(item);
+    if (isEngineAirFilter(label)) return withLabel(item, 'Replace Air Filter');
+    if (isCabinAcFilter(label)) return withLabel(item, 'Replace Cabin AC Filter');
+    return item;
+  });
+}
+
+export function storedFilterNamesNeedReplace(items: unknown[]): boolean {
+  return (items || []).some((item) => {
+    const label = itemLabel(item);
+    const n = normName(label);
+    return /^(clean(ing)?) air filter$/.test(n) || /^(clean(ing)?) cabin( ac)? filter$/.test(n);
+  });
+}

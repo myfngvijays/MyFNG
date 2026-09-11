@@ -28,6 +28,7 @@ export default function PackageChecklistModal({
   const [points, setPoints] = useState('15');
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [syncingFilters, setSyncingFilters] = useState(false);
 
   const validItemsCount = useMemo(
     () => items.filter((it) => String(it.name || '').trim().length > 0).length,
@@ -88,6 +89,34 @@ export default function PackageChecklistModal({
     setItems((prev) => prev.filter((_, idx) => idx !== index));
   };
 
+  const isPremiumPlatinum =
+    Number(points) === 50 ||
+    Number(points) === 60 ||
+    /premium|platinum/i.test(packageName);
+
+  const syncPremiumFilters = async () => {
+    setSyncingFilters(true);
+    setError(null);
+    setSavedMsg(null);
+    try {
+      const res = await fetch('/api/admin/inventory/packages/sync-premium-filters', {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to update filter wording');
+      setSavedMsg(
+        data?.updated
+          ? `Updated Clean → Replace on ${data.updated} Premium/Platinum checklist(s).`
+          : 'Premium/Platinum checklists already use Replace.',
+      );
+      await fetchChecklist();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to update filter wording');
+    } finally {
+      setSyncingFilters(false);
+    }
+  };
+
   const saveChecklist = async () => {
     setSaving(true);
     setError(null);
@@ -138,6 +167,13 @@ export default function PackageChecklistModal({
             <p className="text-sm text-gray-500 mt-0.5">
               Add, edit, remove checklist points for this service package.
             </p>
+            {isPremiumPlatinum ? (
+              <p className="text-xs text-amber-800 mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                Website booking shows <span className="font-semibold">Replace</span> Air / Cabin AC Filter
+                for most cars, and <span className="font-semibold">Clean</span> only for Premium SUV/MUVs
+                and Premium Luxury. This admin list is the stored master — use Replace here.
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -199,14 +235,26 @@ export default function PackageChecklistModal({
                   <h3 className="font-bold text-gray-900 text-sm">
                     Checklist Items ({validItemsCount})
                   </h3>
-                  <button
-                    type="button"
-                    onClick={addItem}
-                    className="btn btn-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Item
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isPremiumPlatinum ? (
+                      <button
+                        type="button"
+                        onClick={() => void syncPremiumFilters()}
+                        disabled={syncingFilters}
+                        className="btn btn-sm bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 disabled:opacity-60"
+                      >
+                        {syncingFilters ? 'Updating…' : 'Set filters to Replace'}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={addItem}
+                      className="btn btn-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Item
+                    </button>
+                  </div>
                 </div>
 
                 {items.length === 0 ? (
