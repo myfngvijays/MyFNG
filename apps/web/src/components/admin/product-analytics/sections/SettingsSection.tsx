@@ -36,6 +36,12 @@ type ConfigForm = {
     }
   >;
   mobile_build: {
+    force_update_enabled: boolean;
+    min_version_android: string;
+    min_version_ios: string;
+    min_build_android: number;
+    min_build_ios: number;
+    update_message: string;
     analytics_min_version_code_android: number;
     analytics_min_build_ios: number;
     current_version: string;
@@ -79,10 +85,16 @@ const EMPTY: ConfigForm = {
     },
   },
   mobile_build: {
-    analytics_min_version_code_android: 27,
-    analytics_min_build_ios: 27,
-    current_version: '1.2.3',
-    current_build: 28,
+    force_update_enabled: true,
+    min_version_android: '1.2.0',
+    min_version_ios: '1.2.0',
+    min_build_android: 23,
+    min_build_ios: 23,
+    update_message: 'A new version of MyFNG is available. Please update the app to continue.',
+    analytics_min_version_code_android: 23,
+    analytics_min_build_ios: 23,
+    current_version: '1.2.0',
+    current_build: 23,
     notes: '',
   },
   admin_notes: '',
@@ -136,6 +148,7 @@ export default function SettingsSection() {
         ...EMPTY,
         ...json.config,
         web_tracking: { ...EMPTY.web_tracking, ...json.config?.web_tracking },
+        mobile_build: { ...EMPTY.mobile_build, ...json.config?.mobile_build },
       });
       setCanEdit(Boolean(json.can_edit));
     } finally {
@@ -421,65 +434,103 @@ export default function SettingsSection() {
         </div>
 
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-4">Mobile Build Reference</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-1">Mobile App Force Update</p>
+          <p className="text-xs text-gray-500 mb-4">
+            Same values as{' '}
+            <a href="/dashboard/super_admin/settings" className="font-semibold text-violet-700 underline">
+              System Settings
+            </a>
+            . Soft &quot;Update Available&quot; is automatic from Play Store / App Store — use these fields only to
+            force-block older apps.
+          </p>
           <div className="grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2 flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Force Update Enabled</p>
+                <p className="text-xs text-gray-500 mt-0.5">Show blocking update popup on old app versions</p>
+              </div>
+              <Toggle
+                checked={form.mobile_build.force_update_enabled}
+                disabled={!canEdit}
+                onChange={(v) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, force_update_enabled: v },
+                  }))
+                }
+              />
+            </div>
             <div>
-              <label className="analytics-label">Current app version</label>
+              <label className="analytics-label">Android Min Version</label>
               <input
                 className="analytics-input"
-                value={form.mobile_build.current_version}
+                value={form.mobile_build.min_version_android}
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
-                    mobile_build: { ...prev.mobile_build, current_version: e.target.value },
+                    mobile_build: { ...prev.mobile_build, min_version_android: e.target.value },
+                  }))
+                }
+                disabled={!canEdit}
+                placeholder="1.3.3"
+              />
+            </div>
+            <div>
+              <label className="analytics-label">Android Min Build (versionCode)</label>
+              <input
+                className="analytics-input"
+                type="number"
+                min={0}
+                value={form.mobile_build.min_build_android}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, min_build_android: Number(e.target.value) || 0 },
                   }))
                 }
                 disabled={!canEdit}
               />
             </div>
             <div>
-              <label className="analytics-label">Current build number</label>
+              <label className="analytics-label">iOS Min Version</label>
               <input
                 className="analytics-input"
-                type="number"
-                value={form.mobile_build.current_build}
+                value={form.mobile_build.min_version_ios}
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
-                    mobile_build: { ...prev.mobile_build, current_build: Number(e.target.value) || 0 },
+                    mobile_build: { ...prev.mobile_build, min_version_ios: e.target.value },
+                  }))
+                }
+                disabled={!canEdit}
+                placeholder="1.3.3"
+              />
+            </div>
+            <div>
+              <label className="analytics-label">iOS Min Build</label>
+              <input
+                className="analytics-input"
+                type="number"
+                min={0}
+                value={form.mobile_build.min_build_ios}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, min_build_ios: Number(e.target.value) || 0 },
                   }))
                 }
                 disabled={!canEdit}
               />
             </div>
-            <div>
-              <label className="analytics-label">Min Android version code (analytics SDK)</label>
-              <input
-                className="analytics-input"
-                type="number"
-                value={form.mobile_build.analytics_min_version_code_android}
+            <div className="sm:col-span-2">
+              <label className="analytics-label">Update Popup Message</label>
+              <textarea
+                className="analytics-input min-h-[90px]"
+                value={form.mobile_build.update_message}
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
-                    mobile_build: {
-                      ...prev.mobile_build,
-                      analytics_min_version_code_android: Number(e.target.value) || 0,
-                    },
-                  }))
-                }
-                disabled={!canEdit}
-              />
-            </div>
-            <div>
-              <label className="analytics-label">Min iOS build (analytics SDK)</label>
-              <input
-                className="analytics-input"
-                type="number"
-                value={form.mobile_build.analytics_min_build_ios}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    mobile_build: { ...prev.mobile_build, analytics_min_build_ios: Number(e.target.value) || 0 },
+                    mobile_build: { ...prev.mobile_build, update_message: e.target.value },
                   }))
                 }
                 disabled={!canEdit}

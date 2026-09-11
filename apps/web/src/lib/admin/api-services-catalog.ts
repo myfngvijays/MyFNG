@@ -124,7 +124,7 @@ export const API_SERVICES_CATALOG: ApiServiceEntry[] = [
     category: 'Payments',
     description: 'App & website payment collection. Admin Finance reads settlement data from DB.',
     billingModel: 'Transaction fees per payment (not API billing dashboard)',
-    adminMenus: ['Finance', 'Manual Invoice (indirect)', 'App checkout'],
+    adminMenus: ['Manual Invoice', 'App checkout'],
     envKeys: ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'],
     docsUrl: 'https://dashboard.razorpay.com/',
   },
@@ -230,7 +230,7 @@ export const ADMIN_MENU_API_SUMMARY: Array<{
   { menu: 'Admin AI Chat', href: '/dashboard/super_admin/admin-ai-chat', tier: 'paid', services: ['OpenAI'] },
   { menu: 'DLT SMS', href: '/dashboard/super_admin/dlt-sms', tier: 'paid', services: ['Own operator HTTP', 'Jio TrueConnect DLT'] },
   { menu: 'Customer Reviews', href: '/dashboard/super_admin/website-images/customer-reviews', tier: 'paid', services: ['Google GBP / Places'] },
-  { menu: 'Finance', href: '/dashboard/super_admin/finance', tier: 'free', services: ['Supabase (Razorpay records)'] },
+  { menu: 'Manual Invoice', href: '/dashboard/super_admin/manual-invoices', tier: 'free', services: ['Supabase (Razorpay records)'] },
   { menu: 'System Monitor', href: '/dashboard/super_admin/system-monitor', tier: 'platform', services: ['Probes all configured APIs'] },
   { menu: 'Meta Ads MCP', href: '/dashboard/super_admin/meta-ads-mcp', tier: 'paid', services: ['Meta Marketing API'] },
 ];

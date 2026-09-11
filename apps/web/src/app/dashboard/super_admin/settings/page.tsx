@@ -450,6 +450,14 @@ export default function SystemSettingsPage() {
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
               Soft &quot;Update Available&quot; is automatic from Play Store / App Store — no need to bump numbers for that.
               Use the fields below only when you want to <span className="font-semibold">force-block</span> older apps.
+              Same values also show in{' '}
+              <a
+                href="/dashboard/super_admin/analytics-hub?section=settings"
+                className="font-semibold text-blue-600 underline"
+              >
+                Analytics Settings
+              </a>
+              .
             </p>
           </div>
           <div className="p-4 sm:p-5 md:p-6 space-y-4">

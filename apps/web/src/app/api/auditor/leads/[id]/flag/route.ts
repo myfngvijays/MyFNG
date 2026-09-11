@@ -174,7 +174,7 @@ export async function POST(
           priority: 'URGENT',
           lead_id: leadId,
           lead_number: lead.lead_number,
-          action_url: `/dashboard/super_admin/fraud/${leadId}`,
+          action_url: `/dashboard/super_admin/system-monitor?tab=fraud`,
           metadata: { flag_reason: body.flag_reason, severity: body.severity },
         }));
 

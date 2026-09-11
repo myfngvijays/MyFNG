@@ -24,7 +24,7 @@ interface AuditLog {
   ip_address: string | null;
 }
 
-export default function AuditLogsScreen() {
+export default function AuditLogsScreen({ embedded = false }: { embedded?: boolean }) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,24 +208,27 @@ export default function AuditLogsScreen() {
     { label: 'Jobs', value: 'JOB' },
   ];
 
+  const Wrap = embedded ? View : SafeAreaView;
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <Wrap style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563eb" />
           <Text style={styles.loadingText}>Loading audit logs...</Text>
         </View>
-      </SafeAreaView>
+      </Wrap>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <Wrap style={styles.container}>
+      {embedded ? null : (
       <View style={styles.header}>
         <Text style={styles.title}>Audit Logs 📋</Text>
         <Text style={styles.subtitle}>{filteredLogs.length} entries</Text>
       </View>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -278,7 +281,7 @@ export default function AuditLogsScreen() {
           </View>
         }
       />
-    </SafeAreaView>
+    </Wrap>
   );
 }
 

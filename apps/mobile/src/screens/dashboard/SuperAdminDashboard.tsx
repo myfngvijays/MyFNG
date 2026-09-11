@@ -413,7 +413,7 @@ export default function SuperAdminDashboard() {
       finance: 'FinancePayout',
       leads: 'LeadManagerAppBookings',
       LeadsManagement: 'LeadManagerAppBookings',
-      fraud: 'FraudDetection',
+      fraud: 'SuperAdminSystemMonitor',
       audit: 'AuditLogs',
       brands: 'Brands',
       'inventory-products': 'InventoryProducts',
@@ -624,10 +624,9 @@ export default function SuperAdminDashboard() {
           <AdminSectionTitle>Quick links</AdminSectionTitle>
           <View style={styles.quickLinkRow}>
             <AdminQuickLink icon="call-outline" label="Bookings & Leads" onPress={() => handleNavigation('leads')} />
-            <AdminQuickLink icon="document-text-outline" label="Reports" onPress={() => handleNavigation('reports')} />
             <AdminQuickLink icon="storefront-outline" label="Workshops" onPress={() => handleNavigation('workshops')} />
             <AdminQuickLink icon="people-outline" label="Users & Roles" onPress={() => handleNavigation('users')} />
-            <AdminQuickLink icon="cash-outline" label="Finance" onPress={() => handleNavigation('finance')} />
+            <AdminQuickLink icon="heart-outline" label="Monitor" onPress={() => (navigation as any).navigate('SuperAdminSystemMonitor')} />
             <AdminQuickLink icon="settings-outline" label="Settings" onPress={() => handleNavigation('settings')} />
           </View>
         </View>
@@ -742,7 +741,7 @@ export default function SuperAdminDashboard() {
           <AdminSectionTitle>Admin users</AdminSectionTitle>
           <View style={styles.quickActionsGrid}>
             <AdminMenuTile icon="people-outline" label="Users & roles" onPress={() => handleNavigation('users')} />
-            <AdminMenuTile icon="shield-outline" label="Fraud cases" onPress={() => handleNavigation('fraud')} />
+            <AdminMenuTile icon="shield-outline" label="Fraud cases" onPress={() => (navigation as any).navigate('SuperAdminSystemMonitor', { tab: 'fraud' })} />
             <AdminMenuTile icon="document-text-outline" label="Audit logs" onPress={() => handleNavigation('audit')} />
           </View>
         </View>

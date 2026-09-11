@@ -42,7 +42,7 @@ export const DEFAULT_MOBILE_APP_VERSION_CONFIG: MobileAppVersionConfig = {
   update_message: DEFAULT_FORCE_UPDATE_MESSAGE,
 };
 
-const SETTING_KEYS = {
+export const MOBILE_APP_VERSION_SETTING_KEYS = {
   force_update_enabled: 'mobile_app_force_update_enabled',
   min_version_android: 'mobile_app_min_version_android',
   min_version_ios: 'mobile_app_min_version_ios',
@@ -52,6 +52,8 @@ const SETTING_KEYS = {
   app_store_url: 'mobile_app_app_store_url',
   update_message: 'mobile_app_force_update_message',
 } as const;
+
+const SETTING_KEYS = MOBILE_APP_VERSION_SETTING_KEYS;
 
 let cached: { value: MobileAppVersionConfig; expiresAt: number } | null = null;
 
@@ -120,8 +122,9 @@ function readConfigFromMap(map: Map<string, string>): MobileAppVersionConfig {
 
 export async function getMobileAppVersionConfig(
   supabaseAdmin?: any,
+  options?: { bypassCache?: boolean },
 ): Promise<MobileAppVersionConfig> {
-  if (cached && Date.now() < cached.expiresAt) return cached.value;
+  if (!options?.bypassCache && cached && Date.now() < cached.expiresAt) return cached.value;
 
   const admin = supabaseAdmin || getSupabaseAdmin().supabaseAdmin;
   if (!admin) {
@@ -168,4 +171,64 @@ export function evaluateForceUpdate(
     current_version: safeVersion,
     current_build: safeBuild,
   };
+}
+
+export async function saveMobileAppVersionConfig(
+  input: Partial<MobileAppVersionConfig>,
+  updatedBy: string,
+): Promise<{ ok: true; config: MobileAppVersionConfig } | { ok: false; error: string }> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return { ok: false, error: 'Database admin client unavailable' };
+  }
+
+  const existing = await getMobileAppVersionConfig(supabaseAdmin, { bypassCache: true });
+  const next: MobileAppVersionConfig = {
+    force_update_enabled:
+      input.force_update_enabled === undefined ? existing.force_update_enabled : Boolean(input.force_update_enabled),
+    min_version_android: toVersion(input.min_version_android, existing.min_version_android),
+    min_version_ios: toVersion(input.min_version_ios, existing.min_version_ios),
+    min_build_android: toNumber(
+      input.min_build_android ?? existing.min_build_android,
+      existing.min_build_android,
+      0,
+      999999,
+    ),
+    min_build_ios: toNumber(input.min_build_ios ?? existing.min_build_ios, existing.min_build_ios, 0, 999999),
+    play_store_url: toText(input.play_store_url, existing.play_store_url, 240),
+    app_store_url: toText(input.app_store_url, existing.app_store_url, 240),
+    update_message: toText(input.update_message, existing.update_message, 280),
+  };
+
+  const now = new Date().toISOString();
+  const rows: Array<{ key: string; value: string; type: 'BOOLEAN' | 'STRING' | 'NUMBER' }> = [
+    { key: SETTING_KEYS.force_update_enabled, value: String(next.force_update_enabled), type: 'BOOLEAN' },
+    { key: SETTING_KEYS.min_version_android, value: next.min_version_android, type: 'STRING' },
+    { key: SETTING_KEYS.min_version_ios, value: next.min_version_ios, type: 'STRING' },
+    { key: SETTING_KEYS.min_build_android, value: String(next.min_build_android), type: 'NUMBER' },
+    { key: SETTING_KEYS.min_build_ios, value: String(next.min_build_ios), type: 'NUMBER' },
+    { key: SETTING_KEYS.play_store_url, value: next.play_store_url, type: 'STRING' },
+    { key: SETTING_KEYS.app_store_url, value: next.app_store_url, type: 'STRING' },
+    { key: SETTING_KEYS.update_message, value: next.update_message, type: 'STRING' },
+  ];
+
+  for (const row of rows) {
+    const { error } = await supabaseAdmin.from('system_settings').upsert(
+      {
+        setting_key: row.key,
+        setting_value: row.value,
+        setting_type: row.type,
+        category: 'MOBILE',
+        updated_at: now,
+        updated_by: updatedBy,
+      },
+      { onConflict: 'setting_key' },
+    );
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+
+  cached = { value: next, expiresAt: Date.now() + 30_000 };
+  return { ok: true, config: next };
 }

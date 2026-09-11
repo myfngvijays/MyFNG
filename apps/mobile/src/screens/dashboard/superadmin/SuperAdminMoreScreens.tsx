@@ -1733,139 +1733,23 @@ export function SuperAdminMetaAdsMcpScreen() {
 }
 
 export function SuperAdminDataRightsScreen() {
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<any[]>([]);
-  const [counts, setCounts] = useState<any>({});
-  const [status, setStatus] = useState('ALL');
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setError(null);
-      const params = status !== 'ALL' ? `?status=${encodeURIComponent(status)}` : '';
-      const data = await apiFetch<any>(`/api/super_admin/data-rights${params}`);
-      setRows(Array.isArray(data?.requests) ? data.requests : []);
-      setCounts(data?.counts || {});
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load data rights');
-      setRows([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [status]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const patch = async (id: string, nextStatus: string) => {
-    setSavingId(id);
-    try {
-      await apiFetch('/api/super_admin/data-rights', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status: nextStatus }),
-      });
-      await load();
-    } catch (e: any) {
-      Alert.alert('Update failed', e?.message || 'Could not update');
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  return (
-    <Shell title="Data Rights">
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.body}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                void load();
-              }}
-            />
-          }
-        >
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {[
-              ['ALL', `All ${counts.all ?? 0}`],
-              ['PENDING', `Pending ${counts.pending ?? 0}`],
-              ['IN_PROGRESS', `Doing ${counts.in_progress ?? 0}`],
-              ['DONE', `Done ${counts.done ?? 0}`],
-            ].map(([key, label]) => (
-              <TouchableOpacity
-                key={key}
-                style={[styles.chip, status === key && styles.chipActive]}
-                onPress={() => setStatus(key)}
-              >
-                <Text style={[styles.chipText, status === key && styles.chipTextActive]}>{label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          {rows.length === 0 ? <Text style={styles.empty}>No requests</Text> : null}
-          {rows.map((row) => {
-            const open = openId === row.id;
-            const st = String(row.status || 'PENDING').toUpperCase();
-            return (
-              <TouchableOpacity
-                key={row.id}
-                style={styles.card}
-                onPress={() => setOpenId(open ? null : row.id)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.row}>
-                  <Text style={styles.cardTitle}>{row.full_name}</Text>
-                  <Text style={styles.badge}>{st.replace('_', ' ')}</Text>
-                </View>
-                <Text style={styles.cardMeta}>
-                  {row.request_type_label || row.request_type} · {row.email}
-                  {row.phone ? ` · ${row.phone}` : ''}
-                </Text>
-                {open ? (
-                  <>
-                    <Text style={[styles.cardMeta, { marginTop: 8, color: '#0F172A' }]}>
-                      {row.details || 'No extra details.'}
-                    </Text>
-                    <View style={[styles.row, { marginTop: 10, flexWrap: 'wrap' }]}>
-                      {['PENDING', 'IN_PROGRESS', 'DONE', 'REJECTED'].map((next) => (
-                        <TouchableOpacity
-                          key={next}
-                          style={[styles.chip, st === next && styles.chipActive]}
-                          disabled={savingId === row.id}
-                          onPress={() => void patch(row.id, next)}
-                        >
-                          <Text style={[styles.chipText, st === next && styles.chipTextActive]}>
-                            {next.replace('_', ' ')}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </>
-                ) : null}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-    </Shell>
-  );
+  const ComplianceReportsScreen = require('./ComplianceReportsScreen').default;
+  return <ComplianceReportsScreen />;
 }
 
 export function SuperAdminSystemMonitorScreen() {
+  const route = useRoute<any>();
+  const initialTab = route?.params?.tab;
+  const [tab, setTab] = useState<'health' | 'audit' | 'security' | 'fraud'>(
+    initialTab === 'audit' || initialTab === 'security' || initialTab === 'fraud' ? initialTab : 'health',
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [payload, setPayload] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const AuditLogsScreen = require('./AuditLogsScreen').default;
+  const SecurityEventsScreen = require('./SecurityEventsScreen').default;
+  const FraudDetectionScreen = require('./FraudDetectionScreen').default;
 
   const load = useCallback(async () => {
     try {
@@ -1889,7 +1773,26 @@ export function SuperAdminSystemMonitorScreen() {
 
   return (
     <Shell title="System Monitor">
-      {loading ? (
+      <View style={styles.chipRow}>
+        {([
+          ['health', 'Health'],
+          ['audit', 'Audit Logs'],
+          ['security', 'Security'],
+          ['fraud', 'Fraud'],
+        ] as const).map(([id, label]) => (
+          <TouchableOpacity
+            key={id}
+            style={[styles.chip, tab === id && styles.chipActive]}
+            onPress={() => setTab(id)}
+          >
+            <Text style={[styles.chipText, tab === id && styles.chipTextActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {tab === 'audit' ? <AuditLogsScreen embedded /> : null}
+      {tab === 'security' ? <SecurityEventsScreen embedded /> : null}
+      {tab === 'fraud' ? <FraudDetectionScreen embedded /> : null}
+      {tab !== 'health' ? null : loading ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
       ) : (
         <ScrollView
@@ -2141,7 +2044,7 @@ const styles = StyleSheet.create({
   body: { padding: SPACING.md, paddingBottom: 40 },
   sectionTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 6 },
   hint: { fontSize: 12, color: '#64748B', marginBottom: 8 },
-  chipRow: { paddingHorizontal: SPACING.md, paddingVertical: 10, gap: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: SPACING.md, paddingVertical: 10, gap: 8 },
   chip: {
     borderWidth: 1,
     borderColor: '#E2E8F0',

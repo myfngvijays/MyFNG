@@ -133,13 +133,22 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Sirf SELECT — koi write tool nahi.',
     ],
   },
-  '/dashboard/super_admin/data-rights': {
-    title: 'Data Rights',
+  '/dashboard/super_admin/compliance-reports': {
+    title: 'Compliance',
     body:
-      'Website /data-rights form se aayi DPDP requests yahan padti hain — access, correct, erase, withdraw, nominate, grievance.\n\nStatus PENDING → In progress → Done / Rejected. Officer notes save ho sakte hain.',
+      'Data Rights tab: website /data-rights form se aayi DPDP requests — access, correct, erase, withdraw, nominate, grievance.\n\nReports tab: GDPR/DPDP, SOC2, ISO27001 audit exports.\n\nStatus PENDING → In progress → Done / Rejected. Officer notes save ho sakte hain.',
     tips: [
       'Public form email officer ko automatically nahi bhejta — yeh inbox dekho.',
       'Erase / withdraw pe legally 30 din ke andar respond karna hai.',
+    ],
+  },
+  '/dashboard/super_admin/system-monitor': {
+    title: 'System Monitor',
+    body:
+      'Health tab: live service checks, env, WhatsApp alert template.\nAudit Logs tab: system activity.\nSecurity Events tab: incidents aur resolve actions.\nFraud tab: fraud cases review.',
+    tips: [
+      'DOWN services page load pe auto-expand hote hain.',
+      'Audit / Security / Fraud ab alag menu nahi — yahi tabs hain.',
     ],
   },
   '/dashboard/super_admin/tracking-scripts': {

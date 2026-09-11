@@ -19,6 +19,8 @@ import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
 import { getMcpHttpToken, MCP_PUBLIC_ORIGIN } from '@/lib/mcp/httpAuth';
 import { getMetaAdsSettings } from '@/lib/meta-ads/settings';
 import { graphGet } from '@/lib/meta-ads/graph';
+import { loadTelecallerLeadsShiftLastRun } from '@/lib/services/telecallerLeadsShiftSummary';
+import { getTelecallerLeadsShiftTemplateStatus } from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -3011,21 +3013,48 @@ async function checkTelecallerLeadsShiftSummary(): Promise<HealthCheck> {
         lastChecked: new Date().toISOString(),
       };
     }
+
+    const [lastRun, template] = await Promise.all([
+      loadTelecallerLeadsShiftLastRun(),
+      getTelecallerLeadsShiftTemplateStatus().catch(() => null),
+    ]);
+    const lastAt = lastRun?.at ? new Date(lastRun.at).getTime() : 0;
+    const hoursSince = lastAt ? (Date.now() - lastAt) / 36e5 : Infinity;
+    const missedDaily = !lastAt || hoursSince > 36;
+    const sendFailed = Boolean(lastRun && lastRun.sent === 0 && (lastRun.error || lastRun.errors?.length));
+    const templateReady = Boolean(template?.canSendTemplate);
+    const status: ServiceStatus = sendFailed || missedDaily ? 'degraded' : 'healthy';
+    const lastLabel = lastAt
+      ? new Date(lastRun!.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+      : 'never';
+
     return {
       name: 'Telecaller Leads Shift WA',
       category: 'WhatsApp',
-      status: 'healthy',
+      status,
       responseTime: Date.now() - start,
-      message: `Ready · ${(count || 0)} telecallers · 7pm IST shift`,
-      reason:
-        'Daily WhatsApp at 7:00 PM IST lists each TC lead count for previous 7pm→today 7pm. Recipients = system alert WhatsApp numbers. Schedule job wa-telecaller-leads-shift-summary in Supabase cron.',
+      message: missedDaily
+        ? `Not sending · last run ${lastLabel}`
+        : `Last send ${lastLabel} · ${lastRun?.sent ?? 0} WA · ${(count || 0)} TCs`,
+      reason: sendFailed
+        ? `Last send failed: ${lastRun?.error || lastRun?.errors?.[0] || 'unknown'}`
+        : missedDaily
+          ? 'Daily 7:00 PM IST WhatsApp (Mahendra / Ajit lead counts) has not run. Vercel cron must include /api/cron/telecaller-leads-shift-summary. Use WhatsApp Cron → Run now to send today.'
+          : templateReady
+            ? 'Vercel cron 13:30 UTC (7:00 PM IST). Recipients = system alert WhatsApp numbers.'
+            : 'Cron is running but template telecaller_leads_shift_report is not APPROVED — text fallback can fail outside 24h chat window. Create/sync template on WhatsApp Cron.',
       quickFix: {
         label: 'WhatsApp Cron',
-        action: 'external-link',
-        actionPayload: { url: '/dashboard/super_admin/whatsapp-cron' },
+        action: 'internal-link',
+        actionPayload: { href: '/dashboard/super_admin/whatsapp-cron' },
       },
       lastChecked: new Date().toISOString(),
-      details: { telecallerCount: count || 0, cronPath: '/api/cron/telecaller-leads-shift-summary' },
+      details: {
+        telecallerCount: count || 0,
+        cronPath: '/api/cron/telecaller-leads-shift-summary',
+        lastRun,
+        templateReady,
+      },
     };
   } catch (e: any) {
     return {
@@ -3309,7 +3338,7 @@ async function checkDpdpCompliance(): Promise<HealthCheck> {
         message: consents.error?.message || rights.error?.message || 'Tables missing',
         reason: 'Run database/356_dpdp_consent_and_rights.sql so consent and data-rights requests persist.',
         lastChecked: new Date().toISOString(),
-        quickFix: { label: 'Open Data Rights inbox', action: 'internal-link', actionPayload: { href: '/dashboard/super_admin/data-rights' } },
+        quickFix: { label: 'Open Data Rights inbox', action: 'internal-link', actionPayload: { href: '/dashboard/super_admin/compliance-reports?section=rights' } },
       };
     }
     return {
@@ -3321,7 +3350,7 @@ async function checkDpdpCompliance(): Promise<HealthCheck> {
       reason: 'dpdp_consent_records and data_rights_requests are available.',
       lastChecked: new Date().toISOString(),
       details: { consents: consents.count || 0, rights: rights.count || 0 },
-      quickFix: { label: 'Open Data Rights inbox', action: 'internal-link', actionPayload: { href: '/dashboard/super_admin/data-rights' } },
+      quickFix: { label: 'Open Data Rights inbox', action: 'internal-link', actionPayload: { href: '/dashboard/super_admin/compliance-reports?section=rights' } },
     };
   } catch (e: any) {
     return {

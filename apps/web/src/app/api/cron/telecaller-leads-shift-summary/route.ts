@@ -1,28 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { assertCronAuth } from '@/lib/cron/assertCronAuth';
 import { isWhatsAppCronJobEnabled } from '@/lib/services/whatsappCronJobFlags';
 import { runTelecallerLeadsShiftSummaryJob } from '@/lib/services/telecallerLeadsShiftSummary';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const JOB_ID = 'telecaller-leads-shift-summary';
 
-function assertCronAuth(req: NextRequest): string | null {
-  const secret = process.env.CRON_SECRET || process.env.NOTIFICATION_CRON_SECRET;
-  if (!secret) return 'CRON secret is not configured on server';
-
-  const auth = req.headers.get('authorization') || '';
-  const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
-  if (!token || token !== secret) return 'Unauthorized';
-  return null;
-}
-
 /**
  * Daily telecaller lead counts for the office shift (7pm → next day 7pm IST).
+ * Vercel cron: 13:30 UTC = 7:00 PM IST.
  * GET /api/cron/telecaller-leads-shift-summary?force=1
  */
-export async function GET(request: NextRequest) {
-  const authError = assertCronAuth(request);
+async function handle(request: NextRequest) {
+  const authError = await assertCronAuth(request);
   if (authError) {
     return NextResponse.json({ error: authError }, { status: 401 });
   }
@@ -44,4 +37,12 @@ export async function GET(request: NextRequest) {
     jobId: JOB_ID,
     ...result,
   });
+}
+
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handle(request);
 }

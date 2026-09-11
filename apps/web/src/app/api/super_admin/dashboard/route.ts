@@ -889,7 +889,7 @@ export async function GET(request: NextRequest) {
         type: 'CRITICAL',
         title: 'Open Fraud Cases',
         message: `${fraudOpen.count} fraud cases need investigation`,
-        href: '/dashboard/super_admin/fraud',
+        href: '/dashboard/super_admin/system-monitor?tab=fraud',
       });
     }
     if ((openComplaints.count || 0) > 0) {

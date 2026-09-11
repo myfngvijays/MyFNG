@@ -41,7 +41,15 @@ type OverviewResponse = {
   config: {
     firebase: { project_id: string; web_measurement_id: string };
     clarity: { project_id: string };
-    mobile_build: { current_version: string; current_build: number; notes: string };
+    mobile_build: {
+      current_version: string;
+      current_build: number;
+      min_version_android?: string;
+      min_version_ios?: string;
+      min_build_android?: number;
+      min_build_ios?: number;
+      notes: string;
+    };
   };
   push_firebase: { project_id: string; measurement_id: string } | null;
   error?: string;
@@ -123,10 +131,21 @@ export default function OverviewSection() {
           <p className="text-lg font-bold text-gray-900 mt-1 font-mono">{data.config.clarity.project_id}</p>
         </div>
         <div className="analytics-card p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Mobile App (reference)</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Mobile App (force update)</p>
           <p className="text-lg font-bold text-gray-900 mt-1">
-            v{data.config.mobile_build.current_version} · build {data.config.mobile_build.current_build}
+            Android v{data.config.mobile_build.min_version_android || data.config.mobile_build.current_version} · build{' '}
+            {data.config.mobile_build.min_build_android ?? data.config.mobile_build.current_build}
           </p>
+          <p className="text-sm text-gray-700 mt-1">
+            iOS v{data.config.mobile_build.min_version_ios || data.config.mobile_build.current_version} · build{' '}
+            {data.config.mobile_build.min_build_ios ?? data.config.mobile_build.current_build}
+          </p>
+          <a
+            href="/dashboard/super_admin/settings"
+            className="inline-block text-xs font-semibold text-violet-700 underline mt-1"
+          >
+            Edit in System Settings
+          </a>
           {data.summary.last_updated ? (
             <p className="text-xs text-gray-500 mt-1">
               Settings updated {new Date(data.summary.last_updated).toLocaleString('en-IN')}

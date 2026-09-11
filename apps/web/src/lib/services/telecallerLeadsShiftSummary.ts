@@ -2,6 +2,28 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlertWhatsAppNumbers';
 import { sendTelecallerLeadsShiftReportMessage } from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
 
+export const TELECALLER_LEADS_SHIFT_LAST_RUN_KEY = 'telecaller_leads_shift_last_run';
+
+export type TelecallerLeadsShiftLastRun = {
+  at: string;
+  sent?: number;
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+  shiftKey?: string;
+  startLabel?: string;
+  endLabel?: string;
+  totalAssigned?: number;
+  viaTemplate?: number;
+  viaText?: number;
+  errors?: string[];
+};
+
+function isPriorityTelecaller(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.includes('mahendra') || n.includes('ajit');
+}
+
 /** Office shift: yesterday 7:00 PM IST → today 7:00 PM IST (exclusive end). */
 export const TELECALLER_LEADS_SHIFT_HOUR_IST = 19;
 
@@ -228,7 +250,12 @@ export async function buildTelecallerLeadsShiftSummary(
       name: nameById.get(telecaller_id) || `TC ${telecaller_id.slice(0, 8)}`,
       leads: leadsCount,
     }))
-    .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const pa = isPriorityTelecaller(a.name) ? 0 : 1;
+      const pb = isPriorityTelecaller(b.name) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return b.leads - a.leads || a.name.localeCompare(b.name);
+    });
 
   const totalAssigned = rows.reduce((s, r) => s + r.leads, 0);
   const lines = [
@@ -254,30 +281,71 @@ export async function buildTelecallerLeadsShiftSummary(
   };
 }
 
+export async function loadTelecallerLeadsShiftLastRun(): Promise<TelecallerLeadsShiftLastRun | null> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return null;
+  const { data } = await supabaseAdmin
+    .from('system_settings')
+    .select('setting_value')
+    .eq('setting_key', TELECALLER_LEADS_SHIFT_LAST_RUN_KEY)
+    .maybeSingle();
+  if (!data?.setting_value) return null;
+  try {
+    const parsed = typeof data.setting_value === 'string' ? JSON.parse(data.setting_value) : data.setting_value;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as TelecallerLeadsShiftLastRun;
+  } catch {
+    return null;
+  }
+}
+
+async function saveTelecallerLeadsShiftLastRun(payload: TelecallerLeadsShiftLastRun) {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+  await supabaseAdmin.from('system_settings').upsert(
+    {
+      setting_key: TELECALLER_LEADS_SHIFT_LAST_RUN_KEY,
+      setting_value: JSON.stringify(payload),
+      setting_type: 'JSON',
+      category: 'NOTIFICATIONS',
+      description: 'Last telecaller leads shift WhatsApp run',
+      default_value: '{}',
+      is_editable: true,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'setting_key' },
+  );
+}
+
 export async function runTelecallerLeadsShiftSummaryJob(force = false) {
   const now = new Date();
   const hour = istHourNow(now);
 
   // Fire around 7pm IST (allow 19–20 hour window for cron drift)
   if (!force && hour !== TELECALLER_LEADS_SHIFT_HOUR_IST && hour !== TELECALLER_LEADS_SHIFT_HOUR_IST + 1) {
-    return {
+    const skipped = {
       sent: 0,
       skipped: true,
       reason: 'outside_7pm_ist_window',
       istHour: hour,
     };
+    return skipped;
   }
 
   const recipients = await getEnabledSystemAlertWhatsAppNumbers();
   if (recipients.length === 0) {
-    return { sent: 0, error: 'No enabled system alert WhatsApp numbers' };
+    const result = { sent: 0, error: 'No enabled system alert WhatsApp numbers' };
+    await saveTelecallerLeadsShiftLastRun({ at: now.toISOString(), ...result });
+    return result;
   }
 
   const summary = await buildTelecallerLeadsShiftSummary(now, {
     countUntilNow: force && hour !== TELECALLER_LEADS_SHIFT_HOUR_IST,
   });
   if ('error' in summary) {
-    return { sent: 0, error: summary.error };
+    const result = { sent: 0, error: summary.error };
+    await saveTelecallerLeadsShiftLastRun({ at: now.toISOString(), ...result });
+    return result;
   }
 
   let sent = 0;
@@ -295,7 +363,7 @@ export async function runTelecallerLeadsShiftSummaryJob(force = false) {
     }
   }
 
-  return {
+  const payload = {
     sent,
     viaTemplate,
     viaText,
@@ -309,4 +377,17 @@ export async function runTelecallerLeadsShiftSummaryJob(force = false) {
     templateName: 'telecaller_leads_shift_report',
     errors: errors.length ? errors : undefined,
   };
+  await saveTelecallerLeadsShiftLastRun({
+    at: now.toISOString(),
+    sent,
+    shiftKey: summary.shiftKey,
+    startLabel: summary.startLabel,
+    endLabel: summary.endLabel,
+    totalAssigned: summary.totalAssigned,
+    viaTemplate,
+    viaText,
+    errors: errors.length ? errors : undefined,
+    error: sent === 0 ? errors[0] || 'All sends failed' : undefined,
+  });
+  return payload;
 }

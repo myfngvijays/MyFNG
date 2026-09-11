@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import AuditLogsApp from '@/components/admin/AuditLogsApp';
+import SecurityEventsApp from '@/components/admin/SecurityEventsApp';
+import FraudCasesApp from '@/components/admin/FraudCasesApp';
 import {
   Activity,
   RefreshCw,
@@ -113,7 +116,54 @@ const statusConfig = {
   down: { color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', icon: XCircle, label: 'Down', dot: 'bg-red-500' },
 };
 
-export default function SystemMonitorPage() {
+type MonitorTab = 'health' | 'audit' | 'security' | 'fraud';
+
+function tabFromParam(value: string | null): MonitorTab {
+  if (value === 'audit' || value === 'security' || value === 'fraud') return value;
+  return 'health';
+}
+
+function MonitorTabBar({ tab }: { tab: MonitorTab }) {
+  const router = useRouter();
+  const items: Array<{ id: MonitorTab; label: string }> = [
+    { id: 'health', label: 'Health' },
+    { id: 'audit', label: 'Audit Logs' },
+    { id: 'security', label: 'Security Events' },
+    { id: 'fraud', label: 'Fraud' },
+  ];
+
+  return (
+    <div className="bg-white border-b border-gray-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap gap-2">
+        {items.map((item) => {
+          const active = tab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() =>
+                router.replace(
+                  item.id === 'health'
+                    ? '/dashboard/super_admin/system-monitor'
+                    : `/dashboard/super_admin/system-monitor?tab=${item.id}`,
+                )
+              }
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold border transition ${
+                active
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
+              }`}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SystemMonitorHealth() {
   const router = useRouter();
   const [data, setData] = useState<MonitorData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -183,9 +233,12 @@ export default function SystemMonitorPage() {
       return;
     }
 
-    if (action === 'internal-link' && actionPayload?.url) {
-      router.push(actionPayload.url as string);
-      return;
+    if (action === 'internal-link') {
+      const href = (actionPayload?.href || actionPayload?.url) as string | undefined;
+      if (href) {
+        router.push(href);
+        return;
+      }
     }
 
     if (action === 'check-env') {
@@ -771,5 +824,28 @@ export default function SystemMonitorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SystemMonitorPageInner() {
+  const searchParams = useSearchParams();
+  const tab = tabFromParam(searchParams.get('tab'));
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <MonitorTabBar tab={tab} />
+      {tab === 'audit' ? <AuditLogsApp /> : null}
+      {tab === 'security' ? <SecurityEventsApp /> : null}
+      {tab === 'fraud' ? <FraudCasesApp /> : null}
+      {tab === 'health' ? <SystemMonitorHealth /> : null}
+    </div>
+  );
+}
+
+export default function SystemMonitorPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 p-6 text-sm text-gray-500">Loading monitor…</div>}>
+      <SystemMonitorPageInner />
+    </Suspense>
   );
 }

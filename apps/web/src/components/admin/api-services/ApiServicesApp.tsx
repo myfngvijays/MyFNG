@@ -132,7 +132,9 @@ export default function ApiServicesApp() {
       'dashboard': '/dashboard/super_admin',
       'workshops': '/dashboard/super_admin/workshops',
       'bookings': '/dashboard/super_admin/bookings',
-      'finance': '/dashboard/super_admin/finance',
+      'manual invoice': '/dashboard/super_admin/manual-invoices',
+      'compliance': '/dashboard/super_admin/compliance-reports',
+      'system monitor': '/dashboard/super_admin/system-monitor',
     };
     for (const [key, href] of Object.entries(aliases)) {
       if (!map.has(key)) map.set(key, href);

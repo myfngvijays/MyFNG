@@ -63,6 +63,10 @@
     {
       "path": "/api/cron/crm-ml-dl",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/telecaller-leads-shift-summary",
+      "schedule": "30 13 * * *"
     }
   ],
   "functions": {

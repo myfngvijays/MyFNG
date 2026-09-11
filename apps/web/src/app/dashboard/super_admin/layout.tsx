@@ -8,7 +8,6 @@ import {
   Users,
   Store,
   Building2,
-  DollarSign,
   Settings,
   BarChart3,
   Shield,
@@ -68,7 +67,6 @@ import {
   BookOpen,
   Mail,
   Hash,
-  Scale,
 } from 'lucide-react';
 
 type NavItem = {
@@ -605,12 +603,6 @@ const navigationItems: NavItem[] = [
     description: 'Create roles & manage permissions'
   },
   {
-    name: 'Fraud Cases',
-    href: '/dashboard/super_admin/fraud',
-    icon: AlertTriangle,
-    description: 'Fraud alerts & case review'
-  },
-  {
     name: 'Intelligence & Automation',
     isSection: true,
   },
@@ -769,7 +761,7 @@ const navigationItems: NavItem[] = [
     name: 'System Monitor',
     href: '/dashboard/super_admin/system-monitor',
     icon: HeartPulse,
-    description: 'Real-time health check & alerts'
+    description: 'Health, audit, security & fraud'
   },
   {
     name: 'API Services Map',
@@ -790,52 +782,22 @@ const navigationItems: NavItem[] = [
     description: 'Spend, chat, voice reports',
   },
   {
-    name: 'Audit Logs',
-    href: '/dashboard/super_admin/audit-logs',
-    icon: Activity,
-    description: 'System Activity Tracking'
-  },
-  {
-    name: 'Security Events',
-    href: '/dashboard/super_admin/security-events',
-    icon: AlertTriangle,
-    description: 'Security Incidents & Events'
-  },
-  {
     name: 'Config Changes',
     href: '/dashboard/super_admin/config-changes',
     icon: History,
     description: 'System Configuration History'
   },
   {
-    name: 'Data Rights',
-    href: '/dashboard/super_admin/data-rights',
-    icon: Scale,
-    description: 'DPDP access, erase, withdraw & grievances',
-  },
-  {
-    name: 'Compliance Reports',
+    name: 'Compliance',
     href: '/dashboard/super_admin/compliance-reports',
     icon: FileCheck,
-    description: 'GDPR, SOC2, ISO27001 Reports'
-  },
-  {
-    name: 'Finance',
-    href: '/dashboard/super_admin/finance',
-    icon: DollarSign,
-    description: 'Payouts & Revenue'
+    description: 'DPDP data rights & audit reports'
   },
   {
     name: 'System Settings',
     href: '/dashboard/super_admin/settings',
     icon: Settings,
     description: 'System Configuration'
-  },
-  {
-    name: 'Reports',
-    href: '/dashboard/super_admin/reports',
-    icon: BarChart3,
-    description: 'Analytics & Reports'
   }
 ];
 

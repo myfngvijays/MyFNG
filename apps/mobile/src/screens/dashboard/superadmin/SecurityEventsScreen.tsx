@@ -14,7 +14,7 @@ import { supabase } from '../../../lib/supabase';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
-export default function SecurityEventsScreen() {
+export default function SecurityEventsScreen({ embedded = false }: { embedded?: boolean }) {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,7 +79,7 @@ export default function SecurityEventsScreen() {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Security Events" onBack={() => navigation.goBack()} />
+      {embedded ? null : <DashboardHeader title="Security Events" onBack={() => navigation.goBack()} />}
       
       {/* Filter Buttons */}
       <View style={styles.filterContainer}>

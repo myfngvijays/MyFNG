@@ -1,7 +1,5 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import DataRightsInboxApp from '@/components/admin/data-rights/DataRightsInboxApp';
-
-export default function SuperAdminDataRightsPage() {
-  return <DataRightsInboxApp />;
+export default function DataRightsRedirectPage() {
+  redirect('/dashboard/super_admin/compliance-reports?section=rights');
 }

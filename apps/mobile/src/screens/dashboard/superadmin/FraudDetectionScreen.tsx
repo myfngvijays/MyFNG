@@ -25,7 +25,7 @@ interface FraudAlert {
   resolved_at: string;
 }
 
-export default function FraudDetectionScreen() {
+export default function FraudDetectionScreen({ embedded = false }: { embedded?: boolean }) {
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [filteredAlerts, setFilteredAlerts] = useState<FraudAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,24 +194,27 @@ export default function FraudDetectionScreen() {
     { label: 'Resolved', value: 'RESOLVED' },
   ];
 
+  const Wrap = embedded ? View : SafeAreaView;
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <Wrap style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#ef4444" />
           <Text style={styles.loadingText}>Loading fraud alerts...</Text>
         </View>
-      </SafeAreaView>
+      </Wrap>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <Wrap style={styles.container}>
+      {embedded ? null : (
       <View style={styles.header}>
         <Text style={styles.title}>Fraud Detection 🚨</Text>
         <Text style={styles.subtitle}>{filteredAlerts.length} alerts</Text>
       </View>
+      )}
 
       {/* Stats Cards */}
       <View style={styles.statsContainer}>
@@ -273,7 +276,7 @@ export default function FraudDetectionScreen() {
           </View>
         }
       />
-    </SafeAreaView>
+    </Wrap>
   );
 }
 

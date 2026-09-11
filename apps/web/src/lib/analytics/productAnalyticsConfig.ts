@@ -1,5 +1,11 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { MYFNG_FIREBASE_DEFAULTS } from '@/lib/push/firebaseProjectDefaults';
+import {
+  DEFAULT_MOBILE_APP_VERSION_CONFIG,
+  getMobileAppVersionConfig,
+  saveMobileAppVersionConfig,
+  type MobileAppVersionConfig,
+} from '@/lib/mobile-app-version-config';
 
 export type AnalyticsPlatform = 'android' | 'ios' | 'web';
 
@@ -32,6 +38,12 @@ export type ProductAnalyticsConfig = {
   };
   platforms: Record<AnalyticsPlatform, PlatformAnalyticsSettings>;
   mobile_build: {
+    force_update_enabled: boolean;
+    min_version_android: string;
+    min_version_ios: string;
+    min_build_android: number;
+    min_build_ios: number;
+    update_message: string;
     analytics_min_version_code_android: number;
     analytics_min_build_ios: number;
     current_version: string;
@@ -117,10 +129,16 @@ export const DEFAULT_PRODUCT_ANALYTICS_CONFIG: ProductAnalyticsConfig = {
     }),
   },
   mobile_build: {
-    analytics_min_version_code_android: 27,
-    analytics_min_build_ios: 27,
-    current_version: '1.2.3',
-    current_build: 28,
+    force_update_enabled: DEFAULT_MOBILE_APP_VERSION_CONFIG.force_update_enabled,
+    min_version_android: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_version_android,
+    min_version_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_version_ios,
+    min_build_android: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_android,
+    min_build_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_ios,
+    update_message: DEFAULT_MOBILE_APP_VERSION_CONFIG.update_message,
+    analytics_min_version_code_android: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_android,
+    analytics_min_build_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_ios,
+    current_version: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_version_android,
+    current_build: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_android,
     notes:
       'Firebase Analytics + Clarity require a native rebuild (not Expo Go). Play Store build vc27+ includes both SDKs.',
   },
@@ -233,23 +251,7 @@ export function normalizeProductAnalyticsConfig(raw: unknown): ProductAnalyticsC
       ios: mergePlatformSettings(platforms.ios, base.platforms.ios),
       web: mergePlatformSettings(platforms.web, base.platforms.web),
     },
-    mobile_build: {
-      analytics_min_version_code_android: toNumber(
-        mobileBuild.analytics_min_version_code_android,
-        base.mobile_build.analytics_min_version_code_android,
-        1,
-        9999,
-      ),
-      analytics_min_build_ios: toNumber(
-        mobileBuild.analytics_min_build_ios,
-        base.mobile_build.analytics_min_build_ios,
-        1,
-        9999,
-      ),
-      current_version: toText(mobileBuild.current_version, base.mobile_build.current_version, 16),
-      current_build: toNumber(mobileBuild.current_build, base.mobile_build.current_build, 1, 9999),
-      notes: toText(mobileBuild.notes, base.mobile_build.notes, 2000),
-    },
+    mobile_build: applyMobileVersionFields(mobileBuild, base.mobile_build),
     implementation: {
       mobile_firebase_file: toText(
         implementation.mobile_firebase_file,
@@ -272,6 +274,57 @@ export function normalizeProductAnalyticsConfig(raw: unknown): ProductAnalyticsC
     },
     admin_notes: toText(src.admin_notes, '', 4000),
     updated_at: src.updated_at ?? null,
+  };
+}
+
+function applyMobileVersionFields(
+  raw: Partial<ProductAnalyticsConfig['mobile_build']>,
+  fallback: ProductAnalyticsConfig['mobile_build'],
+): ProductAnalyticsConfig['mobile_build'] {
+  const minVersionAndroid = toText(raw.min_version_android, raw.current_version || fallback.min_version_android, 16);
+  const minVersionIos = toText(raw.min_version_ios, fallback.min_version_ios, 16);
+  const minBuildAndroid = toNumber(
+    raw.min_build_android ?? raw.analytics_min_version_code_android ?? raw.current_build,
+    fallback.min_build_android,
+    0,
+    999999,
+  );
+  const minBuildIos = toNumber(raw.min_build_ios ?? raw.analytics_min_build_ios, fallback.min_build_ios, 0, 999999);
+
+  return {
+    force_update_enabled: toBool(raw.force_update_enabled, fallback.force_update_enabled),
+    min_version_android: minVersionAndroid,
+    min_version_ios: minVersionIos,
+    min_build_android: minBuildAndroid,
+    min_build_ios: minBuildIos,
+    update_message: toText(raw.update_message, fallback.update_message, 280),
+    analytics_min_version_code_android: minBuildAndroid,
+    analytics_min_build_ios: minBuildIos,
+    current_version: minVersionAndroid,
+    current_build: minBuildAndroid,
+    notes: toText(raw.notes, fallback.notes, 2000),
+  };
+}
+
+export function applyMobileAppVersionToAnalytics(
+  config: ProductAnalyticsConfig,
+  version: MobileAppVersionConfig,
+): ProductAnalyticsConfig {
+  return {
+    ...config,
+    mobile_build: {
+      ...config.mobile_build,
+      force_update_enabled: version.force_update_enabled,
+      min_version_android: version.min_version_android,
+      min_version_ios: version.min_version_ios,
+      min_build_android: version.min_build_android,
+      min_build_ios: version.min_build_ios,
+      update_message: version.update_message,
+      analytics_min_version_code_android: version.min_build_android,
+      analytics_min_build_ios: version.min_build_ios,
+      current_version: version.min_version_android,
+      current_build: version.min_build_android,
+    },
   };
 }
 
@@ -337,24 +390,29 @@ export async function loadProductAnalyticsConfig(
     return DEFAULT_PRODUCT_ANALYTICS_CONFIG;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('system_settings')
-    .select('setting_value, updated_at')
-    .eq('setting_key', SETTING_KEY)
-    .maybeSingle();
+  const [{ data, error }, version] = await Promise.all([
+    supabaseAdmin
+      .from('system_settings')
+      .select('setting_value, updated_at')
+      .eq('setting_key', SETTING_KEY)
+      .maybeSingle(),
+    getMobileAppVersionConfig(supabaseAdmin, { bypassCache: options?.bypassCache }),
+  ]);
 
   if (error || !data?.setting_value) {
-    cached = { value: DEFAULT_PRODUCT_ANALYTICS_CONFIG, expiresAt: Date.now() + CACHE_TTL_MS };
-    return DEFAULT_PRODUCT_ANALYTICS_CONFIG;
+    const fallback = applyMobileAppVersionToAnalytics(DEFAULT_PRODUCT_ANALYTICS_CONFIG, version);
+    cached = { value: fallback, expiresAt: Date.now() + CACHE_TTL_MS };
+    return fallback;
   }
 
   const parsed = parseStoredConfig(data.setting_value);
   const normalized = parsed
     ? { ...parsed, updated_at: data.updated_at ?? parsed.updated_at ?? null }
     : DEFAULT_PRODUCT_ANALYTICS_CONFIG;
+  const linked = applyMobileAppVersionToAnalytics(normalized, version);
 
-  cached = { value: normalized, expiresAt: Date.now() + CACHE_TTL_MS };
-  return normalized;
+  cached = { value: linked, expiresAt: Date.now() + CACHE_TTL_MS };
+  return linked;
 }
 
 export async function saveProductAnalyticsConfig(
@@ -369,10 +427,41 @@ export async function saveProductAnalyticsConfig(
   const config = normalizeProductAnalyticsConfig(raw);
   const now = new Date().toISOString();
 
+  const versionResult = await saveMobileAppVersionConfig(
+    {
+      force_update_enabled: config.mobile_build.force_update_enabled,
+      min_version_android: config.mobile_build.min_version_android,
+      min_version_ios: config.mobile_build.min_version_ios,
+      min_build_android: config.mobile_build.min_build_android,
+      min_build_ios: config.mobile_build.min_build_ios,
+      update_message: config.mobile_build.update_message,
+    },
+    updatedBy,
+  );
+  if (!versionResult.ok) {
+    return versionResult;
+  }
+
+  const linked = applyMobileAppVersionToAnalytics(config, versionResult.config);
+  const stored: ProductAnalyticsConfig = {
+    ...linked,
+    mobile_build: {
+      ...linked.mobile_build,
+      notes: config.mobile_build.notes,
+    },
+  };
+
+  const persistable = {
+    ...stored,
+    mobile_build: {
+      notes: stored.mobile_build.notes,
+    },
+  };
+
   const { error } = await supabaseAdmin.from('system_settings').upsert(
     {
       setting_key: SETTING_KEY,
-      setting_value: JSON.stringify(config),
+      setting_value: JSON.stringify(persistable),
       updated_at: now,
       updated_by: updatedBy,
     },
@@ -383,8 +472,8 @@ export async function saveProductAnalyticsConfig(
     return { ok: false, error: error.message };
   }
 
-  cached = { value: { ...config, updated_at: now }, expiresAt: Date.now() + CACHE_TTL_MS };
-  return { ok: true, config: { ...config, updated_at: now } };
+  cached = { value: { ...stored, updated_at: now }, expiresAt: Date.now() + CACHE_TTL_MS };
+  return { ok: true, config: { ...stored, updated_at: now } };
 }
 
 export async function updateMobileFirebaseAnalyticsFlags(
@@ -423,7 +512,7 @@ export function buildPlatformStatuses(config: ProductAnalyticsConfig): PlatformA
       firebase_analytics: {
         enabled: config.platforms.android.firebase_analytics_enabled,
         label: 'Firebase Analytics',
-        detail: `App ID ${config.firebase.android_app_id} · min vc${config.mobile_build.analytics_min_version_code_android}+`,
+        detail: `App ID ${config.firebase.android_app_id} · min ${config.mobile_build.min_version_android} (vc${config.mobile_build.min_build_android}+)`,
       },
       clarity: {
         enabled: config.platforms.android.clarity_enabled,
@@ -443,7 +532,8 @@ export function buildPlatformStatuses(config: ProductAnalyticsConfig): PlatformA
       identifiers: [
         { label: 'Package', value: config.firebase.android_package },
         { label: 'Firebase App ID', value: config.firebase.android_app_id },
-        { label: 'Min version code', value: String(config.mobile_build.analytics_min_version_code_android) },
+        { label: 'Min version', value: config.mobile_build.min_version_android },
+        { label: 'Min version code', value: String(config.mobile_build.min_build_android) },
       ],
       external_links: [
         { label: 'Firebase Console', href: config.firebase.console_url },
@@ -456,7 +546,7 @@ export function buildPlatformStatuses(config: ProductAnalyticsConfig): PlatformA
       firebase_analytics: {
         enabled: config.platforms.ios.firebase_analytics_enabled,
         label: 'Firebase Analytics',
-        detail: `App ID ${config.firebase.ios_app_id} · min build ${config.mobile_build.analytics_min_build_ios}+`,
+        detail: `App ID ${config.firebase.ios_app_id} · min ${config.mobile_build.min_version_ios} (build ${config.mobile_build.min_build_ios}+)`,
       },
       clarity: {
         enabled: config.platforms.ios.clarity_enabled,
@@ -476,7 +566,8 @@ export function buildPlatformStatuses(config: ProductAnalyticsConfig): PlatformA
       identifiers: [
         { label: 'Bundle ID', value: config.firebase.ios_bundle_id },
         { label: 'Firebase App ID', value: config.firebase.ios_app_id },
-        { label: 'Min build', value: String(config.mobile_build.analytics_min_build_ios) },
+        { label: 'Min version', value: config.mobile_build.min_version_ios },
+        { label: 'Min build', value: String(config.mobile_build.min_build_ios) },
       ],
       external_links: [
         { label: 'Firebase Console', href: config.firebase.console_url },

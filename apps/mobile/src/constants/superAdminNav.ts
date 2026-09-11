@@ -148,7 +148,6 @@ export const SA_NAV: SaNavRow[] = [
     icon: 'people-circle-outline',
     children: [
       { id: 'users', label: 'Users & Roles', icon: 'people-outline', target: 'UserRoleManagement', kind: 'stack' },
-      { id: 'fraud', label: 'Fraud Cases', icon: 'warning-outline', target: 'FraudDetection', kind: 'stack' },
     ],
   },
   {
@@ -195,13 +194,8 @@ export const SA_NAV: SaNavRow[] = [
       { id: 'api_map', label: 'API Services Map', icon: 'layers-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'API Services Map', path: '/api/super_admin/api-services' } },
       { id: 'analytics', label: 'Analytics Hub', icon: 'analytics-outline', target: 'SuperAdminAnalytics', kind: 'stack' },
       { id: 'tracking_scripts', label: 'Tracking Scripts', icon: 'code-slash-outline', target: 'SuperAdminTrackingScripts', kind: 'stack' },
-      { id: 'reports', label: 'Reports', icon: 'bar-chart-outline', target: 'ReportsAnalytics', kind: 'stack' },
-      { id: 'audit', label: 'Audit Logs', icon: 'document-text-outline', target: 'AuditLogs', kind: 'stack' },
-      { id: 'security', label: 'Security Events', icon: 'alert-circle-outline', target: 'SecurityEvents', kind: 'stack' },
       { id: 'config', label: 'Config Changes', icon: 'time-outline', target: 'ConfigChanges', kind: 'stack' },
-      { id: 'data_rights', label: 'Data Rights', icon: 'scale-outline', target: 'SuperAdminDataRights', kind: 'stack' },
-      { id: 'compliance', label: 'Compliance Reports', icon: 'checkbox-outline', target: 'ComplianceReports', kind: 'stack' },
-      { id: 'finance', label: 'Finance', icon: 'cash-outline', target: 'FinancePayout', kind: 'stack' },
+      { id: 'compliance', label: 'Compliance', icon: 'checkbox-outline', target: 'ComplianceReports', kind: 'stack' },
       { id: 'brands', label: 'Car Brand Images', icon: 'car-outline', target: 'Brands', kind: 'stack' },
       { id: 'faqs', label: 'FAQs (App + Web)', icon: 'help-circle-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Public FAQs', path: '/api/super_admin/public-faqs' } },
       { id: 'seo', label: 'Advanced SEO', icon: 'search-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Site SEO', path: '/api/super_admin/site-seo/overview' } },
@@ -213,5 +207,5 @@ export const SA_NAV: SaNavRow[] = [
 export const SA_QUICK = [
   { id: 'leads', label: 'Leads', icon: 'search-outline' as const, target: 'LeadManagerAppBookings', kind: 'stack' as const },
   { id: 'workshops', label: 'Workshops', icon: 'storefront-outline' as const, target: 'WorkshopManagement', kind: 'stack' as const },
-  { id: 'reports', label: 'Reports', icon: 'bar-chart-outline' as const, target: 'ReportsAnalytics', kind: 'stack' as const },
+  { id: 'sysmon', label: 'Monitor', icon: 'heart-outline' as const, target: 'SuperAdminSystemMonitor', kind: 'stack' as const },
 ];

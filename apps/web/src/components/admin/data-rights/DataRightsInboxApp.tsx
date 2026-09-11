@@ -39,7 +39,7 @@ function fmt(dt?: string | null) {
   }
 }
 
-export default function DataRightsInboxApp() {
+export default function DataRightsInboxApp({ hideHeader = false }: { hideHeader?: boolean }) {
   const [rows, setRows] = useState<RightsRow[]>([]);
   const [counts, setCounts] = useState({ all: 0, pending: 0, in_progress: 0, done: 0, rejected: 0 });
   const [search, setSearch] = useState('');
@@ -96,7 +96,8 @@ export default function DataRightsInboxApp() {
   }
 
   return (
-    <div className="space-y-4 p-3 sm:p-5 md:p-6">
+    <div className={hideHeader ? 'space-y-4' : 'space-y-4 p-3 sm:p-5 md:p-6'}>
+      {hideHeader ? null : (
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900">
@@ -110,6 +111,7 @@ export default function DataRightsInboxApp() {
           </div>
         </div>
       </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {[

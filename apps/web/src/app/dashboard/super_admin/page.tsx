@@ -24,7 +24,6 @@ import {
   Download,
   ExternalLink,
   BarChart3,
-  FileText,
   Percent,
   LogOut,
   Mail,
@@ -143,7 +142,6 @@ const PERIOD_OPTIONS: { value: DashboardPeriod; label: string }[] = [
 
 const QUICK_LINKS = [
   { href: '/dashboard/super_admin/bookings', label: 'Bookings & Leads', icon: Phone },
-  { href: '/dashboard/super_admin/reports', label: 'Reports', icon: FileText },
   { href: '/dashboard/super_admin/customer-insights', label: 'Customer Insights', icon: Users },
   { href: '/dashboard/super_admin/analytics-hub', label: 'Analytics Hub', icon: BarChart3 },
   { href: '/dashboard/super_admin/workshops', label: 'Workshops', icon: Store },
