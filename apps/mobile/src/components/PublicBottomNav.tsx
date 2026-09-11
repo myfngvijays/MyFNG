@@ -84,7 +84,15 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity onPress={() => onPressTab(tab.id)} activeOpacity={0.85} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
-                  <Text style={styles.aiLabel} numberOfLines={1}>{tab.label}</Text>
+                  <Text
+                    style={styles.aiLabel}
+                    numberOfLines={1}
+                    allowFontScaling={false}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
+                    {tab.label}
+                  </Text>
                 </TouchableOpacity>
               </View>
             );
@@ -103,7 +111,15 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
                 size={22}
                 color={isActive ? '#2563EB' : COLORS.secondary}
               />
-              <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : null]} numberOfLines={1}>{tab.label}</Text>
+              <Text
+                style={[styles.tabLabel, isActive ? styles.tabLabelActive : null]}
+                numberOfLines={1}
+                allowFontScaling={false}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                {tab.label}
+              </Text>
             </TouchableOpacity>
           );
         })}
