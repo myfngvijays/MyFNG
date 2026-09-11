@@ -1600,6 +1600,7 @@ export default function CouponAdminPanel({
               <div className="flex flex-wrap gap-4 text-sm">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Active</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_public} onChange={(e) => setForm({ ...form, is_public: e.target.checked })} /> Show in public list</label>
+                <span className="text-xs text-gray-500 w-full">Off = Offers list mein nahi dikhega. Code type kare to wallet / booking pe phir bhi chalega.</span>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={form.first_order_only} onChange={(e) => setForm({ ...form, first_order_only: e.target.checked })} /> First order only</label>
               </div>
               <div className="flex items-center justify-end gap-3 pt-2">

@@ -95,6 +95,7 @@ export async function PATCH(
     if (typeof body?.is_active === 'boolean') patch.is_active = body.is_active;
     if (body?.title !== undefined) patch.title = String(body.title || '').trim() || null;
     if (body?.description !== undefined) patch.description = String(body.description || '').trim() || null;
+    if (body?.folder !== undefined) patch.folder = String(body.folder || '').trim().slice(0, 100) || null;
     if (body?.long_url !== undefined) {
       patch.long_url = normalizeStoredDestinationUrl(normalizeLongUrl(String(body.long_url || '')));
     }

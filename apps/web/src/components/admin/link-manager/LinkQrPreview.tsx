@@ -3,29 +3,33 @@
 import { useEffect, useState } from 'react';
 import { Loader2, QrCode } from 'lucide-react';
 import { buildClientQrShortUrl, buildQrShortUrl } from '@/lib/link-manager/utils';
-import { DEFAULT_QR_STYLE } from '@/lib/link-manager/qr-types';
+import { DEFAULT_QR_STYLE, qrStylePreviewKey, type QrStyleOptions } from '@/lib/link-manager/qr-types';
 import { renderBrandedQrCanvas } from './QrLivePreview';
 
 export default function LinkQrPreview({
   shortCode,
   shortUrl: _shortUrl,
+  qrStyle,
   className = 'w-full max-w-[220px] mx-auto border rounded-xl bg-white p-2',
 }: {
   shortCode: string;
   shortUrl?: string | null;
+  qrStyle?: QrStyleOptions | null;
   className?: string;
 }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const qrText = buildClientQrShortUrl(shortCode);
+  const style = qrStyle || DEFAULT_QR_STYLE;
+  const styleKey = qrStylePreviewKey(style);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const url = await renderBrandedQrCanvas(qrText, DEFAULT_QR_STYLE, 512);
+        const url = await renderBrandedQrCanvas(qrText, style, 512);
         if (!cancelled) setDataUrl(url);
       } catch {
         if (!cancelled) setDataUrl(null);
@@ -36,7 +40,7 @@ export default function LinkQrPreview({
     return () => {
       cancelled = true;
     };
-  }, [qrText]);
+  }, [qrText, styleKey]);
 
   if (loading) {
     return (
@@ -57,7 +61,11 @@ export default function LinkQrPreview({
   return <img src={dataUrl} alt="QR code" className={className} data-qr-download={dataUrl} />;
 }
 
-export function getLinkQrDownloadUrl(shortCode: string, _shortUrl?: string | null) {
+export function getLinkQrDownloadUrl(
+  shortCode: string,
+  _shortUrl?: string | null,
+  qrStyle?: QrStyleOptions | null,
+) {
   const qrText = typeof window !== 'undefined' ? buildClientQrShortUrl(shortCode) : buildQrShortUrl(shortCode);
-  return renderBrandedQrCanvas(qrText, DEFAULT_QR_STYLE, 512);
+  return renderBrandedQrCanvas(qrText, qrStyle || DEFAULT_QR_STYLE, 512);
 }

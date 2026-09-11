@@ -1,4 +1,12 @@
-import { normalizeQrStyle, resolveErrorCorrection, type QrStyleOptions } from '@/lib/link-manager/qr-types';
+import {
+  gradientStop,
+  isDarkQrModule,
+  lerpHex,
+  normalizeQrStyle,
+  parseHexRgb,
+  resolveErrorCorrection,
+  type QrStyleOptions,
+} from '@/lib/link-manager/qr-types';
 
 let QRCode: any = null;
 let sharp: any = null;
@@ -51,8 +59,8 @@ async function loadLogoBuffer(style: QrStyleOptions): Promise<Buffer | null> {
 export async function generateBrandedQrDataUrl(data: string, rawStyle?: QrStyleOptions | null): Promise<string> {
   const style = normalizeQrStyle(rawStyle);
   const width = 512;
-  const dark = style.dark_color || '#000000';
   const light = style.light_color || '#FFFFFF';
+  const dark = style.use_gradient ? '#000000' : style.dark_color || '#000000';
   const margin = Math.min(4, Math.max(1, Number(style.margin || 2)));
   const errorCorrectionLevel = resolveErrorCorrection(style);
   const QR = await getQrCodeLib();
@@ -62,13 +70,17 @@ export async function generateBrandedQrDataUrl(data: string, rawStyle?: QrStyleO
   }
 
   try {
-    const qrBuffer: Buffer = await QR.toBuffer(data, {
+    let qrBuffer: Buffer = await QR.toBuffer(data, {
       type: 'png',
       width,
       margin,
       errorCorrectionLevel,
       color: { dark, light },
     });
+
+    if (style.use_gradient && sharp) {
+      qrBuffer = await applyGradientToQrPng(qrBuffer, style, width);
+    }
 
     const logoBuffer = await loadLogoBuffer(style);
     if (logoBuffer && sharp) {
@@ -110,6 +122,25 @@ export async function generateBrandedQrDataUrl(data: string, rawStyle?: QrStyleO
     console.error('Branded QR generation failed:', e);
     throw e instanceof Error ? e : new Error('Branded QR generation failed');
   }
+}
+
+async function applyGradientToQrPng(png: Buffer, style: QrStyleOptions, size: number) {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const from = style.gradient_from || style.dark_color || '#023D95';
+  const to = style.gradient_to || '#7C3AED';
+  const angle = Number(style.gradient_angle || 135);
+  const w = info.width || size;
+  const h = info.height || size;
+  for (let i = 0; i < data.length; i += info.channels) {
+    const px = (i / info.channels) % w;
+    const py = Math.floor(i / info.channels / w);
+    if (!isDarkQrModule(data[i], data[i + 1], data[i + 2], data[i + 3] ?? 255)) continue;
+    const rgb = parseHexRgb(lerpHex(from, to, gradientStop(px, py, Math.max(w, h), angle)));
+    data[i] = rgb.r;
+    data[i + 1] = rgb.g;
+    data[i + 2] = rgb.b;
+  }
+  return sharp(data, { raw: { width: w, height: h, channels: info.channels } }).png().toBuffer();
 }
 
 function parseHexColor(hex: string) {

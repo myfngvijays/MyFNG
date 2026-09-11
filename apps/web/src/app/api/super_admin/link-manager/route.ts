@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(params.get('page') || 1));
     const pageSize = Math.min(100, Math.max(10, Number(params.get('pageSize') || 25)));
     const q = String(params.get('q') || '').trim();
+    const folder = String(params.get('folder') || '').trim();
     const preset = params.get('preset') || 'all_time';
     const range = resolveReportDateRange(preset, params.get('from'), params.get('to'));
 
@@ -50,6 +51,12 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     query = applyReportDateRangeFilter(query, 'created_at', preset, params.get('from'), params.get('to'));
+
+    if (folder === '__none__' || folder.toLowerCase() === 'none') {
+      query = query.is('folder', null);
+    } else if (folder) {
+      query = query.eq('folder', folder);
+    }
 
     if (q) {
       query = query.or(

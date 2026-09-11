@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ChevronLeft,
@@ -18,6 +18,7 @@ import ReportDateRangeFilter, { type ReportDateRangeValue } from '@/components/a
 import type { ReportDatePreset } from '@/lib/report-date-range';
 import LinkQrPreview, { getLinkQrDownloadUrl } from '../LinkQrPreview';
 import SlugInput from '../SlugInput';
+import FolderSelect from '../FolderSelect';
 import { downloadDataUrl } from '../QrLivePreview';
 import SplitWithPreview from '../SplitWithPreview';
 import {
@@ -56,7 +57,7 @@ type LinkRow = {
   is_active?: boolean;
   created_at?: string;
   qr_code_url?: string | null;
-  meta?: { create_mode?: string } | null;
+  meta?: { create_mode?: string; qr_style?: import('@/lib/link-manager/qr-types').QrStyleOptions } | null;
 };
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -75,6 +76,7 @@ export default function LinksListSection() {
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [searchInput, setSearchInput] = useState('');
   const [q, setQ] = useState('');
+  const [folderFilter, setFolderFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
@@ -85,11 +87,21 @@ export default function LinksListSection() {
     customStart: '',
     customEnd: '',
   });
+  const previewRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<LinkRow | null>(null);
+
+  function selectLink(link: LinkRow) {
+    setSelected(link);
+    requestAnimationFrame(() => {
+      previewRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    });
+  }
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [editLongUrl, setEditLongUrl] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editSlug, setEditSlug] = useState('');
+  const [editFolder, setEditFolder] = useState('');
+  const [folderOptions, setFolderOptions] = useState<string[]>([]);
   const [slugTaken, setSlugTaken] = useState(false);
   const [editUtm, setEditUtm] = useState({
     utm_source: '',
@@ -103,6 +115,7 @@ export default function LinksListSection() {
     setEditLongUrl(selected?.long_url || '');
     setEditTitle(selected?.title || '');
     setEditSlug(selected?.short_code || '');
+    setEditFolder(selected?.folder || '');
     setEditUtm({
       utm_source: selected?.utm_source || '',
       utm_medium: selected?.utm_medium || '',
@@ -115,6 +128,7 @@ export default function LinksListSection() {
     selected?.long_url,
     selected?.title,
     selected?.short_code,
+    selected?.folder,
     selected?.utm_source,
     selected?.utm_medium,
     selected?.utm_campaign,
@@ -135,6 +149,7 @@ export default function LinksListSection() {
         if (dateRange.customEnd) params.set('to', dateRange.customEnd);
       }
       if (q.trim()) params.set('q', q.trim());
+      if (folderFilter) params.set('folder', folderFilter);
       const res = await fetch(`/api/super_admin/link-manager?${params.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Failed to load links');
@@ -151,15 +166,35 @@ export default function LinksListSection() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, q, dateRange]);
+  }, [page, pageSize, q, folderFilter, dateRange]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
+    void fetch('/api/super_admin/link-manager/folders')
+      .then((res) => res.json())
+      .then((json) => {
+        const names = (json.folders || []).map((f: { name?: string }) => String(f.name || '').trim()).filter(Boolean);
+        setFolderOptions(names);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const next = searchInput.trim();
+    if (!next) {
+      setQ('');
+      return;
+    }
+    const timer = window.setTimeout(() => setQ(next), 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
     setPage(1);
-  }, [dateRange.preset, dateRange.customStart, dateRange.customEnd, q, pageSize]);
+  }, [dateRange.preset, dateRange.customStart, dateRange.customEnd, q, folderFilter, pageSize]);
 
   async function copyText(text: string) {
     try {
@@ -214,6 +249,7 @@ export default function LinksListSection() {
           long_url: nextUrl,
           title: editTitle.trim() || null,
           short_code: nextSlug,
+          folder: editFolder.trim() || null,
           ...editUtm,
         }),
       });
@@ -221,6 +257,10 @@ export default function LinksListSection() {
       if (!res.ok) throw new Error(json?.error || 'Update failed');
       toast.success('Link updated');
       setSelected(json.link || selected);
+      const savedFolder = String(json.link?.folder || editFolder.trim() || '');
+      if (savedFolder && !folderOptions.includes(savedFolder)) {
+        setFolderOptions((prev) => [...prev, savedFolder].sort((a, b) => a.localeCompare(b, 'en')));
+      }
       void load();
     } catch (e: any) {
       toast.error(e?.message || 'Update failed');
@@ -235,6 +275,7 @@ export default function LinksListSection() {
     ? editLongUrl.trim() !== selected.long_url ||
       editTitle.trim() !== (selected.title || '') ||
       slugChanged ||
+      editFolder.trim() !== (selected.folder || '') ||
       editUtm.utm_source.trim() !== (selected.utm_source || '') ||
       editUtm.utm_medium.trim() !== (selected.utm_medium || '') ||
       editUtm.utm_campaign.trim() !== (selected.utm_campaign || '') ||
@@ -246,7 +287,7 @@ export default function LinksListSection() {
     if (!selected) return;
     try {
       const shortUrl = selected.short_url || buildProductionShortUrl(selected.short_code);
-      const dataUrl = await getLinkQrDownloadUrl(selected.short_code, shortUrl);
+      const dataUrl = await getLinkQrDownloadUrl(selected.short_code, shortUrl, selected.meta?.qr_style);
       downloadDataUrl(dataUrl, `qr-${selected.short_code}.png`);
       toast.success('QR downloaded');
     } catch {
@@ -312,26 +353,23 @@ export default function LinksListSection() {
               <input
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setPage(1);
-                    setQ(searchInput.trim());
-                  }
-                }}
-                placeholder="Search title, code or URL…"
+                placeholder="Type to search title, code or URL…"
                 className="w-full rounded-xl border border-gray-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500"
               />
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setPage(1);
-                setQ(searchInput.trim());
-              }}
-              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white"
+            <select
+              value={folderFilter}
+              onChange={(e) => setFolderFilter(e.target.value)}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold"
             >
-              Search
-            </button>
+              <option value="">All folders</option>
+              <option value="__none__">No folder</option>
+              {folderOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
             <select
               value={pageSize}
               onChange={(e) => {
@@ -360,8 +398,9 @@ export default function LinksListSection() {
       </div>
 
       <SplitWithPreview
+        previewRef={previewRef}
         main={
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex max-h-[calc(100dvh-11rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           {loading ? (
             <div className="flex justify-center p-12">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -371,9 +410,9 @@ export default function LinksListSection() {
               No links in this date range. Try All time, or create one from Create Link.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="min-h-0 flex-1 overflow-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <thead className="sticky top-0 z-10 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                   <tr>
                     <th className="px-4 py-3">Short URL</th>
                     <th className="px-4 py-3">Title</th>
@@ -395,35 +434,39 @@ export default function LinksListSection() {
                         key={link.id}
                         role="button"
                         tabIndex={0}
-                        onClick={() => setSelected(link)}
+                        onClick={() => selectLink(link)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            setSelected(link);
+                            selectLink(link);
                           }
                         }}
-                        className={`cursor-pointer border-t border-gray-100 align-top ${
+                        className={`cursor-pointer border-t border-gray-100 align-middle ${
                           active ? 'bg-blue-50' : 'bg-white hover:bg-blue-50/40'
                         }`}
                       >
-                        <td className="min-w-[12rem] px-4 py-3">
+                        <td className="min-w-[12rem] px-3 py-2">
                           <p className="font-mono text-xs font-bold text-blue-700 break-all">{shortUrlFor(link)}</p>
                           {link.folder ? <p className="mt-0.5 text-[11px] text-gray-400">{link.folder}</p> : null}
                         </td>
-                        <td className="px-4 py-3 font-semibold text-gray-900">{link.title || 'Untitled'}</td>
-                        <td className="max-w-[14rem] px-4 py-3">
+                        <td className="max-w-[12rem] px-3 py-2 text-xs font-semibold text-gray-900">
+                          <p className="truncate" title={link.title || 'Untitled'}>
+                            {link.title || 'Untitled'}
+                          </p>
+                        </td>
+                        <td className="max-w-[14rem] px-3 py-2">
                           <p className="truncate text-xs text-gray-600" title={link.long_url}>
                             {link.long_url}
                           </p>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                        <td className="whitespace-nowrap px-3 py-2 text-[11px] text-gray-500">
                           {formatCreatedAt(link.created_at)}
                         </td>
-                        <td className="px-4 py-3 font-black text-blue-700">{link.clicks || 0}</td>
-                        <td className="px-4 py-3 font-black text-violet-700">
+                        <td className="px-3 py-2 text-xs font-black text-blue-700">{link.clicks || 0}</td>
+                        <td className="px-3 py-2 text-xs font-black text-violet-700">
                           {hasQr ? link.qr_scans || 0 : '—'}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3">
+                        <td className="whitespace-nowrap px-3 py-2">
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                               link.is_active
@@ -434,13 +477,13 @@ export default function LinksListSection() {
                             {link.is_active ? 'Active' : 'Paused'}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                        <td className="whitespace-nowrap px-3 py-2">
+                          <div className="flex flex-nowrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
                               title="Copy"
                               onClick={() => void copyText(shortUrlFor(link))}
-                              className="rounded-lg border border-gray-200 p-1.5 hover:bg-white"
+                              className="rounded-md border border-gray-200 p-1 hover:bg-white"
                             >
                               <Copy className="h-3.5 w-3.5" />
                             </button>
@@ -449,7 +492,7 @@ export default function LinksListSection() {
                               target="_blank"
                               rel="noreferrer"
                               title="Open"
-                              className="inline-flex rounded-lg border border-gray-200 p-1.5 hover:bg-white"
+                              className="inline-flex rounded-md border border-gray-200 p-1 hover:bg-white"
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
@@ -458,7 +501,7 @@ export default function LinksListSection() {
                               title={link.is_active ? 'Pause' : 'Activate'}
                               disabled={workingId === link.id}
                               onClick={() => void toggleActive(link)}
-                              className="rounded-lg border border-gray-200 p-1.5 hover:bg-white"
+                              className="rounded-md border border-gray-200 p-1 hover:bg-white"
                             >
                               {link.is_active ? (
                                 <PauseCircle className="h-3.5 w-3.5" />
@@ -471,7 +514,7 @@ export default function LinksListSection() {
                               title="Delete"
                               disabled={workingId === link.id}
                               onClick={() => void deleteLink(link.id)}
-                              className="rounded-lg border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50"
+                              className="rounded-md border border-rose-200 p-1 text-rose-600 hover:bg-rose-50"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -574,6 +617,15 @@ export default function LinksListSection() {
                   />
                 </label>
                 <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-gray-600">Folder</span>
+                  <FolderSelect
+                    value={editFolder}
+                    options={folderOptions}
+                    onChange={setEditFolder}
+                    placeholder="Select folder"
+                  />
+                </label>
+                <label className="block space-y-1">
                   <span className="text-xs font-semibold text-gray-600">Destination</span>
                   <input
                     value={editLongUrl}
@@ -606,7 +658,7 @@ export default function LinksListSection() {
                 >
                   Save details
                 </button>
-                <LinkQrPreview shortCode={selected.short_code} />
+                <LinkQrPreview shortCode={selected.short_code} qrStyle={selected.meta?.qr_style} />
                 <div className="grid grid-cols-3 gap-2 text-center text-sm">
                   <div className="rounded-xl border p-2">
                     <div className="font-black">{selected.clicks || 0}</div>

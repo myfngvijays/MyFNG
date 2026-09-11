@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { normalizeQrStyle, resolveErrorCorrection, type QrStyleOptions } from '@/lib/link-manager/qr-types';
+import {
+  gradientStop,
+  isDarkQrModule,
+  lerpHex,
+  normalizeQrStyle,
+  parseHexRgb,
+  qrStylePreviewKey,
+  resolveErrorCorrection,
+  type QrStyleOptions,
+} from '@/lib/link-manager/qr-types';
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -25,15 +34,35 @@ export async function renderBrandedQrCanvas(
   canvas.width = size;
   canvas.height = size;
 
+  const dark = style.use_gradient ? '#000000' : style.dark_color || '#000000';
+  const light = style.light_color || '#FFFFFF';
+
   await QRCode.toCanvas(canvas, text, {
     width: size,
     margin: Math.min(4, Math.max(1, Number(style.margin || 2))),
     errorCorrectionLevel: resolveErrorCorrection(style),
-    color: {
-      dark: style.dark_color || '#000000',
-      light: style.light_color || '#FFFFFF',
-    },
+    color: { dark, light },
   });
+
+  if (style.use_gradient) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const image = ctx.getImageData(0, 0, size, size);
+      const from = style.gradient_from || style.dark_color || '#023D95';
+      const to = style.gradient_to || '#7C3AED';
+      const angle = Number(style.gradient_angle || 135);
+      for (let i = 0; i < image.data.length; i += 4) {
+        const px = (i / 4) % size;
+        const py = Math.floor(i / 4 / size);
+        if (!isDarkQrModule(image.data[i], image.data[i + 1], image.data[i + 2], image.data[i + 3])) continue;
+        const rgb = parseHexRgb(lerpHex(from, to, gradientStop(px, py, size, angle)));
+        image.data[i] = rgb.r;
+        image.data[i + 1] = rgb.g;
+        image.data[i + 2] = rgb.b;
+      }
+      ctx.putImageData(image, 0, 0);
+    }
+  }
 
   const logoSrc = style.logo_data_url || style.logo_url;
   if (logoSrc) {
@@ -95,7 +124,7 @@ export default function QrLivePreview({
     return () => {
       cancelled = true;
     };
-  }, [text, qrStyle]);
+  }, [text, qrStylePreviewKey(qrStyle)]);
 
   if (loading) {
     return (

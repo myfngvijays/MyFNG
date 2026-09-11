@@ -105,7 +105,7 @@ export default function PcmAutomationsSection() {
           formatAutomationChannelLabels(c.applicable_channels),
           c.min_order_value ? `Min ₹${c.min_order_value}` : null,
           Array.isArray(c.applicable_city_ids) && c.applicable_city_ids.length ? `${c.applicable_city_ids.length} cities` : null,
-          c.is_public === false ? 'Assigned customers only' : null,
+          c.is_public === false ? 'Hidden from public list' : null,
           c.usage_limit_per_customer ? `Max ${c.usage_limit_per_customer}/customer` : null,
         ]
           .filter(Boolean)

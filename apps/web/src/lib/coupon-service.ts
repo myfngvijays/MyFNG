@@ -117,8 +117,8 @@ async function customerHasAssignment(
     .select('id', { count: 'exact', head: true })
     .eq('coupon_id', couponId);
 
-  // Public coupons with no assignment rows are open to everyone.
-  // Private (is_public=false) coupons always require a personal assignment.
+  // No assignment rows = anyone with the code can use it.
+  // is_public does not gate apply — it only controls the public coupon list.
   if (!anyAssignment || anyAssignment === 0) {
     return options?.requireAssigned ? false : true;
   }
@@ -247,12 +247,14 @@ export async function validateCouponForCheckout(
     return { valid: false, error: 'Coupon is not valid on this platform.' };
   }
 
+  // is_public is catalog visibility only. A typed code should apply for anyone
+  // unless this coupon already has personal assignment rows (referral / exclusive).
   const assignedOk = await customerHasAssignment(
     supabaseAdmin,
     coupon.id,
     leadContext.customer_id,
     leadContext.customer_phone,
-    { requireAssigned: coupon.is_public === false },
+    { requireAssigned: false },
   );
   if (!assignedOk) {
     return { valid: false, error: 'This coupon is not assigned to your account.' };

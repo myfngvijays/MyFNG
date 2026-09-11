@@ -244,6 +244,101 @@ export async function listLinkManagerEvents(
   };
 }
 
+export async function getFolderAnalytics(
+  client: SupabaseClient,
+  folderName: string,
+  range: { start: string; end: string; preset: string; label: string },
+) {
+  const folder = String(folderName || '').trim();
+  if (!folder) throw new Error('Folder required');
+
+  const { data: links, error: linksErr } = await client
+    .from('managed_short_links')
+    .select('id,short_code,title,clicks,unique_clicks,qr_scans,is_active,long_url')
+    .eq('folder', folder)
+    .order('clicks', { ascending: false });
+  if (linksErr) throw new Error(linksErr.message);
+
+  const rows = links || [];
+  const ids = rows.map((row) => row.id);
+  const totalClicks = rows.reduce((sum, r) => sum + Number(r.clicks || 0), 0);
+  const totalUnique = rows.reduce((sum, r) => sum + Number(r.unique_clicks || 0), 0);
+  const totalQr = rows.reduce((sum, r) => sum + Number(r.qr_scans || 0), 0);
+
+  if (!ids.length) {
+    return {
+      range,
+      folder,
+      kpis: {
+        links: 0,
+        active: 0,
+        total_clicks: 0,
+        unique_clicks: 0,
+        qr_scans: 0,
+        clicks_in_range: 0,
+        qr_scans_in_range: 0,
+      },
+      top_links: [],
+      devices: [],
+      recent_clicks: [],
+    };
+  }
+
+  const [clicksInRange, qrInRange, recentClicks] = await Promise.all([
+    client
+      .from('managed_short_link_clicks')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_type', 'click')
+      .in('link_id', ids)
+      .gte('created_at', range.start)
+      .lte('created_at', range.end),
+    client
+      .from('managed_short_link_clicks')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_type', 'qr_scan')
+      .in('link_id', ids)
+      .gte('created_at', range.start)
+      .lte('created_at', range.end),
+    client
+      .from('managed_short_link_clicks')
+      .select(
+        'id,event_type,created_at,referrer,user_agent,meta,link:managed_short_links(short_code,title,utm_source,utm_medium,utm_campaign,utm_term,utm_content)',
+      )
+      .in('link_id', ids)
+      .gte('created_at', range.start)
+      .lte('created_at', range.end)
+      .order('created_at', { ascending: false })
+      .limit(20),
+  ]);
+
+  const events = (recentClicks.data || []).map((row) => normalizeClick(row as RawClickRow));
+  const devicesMap = new Map<string, number>();
+  for (const ev of events) {
+    const key = ev.platform || 'unknown';
+    devicesMap.set(key, (devicesMap.get(key) || 0) + 1);
+  }
+  const devices = [...devicesMap.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    range,
+    folder,
+    kpis: {
+      links: rows.length,
+      active: rows.filter((r) => r.is_active).length,
+      total_clicks: totalClicks,
+      unique_clicks: totalUnique,
+      qr_scans: totalQr,
+      clicks_in_range: clicksInRange.count || 0,
+      qr_scans_in_range: qrInRange.count || 0,
+    },
+    top_links: rows.slice(0, 5),
+    devices,
+    recent_clicks: events,
+  };
+}
+
 export async function listUtmConfiguredLinks(
   client: SupabaseClient,
   opts: {

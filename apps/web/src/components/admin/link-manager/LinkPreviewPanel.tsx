@@ -33,7 +33,7 @@ export default function LinkPreviewPanel({
   onCopy,
 }: {
   form: PreviewForm;
-  mode: 'link' | 'qr';
+  mode: 'link' | 'qr' | 'both';
   qrStyle?: QrStyleOptions;
   created?: any | null;
   onCopy?: (text: string, label: string) => void;
@@ -42,23 +42,29 @@ export default function LinkPreviewPanel({
   const shortUrl = buildProductionShortUrl(previewCode);
   const qrPreviewUrl = buildQrShortUrl(previewCode);
   const style = qrStyle || DEFAULT_QR_STYLE;
-  const createdMode = created?.create_mode === 'qr_only' || created?.meta?.create_mode === 'qr_only'
-    ? 'qr'
-    : created?.create_mode === 'link_only' || created?.meta?.create_mode === 'link_only'
-      ? 'link'
-      : mode;
+  const savedStyle = (created?.meta?.qr_style as QrStyleOptions | undefined) || style;
+  const createdMode =
+    created?.create_mode === 'qr_only' || created?.meta?.create_mode === 'qr_only'
+      ? 'qr'
+      : created?.create_mode === 'link_only' || created?.meta?.create_mode === 'link_only'
+        ? 'link'
+        : created?.create_mode === 'both' || created?.meta?.create_mode === 'both' || mode === 'both'
+          ? 'both'
+          : mode;
+  const showCreatedQr = createdMode === 'qr' || createdMode === 'both';
+  const showCreatedLink = createdMode === 'link' || createdMode === 'both';
 
   if (created) {
     return (
       <div className="rounded-2xl border border-green-200 bg-green-50 p-5 space-y-4 h-full">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-green-700">
-            {createdMode === 'qr' ? 'QR ready' : 'Short link ready'}
+            {createdMode === 'qr' ? 'QR ready' : createdMode === 'both' ? 'Link + QR ready' : 'Short link ready'}
           </p>
           <h3 className="text-lg font-bold text-gray-900 mt-1">{created.title || 'Untitled'}</h3>
         </div>
 
-        {createdMode === 'link' ? (
+        {showCreatedLink ? (
           <div className="space-y-2">
             <div className="rounded-xl bg-white border p-3">
               <p className="text-xs text-gray-500 mb-1">Share this</p>
@@ -67,21 +73,28 @@ export default function LinkPreviewPanel({
           </div>
         ) : null}
 
-        {createdMode === 'qr' ? (
+        {showCreatedQr ? (
           <div className="flex flex-col items-center gap-2">
-            <LinkQrPreview
-              shortCode={created.short_code}
-              shortUrl={created.short_url || buildProductionShortUrl(created.short_code)}
-              className="w-48 h-48 border rounded-xl bg-white p-2 shadow-sm"
-            />
+            {created.qr_code_url ? (
+              <img
+                src={created.qr_code_url}
+                alt="QR code"
+                className="w-48 h-48 border rounded-xl bg-white p-2 shadow-sm"
+              />
+            ) : (
+              <LinkQrPreview
+                shortCode={created.short_code}
+                shortUrl={created.short_url || buildProductionShortUrl(created.short_code)}
+                qrStyle={savedStyle}
+                className="w-48 h-48 border rounded-xl bg-white p-2 shadow-sm"
+              />
+            )}
             <button
               type="button"
               onClick={async () => {
-                const dataUrl = await renderBrandedQrCanvas(
-                  buildQrShortUrl(created.short_code),
-                  style,
-                  512,
-                );
+                const dataUrl =
+                  created.qr_code_url ||
+                  (await renderBrandedQrCanvas(buildQrShortUrl(created.short_code), savedStyle, 512));
                 downloadDataUrl(dataUrl, `qr-${created.short_code}.png`);
               }}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600"
@@ -91,14 +104,7 @@ export default function LinkPreviewPanel({
           </div>
         ) : null}
 
-        {createdMode === 'qr' && created.short_url ? (
-          <div className="rounded-xl bg-white/80 border border-green-100 p-3">
-            <p className="text-xs text-gray-500 mb-1">Tracking short link (for edits)</p>
-            <p className="text-xs font-medium text-blue-700 break-all">{created.short_url}</p>
-          </div>
-        ) : null}
-
-        {createdMode === 'link' ? (
+        {showCreatedLink ? (
           <button
             type="button"
             onClick={() => onCopy?.(created.short_url, 'Short URL')}
@@ -134,7 +140,7 @@ export default function LinkPreviewPanel({
       </div>
 
       <div className="space-y-4">
-        {mode === 'link' ? (
+        {mode !== 'qr' ? (
           <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
             <p className="text-xs font-semibold text-blue-700 mb-1">Share short URL</p>
             <p className="text-base font-bold text-blue-800 break-all">{shortUrl}</p>
@@ -142,7 +148,9 @@ export default function LinkPreviewPanel({
               <p className="text-xs text-blue-600 mt-1">Random code assigned on shorten</p>
             ) : null}
           </div>
-        ) : (
+        ) : null}
+
+        {mode !== 'link' ? (
           <div className="flex flex-col items-center py-1">
             <QrLivePreview text={qrPreviewUrl} qrStyle={style} />
             <p className="text-xs text-gray-500 mt-2 text-center">QR encodes {qrPreviewUrl}</p>
@@ -154,7 +162,7 @@ export default function LinkPreviewPanel({
               <Download className="w-3.5 h-3.5" /> Download preview PNG
             </button>
           </div>
-        )}
+        ) : null}
 
         <div>
           <p className="text-xs font-semibold text-gray-500 mb-1">
@@ -190,9 +198,12 @@ export default function LinkPreviewPanel({
           )}
         </div>
 
-        {mode === 'qr' && (style.logo_data_url || style.logo_url) ? (
+        {mode !== 'link' && (style.logo_data_url || style.logo_url || style.use_gradient) ? (
           <div className="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2 text-xs text-violet-800">
-            Logo enabled · {style.dark_color} on {style.light_color}
+            {style.use_gradient
+              ? `Gradient ${style.gradient_from} → ${style.gradient_to}`
+              : `${style.dark_color} on ${style.light_color}`}
+            {style.logo_data_url || style.logo_url ? ' · logo on' : ''}
           </div>
         ) : null}
 

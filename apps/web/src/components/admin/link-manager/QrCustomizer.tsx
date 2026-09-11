@@ -6,6 +6,7 @@ import {
   DEFAULT_QR_STYLE,
   MYFNG_LOGO_URL,
   QR_COLOR_PRESETS,
+  QR_GRADIENT_PRESETS,
   type QrStyleOptions,
 } from '@/lib/link-manager/qr-types';
 
@@ -64,6 +65,7 @@ export default function QrCustomizer({
                 onClick={() =>
                   patch({
                     preset: preset.id,
+                    use_gradient: false,
                     dark_color: preset.dark,
                     light_color: preset.light,
                   })
@@ -82,6 +84,100 @@ export default function QrCustomizer({
           })}
         </div>
       </div>
+
+      <label className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2">
+        <span className="text-xs font-semibold text-gray-700">Gradient</span>
+        <input
+          type="checkbox"
+          checked={Boolean(value.use_gradient)}
+          onChange={(e) =>
+            patch({
+              use_gradient: e.target.checked,
+              preset: e.target.checked ? 'gradient' : value.preset,
+              gradient_from: value.gradient_from || value.dark_color || '#023D95',
+              gradient_to: value.gradient_to || '#7C3AED',
+            })
+          }
+        />
+      </label>
+
+      {value.use_gradient ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {QR_GRADIENT_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() =>
+                  patch({
+                    use_gradient: true,
+                    preset: preset.id,
+                    gradient_from: preset.from,
+                    gradient_to: preset.to,
+                    dark_color: preset.from,
+                  })
+                }
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  value.preset === preset.id
+                    ? 'border-violet-600 bg-white text-violet-700'
+                    : 'border-gray-200 bg-white text-gray-700'
+                }`}
+              >
+                <span
+                  className="h-3 w-6 rounded-full border"
+                  style={{ background: `linear-gradient(90deg, ${preset.from}, ${preset.to})` }}
+                />
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={value.gradient_from || '#023D95'}
+                  onChange={(e) => patch({ gradient_from: e.target.value, dark_color: e.target.value, preset: 'custom' })}
+                  className="h-10 w-12 rounded border cursor-pointer"
+                />
+                <input
+                  value={value.gradient_from || ''}
+                  onChange={(e) => patch({ gradient_from: e.target.value, dark_color: e.target.value, preset: 'custom' })}
+                  className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={value.gradient_to || '#7C3AED'}
+                  onChange={(e) => patch({ gradient_to: e.target.value, preset: 'custom' })}
+                  className="h-10 w-12 rounded border cursor-pointer"
+                />
+                <input
+                  value={value.gradient_to || ''}
+                  onChange={(e) => patch({ gradient_to: e.target.value, preset: 'custom' })}
+                  className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Angle ({value.gradient_angle || 135}°)</label>
+            <input
+              type="range"
+              min={0}
+              max={180}
+              value={value.gradient_angle || 135}
+              onChange={(e) => patch({ gradient_angle: Number(e.target.value), preset: value.preset || 'custom' })}
+              className="w-full"
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid sm:grid-cols-2 gap-3">
         <div>

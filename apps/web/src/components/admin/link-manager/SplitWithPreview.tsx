@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type Ref } from 'react';
 
 /**
  * Form/list left + preview right. Uses matchMedia so admin sidebar
@@ -10,10 +10,12 @@ export default function SplitWithPreview({
   main,
   preview,
   previewWidth = 320,
+  previewRef,
 }: {
   main: ReactNode;
   preview: ReactNode;
   previewWidth?: number;
+  previewRef?: Ref<HTMLDivElement>;
 }) {
   const [sideBySide, setSideBySide] = useState(true);
 
@@ -46,9 +48,18 @@ export default function SplitWithPreview({
     >
       <div style={{ minWidth: 0, width: '100%' }}>{main}</div>
       <div
+        ref={previewRef}
         style={
           sideBySide
-            ? { width: previewWidth, maxWidth: '100%', position: 'sticky', top: 16, alignSelf: 'start' }
+            ? {
+                width: previewWidth,
+                maxWidth: '100%',
+                position: 'sticky',
+                top: 12,
+                alignSelf: 'start',
+                maxHeight: 'calc(100dvh - 1.5rem)',
+                overflow: 'auto',
+              }
             : { width: '100%' }
         }
       >

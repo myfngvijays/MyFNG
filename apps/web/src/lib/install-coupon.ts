@@ -191,27 +191,8 @@ export async function claimInstallCoupon(opts: {
     return { ok: false as const, error: 'Coupon is not valid on this platform.', status: 400 };
   }
 
-  if (coupon.is_public === false) {
-    const phone = normalizePhone(customer.phone);
-    let assigned = false;
-    const { count: byCustomer } = await opts.supabaseAdmin
-      .from('customer_coupon_assignments')
-      .select('id', { count: 'exact', head: true })
-      .eq('coupon_id', coupon.id)
-      .eq('customer_id', customer.id);
-    if ((byCustomer || 0) > 0) assigned = true;
-    if (!assigned && phone) {
-      const { count: byPhone } = await opts.supabaseAdmin
-        .from('customer_coupon_assignments')
-        .select('id', { count: 'exact', head: true })
-        .eq('coupon_id', coupon.id)
-        .or(`pending_phone.eq.${phone},pending_phone.eq.91${phone}`);
-      if ((byPhone || 0) > 0) assigned = true;
-    }
-    if (!assigned) {
-      return { ok: false as const, error: 'This coupon is not assigned to your account.', status: 400 };
-    }
-  }
+  // is_public only hides the coupon from Offers & Coupons list.
+  // Anyone who types a valid festival / flat / society code can still credit wallet.
 
   if (coupon.usage_limit_total) {
     const { count } = await opts.supabaseAdmin

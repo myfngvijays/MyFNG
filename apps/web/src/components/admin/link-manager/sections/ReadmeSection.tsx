@@ -12,6 +12,7 @@ import {
   Webhook,
   MousePointerClick,
   LayoutDashboard,
+  FolderOpen,
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -95,9 +96,20 @@ const SECTIONS = [
       'Saare bane hue links yahan list me dikhte hain. Date filter se created period chuno (Today / 7 days / custom / All time).',
       'Search se title, code ya URL dhoondo.',
       '10 / 20 / 50 per page; neeche Prev / Next / page numbers.',
-      'Koi row select karo → right side preview: QR, clicks, title / destination / UTM edit, QR download.',
+      'Koi row select karo → right side preview: QR, clicks, title / destination / slug / UTM edit, QR download.',
+      'Folder sirf organize label hai — Folders tab me groups dikhte hain.',
       'Copy, open, pause (band), activate, delete — row actions se.',
       'Purane links tootenge nahi — naye advanced fields optional hain.',
+    ],
+  },
+  {
+    id: 'folders-tab',
+    icon: FolderOpen,
+    title: 'Folders tab — groups',
+    body: [
+      'Create Link pe Folder field (jaise Workshops) optional organize label hai.',
+      'Folders tab me saare bane hue folders cards me dikhte hain — links / clicks / unique / QR ke saath.',
+      'Card click karo: date filter, period clicks/QR, top links, recent opens, aur us folder ki link list.',
     ],
   },
   {

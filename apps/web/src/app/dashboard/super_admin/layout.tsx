@@ -80,6 +80,76 @@ type NavItem = {
   children?: Array<{ name: string; href: string; icon: any; description: string }>;
 };
 
+type FlatNavItem = {
+  name: string;
+  href: string;
+  icon: any;
+  description: string;
+  parent?: string;
+};
+
+function compactNavText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function navItemMatches(item: FlatNavItem, rawQuery: string) {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return false;
+  const fields = [item.name, item.description, item.parent || ''];
+  if (fields.some((field) => field.toLowerCase().includes(q))) return true;
+
+  const qCompact = compactNavText(q);
+  if (qCompact && fields.some((field) => compactNavText(field).includes(qCompact))) return true;
+
+  const words = fields
+    .join(' ')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  if (words.some((word) => word.startsWith(q))) return true;
+
+  const tokens = q.split(/[\s,/?&-]+/).filter((token) => token.length >= 2);
+  if (tokens.length > 1 && tokens.every((token) => fields.some((field) => field.toLowerCase().includes(token)))) {
+    return true;
+  }
+  return false;
+}
+
+function flattenNavigationItems(items: NavItem[]): FlatNavItem[] {
+  const flat: FlatNavItem[] = [];
+  const seenHrefs = new Set<string>();
+
+  const push = (row: FlatNavItem) => {
+    if (seenHrefs.has(row.href)) return;
+    seenHrefs.add(row.href);
+    flat.push(row);
+  };
+
+  for (const item of items) {
+    if (item.isSection) continue;
+    const children = item.children || [];
+    if (item.href) {
+      push({
+        name: item.name,
+        href: item.href,
+        icon: item.icon,
+        description: item.description || '',
+      });
+    }
+    for (const child of children) {
+      if (item.href && child.href === item.href) continue;
+      push({
+        name: child.name,
+        href: child.href,
+        icon: child.icon,
+        description: child.description,
+        parent: item.name,
+      });
+    }
+  }
+  return flat;
+}
+
 const navigationItems: NavItem[] = [
   {
     name: 'Overview',
@@ -805,6 +875,9 @@ function SuperAdminLayoutInner({
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+  const searchQueryRef = useRef('');
+  const searchFocusedRef = useRef(false);
+  searchQueryRef.current = searchQuery;
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Smart Tools': false,
     'App Content & Display': false,
@@ -946,31 +1019,12 @@ function SuperAdminLayoutInner({
     }
   }, [pathname]);
 
-  const flatNavItems = useMemo(() => {
-    const items: Array<{ name: string; href: string; icon: any; description: string; parent?: string }> = [];
-    for (const item of navigationItems) {
-      if (item.isSection) continue;
-      if (item.href) {
-        items.push({ name: item.name, href: item.href, icon: item.icon, description: item.description || '' });
-      }
-      if (item.children) {
-        for (const child of item.children) {
-          items.push({ name: child.name, href: child.href, icon: child.icon, description: child.description, parent: item.name });
-        }
-      }
-    }
-    return items;
-  }, []);
+  const flatNavItems = useMemo(() => flattenNavigationItems(navigationItems), []);
 
   const searchResults = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchQuery.trim();
     if (!q) return [];
-    return flatNavItems.filter(
-      (item) =>
-        item.name.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q) ||
-        (item.parent && item.parent.toLowerCase().includes(q)),
-    );
+    return flatNavItems.filter((item) => navItemMatches(item, q));
   }, [searchQuery, flatNavItems]);
 
   const handleSearchNav = useCallback((href: string) => {
@@ -1071,12 +1125,15 @@ function SuperAdminLayoutInner({
       {/* Sidebar - Desktop: menu scrolls in the middle; logout always pinned at bottom */}
       <aside
         onMouseEnter={() => { if (!sidebarPinned) setSidebarOpen(true); }}
-        onMouseLeave={() => { if (!sidebarPinned) { setSidebarOpen(false); setSearchQuery(''); } }}
+        onMouseLeave={() => {
+          if (sidebarPinned || searchFocusedRef.current || searchQueryRef.current.trim()) return;
+          setSidebarOpen(false);
+        }}
         className={`
           hidden lg:flex flex-col h-full min-h-0 overflow-hidden
           ${sidebarOpen ? 'w-72' : 'w-20'}
           bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white
-          transition-all duration-700 ease-in-out
+          transition-[width] duration-300 ease-in-out
           shadow-2xl
         `}
       >
@@ -1129,11 +1186,23 @@ function SuperAdminLayoutInner({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => { searchFocusedRef.current = true; }}
+                onBlur={() => { searchFocusedRef.current = false; }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setSearchQuery('');
+                  }
+                }}
                 placeholder="Search menu… (⌘K)"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 className="w-full pl-9 pr-8 py-2.5 rounded-lg bg-white text-gray-800 text-sm placeholder:text-gray-400 border border-blue-300/50 focus:outline-none focus:ring-2 focus:ring-yellow-300/60 shadow-sm"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
                   <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
                 </button>
               )}
@@ -1160,16 +1229,17 @@ function SuperAdminLayoutInner({
                   const active = isActive(item.href);
                   return (
                     <button
-                      key={item.href}
+                      key={`${item.parent || 'root'}:${item.href}`}
+                      type="button"
                       onClick={() => handleSearchNav(item.href)}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${
                         active ? 'bg-white text-blue-700 shadow-lg font-semibold' : 'text-white hover:bg-blue-500/30'
                       }`}
                     >
                       <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
-                      <div className="flex-1 text-left">
-                        <div className={`text-sm font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>{item.name}</div>
-                        <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                      <div className="min-w-0 flex-1 text-left">
+                        <div className={`text-sm font-semibold truncate ${active ? 'text-blue-700' : 'text-white'}`}>{item.name}</div>
+                        <div className={`text-xs mt-0.5 truncate ${active ? 'text-blue-600' : 'text-blue-100'}`}>
                           {item.parent ? `${item.parent} › ` : ''}{item.description}
                         </div>
                       </div>
@@ -1372,11 +1442,23 @@ function SuperAdminLayoutInner({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => { searchFocusedRef.current = true; }}
+                  onBlur={() => { searchFocusedRef.current = false; }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setSearchQuery('');
+                    }
+                  }}
                   placeholder="Search menu…"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   className="w-full pl-9 pr-8 py-2.5 rounded-lg bg-blue-500/30 text-white text-sm placeholder:text-blue-200/70 border border-blue-400/30 focus:outline-none focus:ring-2 focus:ring-yellow-300/50 focus:bg-blue-500/40"
                 />
                 {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                  <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
                     <X className="w-4 h-4 text-blue-200 hover:text-white" />
                   </button>
                 )}
@@ -1395,16 +1477,17 @@ function SuperAdminLayoutInner({
                       const active = isActive(item.href);
                       return (
                         <button
-                          key={item.href}
+                          key={`${item.parent || 'root'}:${item.href}`}
+                          type="button"
                           onClick={() => handleSearchNav(item.href)}
                           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${
                             active ? 'bg-white text-blue-700 shadow-lg font-semibold' : 'text-white hover:bg-blue-500/30'
                           }`}
                         >
                           <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
-                          <div className="flex-1 text-left">
-                            <div className={`text-sm font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>{item.name}</div>
-                            <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                          <div className="min-w-0 flex-1 text-left">
+                            <div className={`text-sm font-semibold truncate ${active ? 'text-blue-700' : 'text-white'}`}>{item.name}</div>
+                            <div className={`text-xs mt-0.5 truncate ${active ? 'text-blue-600' : 'text-blue-100'}`}>
                               {item.parent ? `${item.parent} › ` : ''}{item.description}
                             </div>
                           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ArrowRight,
@@ -25,6 +25,7 @@ import SplitWithPreview from '../SplitWithPreview';
 import { DEFAULT_QR_STYLE, type QrStyleOptions } from '@/lib/link-manager/qr-types';
 import { MYFNG_APP_DOWNLOAD_URL } from '@/shared/constants/appDownload';
 import SlugInput from '../SlugInput';
+import FolderSelect from '../FolderSelect';
 import {
   isValidHttpUrl,
   normalizeLongUrl,
@@ -51,7 +52,7 @@ const ADV_TABS: Array<{ id: AdvTab; label: string; icon: typeof Smartphone }> = 
 ];
 
 const emptyForm = {
-  long_url: '',
+  long_url: MYFNG_APP_DOWNLOAD_URL,
   title: '',
   description: '',
   custom_code: '',
@@ -134,11 +135,24 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
   const [qrStyle, setQrStyle] = useState<QrStyleOptions>({ ...DEFAULT_QR_STYLE });
   const [form, setForm] = useState(emptyForm);
   const [slugTaken, setSlugTaken] = useState(false);
+  const [folderOptions, setFolderOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    void fetch('/api/super_admin/link-manager/folders')
+      .then((res) => res.json())
+      .then((json) => {
+        const names = (json.folders || [])
+          .map((f: { name?: string }) => String(f.name || '').trim())
+          .filter(Boolean);
+        setFolderOptions(names);
+      })
+      .catch(() => {});
+  }, []);
 
   const expiresLabel = EXPIRY_OPTIONS.find((o) => o.value === form.expires_option)?.label || 'Never expires';
   const normalizedUrl = useMemo(() => normalizeLongUrl(form.long_url), [form.long_url]);
   const urlReady = Boolean(normalizedUrl && isValidHttpUrl(normalizedUrl));
-  const previewMode = mode === 'qr' ? 'qr' : 'link';
+  const previewMode = mode;
   const patch = (key: keyof typeof emptyForm, value: string | boolean) =>
     setForm((p) => ({ ...p, [key]: value }));
 
@@ -229,6 +243,10 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
       if (!res.ok) throw new Error(json?.error || 'Failed to create link');
       setCreated({ ...json.link, create_mode });
       toast.success('Link created');
+      const usedFolder = String(form.folder || '').trim();
+      if (usedFolder && !folderOptions.includes(usedFolder)) {
+        setFolderOptions((prev) => [...prev, usedFolder].sort((a, b) => a.localeCompare(b, 'en')));
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Create failed');
     } finally {
@@ -399,7 +417,15 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
                 />
               </label>
               <Field label="Tags" value={form.tags} onChange={(v) => patch('tags', v)} placeholder="whatsapp, saket" />
-              <Field label="Folder" value={form.folder} onChange={(v) => patch('folder', v)} placeholder="Workshops" />
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-gray-700">Folder</span>
+                <FolderSelect
+                  value={form.folder}
+                  options={folderOptions}
+                  onChange={(v) => patch('folder', v)}
+                  placeholder="Select folder"
+                />
+              </label>
             </div>
             <label className="block space-y-1.5">
               <span className="text-xs font-semibold text-gray-700">Notes</span>
