@@ -24,7 +24,7 @@ export default function ConsentCheckboxes({
 
   return (
     <fieldset className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
-      <legend className="px-1 text-sm font-semibold text-gray-800">Consent (unticked until you choose)</legend>
+      <legend className="px-1 text-sm font-semibold text-gray-800">Consent</legend>
       <p className="text-xs text-gray-600">
         We only process optional purposes if you tick them. Read the{' '}
         <Link href="/privacy-notice" className="text-blue-700 underline">

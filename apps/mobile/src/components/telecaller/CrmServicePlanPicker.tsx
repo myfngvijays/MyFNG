@@ -21,6 +21,7 @@ import {
   resolveVehicleClassByMakeModel,
 } from '../../lib/servicePricing';
 import { COLORS, SPACING, SHADOWS } from '../../constants/theme';
+import { applyPeriodicFilterWording } from '../../lib/periodicFilterWording';
 
 export type CrmServiceItem = {
   id: string;
@@ -378,7 +379,12 @@ export default function CrmServicePlanPicker({
           {servicesInCategory.map((s) => {
             const selected = selectedIds.includes(s.id);
             const price = pricing[s.id] || 0;
-            const items = checklists[s.id] || [];
+            const items = applyPeriodicFilterWording(checklists[s.id] || [], {
+              carClass: vehicleClass,
+              serviceName: s.name,
+              points: pointsMap[s.id] || s.points,
+              category: s.category,
+            });
             const pts = pointsMap[s.id] || s.points || items.length || 0;
             return (
               <View key={s.id} style={[styles.planCard, styles.planCardHalf, selected && styles.planCardActive]}>
@@ -441,7 +447,12 @@ export default function CrmServicePlanPicker({
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 420 }}>
-              {(checklists[details?.id || ''] || []).map((it, idx) => (
+              {applyPeriodicFilterWording(checklists[details?.id || ''] || [], {
+                carClass: vehicleClass,
+                serviceName: details?.name,
+                points: pointsMap[details?.id || ''] || details?.points,
+                category: details?.category,
+              }).map((it, idx) => (
                 <View key={`d-${idx}`} style={styles.planItemRow}>
                   <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
                   <Text style={styles.planItemText}>{it.name}</Text>

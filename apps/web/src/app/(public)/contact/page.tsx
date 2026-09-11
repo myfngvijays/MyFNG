@@ -21,7 +21,7 @@ export default function ContactPage() {
   const [mobile, setMobile] = useState('');
   const [subject, setSubject] = useState('General Inquiry');
   const [message, setMessage] = useState('');
-  const [consent, setConsent] = useState<ConsentMap>({});
+  const [consent, setConsent] = useState<ConsentMap>({ service: true, marketing: false });
   const [consentError, setConsentError] = useState('');
   const [status, setStatus] = useState('');
 

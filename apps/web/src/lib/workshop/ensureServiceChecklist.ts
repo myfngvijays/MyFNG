@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { applyPeriodicFilterWording } from '@/lib/periodicFilterWording';
 
 async function resolveServiceTypeName(
   supabaseAdmin: SupabaseClient,
@@ -48,7 +49,7 @@ export async function ensureLeadServiceChecklist(
 
   const { data: lead, error: leadError } = await supabaseAdmin
     .from('service_leads')
-    .select('service_type, service_type_ids')
+    .select('service_type, service_type_ids, model_id, coupon_meta')
     .eq('id', leadId)
     .single();
 
@@ -67,6 +68,33 @@ export async function ensureLeadServiceChecklist(
   if (rpcError) {
     console.warn('ensureLeadServiceChecklist rpc failed:', rpcError.message);
     return { created: false, error: rpcError.message };
+  }
+
+  let carClass = String((lead as any)?.coupon_meta?.vehicle_class || '').trim() || null;
+  if (!carClass && (lead as any)?.model_id) {
+    const { data: car } = await supabaseAdmin
+      .from('car_models')
+      .select('class')
+      .eq('id', (lead as any).model_id)
+      .maybeSingle();
+    carClass = String(car?.class || '').trim() || null;
+  }
+
+  const { data: created } = await supabaseAdmin
+    .from('service_checklists')
+    .select('id, checklist_items')
+    .eq('id', checklistId)
+    .maybeSingle();
+
+  if (created?.checklist_items) {
+    const rewritten = applyPeriodicFilterWording(created.checklist_items as any[], {
+      carClass,
+      serviceName: serviceTypeName,
+    });
+    await supabaseAdmin
+      .from('service_checklists')
+      .update({ checklist_items: rewritten })
+      .eq('id', created.id);
   }
 
   return { created: true, checklistId };

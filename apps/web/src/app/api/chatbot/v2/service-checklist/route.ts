@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { applyPeriodicFilterWording } from '@/lib/periodicFilterWording';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
   const tier = String(req.nextUrl.searchParams.get('tier') || '').trim();
   const oil = String(req.nextUrl.searchParams.get('oil') || 'semi').trim().toLowerCase();
   const serviceTypeId = String(req.nextUrl.searchParams.get('service_type_id') || '').trim();
+  const vehicleClass = String(req.nextUrl.searchParams.get('vehicle_class') || '').trim();
 
   if (!tier && !serviceTypeId) {
     return NextResponse.json({ success: false, error: 'tier or service_type_id is required' }, { status: 400 });
@@ -86,9 +88,16 @@ export async function GET(req: NextRequest) {
     .eq('service_type_id', matched.id)
     .maybeSingle();
 
-  const items = (Array.isArray(template?.checklist_items) ? template.checklist_items : [])
-    .map(normalizeChecklistItem)
-    .filter(Boolean) as Array<{ name: string; category: string }>;
+  const items = applyPeriodicFilterWording(
+    (Array.isArray(template?.checklist_items) ? template.checklist_items : [])
+      .map(normalizeChecklistItem)
+      .filter(Boolean) as Array<{ name: string; category: string }>,
+    {
+      carClass: vehicleClass,
+      serviceName: matched.name,
+      points: typeof template?.points === 'number' ? template.points : null,
+    },
+  );
 
   return NextResponse.json({
     success: true,

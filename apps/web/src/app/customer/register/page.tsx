@@ -42,7 +42,10 @@ export default function CustomerRegisterPage() {
   // Validation
   const [errors, setErrors] = useState<any>({});
   const [successMessage, setSuccessMessage] = useState('');
-  const [registerConsent, setRegisterConsent] = useState<{ service?: boolean; marketing?: boolean }>({});
+  const [registerConsent, setRegisterConsent] = useState<{ service?: boolean; marketing?: boolean }>({
+    service: true,
+    marketing: false,
+  });
 
   async function handleSubmitDetails(e: React.FormEvent) {
     e.preventDefault();

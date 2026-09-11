@@ -103,6 +103,8 @@ import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/booki
 import { completeBookingDraftOnServer, syncBookingDraftToServer } from '../lib/bookingDraftSync';
 import { fetchServicePriceForBooking } from '../lib/servicePricing';
 import { isPremiumLuxuryClass, PREMIUM_LUXURY_PRICING_MESSAGE } from '../lib/vehicleClassPricing';
+import { applyPeriodicFilterWording } from '../lib/periodicFilterWording';
+import ChecklistPointLabel from '../components/ChecklistPointLabel';
 import { getUpsellSuggestions, getUpsellHeading } from '../lib/serviceUpsells';
 import VehicleImage from '../components/VehicleImage';
 import { trackEvent } from '../lib/trackEvent';
@@ -122,6 +124,14 @@ function getCategoryIconUrl(category: string): string {
   if (c.includes('ELECTRICAL')) return `${SERVICE_ICON_BASE}/icon-electrical-service.png`;
   if (c.includes('SUSPENSION') || c.includes('STEERING')) return `${SERVICE_ICON_BASE}/icon-suspension-service.png`;
   return '';
+}
+
+const LABOR_PARTS_DISCLAIMER =
+  '* This includes only labor charges, If any additional parts are required, they will be billed at actual cost.';
+
+function isSuspensionSteeringCategory(category: string) {
+  const c = String(category || '').toUpperCase();
+  return c.includes('SUSPENSION') || c.includes('STEERING');
 }
 
 type Props = { navigation: any; route?: any };
@@ -452,6 +462,15 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [serviceChecklists, setServiceChecklists] = useState<
     Record<string, Array<{ name: string; category?: string }>>
   >({});
+  const checklistItemsFor = (service: { id: string; name?: string; category?: string; points?: number } | null | undefined) => {
+    if (!service?.id) return [];
+    return applyPeriodicFilterWording(serviceChecklists[service.id] || [], {
+      carClass: form.carModel?.class,
+      serviceName: service.name,
+      points: servicePoints[service.id] ?? service.points,
+      category: service.category,
+    });
+  };
   const [detailsService, setDetailsService] = useState<ServiceTypeRow | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<{
     leadNumber: string;
@@ -3329,7 +3348,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       const selected = form.selectedServices.includes(s.id);
                       const price = pricing[s.id] || 0;
                       const pts = servicePoints[s.id] || s.points || 0;
-                      const checklistItems = serviceChecklists[s.id] || [];
+                      const checklistItems = checklistItemsFor(s);
                       const visibleItems = checklistItems.slice(0, 5);
                       return (
                         <View
@@ -3367,9 +3386,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                                     color="#16A34A"
                                     style={{ marginTop: 2 }}
                                   />
-                                  <Text style={styles.planCardItemText} numberOfLines={2}>
-                                    {it.name}
-                                  </Text>
+                                  <ChecklistPointLabel name={it.name} style={styles.planCardItemText} numberOfLines={2} />
                                 </View>
                               ))}
                               {checklistItems.length > 5 ? (
@@ -3393,6 +3410,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             <Text style={styles.serviceDesc} numberOfLines={2}>
                               {s.description}
                             </Text>
+                          ) : null}
+
+                          {isSuspensionSteeringCategory(s.category || selectedCategory) ? (
+                            <Text style={styles.planCardDisclaimer}>{LABOR_PARTS_DISCLAIMER}</Text>
                           ) : null}
 
                           {/* MyFNG Prime Membership Promo */}
@@ -4859,7 +4880,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     } else if (isDenting) {
                       disclaimer = '* Major panel denting will incur additional charges. Rates do not apply to rusted vehicles.';
                     } else if (!isDetailing) {
-                      disclaimer = '* This includes only labor charges, If any additional parts are required, they will be billed at actual cost.';
+                      disclaimer = LABOR_PARTS_DISCLAIMER;
                     }
 
                     const uspRows: string[][] = [];
@@ -4930,7 +4951,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
                             {/* Checklist points */}
                             {(() => {
-                              const items = serviceChecklists[detailsService.id] || [];
+                              const items = checklistItemsFor(detailsService);
                               if (!items.length) {
                                 return (
                                   <Text style={styles.detailsEmpty}>
@@ -4954,7 +4975,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                                             color="#16A34A"
                                             style={{ marginTop: 2 }}
                                           />
-                                          <Text style={styles.detailsGridItemText}>{it.name}</Text>
+                                          <ChecklistPointLabel name={it.name} style={styles.detailsGridItemText} />
                                         </View>
                                       ))}
                                       {row.length === 1 ? (
@@ -6333,6 +6354,13 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '800',
     color: COLORS.primary,
+  },
+  planCardDisclaimer: {
+    marginTop: 10,
+    fontSize: 11,
+    fontStyle: 'italic',
+    color: '#DC2626',
+    lineHeight: 15,
   },
   selectContinueBtn: {
     marginTop: 12,

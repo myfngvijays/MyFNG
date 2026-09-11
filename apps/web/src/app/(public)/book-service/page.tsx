@@ -16,10 +16,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { isPremiumLuxuryClass, PREMIUM_LUXURY_PRICING_MESSAGE } from '@/lib/vehicleClassPricing';
+import { applyPeriodicFilterWording } from '@/lib/periodicFilterWording';
 import ConsentCheckboxes, {
   requiredConsentsGranted,
   type ConsentMap,
 } from '@/components/dpdp/ConsentCheckboxes';
+import ChecklistPointLabel from '@/components/booking/ChecklistPointLabel';
 import AnimatedOtpBoxes, { type OtpAnimStatus } from '@/components/auth/AnimatedOtpBoxes';
 
 interface BookingFormData {
@@ -39,6 +41,14 @@ interface BookingFormData {
   addressType: 'home' | 'work' | 'other';
   paymentMethod: string;
   paymentStatus: string; // 'PAY_NOW' | 'PAY_LATER'
+}
+
+const LABOR_PARTS_DISCLAIMER =
+  '* This includes only labor charges, If any additional parts are required, they will be billed at actual cost.';
+
+function isSuspensionSteeringCategory(category: string) {
+  const c = String(category || '').toUpperCase();
+  return c.includes('SUSPENSION') || c.includes('STEERING');
 }
 
 export default function BookServicePage() {
@@ -128,7 +138,7 @@ export default function BookServicePage() {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpAnim, setOtpAnim] = useState<OtpAnimStatus>('idle');
   const otpVerifyLock = useRef(false);
-  const [bookingConsent, setBookingConsent] = useState<ConsentMap>({});
+  const [bookingConsent, setBookingConsent] = useState<ConsentMap>({ service: true, marketing: false });
   const [consentError, setConsentError] = useState('');
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
@@ -1813,12 +1823,18 @@ export default function BookServicePage() {
 
   const getChecklistForService = (service: any) => {
     const db = serviceChecklistTemplates?.[service?.id];
+    const ctx = {
+      carClass: formData.carModel?.class,
+      serviceName: service?.name,
+      points: typeof db?.points === 'number' ? db.points : service?.points,
+      category: service?.category,
+    };
     if (db?.items?.length) {
       return {
         source: 'db' as const,
         title: db.title || 'Checklist',
         points: typeof db.points === 'number' ? db.points : undefined,
-        items: db.items as any[],
+        items: applyPeriodicFilterWording(db.items as any[], ctx),
       };
     }
     return {
@@ -1851,7 +1867,15 @@ export default function BookServicePage() {
 
   const getChecklistUniqueItems = (service: any) => {
     const c = getChecklistForService(service);
-    const normalized = (c.items || []).map(normalizeChecklistItem).filter(Boolean) as Array<{ name: string; category?: string }>;
+    const normalized = applyPeriodicFilterWording(
+      (c.items || []).map(normalizeChecklistItem).filter(Boolean) as Array<{ name: string; category?: string }>,
+      {
+        carClass: formData.carModel?.class,
+        serviceName: service?.name,
+        points: c.points ?? service?.points,
+        category: service?.category,
+      },
+    );
     const seen = new Set<string>();
     const unique: Array<{ name: string; category?: string }> = [];
     for (const n of normalized) {
@@ -2678,7 +2702,7 @@ export default function BookServicePage() {
                                         <div key={`${it?.name || ''}-${i}`} className={`flex items-start gap-2 ${showReferencePlanUi ? 'text-[13px]' : 'text-sm'} text-gray-700`}>
                                           <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                                           <span className={`break-words ${showReferencePlanUi ? 'line-clamp-1' : 'line-clamp-2'}`}>
-                                            {it?.name || String(it)}
+                                            <ChecklistPointLabel name={it?.name || String(it)} />
                                             {!showReferencePlanUi && it?.category ? (
                                               <span className="ml-2 text-[10px] font-bold text-gray-400">{it.category}</span>
                                             ) : null}
@@ -2700,6 +2724,10 @@ export default function BookServicePage() {
                                           ) : null}
                                         </div>
                                 </div>
+
+                                {isSuspensionSteeringCategory(service.category || activeCategoryId) ? (
+                                  <p className="mt-2 text-[10px] sm:text-xs italic text-red-600">{LABOR_PARTS_DISCLAIMER}</p>
+                                ) : null}
 
                                 <div className={`mt-2 pt-2 ${showReferencePlanUi ? 'flex items-center' : 'border-t border-gray-200 flex items-end justify-between gap-3'}`}>
                                   {!showReferencePlanUi && (
@@ -2840,7 +2868,9 @@ export default function BookServicePage() {
                                               items.map((it: any, i: number) => (
                                                 <div key={`${it?.name || ''}-${i}`} className="flex items-start gap-2 text-sm text-gray-700">
                                                   <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                                                  <span className="break-words">{it?.name || String(it)}</span>
+                                                  <span className="break-words">
+                                                    <ChecklistPointLabel name={it?.name || String(it)} />
+                                                  </span>
                                                 </div>
                                               ))
                                             ) : (
@@ -2848,6 +2878,10 @@ export default function BookServicePage() {
                                             )}
                                           </div>
                                         </div>
+
+                                        {isSuspensionSteeringCategory(service.category || activeCategoryId) ? (
+                                          <p className="mt-3 text-[10px] sm:text-xs italic text-red-600">{LABOR_PARTS_DISCLAIMER}</p>
+                                        ) : null}
 
                                         <div className="mt-6 pt-4 border-t border-gray-200 flex items-end justify-between gap-3">
                                           <div>
@@ -3759,17 +3793,27 @@ export default function BookServicePage() {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
               <div className={`${showReferencePlanUi ? 'lg:col-span-12' : 'lg:col-span-8'} p-3 sm:p-6`}>
                 {(() => {
-                  const raw = detailsService.checklistTemplate?.items || [];
-                  const normalized = raw
-                    .map((it: any) => {
-                      if (!it) return null;
-                      if (typeof it === 'string') return { name: it, category: 'General' };
-                      const name = String(it?.name || it?.title || it?.label || '').trim();
-                      if (!name) return null;
-                      const category = String(it?.category || 'General').trim() || 'General';
-                      return { name, category };
-                    })
-                    .filter(Boolean) as Array<{ name: string; category: string }>;
+                  const raw = detailsService.checklistTemplate?.items
+                    || detailsService.checklistTemplate?.unique
+                    || [];
+                  const normalized = applyPeriodicFilterWording(
+                    raw
+                      .map((it: any) => {
+                        if (!it) return null;
+                        if (typeof it === 'string') return { name: it, category: 'General' };
+                        const name = String(it?.name || it?.title || it?.label || '').trim();
+                        if (!name) return null;
+                        const category = String(it?.category || 'General').trim() || 'General';
+                        return { name, category };
+                      })
+                      .filter(Boolean) as Array<{ name: string; category: string }>,
+                    {
+                      carClass: formData.carModel?.class,
+                      serviceName: detailsService?.service?.name,
+                      points: detailsService?.checklistTemplate?.points ?? detailsService?.service?.points,
+                      category: detailsService?.service?.category || activeCategoryId,
+                    },
+                  );
 
                   const groups = new Map<string, Array<{ name: string; category: string }>>();
                   for (const it of normalized) {
@@ -3839,7 +3883,7 @@ export default function BookServicePage() {
                   } else if (isDenting) {
                     disclaimer = '* Major panel denting will incur additional charges. Rates do not apply to rusted vehicles.';
                   } else if (!isDetailing) {
-                    disclaimer = '* This includes only labor charges, If any additional parts are required, they will be billed at actual cost.';
+                    disclaimer = LABOR_PARTS_DISCLAIMER;
                   }
 
                   return (
@@ -3941,7 +3985,9 @@ export default function BookServicePage() {
                                 }`}
                               >
                                 <CheckCircle className={`w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0 ${isNew ? 'text-emerald-600' : 'text-green-600'}`} />
-                                <span className="break-words flex-1 leading-snug">{it.name}</span>
+                                <span className="break-words flex-1 leading-snug">
+                                  <ChecklistPointLabel name={it.name} />
+                                </span>
                               </div>
                             );
                           })}
@@ -3966,7 +4012,9 @@ export default function BookServicePage() {
                                   }`}
                                 >
                                   <CheckCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isNew ? 'text-emerald-600' : 'text-green-600'}`} />
-                                  <span className="break-words flex-1">{it.name}</span>
+                                  <span className="break-words flex-1">
+                                    <ChecklistPointLabel name={it.name} />
+                                  </span>
                                 </div>
                                   );
                                 })()
