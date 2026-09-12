@@ -12,6 +12,8 @@ import { ArrowLeft, Loader2, Sparkles, Save, Eye } from 'lucide-react';
 type Category = { id: string; name: string };
 type Tag = { id: string; name: string };
 
+type AiDraftLink = { kind?: string; anchor: string; url: string };
+
 type AiDraft = {
   title: string;
   slug: string;
@@ -23,6 +25,16 @@ type AiDraft = {
     keywords: string;
     og_title: string;
     og_description: string;
+    cta_text?: string;
+    cta_url?: string;
+    related_articles?: Array<{ title: string; url: string }>;
+  };
+  links?: {
+    has_cta?: boolean;
+    cta_url?: string;
+    internal?: AiDraftLink[];
+    external?: AiDraftLink[];
+    related_articles?: Array<{ title: string; url: string }>;
   };
   read_time: number;
 };
@@ -159,6 +171,9 @@ export default function AICreateBlogPage() {
           ai_generated: true,
           ai_topic: topic,
           ai_city: city,
+          cta_text: draft.seo.cta_text || 'Book Service Now',
+          cta_url: draft.seo.cta_url || draft.links?.cta_url || '',
+          related_articles: draft.seo.related_articles || draft.links?.related_articles || [],
         },
       };
 
@@ -270,6 +285,11 @@ export default function AICreateBlogPage() {
                 <option>Friendly</option>
                 <option>Hindi + English (Hinglish)</option>
               </select>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Every draft auto-adds a MyFNG Book Service CTA, internal links to MyFNG pages / related blogs, and UTM
+                params. External reference links are added only when a real source is cited.
+              </p>
 
               <button
                 type="button"
@@ -393,6 +413,30 @@ export default function AICreateBlogPage() {
                       rows={14}
                     />
                   </div>
+                  {draft.links ? (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-blue-800">
+                        Auto links
+                      </div>
+                      <p className="mt-1 text-sm text-slate-700">
+                        CTA {draft.links.has_cta ? 'included' : 'missing'} ·{' '}
+                        {(draft.links.internal || []).length} internal · {(draft.links.external || []).length} external
+                        (UTM on every http link)
+                      </p>
+                      <ul className="mt-2 max-h-36 space-y-1 overflow-auto text-xs text-slate-600">
+                        {(draft.links.internal || []).slice(0, 8).map((l, i) => (
+                          <li key={`in-${i}`} className="truncate">
+                            Internal: {l.anchor} — {l.url}
+                          </li>
+                        ))}
+                        {(draft.links.external || []).slice(0, 4).map((l, i) => (
+                          <li key={`ex-${i}`} className="truncate">
+                            External: {l.anchor} — {l.url}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -418,8 +462,17 @@ export default function AICreateBlogPage() {
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-16">
                     <h1 className="mb-2 text-2xl font-bold text-slate-900">{draft?.title || 'Untitled'}</h1>
                     {draft?.excerpt ? <p className="mb-6 text-slate-700">{draft.excerpt}</p> : null}
+                    <style>{`
+                      .blog-ai-preview .blog-post-cta{margin-top:28px;padding:22px 24px;border-radius:14px;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 100%);border:1px solid #cfe0ff;}
+                      .blog-ai-preview .blog-post-cta h3{margin:0 0 8px;font-size:18px;font-weight:700;color:#0a4ea3;}
+                      .blog-ai-preview .blog-post-cta p{margin:0 0 14px;font-size:14px;color:#475569;line-height:1.6;}
+                      .blog-ai-preview .blog-post-cta-actions{display:flex;flex-wrap:wrap;gap:10px;}
+                      .blog-ai-preview .blog-post-cta .book-btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:8px;background:#0a4ea3;color:#fff;text-decoration:none;font-weight:600;}
+                      .blog-ai-preview .blog-post-cta-phone{display:inline-flex;align-items:center;padding:10px 16px;border-radius:8px;border:1px solid #0a4ea3;color:#0a4ea3;text-decoration:none;font-size:14px;font-weight:600;background:#fff;}
+                      .blog-ai-preview a{color:#0a4ea3;text-decoration:underline;}
+                    `}</style>
                     <div
-                      className="blog-content prose prose-slate max-w-none break-words"
+                      className="blog-ai-preview blog-content prose prose-slate max-w-none break-words"
                       // eslint-disable-next-line react/no-danger
                       dangerouslySetInnerHTML={{ __html: draft?.content_html || '<p>No content</p>' }}
                     />

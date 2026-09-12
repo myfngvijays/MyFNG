@@ -19,6 +19,7 @@ import {
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
 import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent';
+import { buildBlogTrackedPath } from '@/lib/blog/aiLinks';
 import { DEFAULT_APP_STORE_URL, DEFAULT_PLAY_STORE_URL } from '@/lib/mobile-app-version-config';
 
 export const dynamic = 'force-dynamic';
@@ -395,6 +396,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followX = 'https://x.com/myfngcarservice';
   const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || DEFAULT_PLAY_STORE_URL;
   const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL || DEFAULT_APP_STORE_URL;
+  const bookHref = (placement: string) =>
+    buildBlogTrackedPath('/book-service', transformed.slug, placement, String(seo?.keywords || '').split(',')[0]);
+  const relatedSidebar = relatedArticles.length
+    ? relatedArticles.map((a, i) => ({
+        id: `rel-${i}`,
+        slug: a.url,
+        title: a.title || a.url,
+        featured_image: '',
+        href: a.url,
+      }))
+    : (recentPosts || []).map((p: any) => ({
+        ...p,
+        href: `/blogs/${p.slug}`,
+      }));
   const htmlStyleQuote = highlightQuote || 'Ignoring early engine warning signs can lead to expensive repairs later.';
 
   return (
@@ -605,7 +620,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     Book multi-brand car servicing with MyFNG — expert technicians, genuine parts, and convenient pickup &amp; drop.
                   </p>
                   <div className="blog-post-cta-actions">
-                    <a href="/book-service" className="book-btn">
+                    <a href={bookHref('public-footer-cta')} className="book-btn">
                       Book Service Now
                     </a>
                     <a href="tel:+919152307030" className="blog-post-cta-phone">
@@ -679,17 +694,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     <div className="service-slide active">
                       <img src={serviceImagePath('MyFNG_Car_Periodic_Service.png')} alt="Periodic Car Service" />
                       <h4>Periodic Car Service</h4>
-                      <a href="/book-service" className="book-btn">Book Now</a>
+                      <a href={bookHref('sidebar-periodic')} className="book-btn">Book Now</a>
                     </div>
                     <div className="service-slide">
                       <img src={serviceImagePath('MyFNG_Car_AC_Service.png')} alt="Car AC Service" />
                       <h4>Car AC Service</h4>
-                      <a href="/book-service" className="book-btn">Book Now</a>
+                      <a href={bookHref('sidebar-ac')} className="book-btn">Book Now</a>
                     </div>
                     <div className="service-slide">
                       <img src={serviceImagePath('MyFNG_Car_Brake_Service.png')} alt="Brake Service" />
                       <h4>Brake Service</h4>
-                      <a href="/book-service" className="book-btn">Book Now</a>
+                      <a href={bookHref('sidebar-brake')} className="book-btn">Book Now</a>
                     </div>
                   </div>
                 </div>
@@ -706,10 +721,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
                 <div className="side-box">
                   <h3>Related Articles</h3>
-                  {(recentPosts || []).map((p: any) => (
+                  {relatedSidebar.map((p: any) => (
                     <div key={`related-${p.id}`} className="recent-post">
                       <img src={normalizeBlogMediaUrl(String(p.featured_image || '')) || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
-                      <Link href={`/blogs/${p.slug}`}>{p.title}</Link>
+                      {String(p.href || '').startsWith('http') ? (
+                        <a href={p.href}>{p.title}</a>
+                      ) : (
+                        <Link href={p.href || `/blogs/${p.slug}`}>{p.title}</Link>
+                      )}
                     </div>
                   ))}
                 </div>

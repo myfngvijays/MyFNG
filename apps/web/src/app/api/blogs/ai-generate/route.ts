@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import {
+  buildAiLinkPromptPayload,
+  enrichAiGeneratedHtml,
+  fetchRelatedPublishedBlogs,
+  toCampaignSlug,
+} from '@/lib/blog/aiLinks';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -35,6 +41,14 @@ Content rules:
 - If tone is "Hindi + English (Hinglish)", write Hinglish but keep headings in English.
 - Don't invent exact prices; use ranges or "starts from" phrasing.
 - No markdown fences. No extra keys. JSON must be parseable.
+
+Linking rules (mandatory):
+- Every blog MUST include a MyFNG CTA block near the end using class "blog-post-cta" with a Book Service button to /book-service and a tel:+919152307030 call link.
+- Weave 3-6 contextual INTERNAL links naturally in the body (not a dump at the top). Use ONLY urls from internal_pages and related_blogs in the user payload.
+- Add utm_source, utm_medium, utm_campaign, utm_content (and utm_term if a focus keyword exists) on every http(s) or site path link. Use the utm_required_on_every_http_link values.
+- If you mention an official standard, OEM manual, or public guideline, add 1-3 EXTERNAL reference links from allowed_examples or a real official URL. Do not invent URLs. Skip external links if you have no real source.
+- External links must also get the same UTM params, open in a new tab conceptually (target=_blank rel="noopener noreferrer").
+- Never link to competitor booking sites.
 `.trim();
 
 export async function POST(request: NextRequest) {
@@ -71,6 +85,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Topic is required (min 6 chars)' }, { status: 400 });
     }
 
+    const campaignHint = toCampaignSlug(focusKeyword || topic);
+    const relatedBlogs = await fetchRelatedPublishedBlogs(supabase, {
+      topic,
+      city,
+      focusKeyword,
+      limit: 6,
+    }).catch(() => []);
+
     const userPayload = {
       topic,
       focusKeyword: focusKeyword || null,
@@ -78,6 +100,13 @@ export async function POST(request: NextRequest) {
       intent,
       tone,
       wordCount,
+      linking: buildAiLinkPromptPayload({
+        city,
+        topic,
+        focusKeyword,
+        relatedBlogs,
+        campaignHint,
+      }),
     };
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -116,26 +145,41 @@ export async function POST(request: NextRequest) {
 
     const title = String(parsed?.title || '').trim();
     const excerpt = String(parsed?.excerpt || '').trim();
-    const content_html = String(parsed?.content_html || '').trim();
+    const rawHtml = String(parsed?.content_html || '').trim();
     const seo = parsed?.seo || {};
     const read_time = Number(parsed?.read_time || 5) || 5;
 
-    if (!title || !excerpt || !content_html) {
+    if (!title || !excerpt || !rawHtml) {
       return NextResponse.json({ error: 'AI response missing required fields' }, { status: 500 });
     }
 
+    const slug = toSlug(title);
+    const enriched = enrichAiGeneratedHtml({
+      html: rawHtml,
+      slug,
+      city,
+      focusKeyword,
+      relatedBlogs,
+    });
+
     const draft = {
       title,
-      slug: toSlug(title),
+      slug,
       excerpt,
-      content_html,
+      content_html: enriched.html,
       seo: {
         meta_title: String(seo?.meta_title || title).trim().slice(0, 120),
         meta_description: String(seo?.meta_description || excerpt).trim().slice(0, 160),
         keywords: String(seo?.keywords || focusKeyword || '').trim(),
         og_title: String(seo?.og_title || title).trim().slice(0, 120),
         og_description: String(seo?.og_description || excerpt).trim().slice(0, 200),
+        cta_text: 'Book Service Now',
+        cta_url: enriched.links.cta_url.startsWith('http')
+          ? enriched.links.cta_url
+          : `https://myfng.in${enriched.links.cta_url}`,
+        related_articles: enriched.links.related_articles,
       },
+      links: enriched.links,
       read_time: Math.max(1, Math.min(30, Math.round(read_time))),
     };
 
