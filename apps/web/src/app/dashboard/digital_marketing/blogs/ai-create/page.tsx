@@ -111,7 +111,10 @@ export default function AICreateBlogPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Failed to generate');
+      if (!res.ok) {
+        const detail = String(data?.error || data?.details || 'Failed to generate').slice(0, 220);
+        throw new Error(detail);
+      }
       setDraft(data?.draft as AiDraft);
       toast.success('Draft generated');
     } catch (e: any) {

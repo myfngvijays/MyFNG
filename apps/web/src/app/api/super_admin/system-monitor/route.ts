@@ -1470,7 +1470,7 @@ async function checkOpenAI(): Promise<HealthCheck> {
       status: 'down',
       responseTime: 0,
       message: 'API key missing',
-      reason: 'OPENAI_API_KEY is not set. MISA, WhatsApp brain, and Call IQ will not work. Blog AI uses OpenRouter separately.',
+      reason: 'OPENAI_API_KEY is not set in environment. AI features (chatbot, content generation) will not work.',
       quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['OPENAI_API_KEY'] } },
       lastChecked: new Date().toISOString(),
     };
@@ -1516,71 +1516,6 @@ async function checkOpenAI(): Promise<HealthCheck> {
       message: e.message || 'AI service unreachable',
       reason: `Cannot reach OpenAI: ${e.message}. Check https://status.openai.com`,
       quickFix: { label: 'Check OpenAI Status', action: 'external-link', actionPayload: { url: 'https://status.openai.com' } },
-      lastChecked: new Date().toISOString(),
-    };
-  }
-}
-
-async function checkOpenRouterBlogs(): Promise<HealthCheck> {
-  const start = Date.now();
-  const apiKey = String(process.env.OPENROUTER_API_KEY || '').trim();
-  const model = String(process.env.OPENROUTER_BLOG_MODEL || 'google/gemini-2.0-flash-001').trim();
-  if (!apiKey) {
-    return {
-      name: 'OpenRouter / Blog AI',
-      category: 'AI',
-      status: 'down',
-      responseTime: 0,
-      message: 'API key missing',
-      reason: 'OPENROUTER_API_KEY is not set. AI Write / blog FAQs / tags / local SEO will fail. MISA still uses OpenAI.',
-      quickFix: {
-        label: 'Check Environment Variables',
-        action: 'check-env',
-        actionPayload: { vars: ['OPENROUTER_API_KEY', 'OPENROUTER_BLOG_MODEL'] },
-      },
-      lastChecked: new Date().toISOString(),
-    };
-  }
-
-  try {
-    const response = await checkWithTimeout(() =>
-      fetch('https://openrouter.ai/api/v1/models', {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      }),
-    );
-    const responseTime = Date.now() - start;
-    if (!response.ok) {
-      return {
-        name: 'OpenRouter / Blog AI',
-        category: 'AI',
-        status: 'down',
-        responseTime,
-        message: `API returned ${response.status}`,
-        reason:
-          response.status === 401
-            ? 'OpenRouter API key is invalid. Create a new key at openrouter.ai/keys.'
-            : `OpenRouter returned HTTP ${response.status}.`,
-        quickFix: { label: 'OpenRouter Keys', action: 'external-link', actionPayload: { url: 'https://openrouter.ai/keys' } },
-        lastChecked: new Date().toISOString(),
-      };
-    }
-    return {
-      name: 'OpenRouter / Blog AI',
-      category: 'AI',
-      status: responseTime > 5000 ? 'degraded' : 'healthy',
-      responseTime,
-      message: `Blog AI via ${model}`,
-      reason: 'OpenRouter is responding. AI Write, FAQs, tags, and local SEO use this key.',
-      lastChecked: new Date().toISOString(),
-    };
-  } catch (e: any) {
-    return {
-      name: 'OpenRouter / Blog AI',
-      category: 'AI',
-      status: 'down',
-      responseTime: Date.now() - start,
-      message: e?.message || 'OpenRouter unreachable',
-      reason: `Cannot reach OpenRouter: ${e?.message}`,
       lastChecked: new Date().toISOString(),
     };
   }
@@ -3540,7 +3475,6 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkTelecallerLeadsShiftSummary(),
     checkRsaLeads(),
     checkOpenAI(),
-    checkOpenRouterBlogs(),
     checkMisaAiMonitoring(),
     checkWhatsAppAgents(),
     checkWhatsAppWorkflows(),
@@ -3605,7 +3539,6 @@ export async function GET() {
       CRON_SECRET: !!(process.env.CRON_SECRET || process.env.CRON_SECRET_TOKEN),
       OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
       OPENAI_ADMIN_API_KEY: !!(process.env.OPENAI_ADMIN_API_KEY || process.env.OPENAI_ADMIN_KEY),
-      OPENROUTER_API_KEY: !!process.env.OPENROUTER_API_KEY,
       GOOGLE_MAPS_API_KEY: !!(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),
       SYSTEM_ALERT_WHATSAPP_NUMBERS:
         ADMIN_WHATSAPP_NUMBERS.length > 0 || alertNumbers.length > 0,

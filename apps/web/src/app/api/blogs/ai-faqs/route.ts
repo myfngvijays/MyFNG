@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { blogOpenRouterChat, parseModelJson } from '@/lib/blog/openRouterChat';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -62,6 +61,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const apiKey = process.env.OPENAI_API_KEY;
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    if (!apiKey) return NextResponse.json({ error: 'OPENAI_API_KEY not set' }, { status: 500 });
+
     const body = await request.json().catch(() => ({}));
     const title = String(body?.title || '').trim();
     const content = String(body?.content || '').trim();
@@ -72,18 +75,37 @@ export async function POST(request: NextRequest) {
 
     const payload = { title, focusKeywords: focusKeywords || null, content };
 
-    const ai = await blogOpenRouterChat({
-      system: SYSTEM_PROMPT,
-      user: JSON.stringify(payload),
-      temperature: 0.3,
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: JSON.stringify(payload) },
+        ],
+      }),
     });
-    if (!ai.ok) {
-      return NextResponse.json({ error: ai.error, details: ai.details }, { status: 500 });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      return NextResponse.json({ error: 'OpenAI request failed', details: errText }, { status: 500 });
+    }
+
+    const json = (await res.json()) as any;
+    const contentText = json?.choices?.[0]?.message?.content;
+    if (!contentText || typeof contentText !== 'string') {
+      return NextResponse.json({ error: 'OpenAI returned empty response' }, { status: 500 });
     }
 
     let parsed: any = null;
     try {
-      parsed = parseModelJson(ai.content);
+      parsed = JSON.parse(contentText);
     } catch {
       return NextResponse.json({ error: 'AI response was not valid JSON' }, { status: 500 });
     }
