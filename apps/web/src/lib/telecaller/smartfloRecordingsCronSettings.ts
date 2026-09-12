@@ -24,6 +24,8 @@ export type SmartfloRecordingsCronSettings = {
   last_run_summary: string | null;
   last_skipped_at: string | null;
   last_skip_reason: string | null;
+  /** Set on every authenticated Vercel/admin tick, including skips. */
+  last_tick_at: string | null;
 };
 
 const DEFAULTS: SmartfloRecordingsCronSettings = {
@@ -35,6 +37,7 @@ const DEFAULTS: SmartfloRecordingsCronSettings = {
   last_run_summary: null,
   last_skipped_at: null,
   last_skip_reason: null,
+  last_tick_at: null,
 };
 
 function clampInterval(raw: unknown): SmartfloRecordingsCronInterval {
@@ -64,6 +67,10 @@ export function catchUpSmartfloRecordingsHoursBack(
 ): number {
   const configured = clampHoursBack(settings.hours_back);
   const last = settings.last_run_at ? Date.parse(settings.last_run_at) : NaN;
+  // Heartbeat stamps last_run_ok=false + in_progress — do not treat that as a failed sync.
+  if (settings.last_run_summary === 'in_progress') {
+    return configured;
+  }
   if (!Number.isFinite(last) || settings.last_run_ok === false) {
     return Math.max(configured, 240);
   }
@@ -87,6 +94,7 @@ function parseSettings(raw: unknown): SmartfloRecordingsCronSettings {
       last_run_summary: v.last_run_summary ? String(v.last_run_summary) : null,
       last_skipped_at: v.last_skipped_at ? String(v.last_skipped_at) : null,
       last_skip_reason: v.last_skip_reason ? String(v.last_skip_reason) : null,
+      last_tick_at: v.last_tick_at ? String(v.last_tick_at) : null,
     };
   } catch {
     return { ...DEFAULTS };
@@ -151,6 +159,14 @@ export async function updateSmartfloRecordingsCronSettings(
       patch.hours_back !== undefined ? clampHoursBack(patch.hours_back) : current.hours_back,
   };
   return writeSettings(next, updatedBy);
+}
+
+export async function markSmartfloRecordingsCronTick(): Promise<void> {
+  const current = await getSmartfloRecordingsCronSettings();
+  await writeSettings({
+    ...current,
+    last_tick_at: new Date().toISOString(),
+  });
 }
 
 export async function markSmartfloRecordingsCronHeartbeat(): Promise<void> {

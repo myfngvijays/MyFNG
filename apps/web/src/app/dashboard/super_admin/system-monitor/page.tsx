@@ -662,7 +662,11 @@ function SystemMonitorHealth() {
             <Key className="w-5 h-5 text-gray-700" />
             <h2 className="text-lg font-semibold text-gray-900">Environment Variables Status</h2>
           </div>
-          <p className="text-sm text-gray-500 mb-4">These environment variables are required for services to work. Missing variables will cause services to show as &quot;Down&quot;.</p>
+          <p className="text-sm text-gray-500 mb-4">
+            Required runtime keys. Click-to-Call, Smartflo token, Meta Ads, and MCP also count as
+            Set when saved in Super Admin (not only <code className="bg-gray-100 px-1 rounded">.env.local</code>).
+            Webhook secret and SMTP are optional — WhatsApp is the primary channel.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {data.envStatus && Object.entries(data.envStatus).map(([key, configured]) => (
               <div key={key} className={`flex items-center gap-3 p-3 rounded-lg border ${configured ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
@@ -677,7 +681,9 @@ function SystemMonitorHealth() {
           {data.envStatus && Object.values(data.envStatus).some(v => !v) && (
             <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <p className="text-sm text-amber-800">
-                <strong>How to fix:</strong> Add missing variables to your <code className="bg-amber-100 px-1 py-0.5 rounded">.env.local</code> file in the project root, then restart the server.
+                <strong>How to fix:</strong> Server env (Vercel / <code className="bg-amber-100 px-1 py-0.5 rounded">.env.local</code>)
+                or the matching admin page — Click to Call, Meta Ads MCP, WhatsApp Cron alert numbers. Restart local
+                server after changing <code className="bg-amber-100 px-1 py-0.5 rounded">.env.local</code>.
               </p>
             </div>
           )}

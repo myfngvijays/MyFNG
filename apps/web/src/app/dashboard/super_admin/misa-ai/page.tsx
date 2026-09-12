@@ -598,6 +598,10 @@ export default function MisaAiAdminDashboardPage() {
 
                     <div>
                       <p className="text-xs font-medium text-gray-700">Alert milestones (USD)</p>
+                      <p className="mt-0.5 text-[11px] text-gray-500">
+                        Green = waiting. Amber = due now. Strike = already sent. Auto-send only when
+                        remaining is at or below that dollar amount.
+                      </p>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         {(balanceData?.settings.alert_milestones_usd || [5, 4, 3, 2, 1]).map((milestone) => {
                           const sent = balanceData?.settings.alert_milestones_sent?.includes(milestone);
@@ -665,7 +669,7 @@ export default function MisaAiAdminDashboardPage() {
                     onChange={(e) => setAlertEnabledInput(e.target.checked)}
                     className="rounded border-gray-300"
                   />
-                  Enable WhatsApp low-balance alerts (daily cron + manual test)
+                  Enable WhatsApp low-balance alerts ($5 → $4 → $3 → $2 → $1, every 6h)
                 </label>
 
                 <div className="flex flex-wrap gap-2">

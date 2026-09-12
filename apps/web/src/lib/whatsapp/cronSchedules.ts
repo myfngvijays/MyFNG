@@ -130,6 +130,20 @@ export const WHATSAPP_CRON_JOBS: WhatsAppCronJobDef[] = [
     category: 'automation',
   },
   {
+    id: 'openai-balance-alert',
+    jobName: 'wa-openai-balance-alert',
+    title: 'OpenAI credit · $5–$1 alerts',
+    description:
+      'WhatsApp to alert numbers when estimated prepaid credit crosses $5, $4, $3, $2, then $1.',
+    scheduleUtc: '0 */6 * * *',
+    scheduleIst: 'Every 6 hours',
+    endpointPath: '/api/cron/openai-balance-alert',
+    force: true,
+    triggerKeys: [],
+    cadence: 'daily',
+    category: 'system_health',
+  },
+  {
     id: 'telecaller-leads-shift-summary',
     jobName: 'wa-telecaller-leads-shift-summary',
     title: 'Telecaller leads · Shift summary',

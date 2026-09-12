@@ -18,6 +18,7 @@ import { getOpenAiCreditBalanceStatus } from '@/lib/chatbot_v2/openAiCreditBalan
 import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
 import { getMcpHttpToken, MCP_PUBLIC_ORIGIN } from '@/lib/mcp/httpAuth';
 import { getMetaAdsSettings } from '@/lib/meta-ads/settings';
+import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlertWhatsAppNumbers';
 import { graphGet } from '@/lib/meta-ads/graph';
 import { loadTelecallerLeadsShiftLastRun } from '@/lib/services/telecallerLeadsShiftSummary';
 import { getTelecallerLeadsShiftTemplateStatus } from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
@@ -1397,6 +1398,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/smartflo-recordings',
     '/api/cron/auto-dial-fresh-hours',
     '/api/cron/crm-ml-dl',
+    '/api/cron/openai-balance-alert',
   ];
 
   if (!cronSecret) {
@@ -1433,26 +1435,27 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
 
 async function checkEmailService(): Promise<HealthCheck> {
   const start = Date.now();
+  const sendgrid = Boolean(String(process.env.SENDGRID_API_KEY || '').trim());
   const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_HOST;
-  if (!smtpHost) {
+  if (sendgrid || smtpHost) {
     return {
       name: 'Email (SMTP)',
       category: 'Notifications',
-      status: 'down',
-      responseTime: 0,
-      message: 'SMTP not configured',
-      reason: 'SMTP_HOST or EMAIL_HOST not found in environment. Emails cannot be sent.',
-      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'] } },
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: sendgrid ? 'SendGrid key present' : `SMTP host: ${smtpHost}`,
+      reason: 'Optional email path is configured. Customer comms still go via WhatsApp.',
       lastChecked: new Date().toISOString(),
     };
   }
   return {
     name: 'Email (SMTP)',
     category: 'Notifications',
-    status: 'healthy',
+    status: 'degraded',
     responseTime: Date.now() - start,
-    message: `SMTP host: ${smtpHost}`,
-    reason: `Email configured with SMTP host "${smtpHost}". Service should be functional.`,
+    message: 'Email optional — WhatsApp is primary',
+    reason:
+      'No SendGrid/SMTP env. Invoice/receipt email is stubbed. Not required for calls, recordings, or WhatsApp.',
     lastChecked: new Date().toISOString(),
   };
 }
@@ -2018,6 +2021,7 @@ async function checkSmartfloRecordings(): Promise<HealthCheck> {
     let lastRunAt: string | null = null;
     let lastRunOk: boolean | null = null;
     let lastRunSummary: string | null = null;
+    let lastTickAt: string | null = null;
     try {
       const { getSmartfloRecordingsCronSettings } = await import(
         '@/lib/telecaller/smartfloRecordingsCronSettings'
@@ -2028,14 +2032,19 @@ async function checkSmartfloRecordings(): Promise<HealthCheck> {
       lastRunAt = cron.last_run_at;
       lastRunOk = cron.last_run_ok;
       lastRunSummary = cron.last_run_summary;
+      lastTickAt = cron.last_tick_at;
     } catch {
       /* ignore */
     }
 
     const lastRunMs = lastRunAt ? Date.parse(lastRunAt) : NaN;
+    const lastTickMs = lastTickAt ? Date.parse(lastTickAt) : NaN;
+    const lastActivityMs = Math.max(
+      Number.isFinite(lastRunMs) ? lastRunMs : 0,
+      Number.isFinite(lastTickMs) ? lastTickMs : 0,
+    );
     const staleMs = Math.max(cronInterval * 2, 30) * 60 * 1000;
-    const cronOverdue =
-      cronEnabled && (!Number.isFinite(lastRunMs) || Date.now() - lastRunMs > staleMs);
+    const cronOverdue = cronEnabled && (!lastActivityMs || Date.now() - lastActivityMs > staleMs);
 
     let status: HealthCheck['status'] = 'healthy';
     let message = `CDR sync ready · every ${cronInterval}m`;
@@ -2080,6 +2089,7 @@ async function checkSmartfloRecordings(): Promise<HealthCheck> {
         last_run_at: lastRunAt,
         last_run_ok: lastRunOk,
         last_run_summary: lastRunSummary,
+        last_tick_at: lastTickAt,
         cron: '/api/cron/smartflo-recordings',
         webhook: '/api/webhooks/smartflo',
         SMARTFLO_WEBHOOK_SECRET: Boolean(process.env.SMARTFLO_WEBHOOK_SECRET),
@@ -3510,7 +3520,14 @@ export async function GET() {
       return { category: cat, status, total: catChecks.length, healthy: catChecks.filter(c => c.status === 'healthy').length };
     });
 
-    // Check environment variable status for quick-fix panel
+    const [clickCfg, metaAds, mcpToken, alertNumbers] = await Promise.all([
+      getClickToCallConfig(),
+      getMetaAdsSettings(),
+      getMcpHttpToken(),
+      getEnabledSystemAlertWhatsAppNumbers().catch(() => [] as string[]),
+    ]);
+
+    // Env OR admin/DB settings — Click-to-Call / Meta Ads / MCP live in system_settings.
     const envStatus = {
       NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
       SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -3523,17 +3540,24 @@ export async function GET() {
       OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
       OPENAI_ADMIN_API_KEY: !!(process.env.OPENAI_ADMIN_API_KEY || process.env.OPENAI_ADMIN_KEY),
       GOOGLE_MAPS_API_KEY: !!(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),
-      SMTP_HOST: !!(process.env.SMTP_HOST || process.env.EMAIL_HOST),
-      SYSTEM_ALERT_WHATSAPP_NUMBERS: ADMIN_WHATSAPP_NUMBERS.length > 0,
+      SYSTEM_ALERT_WHATSAPP_NUMBERS:
+        ADMIN_WHATSAPP_NUMBERS.length > 0 || alertNumbers.length > 0,
       ANDROID_APP_LINK_SHA256: !!String(process.env.ANDROID_APP_LINK_SHA256 || '').trim(),
-      CLICK_TO_CALL_GATEWAY_URL: !!String(process.env.CLICK_TO_CALL_GATEWAY_URL || '').trim(),
-      CLICK_TO_CALL_DID: !!String(process.env.CLICK_TO_CALL_DID || '').trim(),
-      SMARTFLO_API_TOKEN: !!String(process.env.SMARTFLO_API_TOKEN || '').trim(),
-      SMARTFLO_WEBHOOK_SECRET: !!String(process.env.SMARTFLO_WEBHOOK_SECRET || '').trim(),
+      CLICK_TO_CALL_GATEWAY_URL: Boolean(
+        String(process.env.CLICK_TO_CALL_GATEWAY_URL || clickCfg.gateway_url || '').trim(),
+      ),
+      CLICK_TO_CALL_DID: Boolean(String(process.env.CLICK_TO_CALL_DID || clickCfg.did || '').trim()),
+      SMARTFLO_API_TOKEN: Boolean(
+        String(process.env.SMARTFLO_API_TOKEN || clickCfg.smartflo_api_token || '').trim(),
+      ),
       DLT_SMS_ADMIN: true,
-      MYFNG_MCP_TOKEN: !!(process.env.MYFNG_MCP_TOKEN || '').trim(),
-      META_ADS_ACCESS_TOKEN: !!(process.env.META_ADS_ACCESS_TOKEN || '').trim(),
-      META_ADS_ACCOUNT_ID: !!(process.env.META_ADS_ACCOUNT_ID || '').trim(),
+      MYFNG_MCP_TOKEN: Boolean(String(process.env.MYFNG_MCP_TOKEN || mcpToken || '').trim()),
+      META_ADS_ACCESS_TOKEN: Boolean(
+        String(process.env.META_ADS_ACCESS_TOKEN || metaAds.accessToken || '').trim(),
+      ),
+      META_ADS_ACCOUNT_ID: Boolean(
+        String(process.env.META_ADS_ACCOUNT_ID || metaAds.accountId || '').trim(),
+      ),
     };
 
     const healthAlertTemplate = await getHealthAlertTemplateStatus();

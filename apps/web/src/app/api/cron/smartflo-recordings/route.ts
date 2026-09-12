@@ -7,6 +7,7 @@ import {
   markSmartfloRecordingsCronHeartbeat,
   markSmartfloRecordingsCronRun,
   markSmartfloRecordingsCronSkipped,
+  markSmartfloRecordingsCronTick,
   shouldRunSmartfloRecordingsCron,
 } from '@/lib/telecaller/smartfloRecordingsCronSettings';
 
@@ -32,6 +33,7 @@ async function handle(req: NextRequest) {
     searchParams.get('run') === 'now';
 
   const settings = await getSmartfloRecordingsCronSettings();
+  await markSmartfloRecordingsCronTick();
   const gate = shouldRunSmartfloRecordingsCron(settings, { force });
   if (!gate.run) {
     await markSmartfloRecordingsCronSkipped(gate.reason);
@@ -54,7 +56,9 @@ async function handle(req: NextRequest) {
       ? hoursParam
       : catchUpSmartfloRecordingsHoursBack(settings);
   const catchUp = hoursBack > settings.hours_back;
-  const fromAug24 = force || catchUp;
+  // force=1 only bypasses the interval gate. Full cutoff backfill is catch-up only
+  // (otherwise every admin/Vercel force run 504s on a 10-day history pull).
+  const fromAug24 = catchUp;
 
   // Stamp last_run immediately so overlapping 5-min ticks skip instead of stacking.
   await markSmartfloRecordingsCronHeartbeat();

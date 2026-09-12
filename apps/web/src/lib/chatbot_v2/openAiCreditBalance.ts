@@ -340,7 +340,7 @@ function buildBalanceTemplateParams(
   const remaining = status.estimated_remaining_usd ?? milestoneUsd;
   const statusLabel = test ? 'TEST ALERT' : `OPENAI BALANCE ≤ $${milestoneUsd}`;
   const details = test
-    ? 'This is a test alert from MISA AI dashboard. Milestone alerts are configured at $5, $4, $3, $2 and $1.'
+    ? 'TEST: WhatsApp alerts fire once each at $5, $4, $3, $2 and $1 when remaining credit crosses that level. Current balance is still above $5 so this is a sample only.'
     : truncate(
         `Balance crossed the $${milestoneUsd} milestone.\n` +
           `Current estimate: $${remaining.toFixed(2)}.\n` +
@@ -364,14 +364,12 @@ async function sendBalanceAlertToNumber(
 ): Promise<{ success: boolean; error?: string; messageId?: string; deliveryMode: 'template' | 'text' }> {
   const templateStatus = await getOpenAiBalanceAlertTemplateStatus();
   const textMessage = options?.test
-    ? `*TEST - MyFNG OpenAI Balance Alert*\n\n${buildAlertMessage(
-        {
-          ...status,
-          estimated_remaining_usd: status.estimated_remaining_usd ?? milestoneUsd,
-          is_low: true,
-        },
-        milestoneUsd,
-      )}`
+    ? `*TEST - MyFNG OpenAI Balance Alert*\n\n` +
+      `Milestones: *$5 → $4 → $3 → $2 → $1*\n` +
+      `Now remaining: *$${(status.estimated_remaining_usd ?? milestoneUsd).toFixed(2)}*\n` +
+      `Auto WhatsApp fires only when remaining crosses each level (once per top-up).\n\n` +
+      `This is a sample. After deploy, cron checks every 6 hours.\n` +
+      `_${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}_`
     : buildAlertMessage(status, milestoneUsd);
 
   const useTemplate = options?.preferTemplate !== false && templateStatus.canSendTemplate;
@@ -380,12 +378,13 @@ async function sendBalanceAlertToNumber(
       phoneNumber,
       buildBalanceTemplateParams(status, milestoneUsd, options?.test),
     );
-    return {
-      success: result.success,
-      error: result.error,
-      messageId: result.messageId,
-      deliveryMode: 'template',
-    };
+    if (result.success) {
+      return {
+        success: true,
+        messageId: result.messageId,
+        deliveryMode: 'template',
+      };
+    }
   }
 
   const result = await sendTextMessage(phoneNumber, textMessage);

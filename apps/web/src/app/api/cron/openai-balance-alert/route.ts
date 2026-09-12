@@ -1,29 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { assertCronAuth } from '@/lib/cron/assertCronAuth';
+import { isWhatsAppCronJobEnabled } from '@/lib/services/whatsappCronJobFlags';
 import { runOpenAiCreditBalanceAlert } from '@/lib/chatbot_v2/openAiCreditBalance';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-function assertCronAuth(req: NextRequest): string | null {
-  const secret = process.env.CRON_SECRET || process.env.NOTIFICATION_CRON_SECRET;
-  if (!secret) return 'CRON secret is not configured on server';
+const JOB_ID = 'openai-balance-alert';
 
-  const auth = req.headers.get('authorization') || '';
-  const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
-  if (!token || token !== secret) return 'Unauthorized';
-  return null;
-}
-
-export async function GET(request: NextRequest) {
-  const authError = assertCronAuth(request);
+async function handle(request: NextRequest) {
+  const authError = await assertCronAuth(request);
   if (authError) {
     return NextResponse.json({ error: authError }, { status: 401 });
   }
 
-  try {
-    const result = await runOpenAiCreditBalanceAlert();
+  if (!(await isWhatsAppCronJobEnabled(JOB_ID))) {
     return NextResponse.json({
       success: true,
+      skipped: true,
+      reason: 'job_disabled_in_admin',
+      jobId: JOB_ID,
+    });
+  }
+
+  const test =
+    request.nextUrl.searchParams.get('test') === '1' ||
+    request.nextUrl.searchParams.get('test') === 'true';
+
+  try {
+    const result = await runOpenAiCreditBalanceAlert({ test });
+    return NextResponse.json({
+      success: !result.skipped || Boolean(result.reason?.startsWith('Balance')),
+      jobId: JOB_ID,
       timestamp: new Date().toISOString(),
       ...result,
     });
@@ -33,4 +41,12 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handle(request);
 }

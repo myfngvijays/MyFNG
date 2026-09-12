@@ -124,6 +124,31 @@ async function fetchAssignedCountsToday(telecallerIds: string[]) {
   return counts;
 }
 
+/** Login IDs that can still receive new leads (`users_login.is_active !== false`). */
+async function fetchLoginActiveIds(ids: string[]): Promise<Set<string>> {
+  const unique = Array.from(new Set(ids.map((id) => String(id || '').trim()).filter(Boolean)));
+  if (unique.length === 0) return new Set();
+
+  const { supabaseAdmin, error } = getSupabaseAdmin();
+  if (!supabaseAdmin) throw new Error(error || 'Supabase admin not configured');
+
+  const { data, error: qErr } = await supabaseAdmin
+    .from('users_login')
+    .select('id, is_active')
+    .in('id', unique);
+
+  if (qErr && /is_active/i.test(String(qErr.message || ''))) {
+    return new Set(unique);
+  }
+  if (qErr) throw new Error(qErr.message);
+
+  const active = new Set<string>();
+  for (const row of (data as any[]) || []) {
+    if (row?.is_active !== false) active.add(String(row.id));
+  }
+  return active;
+}
+
 async function readAllocatorState(): Promise<AllocatorState> {
   const { supabaseAdmin, error } = getSupabaseAdmin();
   if (!supabaseAdmin) throw new Error(error || 'Supabase admin not configured');
@@ -270,10 +295,16 @@ export async function pickTelecallerWeightedRoundRobin(
     return { telecallerId: null, reason: 'no_telecaller_on_duty', channel: channel || null };
   }
 
-  const telecallerIds = pool.map((r) => String(r.telecaller_id));
+  const loginActive = await fetchLoginActiveIds(pool.map((r) => String(r.telecaller_id)));
+  const loginFiltered = pool.filter((r) => loginActive.has(String(r.telecaller_id)));
+  if (loginFiltered.length === 0) {
+    return { telecallerId: null, reason: 'no_active_telecaller_login', channel: channel || null };
+  }
+
+  const telecallerIds = loginFiltered.map((r) => String(r.telecaller_id));
   const counts = await fetchAssignedCountsToday(telecallerIds);
 
-  const eligible = pool.filter((r) => {
+  const eligible = loginFiltered.filter((r) => {
     const limit = r.daily_limit == null ? null : Number(r.daily_limit);
     if (!limit || limit <= 0) return true;
     const assigned = counts.get(String(r.telecaller_id)) || 0;
@@ -341,6 +372,18 @@ export async function pickTelecallerForLead(opts?: {
       } catch {
         /* keep trigger owner */
       }
+
+      const loginActive = await fetchLoginActiveIds(
+        [telecallerId, matched.telecaller_id].filter(Boolean),
+      );
+      if (!loginActive.has(String(telecallerId || ''))) {
+        // Deactivated login: do not park Meta/WA campaign leads on a dead ID.
+        return pickTelecallerWeightedRoundRobin(
+          matched.mark_as_meta ? 'WHATSAPP_META' : channel,
+          pincode,
+        );
+      }
+
       return {
         telecallerId,
         reason: null,
