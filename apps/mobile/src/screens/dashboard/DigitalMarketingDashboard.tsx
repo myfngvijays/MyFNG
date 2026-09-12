@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
+import { apiFetch } from '../../lib/api';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -23,14 +24,10 @@ export default function DigitalMarketingDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
-    totalLeads: 0,
-    leadsToday: 0,
-    conversionRate: 0,
-    activeCampaigns: 0,
-    totalImpressions: 0,
-    totalClicks: 0,
-    clickThroughRate: 0,
-    totalSpent: 0
+    total: 0,
+    published: 0,
+    draft: 0,
+    categories: 0,
   });
 
   useEffect(() => {
@@ -52,55 +49,18 @@ export default function DigitalMarketingDashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-
-      // Total leads
-      const { count: totalLeadsCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true });
-
-      // Leads today
-      const { count: leadsTodayCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', `${today}T00:00:00`);
-
-      // Booked leads
-      const { count: bookedLeads } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED']);
-
-      const conversionRate = totalLeadsCount && totalLeadsCount > 0 
-        ? ((bookedLeads || 0) / totalLeadsCount * 100).toFixed(1)
-        : 0;
-
-      const { data: campaignRows } = await supabase
-        .from('marketing_campaigns')
-        .select('id, name, status, impressions, clicks, spent')
-        .order('created_at', { ascending: false });
-
-      const campaigns = campaignRows ?? [];
-      const totalImpressions = campaigns.reduce((sum, c: any) => sum + Number(c.impressions ?? 0), 0);
-      const totalClicks = campaigns.reduce((sum, c: any) => sum + Number(c.clicks ?? 0), 0);
-
+      const data = await apiFetch<any>('/api/blogs/dashboard-stats');
+      const summary = data?.summary || {};
+      const inventory = data?.inventory || {};
       setStats({
-        totalLeads: totalLeadsCount || 0,
-        leadsToday: leadsTodayCount || 0,
-        conversionRate: parseFloat(conversionRate as string),
-        activeCampaigns: campaigns.filter((c: any) => (c.status ?? '').toString().toUpperCase() === 'ACTIVE').length,
-        totalImpressions,
-        totalClicks,
-        clickThroughRate: totalImpressions > 0
-          ? parseFloat(((totalClicks / totalImpressions) * 100).toFixed(2))
-          : 0,
-        totalSpent: campaigns.reduce((sum, c: any) => sum + Number(c.spent ?? 0), 0),
+        total: Number(summary.total || 0),
+        published: Number(summary.published || 0),
+        draft: Number(summary.draft || 0),
+        categories: Number(inventory.categories || 0),
       });
-
-      setLoading(false);
     } catch (error) {
       if (__DEV__) console.error('Error fetching dashboard data:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -121,9 +81,8 @@ export default function DigitalMarketingDashboard() {
 
   const tabs = [
     { id: 'dashboard', label: 'Home', icon: 'home' },
-    { id: 'DMCampaigns', label: 'Campaigns', icon: 'bell' },
-    { id: 'DMAnalytics', label: 'Analytics', icon: 'chart-line' },
-    { id: 'DMContent', label: 'Content', icon: 'document' },
+    { id: 'DMContent', label: 'Blogs', icon: 'document' },
+    { id: 'DMCategories', label: 'Categories', icon: 'tag' },
     { id: 'DMProfile', label: 'Profile', icon: 'account' },
   ];
 
@@ -134,48 +93,18 @@ export default function DigitalMarketingDashboard() {
     >
       <DashboardHeader 
         title="📱 Digital Marketing"
-        subtitle="Manage campaigns & track analytics"
+        subtitle="Blogs, categories & profile"
         userProfile={userProfile}
       />
 
-      {/* Stats Grid */}
       <View style={styles.statsGrid}>
         <View style={styles.statRow}>
-          <StatCard
-            title="Total Leads"
-            value={stats.totalLeads.toLocaleString()}
-            subtitle={`${stats.leadsToday} today`}
-            color={COLORS.primary}
-          />
-          <StatCard
-            title="Conversion"
-            value={`${stats.conversionRate}%`}
-            color={COLORS.success}
-          />
+          <StatCard title="Blogs" value={stats.total.toLocaleString()} color={COLORS.primary} />
+          <StatCard title="Published" value={stats.published.toLocaleString()} color={COLORS.success} />
         </View>
         <View style={styles.statRow}>
-          <StatCard
-            title="Active Campaigns"
-            value={stats.activeCampaigns.toString()}
-            color={COLORS.warning}
-          />
-          <StatCard
-            title="CTR"
-            value={`${stats.clickThroughRate}%`}
-            color={COLORS.info}
-          />
-        </View>
-        <View style={styles.statRow}>
-          <StatCard
-            title="Impressions"
-            value={stats.totalImpressions.toLocaleString()}
-            color={COLORS.secondary}
-          />
-          <StatCard
-            title="Clicks"
-            value={stats.totalClicks.toLocaleString()}
-            color={COLORS.primary}
-          />
+          <StatCard title="Drafts" value={stats.draft.toLocaleString()} color={COLORS.warning} />
+          <StatCard title="Categories" value={stats.categories.toLocaleString()} color={COLORS.info} />
         </View>
       </View>
 
@@ -183,65 +112,30 @@ export default function DigitalMarketingDashboard() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => handleNavigation('DMCampaigns')}
-          >
-            <Text style={styles.actionEmoji}>📢</Text>
-            <Text style={styles.actionText}>Campaigns</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => handleNavigation('DMAnalytics')}
-          >
-            <Text style={styles.actionEmoji}>📊</Text>
-            <Text style={styles.actionText}>Analytics</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={() => handleNavigation('DMContent')}
           >
             <Text style={styles.actionEmoji}>📝</Text>
-            <Text style={styles.actionText}>Content</Text>
+            <Text style={styles.actionText}>Blogs</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => handleNavigation('DMLeads')}
+            onPress={() => handleNavigation('DMCategories')}
           >
-            <Text style={styles.actionEmoji}>👥</Text>
-            <Text style={styles.actionText}>Leads</Text>
+            <Text style={styles.actionEmoji}>🏷️</Text>
+            <Text style={styles.actionText}>Categories</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleNavigation('DMProfile')}
+          >
+            <Text style={styles.actionEmoji}>👤</Text>
+            <Text style={styles.actionText}>Profile</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Campaign Summary */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Campaign Performance</Text>
-        <View style={styles.card}>
-          <View style={styles.campaignItem}>
-            <View style={styles.campaignHeader}>
-              <Text style={styles.campaignName}>Summer Service Campaign</Text>
-              <View style={[styles.statusBadge, { backgroundColor: COLORS.success + '20' }]}>
-                <Text style={[styles.statusText, { color: COLORS.success }]}>ACTIVE</Text>
-              </View>
-            </View>
-            <View style={styles.campaignStats}>
-              <View style={styles.campaignStat}>
-                <Text style={styles.campaignStatLabel}>Impressions</Text>
-                <Text style={styles.campaignStatValue}>12.5K</Text>
-              </View>
-              <View style={styles.campaignStat}>
-                <Text style={styles.campaignStatLabel}>Clicks</Text>
-                <Text style={styles.campaignStatValue}>320</Text>
-              </View>
-              <View style={styles.campaignStat}>
-                <Text style={styles.campaignStatLabel}>CTR</Text>
-                <Text style={styles.campaignStatValue}>2.56%</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      </View>
     </ScrollView>
   );
 
@@ -367,56 +261,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textPrimary,
     fontWeight: '600',
-  },
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: SPACING.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  campaignItem: {
-    marginBottom: SPACING.md,
-  },
-  campaignHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  campaignName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  campaignStats: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  campaignStat: {
-    flex: 1,
-  },
-  campaignStatLabel: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  campaignStatValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
   },
 });

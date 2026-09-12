@@ -244,27 +244,23 @@ export default function HomeScreen() {
     <>
       <View style={styles.quickAction}>
         <Text style={styles.quickActionTitle}>📱 Digital Marketing</Text>
-        <Text style={styles.quickActionText}>Manage campaigns & track analytics</Text>
+        <Text style={styles.quickActionText}>Blogs, categories & profile</Text>
       </View>
 
       <View style={styles.statsGrid}>
         <View style={styles.statRow}>
-          <StatCard title="Total Leads" value="0" color={COLORS.primary} />
-          <StatCard title="Campaigns" value="0" color={COLORS.warning} />
-        </View>
-        <View style={styles.statRow}>
-          <StatCard title="Impressions" value="0" color={COLORS.info} />
-          <StatCard title="Clicks" value="0" color={COLORS.success} />
+          <StatCard title="Blogs" value="—" color={COLORS.primary} />
+          <StatCard title="Categories" value="—" color={COLORS.info} />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <TouchableOpacity style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Create Campaign</Text>
+          <Text style={styles.primaryButtonText}>Open Blogs</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>View Analytics</Text>
+          <Text style={styles.primaryButtonText}>Blog Categories</Text>
         </TouchableOpacity>
       </View>
     </>

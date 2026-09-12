@@ -424,6 +424,22 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     title: 'ReadMe',
     body: 'Har menu kya karta hai — short guide. Page title ke paas i se bhi wahi help khulti hai.',
   },
+  '/dashboard/digital_marketing': {
+    title: 'Dashboard',
+    body: 'Blog overview — published, drafts, SEO health, aur recent posts.',
+  },
+  '/dashboard/digital_marketing/blogs': {
+    title: 'Blogs',
+    body: 'Saare blog posts yahan se create, edit, review, aur publish karo.',
+  },
+  '/dashboard/digital_marketing/blogs/categories': {
+    title: 'Blog Categories',
+    body: 'Public blog categories add/edit/hide. Cards ek line mein 4 dikhte hain.',
+  },
+  '/dashboard/digital_marketing/profile': {
+    title: 'Profile',
+    body: 'Apna naam, phone, department, role, aur login history. Email change nahi hota.',
+  },
 };
 
 const BY_ACTION: Record<string, MenuHelpEntry> = {

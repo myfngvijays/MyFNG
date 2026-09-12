@@ -1811,10 +1811,8 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
 
   // Digital Marketing Navigation
   if (roleCode === 'DIGITAL_MARKETING') {
-    const DMCampaignsScreen = require('../screens/dashboard/digital_marketing/DMCampaignsScreen').default;
-    const DMAnalyticsScreen = require('../screens/dashboard/digital_marketing/DMAnalyticsScreen').default;
     const DMContentScreen = require('../screens/dashboard/digital_marketing/DMContentScreen').default;
-    const DMLeadsScreen = require('../screens/dashboard/digital_marketing/DMLeadsScreen').default;
+    const DMCategoriesScreen = require('../screens/dashboard/digital_marketing/DMCategoriesScreen').default;
     const DMProfileScreen = require('../screens/dashboard/digital_marketing/DMProfileScreen').default;
     
     return (
@@ -1825,24 +1823,14 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           options={{ title: 'Digital Marketing Dashboard' }}
         />
         <Stack.Screen 
-          name="DMCampaigns" 
-          component={DMCampaignsScreen}
-          options={{ title: 'Campaigns' }}
-        />
-        <Stack.Screen 
-          name="DMAnalytics" 
-          component={DMAnalyticsScreen}
-          options={{ title: 'Analytics' }}
-        />
-        <Stack.Screen 
           name="DMContent" 
           component={DMContentScreen}
-          options={{ title: 'Content' }}
+          options={{ title: 'Blogs' }}
         />
-        <Stack.Screen 
-          name="DMLeads" 
-          component={DMLeadsScreen}
-          options={{ title: 'Leads' }}
+        <Stack.Screen
+          name="DMCategories"
+          component={DMCategoriesScreen}
+          options={{ title: 'Blog Categories' }}
         />
         <Stack.Screen 
           name="DMProfile" 

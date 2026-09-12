@@ -1,16 +1,24 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
-import { formatDateDMY } from '@/lib/utils';
-import {
-  FileText, Plus, Search, Filter, Edit, Trash2, Eye,
-  Calendar, Tag, BookOpen, CheckCircle, XCircle, Clock,
-  TrendingUp, Sparkles
-} from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import DashboardLayout from '@/components/DashboardLayout';
+import { formatDateDMY } from '@/lib/utils';
+import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Calendar,
+  Clock,
+  Sparkles,
+  ArrowRight,
+  CheckCircle,
+} from 'lucide-react';
 
 interface Blog {
   id: string;
@@ -19,15 +27,25 @@ interface Blog {
   excerpt?: string;
   status: string;
   views: number;
-  likes: number;
-  is_featured: boolean;
   read_time: number;
   created_at: string;
   published_at?: string;
-  category?: { name: string; slug: string };
-  author?: { full_name: string };
+  category?: { id?: string; name: string; slug: string };
   tags?: Array<{ name: string; slug: string }>;
   featured_image?: string;
+}
+
+function getVisiblePageNumbers(currentPage: number, totalPages: number, maxVisible = 5): number[] {
+  if (totalPages <= maxVisible) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  if (currentPage <= 3) {
+    return Array.from({ length: maxVisible }, (_, i) => i + 1);
+  }
+  if (currentPage >= totalPages - 2) {
+    return Array.from({ length: maxVisible }, (_, i) => totalPages - maxVisible + i + 1);
+  }
+  return Array.from({ length: maxVisible }, (_, i) => currentPage - 2 + i);
 }
 
 export default function BlogsPage() {
@@ -35,7 +53,7 @@ export default function BlogsPage() {
     <Suspense
       fallback={
         <DashboardLayout role="digital_marketing">
-          <div className="flex items-center justify-center min-h-[40vh] text-sm text-gray-500">
+          <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-500">
             Loading blogs…
           </div>
         </DashboardLayout>
@@ -47,15 +65,20 @@ export default function BlogsPage() {
 }
 
 function BlogsPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>(() => searchParams.get('status') || 'all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
-  const [categories, setCategories] = useState<any[]>([]);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pagination, setPagination] = useState({ page: 1, limit: 8, total: 0, totalPages: 0 });
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   useEffect(() => {
     const status = searchParams.get('status');
@@ -64,9 +87,13 @@ function BlogsPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    fetchBlogs();
-    fetchCategories();
-  }, [filter, searchTerm, pagination.page, selectedCategory]);
+    void fetchCategories();
+  }, []);
+
+  useEffect(() => {
+    void fetchBlogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, debouncedSearch, pagination.page, selectedCategory]);
 
   async function fetchCategories() {
     try {
@@ -75,8 +102,8 @@ function BlogsPageContent() {
         const data = await response.json();
         setCategories(data.categories || []);
       }
-    } catch (error) {
-      console.error('Error fetching categories:', error);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -85,302 +112,319 @@ function BlogsPageContent() {
     try {
       const params = new URLSearchParams();
       if (filter !== 'all') params.append('status', filter);
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (selectedCategory) params.append('category_id', selectedCategory);
       params.append('page', pagination.page.toString());
-      params.append('limit', pagination.limit.toString());
+      params.append('limit', '8');
 
       const response = await fetch(`/api/blogs?${params.toString()}`);
-      if (response.ok) {
-        const data = await response.json();
-        setBlogs(data.blogs || []);
-        setPagination(data.pagination || pagination);
-      } else {
-        const error = await response.json();
-        toast.error(error.error || 'Failed to fetch blogs');
-      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'Failed to fetch blogs');
+      setBlogs(data.blogs || []);
+      setPagination(data.pagination || { ...pagination, limit: 8 });
     } catch (error: any) {
-      console.error('Error fetching blogs:', error);
-      toast.error('Failed to fetch blogs');
+      toast.error(error?.message || 'Failed to fetch blogs');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleDelete(blogId: string, title: string) {
-    if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
-      return;
-    }
-
+    if (!confirm(`Delete “${title}”? This cannot be undone.`)) return;
     try {
-      const response = await fetch(`/api/blogs/${blogId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        toast.success('Blog deleted successfully');
-        fetchBlogs();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || 'Failed to delete blog');
-      }
+      const response = await fetch(`/api/blogs/${blogId}`, { method: 'DELETE' });
+      const error = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(error?.error || 'Failed to delete blog');
+      toast.success('Blog deleted');
+      void fetchBlogs();
     } catch (error: any) {
-      console.error('Error deleting blog:', error);
-      toast.error('Failed to delete blog');
+      toast.error(error?.message || 'Failed to delete blog');
     }
   }
 
   async function handlePublish(blogId: string) {
     try {
-      const response = await fetch(`/api/blogs/${blogId}/publish`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        toast.success('Blog published successfully');
-        fetchBlogs();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || 'Failed to publish blog');
-      }
+      const response = await fetch(`/api/blogs/${blogId}/publish`, { method: 'POST' });
+      const error = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(error?.error || 'Failed to publish blog');
+      toast.success('Blog published');
+      void fetchBlogs();
     } catch (error: any) {
-      console.error('Error publishing blog:', error);
-      toast.error('Failed to publish blog');
+      toast.error(error?.message || 'Failed to publish blog');
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'published':
-        return <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Published</span>;
-      case 'draft':
-        return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold flex items-center gap-1"><Clock className="w-3 h-3" /> Draft</span>;
-      case 'pending_review':
-        return <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold flex items-center gap-1"><Clock className="w-3 h-3" /> Pending Review</span>;
-      case 'archived':
-        return <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold flex items-center gap-1"><XCircle className="w-3 h-3" /> Archived</span>;
-      default:
-        return <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">{status}</span>;
-    }
-  };
+  const startIndex = pagination.total === 0 ? 0 : (pagination.page - 1) * 8 + 1;
+  const endIndex = Math.min(pagination.page * 8, pagination.total);
 
   return (
     <DashboardLayout role="digital_marketing">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-text-heading">Blog Management</h1>
-            <p className="text-text-body mt-1">Create, edit, and manage blog posts</p>
+            <h1 className="text-2xl font-bold text-brand-secondary sm:text-3xl">Blogs</h1>
+            <p className="mt-1 text-sm text-gray-500">Create, edit, and publish posts</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <Link href="/dashboard/digital_marketing/blogs/categories">
-              <button className="btn btn-outline flex items-center gap-2 w-full sm:w-auto">
-                <Tag className="w-5 h-5" />
-                Manage Categories
-              </button>
-            </Link>
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Link href="/dashboard/digital_marketing/blogs/ai-create">
-              <button className="btn btn-outline flex items-center gap-2 w-full sm:w-auto">
-                <Sparkles className="w-5 h-5" />
-                AI Written Blogs
+              <button type="button" className="btn btn-outline inline-flex w-full items-center justify-center gap-2 sm:w-auto">
+                <Sparkles className="h-4 w-4" />
+                AI Write
               </button>
             </Link>
             <Link href="/dashboard/digital_marketing/blogs/create">
-              <button className="btn btn-primary flex items-center gap-2 w-full sm:w-auto">
-                <Plus className="w-5 h-5" />
+              <button type="button" className="btn btn-primary inline-flex w-full items-center justify-center gap-2 sm:w-auto">
+                <Plus className="h-5 w-5" />
                 Create Blog
               </button>
             </Link>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="card">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            <div className="flex-1 relative min-w-0">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search blogs..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 sm:pl-10 pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-            </div>
-            <select
-              value={filter}
-              onChange={(e) => {
-                setFilter(e.target.value);
-                setPagination({ ...pagination, page: 1 });
-              }}
-              className="w-full sm:w-auto px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent bg-white"
-            >
-              <option value="all">All Status</option>
-              <option value="draft">Drafts</option>
-              <option value="pending_review">Pending Review</option>
-              <option value="published">Published</option>
-              <option value="archived">Archived</option>
-            </select>
-            <select
-              value={selectedCategory}
-              onChange={(e) => {
-                setSelectedCategory(e.target.value);
-                setPagination({ ...pagination, page: 1 });
-              }}
-              className="w-full sm:w-auto px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent bg-white"
-            >
-              <option value="">All Categories</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 sm:left-4 sm:h-5 sm:w-5" />
+          <input
+            type="text"
+            placeholder="Search blogs..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPagination((p) => ({ ...p, page: 1 }));
+            }}
+            className="w-full rounded-xl border border-gray-300 py-2.5 pl-10 pr-4 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-primary sm:py-3 sm:pl-12 sm:text-base"
+          />
         </div>
 
-        {/* Blogs List */}
+        <div className="flex flex-wrap gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedCategory('');
+              setPagination((p) => ({ ...p, page: 1 }));
+            }}
+            className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all sm:px-6 sm:py-2 sm:text-sm ${
+              selectedCategory === ''
+                ? 'bg-brand-primary text-white shadow-lg'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            All
+          </button>
+          {categories.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              onClick={() => {
+                setSelectedCategory(category.id);
+                setPagination((p) => ({ ...p, page: 1 }));
+              }}
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all sm:px-6 sm:py-2 sm:text-sm ${
+                selectedCategory === category.id
+                  ? 'bg-brand-primary text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {category.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'all', label: 'All status' },
+            { id: 'published', label: 'Published' },
+            { id: 'draft', label: 'Drafts' },
+            { id: 'pending_review', label: 'Pending' },
+            { id: 'archived', label: 'Archived' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setFilter(tab.id);
+                setPagination((p) => ({ ...p, page: 1 }));
+              }}
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                filter === tab.id ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 ring-1 ring-gray-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
-          <div className="card text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading blogs...</p>
+          <div className="py-16 text-center">
+            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-brand-primary" />
+            <p className="text-gray-500">Loading blogs...</p>
           </div>
         ) : blogs.length === 0 ? (
-          <div className="card text-center py-12">
-            <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-text-heading mb-2">No blogs found</h3>
-            <p className="text-text-body mb-4">Get started by creating your first blog post</p>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-3">
-              <Link href="/dashboard/digital_marketing/blogs/ai-create">
-                <button className="btn btn-outline flex items-center justify-center gap-2 w-full sm:w-auto">
-                  <Sparkles className="w-4 h-4" />
-                  AI Written Blogs
-                </button>
-              </Link>
-              <Link href="/dashboard/digital_marketing/blogs/create">
-                <button className="btn btn-primary w-full sm:w-auto">Create Blog</button>
-              </Link>
-            </div>
-          </div>
+          <div className="py-16 text-center text-gray-500">No blog posts found matching your criteria.</div>
         ) : (
           <>
-            <div className="space-y-4">
-              {blogs.map((blog) => (
-                <div key={blog.id} className="card hover:shadow-lg transition">
-                  <div className="flex flex-col lg:flex-row gap-4">
-                    {blog.featured_image && (
-                      <img
-                        src={blog.featured_image}
-                        alt={blog.title}
-                        className="w-full lg:w-48 h-32 object-cover rounded-lg"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <h3 className="text-base sm:text-lg font-semibold text-text-heading break-words">{blog.title}</h3>
-                            {blog.is_featured && (
-                              <span className="px-2 py-0.5 bg-brand-primary text-white rounded text-xs font-semibold whitespace-nowrap flex-shrink-0">Featured</span>
-                            )}
-                          </div>
-                          {blog.excerpt && (
-                            <p className="text-text-body text-sm mb-3 line-clamp-2 break-words">{blog.excerpt}</p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600">
-                            {blog.category && (
-                              <span className="flex items-center gap-1 whitespace-nowrap">
-                                <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                                <span className="truncate">{blog.category.name}</span>
-                              </span>
-                            )}
-                            <span className="flex items-center gap-1 whitespace-nowrap">
-                              <Clock className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                              {blog.read_time} min read
+            <div className="text-xs text-gray-600 sm:text-sm">
+              Showing{' '}
+              <span className="font-semibold">
+                {startIndex}-{endIndex}
+              </span>{' '}
+              of <span className="font-semibold">{pagination.total}</span> blogs
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4 md:gap-8">
+              {blogs.map((blog) => {
+                const href =
+                  blog.status === 'published'
+                    ? `/blogs/${blog.slug}`
+                    : `/dashboard/digital_marketing/blogs/${blog.id}`;
+                const imageSrc = blog.featured_image
+                  ? normalizeBlogMediaUrl(blog.featured_image) || blog.featured_image
+                  : '';
+                return (
+                  <article
+                    key={blog.id}
+                    className="group overflow-hidden rounded-xl bg-white shadow-lg transition-all hover:shadow-xl sm:rounded-2xl"
+                  >
+                    <Link href={href} className="block">
+                      <div className="relative aspect-video overflow-hidden bg-gray-200">
+                        {imageSrc ? (
+                          <Image
+                            src={imageSrc}
+                            alt={blog.title}
+                            fill
+                            className="object-cover transition duration-500 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-primary to-blue-600">
+                            <span className="text-4xl font-bold text-white">
+                              {blog.title.charAt(0).toUpperCase()}
                             </span>
-                            <span className="flex items-center gap-1 whitespace-nowrap">
-                              <Eye className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                              {blog.views} views
-                            </span>
-                            {blog.published_at && (
-                              <span className="flex items-center gap-1 whitespace-nowrap">
-                                <Calendar className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                                {formatDateDMY(blog.published_at)}
-                              </span>
-                            )}
                           </div>
-                          {blog.tags && blog.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {blog.tags.map((tag, idx) => (
-                                <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs flex items-center gap-1 whitespace-nowrap">
-                                  <Tag className="w-3 h-3 flex-shrink-0" />
-                                  {tag.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-shrink-0">
-                          {getStatusBadge(blog.status)}
+                        )}
+                        {blog.category ? (
+                          <div className="absolute left-3 top-3 sm:left-4 sm:top-4">
+                            <span className="rounded-full bg-brand-primary px-2 py-0.5 text-[10px] font-semibold text-white sm:px-3 sm:py-1 sm:text-xs">
+                              {blog.category.name}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </Link>
+
+                    <div className="p-4 sm:p-5 md:p-6">
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-gray-500 sm:mb-3 sm:gap-4 sm:text-xs">
+                        {blog.published_at || blog.created_at ? (
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                            {formatDateDMY(blog.published_at || blog.created_at)}
+                          </div>
+                        ) : null}
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
+                          {blog.read_time || 3} min read
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-200">
-                        <Link href={`/dashboard/digital_marketing/blogs/${blog.id}`} className="flex-1 sm:flex-none min-w-0">
-                          <button className="btn btn-sm btn-outline w-full sm:w-auto flex items-center justify-center gap-1">
-                            <Eye className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm">View</span>
-                          </button>
-                        </Link>
-                        <Link href={`/dashboard/digital_marketing/blogs/${blog.id}/edit`} className="flex-1 sm:flex-none min-w-0">
-                          <button className="btn btn-sm btn-outline w-full sm:w-auto flex items-center justify-center gap-1">
-                            <Edit className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm">Edit</span>
-                          </button>
-                        </Link>
-                        {(blog.status === 'draft' || blog.status === 'pending_review') && (
-                          <button
-                            onClick={() => handlePublish(blog.id)}
-                            className="btn btn-sm btn-primary flex-1 sm:flex-none w-full sm:w-auto flex items-center justify-center gap-1"
-                          >
-                            <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="text-xs sm:text-sm">{blog.status === 'pending_review' ? 'Approve & Publish' : 'Publish'}</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(blog.id, blog.title)}
-                          className="btn btn-sm btn-danger flex-1 sm:flex-none w-full sm:w-auto flex items-center justify-center gap-1"
+
+                      <Link href={href} className="block">
+                        <h3 className="mb-2 line-clamp-2 text-base font-bold text-brand-secondary transition group-hover:text-brand-primary sm:mb-3 sm:text-lg md:text-xl">
+                          {blog.title}
+                        </h3>
+                      </Link>
+
+                      {blog.excerpt ? (
+                        <p className="mb-3 line-clamp-3 text-xs text-gray-600 sm:mb-4 sm:text-sm">{blog.excerpt}</p>
+                      ) : null}
+
+                      {blog.tags && blog.tags.length > 0 ? (
+                        <div className="mb-3 flex flex-wrap gap-1.5 sm:mb-4">
+                          {blog.tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag.slug || tag.name}
+                              className="rounded bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 sm:text-xs"
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <Link
+                        href={href}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-primary sm:gap-2 sm:text-sm"
+                      >
+                        Read More <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1 sm:h-4 sm:w-4" />
+                      </Link>
+
+                      <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+                        <Link
+                          href={`/dashboard/digital_marketing/blogs/${blog.id}/edit`}
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-gray-100 px-2 py-1.5 text-[11px] font-semibold text-gray-700"
                         >
-                          <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                          <span className="text-xs sm:text-sm">Delete</span>
+                          <Edit className="h-3 w-3" /> Edit
+                        </Link>
+                        {blog.status === 'draft' || blog.status === 'pending_review' ? (
+                          <button
+                            type="button"
+                            onClick={() => void handlePublish(blog.id)}
+                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-brand-primary px-2 py-1.5 text-[11px] font-semibold text-white"
+                          >
+                            <CheckCircle className="h-3 w-3" />
+                            Publish
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(blog.id, blog.title)}
+                          className="inline-flex items-center justify-center rounded-lg bg-red-50 px-2 py-1.5 text-red-600"
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  </article>
+                );
+              })}
             </div>
 
-            {/* Pagination */}
-            {pagination.totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2">
+            {pagination.totalPages > 1 ? (
+              <div className="mt-8 flex items-center justify-center gap-2 px-2">
                 <button
-                  onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+                  type="button"
+                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
                   disabled={pagination.page === 1}
-                  className="btn btn-outline btn-sm"
+                  className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Previous
+                  Prev
                 </button>
-                <span className="text-sm text-gray-600">
+                <span className="whitespace-nowrap text-sm text-gray-600 sm:hidden">
                   Page {pagination.page} of {pagination.totalPages}
                 </span>
+                <div className="hidden items-center gap-2 sm:flex">
+                  {getVisiblePageNumbers(pagination.page, pagination.totalPages).map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setPagination((p) => ({ ...p, page }))}
+                      className={`min-w-[2.25rem] rounded-md border px-3 py-2 text-sm ${
+                        pagination.page === page
+                          ? 'border-brand-primary bg-brand-primary text-white'
+                          : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
                 <button
-                  onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+                  type="button"
+                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
                   disabled={pagination.page >= pagination.totalPages}
-                  className="btn btn-outline btn-sm"
+                  className="whitespace-nowrap rounded-md border border-gray-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
                 </button>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>

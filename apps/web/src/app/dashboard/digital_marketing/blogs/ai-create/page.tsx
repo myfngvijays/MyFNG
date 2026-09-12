@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import KeywordIntentBreakdown from '@/components/blog/KeywordIntentBreakdown';
@@ -50,6 +51,19 @@ export default function AICreateBlogPage() {
     fetchCategories();
     fetchTags();
   }, []);
+
+  useEffect(() => {
+    if (!showPreview) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowPreview(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [showPreview]);
 
   async function fetchCategories() {
     try {
@@ -382,27 +396,36 @@ export default function AICreateBlogPage() {
           </div>
         </div>
 
-        {showPreview && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b">
-                <div className="font-semibold text-slate-900">Preview</div>
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowPreview(false)}>
-                  Close
-                </button>
-              </div>
-              <div className="p-4 overflow-auto max-h-[90vh]">
-                <h1 className="text-2xl font-bold text-slate-900 mb-2">{draft?.title || 'Untitled'}</h1>
-                {draft?.excerpt ? <p className="text-slate-700 mb-6">{draft.excerpt}</p> : null}
+        {showPreview && typeof document !== 'undefined'
+          ? createPortal(
+              <div
+                className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-3 sm:p-4"
+                onClick={() => setShowPreview(false)}
+              >
                 <div
-                  className="prose prose-slate max-w-none"
-                  // eslint-disable-next-line react/no-danger
-                  dangerouslySetInnerHTML={{ __html: draft?.content_html || '<p>No content</p>' }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+                  className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
+                    <div className="font-semibold text-slate-900">Preview</div>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowPreview(false)}>
+                      Close
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-16">
+                    <h1 className="mb-2 text-2xl font-bold text-slate-900">{draft?.title || 'Untitled'}</h1>
+                    {draft?.excerpt ? <p className="mb-6 text-slate-700">{draft.excerpt}</p> : null}
+                    <div
+                      className="blog-content prose prose-slate max-w-none break-words"
+                      // eslint-disable-next-line react/no-danger
+                      dangerouslySetInnerHTML={{ __html: draft?.content_html || '<p>No content</p>' }}
+                    />
+                  </div>
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
     </DashboardLayout>
   );
