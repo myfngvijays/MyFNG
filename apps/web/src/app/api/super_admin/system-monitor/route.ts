@@ -1399,6 +1399,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/auto-dial-fresh-hours',
     '/api/cron/crm-ml-dl',
     '/api/cron/openai-balance-alert',
+    '/api/cron/daily-blog',
   ];
 
   if (!cronSecret) {
@@ -1432,6 +1433,110 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
   };
 }
 
+async function checkDailyBlog(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  const openAi = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+
+  if (!client) {
+    return {
+      name: 'Daily Blog Auto-Post',
+      category: 'Background Jobs',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify daily blog settings: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error } = await client
+      .from('daily_blog_settings')
+      .select('enabled, last_run_at, last_status, last_error, last_blog_id')
+      .eq('id', 1)
+      .maybeSingle();
+    const responseTime = Date.now() - start;
+
+    if (error) {
+      const missing = /does not exist|relation|42P01|PGRST205/i.test(error.message || '');
+      return {
+        name: 'Daily Blog Auto-Post',
+        category: 'Background Jobs',
+        status: missing ? 'degraded' : 'down',
+        responseTime,
+        message: missing ? 'Migration not applied' : error.message,
+        reason: missing
+          ? 'Table daily_blog_settings missing. Run database/365_daily_blog_auto_post.sql'
+          : error.message,
+        quickFix: {
+          label: 'Open Blogs',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/digital_marketing/blogs' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    if (!openAi) {
+      return {
+        name: 'Daily Blog Auto-Post',
+        category: 'Background Jobs',
+        status: 'degraded',
+        responseTime,
+        message: 'OPENAI_API_KEY missing',
+        reason: '10:00 AM IST daily blog generate needs OPENAI_API_KEY.',
+        quickFix: {
+          label: 'Check Environment Variables',
+          action: 'check-env',
+          actionPayload: { vars: ['OPENAI_API_KEY'] },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const failed = String(data?.last_status || '') === 'failed';
+    const enabled = data?.enabled !== false;
+    return {
+      name: 'Daily Blog Auto-Post',
+      category: 'Background Jobs',
+      status: failed ? 'degraded' : 'healthy',
+      responseTime,
+      message: failed
+        ? 'Last 10:00 AM run failed'
+        : enabled
+          ? 'Scheduled 10:00 AM IST'
+          : 'Auto-post paused',
+      reason: failed
+        ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
+        : enabled
+          ? 'Cron /api/cron/daily-blog is set for 04:30 UTC (10:00 AM IST). One published post per day.'
+          : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
+      quickFix: {
+        label: 'Open Blogs',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/digital_marketing/blogs' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: {
+        enabled,
+        last_run_at: data?.last_run_at || null,
+        last_status: data?.last_status || null,
+        last_blog_id: data?.last_blog_id || null,
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Daily Blog Auto-Post',
+      category: 'Background Jobs',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `Daily blog health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
 
 async function checkEmailService(): Promise<HealthCheck> {
   const start = Date.now();
@@ -3482,6 +3587,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkGoogleMaps(),
     checkCronJobs(),
     checkFeatureCrons(),
+    checkDailyBlog(),
     checkSSL(),
     checkSARVTelephony(),
     checkSmartfloClickToCall(),

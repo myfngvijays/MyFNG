@@ -67,10 +67,17 @@
     {
       "path": "/api/cron/telecaller-leads-shift-summary",
       "schedule": "30 13 * * *"
+    },
+    {
+      "path": "/api/cron/daily-blog",
+      "schedule": "30 4 * * *"
     }
   ],
   "functions": {
     "src/app/api/cron/smartflo-recordings/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/cron/daily-blog/route.ts": {
       "maxDuration": 120
     }
   }

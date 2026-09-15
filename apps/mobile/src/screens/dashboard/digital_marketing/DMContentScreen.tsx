@@ -43,6 +43,9 @@ export default function DMContentScreen() {
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [total, setTotal] = useState(0);
+  const [dailyEnabled, setDailyEnabled] = useState(true);
+  const [dailyLabel, setDailyLabel] = useState('Daily 10:00 AM IST auto-post');
+  const [dailyBusy, setDailyBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -63,11 +66,31 @@ export default function DMContentScreen() {
     }
   }, [search, categoryId]);
 
+  const loadDaily = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/api/blogs/daily-settings');
+      const enabled = Boolean(data?.settings?.enabled ?? data?.schedule?.enabled);
+      setDailyEnabled(enabled);
+      if (data?.missing) {
+        setDailyLabel('Daily post needs SQL 365');
+      } else if (data?.last_blog?.title) {
+        setDailyLabel(`Last: ${data.last_blog.title}`);
+      } else if (data?.schedule?.last_status === 'failed') {
+        setDailyLabel(data?.schedule?.last_error || 'Last daily run failed');
+      } else {
+        setDailyLabel(enabled ? 'Daily 10:00 AM IST auto-post is on' : 'Daily auto-post is paused');
+      }
+    } catch {
+      setDailyLabel('Daily 10:00 AM IST auto-post');
+    }
+  }, []);
+
   useEffect(() => {
     void apiFetch<any>('/api/blogs/categories')
       .then((data) => setCategories(Array.isArray(data?.categories) ? data.categories : []))
       .catch(() => setCategories([]));
-  }, []);
+    void loadDaily();
+  }, [loadDaily]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -129,6 +152,59 @@ export default function DMContentScreen() {
             />
           }
         >
+          <View style={styles.dailyCard}>
+            <Text style={styles.dailyTitle}>Daily auto-post · 10:00 AM</Text>
+            <Text style={styles.dailyMeta}>{dailyLabel}</Text>
+            <View style={styles.dailyRow}>
+              <TouchableOpacity
+                disabled={dailyBusy}
+                onPress={async () => {
+                  try {
+                    setDailyBusy(true);
+                    const data = await apiFetch<any>('/api/blogs/daily-settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ enabled: !dailyEnabled }),
+                    });
+                    setDailyEnabled(Boolean(data?.settings?.enabled ?? !dailyEnabled));
+                    await loadDaily();
+                  } catch {
+                    /* keep previous */
+                  } finally {
+                    setDailyBusy(false);
+                  }
+                }}
+                style={[styles.dailyBtn, dailyEnabled && styles.dailyBtnOn]}
+              >
+                <Text style={[styles.dailyBtnText, dailyEnabled && styles.dailyBtnTextOn]}>
+                  {dailyEnabled ? 'On' : 'Off'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={dailyBusy}
+                onPress={async () => {
+                  try {
+                    setDailyBusy(true);
+                    await apiFetch<any>('/api/blogs/daily-settings', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'run_now' }),
+                    });
+                    await loadDaily();
+                    await load();
+                  } catch {
+                    /* ignore */
+                  } finally {
+                    setDailyBusy(false);
+                  }
+                }}
+                style={styles.dailyBtn}
+              >
+                <Text style={styles.dailyBtnText}>{dailyBusy ? 'Working…' : 'Post now'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <Text style={styles.count}>
             Showing {blogs.length === 0 ? 0 : 1}-{blogs.length} of {total} blogs
           </Text>
@@ -221,6 +297,27 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#fff' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   list: { padding: SPACING.md, gap: 16, paddingBottom: 32 },
+  dailyCard: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  dailyTitle: { fontSize: 14, fontWeight: '800', color: '#023D95' },
+  dailyMeta: { marginTop: 4, fontSize: 12, color: '#4B5563' },
+  dailyRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  dailyBtn: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  dailyBtnOn: { backgroundColor: '#004AAD', borderColor: '#004AAD' },
+  dailyBtnText: { fontSize: 12, fontWeight: '700', color: '#004AAD' },
+  dailyBtnTextOn: { color: '#fff' },
   count: { fontSize: 13, color: '#4B5563', marginBottom: 4 },
   empty: { textAlign: 'center', color: COLORS.textSecondary, marginTop: 40 },
   card: {

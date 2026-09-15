@@ -74,6 +74,19 @@ function BlogsPageContent() {
   const [pagination, setPagination] = useState({ page: 1, limit: 8, total: 0, totalPages: 0 });
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [daily, setDaily] = useState<{
+    missing?: boolean;
+    settings?: { enabled?: boolean } | null;
+    schedule?: {
+      next_run_at?: string;
+      last_run_at?: string | null;
+      last_status?: string | null;
+      last_error?: string | null;
+      enabled?: boolean;
+    };
+    last_blog?: { id: string; title: string; slug: string; published_at?: string | null } | null;
+  } | null>(null);
+  const [dailyBusy, setDailyBusy] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
@@ -88,12 +101,62 @@ function BlogsPageContent() {
 
   useEffect(() => {
     void fetchCategories();
+    void fetchDailySettings();
   }, []);
 
   useEffect(() => {
     void fetchBlogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, debouncedSearch, pagination.page, selectedCategory]);
+
+  async function fetchDailySettings() {
+    try {
+      const res = await fetch('/api/blogs/daily-settings');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setDaily(data);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function toggleDaily(enabled: boolean) {
+    try {
+      setDailyBusy(true);
+      const res = await fetch('/api/blogs/daily-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to update daily posting');
+      setDaily(data);
+      toast.success(enabled ? 'Daily 10:00 AM posting is on' : 'Daily posting paused');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update daily posting');
+    } finally {
+      setDailyBusy(false);
+    }
+  }
+
+  async function runDailyNow() {
+    try {
+      setDailyBusy(true);
+      const res = await fetch('/api/blogs/daily-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run_now' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.run?.error || data?.error || 'Failed to publish daily blog');
+      setDaily(data);
+      toast.success(data?.run?.title ? `Published: ${data.run.title}` : 'Daily blog published');
+      void fetchBlogs();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to publish daily blog');
+    } finally {
+      setDailyBusy(false);
+    }
+  }
 
   async function fetchCategories() {
     try {
@@ -178,6 +241,50 @@ function BlogsPageContent() {
                 Create Blog
               </button>
             </Link>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-brand-secondary">Daily auto-post · 10:00 AM IST</p>
+              <p className="mt-1 text-xs text-gray-600">
+                {daily?.missing
+                  ? 'Run database/365_daily_blog_auto_post.sql to enable this.'
+                  : daily?.last_blog
+                    ? `Last live: ${daily.last_blog.title}`
+                    : daily?.schedule?.last_status === 'failed'
+                      ? `Last run failed: ${daily.schedule.last_error || 'see System Monitor'}`
+                      : 'One AI blog every morning with rotating GMB covers.'}
+              </p>
+              {daily?.schedule?.next_run_at ? (
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Next: {formatDateDMY(daily.schedule.next_run_at)} · 10:00 AM
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                disabled={dailyBusy || Boolean(daily?.missing)}
+                onClick={() => void toggleDaily(!(daily?.settings?.enabled ?? daily?.schedule?.enabled))}
+                className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                  daily?.settings?.enabled ?? daily?.schedule?.enabled
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-white text-gray-600 ring-1 ring-gray-200'
+                }`}
+              >
+                {(daily?.settings?.enabled ?? daily?.schedule?.enabled) ? 'On' : 'Off'}
+              </button>
+              <button
+                type="button"
+                disabled={dailyBusy || Boolean(daily?.missing)}
+                onClick={() => void runDailyNow()}
+                className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-brand-primary ring-1 ring-blue-200"
+              >
+                {dailyBusy ? 'Working…' : 'Post now'}
+              </button>
+            </div>
           </div>
         </div>
 
