@@ -111,9 +111,32 @@ function resolveDeviceName(): string {
     return isIosSimulator() ? 'iOS Simulator' : 'iOS';
   }
   if (Platform.OS === 'android') {
-    return isAndroidEmulator() ? 'Android Emulator' : 'Android';
+    const brand = String((Platform.constants as { Brand?: string } | undefined)?.Brand || '').trim();
+    const model = String((Platform.constants as { Model?: string } | undefined)?.Model || '').trim();
+    if (isAndroidEmulator()) return 'Android Emulator';
+    return [brand, model].filter(Boolean).join(' ') || 'Android';
   }
   return Platform.OS;
+}
+
+async function resolveDeviceId(): Promise<string | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Application = require('expo-application') as {
+      getAndroidId?: () => string | null;
+      androidId?: string | null;
+      getIosIdForVendorAsync?: () => Promise<string | null>;
+    };
+    if (Platform.OS === 'android') {
+      return Application.getAndroidId?.() || Application.androidId || null;
+    }
+    if (Platform.OS === 'ios' && Application.getIosIdForVendorAsync) {
+      return await Application.getIosIdForVendorAsync();
+    }
+  } catch {
+    // optional
+  }
+  return null;
 }
 
 async function acquireFcmPushToken(): Promise<PushRegisterResult> {
@@ -177,18 +200,63 @@ async function acquireFcmPushToken(): Promise<PushRegisterResult> {
   return { ok: true, token };
 }
 
-/** Staff login (Supabase auth / users_login). */
-export async function registerAndSyncFcmPushToken(userId: string): Promise<PushRegisterResult> {
-  const acquired = await acquireFcmPushToken();
-  if (!acquired.ok) return acquired;
+async function persistStaffFcmToken(
+  userId: string,
+  token: string,
+): Promise<PushRegisterResult> {
+  const deviceName = resolveDeviceName();
+  const deviceId = await resolveDeviceId();
+
+  try {
+    const { apiFetch } = await import('../lib/api');
+    await apiFetch('/api/staff/push-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        platform: PUSH_PLATFORM,
+        device_name: deviceName,
+        device_id: deviceId,
+      }),
+    });
+    trackEvent('push_token_registered', { method: 'staff_api' });
+    return { ok: true, token };
+  } catch (apiError) {
+    console.warn('[FCM] staff push-token API failed:', apiError);
+  }
 
   const { supabase } = await import('../lib/supabase');
+  const { data: rpcData, error: rpcError } = await supabase.rpc('register_staff_fcm_token', {
+    p_fcm_token: token,
+    p_device_name: deviceName,
+    p_device_id: deviceId,
+  });
+
+  const rpc = rpcData as { ok?: boolean; error?: string } | null;
+  if (!rpcError && rpc?.ok) {
+    trackEvent('push_token_registered', { method: 'staff_rpc' });
+    return { ok: true, token };
+  }
+  if (rpcError || rpc?.error) {
+    console.warn('[FCM] register_staff_fcm_token RPC failed:', rpc?.error || rpcError?.message);
+  }
+
   const now = new Date().toISOString();
+  await supabase
+    .from('notification_devices')
+    .update({ is_active: false, updated_at: now } as any)
+    .eq('user_id', userId)
+    .eq('platform', PUSH_PLATFORM)
+    .neq('token', token)
+    .eq('is_active', true);
+
   const { error } = await supabase.from('notification_devices').upsert(
     {
       user_id: userId,
       platform: PUSH_PLATFORM,
-      token: acquired.token,
+      token,
+      device_name: deviceName,
+      device_id: deviceId,
       is_active: true,
       last_seen_at: now,
     } as any,
@@ -196,7 +264,44 @@ export async function registerAndSyncFcmPushToken(userId: string): Promise<PushR
   );
 
   if (error) return { ok: false, reason: 'db_error', details: error.message };
-  return { ok: true, token: acquired.token };
+  trackEvent('push_token_registered', { method: 'staff_upsert' });
+  return { ok: true, token };
+}
+
+/** Staff login (Supabase auth / users_login). */
+export async function registerAndSyncFcmPushToken(userId: string): Promise<PushRegisterResult> {
+  const acquired = await acquireFcmPushToken();
+  if (!acquired.ok) return acquired;
+  return persistStaffFcmToken(userId, acquired.token);
+}
+
+export async function deactivateStaffFcmPushTokens(): Promise<{ ok: boolean; details?: string }> {
+  try {
+    const { apiFetch } = await import('../lib/api');
+    await apiFetch('/api/staff/push-token', { method: 'DELETE' });
+    return { ok: true };
+  } catch (apiError) {
+    console.warn('[FCM] staff push-token deactivate API failed:', apiError);
+  }
+
+  try {
+    const { supabase } = await import('../lib/supabase');
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user?.id) return { ok: false, details: 'not_authenticated' };
+
+    const { error } = await supabase
+      .from('notification_devices')
+      .update({ is_active: false, updated_at: new Date().toISOString() } as any)
+      .eq('user_id', user.id)
+      .eq('platform', PUSH_PLATFORM);
+
+    if (error) return { ok: false, details: error.message };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, details: error instanceof Error ? error.message : 'deactivate_failed' };
+  }
 }
 
 /** @deprecated Use registerAndSyncFcmPushToken */

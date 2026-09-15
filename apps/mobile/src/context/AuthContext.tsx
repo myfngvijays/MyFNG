@@ -2,7 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { User } from '@supabase/supabase-js';
 import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout, clearAccessToken } from '../lib/supabase';
 import { syncCallerIdAuth } from '../lib/callerIdNative';
-import { registerAndSyncFcmPushToken } from '../services/pushNotifications';
+import {
+  deactivateStaffFcmPushTokens,
+  registerAndSyncFcmPushToken,
+  subscribeToFcmTokenRefresh,
+} from '../services/pushNotifications';
 
 function normalizeProfile(data: any) {
   if (!data) return data;
@@ -53,11 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const role = userProfile?.role?.role_code || null;
 
-  // Register mobile push token (Expo) after login
+  // Register mobile FCM token after login and keep the single active device in sync.
   useEffect(() => {
     if (!user?.id) return;
-    // Best-effort; never block app render
     void registerAndSyncFcmPushToken(user.id).catch(() => null);
+    const unsubscribe = subscribeToFcmTokenRefresh(() => {
+      void registerAndSyncFcmPushToken(user.id).catch(() => null);
+    });
+    return unsubscribe;
   }, [user?.id]);
 
   useEffect(() => {
@@ -176,6 +183,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = async () => {
+    try {
+      await Promise.race([
+        deactivateStaffFcmPushTokens(),
+        new Promise((resolve) => setTimeout(resolve, 2500)),
+      ]);
+    } catch {
+      /* best-effort — stale tokens are deactivated on next login */
+    }
     clearAccessToken();
     // Punch out before session ends so Live Floor flips to Off Duty
     try {
