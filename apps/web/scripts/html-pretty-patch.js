@@ -8,8 +8,10 @@ const http = require('http');
 const { formatHtml } = require('./format-html');
 
 function isPrettyHtmlEnabled() {
-  // Pretty HTML buffers the full page and blocks streaming. Opt in only.
-  return process.env.PRETTY_HTML === '1';
+  if (process.env.PRETTY_HTML === '0') return false;
+  // `--require` runs before standalone sets NODE_ENV=production, so never
+  // gate on production here — only skip explicit development.
+  return process.env.NODE_ENV !== 'development';
 }
 
 function isPageRoute(pathname) {
