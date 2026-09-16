@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateAiBlogDraft } from '@/lib/blog/generateAiDraft';
+import { MYFNG_AIO_FACTS } from '@/lib/blog/dailyAiOverview';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
       intent,
       tone,
       wordCount,
+      aioFacts: MYFNG_AIO_FACTS,
     });
 
     return NextResponse.json({ success: true, draft }, { status: 200 });

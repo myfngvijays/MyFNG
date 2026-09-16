@@ -1,4 +1,5 @@
 import { CITY_PAGES, type CityPageConfig } from '@/lib/city-pages';
+import { ensureAiOverviewHtml } from '@/lib/blog/dailyAiOverview';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 import { SITE_URL } from '@/lib/seo/metadata';
 
@@ -225,10 +226,115 @@ export function buildAboutMyFngHtml(appDownloadUrl: string) {
   ].join('');
 }
 
+function headingText(html: string) {
+  return stripTags(html).replace(/\s+/g, ' ').trim();
+}
+
+function headingId(text: string) {
+  return `sec-${toCampaignSlug(text)}`.slice(0, 70);
+}
+
+function skipTocHeading(text: string) {
+  return /table of contents|about myfng|book on the myfng|related reading|related resources|pricing disclaimer/i.test(text);
+}
+
+function stripExistingToc(html: string) {
+  const source = String(html || '');
+  const start = source.search(/<div\b[^>]*(?:blog-toc|data-blog-toc)/i);
+  if (start < 0) return source;
+  let depth = 0;
+  const openRe = /<\/?div\b/gi;
+  openRe.lastIndex = start;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(source))) {
+    if (match[0].toLowerCase() === '<div') depth += 1;
+    else depth -= 1;
+    if (depth === 0) {
+      return `${source.slice(0, start)}${source.slice(match.index + match[0].length + 1)}`.replace(/>\s*>/, '>');
+    }
+  }
+  return source;
+}
+
+export function ensureIntroAndToc(html: string, excerpt?: string) {
+  let source = stripExistingToc(String(html || '')).trim();
+  if (!source) return source;
+
+  const headings: Array<{ id: string; text: string }> = [];
+  source = source.replace(/<h2\b([^>]*)>([\s\S]*?)<\/h2>/gi, (full, attrs: string, inner: string) => {
+    const text = headingText(inner);
+    if (!text || skipTocHeading(text)) return full;
+    const existing = String(attrs).match(/\bid=["']([^"']+)["']/i);
+    const id = existing?.[1] || headingId(text);
+    headings.push({ id, text });
+    if (existing) return full;
+    return `<h2${attrs} id="${id}">${inner}</h2>`;
+  });
+
+  const firstH2 = source.search(/<h2\b/i);
+  let before = firstH2 >= 0 ? source.slice(0, firstH2) : source;
+  const after = firstH2 >= 0 ? source.slice(firstH2) : '';
+  let localBlocks = '';
+  before = before.replace(/<p\b[^>]*data-local-seo[\s\S]*?<\/p>/gi, (block) => {
+    localBlocks += `${block}\n`;
+    return '';
+  });
+  const hasIntro = /<p\b/i.test(before);
+  const intro =
+    !hasIntro && excerpt
+      ? `<p>${escapeHtml(String(excerpt).replace(/\s+/g, ' ').trim())}</p>\n`
+      : '';
+
+  const hasToc = /data-blog-toc|blog-toc/i.test(source);
+  const toc =
+    !hasToc && headings.length >= 2
+      ? [
+          '<div class="blog-toc" data-blog-toc="1">',
+          '<h2>Table of Contents</h2>',
+          '<ol>',
+          ...headings.map((h) => `<li><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`),
+          '</ol>',
+          '</div>\n',
+        ].join('')
+      : '';
+
+  return `${intro}${before}${toc}${localBlocks}${after}`;
+}
+
+function stripDivByAttr(html: string, pattern: RegExp) {
+  const source = String(html || '');
+  const start = source.search(pattern);
+  if (start < 0) return source;
+  let depth = 0;
+  const openRe = /<\/?div\b/gi;
+  openRe.lastIndex = start;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(source))) {
+    if (match[0].toLowerCase() === '<div') depth += 1;
+    else depth -= 1;
+    if (depth === 0) {
+      return `${source.slice(0, start)}${source.slice(match.index + match[0].length + 1)}`.replace(/>\s*>/, '>');
+    }
+  }
+  return source;
+}
+
+function stripHeadingSection(html: string, headingRe: RegExp) {
+  return String(html || '').replace(
+    new RegExp(`<h2\\b[^>]*>\\s*(?:${headingRe.source})[\\s\\S]*?(?=<h2\\b|$)`, 'gi'),
+    '',
+  );
+}
+
 export function ensureAboutMyFngHtml(html: string, appDownloadUrl: string) {
-  const source = String(html || '').trim();
-  if (/data-myfng-about/i.test(source)) return source;
-  return `${source}\n${buildAboutMyFngHtml(appDownloadUrl)}`;
+  let source = String(html || '').trim();
+  for (let i = 0; i < 4; i += 1) {
+    const next = stripDivByAttr(source, /<div\b[^>]*(?:data-myfng-about|blog-about-myfng)/i);
+    if (next === source) break;
+    source = next;
+  }
+  source = stripHeadingSection(source, /About MyFNG|Book on the MyFNG(?: app)?/);
+  return `${source.replace(/\n{3,}/g, '\n\n').trim()}\n${buildAboutMyFngHtml(appDownloadUrl)}`;
 }
 
 export function stripExistingCta(html: string) {
@@ -430,31 +536,92 @@ function relatedReadingHtml(blogs: RelatedBlogLink[], campaign: string, term?: s
   return `<h2>Related reading on MyFNG</h2><ul>${items}</ul>`;
 }
 
+export function ensureLocalSeoHtml(
+  html: string,
+  opts?: { city?: string; areas?: string[]; keywords?: string[] },
+) {
+  const source = String(html || '');
+  const city = String(opts?.city || '').trim();
+  const areas = (opts?.areas || []).map((a) => String(a || '').trim()).filter(Boolean);
+  const keywords = (opts?.keywords || []).map((k) => String(k || '').trim()).filter(Boolean);
+  if (!city && !areas.length && !keywords.length) return source;
+  if (/data-local-seo/i.test(source)) return source;
+
+  const usedAreas = areas.filter((a) => source.toLowerCase().includes(a.toLowerCase()));
+  const usedKeywords = keywords.filter((k) => source.toLowerCase().includes(k.toLowerCase()));
+  if (usedAreas.length >= 4 && usedKeywords.length >= 3) return source;
+
+  const missingAreas = areas.filter((a) => !usedAreas.some((u) => u.toLowerCase() === a.toLowerCase())).slice(0, 6);
+  const missingKeywords = keywords
+    .filter((k) => !usedKeywords.some((u) => u.toLowerCase() === k.toLowerCase()))
+    .slice(0, 4);
+  const areaText = (missingAreas.length ? missingAreas : areas).slice(0, 6).join(', ');
+  const kwLead = missingKeywords[0] || keywords[0] || (city ? `car service in ${city}` : 'car service');
+  const kwPickup = missingKeywords.find((k) => /pickup/i.test(k)) || keywords.find((k) => /pickup/i.test(k));
+  const para = [
+    `<p data-local-seo="1">`,
+    city ? `${escapeHtml(city)} drivers` : 'Local drivers',
+    areaText ? ` in ${escapeHtml(areaText)}` : '',
+    ` often search for ${escapeHtml(kwLead)}`,
+    kwPickup ? ` and ${escapeHtml(kwPickup)}` : '',
+    `. Book on the MyFNG app — we collect the car, service it at a nearby workshop, and drop it back. We do not send a mechanic to your house.`,
+    missingKeywords
+      .filter((k) => k !== kwLead && k !== kwPickup)
+      .slice(0, 2)
+      .map((k) => ` Ask for ${escapeHtml(k)} when you book.`)
+      .join(''),
+    `</p>`,
+  ].join('');
+
+  const afterToc = source.match(/<div\b[^>]*(?:blog-toc|data-blog-toc)[\s\S]*?<\/div>/i);
+  if (afterToc && afterToc.index != null) {
+    const end = afterToc.index + afterToc[0].length;
+    return `${source.slice(0, end)}\n${para}\n${source.slice(end)}`;
+  }
+  const firstH2 = source.search(/<h2\b(?![^>]*Table of Contents)/i);
+  if (firstH2 >= 0) return `${source.slice(0, firstH2)}${para}\n${source.slice(firstH2)}`;
+  return `${source}\n${para}`;
+}
+
 export function enrichAiGeneratedHtml(opts: {
   html: string;
   slug: string;
   city?: string;
   focusKeyword?: string;
+  excerpt?: string;
+  localAreas?: string[];
+  localKeywords?: string[];
   relatedBlogs?: RelatedBlogLink[];
   appDownloadUrl?: string;
+  informativeOnly?: boolean;
 }): { html: string; links: EnrichedBlogLinks } {
   let html = String(opts.html || '').trim();
   const campaign = toCampaignSlug(opts.slug);
   const term = String(opts.focusKeyword || '').trim() || undefined;
   const related = opts.relatedBlogs || [];
+  const informativeOnly = Boolean(opts.informativeOnly);
 
   html = rewriteAnchors(html, campaign, term);
   html = stripExistingCta(html).trim();
-  html = ensureAboutMyFngHtml(
-    html,
-    opts.appDownloadUrl || buildBlogTrackedPath('/go/myfngapp', campaign, 'app-download', term),
-  );
-  html = `${html}\n${buildCtaHtml({
-    city: opts.city,
-    campaign,
-    focusKeyword: term,
-    appDownloadUrl: opts.appDownloadUrl,
-  })}`;
+  html = ensureIntroAndToc(html, opts.excerpt);
+  if (!informativeOnly) {
+    html = ensureLocalSeoHtml(html, {
+      city: opts.city,
+      areas: opts.localAreas,
+      keywords: opts.localKeywords,
+    });
+    html = ensureAiOverviewHtml(html);
+    html = ensureAboutMyFngHtml(
+      html,
+      opts.appDownloadUrl || buildBlogTrackedPath('/go/myfngapp', campaign, 'app-download', term),
+    );
+    html = `${html}\n${buildCtaHtml({
+      city: opts.city,
+      campaign,
+      focusKeyword: term,
+      appDownloadUrl: opts.appDownloadUrl,
+    })}`;
+  }
 
   if (related.length && blogLinkCount(html) < 2) {
     html = `${html}\n${relatedReadingHtml(related, campaign, term)}`;

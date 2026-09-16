@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { computeReadTimeFromHtml } from '@/lib/blog/text';
+import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
+import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 
 export const revalidate = 120;
 
@@ -92,11 +95,21 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform tags structure
-    const transformedBlogs = filteredBlogs.map((blog: any) => ({
-      ...blog,
-      tags: blog.tags?.map((t: any) => t.tag).filter(Boolean) || [],
-      categories: (blog.categories || []).map((c: any) => c?.category).filter(Boolean) || [],
-    }));
+    const transformedBlogs = filteredBlogs.map((blog: any) => {
+      const seo = blog.seo_data || {};
+      const city = String(seo.local_city || seo.ai_city || '').trim();
+      const title = city && (seo.ai_daily_post || seo.ai_batch_post)
+        ? ensureSeoBlogTitle(String(blog.title || ''), city)
+        : blog.title;
+      return {
+        ...blog,
+        title,
+        read_time: computeReadTimeFromHtml(String(blog.content || '')).minutes,
+        author: { full_name: PUBLIC_BLOG_AUTHOR },
+        tags: blog.tags?.map((t: any) => t.tag).filter(Boolean) || [],
+        categories: (blog.categories || []).map((c: any) => c?.category).filter(Boolean) || [],
+      };
+    });
 
     return NextResponse.json(
       {

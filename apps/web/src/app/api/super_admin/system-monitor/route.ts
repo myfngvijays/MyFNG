@@ -1510,7 +1510,7 @@ async function checkDailyBlog(): Promise<HealthCheck> {
       reason: failed
         ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
         : enabled
-          ? 'Cron /api/cron/daily-blog is set for 04:30 UTC (10:00 AM IST). One published post per day.'
+          ? 'Cron /api/cron/daily-blog is set for 04:30 UTC (10:00 AM IST). Posts follow Google AI Overview style. Every Monday is an About MyFNG USP (₹1500 interim, photo-proof, app vs WhatsApp, pickup, Prime).'
           : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
       quickFix: {
         label: 'Open Blogs',

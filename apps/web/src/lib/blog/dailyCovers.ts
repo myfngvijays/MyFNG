@@ -30,8 +30,8 @@ function escapeXml(s: string) {
     .replace(/"/g, '&quot;');
 }
 
-function wrapCoverTitle(title: string, maxChars = 16): string[] {
-  const words = String(title || '')
+function wrapWords(text: string, maxChars: number): string[] {
+  const words = String(text || '')
     .replace(/\s+/g, ' ')
     .trim()
     .toUpperCase()
@@ -49,27 +49,77 @@ function wrapCoverTitle(title: string, maxChars = 16): string[] {
     }
   }
   if (current) lines.push(current);
+  return lines;
+}
+
+export function wrapCoverTitle(title: string, maxChars = 17): string[] {
+  const raw = String(title || '').replace(/\s+/g, ' ').trim();
+  const inMatch = raw.match(/^(.*)\s+in\s+(.+)$/i);
+  let city = '';
+  let head = raw;
+  if (inMatch) {
+    city = inMatch[2].trim();
+    head = inMatch[1].trim();
+  } else {
+    const dashParts = raw.split(/\s+[–—-]\s+/);
+    if (dashParts.length > 1) {
+      city = dashParts.pop() || '';
+      head = dashParts.join(' ');
+    }
+  }
+  const lines = wrapWords(head, maxChars);
+  if (city) lines.push(`IN ${city.toUpperCase()}`);
   return lines.slice(0, 5);
 }
 
-function coverTitleSvg(title: string, variant: 'light' | 'blue') {
-  const lines = wrapCoverTitle(title, 16);
+function svgTitleLine(line: string) {
+  return escapeXml(line).replace(/ /g, '&#160;');
+}
+
+async function coverTitlePng(title: string, variant: 'light' | 'blue') {
+  const lines = wrapCoverTitle(title, 17);
   const fill = variant === 'light' ? '#003399' : '#FFFFFF';
-  const panel = variant === 'light' ? '#F4F7FB' : '#0066FF';
-  const lineH = 92;
+  const fontSize = lines.length >= 5 ? 70 : lines.length === 4 ? 80 : 92;
+  const lineH = fontSize + 22;
   const startY = 400;
   const texts = lines
     .map(
       (line, i) =>
-        `<text x="92" y="${startY + i * lineH}" font-size="72" font-weight="800" font-family="Arial, Helvetica, sans-serif" fill="${fill}">${escapeXml(line)}</text>`,
+        `<text x="92" y="${startY + i * lineH}" font-size="${fontSize}" font-weight="800" font-family="Arial, Helvetica, sans-serif" fill="${fill}" xml:space="preserve">${svgTitleLine(line)}</text>`,
     )
     .join('');
-  return Buffer.from(
-    `<svg width="${TARGET_W}" height="${TARGET_H}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="48" y="250" width="1080" height="560" fill="${panel}"/>
-      ${texts}
-    </svg>`,
+  const svg = Buffer.from(
+    `<svg width="${TARGET_W}" height="${TARGET_H}" xmlns="http://www.w3.org/2000/svg">${texts}</svg>`,
   );
+  return sharp(svg).png({ force: true }).toBuffer();
+}
+
+/** Rebuild the template field (no flat plate) so baked-in title letters disappear. */
+async function restoreTitleField(base: Buffer) {
+  const { data, info } = await sharp(base).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  const pixels = Buffer.from(data);
+  const at = (x: number, y: number) => (y * width + x) * channels;
+  const x0 = 40;
+  const x1 = Math.min(width, 1120);
+  const y0 = 310;
+  const y1 = Math.min(height, 860);
+  const yTop = 268;
+  const yBot = Math.min(height - 1, 888);
+
+  for (let y = y0; y < y1; y += 1) {
+    const t = (y - yTop) / Math.max(1, yBot - yTop);
+    for (let x = x0; x < x1; x += 1) {
+      const top = at(x, yTop);
+      const bot = at(x, yBot);
+      const i = at(x, y);
+      pixels[i] = Math.round(data[top] + (data[bot] - data[top]) * t);
+      pixels[i + 1] = Math.round(data[top + 1] + (data[bot + 1] - data[top + 1]) * t);
+      pixels[i + 2] = Math.round(data[top + 2] + (data[bot + 2] - data[top + 2]) * t);
+    }
+  }
+
+  return sharp(pixels, { raw: { width, height, channels } }).png().toBuffer();
 }
 
 async function toWebpUnderSize(input: Buffer, title?: string, coverFile?: string): Promise<Buffer> {
@@ -80,8 +130,10 @@ async function toWebpUnderSize(input: Buffer, title?: string, coverFile?: string
     .toBuffer();
 
   if (title && title.trim()) {
+    base = await restoreTitleField(base);
+    const overlay = await coverTitlePng(title.trim(), variant);
     base = await sharp(base)
-      .composite([{ input: coverTitleSvg(title.trim(), variant), top: 0, left: 0 }])
+      .composite([{ input: overlay, top: 0, left: 0 }])
       .png()
       .toBuffer();
   }

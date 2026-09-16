@@ -6,11 +6,13 @@ import { createClient } from '@supabase/supabase-js';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { Calendar, Clock, Eye, Facebook, Instagram, Linkedin, MessageCircle, Tag, Youtube } from 'lucide-react';
-import { formatDateDMY } from "@/lib/utils";
+import { formatDateDMY, formatDateTimeISTAssumeUTC } from "@/lib/utils";
+import { computeReadTimeFromHtml } from '@/lib/blog/text';
 import ViewCounter from '@/components/blog/ViewCounter';
 import CopyLinkButton from '@/components/blog/CopyLinkButton';
 import BlogComments from '@/components/blog/BlogComments';
 import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
+import BlogPrimeBanner from '@/components/blog/BlogPrimeBanner';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
 import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import { buildGoAppDownloadUrl } from '@/lib/blog/blogAppDownload';
@@ -20,7 +22,11 @@ import {
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
 import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent';
-import { buildBlogTrackedPath, ensureAboutMyFngHtml, stripExistingCta } from '@/lib/blog/aiLinks';
+import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLocalSeoHtml, stripExistingCta } from '@/lib/blog/aiLinks';
+import { ensureAiOverviewHtml, ensureRsaAiOverviewHtml } from '@/lib/blog/dailyAiOverview';
+import { isMyFngServiceFaq, isNewsCarBlog, stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
+import { ensureSeoBlogTitle, rewriteCityDashTitle } from '@/lib/blog/generateAiDraft';
+import { PUBLIC_BLOG_AUTHOR_HREF, publicBlogAuthorName } from '@/lib/blog/publicAuthor';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,12 +73,23 @@ function formatDate(dateString?: string | null) {
   return formatDateDMY(d);
 }
 
-function formatDateTime(dateString?: string | null) {
-  if (!dateString) return '';
-  const d = new Date(dateString);
-  const date = formatDateDMY(d);
-  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  return `${date} ${time}`;
+function blogSlugFromHref(href: string) {
+  const path = String(href || '').replace(/^https?:\/\/[^/?#]+/i, '');
+  const match = path.match(/\/blogs\/([^/?#]+)/i);
+  if (!match?.[1]) return '';
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function displayBlogCardTitle(title: string, seo?: Record<string, unknown> | null) {
+  const city = String(seo?.local_city || seo?.ai_city || '').trim();
+  if (city && (seo?.ai_daily_post || seo?.ai_batch_post)) {
+    return ensureSeoBlogTitle(title, city);
+  }
+  return rewriteCityDashTitle(title);
 }
 
 function buildSchemas(blog: Blog) {
@@ -86,7 +103,7 @@ function buildSchemas(blog: Blog) {
   const desc = String(seo?.meta_description || blog.excerpt || '').trim();
   const keywords = String(seo?.keywords || '').trim();
   const publishedAt = blog.published_at || blog.created_at || null;
-  const authorName = String(seo?.author_name || blog.author?.full_name || 'MyFNG').trim();
+  const authorName = publicBlogAuthorName(blog);
   const featuredImage = blog.featured_image || seo?.og_image || null;
   const city = normalizeCity(seo?.local_city) || 'Pune';
   const areas = resolveLocalAreas(seo);
@@ -107,7 +124,7 @@ function buildSchemas(blog: Blog) {
       description: desc || undefined,
       datePublished: publishedAt || undefined,
       dateModified: blog.created_at || publishedAt || undefined,
-      author: { '@type': 'Person', name: authorName },
+      author: { '@type': 'Person', name: authorName, url: `https://myfng.in${PUBLIC_BLOG_AUTHOR_HREF}` },
       publisher: {
         '@type': 'Organization',
         name: 'MyFNG',
@@ -204,7 +221,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!blog) return {};
 
   const seo = (blog.seo_data || {}) as any;
-  const title = String(seo?.meta_title || blog.title || '').trim();
+  const titleCity = String(seo?.local_city || seo?.ai_city || '').trim();
+  const rawTitle = String(seo?.meta_title || blog.title || '').trim();
+  const title = titleCity && (seo?.ai_daily_post || seo?.ai_batch_post)
+    ? ensureSeoBlogTitle(rawTitle, titleCity)
+    : rawTitle;
   const description = String(seo?.meta_description || blog.excerpt || '').trim();
   const keywords = String(seo?.keywords || '')
     .split(',')
@@ -212,7 +233,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     .filter(Boolean);
 
   const canonical = String(seo?.canonical_url || `https://myfng.in/blogs/${encodeURIComponent(blog.slug)}`).trim();
-  const ogTitle = String(seo?.og_title || title || blog.title || '').trim();
+  const ogTitle = titleCity && (seo?.ai_daily_post || seo?.ai_batch_post)
+    ? ensureSeoBlogTitle(String(seo?.og_title || title || blog.title || '').trim(), titleCity)
+    : String(seo?.og_title || title || blog.title || '').trim();
   const ogDesc = String(seo?.og_description || description).trim();
   const ogImage =
     normalizeBlogMediaAbsoluteUrl(String(seo?.og_image || blog.featured_image || '').trim()) || undefined;
@@ -328,7 +351,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   const { data: recentPosts } = await supabase
     .from('blogs')
-    .select('id, slug, title, featured_image, published_at, created_at')
+    .select('id, slug, title, featured_image, published_at, created_at, seo_data')
     .ilike('status', 'published')
     .neq('id', transformed.id)
     .order('published_at', { ascending: false, nullsFirst: false })
@@ -348,19 +371,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     .eq('blog_id', transformed.id)
     .order('created_at', { ascending: true });
 
-  const dateText = formatDateTime(transformed.published_at || transformed.created_at);
-  const readTimeText = transformed.read_time ? `${transformed.read_time} min read` : '';
+  const seo: any = (transformed.seo_data || {}) as any;
+  if (isNewsCarBlog(seo)) {
+    transformed.faqs = (transformed.faqs || []).filter((f) => !isMyFngServiceFaq(f.question, f.answer));
+  }
+  const titleCity = String(seo?.local_city || seo?.ai_city || '').trim();
+  if (titleCity && (seo?.ai_daily_post || seo?.ai_batch_post)) {
+    transformed.title = ensureSeoBlogTitle(transformed.title, titleCity);
+  }
+  const authorDisplayName = publicBlogAuthorName(transformed);
+  (transformed.seo_data as any).author_name = authorDisplayName;
+
+  const dateText = formatDateTimeISTAssumeUTC(transformed.published_at || transformed.created_at);
   const views = Number(transformed.views || 0);
   const schema = buildSchemas(transformed);
-
-  const seo: any = (transformed.seo_data || {}) as any;
-  const authorDisplayName = String(
-    seo?.author_name ||
-      (transformed.author as any)?.full_name ||
-      (transformed as any)?.author_name ||
-      (transformed.author as any)?.name ||
-      ''
-  ).trim();
   const breadcrumbCategory =
     (transformed.categories || []).filter(Boolean)[0] ||
     transformed.category ||
@@ -378,13 +402,23 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           if (!x) return null;
           if (typeof x === 'string') return { url: String(x).trim() };
           const url = String(x?.url || x?.href || '').trim();
-          const title = String(x?.title || x?.name || '').trim() || undefined;
+          const title = rewriteCityDashTitle(String(x?.title || x?.name || '').trim()) || undefined;
           if (!url) return null;
           return { url, title };
         })
         .filter(Boolean)
         .slice(0, 3) as any
     : [];
+
+  const relatedSlugs = [...new Set(relatedArticles.map((a) => blogSlugFromHref(a.url)).filter(Boolean))];
+  const { data: relatedRows } = relatedSlugs.length
+    ? await supabase
+        .from('blogs')
+        .select('id, slug, title, featured_image, seo_data')
+        .in('slug', relatedSlugs)
+        .eq('status', 'published')
+    : { data: [] as any[] };
+  const relatedBySlug = new Map((relatedRows || []).map((row: any) => [String(row.slug), row]));
 
   const shareUrl = `https://myfng.in/blogs/${encodeURIComponent(transformed.slug)}`;
   const waHref = `https://wa.me/?text=${encodeURIComponent(`${transformed.title}\n${shareUrl}`)}`;
@@ -399,15 +433,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const bookHref = (placement: string) =>
     buildBlogTrackedPath('/book-service', transformed.slug, placement, String(seo?.keywords || '').split(',')[0]);
   const relatedSidebar = (relatedArticles.length
-    ? relatedArticles.map((a, i) => ({
-        id: `rel-${i}`,
-        slug: a.url,
-        title: a.title || a.url,
-        featured_image: '',
-        href: a.url,
-      }))
+    ? relatedArticles.map((a, i) => {
+        const slug = blogSlugFromHref(a.url);
+        const row = slug ? relatedBySlug.get(slug) : null;
+        return {
+          id: row?.id || `rel-${i}`,
+          slug: slug || a.url,
+          title: row ? displayBlogCardTitle(String(row.title || a.title || ''), row.seo_data) : (a.title || a.url),
+          featured_image: row?.featured_image || '',
+          href: slug ? `/blogs/${slug}` : a.url,
+        };
+      })
     : (recentPosts || []).map((p: any) => ({
         ...p,
+        title: displayBlogCardTitle(String(p.title || ''), p.seo_data),
         href: `/blogs/${p.slug}`,
       }))
   ).slice(0, 3);
@@ -419,10 +458,26 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       focusKeyword: String(seo?.keywords || '').split(',')[0],
       content: 'app-download',
     });
-  transformed.content = ensureAboutMyFngHtml(
-    stripExistingCta(normalizeBlogContentForDisplay(String(blog.content || ''))),
-    appDownloadHref,
+  const newsCar = isNewsCarBlog(seo as Record<string, unknown>);
+  const rsaPost = Boolean(seo?.ai_rsa_post);
+  const rawDisplay = normalizeBlogContentForDisplay(String(blog.content || ''));
+  const withLocal = ensureLocalSeoHtml(
+    ensureIntroAndToc(stripExistingCta(rawDisplay), highlightQuote),
+    {
+      city: String(seo?.local_city || seo?.ai_city || '').trim(),
+      areas: Array.isArray(seo?.local_areas) ? seo.local_areas : [],
+      keywords: Array.isArray(seo?.local_keywords) ? seo.local_keywords : [],
+    },
   );
+  transformed.content = newsCar
+    ? ensureIntroAndToc(stripMyFngServiceHtml(stripExistingCta(rawDisplay)), highlightQuote)
+    : ensureAboutMyFngHtml(
+        rsaPost ? ensureRsaAiOverviewHtml(withLocal) : ensureAiOverviewHtml(withLocal),
+        appDownloadHref,
+      );
+  transformed.content = rewriteCityDashTitle(transformed.content);
+  const readMinutes = computeReadTimeFromHtml(transformed.content).minutes;
+  const readTimeText = `${readMinutes} min read`;
 
   return (
       <div className="min-h-screen bg-[#f5f7fb]">
@@ -432,8 +487,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap h1,.blog-html-wrap h2,.blog-html-wrap h3,.blog-html-wrap h4,.blog-html-wrap h5,.blog-html-wrap h6{font-family:'Poppins',sans-serif;color:#111827;}
           .blog-html-wrap .container{max-width:1200px;margin:auto;padding:20px;}
           .blog-html-wrap .breadcrumb{font-size:14px;color:#888;margin-bottom:20px;}
-          .blog-html-wrap .blog-title{font-size:32px;font-weight:700;margin-bottom:10px;color:#111827;line-height:1.2;}
+          .blog-html-wrap .blog-title{font-size:36px;font-weight:700;margin-bottom:10px;color:#111827;line-height:1.2;}
           .blog-html-wrap .blog-meta{font-size:13px;color:#777;margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;}
+          .blog-html-wrap .blog-meta a{color:#0a4ea3;font-weight:600;text-decoration:none;}
+          .blog-html-wrap .blog-meta a:hover{text-decoration:underline;}
           .blog-html-wrap .layout{display:flex;gap:25px;}
           .blog-html-wrap .content-area{flex:3;min-width:0;}
           .blog-html-wrap .sidebar{flex:1;min-width:0;position:sticky;top:90px;height:fit-content;}
@@ -456,7 +513,28 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .main-content a{color:#0a4ea3;text-decoration:underline;}
           .blog-html-wrap .main-content strong{font-weight:600;}
           .blog-html-wrap .main-content h2:not(:first-child){margin-top:28px;}
-          .blog-html-wrap .blog-post-cta{margin-top:28px;padding:22px 24px;border-radius:14px;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 100%);border:1px solid #cfe0ff;}
+          .blog-html-wrap .blog-toc{margin:0 0 22px;padding:18px 20px;border-radius:12px;background:#f4f8ff;border:1px solid #d7e6ff;}
+          .blog-html-wrap .blog-toc h2{margin:0 0 10px !important;font-size:16px !important;font-weight:700;color:#0a4ea3;}
+          .blog-html-wrap .blog-toc ol{margin:0;padding-left:1.25rem;}
+          .blog-html-wrap .blog-toc li{margin:6px 0;font-size:14px;}
+          .blog-html-wrap .blog-toc a{color:#0a4ea3;text-decoration:none;font-weight:600;}
+          .blog-html-wrap .blog-toc a:hover{text-decoration:underline;}
+          .blog-html-wrap .blog-aio-summary{margin:0 0 22px;padding:18px 20px;border-radius:12px;background:#fff8eb;border:1px solid #f3d7a3;}
+          .blog-html-wrap .blog-aio-summary h2{margin:0 0 10px !important;font-size:16px !important;font-weight:700;color:#92400e;}
+          .blog-html-wrap .blog-aio-summary ul{margin:8px 0 0;}
+          .blog-html-wrap .blog-prime-banner{display:block;margin:28px 0 12px;padding:14px 18px;border-radius:14px;text-decoration:none;color:#fff;background:#023D95;border:1px solid rgba(255,255,255,.18);box-shadow:0 2px 14px rgba(2,61,149,0.18);animation:blog-prime-shift 6s linear infinite;}
+          @keyframes blog-prime-shift{0%,100%{background-color:#023D95;}50%{background-color:#DC2626;}}
+          @media (prefers-reduced-motion:reduce){.blog-html-wrap .blog-prime-banner{animation:none;}}
+          .blog-html-wrap .blog-prime-banner-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}
+          .blog-html-wrap .blog-prime-banner-kicker{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;letter-spacing:.04em;color:#f6e27a;}
+          .blog-html-wrap .blog-prime-banner-tag{margin:4px 0 0;font-size:12px;line-height:1.4;color:rgba(255,255,255,.82);}
+          .blog-html-wrap .blog-prime-banner-price{text-align:right;flex-shrink:0;}
+          .blog-html-wrap .blog-prime-banner-price strong{display:block;font-size:22px;line-height:1;font-weight:800;}
+          .blog-html-wrap .blog-prime-banner-price span{font-size:12px;color:rgba(255,255,255,.8);}
+          .blog-html-wrap .blog-prime-banner-price em{display:block;margin-top:2px;font-size:11px;font-style:normal;color:#f6e27a;font-weight:700;}
+          .blog-html-wrap .blog-prime-banner-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+          .blog-html-wrap .blog-prime-banner-chips span{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:11px;font-weight:600;line-height:1.3;color:#fff;}
+          .blog-html-wrap .blog-post-cta{margin-top:12px;padding:22px 24px;border-radius:14px;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 100%);border:1px solid #cfe0ff;}
           .blog-html-wrap .blog-post-cta h3{margin:0 0 8px;font-size:18px;font-weight:700;color:#0a4ea3;}
           .blog-html-wrap .blog-post-cta p{margin:0 0 14px;font-size:14px;color:#475569;line-height:1.6;}
           .blog-html-wrap .blog-post-cta-actions{display:flex;flex-wrap:wrap;gap:12px;}
@@ -508,10 +586,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .service-slide img{width:100%;height:130px;object-fit:cover;border-radius:10px;margin-bottom:10px;}
           .blog-html-wrap .service-slide h4{font-size:16px;margin-bottom:10px;color:#0a4ea3;}
           .blog-html-wrap .book-btn{display:block;background:#0a4ea3;color:#fff;padding:10px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;}
-          .blog-html-wrap .recent-post{display:flex;gap:14px;margin-bottom:22px;align-items:flex-start;}
+          .blog-html-wrap .recent-post{margin-bottom:22px;}
           .blog-html-wrap .recent-post:last-child{margin-bottom:0;}
-          .blog-html-wrap .recent-post img{width:78px;height:78px;object-fit:cover;border-radius:10px;flex-shrink:0;}
-          .blog-html-wrap .recent-post a{text-decoration:none;font-size:14px;color:#333;font-weight:600;line-height:1.4;padding-top:2px;}
+          .blog-html-wrap .recent-post a.recent-post-link{display:flex;gap:14px;align-items:flex-start;text-decoration:none;color:inherit;}
+          .blog-html-wrap .recent-post img{width:112px;aspect-ratio:16/9;height:auto;object-fit:cover;border-radius:10px;flex-shrink:0;background:#e8eef6;}
+          .blog-html-wrap .recent-post .recent-post-title{font-size:14px;color:#333;font-weight:600;line-height:1.4;padding-top:2px;}
           .blog-html-wrap .categories{display:flex;flex-wrap:wrap;gap:10px;}
           .blog-html-wrap .categories a{background:#eef2f7;padding:8px 14px;border-radius:20px;text-decoration:none;color:#333;font-size:12px;}
           @media(max-width:1024px){
@@ -520,7 +599,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             .blog-html-wrap .side-box{width:100%;}
             .blog-html-wrap .social-wrap{flex-direction:column;gap:15px;}
             .blog-html-wrap .follow,.blog-html-wrap .share{width:100%;}
-            .blog-html-wrap .blog-title{font-size:24px;}
+            .blog-html-wrap .blog-title{font-size:32px;}
+            .blog-html-wrap .blog-prime-banner-row{flex-direction:column;gap:8px;}
+            .blog-html-wrap .blog-prime-banner-price{text-align:left;}
           }
         `}</style>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet" />
@@ -543,10 +624,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
             <div className="blog-meta">
               {authorDisplayName ? (
-                <span className="inline-flex items-center gap-1">
+                <Link href={PUBLIC_BLOG_AUTHOR_HREF} className="inline-flex items-center gap-1">
                   <i className="fa fa-user" />
                   {authorDisplayName}
-                </span>
+                </Link>
               ) : null}
               {dateText ? (
                 <span className="inline-flex items-center gap-1">
@@ -632,6 +713,15 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <div dangerouslySetInnerHTML={{ __html: transformed.content }} />
                 </div>
 
+                {newsCar ? null : (
+                <>
+                <BlogPrimeBanner
+                  href={buildGoAppDownloadUrl({
+                    slug: transformed.slug,
+                    focusKeyword: String(seo?.keywords || '').split(',')[0],
+                    content: 'prime-banner',
+                  })}
+                />
                 <div className="blog-post-cta">
                   <h3>Need trusted car service in your city?</h3>
                   <p>
@@ -649,6 +739,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     </a>
                   </div>
                 </div>
+                </>
+                )}
 
                 {transformed.faqs && transformed.faqs.length ? (
                   <div className="faq">
@@ -679,6 +771,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   </form>
                 </div>
 
+                {newsCar ? null : (
+                <>
                 <div className="side-box">
                   <h3>Download MyFNG App</h3>
                   <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
@@ -701,29 +795,46 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     ))}
                   </div>
                 </div>
+                </>
+                )}
 
                 <div className="side-box">
                   <h3>Recent Posts</h3>
-                  {(recentPosts || []).map((p: any) => (
-                    <div key={p.id} className="recent-post">
-                      <img src={normalizeBlogMediaUrl(String(p.featured_image || '')) || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
-                      <Link href={`/blogs/${p.slug}`}>{p.title}</Link>
-                    </div>
-                  ))}
+                  {(recentPosts || []).map((p: any) => {
+                    const title = displayBlogCardTitle(String(p.title || ''), p.seo_data);
+                    const href = `/blogs/${p.slug}`;
+                    return (
+                      <div key={p.id} className="recent-post">
+                        <Link href={href} className="recent-post-link">
+                          <img src={normalizeBlogMediaUrl(String(p.featured_image || '')) || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={title} />
+                          <span className="recent-post-title">{title}</span>
+                        </Link>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="side-box">
                   <h3>Related Articles</h3>
-                  {relatedSidebar.map((p: any) => (
-                    <div key={`related-${p.id}`} className="recent-post">
-                      <img src={normalizeBlogMediaUrl(String(p.featured_image || '')) || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
-                      {String(p.href || '').startsWith('http') ? (
-                        <a href={p.href}>{p.title}</a>
-                      ) : (
-                        <Link href={p.href || `/blogs/${p.slug}`}>{p.title}</Link>
-                      )}
-                    </div>
-                  ))}
+                  {relatedSidebar.map((p: any) => {
+                    const href = p.href || `/blogs/${p.slug}`;
+                    const img = normalizeBlogMediaUrl(String(p.featured_image || '')) || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70';
+                    return (
+                      <div key={`related-${p.id}`} className="recent-post">
+                        {String(href).startsWith('http') ? (
+                          <a href={href} className="recent-post-link">
+                            <img src={img} alt={p.title} />
+                            <span className="recent-post-title">{p.title}</span>
+                          </a>
+                        ) : (
+                          <Link href={href} className="recent-post-link">
+                            <img src={img} alt={p.title} />
+                            <span className="recent-post-title">{p.title}</span>
+                          </Link>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="side-box">

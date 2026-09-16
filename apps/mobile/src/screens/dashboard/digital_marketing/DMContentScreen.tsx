@@ -80,7 +80,9 @@ export default function DMContentScreen() {
       } else {
         setDailyLabel(
           enabled
-            ? 'Thane/Navi Mumbai most days · Mumbai Fri · Pune Sat'
+            ? data?.schedule?.usp_rotation
+              ? `${data.schedule.usp_rotation} · ${data.schedule.city_rotation || 'Mon–Fri Thane/Navi Mumbai · Sat Pune · Sun Mumbai'}`
+              : 'Mon USP · Mon–Fri Thane/Navi Mumbai · Sat Pune · Sun Mumbai'
             : 'Daily auto-post is paused',
         );
       }

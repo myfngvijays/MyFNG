@@ -83,6 +83,8 @@ function BlogsPageContent() {
       last_status?: string | null;
       last_error?: string | null;
       enabled?: boolean;
+      city_rotation?: string;
+      usp_rotation?: string;
     };
     last_blog?: { id: string; title: string; slug: string; published_at?: string | null } | null;
   } | null>(null);
@@ -251,12 +253,18 @@ function BlogsPageContent() {
               <p className="mt-1 text-xs text-gray-600">
                 {daily?.missing
                   ? 'Run database/365_daily_blog_auto_post.sql to enable this.'
-                  : daily?.last_blog
-                    ? `Last live: ${daily.last_blog.title}`
-                    : daily?.schedule?.last_status === 'failed'
-                      ? `Last run failed: ${daily.schedule.last_error || 'see System Monitor'}`
-                      : 'Thane / Navi Mumbai most days · Mumbai Friday · Pune Saturday.'}
+                  : daily?.schedule?.last_status === 'failed'
+                    ? `Last run failed: ${daily.schedule.last_error || 'see System Monitor'}`
+                    : daily?.last_blog
+                      ? `Last live: ${daily.last_blog.title}`
+                      : `${daily?.schedule?.city_rotation || 'Mon–Fri Thane / Navi Mumbai · Saturday Pune · Sunday Mumbai'}.`}
               </p>
+              {!daily?.missing ? (
+                <p className="mt-1 text-[11px] text-gray-500">
+                  {daily?.schedule?.usp_rotation ||
+                    'Every Monday · About MyFNG USP (₹1500 interim, photo-proof, app vs WhatsApp, pickup, Prime)'}
+                </p>
+              ) : null}
               {daily?.schedule?.next_run_at ? (
                 <p className="mt-1 text-[11px] text-gray-500">
                   Next: {formatDateDMY(daily.schedule.next_run_at)} · 10:00 AM

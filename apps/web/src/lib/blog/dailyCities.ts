@@ -118,7 +118,7 @@ export const DAILY_CITY_PUNE: DailyTargetCity = {
   ],
 };
 
-/** Fri = Mumbai, Sat = Pune, other days alternate Thane / Navi Mumbai. */
+/** Sat = Pune, Sun = Mumbai, Mon–Fri alternate Thane / Navi Mumbai. */
 export function pickDailyCity(now = new Date()): DailyTargetCity {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Kolkata',
@@ -128,8 +128,8 @@ export function pickDailyCity(now = new Date()): DailyTargetCity {
     day: '2-digit',
   }).formatToParts(now);
   const weekday = parts.find((p) => p.type === 'weekday')?.value;
-  if (weekday === 'Fri') return DAILY_CITY_MUMBAI;
   if (weekday === 'Sat') return DAILY_CITY_PUNE;
+  if (weekday === 'Sun') return DAILY_CITY_MUMBAI;
 
   const year = Number(parts.find((p) => p.type === 'year')?.value);
   const month = Number(parts.find((p) => p.type === 'month')?.value);
@@ -138,6 +138,29 @@ export function pickDailyCity(now = new Date()): DailyTargetCity {
   return dayOfYear % 2 === 0 ? DAILY_CITY_THANE : DAILY_CITY_NAVI_MUMBAI;
 }
 
+export const BATCH_TARGET_CITIES: DailyTargetCity[] = [
+  DAILY_CITY_THANE,
+  DAILY_CITY_NAVI_MUMBAI,
+  DAILY_CITY_PUNE,
+  DAILY_CITY_MUMBAI,
+];
+
+export function cityByIndex(index: number): DailyTargetCity {
+  const i = ((Number(index) % BATCH_TARGET_CITIES.length) + BATCH_TARGET_CITIES.length) % BATCH_TARGET_CITIES.length;
+  return BATCH_TARGET_CITIES[i];
+}
+
+export const RSA_TARGET_CITIES: DailyTargetCity[] = [
+  DAILY_CITY_THANE,
+  DAILY_CITY_NAVI_MUMBAI,
+  DAILY_CITY_MUMBAI,
+];
+
+export function rsaCityByIndex(index: number): DailyTargetCity {
+  const i = ((Number(index) % RSA_TARGET_CITIES.length) + RSA_TARGET_CITIES.length) % RSA_TARGET_CITIES.length;
+  return RSA_TARGET_CITIES[i];
+}
+
 export function dailyCityScheduleLabel() {
-  return 'Most days Thane / Navi Mumbai · Friday Mumbai · Saturday Pune';
+  return 'Mon–Fri Thane / Navi Mumbai · Saturday Pune · Sunday Mumbai';
 }

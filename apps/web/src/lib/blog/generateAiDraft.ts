@@ -4,6 +4,7 @@ import {
   fetchRelatedPublishedBlogs,
   toCampaignSlug,
 } from '@/lib/blog/aiLinks';
+import { computeReadTimeFromHtml } from '@/lib/blog/text';
 
 function stripCodeFences(s: string) {
   const t = String(s || '').trim();
@@ -33,13 +34,25 @@ Content rules:
 - Use <h2> sections, <ul>/<ol> where helpful, and short paragraphs.
 - Include a checklist section and pricing disclaimers (prices vary by model & inspection).
 - If tone is "Hindi + English (Hinglish)", write Hinglish but keep headings in English.
-- Don't invent exact prices; use ranges or "starts from" phrasing.
+- Don't invent exact prices. Allowed start price only: starts from ₹1,500 (varies by car and inspection). Other jobs stay as ranges or "starts from". Do not write “basic / interim periodic” in that line.
 - No markdown fences. No extra keys. JSON must be parseable.
 - NEVER say MyFNG does doorstep / at-home / in-driveway car servicing. MyFNG does NOT send a mechanic to service the car at the customer's house.
+- Do NOT write about CNG cars, CNG kits, EV / electric vehicles, or EV-specific service. Stick to petrol and diesel ICE cars only.
+- If the topic is a newly launched car AND post_kind is not news_car, do not invent official on-road prices. Say check the dealer.
 - MyFNG offers car PICKUP AND DROP: we collect the car, service it at the workshop, and return it.
 - Main conversion is downloading the MyFNG app. Mention the app naturally 2-3 times and use the provided app_download_url for every app-download link.
-- Include a short "About MyFNG" section and a short "Book on the MyFNG app" section before the conclusion. Keep each to 2-4 sentences.
-- Local SEO: write for the given city. Use the city name in the title or H2 when natural. Weave 4-8 locality names from local_areas and 3-6 phrases from local_keywords. Do not dump them as a list at the top.
+- Do not write "About MyFNG" or "Book on the MyFNG app" headings. Those two sections are added automatically after the draft.
+- Local SEO: write ONLY for the given city. Never mention another city (do not write Pune if the city is Thane or Navi Mumbai).
+- Title MUST be short SEO: primary keyword in city, 40-60 characters (example: "Coolant Leak and Overheating Signs in Thane"). Use "in City", not an en-dash before the city. Also put the same title in meta_title.
+- You MUST include at least 4 locality names from local_areas and at least 3 phrases from local_keywords VERBATIM, woven into sentences (not a dump list).
+- Write for Google AI Overview: first 2 sentences must answer the search query directly so they can be quoted. Use short question-style H2s, bullet lists, and a "Summary recommendation" H2 near the end.
+- In Summary recommendation, tell readers to choose MyFNG for photo-backed control, starts from ₹1,500, 1 month / 1,000 km warranty, free pickup & drop, and the MyFNG app (history + tracking). Capitalize the first letter after each bullet label. Do not name competitor brands.
+- Photo-backed control is a MyFNG USP: live photos/videos on WhatsApp; extra work only after the customer approves the quote. Say this whenever trust, pricing, or updates come up.
+- Service starts from ₹1,500 (varies by car and inspection). Use “Starts from”, never a fake fixed bill.
+- Explain why the MyFNG app matters vs WhatsApp-only: WhatsApp is for live photo/video updates; the app is for booking, estimate, pickup tracking, and service history. A chat is not a service record.
+- Start content_html with 1-2 short intro paragraphs BEFORE the first H2. Do not start with a heading.
+- After the intro, include a Table of Contents as <div class="blog-toc"> with links to every H2 id.
+- Give every H2 an id (sec-...).
 
 Linking rules (mandatory):
 - Every blog MUST include a MyFNG CTA block near the end using class "blog-post-cta" with: Download MyFNG App (app_download_url), Book Service (/book-service), and tel:+919152307030.
@@ -64,6 +77,8 @@ Rules:
 - Minimum 5 FAQs, maximum 8.
 - Questions should be user-like and specific (often starting with What/How/Why/When/Is/Can).
 - Answers: 1-3 short sentences, factual, no hallucinated prices.
+- Do not mention CNG cars, CNG kits, or EV / electric vehicles.
+- Include at least one FAQ that Google AI Overview can lift (starting price from ₹1,500, photo/video approval, or why the MyFNG app vs WhatsApp-only).
 - Do not include markdown fences. Do not include extra keys.
 `.trim();
 
@@ -82,6 +97,42 @@ Rules:
 - Avoid duplicates, avoid overly generic tags like "Blog".
 - No markdown fences. No extra keys.
 `.trim();
+
+export function ensureSeoBlogTitle(title: string, city?: string, focusKeyword?: string) {
+  let next = String(title || '').replace(/\s+/g, ' ').trim();
+  const cityName = String(city || '').trim();
+  const keyword = String(focusKeyword || '')
+    .replace(new RegExp(`\\s+${cityName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!next && keyword && cityName) return `${keyword} in ${cityName}`.slice(0, 80);
+  if (!next) return next;
+  next = next.replace(/\s*\|\s*myfng.*$/i, '').replace(/[.]+$/, '').trim();
+  if (cityName) {
+    const cityRe = cityName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    next = next
+      .replace(new RegExp(`\\s+in\\s+${cityRe}\\s*$`, 'i'), '')
+      .replace(new RegExp(`\\s+[–—\\-|:]\\s+${cityRe}\\s*$`, 'i'), '')
+      .replace(/\s*[–—-]\s*[A-Za-z]{1,4}\s*$/, '')
+      .replace(new RegExp(`\\s+[–—-]\\s+${cityRe}\\b`, 'i'), '')
+      .replace(new RegExp(`\\b${cityRe}\\b`, 'gi'), ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*[–—]\s+/g, ': ')
+      .replace(/\s*[–—:?]\s*$/, '')
+      .trim();
+    if (!next) next = keyword || cityName;
+    next = `${next} in ${cityName}`;
+  }
+  return next.slice(0, 80);
+}
+
+export function rewriteCityDashTitle(text: string) {
+  return String(text || '')
+    .replace(/\s+[–—-]\s+Navi Mumbai\b/gi, ' in Navi Mumbai')
+    .replace(/\s+[–—-]\s+Thane\b/gi, ' in Thane')
+    .replace(/\s+[–—-]\s+Pune\b/gi, ' in Pune')
+    .replace(/\s+[–—-]\s+Mumbai\b/gi, ' in Mumbai');
+}
 
 export type AiBlogDraft = {
   title: string;
@@ -157,6 +208,9 @@ export async function generateAiBlogDraft(opts: {
   tone?: string;
   wordCount?: number;
   appDownloadUrl?: string;
+  postKind?: 'service' | 'usp' | 'news' | 'rsa';
+  uspFacts?: string[];
+  aioFacts?: string[];
 }): Promise<AiBlogDraft> {
   const topic = String(opts.topic || '').trim();
   const focusKeyword = String(opts.focusKeyword || '').trim();
@@ -177,8 +231,42 @@ export async function generateAiBlogDraft(opts: {
     limit: 6,
   }).catch(() => []);
 
+  const isUsp = opts.postKind === 'usp';
+  const isNews = opts.postKind === 'news';
+  const isRsa = opts.postKind === 'rsa';
+  const system = isNews
+    ? `${BLOG_SYSTEM_PROMPT}
+
+Extra rules for this NEW-CAR news explainer:
+- This is informational only. MyFNG does NOT service these newly launched cars. Do not mention MyFNG pickup, workshop booking, the MyFNG app, starts from ₹1,500, warranty, Prime, or photo-backed control.
+- Do not include About MyFNG, Book on the MyFNG app, Summary recommendation, or any CTA to book service.
+- Do not invent official on-road prices. Say check the dealer or brand website.
+- Focus on launch facts, what buyers should inspect, and the dealer first-service schedule. Petrol/diesel only. No CNG or EV.`
+    : isUsp
+    ? `${BLOG_SYSTEM_PROMPT}
+
+Extra rules for this weekly About MyFNG / USP post:
+- This is a brand explainer, not a generic repair how-to. Keep the whole article on the given USP.
+- Still use the SEO title Keyword in City, intro + TOC, city-only copy, and local_areas / local_keywords.
+- Open with why this MyFNG benefit matters to car owners in that city, then explain how it works, then a short checklist.
+- Follow usp_facts exactly. Do not invent prices, membership fees, or extra promises.
+- End with a Summary recommendation written like an AI Overview: choose MyFNG if you want photo-backed control + starts from ₹1,500 + 1 month / 1,000 km warranty + app history, not a chat-only garage.`
+    : isRsa
+    ? `${BLOG_SYSTEM_PROMPT}
+
+Extra rules for this RSA / roadside assistance post:
+- This is emergency roadside help, not periodic workshop service. Keep the article on breakdown, towing, jumpstart, puncture, fuel or accident recovery.
+- MyFNG RSA is 24×7 and can reach the stranded car. Do not call this doorstep / at-home car servicing.
+- Follow aio_facts exactly. Towing starts from ₹25/km. Do not invent other RSA prices. Typical ETAs are ranges only.
+- After a tow, workshop repair is booked separately with free pickup & drop.
+- Title MUST be Keyword in City (example: "Car Towing After a Breakdown in Thane").
+- Summary recommendation: choose MyFNG RSA for 24×7 dispatch, live tracking, towing from ₹25/km, and the MyFNG app. Do not push starts from ₹1,500 workshop pricing as the main RSA claim.
+- Link to /car-roadside-assistance and the app. CTA can include Download App, RSA page, and tel:+919152307030.
+- Cities allowed: Mumbai, Navi Mumbai, Thane only. Never mention Pune.`
+    : BLOG_SYSTEM_PROMPT;
+
   const parsed = await openaiJson({
-    system: BLOG_SYSTEM_PROMPT,
+    system,
     temperature: 0.5,
     user: {
       topic,
@@ -189,6 +277,9 @@ export async function generateAiBlogDraft(opts: {
       intent,
       tone,
       wordCount,
+      post_kind: isNews ? 'news_car' : isUsp ? 'about_myfng_usp' : isRsa ? 'rsa' : 'service',
+      usp_facts: isUsp ? (opts.uspFacts || []).slice(0, 12) : undefined,
+      aio_facts: isNews ? undefined : (opts.aioFacts || opts.uspFacts || []).slice(0, 12),
       app_download_url: opts.appDownloadUrl || '/go/myfngapp',
       linking: buildAiLinkPromptPayload({
         city,
@@ -201,11 +292,10 @@ export async function generateAiBlogDraft(opts: {
     },
   });
 
-  const title = String(parsed?.title || '').trim();
+  const title = ensureSeoBlogTitle(String(parsed?.title || '').trim(), city, focusKeyword);
   const excerpt = String(parsed?.excerpt || '').trim();
   const rawHtml = String(parsed?.content_html || '').trim();
   const seo = parsed?.seo || {};
-  const read_time = Number(parsed?.read_time || 5) || 5;
 
   if (!title || !excerpt || !rawHtml) {
     throw new Error('AI response missing required fields');
@@ -217,6 +307,9 @@ export async function generateAiBlogDraft(opts: {
     slug,
     city,
     focusKeyword,
+    excerpt,
+    localAreas: opts.localAreas,
+    localKeywords: opts.localKeywords,
     relatedBlogs,
     appDownloadUrl: opts.appDownloadUrl,
   });
@@ -227,10 +320,10 @@ export async function generateAiBlogDraft(opts: {
     excerpt,
     content_html: enriched.html,
     seo: {
-      meta_title: String(seo?.meta_title || title).trim().slice(0, 120),
+      meta_title: ensureSeoBlogTitle(String(seo?.meta_title || title).trim(), city, focusKeyword).slice(0, 120),
       meta_description: String(seo?.meta_description || excerpt).trim().slice(0, 160),
       keywords: String(seo?.keywords || focusKeyword || '').trim(),
-      og_title: String(seo?.og_title || title).trim().slice(0, 120),
+      og_title: ensureSeoBlogTitle(String(seo?.og_title || title).trim(), city, focusKeyword).slice(0, 120),
       og_description: String(seo?.og_description || excerpt).trim().slice(0, 200),
       cta_text: 'Book Service Now',
       cta_url: enriched.links.cta_url.startsWith('http')
@@ -239,7 +332,7 @@ export async function generateAiBlogDraft(opts: {
       related_articles: enriched.links.related_articles,
     },
     links: enriched.links,
-    read_time: Math.max(1, Math.min(30, Math.round(read_time))),
+    read_time: computeReadTimeFromHtml(enriched.html).minutes,
   };
 }
 
