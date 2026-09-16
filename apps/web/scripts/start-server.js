@@ -13,4 +13,5 @@ if (!serverPath) {
   process.exit(1);
 }
 
+require('./html-pretty-patch');
 require(serverPath);

@@ -71,7 +71,7 @@ else
     --cwd "${VPS_PROJECT_PATH}/apps/web" \
     -i "${WORKERS}" \
     --max-memory-restart "${MEMORY_CAP}" \
-    --node-args="--max-old-space-size=${NODE_OLD_SPACE}" \
+    --node-args="--require ${VPS_PROJECT_PATH}/apps/web/scripts/html-pretty-patch.js --max-old-space-size=${NODE_OLD_SPACE}" \
     --time
 fi
 pm2 save

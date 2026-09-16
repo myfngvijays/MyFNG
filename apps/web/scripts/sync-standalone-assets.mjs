@@ -2,7 +2,7 @@
  * Next standalone does not include CSS/JS chunks. Copy them after every build
  * so `npm run build` + pm2 reload does not ship unstyled HTML.
  */
-import { cpSync, existsSync, mkdirSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -55,6 +55,28 @@ if (existsSync(join(mcpDist, 'createServer.js'))) {
   }
   console.log('[sync-standalone-assets] copied packages/myfng-mcp/dist + zod/supabase');
 }
+
+function injectPrettyHtml(dest) {
+  const formatSrc = join(webRoot, 'scripts/format-html.js');
+  const patchSrc = join(webRoot, 'scripts/html-pretty-patch.js');
+  const serverJs = join(dest, 'server.js');
+  if (!existsSync(formatSrc) || !existsSync(patchSrc) || !existsSync(serverJs)) return;
+
+  cpSync(formatSrc, join(dest, 'format-html.js'));
+  cpSync(patchSrc, join(dest, 'html-pretty-patch.js'));
+
+  const marker = "require('./html-pretty-patch.js')";
+  const source = readFileSync(serverJs, 'utf8');
+  if (source.includes('html-pretty-patch')) {
+    console.log('[sync-standalone-assets] pretty HTML already in standalone server.js');
+    return;
+  }
+
+  writeFileSync(serverJs, `${marker};\n${source}`);
+  console.log('[sync-standalone-assets] injected pretty HTML into standalone server.js');
+}
+
+injectPrettyHtml(destRoot);
 
 for (const envfile of ['.env', '.env.local', '.env.production', '.env.production.local']) {
   const from = join(webRoot, envfile);

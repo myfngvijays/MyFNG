@@ -5,6 +5,8 @@
  * Disable with PRETTY_HTML=0
  */
 const http = require('http');
+const https = require('https');
+const zlib = require('zlib');
 const { formatHtml } = require('./format-html');
 
 function isPrettyHtmlEnabled() {
@@ -41,16 +43,34 @@ function patchResponse(req, res) {
     }
 
     try {
-      let body = Buffer.concat(chunks).toString('utf8');
+      const raw = Buffer.concat(chunks);
+      const encodingHeader = String(res.getHeader('content-encoding') || '').toLowerCase();
+      let gzipped =
+        encodingHeader.includes('gzip') ||
+        (raw.length > 2 && raw[0] === 0x1f && raw[1] === 0x8b);
+      let body;
+      if (gzipped) {
+        try {
+          body = zlib.gunzipSync(raw).toString('utf8');
+        } catch {
+          gzipped = false;
+          body = raw.toString('utf8');
+        }
+      } else {
+        body = raw.toString('utf8');
+      }
+
       if (/<!DOCTYPE html|<html[\s>]/i.test(body)) {
         body = formatHtml(body);
       }
-      const out = Buffer.from(body, 'utf8');
+
+      let out = Buffer.from(body, 'utf8');
+      if (gzipped) out = zlib.gzipSync(out);
       if (!res.headersSent) {
         res.setHeader('Content-Length', out.length);
         res.removeHeader('Transfer-Encoding');
       }
-      origEnd(out, 'utf8', callback);
+      origEnd(out, undefined, callback);
     } catch {
       origEnd(Buffer.concat(chunks), encoding, callback);
     }
@@ -88,13 +108,21 @@ function patchResponse(req, res) {
   };
 }
 
-if (isPrettyHtmlEnabled()) {
-  const originalEmit = http.Server.prototype.emit;
-  http.Server.prototype.emit = function emit(type, ...args) {
+function patchServerEmit(Server) {
+  const originalEmit = Server.prototype.emit;
+  if (originalEmit.__myfngPrettyHtml) return;
+  function emit(type, ...args) {
     if (type === 'request') {
       const [req, res] = args;
       patchResponse(req, res);
     }
     return originalEmit.call(this, type, ...args);
-  };
+  }
+  emit.__myfngPrettyHtml = true;
+  Server.prototype.emit = emit;
+}
+
+if (isPrettyHtmlEnabled()) {
+  patchServerEmit(http.Server);
+  patchServerEmit(https.Server);
 }
