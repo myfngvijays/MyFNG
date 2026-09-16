@@ -5,20 +5,37 @@
  */
 
 export const ENQUIRY_CSV_COLUMNS = [
-  'phone_no',
   'name',
-  'address',
-  'regdate',
-  'car_number',
-  'make',
+  'phone_no',
+  'alternate_phone',
   'model',
-  'lead_tags',
+  'package',
+  'workshop',
+  'address',
+  'plan',
+  'pickup_visit',
+  'car_number',
+  'next_followup_at',
   'package_rate_access',
+  'lead_number',
+  'remark',
+  'disposition',
+  'lost_reason',
+  'assignee_name',
+  'user_note',
   'created_at',
   'updated_at',
-  'disposition',
-  'remark',
-  'dialer_id',
+] as const;
+
+/** CRM lost reasons that TeleCRM already uses — anything else becomes Other Reasons. */
+export const TELECRM_KNOWN_LOST_REASONS = [
+  'Not Interested',
+  'Unqualified Lead',
+  'No-Response to Calls',
+  'Already Service Done',
+  'Under Warranty',
+  'Looking For Authorised Service Center',
+  'Other Reasons',
 ] as const;
 
 export type EnquiryCsvColumn = (typeof ENQUIRY_CSV_COLUMNS)[number];
@@ -197,6 +214,7 @@ export function formatEnquiryTimestamp(iso: string): string {
 }
 
 const FIELD_ALIASES: Record<EnquiryCsvColumn, string[]> = {
+  name: ['name', 'customer_name', 'customer', 'full_name'],
   phone_no: [
     'phone_no',
     'phone',
@@ -208,9 +226,19 @@ const FIELD_ALIASES: Record<EnquiryCsvColumn, string[]> = {
     'contact_number',
     'customer_phone',
   ],
-  name: ['name', 'customer_name', 'customer', 'full_name'],
+  alternate_phone: [
+    'alternate_phone',
+    'alternate_phone_no',
+    'alternate_number',
+    'alt_phone',
+    'secondary_phone',
+  ],
+  model: ['model', 'vehicle_model', 'vehiclemodel', 'car_model', 'model_name'],
+  package: ['package', 'vehicle_package', 'package_type'],
+  workshop: ['workshop', 'workshop_name', 'service_center'],
   address: ['address', 'full_address', 'customer_address'],
-  regdate: ['regdate', 'reg_date', 'registration_date', 'registrationdate'],
+  plan: ['plan', 'service_plan', 'service_type'],
+  pickup_visit: ['pickupvisit', 'pickup_visit', 'pickup_or_visit'],
   car_number: [
     'car_number',
     'carno',
@@ -221,44 +249,134 @@ const FIELD_ALIASES: Record<EnquiryCsvColumn, string[]> = {
     'regno',
     'registration_number',
   ],
-  make: ['make', 'vehicle_make', 'vehiclemake', 'brand', 'car_make'],
-  model: ['model', 'vehicle_model', 'vehiclemodel', 'car_model', 'model_name'],
-  lead_tags: ['lead_tags'],
+  next_followup_at: [
+    'next_followup_at',
+    'next_followup_date',
+    'next_follow_up_date',
+    'next_follow_up_at',
+    'callback_date',
+  ],
   package_rate_access: ['package_rate_access', 'packagerateaccess', 'package_rate', 'ro'],
+  lead_number: ['lead_number', 'leadnumber', 'lead_no'],
+  remark: ['remark', 'remarks', 'remark_cordinator', 'feedback'],
+  disposition: ['status', 'lead_status', 'leadstatus', 'disposition'],
+  lost_reason: ['lost_reason', 'lostreason', 'lost_reasons'],
+  assignee_name: ['assignee_name', 'lead_assignee', 'assignee'],
+  user_note: ['user_note', 'usernote', 'activity_note', 'notes'],
   created_at: ['created_at'],
   updated_at: ['updated_at'],
-  disposition: ['status', 'lead_status', 'leadstatus', 'disposition'],
-  remark: ['remark', 'remarks', 'remark_cordinator', 'feedback', 'notes'],
-  dialer_id: ['dialer_id', 'dailerid', 'dialerid', 'dialer'],
 };
 
-const EXTRA_REMARK_FIELDS: Array<{ label: string; keys: string[] }> = [
-  { label: 'Package', keys: ['package'] },
-  { label: 'Plan', keys: ['plan'] },
-  { label: 'Workshop', keys: ['workshop'] },
-  { label: 'Pickup/Visit', keys: ['pickupvisit', 'pickup_visit', 'pickup'] },
-  { label: 'Assignee', keys: ['assignee_name', 'lead_assignee'] },
-  { label: 'Alt phone', keys: ['alternate_phone', 'alternate_phone_no'] },
+export type TelecrmCrmStatus = {
+  code: string;
+  label: string;
+  pipeline: string;
+};
+
+const TELECRM_STATUS_MAP: Array<{ keys: string[]; code: string; label: string; pipeline: string }> = [
+  { keys: ['lost'], code: 'LOST', label: 'Lost', pipeline: 'REJECTED' },
+  { keys: ['interested'], code: 'INTERESTED', label: 'Interested', pipeline: 'NEW' },
+  { keys: ['followup', 'follow-up', 'callback'], code: 'CALLBACK', label: 'Follow-up', pipeline: 'NEW' },
+  { keys: ['hewillvisit', 'he will visit', 'willvisit'], code: 'WILL_VISIT', label: 'He will visit', pipeline: 'NEW' },
+  { keys: ['appointmentscheduled', 'bookingconfirmed', 'won'], code: 'BOOKING_CONFIRMED', label: 'Booking confirmed', pipeline: 'VALIDATED' },
+  { keys: ['convertedservicedone', 'servicedone'], code: 'SERVICE_DONE', label: 'Service Done', pipeline: 'COMPLETED' },
+  { keys: ['inservice'], code: 'IN_SERVICE', label: 'In Service', pipeline: 'IN_PROGRESS' },
+  { keys: ['ringing', 'ringingnoanswer'], code: 'RINGING', label: 'Ringing / No answer', pipeline: 'NEW' },
+  { keys: ['fresh', 'fresh2', 'new'], code: 'FRESH', label: 'Fresh', pipeline: 'NEW' },
+  { keys: ['servicedue'], code: 'CALLBACK', label: 'Follow-up', pipeline: 'NEW' },
+  { keys: ['sendtotl', 'sendtotlmanager', 'sendtomanager'], code: 'INTERESTED', label: 'Interested', pipeline: 'NEW' },
+  { keys: ['roadserversa', 'rsa'], code: 'FRESH', label: 'Fresh', pipeline: 'NEW' },
 ];
+
+export function mapTelecrmStatus(raw: string): TelecrmCrmStatus {
+  const key = tokenKey(raw);
+  if (!key) return { code: 'FRESH', label: 'Fresh', pipeline: 'NEW' };
+  const hit = TELECRM_STATUS_MAP.find((row) => row.keys.some((k) => tokenKey(k) === key));
+  if (hit) return { code: hit.code, label: hit.label, pipeline: hit.pipeline };
+  return { code: 'FRESH', label: String(raw || '').trim() || 'Fresh', pipeline: 'NEW' };
+}
+
+export function mapTelecrmLostReason(raw: string, catalog: string[] = []): string {
+  const value = String(raw || '').trim();
+  if (!value || EMPTY_RE.test(value)) return '';
+  const names = [...catalog, ...TELECRM_KNOWN_LOST_REASONS]
+    .map((name) => String(name || '').trim())
+    .filter(Boolean);
+  const key = tokenKey(value);
+  const exact = names.find((name) => tokenKey(name) === key);
+  if (exact) return exact;
+  const other = names.find((name) => tokenKey(name) === 'otherreasons') || 'Other Reasons';
+  return other;
+}
+
+export function parseEnquiryActivities(raw: string): Array<{
+  at: string;
+  remark: string;
+  by: string;
+  status?: string;
+}> {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function collapseEnquiryCsvLeads(rows: EnquiryCsvRow[]): EnquiryCsvRow[] {
+  const groups = new Map<string, EnquiryCsvRow[]>();
+  (rows || []).forEach((row, index) => {
+    const key = row.telecrm_lead_id || row.phone_no || `row-${index}`;
+    const list = groups.get(key) || [];
+    list.push(row);
+    groups.set(key, list);
+  });
+
+  const out: EnquiryCsvRow[] = [];
+  for (const list of groups.values()) {
+    const sorted = [...list].sort((a, b) =>
+      String(a.action_at || a.updated_at || a.created_at || '').localeCompare(
+        String(b.action_at || b.updated_at || b.created_at || ''),
+      ),
+    );
+    const latest = { ...sorted[sorted.length - 1] };
+    const activities: Array<{ at: string; remark: string; by: string; status?: string }> = [];
+    const seen = new Set<string>();
+    const pushActivity = (activity: { at: string; remark: string; by: string; status?: string }) => {
+      const remark = String(activity.remark || '').trim();
+      if (!remark) return;
+      const key = `${activity.at}|${remark}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      activities.push({ ...activity, remark });
+    };
+    for (const row of sorted) {
+      const existing = parseEnquiryActivities(row.activities_json || '');
+      if (existing.length) {
+        existing.forEach((activity) => pushActivity(activity));
+        continue;
+      }
+      const note = String(row.user_note || '').trim();
+      if (!note) continue;
+      pushActivity({
+        at: row.action_at || row.updated_at || row.created_at || '',
+        remark: note,
+        by: row.action_by || row.assignee_name || '',
+        status: row.disposition || '',
+      });
+    }
+    latest.activities_json = JSON.stringify(activities);
+    latest.user_note = activities[activities.length - 1]?.remark || latest.user_note || '';
+    out.push(latest);
+  }
+  return out;
+}
 
 function modelKey(value: string): string {
   return String(value || '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
-}
-
-function buildRemark(row: EnquiryCsvRow, existingRemark: string, disposition: string): string {
-  const parts: string[] = [];
-  if (existingRemark) parts.push(existingRemark);
-  const source = cell(row, ['disposition']);
-  if (source && source !== disposition) parts.push(`Source: ${source}`);
-  for (const field of EXTRA_REMARK_FIELDS) {
-    const value = cell(row, field.keys);
-    if (!value) continue;
-    if (existingRemark.toLowerCase().includes(field.label.toLowerCase())) continue;
-    parts.push(`${field.label}: ${value}`);
-  }
-  return parts.join(' | ');
 }
 
 export function mapEnquiryCsvRow(raw: EnquiryCsvRow, catalogTags: string[] = []): EnquiryCsvRow {
@@ -273,14 +391,30 @@ export function mapEnquiryCsvRow(raw: EnquiryCsvRow, catalogTags: string[] = [])
   }
 
   mapped.phone_no = normalizePhoneDigits(mapped.phone_no);
+  mapped.alternate_phone = normalizePhoneDigits(mapped.alternate_phone);
   mapped.car_number = mapped.car_number.toUpperCase();
-  mapped.make = mapped.make.toUpperCase();
   mapped.model = mapped.model.toUpperCase();
+  mapped.make = cell(row, ['make', 'vehicle_make', 'vehiclemake', 'brand', 'car_make']).toUpperCase();
+  mapped.lead_tags = matchLeadTags(cell(row, ['leadtag', 'lead_tag', 'leadtagnew', 'lead_tags']), catalogTags).join(', ');
+  mapped.dialer_id = cell(row, ['dialer_id', 'dailerid', 'dialerid', 'dialer']);
+  mapped.assignee_email = cell(row, ['assignee_emailid', 'assignee_email', 'lead_assignee_email']);
+  mapped.telecrm_lead_id = cell(row, ['lead_id', 'telecrm_lead_id', 'leadid']);
+  mapped.activities_json = cell(row, ['activities_json']);
+  mapped.crm_status = cell(row, ['crm_status']);
+  mapped.crm_status_label = cell(row, ['crm_status_label']);
+  mapped.crm_pipeline = cell(row, ['crm_pipeline']);
+  mapped.action_by = cell(row, ['action_created_by_name', 'action_created_by', 'action_by']);
+  mapped.action_at = combineTelecrmDateTime(
+    cell(row, ['action_created_at', 'action_created_on', 'action_at']),
+    '',
+  );
+  mapped.lost_reason = mapTelecrmLostReason(mapped.lost_reason);
+  const crm = mapTelecrmStatus(mapped.disposition);
+  mapped.crm_status = crm.code;
+  mapped.crm_status_label = crm.label;
+  mapped.crm_pipeline = crm.pipeline;
+  mapped.pickup_required = /^pickup$/i.test(mapped.pickup_visit) ? 'true' : '';
 
-  const tagRaw = cell(row, ['leadtag', 'lead_tag', 'leadtagnew', 'lead_tags']);
-  mapped.lead_tags = matchLeadTags(tagRaw, catalogTags).join(', ');
-
-  mapped.package_rate_access = cell(row, FIELD_ALIASES.package_rate_access);
   mapped.created_at =
     mapped.created_at ||
     combineTelecrmDateTime(
@@ -293,14 +427,13 @@ export function mapEnquiryCsvRow(raw: EnquiryCsvRow, catalogTags: string[] = [])
       cell(row, ['modified_on_date', 'modified_date', 'updated_on_date', 'modifiedondate', 'modified_on', 'updated_on']),
       cell(row, ['modified_on_time', 'modified_time', 'updated_on_time', 'modifiedontime']),
     );
-
-  mapped.remark = buildRemark(row, mapped.remark, mapped.disposition);
+  mapped.next_followup_at = combineTelecrmDateTime(mapped.next_followup_at, '') || mapped.next_followup_at;
 
   return mapped;
 }
 
 export function mapEnquiryCsvRows(rows: EnquiryCsvRow[], catalogTags: string[] = []): EnquiryCsvRow[] {
-  return (rows || []).map((row) => mapEnquiryCsvRow(row, catalogTags));
+  return collapseEnquiryCsvLeads((rows || []).map((row) => mapEnquiryCsvRow(row, catalogTags)));
 }
 
 type CarModelRow = { make?: string | null; model_name?: string | null };

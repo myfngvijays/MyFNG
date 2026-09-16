@@ -970,6 +970,14 @@ function ServiceLeadDetailContent({
         'flat_number',
         'area',
         'landmark',
+        'package',
+        'workshop',
+        'plan',
+        'pickup_visit',
+        'package_rate_access',
+        'telecrm_csv',
+        'telecrm_lead_id',
+        'lead_tags',
       ].includes(key),
   );
 
@@ -981,6 +989,12 @@ function ServiceLeadDetailContent({
       <DetailSection title="Customer Details" icon={UserRound} cols={4} className="border-emerald-200 bg-emerald-50/50">
         <InlineTextField label="Customer Name" field="customer_name" value={item.customer_name} onPatch={onPatch} />
         <InlineTextField label="Phone" field="customer_phone" value={item.customer_phone} onPatch={onPatch} />
+        <InlineTextField
+          label="Alternate Phone"
+          field="customer_alternate_phone"
+          value={item.customer_alternate_phone}
+          onPatch={onPatch}
+        />
         <InlineEmailField label="Email" value={item.customer_email} onPatch={onPatch} />
         <InlineBooleanField
           label="Pickup Required"
@@ -1187,6 +1201,15 @@ function ServiceLeadDetailContent({
               <InlineTextField label="Service" field="service_type" value={serviceLabel} onPatch={onPatch} />
             )}
             <InlineTextField label="Service Type" field="service_type" value={item.service_type} onPatch={onPatch} />
+            <DetailFieldCard label="Package" value={String(meta.package || '') || '-'} />
+            <DetailFieldCard label="Workshop" value={String(meta.workshop || '') || '-'} />
+            <DetailFieldCard label="Plan" value={String(meta.plan || item.service_type || '') || '-'} />
+            <DetailFieldCard label="Pickup / Visit" value={String(meta.pickup_visit || '') || (item.pickup_required ? 'Pickup' : '-')} />
+            <DetailFieldCard label="Package Rate Access" value={String(meta.package_rate_access || '') || '-'} />
+            <DetailFieldCard
+              label="Next Follow-up"
+              value={item.next_follow_up_at ? formatDateTime(item.next_follow_up_at) : '-'}
+            />
             <DetailFieldCard
               label="Preferred Slot"
               value={formatPreferredSlotLabel(item) || formatDateTime(item.preferred_slot_start)}
@@ -1651,7 +1674,15 @@ function SuperAdminBookingsPage() {
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{ inserted: number; skipped: number; total: number; errors?: string[] } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{
+    inserted: number;
+    updated?: number;
+    reminders?: number;
+    skipped: number;
+    total: number;
+    created_assignees?: string[];
+    errors?: string[];
+  } | null>(null);
 
   const CSV_COLUMNS = ENQUIRY_CSV_COLUMNS;
 
@@ -1754,7 +1785,10 @@ function SuperAdminBookingsPage() {
 
     const CHUNK = 2000;
     let totalInserted = 0;
+    let totalUpdated = 0;
+    let totalReminders = 0;
     let totalSkipped = 0;
+    const createdAssignees: string[] = [];
     const allErrors: string[] = [];
 
     try {
@@ -1768,13 +1802,24 @@ function SuperAdminBookingsPage() {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Upload failed');
         totalInserted += json.inserted || 0;
+        totalUpdated += json.updated || 0;
+        totalReminders += json.reminders || 0;
         totalSkipped += json.skipped || 0;
+        if (Array.isArray(json.created_assignees)) createdAssignees.push(...json.created_assignees);
         if (json.errors) allErrors.push(...json.errors);
       }
 
-      const result = { inserted: totalInserted, skipped: totalSkipped, total: csvRows.length, errors: allErrors.length > 0 ? allErrors : undefined };
+      const result = {
+        inserted: totalInserted,
+        updated: totalUpdated,
+        reminders: totalReminders,
+        skipped: totalSkipped,
+        total: csvRows.length,
+        created_assignees: createdAssignees.length ? createdAssignees : undefined,
+        errors: allErrors.length > 0 ? allErrors : undefined,
+      };
       setUploadResult(result);
-          toast.success(`${totalInserted} leads added to Bookings & Leads`);
+      toast.success(`${totalInserted} new · ${totalUpdated} updated in Bookings & Leads`);
     } catch (err: any) {
       toast.error(err.message || 'Upload failed');
     } finally {
@@ -3536,7 +3581,7 @@ function SuperAdminBookingsPage() {
                   <div className="text-center">
                     <p className="text-sm font-semibold text-gray-700">Click to upload CSV file</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      TeleCRM export: Phone, CARNO, Model (make inferred), LEADTAG matched to Incoming Sarv Call / Website / App Booking. Created &amp; modified times and packagerateaccess are kept. Lead link, lead id and workshop shortAddress are ignored.
+                      TeleCRM export maps to Bookings: User Note → customer activity, Status → lead status, known Lost reasons stay (rest → Other), Assignee (Rupesh / Gungun / Poonam) auto-matched or created, then assigned. Name, phone, model, package, workshop, address, plan, pickup/visit, car no, next follow-up (creates reminder), alternate no, packagerateaccess, lead number, remark, created &amp; modified dates are saved. Duplicate action rows collapse by Lead id.
                     </p>
                   </div>
                 </button>
@@ -3592,9 +3637,17 @@ function SuperAdminBookingsPage() {
                       )}
                       <div className="text-sm">
                         <p className="font-semibold text-gray-800">
-                          {uploadResult.inserted} / {uploadResult.total} records inserted
+                          {uploadResult.inserted} new
+                          {uploadResult.updated ? ` · ${uploadResult.updated} updated` : ''}
+                          {uploadResult.reminders ? ` · ${uploadResult.reminders} reminders` : ''}
+                          {' '}of {uploadResult.total} unique leads
                           {uploadResult.skipped > 0 && <span className="text-yellow-700"> ({uploadResult.skipped} skipped — missing phone)</span>}
                         </p>
+                        {uploadResult.created_assignees?.length ? (
+                          <p className="text-xs text-gray-600 mt-1">
+                            Created telecaller IDs: {uploadResult.created_assignees.join(', ')}
+                          </p>
+                        ) : null}
                         {uploadResult.errors?.map((err, i) => (
                           <p key={i} className="text-red-600 text-xs mt-1">{err}</p>
                         ))}
@@ -3620,7 +3673,7 @@ function SuperAdminBookingsPage() {
                             {CSV_COLUMNS.map((col) => {
                               const raw = row[col] || '';
                               const display =
-                                (col === 'created_at' || col === 'updated_at') && raw
+                                (col === 'created_at' || col === 'updated_at' || col === 'next_followup_at') && raw
                                   ? formatEnquiryTimestamp(raw)
                                   : raw;
                               const invalidPhone = col === 'phone_no' && !isValidEnquiryPhone(row.phone_no);
