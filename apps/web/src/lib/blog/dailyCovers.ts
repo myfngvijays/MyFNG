@@ -22,12 +22,74 @@ export function pickDailyCover(dayOfYear: number) {
   return DAILY_BLOG_COVERS[dayOfYear % DAILY_BLOG_COVERS.length];
 }
 
-async function toWebpUnderSize(input: Buffer): Promise<Buffer> {
+function escapeXml(s: string) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function wrapCoverTitle(title: string, maxChars = 16): string[] {
+  const words = String(title || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .split(' ')
+    .filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, 5);
+}
+
+function coverTitleSvg(title: string, variant: 'light' | 'blue') {
+  const lines = wrapCoverTitle(title, 16);
+  const fill = variant === 'light' ? '#003399' : '#FFFFFF';
+  const panel = variant === 'light' ? '#F4F7FB' : '#0066FF';
+  const lineH = 92;
+  const startY = 400;
+  const texts = lines
+    .map(
+      (line, i) =>
+        `<text x="92" y="${startY + i * lineH}" font-size="72" font-weight="800" font-family="Arial, Helvetica, sans-serif" fill="${fill}">${escapeXml(line)}</text>`,
+    )
+    .join('');
+  return Buffer.from(
+    `<svg width="${TARGET_W}" height="${TARGET_H}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="48" y="250" width="1080" height="560" fill="${panel}"/>
+      ${texts}
+    </svg>`,
+  );
+}
+
+async function toWebpUnderSize(input: Buffer, title?: string, coverFile?: string): Promise<Buffer> {
+  const variant = String(coverFile || '').includes('light') ? 'light' : 'blue';
+  let base = await sharp(input)
+    .resize(TARGET_W, TARGET_H, { fit: 'cover', position: 'centre' })
+    .png()
+    .toBuffer();
+
+  if (title && title.trim()) {
+    base = await sharp(base)
+      .composite([{ input: coverTitleSvg(title.trim(), variant), top: 0, left: 0 }])
+      .png()
+      .toBuffer();
+  }
+
   let quality = 82;
-  let last = input;
+  let last = base;
   for (let i = 0; i < 8; i++) {
-    last = await sharp(input)
-      .resize(TARGET_W, TARGET_H, { fit: 'cover', position: 'centre' })
+    last = await sharp(base)
       .webp({ quality, effort: 6 })
       .toBuffer();
     if (last.byteLength <= MAX_BYTES) return last;
@@ -40,11 +102,12 @@ export async function uploadDailyCoverWebp(opts: {
   supabaseAdmin: any;
   slug: string;
   coverFile: string;
+  title?: string;
 }): Promise<{ url: string; keyFile: string }> {
   const filePath = path.join(process.cwd(), 'public', 'media', 'blog-covers', opts.coverFile);
   const input = await fs.readFile(filePath);
-  const webp = await toWebpUnderSize(input);
-  const storagePath = `blog-images/${opts.slug}.webp`;
+  const webp = await toWebpUnderSize(input, opts.title, opts.coverFile);
+  const storagePath = `blog-images/${opts.slug}-${Date.now()}.webp`;
 
   const { error } = await opts.supabaseAdmin.storage.from('service-media').upload(storagePath, webp, {
     contentType: 'image/webp',

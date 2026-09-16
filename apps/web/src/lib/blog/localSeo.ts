@@ -75,8 +75,56 @@ export function uniqueList(items: string[], max = 60): string[] {
   return out;
 }
 
+export const THANE_AREAS: string[] = [
+  'Ghodbunder Road',
+  'Manpada',
+  'Vartak Nagar',
+  'Majiwada',
+  'Wagle Estate',
+  'Naupada',
+  'Hiranandani Estate',
+  'Kasarvadavali',
+  'Owale',
+  'Kalwa',
+  'Kopri',
+  'Kolshet',
+];
+
+export const NAVI_MUMBAI_AREAS: string[] = [
+  'Vashi',
+  'Nerul',
+  'Kharghar',
+  'Belapur',
+  'Airoli',
+  'Koparkhairane',
+  'Sanpada',
+  'Seawoods',
+  'Ulwe',
+  'Kamothe',
+  'Panvel',
+  'Kalamboli',
+];
+
+export const MUMBAI_AREAS: string[] = [
+  'Andheri',
+  'Malad',
+  'Borivali',
+  'Kandivali',
+  'Goregaon',
+  'Mulund',
+  'Chembur',
+  'Dadar',
+  'Ghatkopar',
+  'Powai',
+  'Bandra',
+  'Dahisar',
+];
+
 export function resolveLocalAreas(seo: any): string[] {
-  const city = normalizeCity(seo?.local_city);
+  const city = normalizeCity(seo?.local_city).toLowerCase();
+  if (city.includes('navi mumbai') || city.includes('navi-mumbai')) return NAVI_MUMBAI_AREAS.slice();
+  if (city.includes('thane')) return THANE_AREAS.slice();
+  if (city.includes('mumbai')) return MUMBAI_AREAS.slice();
   if (isPuneOrPcmcCity(city)) return PUNE_PCMC_AREAS.slice();
 
   const resolved = Array.isArray(seo?.local_areas_resolved) ? seo.local_areas_resolved : [];

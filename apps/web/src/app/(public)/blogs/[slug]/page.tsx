@@ -12,15 +12,15 @@ import CopyLinkButton from '@/components/blog/CopyLinkButton';
 import BlogComments from '@/components/blog/BlogComments';
 import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
-import { serviceImagePath } from '@/lib/media/public-url';
+import { DEFAULT_SERVICES } from '@/lib/services/catalog';
+import { buildGoAppDownloadUrl } from '@/lib/blog/blogAppDownload';
 import {
   normalizeBlogMediaAbsoluteUrl,
   normalizeBlogMediaUrl,
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
 import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent';
-import { buildBlogTrackedPath } from '@/lib/blog/aiLinks';
-import { DEFAULT_APP_STORE_URL, DEFAULT_PLAY_STORE_URL } from '@/lib/mobile-app-version-config';
+import { buildBlogTrackedPath, ensureAboutMyFngHtml, stripExistingCta } from '@/lib/blog/aiLinks';
 
 export const dynamic = 'force-dynamic';
 
@@ -319,7 +319,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const transformed: Blog = {
     ...blog,
     featured_image: blog.featured_image ? normalizeBlogMediaUrl(String(blog.featured_image)) : blog.featured_image,
-    content: normalizeBlogContentForDisplay(String(blog.content || '')),
+    content: '',
     seo_data: normalizeBlogSeoData(blog.seo_data as Record<string, unknown> | null | undefined),
     tags: (blog as any)?.tags?.map((t: any) => t?.tag).filter(Boolean) || [],
     categories: (blog as any)?.categories?.map((c: any) => c?.category).filter(Boolean) || [],
@@ -367,7 +367,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     null;
 
   const highlightQuote =
-    String(seo?.highlight_quote || seo?.highlighted_quote || '').trim() || '';
+    String(transformed.excerpt || '').trim() ||
+    String(seo?.highlight_quote || seo?.highlighted_quote || seo?.meta_description || '').trim() ||
+    '';
 
   const relatedArticlesRaw = seo?.related_articles ?? seo?.relatedArticles ?? seo?.related_urls ?? null;
   const relatedArticles: Array<{ title?: string; url: string }> = Array.isArray(relatedArticlesRaw)
@@ -381,7 +383,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           return { url, title };
         })
         .filter(Boolean)
-        .slice(0, 6) as any
+        .slice(0, 3) as any
     : [];
 
   const shareUrl = `https://myfng.in/blogs/${encodeURIComponent(transformed.slug)}`;
@@ -394,11 +396,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followYoutube = 'https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/';
   const followLinkedin = 'https://linkedin.com/company/myfngcarservices';
   const followX = 'https://x.com/myfngcarservice';
-  const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || DEFAULT_PLAY_STORE_URL;
-  const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL || DEFAULT_APP_STORE_URL;
   const bookHref = (placement: string) =>
     buildBlogTrackedPath('/book-service', transformed.slug, placement, String(seo?.keywords || '').split(',')[0]);
-  const relatedSidebar = relatedArticles.length
+  const relatedSidebar = (relatedArticles.length
     ? relatedArticles.map((a, i) => ({
         id: `rel-${i}`,
         slug: a.url,
@@ -409,8 +409,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     : (recentPosts || []).map((p: any) => ({
         ...p,
         href: `/blogs/${p.slug}`,
-      }));
-  const htmlStyleQuote = highlightQuote || 'Ignoring early engine warning signs can lead to expensive repairs later.';
+      }))
+  ).slice(0, 3);
+  const htmlStyleQuote = highlightQuote;
+  const appDownloadHref =
+    String(seo?.app_download_url || '').trim() ||
+    buildGoAppDownloadUrl({
+      slug: transformed.slug,
+      focusKeyword: String(seo?.keywords || '').split(',')[0],
+      content: 'app-download',
+    });
+  transformed.content = ensureAboutMyFngHtml(
+    stripExistingCta(normalizeBlogContentForDisplay(String(blog.content || ''))),
+    appDownloadHref,
+  );
 
   return (
       <div className="min-h-screen bg-[#f5f7fb]">
@@ -425,13 +437,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .layout{display:flex;gap:25px;}
           .blog-html-wrap .content-area{flex:3;min-width:0;}
           .blog-html-wrap .sidebar{flex:1;min-width:0;position:sticky;top:90px;height:fit-content;}
-          .blog-html-wrap .featured-image{width:100%;border-radius:14px;box-shadow:0 5px 20px rgba(0,0,0,0.1);margin-bottom:20px;}
+          .blog-html-wrap .featured-image{width:100%;border-radius:14px;box-shadow:0 5px 20px rgba(0,0,0,0.1);margin-bottom:20px;display:block;}
           .blog-html-wrap .social-wrap{display:flex;gap:30px;margin-bottom:22px;}
           .blog-html-wrap .follow{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;gap:15px;flex-wrap:wrap;width:44%;border:1px solid #006bff;align-items:center;}
           .blog-html-wrap .share{background:#eef2f7;padding:15px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;gap:15px;flex-wrap:wrap;width:37%;border:1px solid #006bff;align-items:center;}
           .blog-html-wrap .follow-label,.blog-html-wrap .share-label{font-weight:600;color:#333;display:flex;align-items:center;gap:6px;}
           .blog-html-wrap .social-link{color:#0056d2;display:inline-flex;align-items:center;font-size:25px;}
-          .blog-html-wrap .quote{background:#0056d2;color:#fff;padding:20px;border-radius:12px;font-style:italic;margin-bottom:25px;}
+          .blog-html-wrap .quote{background:#0056d2;color:#fff;padding:20px 22px;border-radius:12px;font-style:italic;margin-bottom:25px;font-size:15px;line-height:1.6;}
           .blog-html-wrap .main-content{background:#fff;padding:25px;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,0.06);line-height:1.7;color:#333;font-size:15px;}
           .blog-html-wrap .main-content h2{margin:20px 0 10px;font-size:22px;font-weight:700;color:#111827;}
           .blog-html-wrap .main-content h3{margin:16px 0 8px;font-size:18px;font-weight:600;color:#111827;}
@@ -447,9 +459,16 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .blog-post-cta{margin-top:28px;padding:22px 24px;border-radius:14px;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 100%);border:1px solid #cfe0ff;}
           .blog-html-wrap .blog-post-cta h3{margin:0 0 8px;font-size:18px;font-weight:700;color:#0a4ea3;}
           .blog-html-wrap .blog-post-cta p{margin:0 0 14px;font-size:14px;color:#475569;line-height:1.6;}
-          .blog-html-wrap .blog-post-cta-actions{display:flex;flex-wrap:wrap;gap:10px;}
-          .blog-html-wrap .blog-post-cta .book-btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;width:auto;margin:0;}
-          .blog-html-wrap .blog-post-cta-phone{display:inline-flex;align-items:center;padding:10px 16px;border-radius:8px;border:1px solid #0a4ea3;color:#0a4ea3;text-decoration:none;font-size:14px;font-weight:600;background:#fff;}
+          .blog-html-wrap .blog-post-cta-actions{display:flex;flex-wrap:wrap;gap:12px;}
+          .blog-html-wrap .blog-post-cta a,
+          .blog-html-wrap .blog-post-cta .book-btn,
+          .blog-html-wrap .blog-post-cta .app-btn,
+          .blog-html-wrap .blog-post-cta-phone{display:inline-flex;align-items:center;justify-content:center;padding:12px 18px;width:auto;margin:0;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;line-height:1.2;}
+          .blog-html-wrap .blog-post-cta .app-btn{background:#023D95;color:#fff;}
+          .blog-html-wrap .blog-post-cta .book-btn{background:#0a4ea3;color:#fff;}
+          .blog-html-wrap .blog-post-cta-phone{border:2px solid #0a4ea3;color:#0a4ea3;background:#fff;}
+          .blog-html-wrap .main-content .blog-post-cta a{color:#fff;}
+          .blog-html-wrap .main-content .blog-post-cta .blog-post-cta-phone{color:#0a4ea3;}
           .blog-html-wrap .side-box .categories{max-height:220px;overflow:auto;}
           .blog-html-wrap .tags{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
           .blog-html-wrap .tags span{background:#eef2f7;padding:8px 14px;border-radius:20px;font-size:13px;}
@@ -461,17 +480,16 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .faq-item p{font-size:14px;color:#555;display:none;margin-top:10px;}
           .blog-html-wrap .faq-item.active p{display:block;}
           .blog-html-wrap .faq-item i{font-size:16px;color:#0a4ea3;transition:.3s;}
-          .blog-html-wrap .comment-box{background:#fff;padding:25px;border-radius:14px;margin-top:25px;}
+          .blog-html-wrap .comment-box{background:#fff;padding:20px 25px 25px;border-radius:14px;margin-top:16px;}
           .blog-html-wrap .comment-box input,.blog-html-wrap .comment-box textarea{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px solid #ccc;}
           .blog-html-wrap .comment-box button{margin-top:15px;background:#0a4ea3;color:#fff;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;}
           .blog-html-wrap .side-box{background:#fff;padding:18px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);max-width:100%;}
+          .blog-html-wrap .side-box h3{margin:0 0 16px;font-size:18px;line-height:1.3;}
           .blog-html-wrap .search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;}
           .blog-html-wrap .search input{min-width:0;width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;}
           .blog-html-wrap .search button{background:#0a4ea3;color:#fff;border:none;padding:10px 16px;border-radius:8px;}
-          .blog-html-wrap .store-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center;}
-          .blog-html-wrap .store-badge{display:inline-block;max-width:118px;flex:1 1 calc(50% - 4px);min-width:96px;}
-          .blog-html-wrap .store-badge img{display:block;width:100%;height:auto;}
-          .blog-html-wrap .service-slider{position:relative;height:240px;overflow:hidden;border-radius:12px;}
+          .blog-html-wrap .sidebar-app-btn{display:flex;align-items:center;justify-content:center;width:100%;margin-top:8px;padding:12px 16px;border-radius:10px;background:#023D95;color:#fff;font-weight:700;text-decoration:none;font-size:14px;}
+          .blog-html-wrap .service-slider{position:relative;height:270px;overflow:hidden;border-radius:12px;}
           .blog-html-wrap .service-slide{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.08);text-align:center;margin-top:12px;}
           .blog-html-wrap .service-slider .service-slide{
             position:absolute;
@@ -490,9 +508,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .service-slide img{width:100%;height:130px;object-fit:cover;border-radius:10px;margin-bottom:10px;}
           .blog-html-wrap .service-slide h4{font-size:16px;margin-bottom:10px;color:#0a4ea3;}
           .blog-html-wrap .book-btn{display:block;background:#0a4ea3;color:#fff;padding:10px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;}
-          .blog-html-wrap .recent-post{display:flex;gap:10px;margin-bottom:15px;}
-          .blog-html-wrap .recent-post img{width:70px;height:70px;object-fit:cover;border-radius:8px;}
-          .blog-html-wrap .recent-post a{text-decoration:none;font-size:14px;color:#333;font-weight:500;}
+          .blog-html-wrap .recent-post{display:flex;gap:14px;margin-bottom:22px;align-items:flex-start;}
+          .blog-html-wrap .recent-post:last-child{margin-bottom:0;}
+          .blog-html-wrap .recent-post img{width:78px;height:78px;object-fit:cover;border-radius:10px;flex-shrink:0;}
+          .blog-html-wrap .recent-post a{text-decoration:none;font-size:14px;color:#333;font-weight:600;line-height:1.4;padding-top:2px;}
           .blog-html-wrap .categories{display:flex;flex-wrap:wrap;gap:10px;}
           .blog-html-wrap .categories a{background:#eef2f7;padding:8px 14px;border-radius:20px;text-decoration:none;color:#333;font-size:12px;}
           @media(max-width:1024px){
@@ -607,19 +626,21 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   </div>
                 </div>
 
-                <div className="quote">"{htmlStyleQuote}"</div>
+                {htmlStyleQuote ? <div className="quote">"{htmlStyleQuote}"</div> : null}
 
                 <div className="main-content">
-                  {transformed.excerpt ? <p>{transformed.excerpt}</p> : null}
                   <div dangerouslySetInnerHTML={{ __html: transformed.content }} />
                 </div>
 
                 <div className="blog-post-cta">
                   <h3>Need trusted car service in your city?</h3>
                   <p>
-                    Book multi-brand car servicing with MyFNG — expert technicians, genuine parts, and convenient pickup &amp; drop.
+                    Download the MyFNG app to book workshop service with pickup &amp; drop — we collect your car, service it at the workshop, and return it.
                   </p>
                   <div className="blog-post-cta-actions">
+                    <a href={appDownloadHref} className="app-btn">
+                      Download MyFNG App
+                    </a>
                     <a href={bookHref('public-footer-cta')} className="book-btn">
                       Book Service Now
                     </a>
@@ -659,53 +680,25 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 </div>
 
                 <div className="side-box">
-                  <h3>Download MyFNG App - Book Car Service Faster</h3>
-                  <div className="store-badges">
-                    <a
-                      href={playStoreUrl}
-                      className="store-badge"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Get it on Google Play"
-                    >
-                      <img
-                        src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
-                        alt="Get it on Google Play"
-                      />
-                    </a>
-                    <a
-                      href={appStoreUrl}
-                      className="store-badge"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Download on the App Store"
-                    >
-                      <img
-                        src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg"
-                        alt="Download on the App Store"
-                      />
-                    </a>
-                  </div>
+                  <h3>Download MyFNG App</h3>
+                  <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
+                    Book pickup &amp; drop and track your service from the app.
+                  </p>
+                  <a href={appDownloadHref} className="sidebar-app-btn">
+                    Download App
+                  </a>
                 </div>
 
                 <div className="side-box">
                   <h3>Book Your Service</h3>
                   <div className="service-slider">
-                    <div className="service-slide active">
-                      <img src={serviceImagePath('MyFNG_Car_Periodic_Service.png')} alt="Periodic Car Service" />
-                      <h4>Periodic Car Service</h4>
-                      <a href={bookHref('sidebar-periodic')} className="book-btn">Book Now</a>
-                    </div>
-                    <div className="service-slide">
-                      <img src={serviceImagePath('MyFNG_Car_AC_Service.png')} alt="Car AC Service" />
-                      <h4>Car AC Service</h4>
-                      <a href={bookHref('sidebar-ac')} className="book-btn">Book Now</a>
-                    </div>
-                    <div className="service-slide">
-                      <img src={serviceImagePath('MyFNG_Car_Brake_Service.png')} alt="Brake Service" />
-                      <h4>Brake Service</h4>
-                      <a href={bookHref('sidebar-brake')} className="book-btn">Book Now</a>
-                    </div>
+                    {DEFAULT_SERVICES.map((svc, idx) => (
+                      <div key={svc.slug} className={`service-slide${idx === 0 ? ' active' : ''}`}>
+                        <img src={svc.image} alt={svc.title} />
+                        <h4>{svc.title}</h4>
+                        <a href={bookHref(`sidebar-${svc.slug}`)} className="book-btn">Book Now</a>
+                      </div>
+                    ))}
                   </div>
                 </div>
 

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   dailyBlogScheduleInfo,
   loadDailyBlogSettings,
+  refreshDailyBlogCover,
   runDailyBlogPost,
 } from '@/lib/blog/runDailyBlogPost';
 
@@ -88,7 +89,7 @@ export async function PATCH(request: NextRequest) {
   if (typeof body?.city === 'string' && body.city.trim()) patch.city = body.city.trim().slice(0, 80);
   if (typeof body?.tone === 'string' && body.tone.trim()) patch.tone = body.tone.trim().slice(0, 80);
   if (body?.word_count != null) {
-    patch.word_count = Math.max(400, Math.min(2500, Number(body.word_count) || 900));
+    patch.word_count = Math.max(400, Math.min(2500, Number(body.word_count) || 600));
   }
   if (body?.category_id !== undefined) {
     patch.category_id = body.category_id ? String(body.category_id) : null;
@@ -113,7 +114,12 @@ export async function POST(request: NextRequest) {
   if ('response' in auth) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  if (String(body?.action || '') !== 'run_now') {
+  const action = String(body?.action || '');
+  if (action === 'refresh_cover') {
+    const result = await refreshDailyBlogCover({ slug: body?.slug ? String(body.slug) : undefined });
+    return NextResponse.json({ ...await settingsPayload(), run: result }, { status: result.success ? 200 : 500 });
+  }
+  if (action !== 'run_now') {
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
   }
 

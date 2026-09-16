@@ -78,7 +78,11 @@ export default function DMContentScreen() {
       } else if (data?.schedule?.last_status === 'failed') {
         setDailyLabel(data?.schedule?.last_error || 'Last daily run failed');
       } else {
-        setDailyLabel(enabled ? 'Daily 10:00 AM IST auto-post is on' : 'Daily auto-post is paused');
+        setDailyLabel(
+          enabled
+            ? 'Thane/Navi Mumbai most days · Mumbai Fri · Pune Sat'
+            : 'Daily auto-post is paused',
+        );
       }
     } catch {
       setDailyLabel('Daily 10:00 AM IST auto-post');

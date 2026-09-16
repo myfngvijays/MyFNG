@@ -5,7 +5,10 @@ import { computeReadTimeFromHtml, validateAllImgHaveAlt } from '@/lib/blog/text'
 import { autoFillSeoFromSummary } from '@/lib/blog/seo';
 import { normalizeBlogSeoData } from '@/lib/blog/normalizeBlogMedia';
 import { revalidateBlogSeo } from '@/lib/seo/revalidate';
-import { pickDailyCover, uploadDailyCoverWebp } from '@/lib/blog/dailyCovers';
+import { enrichAiGeneratedHtml } from '@/lib/blog/aiLinks';
+import { ensureBlogAppDownloadLink } from '@/lib/blog/blogAppDownload';
+import { dailyCityScheduleLabel, pickDailyCity } from '@/lib/blog/dailyCities';
+import { DAILY_BLOG_COVERS, pickDailyCover, uploadDailyCoverWebp } from '@/lib/blog/dailyCovers';
 import {
   dayOfYearIst,
   istDateString,
@@ -75,7 +78,16 @@ export async function loadDailyBlogSettings(): Promise<{
     };
   }
 
-  return { settings: (data as DailyBlogSettings) || null };
+  const settings = (data as DailyBlogSettings) || null;
+  if (settings && Number(settings.word_count) === 900) {
+    settings.word_count = 600;
+    await supabaseAdmin
+      .from('daily_blog_settings')
+      .update({ word_count: 600, updated_at: new Date().toISOString() })
+      .eq('id', 1);
+  }
+
+  return { settings };
 }
 
 async function resolveAuthorId(supabaseAdmin: any, preferred: string | null): Promise<string | null> {
@@ -240,39 +252,58 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
 
   const picked = pickDailyTopic(day, usedKeywords);
   const cover = pickDailyCover(day);
+  const cityTarget = pickDailyCity();
+  const topic = `${picked.topic} for car owners in ${cityTarget.name}`;
+  const focusKeyword = `${picked.focusKeyword} ${cityTarget.name}`;
 
   try {
     const draft = await generateAiBlogDraft({
       supabase: supabaseAdmin,
-      topic: picked.topic,
-      focusKeyword: picked.focusKeyword,
-      city: settings.city || 'Pune',
+      topic,
+      focusKeyword,
+      city: cityTarget.name,
+      localAreas: cityTarget.areas,
+      localKeywords: cityTarget.keywords,
       intent: picked.intent,
       tone: settings.tone || 'Professional',
-      wordCount: settings.word_count || 900,
+      wordCount: settings.word_count === 900 ? 600 : settings.word_count || 600,
     });
 
-    const content = normalizeBlogContent(draft.content_html);
+    const slug = await uniqueSlug(supabaseAdmin, draft.slug || toBlogSlug(draft.title), runDate);
+    const appLink = await ensureBlogAppDownloadLink({
+      supabaseAdmin,
+      slug,
+      title: draft.title,
+      focusKeyword: picked.focusKeyword,
+    });
+    const withAppCta = enrichAiGeneratedHtml({
+      html: draft.content_html,
+      slug,
+      city: cityTarget.name,
+      focusKeyword,
+      appDownloadUrl: appLink.url,
+    });
+    const content = normalizeBlogContent(withAppCta.html);
     const altCheck = validateAllImgHaveAlt(content, 125);
     if (!altCheck.ok) throw new Error(altCheck.error);
 
     const faqs = await generateAiFaqs({
       title: draft.title,
       content,
-      focusKeyword: picked.focusKeyword,
+      focusKeyword,
     }).catch(() => []);
 
     const tagNames = await generateAiTagNames({
       title: draft.title,
       content,
-      focusKeyword: picked.focusKeyword,
-    }).catch(() => ['Car Service', 'Car Maintenance', 'MyFNG', 'Pune Garage', 'Periodic Service']);
+      focusKeyword,
+    }).catch(() => ['Car Service', 'Car Maintenance', 'MyFNG', `${cityTarget.name} Garage`, 'Pickup and Drop']);
 
-    const slug = await uniqueSlug(supabaseAdmin, draft.slug || toBlogSlug(draft.title), runDate);
     const uploaded = await uploadDailyCoverWebp({
       supabaseAdmin,
       slug,
       coverFile: cover.file,
+      title: draft.title,
     });
 
     const authorId = await resolveAuthorId(supabaseAdmin, settings.author_id);
@@ -290,12 +321,16 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
       eligible_ai_overview: true,
       ai_generated: true,
       ai_daily_post: true,
+      ai_cover_key: cover.key,
       ai_topic: picked.topic,
-      ai_focus_keyword: picked.focusKeyword,
-      ai_city: settings.city || 'Pune',
-      local_city: settings.city || 'Pune',
-      cta_text: draft.seo.cta_text || 'Book Service Now',
-      cta_url: draft.seo.cta_url || '',
+      ai_focus_keyword: focusKeyword,
+      ai_city: cityTarget.name,
+      local_city: cityTarget.name,
+      local_areas: cityTarget.areas,
+      local_areas_resolved: cityTarget.areas,
+      cta_text: 'Download MyFNG App',
+      cta_url: appLink.url,
+      app_download_url: appLink.url,
       related_articles: draft.seo.related_articles || [],
     });
     seoData = normalizeBlogSeoData(seoData);
@@ -401,6 +436,49 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
   }
 }
 
+export async function refreshDailyBlogCover(opts?: { slug?: string }) {
+  const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { success: false as const, error: adminError || 'Admin client missing' };
+
+  let query = supabaseAdmin
+    .from('blogs')
+    .select('id, slug, title, seo_data, featured_image')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false });
+
+  if (opts?.slug) query = query.eq('slug', opts.slug);
+  else query = query.contains('seo_data', { ai_daily_post: true });
+
+  const { data: blog, error } = await query.limit(1).maybeSingle();
+  if (error || !blog?.id) return { success: false as const, error: error?.message || 'Daily blog not found' };
+
+  const seo = (blog.seo_data || {}) as Record<string, unknown>;
+  const coverKey = String(seo.ai_cover_key || seo.cover_key || '');
+  const cover = DAILY_BLOG_COVERS.find((c) => c.key === coverKey) || DAILY_BLOG_COVERS[0];
+  const uploaded = await uploadDailyCoverWebp({
+    supabaseAdmin,
+    slug: blog.slug,
+    coverFile: cover.file,
+    title: blog.title,
+  });
+
+  await supabaseAdmin
+    .from('blogs')
+    .update({
+      featured_image: uploaded.url,
+      seo_data: {
+        ...seo,
+        og_image: uploaded.url,
+        featured_image_alt: `${blog.title} — MyFNG car service`.slice(0, 125),
+        ai_cover_key: cover.key,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', blog.id);
+
+  return { success: true as const, slug: blog.slug, title: blog.title, url: uploaded.url };
+}
+
 export function dailyBlogScheduleInfo(settings: DailyBlogSettings | null) {
   return {
     schedule: '10:00 AM IST',
@@ -411,6 +489,7 @@ export function dailyBlogScheduleInfo(settings: DailyBlogSettings | null) {
     last_status: settings?.last_status || null,
     last_error: settings?.last_error || null,
     last_blog_id: settings?.last_blog_id || null,
-    city: settings?.city || 'Pune',
+    city: settings?.city || 'Thane',
+    city_rotation: dailyCityScheduleLabel(),
   };
 }

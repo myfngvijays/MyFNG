@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.daily_blog_settings (
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   city TEXT NOT NULL DEFAULT 'Pune',
   tone TEXT NOT NULL DEFAULT 'Professional',
-  word_count INT NOT NULL DEFAULT 900,
+  word_count INT NOT NULL DEFAULT 600,
   category_id UUID REFERENCES public.blog_categories(id) ON DELETE SET NULL,
   author_id UUID REFERENCES public.users_login(id) ON DELETE SET NULL,
   last_run_at TIMESTAMPTZ,

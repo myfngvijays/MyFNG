@@ -41,6 +41,7 @@ const SERVICE_TOPIC_HINTS: Array<{ re: RegExp; slug: string }> = [
   { re: /detail|ceramic|polish/i, slug: 'detailing-service' },
   { re: /suspension|steering/i, slug: 'suspension-steering-service' },
   { re: /engine|oil|overheat/i, slug: 'engine-service' },
+  { re: /pickup|drop[\s-]?off|collect(?:ion)?/i, slug: 'periodic-service' },
   { re: /periodic|skip(?:ped)?|missed|regular[\s-]?service|maintenance/i, slug: 'periodic-service' },
 ];
 
@@ -140,9 +141,14 @@ export function listInternalLinkCatalog(opts: {
 
   const items: BlogLinkCatalogItem[] = [
     {
+      url: '/go/myfngapp',
+      anchor: 'Download the MyFNG app',
+      when: 'Primary conversion. Use whenever asking the reader to book, track, or manage service on the phone.',
+    },
+    {
       url: '/book-service',
       anchor: `Book car service in ${cityLabel}`,
-      when: 'Use for the primary MyFNG CTA and whenever the reader should take action.',
+      when: 'Use as a secondary CTA if the reader prefers the website booking form.',
     },
     {
       url: servicePublicPath(service.slug),
@@ -186,20 +192,64 @@ export function buildCtaHtml(opts: {
   city?: string;
   campaign: string;
   focusKeyword?: string;
+  appDownloadUrl?: string;
 }) {
   const cityPage = matchCityPage(opts.city);
   const cityLabel = cityPage?.name || String(opts.city || '').trim() || 'your city';
   const bookUrl = buildBlogTrackedPath('/book-service', opts.campaign, 'inline-cta', opts.focusKeyword);
+  const appUrl =
+    opts.appDownloadUrl ||
+    buildBlogTrackedPath('/go/myfngapp', opts.campaign, 'app-download', opts.focusKeyword);
   return [
     '<div class="blog-post-cta" data-myfng-cta="1">',
     `<h3>Need trusted car service in ${escapeHtml(cityLabel)}?</h3>`,
-    '<p>Book multi-brand car servicing with MyFNG — expert technicians, genuine parts, and convenient pickup &amp; drop.</p>',
+    '<p>Download the MyFNG app to book workshop service with pickup &amp; drop — we collect your car, service it at the workshop, and return it.</p>',
     '<div class="blog-post-cta-actions">',
+    `<a href="${encodeHref(appUrl)}" class="app-btn">Download MyFNG App</a>`,
     `<a href="${bookUrl}" class="book-btn">Book Service Now</a>`,
     '<a href="tel:+919152307030" class="blog-post-cta-phone">Call +91-9152307030</a>',
     '</div>',
     '</div>',
   ].join('');
+}
+
+export function buildAboutMyFngHtml(appDownloadUrl: string) {
+  const appUrl = encodeHref(appDownloadUrl || '/go/myfngapp');
+  return [
+    '<div class="blog-about-myfng" data-myfng-about="1">',
+    '<h2>About MyFNG</h2>',
+    '<p>MyFNG is your friendly neighbourhood garage network for multi-brand car service across Pune, Mumbai and nearby cities. We collect your car, service it at a trusted workshop, and drop it back. We do not send a mechanic to service the car at your house.</p>',
+    '<h2>Book on the MyFNG app</h2>',
+    `<p>Download the MyFNG app to book pickup &amp; drop, track your car, and get live workshop updates. <a href="${appUrl}">Download the MyFNG app</a> and finish booking in a few taps.</p>`,
+    '</div>',
+  ].join('');
+}
+
+export function ensureAboutMyFngHtml(html: string, appDownloadUrl: string) {
+  const source = String(html || '').trim();
+  if (/data-myfng-about/i.test(source)) return source;
+  return `${source}\n${buildAboutMyFngHtml(appDownloadUrl)}`;
+}
+
+export function stripExistingCta(html: string) {
+  const source = String(html || '');
+  const start = source.search(/<div\b[^>]*(?:blog-post-cta|data-myfng-cta)/i);
+  if (start < 0) return source;
+  let depth = 0;
+  const openRe = /<\/?div\b/gi;
+  openRe.lastIndex = start;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(source))) {
+    if (match[0].toLowerCase() === '<div') depth += 1;
+    else depth -= 1;
+    if (depth === 0) {
+      return `${source.slice(0, start)}${source.slice(match.index + match[0].length + 1)}`.replace(
+        />\s*>/,
+        '>',
+      );
+    }
+  }
+  return source;
 }
 
 function escapeHtml(s: string) {
@@ -301,6 +351,7 @@ function isExternalHref(href: string) {
 function inferPlacement(href: string, inCta: boolean) {
   const raw = decodeHref(href).toLowerCase();
   if (inCta || raw.includes('book-service')) return 'inline-cta';
+  if (raw.includes('/go/myfngapp') || raw.includes('app-download')) return 'app-download';
   if (raw.includes('/blogs/')) return 'related-blog';
   if (raw.includes('/car-service')) return 'service-page';
   if (raw.includes('workshop-locator')) return 'workshop-locator';
@@ -370,7 +421,7 @@ function blogLinkCount(html: string) {
 function relatedReadingHtml(blogs: RelatedBlogLink[], campaign: string, term?: string) {
   if (!blogs.length) return '';
   const items = blogs
-    .slice(0, 4)
+    .slice(0, 3)
     .map((b) => {
       const url = buildBlogTrackedPath(`/blogs/${b.slug}`, campaign, 'related-reading', term);
       return `<li><a href="${encodeHref(url)}">${escapeHtml(b.title)}</a></li>`;
@@ -385,6 +436,7 @@ export function enrichAiGeneratedHtml(opts: {
   city?: string;
   focusKeyword?: string;
   relatedBlogs?: RelatedBlogLink[];
+  appDownloadUrl?: string;
 }): { html: string; links: EnrichedBlogLinks } {
   let html = String(opts.html || '').trim();
   const campaign = toCampaignSlug(opts.slug);
@@ -392,10 +444,17 @@ export function enrichAiGeneratedHtml(opts: {
   const related = opts.relatedBlogs || [];
 
   html = rewriteAnchors(html, campaign, term);
-
-  if (!hasCta(html)) {
-    html = `${html}\n${buildCtaHtml({ city: opts.city, campaign, focusKeyword: term })}`;
-  }
+  html = stripExistingCta(html).trim();
+  html = ensureAboutMyFngHtml(
+    html,
+    opts.appDownloadUrl || buildBlogTrackedPath('/go/myfngapp', campaign, 'app-download', term),
+  );
+  html = `${html}\n${buildCtaHtml({
+    city: opts.city,
+    campaign,
+    focusKeyword: term,
+    appDownloadUrl: opts.appDownloadUrl,
+  })}`;
 
   if (related.length && blogLinkCount(html) < 2) {
     html = `${html}\n${relatedReadingHtml(related, campaign, term)}`;
@@ -426,6 +485,7 @@ export function buildAiLinkPromptPayload(opts: {
   focusKeyword?: string;
   relatedBlogs?: RelatedBlogLink[];
   campaignHint: string;
+  appDownloadUrl?: string;
 }) {
   return {
     utm_required_on_every_http_link: {
@@ -433,10 +493,15 @@ export function buildAiLinkPromptPayload(opts: {
       utm_medium: BLOG_UTM_MEDIUM,
       utm_campaign: toCampaignSlug(opts.campaignHint),
       utm_term: String(opts.focusKeyword || opts.topic || '').trim() || undefined,
-      utm_content: 'Use inline-cta | mid-cta | related-blog | service-page | external-ref',
+      utm_content: 'Use app-download | inline-cta | mid-cta | related-blog | service-page | external-ref',
+    },
+    myfng_facts: {
+      no_doorstep_service: true,
+      pickup_and_drop_only: true,
     },
     myfng_cta: {
       required: true,
+      app_download_url: opts.appDownloadUrl || '/go/myfngapp',
       book_path: '/book-service',
       phone: '+91-9152307030',
       wrap_in: '<div class="blog-post-cta">...</div>',

@@ -132,7 +132,7 @@ export default function BlogComments({
   const roots = byParent.get(null) || [];
 
   return (
-    <section className="mt-10 sm:mt-12 md:mt-14">
+    <section className="mt-0">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900">Comments</h2>
         <button

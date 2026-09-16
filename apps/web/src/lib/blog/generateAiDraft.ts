@@ -35,9 +35,14 @@ Content rules:
 - If tone is "Hindi + English (Hinglish)", write Hinglish but keep headings in English.
 - Don't invent exact prices; use ranges or "starts from" phrasing.
 - No markdown fences. No extra keys. JSON must be parseable.
+- NEVER say MyFNG does doorstep / at-home / in-driveway car servicing. MyFNG does NOT send a mechanic to service the car at the customer's house.
+- MyFNG offers car PICKUP AND DROP: we collect the car, service it at the workshop, and return it.
+- Main conversion is downloading the MyFNG app. Mention the app naturally 2-3 times and use the provided app_download_url for every app-download link.
+- Include a short "About MyFNG" section and a short "Book on the MyFNG app" section before the conclusion. Keep each to 2-4 sentences.
+- Local SEO: write for the given city. Use the city name in the title or H2 when natural. Weave 4-8 locality names from local_areas and 3-6 phrases from local_keywords. Do not dump them as a list at the top.
 
 Linking rules (mandatory):
-- Every blog MUST include a MyFNG CTA block near the end using class "blog-post-cta" with a Book Service button to /book-service and a tel:+919152307030 call link.
+- Every blog MUST include a MyFNG CTA block near the end using class "blog-post-cta" with: Download MyFNG App (app_download_url), Book Service (/book-service), and tel:+919152307030.
 - Weave 3-6 contextual INTERNAL links naturally in the body (not a dump at the top). Use ONLY urls from internal_pages and related_blogs in the user payload.
 - Add utm_source, utm_medium, utm_campaign, utm_content (and utm_term if a focus keyword exists) on every http(s) or site path link. Use the utm_required_on_every_http_link values.
 - If you mention an official standard, OEM manual, or public guideline, add 1-3 EXTERNAL reference links from allowed_examples or a real official URL. Do not invent URLs. Skip external links if you have no real source.
@@ -146,9 +151,12 @@ export async function generateAiBlogDraft(opts: {
   topic: string;
   focusKeyword?: string;
   city?: string;
+  localAreas?: string[];
+  localKeywords?: string[];
   intent?: string;
   tone?: string;
   wordCount?: number;
+  appDownloadUrl?: string;
 }): Promise<AiBlogDraft> {
   const topic = String(opts.topic || '').trim();
   const focusKeyword = String(opts.focusKeyword || '').trim();
@@ -176,15 +184,19 @@ export async function generateAiBlogDraft(opts: {
       topic,
       focusKeyword: focusKeyword || null,
       city: city || null,
+      local_areas: (opts.localAreas || []).slice(0, 12),
+      local_keywords: (opts.localKeywords || []).slice(0, 8),
       intent,
       tone,
       wordCount,
+      app_download_url: opts.appDownloadUrl || '/go/myfngapp',
       linking: buildAiLinkPromptPayload({
         city,
         topic,
         focusKeyword,
         relatedBlogs,
         campaignHint,
+        appDownloadUrl: opts.appDownloadUrl,
       }),
     },
   });
@@ -206,6 +218,7 @@ export async function generateAiBlogDraft(opts: {
     city,
     focusKeyword,
     relatedBlogs,
+    appDownloadUrl: opts.appDownloadUrl,
   });
 
   return {

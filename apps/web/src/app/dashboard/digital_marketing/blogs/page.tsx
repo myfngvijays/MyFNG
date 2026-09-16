@@ -255,7 +255,7 @@ function BlogsPageContent() {
                     ? `Last live: ${daily.last_blog.title}`
                     : daily?.schedule?.last_status === 'failed'
                       ? `Last run failed: ${daily.schedule.last_error || 'see System Monitor'}`
-                      : 'One AI blog every morning with rotating GMB covers.'}
+                      : 'Thane / Navi Mumbai most days · Mumbai Friday · Pune Saturday.'}
               </p>
               {daily?.schedule?.next_run_at ? (
                 <p className="mt-1 text-[11px] text-gray-500">
