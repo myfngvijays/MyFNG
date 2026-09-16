@@ -129,20 +129,22 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           .select('id, name, car, stars, text, date, display_order, is_active, screen')
           .eq('is_active', true)
           .eq('screen', 'rsa')
+          .gte('stars', 4)
           .order('display_order', { ascending: true })
           .order('created_at', { ascending: false });
 
         if (!active || error || !Array.isArray(data) || data.length === 0) return;
 
-        setReviews(
-          data.map((row: any) => ({
+        const next = data
+          .filter((row: any) => Number(row.stars || 0) >= 4 && String(row.text || '').trim())
+          .map((row: any) => ({
             name: row.name || '',
             car: row.car || '',
-            stars: row.stars || 5,
+            stars: Number(row.stars) >= 4 ? Number(row.stars) : 5,
             text: row.text || '',
             date: row.date || '',
-          })),
-        );
+          }));
+        if (next.length) setReviews(next);
       } catch {
         // keep fallback reviews
       }

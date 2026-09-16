@@ -387,21 +387,23 @@ export default function PublicHomeScreen({ navigation }: Props) {
             .from('customer_reviews')
             .select('id, name, car, stars, text, date, display_order, is_active, screen')
             .eq('is_active', true)
+            .gte('stars', 4)
             .or('screen.eq.home,screen.is.null')
             .order('display_order', { ascending: true })
             .order('created_at', { ascending: false });
 
           if (error || !Array.isArray(data) || data.length === 0) return;
 
-          setReviews(
-            data.map((row: any) => ({
+          const next = data
+            .filter((row: any) => Number(row.stars || 0) >= 4 && String(row.text || '').trim())
+            .map((row: any) => ({
               name: row.name || '',
               car: row.car || '',
-              stars: row.stars || 5,
+              stars: Number(row.stars) >= 4 ? Number(row.stars) : 5,
               text: row.text || '',
               date: row.date || '',
-            })),
-          );
+            }));
+          if (next.length) setReviews(next);
         } catch {
           // keep existing reviews
         }

@@ -365,7 +365,7 @@ export default function Navbar({
       ))}
       <TrackedLink href="/about-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">About Us</TrackedLink>
       <TrackedLink href="/car-roadside-assistance" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Roadside Assistance</TrackedLink>
-      <TrackedLink href="/blogs" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Blog</TrackedLink>
+      <TrackedLink href="/blogs" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Blogs</TrackedLink>
       <TrackedLink href="/contact-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Contact</TrackedLink>
     </>
   );
@@ -442,7 +442,7 @@ export default function Navbar({
             </div>
             <TrackedLink href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</TrackedLink>
             <TrackedLink href="/car-roadside-assistance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</TrackedLink>
-            <TrackedLink href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</TrackedLink>
+            <TrackedLink href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blogs</TrackedLink>
             <TrackedLink href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</TrackedLink>
           </div>
 

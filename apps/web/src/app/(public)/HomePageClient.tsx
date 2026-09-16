@@ -102,6 +102,47 @@ export default function HomePage() {
   const [headerAiQuery, setHeaderAiQuery] = useState('');
   const [chatDraft, setChatDraft] = useState('');
   const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string; featuredImage?: string }>>([]);
+  const dummyHomeReviews = useMemo(
+    () => [
+      {
+        name: 'Rajesh Kumar',
+        location: 'Mumbai',
+        rating: 5,
+        vehicle: 'Honda City',
+        text: 'Best car service experience! The AI chatbot made booking so easy. Transparent pricing and excellent service quality.',
+      },
+      {
+        name: 'Priya Sharma',
+        location: 'Navi Mumbai',
+        rating: 5,
+        vehicle: 'Maruti Swift',
+        text: 'MY FNG saved me so much time. Real-time updates and professional service. Highly recommended!',
+      },
+      {
+        name: 'Amit Patel',
+        location: 'Thane',
+        rating: 5,
+        vehicle: 'Hyundai Creta',
+        text: 'Amazing service! The AI-powered booking was seamless and the technicians were very professional.',
+      },
+      {
+        name: 'Sandeep Singh',
+        location: 'Pune',
+        rating: 5,
+        vehicle: 'Tata Nexon',
+        text: 'Pricing was exactly as shown. No surprises. Great quality work and quick delivery.',
+      },
+      {
+        name: 'Ananya Iyer',
+        location: 'Bengaluru',
+        rating: 5,
+        vehicle: 'Toyota Glanza',
+        text: 'Support team was super responsive and the service warranty is a big plus.',
+      },
+    ],
+    []
+  );
+  const [homeReviews, setHomeReviews] = useState(dummyHomeReviews);
   const heroServiceSlides = useMemo(
     () =>
       DEFAULT_SERVICES.map((service) => ({
@@ -143,6 +184,34 @@ export default function HomePage() {
       text: `Hi! I'm MISA — MyFNG Instant Service Assistant. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikha dunga.\n\nAapko kis type ka issue aa raha hai?`,
     },
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/public/customer-reviews?screen=home&limit=8');
+        if (!res.ok) return;
+        const json = (await res.json()) as { data?: Array<any> };
+        const rows = Array.isArray(json?.data) ? json.data : [];
+        const mapped = rows
+          .filter((r) => Number(r?.rating) >= 4 && String(r?.text || '').trim() && String(r?.name || '').trim())
+          .slice(0, 5)
+          .map((r) => ({
+            name: String(r.name || '').trim(),
+            location: String(r.location || r.date || '').trim(),
+            rating: Math.min(5, Math.max(4, Number(r.rating) || 5)),
+            vehicle: String(r.vehicle || r.car || '').trim(),
+            text: String(r.text || '').trim(),
+          }));
+        if (!cancelled && mapped.length) setHomeReviews(mapped);
+      } catch {
+        // keep dummy reviews
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Homepage "From Our Blogs" should link to full blog pages.
   useEffect(() => {
@@ -1771,49 +1840,12 @@ export default function HomePage() {
           </div>
 
           {(() => {
-            const reviews = [
-              {
-                name: 'Rajesh Kumar',
-                location: 'Mumbai',
-                rating: 5,
-                vehicle: 'Honda City',
-                text: 'Best car service experience! The AI chatbot made booking so easy. Transparent pricing and excellent service quality.',
-              },
-              {
-                name: 'Priya Sharma',
-                location: 'Navi Mumbai',
-                rating: 5,
-                vehicle: 'Maruti Swift',
-                text: 'MY FNG saved me so much time. Real-time updates and professional service. Highly recommended!',
-              },
-              {
-                name: 'Amit Patel',
-                location: 'Thane',
-                rating: 5,
-                vehicle: 'Hyundai Creta',
-                text: 'Amazing service! The AI-powered booking was seamless and the technicians were very professional.',
-              },
-              {
-                name: 'Sandeep Singh',
-                location: 'Pune',
-                rating: 5,
-                vehicle: 'Tata Nexon',
-                text: 'Pricing was exactly as shown. No surprises. Great quality work and quick delivery.',
-              },
-              {
-                name: 'Ananya Iyer',
-                location: 'Bengaluru',
-                rating: 5,
-                vehicle: 'Toyota Glanza',
-                text: 'Support team was super responsive and the service warranty is a big plus.',
-              },
-            ] as const;
-
-            const featured = reviews[0];
-            const rest = reviews.slice(1);
+            const reviews = (homeReviews.length ? homeReviews : dummyHomeReviews).filter((r) => r.rating >= 4);
+            const featured = reviews.find((r) => r.rating >= 5) || reviews[0];
+            const rest = reviews.filter((r) => r !== featured).slice(0, 4);
             const avgRating = '4.8';
             const totalReviews = '10,000+';
-            const cities = '50+';
+            const cities = '100+';
             const response = '25 min';
 
             return (
@@ -1839,7 +1871,7 @@ export default function HomePage() {
                     </div>
                     <div className="rounded-2xl bg-white border border-gray-100 p-4">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold uppercase tracking-wider text-black">Cities</div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-black">Workshop</div>
                         <MapPin className="w-4 h-4 text-purple-600" />
                       </div>
                       <div className="mt-1 text-2xl font-extrabold text-[#023d95]">{cities}</div>
@@ -1856,7 +1888,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Reviews grid (with one featured) */}
                 <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7 md:gap-8">
                   <div className="sm:col-span-2 lg:col-span-2">
                     <TestimonialCard {...featured} featured />
@@ -2827,7 +2858,13 @@ function TestimonialCard({
             featured ? 'w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10' : 'w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8'
           }`}
         />
-        <p className={`text-gray-700 mb-4 sm:mb-5 md:mb-6 italic ${featured ? 'text-sm sm:text-base md:text-lg' : 'text-xs sm:text-sm md:text-base'}`}>
+        <p
+          className={`text-gray-700 mb-4 sm:mb-5 md:mb-6 italic ${
+            featured
+              ? 'text-sm sm:text-base md:text-lg line-clamp-6'
+              : 'text-xs sm:text-sm md:text-base line-clamp-5'
+          }`}
+        >
           {text}
         </p>
         <div className="border-t border-gray-100 pt-3 sm:pt-4">
