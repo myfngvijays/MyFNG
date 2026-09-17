@@ -70,7 +70,7 @@
     },
     {
       "path": "/api/cron/daily-blog",
-      "schedule": "30 4 * * *"
+      "schedule": "30 4-10 * * *"
     }
   ],
   "functions": {
@@ -78,7 +78,7 @@
       "maxDuration": 120
     },
     "src/app/api/cron/daily-blog/route.ts": {
-      "maxDuration": 120
+      "maxDuration": 300
     }
   }
 }

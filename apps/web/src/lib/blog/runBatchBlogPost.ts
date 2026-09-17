@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { BATCH_BLOG_TOPICS, batchBlogKey } from '@/lib/blog/batchBlogTopics';
+import { BATCH_BLOG_TOPICS, THANE_BATCH_CITY, batchBlogKey } from '@/lib/blog/batchBlogTopics';
 import { RSA_BLOG_TOPICS, rsaBlogKey } from '@/lib/blog/rsaBlogTopics';
-import { cityByIndex, rsaCityByIndex } from '@/lib/blog/dailyCities';
+import { rsaCityByIndex } from '@/lib/blog/dailyCities';
 import { DAILY_BLOG_COVERS, uploadDailyCoverWebp } from '@/lib/blog/dailyCovers';
 import { istDateString } from '@/lib/blog/dailyTopics';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
@@ -43,7 +43,7 @@ export async function runBatchBlogPost(opts: { index: number }): Promise<DailyBl
   }
 
   const picked = BATCH_BLOG_TOPICS[index];
-  const cityTarget = cityByIndex(index);
+  const cityTarget = THANE_BATCH_CITY;
   const cover = batchCoverByIndex(index);
   const batchKey = batchBlogKey(index);
   const runDate = istDateString();
@@ -53,7 +53,7 @@ export async function runBatchBlogPost(opts: { index: number }): Promise<DailyBl
     .select('id, slug, title, seo_data')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
-    .limit(80);
+    .limit(250);
   const existing = (existingRows || []).find((row: any) => row?.seo_data?.ai_batch_key === batchKey);
 
   if (existing?.id) {
@@ -134,7 +134,7 @@ export async function runRsaBatchBlogPost(opts: { index: number }): Promise<Dail
     .select('id, slug, title, seo_data')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
-    .limit(80);
+    .limit(250);
   const existing = (existingRows || []).find((row: any) => row?.seo_data?.ai_batch_key === batchKey);
 
   if (existing?.id) {

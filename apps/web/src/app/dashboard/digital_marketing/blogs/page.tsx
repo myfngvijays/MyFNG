@@ -13,8 +13,6 @@ import {
   Search,
   Edit,
   Trash2,
-  Calendar,
-  Clock,
   Sparkles,
   ArrowRight,
   CheckCircle,
@@ -426,18 +424,12 @@ function BlogsPageContent() {
                     </Link>
 
                     <div className="p-4 sm:p-5 md:p-6">
-                      <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-gray-500 sm:mb-3 sm:gap-4 sm:text-xs">
-                        {blog.published_at || blog.created_at ? (
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
-                            {formatDateDMY(blog.published_at || blog.created_at)}
-                          </div>
-                        ) : null}
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                          {blog.read_time || 3} min read
-                        </div>
-                      </div>
+                      <p className="mb-2 whitespace-nowrap text-[10px] leading-4 text-gray-500 sm:mb-3 sm:text-[11px]">
+                        {blog.published_at || blog.created_at
+                          ? `${formatDateDMY(blog.published_at || blog.created_at)} · `
+                          : ''}
+                        {blog.read_time || 3} min · {Number(blog.views || 0).toLocaleString('en-IN')} views
+                      </p>
 
                       <Link href={href} className="block">
                         <h3 className="mb-2 line-clamp-2 text-base font-bold text-brand-secondary transition group-hover:text-brand-primary sm:mb-3 sm:text-lg md:text-xl">

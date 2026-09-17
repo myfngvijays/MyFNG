@@ -19,7 +19,8 @@ import {
   Bot, 
   ArrowRight, 
   Shield, 
-  Clock, 
+  Clock,
+  Eye,
   MapPin, 
   Activity, 
   Car,
@@ -101,7 +102,7 @@ export default function HomePage() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [headerAiQuery, setHeaderAiQuery] = useState('');
   const [chatDraft, setChatDraft] = useState('');
-  const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string; featuredImage?: string }>>([]);
+  const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; views: number; tag: string; featuredImage?: string }>>([]);
   const dummyHomeReviews = useMemo(
     () => [
       {
@@ -233,9 +234,10 @@ export default function HomePage() {
             const excerpt =
               excerptRaw.length > 110 ? `${excerptRaw.slice(0, 107).trimEnd()}...` : excerptRaw;
             const featuredImage = String(b?.featured_image || '').trim() || undefined;
-            return { title, slug, excerpt, readTime, tag, featuredImage };
+            const views = Number(b?.views || 0);
+            return { title, slug, excerpt, readTime, views, tag, featuredImage };
           })
-          .filter(Boolean) as Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string; featuredImage?: string }>;
+          .filter(Boolean) as Array<{ title: string; excerpt: string; slug: string; readTime: string; views: number; tag: string; featuredImage?: string }>;
 
         if (!cancelled) setLatestBlogs(mapped);
       } catch {
@@ -1753,6 +1755,7 @@ export default function HomePage() {
                       title={b.title}
                       excerpt={b.excerpt || 'Read the full article on MyFNG blog.'}
                       readTime={b.readTime}
+                      views={b.views}
                       tag={b.tag}
                       imageUrl={b.featuredImage}
                       color={p.color}
@@ -2740,7 +2743,8 @@ function WhyChooseItem({ icon, title, desc, index }: { icon: React.ReactNode; ti
 function BlogCard({ 
   title, 
   excerpt, 
-  readTime, 
+  readTime,
+  views,
   tag, 
   imageUrl,
   color, 
@@ -2749,7 +2753,8 @@ function BlogCard({
 }: { 
   title: string; 
   excerpt: string; 
-  readTime: string; 
+  readTime: string;
+  views?: number;
   tag: string; 
   imageUrl?: string;
   color: string; 
@@ -2783,13 +2788,21 @@ function BlogCard({
 
       <div className="p-8 flex flex-col flex-1">
         {/* Tag & Read Time */}
-        <div className="flex items-center gap-4 mb-4">
+        <div className="mb-4 flex items-center gap-2 overflow-hidden whitespace-nowrap">
           <span className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold text-gray-600 uppercase tracking-wider">
             {tag}
           </span>
-          <span className="text-gray-400 text-xs font-medium flex items-center gap-1">
-            <Clock className="w-3 h-3" /> {readTime}
+          <span className="text-gray-400 text-xs font-medium inline-flex items-center gap-1">
+            <Clock className="w-3 h-3 shrink-0" /> {readTime}
           </span>
+          {views != null ? (
+            <>
+              <span className="text-gray-300">·</span>
+              <span className="text-gray-400 text-xs font-medium inline-flex items-center gap-1">
+                <Eye className="w-3 h-3 shrink-0" /> {Number(views || 0).toLocaleString('en-IN')} views
+              </span>
+            </>
+          ) : null}
         </div>
 
         <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors leading-tight">

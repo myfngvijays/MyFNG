@@ -22,6 +22,7 @@ import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlert
 import { graphGet } from '@/lib/meta-ads/graph';
 import { loadTelecallerLeadsShiftLastRun } from '@/lib/services/telecallerLeadsShiftSummary';
 import { getTelecallerLeadsShiftTemplateStatus } from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
+import { isAfterDailyBlogSlot, istDateString } from '@/lib/blog/dailyTopics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -1497,20 +1498,30 @@ async function checkDailyBlog(): Promise<HealthCheck> {
 
     const failed = String(data?.last_status || '') === 'failed';
     const enabled = data?.enabled !== false;
+    const lastRunIst = data?.last_run_at ? istDateString(new Date(data.last_run_at)) : null;
+    const missedToday =
+      enabled &&
+      isAfterDailyBlogSlot(new Date(), 15) &&
+      (lastRunIst !== istDateString() || String(data?.last_status || '') !== 'success');
+    const unhealthy = failed || missedToday;
     return {
       name: 'Daily Blog Auto-Post',
       category: 'Background Jobs',
-      status: failed ? 'degraded' : 'healthy',
+      status: unhealthy ? 'degraded' : 'healthy',
       responseTime,
-      message: failed
-        ? 'Last 10:00 AM run failed'
-        : enabled
-          ? 'Scheduled 10:00 AM IST'
-          : 'Auto-post paused',
-      reason: failed
+      message: missedToday
+        ? 'Today’s 10:00 AM blog is missing'
+        : failed
+          ? 'Last 10:00 AM run failed'
+          : enabled
+            ? 'Scheduled 10:00 AM IST'
+            : 'Auto-post paused',
+      reason: missedToday
+        ? `No successful daily blog for ${istDateString()} after 10:00 AM IST. Cron retries hourly until 4:00 PM. Use Digital Marketing → Blogs → Post now.`
+        : failed
         ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
         : enabled
-          ? 'Cron /api/cron/daily-blog is set for 04:30 UTC (10:00 AM IST). Posts follow Google AI Overview style. Every Monday is an About MyFNG USP (₹1500 interim, photo-proof, app vs WhatsApp, pickup, Prime).'
+          ? 'Cron /api/cron/daily-blog runs at 10:00 AM IST and retries hourly until 4:00 PM IST if the post is missing. Posts follow Google AI Overview style. Every Monday is an About MyFNG USP (₹1500 interim, photo-proof, app vs WhatsApp, pickup, Prime).'
           : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
       quickFix: {
         label: 'Open Blogs',
@@ -1523,6 +1534,7 @@ async function checkDailyBlog(): Promise<HealthCheck> {
         last_run_at: data?.last_run_at || null,
         last_status: data?.last_status || null,
         last_blog_id: data?.last_blog_id || null,
+        missed_today: missedToday,
       },
     };
   } catch (e: any) {

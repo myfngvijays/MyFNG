@@ -240,6 +240,8 @@ export default function DMContentScreen() {
                       {date ? formatDateDMY(date) : ''}
                       {date ? '  ·  ' : ''}
                       {blog.read_time || 3} min read
+                      {'  ·  '}
+                      {Number(blog.views || 0).toLocaleString('en-IN')} views
                     </Text>
                     <Text style={styles.title} numberOfLines={2}>
                       {blog.title}

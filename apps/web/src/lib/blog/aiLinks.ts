@@ -549,27 +549,26 @@ export function ensureLocalSeoHtml(
 
   const usedAreas = areas.filter((a) => source.toLowerCase().includes(a.toLowerCase()));
   const usedKeywords = keywords.filter((k) => source.toLowerCase().includes(k.toLowerCase()));
-  if (usedAreas.length >= 4 && usedKeywords.length >= 3) return source;
+  if (usedAreas.length >= 4 && keywords.length > 0 && usedKeywords.length >= keywords.length) return source;
 
   const missingAreas = areas.filter((a) => !usedAreas.some((u) => u.toLowerCase() === a.toLowerCase())).slice(0, 6);
-  const missingKeywords = keywords
-    .filter((k) => !usedKeywords.some((u) => u.toLowerCase() === k.toLowerCase()))
-    .slice(0, 4);
+  const missingKeywords = keywords.filter((k) => !usedKeywords.some((u) => u.toLowerCase() === k.toLowerCase()));
   const areaText = (missingAreas.length ? missingAreas : areas).slice(0, 6).join(', ');
+  const allKeywords = (missingKeywords.length ? missingKeywords : keywords).join(', ');
   const kwLead = missingKeywords[0] || keywords[0] || (city ? `car service in ${city}` : 'car service');
   const kwPickup = missingKeywords.find((k) => /pickup/i.test(k)) || keywords.find((k) => /pickup/i.test(k));
+  const extraKeywords = (missingKeywords.length ? missingKeywords : keywords).filter(
+    (k) => k !== kwLead && k !== kwPickup,
+  );
   const para = [
     `<p data-local-seo="1">`,
     city ? `${escapeHtml(city)} drivers` : 'Local drivers',
     areaText ? ` in ${escapeHtml(areaText)}` : '',
     ` often search for ${escapeHtml(kwLead)}`,
     kwPickup ? ` and ${escapeHtml(kwPickup)}` : '',
+    extraKeywords.length ? `, plus ${escapeHtml(extraKeywords.join(', '))}` : '',
     `. Book on the MyFNG app — we collect the car, service it at a nearby workshop, and drop it back. We do not send a mechanic to your house.`,
-    missingKeywords
-      .filter((k) => k !== kwLead && k !== kwPickup)
-      .slice(0, 2)
-      .map((k) => ` Ask for ${escapeHtml(k)} when you book.`)
-      .join(''),
+    allKeywords && extraKeywords.length < 2 ? ` People also look for ${escapeHtml(allKeywords)}.` : '',
     `</p>`,
   ].join('');
 

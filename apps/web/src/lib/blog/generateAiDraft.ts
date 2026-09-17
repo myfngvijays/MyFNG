@@ -44,7 +44,7 @@ Content rules:
 - Do not write "About MyFNG" or "Book on the MyFNG app" headings. Those two sections are added automatically after the draft.
 - Local SEO: write ONLY for the given city. Never mention another city (do not write Pune if the city is Thane or Navi Mumbai).
 - Title MUST be short SEO: primary keyword in city, 40-60 characters (example: "Coolant Leak and Overheating Signs in Thane"). Use "in City", not an en-dash before the city. Also put the same title in meta_title.
-- You MUST include at least 4 locality names from local_areas and at least 3 phrases from local_keywords VERBATIM, woven into sentences (not a dump list).
+- You MUST include at least 4 locality names from local_areas and EVERY phrase from local_keywords VERBATIM, woven into sentences (not a dump list).
 - Write for Google AI Overview: first 2 sentences must answer the search query directly so they can be quoted. Use short question-style H2s, bullet lists, and a "Summary recommendation" H2 near the end.
 - In Summary recommendation, tell readers to choose MyFNG for photo-backed control, starts from ₹1,500, 1 month / 1,000 km warranty, free pickup & drop, and the MyFNG app (history + tracking). Capitalize the first letter after each bullet label. Do not name competitor brands.
 - Photo-backed control is a MyFNG USP: live photos/videos on WhatsApp; extra work only after the customer approves the quote. Say this whenever trust, pricing, or updates come up.
@@ -120,6 +120,9 @@ export function ensureSeoBlogTitle(title: string, city?: string, focusKeyword?: 
       .replace(/\s*[–—]\s+/g, ': ')
       .replace(/\s*[–—:?]\s*$/, '')
       .trim();
+    if (!next) next = keyword || cityName;
+    next = next.replace(/\s+in\s*:\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+    next = next.replace(/\s+(for|in|at|near|of|to|and)\s*$/i, '').trim();
     if (!next) next = keyword || cityName;
     next = `${next} in ${cityName}`;
   }
@@ -273,7 +276,7 @@ Extra rules for this RSA / roadside assistance post:
       focusKeyword: focusKeyword || null,
       city: city || null,
       local_areas: (opts.localAreas || []).slice(0, 12),
-      local_keywords: (opts.localKeywords || []).slice(0, 8),
+      local_keywords: (opts.localKeywords || []).slice(0, 12),
       intent,
       tone,
       wordCount,

@@ -131,3 +131,11 @@ export function nextTenAmIstIso(now = new Date()): string {
   const next = now.getTime() < todayTenUtc ? todayTenUtc : todayTenUtc + 86400000;
   return new Date(next).toISOString();
 }
+
+/** True after the 10:00 AM IST slot (optional grace for monitor / catch-up). */
+export function isAfterDailyBlogSlot(now = new Date(), graceMinutes = 0): boolean {
+  const date = istDateString(now);
+  const [y, m, d] = date.split('-').map(Number);
+  const slotUtc = Date.UTC(y, m - 1, d, 4, 30, 0) + graceMinutes * 60 * 1000;
+  return now.getTime() >= slotUtc;
+}

@@ -21,7 +21,8 @@ async function main() {
   loadEnv();
   const secret = process.env.CRON_SECRET || process.env.NOTIFICATION_CRON_SECRET;
   if (!secret) throw new Error('CRON secret missing');
-  const res = await fetch('http://localhost:3000/api/cron/daily-blog?force=1', {
+  const force = !process.argv.includes('--no-force');
+  const res = await fetch(`http://localhost:3000/api/cron/daily-blog${force ? '?force=1' : ''}`, {
     headers: { Authorization: `Bearer ${secret}` },
   });
   const body = await res.json().catch(() => ({}));

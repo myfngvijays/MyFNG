@@ -13,6 +13,7 @@ import {
   pickWeeklyUspTopic,
 } from '@/lib/blog/dailyUspTopics';
 import { publishAiServiceBlog, type DailyBlogRunResult, type DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
+import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
 
 export type { DailyBlogRunResult, DailyBlogSettings };
 
@@ -91,12 +92,48 @@ async function writeRun(
     .eq('id', 1);
 }
 
+async function repairBrokenCityTitles(supabaseAdmin: any) {
+  const { data } = await supabaseAdmin
+    .from('blogs')
+    .select('id, slug, title, seo_data')
+    .or('title.ilike.% for in %,title.ilike.% at in %,title.ilike.% near in %,title.ilike.% in :%,slug.ilike.%-for-in-%')
+    .limit(30);
+  for (const row of data || []) {
+    const seo = (row.seo_data || {}) as Record<string, unknown>;
+    const city = String(seo.local_city || seo.ai_city || '').trim();
+    if (!city) continue;
+    const title = ensureSeoBlogTitle(String(row.title || ''), city);
+    if (!title || title === row.title) {
+      if (row.slug && /-for-in-/.test(String(row.slug))) {
+        await refreshDailyBlogCover({ slug: String(row.slug) }).catch(() => undefined);
+      }
+      continue;
+    }
+    await supabaseAdmin
+      .from('blogs')
+      .update({
+        title,
+        seo_data: {
+          ...seo,
+          meta_title: ensureSeoBlogTitle(String(seo.meta_title || title), city).slice(0, 120),
+          og_title: ensureSeoBlogTitle(String(seo.og_title || title), city).slice(0, 120),
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+    if (row.slug) {
+      await refreshDailyBlogCover({ slug: String(row.slug) }).catch(() => undefined);
+    }
+  }
+}
+
 export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<DailyBlogRunResult> {
   const force = Boolean(opts?.force);
   const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
   if (!supabaseAdmin) {
     return { success: false, error: adminError || 'Admin client not configured' };
   }
+  await repairBrokenCityTitles(supabaseAdmin).catch(() => undefined);
 
   const loaded = await loadDailyBlogSettings();
   if (loaded.missing) {
@@ -127,6 +164,39 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
         skipped: true,
         reason: 'already_posted_today',
         blog_id: existing.blog_id || undefined,
+        run_date: runDate,
+      };
+    }
+    if (existing?.status === 'skipped' && !settings.enabled) {
+      return { success: true, skipped: true, reason: 'disabled', run_date: runDate };
+    }
+
+    const { data: recentPublished } = await supabaseAdmin
+      .from('blogs')
+      .select('id, slug, title, published_at, seo_data')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(20);
+    const alreadyLive = (recentPublished || []).find((row: any) => {
+      const seo = row?.seo_data || {};
+      if (!seo.ai_daily_post || seo.ai_batch_post) return false;
+      if (!row?.published_at) return false;
+      return istDateString(new Date(row.published_at)) === runDate;
+    });
+    if (alreadyLive?.id) {
+      await writeRun(supabaseAdmin, {
+        run_date: runDate,
+        blog_id: alreadyLive.id,
+        topic: String(alreadyLive.title || ''),
+        status: 'success',
+      });
+      return {
+        success: true,
+        skipped: true,
+        reason: 'already_posted_today',
+        blog_id: alreadyLive.id,
+        slug: alreadyLive.slug,
+        title: alreadyLive.title,
         run_date: runDate,
       };
     }

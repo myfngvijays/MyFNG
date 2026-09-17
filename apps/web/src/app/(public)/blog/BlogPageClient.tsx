@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import { ArrowRight, Calendar, Clock, Search } from 'lucide-react';
+import { ArrowRight, Search } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
 
@@ -284,18 +284,10 @@ export default function BlogPageClient() {
                       </Link>
 
                       <div className="p-4 sm:p-5 md:p-6">
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4 text-[10px] sm:text-xs text-gray-500 mb-2 sm:mb-3">
-                          {blog.published_at && (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
-                              {formatDate(blog.published_at)}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
-                            {blog.read_time || 3} min read
-                          </div>
-                        </div>
+                        <p className="mb-2 whitespace-nowrap text-[10px] leading-4 text-gray-500 sm:mb-3 sm:text-[11px]">
+                          {blog.published_at ? `${formatDate(blog.published_at)} · ` : ''}
+                          {blog.read_time || 3} min · {Number(blog.views || 0).toLocaleString('en-IN')} views
+                        </p>
                         <Link href={`/blogs/${blog.slug}`} className="block">
                           <h3 className="text-base sm:text-lg md:text-xl font-bold text-brand-secondary mb-2 sm:mb-3 group-hover:text-brand-primary transition line-clamp-2">
                             {blog.title}

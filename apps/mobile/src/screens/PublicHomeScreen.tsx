@@ -218,7 +218,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [cartItemCount, setCartItemCount] = useState(0);
   const [generalFaqs, setGeneralFaqs] = useState<PublicFaqItem[]>(FAQ_CATEGORIES[0].items);
   const [refreshing, setRefreshing] = useState(false);
-  const [liveBlogs, setLiveBlogs] = useState<Array<{ id: string; title: string; excerpt: string; date: string; image: string; slug: string }>>([]);
+  const [liveBlogs, setLiveBlogs] = useState<Array<{ id: string; title: string; excerpt: string; date: string; image: string; slug: string; views?: number }>>([]);
   const brandScrollX = useRef(new Animated.Value(0)).current;
   const brandAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const spareScrollX = useRef(new Animated.Value(0)).current;
@@ -444,6 +444,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               : '',
             image: b.featured_image || '',
             slug: b.slug || '',
+            views: Number(b.views || 0),
           }));
           if (blogs.length > 0) setLiveBlogs(blogs);
         } catch {
@@ -1075,7 +1076,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
                   <View style={styles.blogTextWrap}>
                     <Text style={styles.blogTitle} numberOfLines={2}>{post.title}</Text>
                     <Text style={styles.blogExcerpt} numberOfLines={2}>{post.excerpt}</Text>
-                    <Text style={styles.blogDate}>{post.date}</Text>
+                    <Text style={styles.blogDate}>
+                      {post.date}
+                      {'views' in post && post.views != null
+                        ? `  ·  ${Number(post.views || 0).toLocaleString('en-IN')} views`
+                        : ''}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               ))}

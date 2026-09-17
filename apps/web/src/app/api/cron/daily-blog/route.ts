@@ -4,10 +4,10 @@ import { runDailyBlogPost } from '@/lib/blog/runDailyBlogPost';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
- * Daily AI blog at 10:00 AM IST (Vercel cron 04:30 UTC).
+ * Daily AI blog at 10:00 AM IST, then hourly catch-up until 4:00 PM IST.
  * GET /api/cron/daily-blog?force=1
  */
 async function handle(request: NextRequest) {
