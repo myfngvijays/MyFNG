@@ -75,3 +75,48 @@ export function resolveCrmLeadOrderColumn(dateField?: string | null): 'created_a
   if (requested === 'updated_at' || requested === 'modified') return 'updated_at';
   return 'created_at';
 }
+
+/** Name / phone / lead# lookup should ignore status + date tiles. */
+export function isCrmLeadLookupQuery(q: string | null | undefined): boolean {
+  return Boolean(String(q || '').trim());
+}
+
+/** Status / disposition tiles for the CRM queue (skipped while searching). */
+export function applyCrmQueueStatusFilter(
+  query: any,
+  filter: string | null | undefined,
+  lostReason?: string | null,
+) {
+  const f = String(filter || '').trim().toLowerCase();
+  if (!f || f === 'all') return query;
+  if (f === 'new' || f === 'fresh') return applyCrmNewLeadFilter(query);
+  if (f === 'ringing') return query.filter('coupon_meta->>last_call_result', 'eq', 'RINGING');
+  if (f === 'interested') return query.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
+  if (f === 'will_visit') return query.filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT');
+  if (f === 'booking_confirmed') return query.eq('status', 'VALIDATED');
+  if (f === 'booked') {
+    return query.in('status', [
+      'VALIDATED',
+      'ASSIGNED',
+      'ACCEPTED',
+      'IN_PROGRESS',
+      'COMPLETED',
+    ]);
+  }
+  if (f === 'in_service') return query.eq('status', 'IN_PROGRESS');
+  if (f === 'service_done') return query.eq('status', 'COMPLETED');
+  if (f === 'lost' || f === 'rejected') {
+    let next = query.eq('status', 'REJECTED');
+    const reason = String(lostReason || '').trim();
+    if (reason) next = next.filter('coupon_meta->>last_lost_reason', 'eq', reason);
+    return next;
+  }
+  if (f === 'callback' || f === 'followup' || f === 'follow_up') {
+    return query.filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK');
+  }
+  if (f === 'overdue_callback') {
+    return query.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
+  }
+  if (f === 'incomplete') return query.eq('is_incomplete', true);
+  return query.filter('coupon_meta->>last_call_result', 'eq', f.toUpperCase());
+}

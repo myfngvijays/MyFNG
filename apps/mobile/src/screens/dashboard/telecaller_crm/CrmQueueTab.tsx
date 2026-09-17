@@ -268,7 +268,7 @@ export default function CrmQueueTab({
     return () => {
       cancelled = true;
     };
-  }, [onFilterChange]);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -397,17 +397,19 @@ export default function CrmQueueTab({
         limit: viewMode === 'chart' ? '500' : '80',
       });
       if (viewMode === 'chart') params.set('for_chart', '1');
-      if (filter && filter !== 'all') params.set('filter', filter);
-      if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
-      if (appliedQ.trim()) params.set('q', appliedQ.trim());
-      if (city.trim()) params.set('city', city.trim());
-      if (priority.trim()) params.set('priority', priority.trim());
-      if (dateField === 'modified') params.set('date_field', 'updated_at');
-      // Name / phone / lead# search must not be limited by Last 7 Days — match web
       const searching = Boolean(appliedQ.trim());
-      if (!searching && !range.allTime) {
-        params.set('from', range.start);
-        params.set('to', range.end);
+      if (searching) {
+        params.set('q', appliedQ.trim());
+      } else {
+        if (filter && filter !== 'all') params.set('filter', filter);
+        if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
+        if (city.trim()) params.set('city', city.trim());
+        if (priority.trim()) params.set('priority', priority.trim());
+        if (dateField === 'modified') params.set('date_field', 'updated_at');
+        if (!range.allTime) {
+          params.set('from', range.start);
+          params.set('to', range.end);
+        }
       }
       const data = await apiFetch<any>(`/api/telecaller/crm/leads?${params.toString()}`, {
         timeoutMs: 25000,
@@ -435,7 +437,6 @@ export default function CrmQueueTab({
 
   useEffect(() => {
     if (!localPrefsReady) return;
-    setLoading(true);
     load();
   }, [load, localPrefsReady]);
 
@@ -469,6 +470,7 @@ export default function CrmQueueTab({
   };
 
   const displayedLeads = useMemo(() => {
+    if (appliedQ.trim()) return leads;
     return leads.filter((lead) => {
       if (advIncomplete && !lead.is_incomplete) return false;
       if (advFollowUp && !lead.follow_up_required && !lead.next_follow_up_at && !lead.reminder?.at) {
@@ -486,7 +488,7 @@ export default function CrmQueueTab({
       }
       return true;
     });
-  }, [leads, advIncomplete, advFollowUp, advHasVehicle, advHasCoupon]);
+  }, [leads, appliedQ, advIncomplete, advFollowUp, advHasVehicle, advHasCoupon]);
 
   const statusChartData = useMemo(() => {
     const counts = new Map<string, number>();
@@ -642,6 +644,11 @@ export default function CrmQueueTab({
           }}
           placeholderTextColor={COLORS.textSecondary}
           returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
+          autoComplete="off"
+          spellCheck={false}
+          blurOnSubmit={false}
         />
         {q.length > 0 ? (
           <TouchableOpacity
@@ -685,6 +692,13 @@ export default function CrmQueueTab({
           <Ionicons name="options-outline" size={18} color={COLORS.primary} />
         </TouchableOpacity>
       </View>
+
+      {openDropdown ? (
+        <Pressable
+          style={styles.dropdownBackdrop}
+          onPress={() => setOpenDropdown(null)}
+        />
+      ) : null}
 
       {/* Status + Date — menus overlay leads (absolute), don't push list down */}
       <View style={styles.filterSection} pointerEvents="box-none">
@@ -908,12 +922,9 @@ export default function CrmQueueTab({
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
           style={styles.list}
-          onScrollBeginDrag={() => {
-            if (openDropdown) setOpenDropdown(null);
-          }}
-          onTouchStart={() => {
-            if (openDropdown) setOpenDropdown(null);
-          }}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="none"
+          removeClippedSubviews={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
           ListHeaderComponent={
             managerOps && selectedIds.size > 0 ? (
@@ -1365,6 +1376,11 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   search: { flex: 1, paddingVertical: 10, color: COLORS.textPrimary },
+  dropdownBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 40,
+    elevation: 40,
+  },
   searchClearBtn: {
     padding: 2,
     marginRight: 2,

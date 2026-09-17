@@ -480,6 +480,7 @@ export default function TelecallerLeadDetailScreen({
     setEditForm((prev) => ({ ...prev, [key]: value }));
 
   const lastPhoneLookupRef = React.useRef<string>('');
+  const activityTouchedRef = React.useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -632,8 +633,12 @@ export default function TelecallerLeadDetailScreen({
       ...prev,
       result: activityResultFromLead(data),
       lostReason: String(meta.last_lost_reason || ''),
-      date: followUp?.ymd || '',
-      time: followUp ? snapTimeToTenMinutes(followUp.hm) : '',
+      ...(activityTouchedRef.current
+        ? {}
+        : {
+            date: followUp?.ymd || '',
+            time: followUp ? snapTimeToTenMinutes(followUp.hm) : '',
+          }),
     }));
   };
 
@@ -1054,6 +1059,7 @@ export default function TelecallerLeadDetailScreen({
         console.warn('[LeadDetail] activity log during save failed', actErr);
       }
 
+      activityTouchedRef.current = false;
       setActivityData({
         result: activityData.result,
         lostReason: activityData.result === 'LOST' ? activityData.lostReason : '',
@@ -1406,6 +1412,10 @@ export default function TelecallerLeadDetailScreen({
   }, [editing, editForm.customer_phone]);
 
   useEffect(() => {
+    activityTouchedRef.current = false;
+  }, [leadId]);
+
+  useEffect(() => {
     fetchLeadDetails();
     void fetchActivityTimeline();
     if (showLeadIq) void fetchLeadIq();
@@ -1724,6 +1734,7 @@ export default function TelecallerLeadDetailScreen({
         ]);
       }
 
+      activityTouchedRef.current = false;
       setActivityData({
         result: selected.id,
         lostReason: selected.id === 'LOST' ? activityData.lostReason : '',
@@ -2977,7 +2988,10 @@ export default function TelecallerLeadDetailScreen({
                 date={activityData.date}
                 time={activityData.time}
                 required={activityData.result === 'CALLBACK'}
-                onChange={({ date, time }) => setActivityData((prev) => ({ ...prev, date, time }))}
+                onChange={({ date, time }) => {
+                  activityTouchedRef.current = true;
+                  setActivityData((prev) => ({ ...prev, date, time }));
+                }}
               />
               {activityData.result === 'CALLBACK' ? (
                 <Text style={{ color: COLORS.textSecondary, fontSize: 11, marginBottom: 8 }}>
@@ -3251,7 +3265,10 @@ export default function TelecallerLeadDetailScreen({
               date={activityData.date}
               time={activityData.time}
               required={activityData.result === 'CALLBACK'}
-              onChange={({ date, time }) => setActivityData((prev) => ({ ...prev, date, time }))}
+              onChange={({ date, time }) => {
+                activityTouchedRef.current = true;
+                setActivityData((prev) => ({ ...prev, date, time }));
+              }}
             />
             {activityData.result === 'CALLBACK' ? (
               <Text style={{ color: COLORS.textSecondary, fontSize: 11, marginBottom: 8 }}>

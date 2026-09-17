@@ -17,7 +17,8 @@ import {
 } from '@/lib/telecaller/crmRoles';
 import {
   applyCrmLeadDateRange,
-  applyCrmNewLeadFilter,
+  applyCrmQueueStatusFilter,
+  isCrmLeadLookupQuery,
   resolveCrmLeadOrderColumn,
 } from '@/lib/telecaller/crmLeadFilters';
 import { applyStuckRingingPatch } from '@/lib/telecaller/healLeadDispositions';
@@ -146,51 +147,15 @@ export async function GET(request: NextRequest) {
     // Soft-deleted hide (ignore if column missing — query will fail and we retry below)
     query = query.is('deleted_at', null);
 
-    if (status) query = query.eq('status', status.toUpperCase());
-    if (city) query = query.ilike('city', `%${city}%`);
-    // Intentionally ignore `source` filter — telecallers must not segment by lead origin
-    if (priority) query = query.eq('lead_priority', priority.toUpperCase());
-    if (workshopId) query = query.eq('workshop_id', workshopId);
-    query = applyCrmLeadDateRange(query, filter, from, to, dateField);
-
-    if (filter === 'new' || filter === 'fresh') {
-      query = applyCrmNewLeadFilter(query);
-    } else if (filter === 'ringing') {
-      query = query.filter('coupon_meta->>last_call_result', 'eq', 'RINGING');
-    } else if (filter === 'interested') {
-      query = query.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
-    } else if (filter === 'will_visit') {
-      query = query.filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT');
-    } else if (filter === 'booking_confirmed') {
-      query = query.eq('status', 'VALIDATED');
-    } else if (filter === 'booked') {
-      query = query.in('status', [
-        'VALIDATED',
-        'ASSIGNED',
-        'ACCEPTED',
-        'IN_PROGRESS',
-        'COMPLETED',
-      ]);
-    } else if (filter === 'in_service') {
-      query = query.eq('status', 'IN_PROGRESS');
-    } else if (filter === 'service_done') {
-      query = query.eq('status', 'COMPLETED');
-    } else if (filter === 'lost' || filter === 'rejected') {
-      query = query.eq('status', 'REJECTED');
-      if (lostReason) {
-        query = query.filter('coupon_meta->>last_lost_reason', 'eq', lostReason);
-      }
-    } else if (filter === 'callback' || filter === 'followup' || filter === 'follow_up') {
-      // Disposition tile: last call result CALLBACK (not overdue-only follow_up_required)
-      query = query.filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK');
-    } else if (filter === 'overdue_callback') {
-      query = query.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
-    } else if (filter === 'incomplete') {
-      // Only this telecaller's incomplete booking stubs (matches dashboard KPI).
-      query = query.eq('is_incomplete', true);
-    } else if (filter && filter !== 'all' && filter !== 'booked' && filter !== 'overdue_callback') {
-      // Custom / dynamic CRM statuses → last_call_result code
-      query = query.filter('coupon_meta->>last_call_result', 'eq', filter.toUpperCase());
+    const searching = isCrmLeadLookupQuery(q);
+    if (!searching) {
+      if (status) query = query.eq('status', status.toUpperCase());
+      if (city) query = query.ilike('city', `%${city}%`);
+      // Intentionally ignore `source` filter — telecallers must not segment by lead origin
+      if (priority) query = query.eq('lead_priority', priority.toUpperCase());
+      if (workshopId) query = query.eq('workshop_id', workshopId);
+      query = applyCrmLeadDateRange(query, filter, from, to, dateField);
+      query = applyCrmQueueStatusFilter(query, filter, lostReason);
     }
 
     if (q) {
@@ -211,43 +176,13 @@ export async function GET(request: NextRequest) {
         retry = retry.range(rangeFrom, rangeTo);
       }
 
-      if (status) retry = retry.eq('status', status.toUpperCase());
-      if (city) retry = retry.ilike('city', `%${city}%`);
-      if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
-      if (workshopId) retry = retry.eq('workshop_id', workshopId);
-      retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
-      if (filter === 'new' || filter === 'fresh') retry = applyCrmNewLeadFilter(retry);
-      else if (filter === 'ringing') {
-        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'RINGING');
-      } else if (filter === 'interested') {
-        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
-      } else if (filter === 'will_visit') {
-        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT');
-      } else if (filter === 'booking_confirmed') {
-        retry = retry.eq('status', 'VALIDATED');
-      } else if (filter === 'booked') {
-        retry = retry.in('status', [
-          'VALIDATED',
-          'ASSIGNED',
-          'ACCEPTED',
-          'IN_PROGRESS',
-          'COMPLETED',
-        ]);
-      } else if (filter === 'in_service') retry = retry.eq('status', 'IN_PROGRESS');
-      else if (filter === 'service_done') retry = retry.eq('status', 'COMPLETED');
-      else if (filter === 'lost' || filter === 'rejected') {
-        retry = retry.eq('status', 'REJECTED');
-        if (lostReason) {
-          retry = retry.filter('coupon_meta->>last_lost_reason', 'eq', lostReason);
-        }
-      } else if (filter === 'callback' || filter === 'followup' || filter === 'follow_up') {
-        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK');
-      } else if (filter === 'overdue_callback') {
-        retry = retry.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
-      } else if (filter === 'incomplete') {
-        retry = retry.eq('is_incomplete', true);
-      } else if (filter && filter !== 'all' && filter !== 'booked' && filter !== 'overdue_callback') {
-        retry = retry.filter('coupon_meta->>last_call_result', 'eq', filter.toUpperCase());
+      if (!searching) {
+        if (status) retry = retry.eq('status', status.toUpperCase());
+        if (city) retry = retry.ilike('city', `%${city}%`);
+        if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
+        if (workshopId) retry = retry.eq('workshop_id', workshopId);
+        retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
+        retry = applyCrmQueueStatusFilter(retry, filter, lostReason);
       }
       if (q) {
         retry = retry.or(
@@ -267,7 +202,7 @@ export async function GET(request: NextRequest) {
         const patch = applyStuckRingingPatch(row);
         if (!patch) return true;
         ringingWrites.push(db.from('service_leads').update(patch).eq('id', row.id));
-        if (filter === 'new' || filter === 'fresh') return false;
+        if (!searching && (filter === 'new' || filter === 'fresh')) return false;
         return true;
       });
       if (ringingWrites.length) void Promise.allSettled(ringingWrites);

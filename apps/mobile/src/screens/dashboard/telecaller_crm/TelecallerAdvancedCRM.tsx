@@ -46,15 +46,11 @@ import {
   saveTelecallerCrmFilterPrefs,
 } from '../../../lib/crmFilterPrefs';
 
-/** Keep Home / Leads mounted so idle resume does not remount into a hung spinner. */
+/** Keep Home / Leads mounted at full size so search / pickers stay usable after resume. */
 const HIDDEN_TAB: ViewStyle = {
-  position: 'absolute',
-  width: 0,
-  height: 0,
+  ...StyleSheet.absoluteFillObject,
   opacity: 0,
-  overflow: 'hidden',
-  left: 0,
-  top: 0,
+  zIndex: 0,
 };
 
 const MENU_TABS = [
@@ -597,7 +593,7 @@ export default function TelecallerAdvancedCRM() {
       setDatePreset(prefs.datePreset);
       setCustomStart(prefs.customStart);
       setCustomEnd(prefs.customEnd);
-      setQueueFilter('all');
+      setQueueFilter(prefs.statusFilter || 'all');
       setPrefsReady(true);
     })();
     return () => {
@@ -631,22 +627,22 @@ export default function TelecallerAdvancedCRM() {
     };
   }, [menuOpen]);
 
-  const persistDatePreset = (value: CrmDatePreset) => {
+  const persistDatePreset = useCallback((value: CrmDatePreset) => {
     setDatePreset(value);
     void saveTelecallerCrmFilterPrefs({ datePreset: value });
-  };
-  const persistCustomStart = (value: string) => {
+  }, []);
+  const persistCustomStart = useCallback((value: string) => {
     setCustomStart(value);
     void saveTelecallerCrmFilterPrefs({ customStart: value, datePreset: 'custom' });
-  };
-  const persistCustomEnd = (value: string) => {
+  }, []);
+  const persistCustomEnd = useCallback((value: string) => {
     setCustomEnd(value);
     void saveTelecallerCrmFilterPrefs({ customEnd: value, datePreset: 'custom' });
-  };
-  const persistQueueFilter = (value: string) => {
+  }, []);
+  const persistQueueFilter = useCallback((value: string) => {
     setQueueFilter(value);
     void saveTelecallerCrmFilterPrefs({ statusFilter: value });
-  };
+  }, []);
 
   const goHome = () => {
     setMenuOpen(false);
@@ -796,9 +792,6 @@ export default function TelecallerAdvancedCRM() {
     if (id === 'engage') {
       setMenuOpen(false);
       return;
-    }
-    if (id === 'queue') {
-      setQueueFilter('all');
     }
     setDetailLeadId(null);
     setDetailEditing(false);
@@ -952,7 +945,7 @@ export default function TelecallerAdvancedCRM() {
       <View style={styles.body}>
         {showHome ? (
           <View
-            style={[styles.body, homeActive ? null : HIDDEN_TAB]}
+            style={[styles.body, homeActive ? styles.activeTab : HIDDEN_TAB]}
             pointerEvents={homeActive ? 'auto' : 'none'}
           >
             <CrmHomeTab
@@ -994,8 +987,9 @@ export default function TelecallerAdvancedCRM() {
 
         {showQueue ? (
           <View
-            style={[styles.body, queueActive ? null : HIDDEN_TAB]}
+            style={[styles.body, queueActive ? styles.activeTab : HIDDEN_TAB]}
             pointerEvents={queueActive ? 'auto' : 'none'}
+            collapsable={false}
           >
             <CrmQueueTab
               {...dateProps}
@@ -1280,6 +1274,7 @@ export default function TelecallerAdvancedCRM() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
   body: { flex: 1, minHeight: 0, overflow: 'hidden' },
+  activeTab: { zIndex: 2, overflow: 'visible' },
   topBar: {
     zIndex: 20,
     elevation: 4,

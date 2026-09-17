@@ -473,6 +473,7 @@ function TelecallerCrmLeadsContent() {
   };
 
   const displayedLeads = useMemo(() => {
+    if (appliedQ.trim()) return leads;
     return leads.filter((lead) => {
       if (advIncomplete && !lead.is_incomplete) return false;
       if (advFollowUp && !lead.follow_up_required && !lead.next_follow_up_at && !lead.reminder?.at) {
@@ -498,6 +499,7 @@ function TelecallerCrmLeadsContent() {
     });
   }, [
     leads,
+    appliedQ,
     advIncomplete,
     advFollowUp,
     advHasVehicle,
@@ -663,24 +665,26 @@ function TelecallerCrmLeadsContent() {
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const baseParams = new URLSearchParams();
-      if (filter && filter !== 'all') baseParams.set('filter', filter);
-      if (filter === 'lost' && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
-      if (appliedQ.trim()) baseParams.set('q', appliedQ.trim());
-      if (city.trim()) baseParams.set('city', city.trim());
-      if (priority.trim()) baseParams.set('priority', priority.trim());
-      if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
-      if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
-      if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
-      if (isLeadManager && sourceFilter && sourceFilter !== 'ALL') baseParams.set('source', sourceFilter);
-      if (isLeadManager && couponFilter && couponFilter !== 'ALL') {
-        baseParams.set('has_coupon', couponFilter);
-      }
-      if (isLeadManager && triggerFilter) baseParams.set('trigger', triggerFilter);
-      // Name / phone / lead# search must not be limited by Last 7 Days — match across all time
       const searching = Boolean(appliedQ.trim());
-      if (!searching && !range.allTime) {
-        baseParams.set('from', range.start);
-        baseParams.set('to', range.end);
+      if (searching) {
+        baseParams.set('q', appliedQ.trim());
+      } else {
+        if (filter && filter !== 'all') baseParams.set('filter', filter);
+        if (filter === 'lost' && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
+        if (city.trim()) baseParams.set('city', city.trim());
+        if (priority.trim()) baseParams.set('priority', priority.trim());
+        if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
+        if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
+        if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
+        if (isLeadManager && sourceFilter && sourceFilter !== 'ALL') baseParams.set('source', sourceFilter);
+        if (isLeadManager && couponFilter && couponFilter !== 'ALL') {
+          baseParams.set('has_coupon', couponFilter);
+        }
+        if (isLeadManager && triggerFilter) baseParams.set('trigger', triggerFilter);
+        if (!range.allTime) {
+          baseParams.set('from', range.start);
+          baseParams.set('to', range.end);
+        }
       }
 
       if (viewMode === 'chart') {
@@ -1051,6 +1055,9 @@ function TelecallerCrmLeadsContent() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
               {q ? (
                 <button

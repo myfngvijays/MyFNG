@@ -136,10 +136,16 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
         </TouchableOpacity>
       ) : null}
 
-      <Modal visible={showDate} transparent animationType="fade" onRequestClose={() => setShowDate(false)}>
-        <View style={styles.overlay} pointerEvents="box-none">
+      <Modal
+        visible={showDate}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowDate(false)}
+      >
+        <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowDate(false)} />
-          <View style={styles.sheet}>
+          <View style={styles.sheet} pointerEvents="auto" collapsable={false}>
             <Text style={styles.title}>Select date</Text>
             <View style={styles.monthNav}>
               <TouchableOpacity
@@ -215,10 +221,16 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
         </View>
       </Modal>
 
-      <Modal visible={showTime} transparent animationType="fade" onRequestClose={() => setShowTime(false)}>
-        <View style={styles.overlay} pointerEvents="box-none">
+      <Modal
+        visible={showTime}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowTime(false)}
+      >
+        <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowTime(false)} />
-          <View style={styles.sheet}>
+          <View style={styles.sheet} pointerEvents="auto" collapsable={false}>
             <Text style={styles.title}>Select time (IST)</Text>
             <Text style={styles.sub}>Tap a slot · every 10 minutes · 8:00 AM – 10:00 PM</Text>
             <ScrollView style={styles.slotList} keyboardShouldPersistTaps="handled">
