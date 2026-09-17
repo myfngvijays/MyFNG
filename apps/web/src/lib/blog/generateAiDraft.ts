@@ -59,7 +59,7 @@ Linking rules (mandatory):
 - Weave 3-6 contextual INTERNAL links naturally in the body (not a dump at the top). Use ONLY urls from internal_pages and related_blogs in the user payload.
 - Add utm_source, utm_medium, utm_campaign, utm_content (and utm_term if a focus keyword exists) on every http(s) or site path link. Use the utm_required_on_every_http_link values.
 - If you mention an official standard, OEM manual, or public guideline, add 1-3 EXTERNAL reference links from allowed_examples or a real official URL. Do not invent URLs. Skip external links if you have no real source.
-- External links must also get the same UTM params, open in a new tab conceptually (target=_blank rel="noopener noreferrer").
+- Internal and external http(s) links must open in a new tab (target=_blank rel="noopener noreferrer"). Do not put target=_blank on # Table of Contents links.
 - Never link to competitor booking sites.
 `.trim();
 

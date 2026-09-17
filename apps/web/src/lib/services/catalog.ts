@@ -1,4 +1,4 @@
-import { Activity, Battery, Circle, Disc3, Lightbulb, Paintbrush, Snowflake, Sparkles, Wrench, Zap } from 'lucide-react';
+import { Activity, Battery, Circle, Disc3, Lightbulb, Paintbrush, Settings, Snowflake, Sparkles, Wrench, Zap } from 'lucide-react';
 
 const SERVICE_IMAGE_BASE = '/media/Service_image_public';
 function svcImg(fileName: string) {
@@ -323,6 +323,31 @@ export const DEFAULT_SERVICES: Service[] = [
     image: '/MyFNG_Car_Suspension_Steering_Service.png',
     duration: '2-4 hours',
     warranty: 'NA',
+  },
+  {
+    id: 12,
+    slug: 'custom-repair',
+    title: 'Custom Repair',
+    bookPrefill: { category: 'CUSTOM REPAIR', query: 'CUSTOM' },
+    icon: Settings,
+    iconImage: '/icon-periodic-service.png',
+    description: 'Any specific job — sensors, leaks, rattles, wiring, or a mix of repairs after inspection.',
+    longDescription:
+      'Need something that is not a standard package? MyFNG Custom Repair is for specific car issues — sensors, rattles, leaks, wiring, unusual noises, or a mix of jobs. We inspect first, send photo-backed findings, and start work only after you approve the quote. Pickup & drop is included. We do not send a mechanic to service the car at your house.',
+    features: [
+      'Inspection-first diagnosis',
+      'Photo & video updates before extra work',
+      'Transparent custom quote',
+      'Genuine OEM/OES parts where needed',
+      'Workshop labour, not home service',
+      'Pickup & drop included',
+      'Written warranty on eligible jobs',
+      'Service record in the MyFNG app',
+    ],
+    benefits: ['Pay only for approved work', 'Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Transparent Pricing', 'Pickup & Drop'],
+    image: svcImg('MyFNG_Car_Periodic_Service.png'),
+    duration: 'As per inspection',
+    warranty: '1 month / 1,000 km',
   },
 ];
 

@@ -97,7 +97,35 @@ export function normalizeBlogContent(html: string): string {
 
   s = s.replace(/<p>\s*<\/p>/gi, '');
   s = stripTrailingContactBoilerplate(s);
-  return s;
+  return openBlogLinksInNewTab(s);
+}
+
+/** Same-page TOC / tel / mailto stay here. Every other blog link opens a new tab. */
+export function openBlogLinksInNewTab(html: string): string {
+  return String(html || '').replace(/<a\b([^>]*?)>/gi, (full, attrs: string) => {
+    const hrefMatch = String(attrs).match(/href=["']([^"']+)["']/i);
+    if (!hrefMatch) return full;
+    const href = String(hrefMatch[1] || '').trim();
+    if (!href || href.startsWith('#') || /^(mailto:|tel:)/i.test(href)) return full;
+
+    let next = String(attrs);
+    if (/\btarget=/i.test(next)) {
+      next = next.replace(/\btarget=["'][^"']*["']/i, 'target="_blank"');
+    } else {
+      next += ' target="_blank"';
+    }
+    if (/\brel=/i.test(next)) {
+      next = next.replace(/\brel=["']([^"']*)["']/i, (_all, rel: string) => {
+        const parts = new Set(String(rel || '').split(/\s+/).filter(Boolean).map((p) => p.toLowerCase()));
+        parts.add('noopener');
+        parts.add('noreferrer');
+        return `rel="${[...parts].join(' ')}"`;
+      });
+    } else {
+      next += ' rel="noopener noreferrer"';
+    }
+    return `<a${next}>`;
+  });
 }
 
 /** @deprecated use normalizeBlogContent */

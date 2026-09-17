@@ -78,13 +78,26 @@ export function matchCityPage(city?: string | null): CityPageConfig | null {
   if (!raw) return null;
   const compact = raw.replace(/[^a-z]/g, '');
   if (!compact) return null;
-  return (
-    CITY_PAGES.find((c) => {
+  const exact = CITY_PAGES.find((c) => {
+    const name = c.name.toLowerCase().replace(/[^a-z]/g, '');
+    const slug = c.slug.replace(/-/g, '');
+    return compact === name || compact === slug;
+  });
+  if (exact) return exact;
+  const ranked = CITY_PAGES
+    .map((c) => {
       const name = c.name.toLowerCase().replace(/[^a-z]/g, '');
       const slug = c.slug.replace(/-/g, '');
-      return compact === name || compact === slug || compact.includes(name) || name.includes(compact) || compact.includes(slug) || slug.includes(compact);
-    }) || null
-  );
+      const hit =
+        compact.includes(name) ||
+        name.includes(compact) ||
+        compact.includes(slug) ||
+        slug.includes(compact);
+      return { c, len: Math.max(name.length, slug.length), hit };
+    })
+    .filter((row) => row.hit)
+    .sort((a, b) => b.len - a.len);
+  return ranked[0]?.c || null;
 }
 
 function servicePublicPath(internalSlug: string) {
@@ -206,9 +219,9 @@ export function buildCtaHtml(opts: {
     `<h3>Need trusted car service in ${escapeHtml(cityLabel)}?</h3>`,
     '<p>Download the MyFNG app to book workshop service with pickup &amp; drop — we collect your car, service it at the workshop, and return it.</p>',
     '<div class="blog-post-cta-actions">',
-    `<a href="${encodeHref(appUrl)}" class="app-btn">Download MyFNG App</a>`,
-    `<a href="${bookUrl}" class="book-btn">Book Service Now</a>`,
-    '<a href="tel:+919152307030" class="blog-post-cta-phone">Call +91-9152307030</a>',
+    `<a href="${encodeHref(appUrl)}" class="app-btn" target="_blank" rel="noopener noreferrer"><span class="cta-full">Download MyFNG App</span><span class="cta-short">Download App</span></a>`,
+    `<a href="${bookUrl}" class="book-btn" target="_blank" rel="noopener noreferrer"><span class="cta-full">Book Service Now</span><span class="cta-short">Book Now</span></a>`,
+    '<a href="tel:+919152307030" class="blog-post-cta-phone"><span class="cta-full">Call +91-9152307030</span><span class="cta-short">Call</span></a>',
     '</div>',
     '</div>',
   ].join('');
@@ -221,7 +234,7 @@ export function buildAboutMyFngHtml(appDownloadUrl: string) {
     '<h2>About MyFNG</h2>',
     '<p>MyFNG is your friendly neighbourhood garage network for multi-brand car service across Pune, Mumbai and nearby cities. We collect your car, service it at a trusted workshop, and drop it back. We do not send a mechanic to service the car at your house.</p>',
     '<h2>Book on the MyFNG app</h2>',
-    `<p>Download the MyFNG app to book pickup &amp; drop, track your car, and get live workshop updates. <a href="${appUrl}">Download the MyFNG app</a> and finish booking in a few taps.</p>`,
+    `<p>Download the MyFNG app to book pickup &amp; drop, track your car, and get live workshop updates. <a href="${appUrl}" target="_blank" rel="noopener noreferrer">Download the MyFNG app</a> and finish booking in a few taps.</p>`,
     '</div>',
   ].join('');
 }
@@ -335,6 +348,51 @@ export function ensureAboutMyFngHtml(html: string, appDownloadUrl: string) {
   }
   source = stripHeadingSection(source, /About MyFNG|Book on the MyFNG(?: app)?/);
   return `${source.replace(/\n{3,}/g, '\n\n').trim()}\n${buildAboutMyFngHtml(appDownloadUrl)}`;
+}
+
+const SKIP_MID_HEADING =
+  /table of contents|about myfng|book on the myfng|related reading|related resources|pricing disclaimer/i;
+
+function articleBodyEnd(html: string) {
+  const markers = [
+    html.search(/<div\b[^>]*(?:data-myfng-about|blog-about-myfng)/i),
+    html.search(/<h2\b[^>]*>\s*Related reading/i),
+  ].filter((n) => n >= 0);
+  return markers.length ? Math.min(...markers) : html.length;
+}
+
+/** Split article HTML near the midpoint so a CTA can sit between two halves. */
+export function splitBlogHtmlAtMidpoint(html: string): { first: string; second: string } {
+  const source = String(html || '');
+  if (source.length < 600) return { first: source, second: '' };
+
+  const bodyEnd = articleBodyEnd(source);
+  const body = source.slice(0, bodyEnd);
+  const tail = source.slice(bodyEnd);
+  const headingRe = /<h2\b[^>]*>[\s\S]*?<\/h2>/gi;
+  const headings: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(body))) {
+    const text = match[0].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (SKIP_MID_HEADING.test(text)) continue;
+    headings.push(match.index);
+  }
+
+  const mid = body.length / 2;
+  let splitAt = -1;
+  const afterMid = headings.find((start) => start >= mid * 0.8);
+  if (afterMid != null) splitAt = afterMid;
+  else if (headings.length >= 2) {
+    splitAt = headings.reduce((best, start) =>
+      Math.abs(start - mid) < Math.abs(best - mid) ? start : best,
+    headings[Math.floor(headings.length / 2)]);
+    if (splitAt === headings[0] && headings[1]) splitAt = headings[1];
+  }
+
+  if (splitAt < 180 || splitAt > body.length - 120) {
+    return { first: source, second: '' };
+  }
+  return { first: body.slice(0, splitAt), second: `${body.slice(splitAt)}${tail}` };
 }
 
 export function stripExistingCta(html: string) {
@@ -502,14 +560,15 @@ function rewriteAnchors(html: string, campaign: string, term?: string) {
     const nextHref = buildBlogTrackedPath(href, campaign, inferPlacement(href, false), term);
     let nextAttrs = String(attrs).replace(/href=["'][^"']+["']/i, `href="${encodeHref(nextHref)}"`);
 
-    if (isExternalHref(nextHref)) {
-      if (!/\btarget=/i.test(nextAttrs)) nextAttrs += ' target="_blank"';
-      const rel = isTrustedExternal(nextHref) ? 'noopener noreferrer' : 'noopener noreferrer nofollow';
-      if (/\brel=/i.test(nextAttrs)) {
-        nextAttrs = nextAttrs.replace(/\brel=["'][^"']*["']/i, `rel="${rel}"`);
-      } else {
-        nextAttrs += ` rel="${rel}"`;
-      }
+    if (!/\btarget=/i.test(nextAttrs)) nextAttrs += ' target="_blank"';
+    else nextAttrs = nextAttrs.replace(/\btarget=["'][^"']*["']/i, 'target="_blank"');
+    const rel = isExternalHref(nextHref) && !isTrustedExternal(nextHref)
+      ? 'noopener noreferrer nofollow'
+      : 'noopener noreferrer';
+    if (/\brel=/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs.replace(/\brel=["'][^"']*["']/i, `rel="${rel}"`);
+    } else {
+      nextAttrs += ` rel="${rel}"`;
     }
 
     return `<a${nextAttrs}>`;
@@ -530,7 +589,7 @@ function relatedReadingHtml(blogs: RelatedBlogLink[], campaign: string, term?: s
     .slice(0, 3)
     .map((b) => {
       const url = buildBlogTrackedPath(`/blogs/${b.slug}`, campaign, 'related-reading', term);
-      return `<li><a href="${encodeHref(url)}">${escapeHtml(b.title)}</a></li>`;
+      return `<li><a href="${encodeHref(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(b.title)}</a></li>`;
     })
     .join('');
   return `<h2>Related reading on MyFNG</h2><ul>${items}</ul>`;

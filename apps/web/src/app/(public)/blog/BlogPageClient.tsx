@@ -170,7 +170,7 @@ export default function BlogPageClient() {
       <Navbar />
 
       {/* Search and Filter */}
-      <section className="py-6 sm:py-7 md:py-8 bg-white border-b border-gray-200 mt-16 sm:mt-18 md:mt-20">
+      <section className="border-b border-gray-200 bg-white pt-32 pb-6 sm:pt-36 sm:pb-7 md:pt-40 md:pb-8">
         <div className="container mx-auto px-3 sm:px-4">
           <div className="max-w-6xl mx-auto">
             {/* Search Bar */}

@@ -10,7 +10,7 @@ const PRIME_BENEFITS = [
 
 export default function BlogPrimeBanner({ href }: { href: string }) {
   return (
-    <a href={href} className="blog-prime-banner">
+    <a href={href} className="blog-prime-banner" target="_blank" rel="noopener noreferrer">
       <div className="blog-prime-banner-row">
         <div>
           <div className="blog-prime-banner-kicker">
@@ -20,8 +20,10 @@ export default function BlogPrimeBanner({ href }: { href: string }) {
           <p className="blog-prime-banner-tag">Your Car. Our Responsibility. Valid 12 months.</p>
         </div>
         <div className="blog-prime-banner-price">
-          <strong>₹699</strong>
-          <span>/ year</span>
+          <div className="blog-prime-banner-price-row">
+            <strong>₹699</strong>
+            <span>/year</span>
+          </div>
           <em>Benefits worth ₹6,650</em>
         </div>
       </div>

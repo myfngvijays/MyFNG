@@ -84,7 +84,7 @@ function priorityForPath(pathname: string): number {
   if (pathname === '/privacy-policy' || pathname === '/terms-and-conditions') return 0.4;
   if (pathname === '/') return 1;
   if (pathname === '/car-services' || pathname.startsWith('/car-services/')) return 0.9;
-  if (pathname.startsWith('/car-service-in/')) return 0.85;
+  if (pathname.startsWith('/car-service-in/') || pathname.startsWith('/car-service-in-')) return 0.85;
   if (pathname === '/book-service' || pathname === '/workshop-locator') return 0.8;
   if (pathname.startsWith('/workshop/')) return 0.75;
   if (pathname.startsWith('/blogs/')) return 0.65;

@@ -98,6 +98,10 @@ const nextConfig = {
         source: '/download-app',
         destination: '/go/myfngapp',
       },
+      {
+        source: '/car-service-in-:city',
+        destination: '/car-service-in/:city',
+      },
     ];
   },
 
@@ -105,6 +109,7 @@ const nextConfig = {
     return [
       // Canonical marketing URLs (requested mappings)
       { source: '/services', destination: '/car-services', permanent: true },
+      { source: '/car-service-in/:city', destination: '/car-service-in-:city', permanent: true },
       { source: '/car-services/car-battery', destination: '/car-services/car-battery-service', permanent: true },
       { source: '/about', destination: '/about-us', permanent: true },
       { source: '/contact', destination: '/contact-us', permanent: true },

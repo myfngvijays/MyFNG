@@ -9,7 +9,7 @@ export type DailyTargetCity = {
 export const DAILY_CITY_THANE: DailyTargetCity = {
   name: 'Thane',
   slug: 'thane',
-  pagePath: '/car-service-in/thane',
+  pagePath: '/car-service-in-thane',
   areas: [
     'Ghodbunder Road',
     'Manpada',
@@ -37,7 +37,7 @@ export const DAILY_CITY_THANE: DailyTargetCity = {
 export const DAILY_CITY_NAVI_MUMBAI: DailyTargetCity = {
   name: 'Navi Mumbai',
   slug: 'navi-mumbai',
-  pagePath: '/car-service-in/navi-mumbai',
+  pagePath: '/car-service-in-navi-mumbai',
   areas: [
     'Vashi',
     'Nerul',
@@ -65,7 +65,7 @@ export const DAILY_CITY_NAVI_MUMBAI: DailyTargetCity = {
 export const DAILY_CITY_MUMBAI: DailyTargetCity = {
   name: 'Mumbai',
   slug: 'mumbai',
-  pagePath: '/car-service-in/mumbai',
+  pagePath: '/car-service-in-mumbai',
   areas: [
     'Andheri',
     'Malad',
@@ -93,7 +93,7 @@ export const DAILY_CITY_MUMBAI: DailyTargetCity = {
 export const DAILY_CITY_PUNE: DailyTargetCity = {
   name: 'Pune',
   slug: 'pune',
-  pagePath: '/car-service-in/pune',
+  pagePath: '/car-service-in-pune',
   areas: [
     'Baner',
     'Hinjewadi',

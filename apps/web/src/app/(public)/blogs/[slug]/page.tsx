@@ -13,6 +13,7 @@ import CopyLinkButton from '@/components/blog/CopyLinkButton';
 import BlogComments from '@/components/blog/BlogComments';
 import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
 import BlogPrimeBanner from '@/components/blog/BlogPrimeBanner';
+import BlogPostCta from '@/components/blog/BlogPostCta';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
 import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import { buildGoAppDownloadUrl } from '@/lib/blog/blogAppDownload';
@@ -22,7 +23,7 @@ import {
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
 import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent';
-import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLocalSeoHtml, stripExistingCta } from '@/lib/blog/aiLinks';
+import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLocalSeoHtml, splitBlogHtmlAtMidpoint, stripExistingCta } from '@/lib/blog/aiLinks';
 import { ensureAiOverviewHtml, ensureRsaAiOverviewHtml } from '@/lib/blog/dailyAiOverview';
 import { isMyFngServiceFaq, isNewsCarBlog, stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
 import { ensureSeoBlogTitle, rewriteCityDashTitle } from '@/lib/blog/generateAiDraft';
@@ -476,6 +477,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         appDownloadHref,
       );
   transformed.content = rewriteCityDashTitle(transformed.content);
+  const contentHalves = newsCar
+    ? { first: transformed.content, second: '' }
+    : splitBlogHtmlAtMidpoint(transformed.content);
   const readMinutes = computeReadTimeFromHtml(transformed.content).minutes;
   const readTimeText = `${readMinutes} min read`;
 
@@ -529,19 +533,21 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .blog-prime-banner-kicker{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;letter-spacing:.04em;color:#f6e27a;}
           .blog-html-wrap .blog-prime-banner-tag{margin:4px 0 0;font-size:12px;line-height:1.4;color:rgba(255,255,255,.82);}
           .blog-html-wrap .blog-prime-banner-price{text-align:right;flex-shrink:0;}
-          .blog-html-wrap .blog-prime-banner-price strong{display:block;font-size:22px;line-height:1;font-weight:800;}
-          .blog-html-wrap .blog-prime-banner-price span{font-size:12px;color:rgba(255,255,255,.8);}
-          .blog-html-wrap .blog-prime-banner-price em{display:block;margin-top:2px;font-size:11px;font-style:normal;color:#f6e27a;font-weight:700;}
+          .blog-html-wrap .blog-prime-banner-price-row{display:flex;align-items:baseline;gap:6px;}
+          .blog-html-wrap .blog-prime-banner-price strong{display:inline;font-size:22px;line-height:1;font-weight:800;}
+          .blog-html-wrap .blog-prime-banner-price span{font-size:14px;color:rgba(255,255,255,.88);font-weight:700;}
+          .blog-html-wrap .blog-prime-banner-price em{display:block;margin-top:6px;font-size:14px;font-style:normal;color:#f6e27a;font-weight:700;}
           .blog-html-wrap .blog-prime-banner-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
           .blog-html-wrap .blog-prime-banner-chips span{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:11px;font-weight:600;line-height:1.3;color:#fff;}
-          .blog-html-wrap .blog-post-cta{margin-top:12px;padding:22px 24px;border-radius:14px;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 100%);border:1px solid #cfe0ff;}
+          .blog-html-wrap .blog-post-cta{margin:16px 0 12px;padding:22px 24px;border-radius:14px;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 100%);border:1px solid #cfe0ff;}
           .blog-html-wrap .blog-post-cta h3{margin:0 0 8px;font-size:18px;font-weight:700;color:#0a4ea3;}
           .blog-html-wrap .blog-post-cta p{margin:0 0 14px;font-size:14px;color:#475569;line-height:1.6;}
-          .blog-html-wrap .blog-post-cta-actions{display:flex;flex-wrap:wrap;gap:12px;}
+          .blog-html-wrap .blog-post-cta-actions{display:flex;flex-wrap:nowrap;gap:10px;}
           .blog-html-wrap .blog-post-cta a,
           .blog-html-wrap .blog-post-cta .book-btn,
           .blog-html-wrap .blog-post-cta .app-btn,
-          .blog-html-wrap .blog-post-cta-phone{display:inline-flex;align-items:center;justify-content:center;padding:12px 18px;width:auto;margin:0;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;line-height:1.2;}
+          .blog-html-wrap .blog-post-cta-phone{display:inline-flex;align-items:center;justify-content:center;padding:12px 14px;flex:1 1 0;min-width:0;margin:0;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;line-height:1.2;text-align:center;}
+          .blog-html-wrap .blog-post-cta .cta-short{display:none;}
           .blog-html-wrap .blog-post-cta .app-btn{background:#023D95;color:#fff;}
           .blog-html-wrap .blog-post-cta .book-btn{background:#0a4ea3;color:#fff;}
           .blog-html-wrap .blog-post-cta-phone{border:2px solid #0a4ea3;color:#0a4ea3;background:#fff;}
@@ -551,13 +557,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .tags{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
           .blog-html-wrap .tags span{background:#eef2f7;padding:8px 14px;border-radius:20px;font-size:13px;}
           .blog-html-wrap .faq{margin-top:34px;padding-top:6px;}
-          .blog-html-wrap .faq h2{margin:0 0 16px;font-size:26px;line-height:1.2;color:#0a4ea3;}
+          .blog-html-wrap .faq h2{margin:0 0 16px;font-size:24px;line-height:1.2;color:#0a4ea3;}
           .blog-html-wrap .faq-item{background:#fff;border-radius:12px;margin-bottom:12px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.05);}
           .blog-html-wrap .faq-question{display:flex;justify-content:space-between;align-items:center;}
-          .blog-html-wrap .faq-item h4{font-size:17px;font-weight:600;margin-bottom:8px;}
-          .blog-html-wrap .faq-item p{font-size:14px;color:#555;display:none;margin-top:10px;}
+          .blog-html-wrap .faq-item h4{font-size:15px;font-weight:600;margin-bottom:8px;}
+          .blog-html-wrap .faq-item p{font-size:12px;color:#555;display:none;margin-top:10px;}
           .blog-html-wrap .faq-item.active p{display:block;}
-          .blog-html-wrap .faq-item i{font-size:16px;color:#0a4ea3;transition:.3s;}
+          .blog-html-wrap .faq-item i{font-size:14px;color:#0a4ea3;transition:.3s;}
           .blog-html-wrap .comment-box{background:#fff;padding:20px 25px 25px;border-radius:14px;margin-top:16px;}
           .blog-html-wrap .comment-box input,.blog-html-wrap .comment-box textarea{width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px solid #ccc;}
           .blog-html-wrap .comment-box button{margin-top:15px;background:#0a4ea3;color:#fff;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;}
@@ -602,6 +608,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             .blog-html-wrap .blog-title{font-size:32px;}
             .blog-html-wrap .blog-prime-banner-row{flex-direction:column;gap:8px;}
             .blog-html-wrap .blog-prime-banner-price{text-align:left;}
+            .blog-html-wrap .blog-prime-banner-price em{font-size:15px;}
+            .blog-html-wrap .blog-post-cta{padding:16px 14px;}
+            .blog-html-wrap .blog-post-cta h3{font-size:16px;}
+            .blog-html-wrap .blog-post-cta p{font-size:13px;margin-bottom:12px;}
+            .blog-html-wrap .blog-post-cta-actions{gap:6px;}
+            .blog-html-wrap .blog-post-cta a,
+            .blog-html-wrap .blog-post-cta .book-btn,
+            .blog-html-wrap .blog-post-cta .app-btn,
+            .blog-html-wrap .blog-post-cta-phone{padding:10px 6px;font-size:11px;}
+            .blog-html-wrap .blog-post-cta .cta-full{display:none;}
+            .blog-html-wrap .blog-post-cta .cta-short{display:inline;}
           }
         `}</style>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet" />
@@ -710,8 +727,18 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 {htmlStyleQuote ? <div className="quote">"{htmlStyleQuote}"</div> : null}
 
                 <div className="main-content">
-                  <div dangerouslySetInnerHTML={{ __html: transformed.content }} />
+                  <div dangerouslySetInnerHTML={{ __html: contentHalves.first }} />
                 </div>
+
+                {newsCar || !contentHalves.second ? null : (
+                  <BlogPostCta appHref={appDownloadHref} bookHref={bookHref('mid-article-cta')} />
+                )}
+
+                {contentHalves.second ? (
+                  <div className="main-content" style={{ marginTop: 16 }}>
+                    <div dangerouslySetInnerHTML={{ __html: contentHalves.second }} />
+                  </div>
+                ) : null}
 
                 {newsCar ? null : (
                 <>
@@ -722,23 +749,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     content: 'prime-banner',
                   })}
                 />
-                <div className="blog-post-cta">
-                  <h3>Need trusted car service in your city?</h3>
-                  <p>
-                    Download the MyFNG app to book workshop service with pickup &amp; drop — we collect your car, service it at the workshop, and return it.
-                  </p>
-                  <div className="blog-post-cta-actions">
-                    <a href={appDownloadHref} className="app-btn">
-                      Download MyFNG App
-                    </a>
-                    <a href={bookHref('public-footer-cta')} className="book-btn">
-                      Book Service Now
-                    </a>
-                    <a href="tel:+919152307030" className="blog-post-cta-phone">
-                      Call +91-9152307030
-                    </a>
-                  </div>
-                </div>
+                <BlogPostCta appHref={appDownloadHref} bookHref={bookHref('public-footer-cta')} />
                 </>
                 )}
 

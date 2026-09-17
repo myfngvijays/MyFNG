@@ -392,7 +392,7 @@ export default function TrackingScriptsApp() {
                           </div>
                           <input
                             className="w-full rounded-lg border px-2 py-1 text-xs"
-                            placeholder="Extra path e.g. /car-service-in/pune"
+                            placeholder="Extra path e.g. /car-service-in-pune"
                             disabled={!canEdit}
                             onBlur={(e) => {
                               const extra = e.target.value.trim();
