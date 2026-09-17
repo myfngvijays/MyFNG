@@ -275,13 +275,16 @@ export function appendUtmToPath(path: string): string {
 }
 
 /** /go/myfngapp with ads UTMs (if present) plus a placement so LP clicks are identifiable. */
-export function buildGoAppDownloadHref(placement: string): string {
+export function buildGoAppDownloadHref(
+  placement: string,
+  defaults: UtmParams = {
+    utm_source: 'myfng',
+    utm_medium: 'landing',
+    utm_campaign: 'car-service-and-repairs',
+  },
+): string {
   const merged = mergeUtmParams(
-    {
-      utm_source: 'myfng',
-      utm_medium: 'landing',
-      utm_campaign: 'car-service-and-repairs',
-    },
+    defaults,
     typeof window !== 'undefined' ? getCurrentOrStoredUtmParams() : {},
     { utm_content: placement },
   );

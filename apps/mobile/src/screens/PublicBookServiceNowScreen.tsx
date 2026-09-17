@@ -123,6 +123,7 @@ function getCategoryIconUrl(category: string): string {
   if (c.includes('TYRE') || c.includes('WHEEL')) return `${SERVICE_ICON_BASE}/icon-tyre-service.png`;
   if (c.includes('ELECTRICAL')) return `${SERVICE_ICON_BASE}/icon-electrical-service.png`;
   if (c.includes('SUSPENSION') || c.includes('STEERING')) return `${SERVICE_ICON_BASE}/icon-suspension-service.png`;
+  if (c.includes('CUSTOM')) return `${SERVICE_ICON_BASE}/icon-periodic-service.png`;
   return '';
 }
 
@@ -494,7 +495,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       if (s.category) set.add(s.category);
     }
     const arr = Array.from(set);
-    const order = ['PERIODIC', 'ENGINE', 'AC', 'BATTERY', 'BRAKE', 'CLUTCH', 'TYRE', 'WHEEL', 'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING'];
+    const order = ['PERIODIC', 'ENGINE', 'AC', 'BATTERY', 'BRAKE', 'CLUTCH', 'TYRE', 'WHEEL', 'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING', 'CUSTOM'];
     arr.sort((a, b) => {
       const ai = order.findIndex((k) => a.toUpperCase().includes(k));
       const bi = order.findIndex((k) => b.toUpperCase().includes(k));

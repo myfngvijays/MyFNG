@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
+  type ImageSourcePropType,
   Linking,
   Modal,
   Pressable,
@@ -46,17 +47,38 @@ type ServiceCategory = {
   points: string[];
 };
 
-type PromoBanner = { image_url: string; route_name: string; route_params: any };
+type PromoBanner = {
+  image_url: string;
+  route_name: string;
+  route_params: any;
+  imageSource?: ImageSourcePropType;
+};
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
+
+const GANESH_PRIME_PROMO: PromoBanner = {
+  image_url: '',
+  imageSource: require('../../assets/myfng-prime-ganesh-chaturthi-banner.png'),
+  route_name: 'Settings',
+  route_params: { subPage: 'Membership', membershipType: 'SERVICE' },
+};
+
+function withGaneshPrimePromo(banners: PromoBanner[]) {
+  const rest = banners.filter((banner) => {
+    const key = `${banner.image_url} ${banner.route_name}`.toLowerCase();
+    return !key.includes('prime') && !key.includes('ganesh') && !key.includes('membership');
+  });
+  return [GANESH_PRIME_PROMO, ...rest];
+}
+
 // Fallback list — overridden by admin-managed `home_promo_banners` table
 // (Super Admin → Website Images → Promo Banners).
-const FALLBACK_SERVICE_PAGE_PROMO_BANNERS: PromoBanner[] = [
+const FALLBACK_SERVICE_PAGE_PROMO_BANNERS: PromoBanner[] = withGaneshPrimePromo([
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`, route_name: '', route_params: {} },
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`, route_name: '', route_params: {} },
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`, route_name: '', route_params: {} },
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`, route_name: '', route_params: {} },
-];
+]);
 
 const PROMO_BANNER_LINKS: Record<string, string> = {
   loan: 'https://myfng.in/car-loan',
@@ -192,6 +214,48 @@ const SERVICE_CATEGORIES: ServiceCategory[] = [
     warranty: 'Depends on package',
     points: ['Color Matching Technology', 'Dent Removal & Repair', 'Primer & Paint Application'],
   },
+  {
+    id: '10',
+    name: 'Electrical & Battery',
+    detailTitle: 'Electrical & Battery Service',
+    icon: 'flash',
+    color: '#D97706',
+    bg: '#FFFBEB',
+    desc: 'Complete electrical diagnostics, wiring repair and battery system service.',
+    longDesc:
+      "Your car's electrical system powers everything from headlights to engine management. MyFNG Electrical & Battery Service diagnoses hidden faults, fixes intermittent issues, and keeps wiring, alternator, starter, and battery reliable.",
+    duration: '2-4 hours',
+    warranty: 'NA',
+    points: ['Complete Electrical Diagnostics', 'Alternator & Starter Motor Testing', 'Wiring Harness Inspection'],
+  },
+  {
+    id: '11',
+    name: 'Suspension & Steering',
+    detailTitle: 'Suspension & Steering Service',
+    icon: 'car',
+    color: '#0D9488',
+    bg: '#F0FDFA',
+    desc: 'Smooth rides with shock absorber, strut and steering system service.',
+    longDesc:
+      'A well-maintained suspension and steering system means comfortable rides, precise handling, and safer driving. MyFNG inspects shocks, struts, steering fluid, and joints to fix bumpy rides, vibrations, and uneven tyre wear.',
+    duration: '2-4 hours',
+    warranty: 'NA',
+    points: ['Shock Absorber Inspection & Replacement', 'Power Steering Fluid Service', 'Tie Rod & Ball Joint Inspection'],
+  },
+  {
+    id: '12',
+    name: 'Custom Repair',
+    detailTitle: 'Custom Repair',
+    icon: 'hammer',
+    color: '#4B5563',
+    bg: '#F3F4F6',
+    desc: 'Any specific job — sensors, leaks, rattles, wiring, or a mix of repairs after inspection.',
+    longDesc:
+      'Need something that is not a standard package? MyFNG Custom Repair is for specific issues — sensors, rattles, leaks, wiring, unusual noises, or a mix of jobs. We inspect first, share photo-backed findings, and start work only after you approve the quote.',
+    duration: 'As per inspection',
+    warranty: '1 month / 1,000 km',
+    points: ['Inspection-first diagnosis', 'Photo & video updates before extra work', 'Transparent custom quote'],
+  },
 ];
 
 const SERVICE_ID_TO_FAQ: Record<string, string> = {
@@ -204,6 +268,9 @@ const SERVICE_ID_TO_FAQ: Record<string, string> = {
   '7': 'Tyre Service',
   '8': 'Car Detailing',
   '9': 'Denting & Painting',
+  '10': 'Electrical & Battery Service',
+  '11': 'Suspension & Steering Service',
+  '12': 'Custom Repair',
 };
 
 // Keyword used to filter category pills on the booking screen so users
@@ -218,6 +285,9 @@ const SERVICE_ID_TO_CATEGORY_KEYWORD: Record<string, string> = {
   '7': 'TYRE',
   '8': 'DETAIL',
   '9': 'DENT',
+  '10': 'ELECTRICAL',
+  '11': 'SUSPENSION',
+  '12': 'CUSTOM',
 };
 const GENERAL_FAQS_FALLBACK: PublicFaqItem[] = [
   { q: 'What is My FNG?', a: 'My FNG is a network of A Grade multi-brand car servicing stations across Mumbai, Navi Mumbai, Thane, Palghar, Nashik and Pune.' },
@@ -279,7 +349,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
             route_name: String(row.route_name || ''),
             route_params: row.route_params || {},
           }));
-        if (active && banners.length > 0) setPromoBanners(banners);
+          if (active && banners.length > 0) setPromoBanners(withGaneshPrimePromo(banners));
       } catch {
         // ignore — keep fallback list
       }
@@ -353,11 +423,11 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
                 }
               };
               return (
-                <TouchableOpacity activeOpacity={0.85} onPress={handlePress}>
+                <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={s.promoTouchable}>
                   <Image
-                    source={{ uri: currentBanner.image_url }}
+                    source={currentBanner.imageSource || { uri: currentBanner.image_url }}
                     style={s.promoImage}
-                    resizeMode="cover"
+                    resizeMode="contain"
                   />
                 </TouchableOpacity>
               );
@@ -694,9 +764,13 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
+  promoTouchable: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+  },
   promoImage: {
     width: '100%',
-    aspectRatio: 1029 / 376,
+    height: '100%',
   },
   promoDots: {
     flexDirection: 'row',

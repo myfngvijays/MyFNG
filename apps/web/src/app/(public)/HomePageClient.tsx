@@ -146,10 +146,18 @@ export default function HomePage() {
   const [homeReviews, setHomeReviews] = useState(dummyHomeReviews);
   const heroServiceSlides = useMemo(
     () =>
-      DEFAULT_SERVICES.map((service) => ({
-        title: service.title,
-        image: service.image,
-      })).filter((service) => Boolean(service.image)),
+      [
+        {
+          title: 'MyFNG Prime — Ganesh Chaturthi',
+          image: '/media/banners/myfng-prime-ganesh-chaturthi-banner.png',
+          festive: true,
+        },
+        ...DEFAULT_SERVICES.map((service) => ({
+          title: service.title,
+          image: service.image,
+          festive: false,
+        })),
+      ].filter((service) => Boolean(service.image)),
     []
   );
   const [heroServiceSlideIdx, setHeroServiceSlideIdx] = useState(0);
@@ -969,15 +977,21 @@ export default function HomePage() {
                         'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000'
                       }
                       alt={activeHeroServiceSlide?.title || 'Featured service image'}
-                      className="w-full object-cover h-[260px] sm:h-[340px] lg:h-[360px] mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500"
+                      className={
+                        activeHeroServiceSlide?.festive
+                          ? 'w-full object-cover h-[260px] sm:h-[340px] lg:h-[360px]'
+                          : 'w-full object-cover h-[260px] sm:h-[340px] lg:h-[360px] mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500'
+                      }
                     />
                     {/* Gradient Overlay for better text visibility if needed */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
+                    {activeHeroServiceSlide?.festive ? null : (
+                      <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
+                    )}
                   </div>
                 </div>
                 
                 {/* Floating Card 1: AI Recommendation – keep inside right column to avoid overlapping left */}
-                <div className="hidden sm:block absolute -top-6 left-2 md:top-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]">
+                <div className={`${activeHeroServiceSlide?.festive ? 'hidden' : 'hidden sm:block'} absolute -top-6 left-2 md:top-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]`}>
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-600/20">
                       <Bot className="w-5 h-5 text-white" />
@@ -990,7 +1004,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating Card 2: Health Status */}
-                <div className="hidden sm:block absolute top-1/3 -right-6 md:-right-12 bg-white p-4 rounded-2xl shadow-xl shadow-green-900/5 border border-green-50 animate-float z-20 max-w-[200px]" style={{animationDelay: '1s'}}>
+                <div className={`${activeHeroServiceSlide?.festive ? 'hidden' : 'hidden sm:block'} absolute top-1/3 -right-6 md:-right-12 bg-white p-4 rounded-2xl shadow-xl shadow-green-900/5 border border-green-50 animate-float z-20 max-w-[200px]`} style={{animationDelay: '1s'}}>
                    <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/20">
                       <CheckCircle className="w-5 h-5 text-white" />
@@ -1006,7 +1020,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating Card 3: Nearest Workshop – keep inside right column */}
-                <div className="hidden sm:block absolute -bottom-8 left-4 md:bottom-8 md:left-2 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20" style={{animationDelay: '2s'}}>
+                <div className={`${activeHeroServiceSlide?.festive ? 'hidden' : 'hidden sm:block'} absolute -bottom-8 left-4 md:bottom-8 md:left-2 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20`} style={{animationDelay: '2s'}}>
                    <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-600/20">
                       <MapPin className="w-5 h-5 text-white" />
@@ -2134,6 +2148,7 @@ export default function HomePage() {
                     { name: 'Denting', category: 'DENTING', icon: '/icon-denting-service.png' },
                     { name: 'Electrical', category: 'ELECTRICAL', icon: '/icon-electrical-service.png' },
                     { name: 'Suspension', category: 'SUSPENSION', icon: '/icon-suspension-service.png' },
+                    { name: 'Custom Repair', category: 'CUSTOM REPAIR', icon: '/icon-periodic-service.png' },
                   ].map((s) => (
                     <button
                       key={s.category}

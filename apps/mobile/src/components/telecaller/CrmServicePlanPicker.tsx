@@ -179,7 +179,7 @@ export default function CrmServicePlanPicker({
     });
     const order = [
       'PERIODIC', 'ENGINE', 'AC', 'BATTERY', 'BRAKE', 'CLUTCH', 'TYRE', 'WHEEL',
-      'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING',
+      'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING', 'CUSTOM',
     ];
     const arr = Array.from(set);
     arr.sort((a, b) => {

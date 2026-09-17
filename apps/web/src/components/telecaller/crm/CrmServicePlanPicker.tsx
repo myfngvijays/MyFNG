@@ -40,6 +40,7 @@ const CATEGORY_ORDER = [
   'ELECTRICAL',
   'SUSPENSION',
   'STEERING',
+  'CUSTOM',
 ];
 
 function titleCaseCat(c: string) {

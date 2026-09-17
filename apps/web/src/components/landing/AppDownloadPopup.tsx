@@ -8,23 +8,40 @@ import {
   Shield,
   HeadphonesIcon,
   Award,
-  Percent,
-  Wallet,
-  Wrench,
-  Scan,
-  FileCheck,
-  MessageCircle,
-  CalendarClock,
-  ShieldCheck,
+  Download,
 } from 'lucide-react';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { buildGoAppDownloadHref } from '@/lib/utm';
 
-const POPUP_VIEWS_KEY = 'myfng_app_download_popup_views';
+const POPUP_VIEWS_KEY = 'myfng_app_download_popup_views_ganesh';
 const MAX_VIEWS = 2;
 const OPEN_DELAY_MS = 4000;
 const SCROLL_TRIGGER = 0.6;
 const EXCLUDED_PATH_PREFIXES = ['/book-service'];
+
+const GANESH_POPUP_UTM = {
+  utm_source: 'myfng',
+  utm_medium: 'popup',
+  utm_campaign: 'ganesh-chaturthi',
+} as const;
+
+const DEFAULT_GO_HREF =
+  '/go/myfngapp?utm_source=myfng&utm_medium=popup&utm_campaign=ganesh-chaturthi&utm_content=app-download-popup';
+
+const BENEFITS = [
+  'Free Pickup & Drop',
+  'Live Service Updates',
+  'Transparent Pricing',
+  '24/7 Roadside Assistance',
+];
+
+const TRUST = [
+  { icon: Shield, label: 'Trusted Professionals' },
+  { icon: Award, label: 'Quality Assured' },
+  { icon: CheckCircle2, label: 'Secure Payments' },
+  { icon: HeadphonesIcon, label: 'Customer Support' },
+];
 
 function getViewCount(): number {
   if (typeof window === 'undefined') return MAX_VIEWS;
@@ -57,6 +74,7 @@ function canShowPopup(pathname: string | null): boolean {
 export default function AppDownloadPopup() {
   const pathname = usePathname();
   const [show, setShow] = useState(false);
+  const [goHref, setGoHref] = useState(DEFAULT_GO_HREF);
   const openedRef = useRef(false);
 
   const open = useCallback(() => {
@@ -68,6 +86,10 @@ export default function AppDownloadPopup() {
 
   const close = useCallback(() => {
     setShow(false);
+  }, []);
+
+  useEffect(() => {
+    setGoHref(buildGoAppDownloadHref('app-download-popup', GANESH_POPUP_UTM));
   }, []);
 
   useEffect(() => {
@@ -103,8 +125,8 @@ export default function AppDownloadPopup() {
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={close}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4" onClick={close}>
+      <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
 
       <div
         className="relative w-full max-w-3xl animate-in fade-in zoom-in-95 duration-300"
@@ -118,12 +140,18 @@ export default function AppDownloadPopup() {
           <X className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
 
-        <div className="rounded-2xl overflow-hidden shadow-2xl">
-          <div className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-800 p-5 sm:p-8">
-            <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-8">
+        <div className="rounded-2xl overflow-hidden shadow-2xl ring-2 ring-amber-300/70">
+          <div className="relative bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#4c1d95] p-5 sm:p-7 overflow-hidden">
+            <div className="pointer-events-none absolute -top-16 -right-10 h-48 w-48 rounded-full border-[10px] border-amber-300/15" />
+            <div className="pointer-events-none absolute -bottom-10 left-24 h-28 w-28 rounded-full bg-amber-400/10 blur-2xl" />
+            <div className="pointer-events-none absolute top-6 left-[38%] h-3 w-3 rounded-full bg-amber-300/80" />
+            <div className="pointer-events-none absolute top-16 left-[46%] h-2 w-2 rounded-full bg-orange-400/70" />
+            <div className="pointer-events-none absolute bottom-24 right-1/3 h-2.5 w-2.5 rounded-full bg-amber-200/70" />
+
+            <div className="relative flex flex-col sm:flex-row items-center gap-4 sm:gap-5">
               <div className="hidden sm:flex flex-shrink-0 items-center justify-center">
-                <div className="relative w-44 h-[22rem] bg-black rounded-[2.5rem] border-[5px] border-gray-800 shadow-2xl overflow-hidden">
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-full z-10" />
+                <div className="relative w-36 h-[19rem] lg:w-40 lg:h-[20.5rem] bg-black rounded-[2.4rem] border-[5px] border-gray-800 shadow-2xl overflow-hidden">
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-4 bg-black rounded-full z-10" />
                   <Image
                     src="/myfng-app-screenshot.png"
                     alt="MyFNG App"
@@ -134,63 +162,69 @@ export default function AppDownloadPopup() {
                 </div>
               </div>
 
-              <div className="flex-1 text-center sm:text-left">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1">Download MyFNG App</h2>
-                <p className="text-yellow-300 font-semibold text-sm sm:text-base mb-3">
-                  Get <span className="text-lg font-bold">MyFNG Prime</span> Membership @ just ₹699/year!
+              <div className="flex-1 text-center sm:text-left min-w-0">
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight leading-none mb-2">
+                  Download MyFNG App
+                </h2>
+                <p className="text-amber-300 font-semibold text-sm sm:text-lg mb-3">
+                  Get 10% OFF on Your First Service!
                 </p>
 
-                <div className="inline-flex items-center gap-2 bg-yellow-400 text-gray-900 px-3 py-1.5 rounded-full text-xs font-bold mb-3 shadow-lg">
+                <div className="inline-flex items-center gap-2 bg-amber-400 text-gray-900 px-3 py-1.5 rounded-full text-[11px] font-extrabold mb-4 shadow-lg">
                   <Clock className="w-3.5 h-3.5" />
                   LIMITED TIME OFFER
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 mb-5">
-                  {[
-                    { icon: Percent, text: '10% Off Periodic Packages' },
-                    { icon: Wallet, text: '5% Cashback to Wallet' },
-                    { icon: Wrench, text: 'Free Top-Up & Inspection (2x)' },
-                    { icon: Scan, text: 'Free Car Scanning (2x)' },
-                    { icon: FileCheck, text: 'Free Insurance Claim Help' },
-                    { icon: MessageCircle, text: 'Prime Personal WhatsApp Group' },
-                    { icon: CalendarClock, text: 'Priority Slot Booking' },
-                    { icon: ShieldCheck, text: '6-Month Extended Warranty' },
-                  ].map(({ icon: Icon, text }) => (
-                    <div key={text} className="flex items-center gap-2 text-white text-xs sm:text-sm">
-                      <Icon className="w-3.5 h-3.5 text-yellow-300 flex-shrink-0" />
+                <div className="grid grid-cols-1 gap-1.5 mb-5 text-left">
+                  {BENEFITS.map((text) => (
+                    <div key={text} className="flex items-center gap-2 text-white text-sm">
+                      <span className="w-5 h-5 rounded-full bg-amber-400 text-gray-900 flex items-center justify-center text-[11px] font-extrabold flex-shrink-0">
+                        ✓
+                      </span>
                       {text}
                     </div>
                   ))}
                 </div>
 
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
-                  <a
-                    href="/go/myfngapp"
-                    className="flex items-center gap-2 bg-black hover:bg-gray-900 text-white px-4 py-2.5 rounded-lg transition-all hover:scale-105 shadow-lg"
+                <a
+                  href={goHref}
+                  className="inline-flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-300 text-gray-950 px-6 py-3 rounded-xl font-extrabold text-base shadow-lg transition-all hover:scale-105"
+                >
+                  <Download className="w-5 h-5" />
+                  Download App
+                </a>
+              </div>
+
+              <div className="relative flex-shrink-0 w-40 h-52 sm:w-52 sm:h-[19rem] lg:w-60 lg:h-[21rem] flex flex-col items-center">
+                <div className="text-center mb-1 sm:mb-2">
+                  <p className="text-[9px] sm:text-[11px] tracking-[0.32em] uppercase text-amber-200/95 font-semibold">
+                    ✦ Ganesh Chaturthi ✦
+                  </p>
+                  <p
+                    className="text-2xl sm:text-3xl lg:text-4xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 italic"
+                    style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
                   >
-                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-                      <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 14.59L8.41 12 11 9.41V17h2V9.41l2.59 2.59L17 11l-5-5-5 5 1.41 1.41L11 9.41V17h2Z" />
-                    </svg>
-                    <div className="text-left">
-                      <div className="text-[9px] uppercase leading-tight opacity-80">Get the app</div>
-                      <div className="text-sm font-semibold leading-tight">Download MyFNG</div>
-                    </div>
-                  </a>
+                    Offer
+                  </p>
+                  <div className="mx-auto mt-1.5 h-px w-16 bg-gradient-to-r from-transparent via-amber-300 to-transparent" />
                 </div>
+                <Image
+                  src="/media/ganpati-popup.png"
+                  alt="Ganpati"
+                  width={864}
+                  height={1152}
+                  className="w-full flex-1 min-h-0 object-contain object-bottom drop-shadow-2xl"
+                  priority
+                />
               </div>
             </div>
           </div>
 
-          <div className="bg-gradient-to-r from-indigo-900 to-purple-900 px-4 py-3 sm:px-6 sm:py-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-              {[
-                { icon: Shield, label: 'Trusted Professionals' },
-                { icon: Award, label: 'Quality Assured' },
-                { icon: CheckCircle2, label: 'Secure Payments' },
-                { icon: HeadphonesIcon, label: 'Customer Support' },
-              ].map(({ icon: Icon, label }) => (
+          <div className="bg-gradient-to-r from-[#1e1b4b] via-[#3b0764] to-[#4c1d95] px-4 py-3 sm:px-6 sm:py-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {TRUST.map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center gap-1.5 justify-center">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-yellow-400 flex items-center justify-center flex-shrink-0">
+                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0">
                     <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-900" />
                   </div>
                   <span className="text-white text-[10px] sm:text-xs font-medium">{label}</span>

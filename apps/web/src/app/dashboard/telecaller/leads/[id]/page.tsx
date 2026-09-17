@@ -252,7 +252,7 @@ function LeadDetailContent() {
           });
           const order = [
             'PERIODIC', 'ENGINE', 'AC', 'BATTERY', 'BRAKE', 'CLUTCH', 'TYRE', 'WHEEL',
-            'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING',
+            'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING', 'CUSTOM',
           ];
           const grouped = new Map<string, string[]>();
           (serviceTypesData || []).forEach((st: any) => {

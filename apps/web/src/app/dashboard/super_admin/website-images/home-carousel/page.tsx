@@ -39,22 +39,20 @@ const ROUTES = [
 // "Replace" them with new uploads (which then take precedence in the app).
 const DEFAULT_BANNERS: BannerRow[] = [
   {
-    id: 'default-service',
-    title: 'Car Service',
-    image_url:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/CarService.PNG',
-    route_name: 'PublicBookServiceNow',
-    route_params: { city: '__CITY__' },
+    id: 'default-prime',
+    title: 'Ganesh Chaturthi Prime',
+    image_url: '/media/banners/myfng-prime-ganesh-chaturthi-banner.png',
+    route_name: 'Settings__Membership',
+    route_params: { membershipType: 'SERVICE' },
     display_order: 1,
     is_active: true,
     is_default: true,
   },
   {
-    id: 'default-rsa',
-    title: 'RSA 24/7',
-    image_url:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.PNG',
-    route_name: 'PublicWorkshopLocator',
+    id: 'default-service',
+    title: 'Car Service',
+    image_url: '/media/banners/myfng-car-service-light-banner.png',
+    route_name: 'PublicBookServiceNow',
     route_params: { city: '__CITY__' },
     display_order: 2,
     is_active: true,
@@ -63,8 +61,7 @@ const DEFAULT_BANNERS: BannerRow[] = [
   {
     id: 'default-ai',
     title: 'MyFNG AI',
-    image_url:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/MyFNG-AI.PNG',
+    image_url: '/media/banners/myfng-misa-ai-light-banner.png',
     route_name: 'AIBooking',
     route_params: { city: '__CITY__' },
     display_order: 3,

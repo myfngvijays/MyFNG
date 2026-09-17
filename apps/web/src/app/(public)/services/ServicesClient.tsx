@@ -26,6 +26,7 @@ const SERVICE_DISPLAY_META: Record<string, { priceFrom: string; warranty?: strin
   'denting-painting': { priceFrom: '₹3,999', warranty: 'Up to 24 Months' },
   'electrical-battery-service': { priceFrom: '₹999', warranty: 'NA' },
   'suspension-steering-service': { priceFrom: '₹1,499', warranty: 'NA' },
+  'custom-repair': { priceFrom: 'On Request', warranty: '1000 kms / 1 Month' },
 };
 
 function getServiceDisplayMeta(service: Service) {
@@ -115,6 +116,13 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
           {/* Header */}
           <div className="container mx-auto px-4 sm:px-6 pt-8 pb-4 lg:pt-6 lg:pb-3">
             <div className="max-w-7xl mx-auto">
+              <Link href="/customer/membership" className="block mb-6 rounded-3xl overflow-hidden shadow-lg shadow-blue-500/10 border border-blue-100">
+                <img
+                  src="/media/banners/myfng-prime-ganesh-chaturthi-banner.png"
+                  alt="MyFNG Prime Ganesh Chaturthi Special"
+                  className="w-full h-auto object-cover"
+                />
+              </Link>
               <p className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-3">OUR SERVICES</p>
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
                 Explore services by <br className="hidden sm:block" />

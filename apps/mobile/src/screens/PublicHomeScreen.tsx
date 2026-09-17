@@ -5,6 +5,7 @@ import {
   Easing,
   Image,
   ImageBackground,
+  type ImageSourcePropType,
   Linking,
   Modal,
   Pressable,
@@ -75,47 +76,52 @@ type HeroBanner = {
   icon: keyof typeof Ionicons.glyphMap;
   colors: [string, string];
   image: string;
+  imageSource?: ImageSourcePropType;
   overlay: string;
 };
 
-// Fallback banners — used only if the admin-managed list (home_carousel_banners table)
-// returns no rows or fails. Once the admin uploads images on the Super Admin page,
-// those override this list.
-const FALLBACK_HERO_BANNERS: HeroBanner[] = [
-  {
-    id: 'service',
-    title: 'Car Service',
-    desc: 'Expert maintenance for your car',
-    route: 'PublicBookServiceNow',
-    icon: 'construct',
-    colors: ['#004AAD', '#0A57BF'],
-    image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/CarService.PNG',
-    overlay: 'rgba(0, 74, 173, 0.45)',
-  },
-  {
-    id: 'rsa',
-    title: 'RSA 24/7',
-    desc: "Stranded? We're on our way",
-    route: 'PublicWorkshopLocator',
-    icon: 'alert-circle',
-    colors: ['#DC2626', '#991B1B'],
-    image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.PNG',
-    overlay: 'rgba(17, 24, 39, 0.42)',
-  },
-  {
-    id: 'ai',
-    title: 'MyFNG AI',
-    desc: 'Book service via smart chat',
-    route: 'AIBooking',
-    icon: 'sparkles',
-    colors: ['#2563EB', '#1E3A8A'],
-    image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/MyFNG-AI.PNG',
-    overlay: 'rgba(30, 58, 138, 0.45)',
-  },
-];
+const GANESH_PRIME_BANNER: HeroBanner = {
+  id: 'ganesh-prime',
+  title: 'Ganesh Chaturthi Prime',
+  desc: 'Prime Membership ₹699/year',
+  route: 'Settings',
+  routeParams: { subPage: 'Membership', membershipType: 'SERVICE' },
+  icon: 'ribbon',
+  colors: ['#023D95', '#2563EB'],
+  image: '',
+  imageSource: require('../../assets/myfng-prime-ganesh-chaturthi-banner.png'),
+  overlay: 'rgba(0,0,0,0)',
+};
+
+const LIGHT_SERVICE_BANNER: HeroBanner = {
+  id: 'service',
+  title: 'Car Service',
+  desc: 'Expert maintenance for your car',
+  route: 'PublicBookServiceNow',
+  icon: 'construct',
+  colors: ['#023D95', '#2563EB'],
+  image: '',
+  imageSource: require('../../assets/myfng-car-service-light-banner.png'),
+  overlay: 'rgba(0,0,0,0)',
+};
+
+const LIGHT_MISA_BANNER: HeroBanner = {
+  id: 'ai',
+  title: 'MyFNG AI',
+  desc: 'Book service via smart chat',
+  route: 'AIBooking',
+  icon: 'sparkles',
+  colors: ['#023D95', '#2563EB'],
+  image: '',
+  imageSource: require('../../assets/myfng-misa-ai-light-banner.png'),
+  overlay: 'rgba(0,0,0,0)',
+};
+
+function buildHomeHeroBanners(_remote: HeroBanner[] = []) {
+  return [GANESH_PRIME_BANNER, LIGHT_SERVICE_BANNER, LIGHT_MISA_BANNER];
+}
+
+const FALLBACK_HERO_BANNERS: HeroBanner[] = buildHomeHeroBanners();
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
 type PromoBanner = { image_url: string; route_name: string; route_params: any };
@@ -342,17 +348,19 @@ export default function PublicHomeScreen({ navigation }: Props) {
           if (error || !Array.isArray(data) || data.length === 0) return;
 
           setHeroBanners(
-            data.map((row: any) => ({
-              id: String(row.id),
-              title: row.title || '',
-              desc: '',
-              route: row.route_name || 'PublicHome',
-              routeParams: row.route_params || undefined,
-              icon: 'sparkles' as const,
-              colors: ['#004AAD', '#0A57BF'] as [string, string],
-              image: row.image_url,
-              overlay: 'rgba(0,0,0,0)',
-            })),
+            buildHomeHeroBanners(
+              data.map((row: any) => ({
+                id: String(row.id),
+                title: row.title || '',
+                desc: '',
+                route: row.route_name || 'PublicHome',
+                routeParams: row.route_params || undefined,
+                icon: 'sparkles' as const,
+                colors: ['#004AAD', '#0A57BF'] as [string, string],
+                image: row.image_url,
+                overlay: 'rgba(0,0,0,0)',
+              })),
+            ),
           );
         } catch {
           // keep existing banners
@@ -676,7 +684,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 }}
                 style={styles.heroTouchable}
               >
-                <Image source={{ uri: activeHero.image }} style={styles.heroFullImage} resizeMode="cover" />
+                <Image
+                  source={activeHero.imageSource || { uri: activeHero.image }}
+                  style={styles.heroFullImage}
+                  resizeMode="cover"
+                />
               </TouchableOpacity>
               <View style={styles.heroDots}>
                 {heroBanners.map((banner, idx) => (

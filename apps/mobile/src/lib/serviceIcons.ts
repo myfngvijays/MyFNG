@@ -33,6 +33,7 @@ const LOCAL_ICONS: Array<{ match: (c: string) => boolean; source: ImageSourcePro
     match: (c) => c.includes('SUSPENSION') || c.includes('STEERING'),
     source: require('../../assets/icon-suspension-service.png'),
   },
+  { match: (c) => c.includes('CUSTOM'), source: require('../../assets/icon-periodic-service.png') },
 ];
 
 export function getServiceIconUrl(name: string): string {
@@ -49,6 +50,7 @@ export function getServiceIconUrl(name: string): string {
   if (c.includes('TYRE') || c.includes('WHEEL')) return `${SERVICE_ICON_BASE}/icon-tyre-service.png`;
   if (c.includes('ELECTRICAL')) return `${SERVICE_ICON_BASE}/icon-electrical-service.png`;
   if (c.includes('SUSPENSION') || c.includes('STEERING')) return `${SERVICE_ICON_BASE}/icon-suspension-service.png`;
+  if (c.includes('CUSTOM')) return `${SERVICE_ICON_BASE}/icon-periodic-service.png`;
   return '';
 }
 

@@ -594,6 +594,46 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       { q: 'How can I schedule a Clutch Service with My FNG?', a: 'Online booking via website www.myfng.in/book-service or by calling directly.' },
     ],
   },
+  {
+    title: 'Electrical & Battery Service',
+    icon: 'flash',
+    color: '#D97706',
+    items: [
+      { q: 'What does Electrical & Battery Service cover?', a: 'Diagnostics and repair for battery, alternator, starter, wiring, fuses, lights, power windows, and sensors.' },
+      { q: 'How is this different from a battery-only check?', a: 'Battery service focuses on starting power. Electrical & Battery Service also inspects charging, wiring, and other electrical faults that cause intermittent issues.' },
+      { q: 'Do you provide free pickup and drop for car service?', a: 'Yes. My FNG offers convenient free pickup and drop service for most car services depending on location and service type.' },
+      { q: 'What are signs of an electrical problem?', a: 'Dim lights, dead battery, warning lamps, power window failure, clicking starter, or unexplained fuse blowouts.' },
+      { q: 'How long does electrical service take?', a: 'Most electrical jobs take 2 to 4 hours, depending on diagnosis and parts needed.' },
+      { q: 'Will I get a quote before extra work?', a: 'Yes. After inspection we share findings and proceed only after you approve additional parts or labour.' },
+      { q: 'How can I book Electrical & Battery Service with My FNG?', a: 'Online booking via website www.myfng.in/book-service, the MyFNG app, or by calling customer support.' },
+    ],
+  },
+  {
+    title: 'Suspension & Steering Service',
+    icon: 'car',
+    color: '#0D9488',
+    items: [
+      { q: 'What does Suspension & Steering Service include?', a: 'Inspection and service of shock absorbers, struts, springs, steering fluid, tie rods, ball joints, and alignment-related checks.' },
+      { q: 'What are signs my suspension needs work?', a: 'Bumpy rides, nose dive on braking, uneven tyre wear, steering vibration, or knocking over speed breakers.' },
+      { q: 'Do you provide free pickup and drop for car service?', a: 'Yes. My FNG offers convenient free pickup and drop service for most car services depending on location and service type.' },
+      { q: 'How long does this service take?', a: 'Typical suspension and steering jobs take 2 to 4 hours, depending on parts replacement.' },
+      { q: 'Are extra parts billed separately?', a: 'Yes. Labour and listed checks are quoted first. Additional parts are billed at actual cost after your approval.' },
+      { q: 'How can I book Suspension & Steering Service with My FNG?', a: 'Online booking via website www.myfng.in/book-service, the MyFNG app, or by calling customer support.' },
+    ],
+  },
+  {
+    title: 'Custom Repair',
+    icon: 'hammer',
+    color: '#4B5563',
+    items: [
+      { q: 'What is Custom Repair?', a: 'Custom Repair is for specific jobs that are not a standard package — sensors, leaks, rattles, wiring, unusual noises, or a mix of repairs after inspection.' },
+      { q: 'Do you send a mechanic to my house?', a: 'No. Work is done at a MyFNG workshop. Pickup and drop is included so you do not need to drive in.' },
+      { q: 'How does pricing work?', a: 'We inspect first, share photo-backed findings and a quote, and start work only after you approve. You pay only for approved work.' },
+      { q: 'How long does Custom Repair take?', a: 'Duration depends on the inspection and the approved jobs. We share an estimate before work begins.' },
+      { q: 'Is there a warranty?', a: 'Eligible jobs include written warranty, typically 1 month or 1,000 km, as mentioned on your job card.' },
+      { q: 'How can I book Custom Repair with My FNG?', a: 'Online booking via website www.myfng.in/book-service, the MyFNG app, or by calling customer support.' },
+    ],
+  },
 ];
 
 export const LEGAL_SECTIONS = {

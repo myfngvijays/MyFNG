@@ -47,6 +47,7 @@ const OTHER_SERVICES: Array<{ name: string; message: string; icon: ImageSourcePr
   { name: 'Denting', message: 'Car Denting & Painting chahiye', icon: require('../../../assets/icon-denting-service.png') },
   { name: 'Electrical', message: 'Electrical & Battery Service chahiye', icon: require('../../../assets/icon-electrical-service.png') },
   { name: 'Suspension', message: 'Suspension & Steering Service chahiye', icon: require('../../../assets/icon-suspension-service.png') },
+  { name: 'Custom Repair', message: 'Custom Repair chahiye', icon: require('../../../assets/icon-periodic-service.png') },
 ];
 
 const PIN_LENGTH = 6;

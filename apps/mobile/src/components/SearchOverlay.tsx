@@ -68,6 +68,15 @@ const ALL_ITEMS: SearchItem[] = [
   { id: 'denting', title: 'Denting & Painting', category: 'Car Service', icon: 'color-palette',
     screen: 'PublicServicePackages', params: { selectedServiceId: '9' },
     keywords: ['denting', 'painting', 'dent', 'scratch', 'body work', 'bumper', 'fender', 'paint', 'body repair'] },
+  { id: 'electrical', title: 'Electrical & Battery Service', category: 'Car Service', icon: 'flash',
+    screen: 'PublicServicePackages', params: { selectedServiceId: '10' },
+    keywords: ['electrical', 'wiring', 'alternator', 'starter', 'fuse', 'headlight', 'power window', 'sensor', 'ecu'] },
+  { id: 'suspension', title: 'Suspension & Steering Service', category: 'Car Service', icon: 'car',
+    screen: 'PublicServicePackages', params: { selectedServiceId: '11' },
+    keywords: ['suspension', 'steering', 'shock', 'strut', 'tie rod', 'ball joint', 'bumpy', 'alignment', 'vibration'] },
+  { id: 'custom', title: 'Custom Repair', category: 'Car Service', icon: 'hammer',
+    screen: 'PublicServicePackages', params: { selectedServiceId: '12' },
+    keywords: ['custom', 'custom repair', 'sensor', 'leak', 'rattle', 'noise', 'specific job', 'inspection', 'quote'] },
   { id: 'rsa', title: 'Roadside Assistance', category: 'Emergency', icon: 'call',
     screen: 'RoadsideAssistance', keywords: ['rsa', 'roadside', 'emergency', 'breakdown', 'stuck', 'towing', 'stranded'] },
   { id: 'rsa-jumpstart', title: 'Battery Jumpstart', category: 'RSA Service', icon: 'flash',
@@ -161,6 +170,9 @@ function getGridTitle(item: SearchItem) {
   if (item.id === 'rsa') return 'RSA';
   if (item.id === 'brakes') return 'Brakes';
   if (item.id === 'denting') return 'Denting & Painting';
+  if (item.id === 'electrical') return 'Electrical & Battery';
+  if (item.id === 'suspension') return 'Suspension & Steering';
+  if (item.id === 'custom') return 'Custom Repair';
   if (item.id.startsWith('membership-plan-')) return item.title;
   return item.title;
 }
