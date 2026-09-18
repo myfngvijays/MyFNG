@@ -11,6 +11,7 @@ import {
   TextInput,
   Image,
   Linking,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import DashboardHeader from '../../../components/DashboardHeader';
@@ -34,6 +35,21 @@ type Blog = {
 
 type Category = { id: string; name: string };
 
+function defaultTimes(count: number) {
+  const presets: Record<number, string[]> = {
+    1: ['10:00'],
+    2: ['10:00', '16:00'],
+    3: ['10:00', '14:00', '18:00'],
+    4: ['10:00', '13:00', '16:00', '19:00'],
+    5: ['09:00', '12:00', '15:00', '18:00', '21:00'],
+  };
+  return presets[count] || presets[1];
+}
+
+function postedLabel(count: number, posted: unknown) {
+  return `${Number(posted || 0)}/${count} posted today`;
+}
+
 export default function DMContentScreen() {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
@@ -44,8 +60,11 @@ export default function DMContentScreen() {
   const [categoryId, setCategoryId] = useState('');
   const [total, setTotal] = useState(0);
   const [dailyEnabled, setDailyEnabled] = useState(true);
-  const [dailyLabel, setDailyLabel] = useState('Daily 10:00 AM IST auto-post');
+  const [dailyLabel, setDailyLabel] = useState('Daily auto-post schedule');
   const [dailyBusy, setDailyBusy] = useState(false);
+  const [draftCount, setDraftCount] = useState(1);
+  const [draftTimes, setDraftTimes] = useState<string[]>(['10:00']);
+  const [postedCount, setPostedCount] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -70,24 +89,27 @@ export default function DMContentScreen() {
     try {
       const data = await apiFetch<any>('/api/blogs/daily-settings');
       const enabled = Boolean(data?.settings?.enabled ?? data?.schedule?.enabled);
+      const count = Number(data?.schedule?.posts_per_day || data?.settings?.posts_per_day || 1);
+      const times = Array.isArray(data?.schedule?.post_times)
+        ? data.schedule.post_times
+        : Array.isArray(data?.settings?.post_times)
+          ? data.settings.post_times
+          : defaultTimes(count);
       setDailyEnabled(enabled);
+      setDraftCount(count);
+      setDraftTimes(times.slice(0, count));
+      setPostedCount(Number(data?.today_posted_count || 0));
       if (data?.missing) {
-        setDailyLabel('Daily post needs SQL 365');
+        setDailyLabel(data.error || 'Run database/369_daily_blog_slots.sql');
       } else if (data?.last_blog?.title) {
-        setDailyLabel(`Last: ${data.last_blog.title}`);
+        setDailyLabel(`${postedLabel(count, data.today_posted_count)} · Last: ${data.last_blog.title}`);
       } else if (data?.schedule?.last_status === 'failed') {
         setDailyLabel(data?.schedule?.last_error || 'Last daily run failed');
       } else {
-        setDailyLabel(
-          enabled
-            ? data?.schedule?.usp_rotation
-              ? `${data.schedule.usp_rotation} · ${data.schedule.city_rotation || 'Mon–Fri Thane/Navi Mumbai · Sat Pune · Sun Mumbai'}`
-              : 'Mon USP · Mon–Fri Thane/Navi Mumbai · Sat Pune · Sun Mumbai'
-            : 'Daily auto-post is paused',
-        );
+        setDailyLabel(data?.schedule?.schedule || `${count} blog(s) / day`);
       }
     } catch {
-      setDailyLabel('Daily 10:00 AM IST auto-post');
+      setDailyLabel('Daily auto-post schedule');
     }
   }, []);
 
@@ -159,9 +181,71 @@ export default function DMContentScreen() {
           }
         >
           <View style={styles.dailyCard}>
-            <Text style={styles.dailyTitle}>Daily auto-post · 10:00 AM</Text>
+            <Text style={styles.dailyTitle}>Daily auto-post schedule</Text>
             <Text style={styles.dailyMeta}>{dailyLabel}</Text>
+            <Text style={styles.dailyMeta}>Blogs per day · {postedCount}/{draftCount} today</Text>
+            <View style={styles.countRow}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  disabled={dailyBusy}
+                  onPress={() => {
+                    setDraftCount(n);
+                    setDraftTimes((prev) => {
+                      const fallback = defaultTimes(n);
+                      return Array.from({ length: n }, (_, i) => prev[i] || fallback[i]);
+                    });
+                  }}
+                  style={[styles.countChip, draftCount === n && styles.countChipOn]}
+                >
+                  <Text style={[styles.countChipText, draftCount === n && styles.countChipTextOn]}>{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.timeRow}>
+              {draftTimes.map((time, idx) => (
+                <View key={`slot-${idx}`} style={styles.timeField}>
+                  <Text style={styles.timeLabel}>Slot {idx + 1}</Text>
+                  <TextInput
+                    value={time}
+                    onChangeText={(value) => {
+                      const next = [...draftTimes];
+                      next[idx] = value;
+                      setDraftTimes(next);
+                    }}
+                    placeholder="10:00"
+                    keyboardType="numbers-and-punctuation"
+                    style={styles.timeInput}
+                    editable={!dailyBusy}
+                  />
+                </View>
+              ))}
+            </View>
             <View style={styles.dailyRow}>
+              <TouchableOpacity
+                disabled={dailyBusy}
+                onPress={async () => {
+                  try {
+                    setDailyBusy(true);
+                    await apiFetch<any>('/api/blogs/daily-settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ posts_per_day: draftCount, post_times: draftTimes }),
+                    });
+                    await loadDaily();
+                    Alert.alert('Saved', `Daily schedule: ${draftCount} blog${draftCount > 1 ? 's' : ''}`);
+                  } catch (e: any) {
+                    Alert.alert('Could not save', e?.message || 'Run database/369_daily_blog_slots.sql');
+                  } finally {
+                    setDailyBusy(false);
+                  }
+                }}
+                style={[styles.dailyBtn, styles.dailyBtnOn]}
+              >
+                <Text style={[styles.dailyBtnText, styles.dailyBtnTextOn]}>
+                  {dailyBusy ? '…' : 'Save schedule'}
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 disabled={dailyBusy}
                 onPress={async () => {
@@ -183,7 +267,7 @@ export default function DMContentScreen() {
                 style={[styles.dailyBtn, dailyEnabled && styles.dailyBtnOn]}
               >
                 <Text style={[styles.dailyBtnText, dailyEnabled && styles.dailyBtnTextOn]}>
-                  {dailyEnabled ? 'On' : 'Off'}
+                  {dailyEnabled ? 'Pause' : 'Enable'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -314,7 +398,36 @@ const styles = StyleSheet.create({
   },
   dailyTitle: { fontSize: 14, fontWeight: '800', color: '#023D95' },
   dailyMeta: { marginTop: 4, fontSize: 12, color: '#4B5563' },
-  dailyRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  countRow: { flexDirection: 'row', gap: 6, marginTop: 10 },
+  countChip: {
+    width: 36,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countChipOn: { backgroundColor: '#004AAD', borderColor: '#004AAD' },
+  countChipText: { fontSize: 13, fontWeight: '800', color: '#023D95' },
+  countChipTextOn: { color: '#fff' },
+  timeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  timeField: { minWidth: 88 },
+  timeLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280' },
+  timeInput: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#023D95',
+  },
+  dailyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   dailyBtn: {
     borderRadius: 999,
     paddingHorizontal: 14,

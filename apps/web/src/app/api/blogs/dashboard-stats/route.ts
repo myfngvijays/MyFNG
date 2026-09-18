@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { dailyBlogScheduleInfo, loadDailyBlogSettings } from '@/lib/blog/runDailyBlogPost';
+import { overdueSlotIndexes, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
 import { istDateString } from '@/lib/blog/dailyTopics';
+import { averageSeoScore, scoreSeoBlog } from '@/lib/seo/seoScore';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,6 +172,7 @@ export async function GET(_request: NextRequest) {
     let uspPosts = 0;
     let packagePosts = 0;
     let unassignedAuthor = 0;
+    const publishedSeoScores: number[] = [];
     const packageRows: Array<{
       id: string;
       title: string;
@@ -215,6 +218,25 @@ export async function GET(_request: NextRequest) {
       if (row.status === 'published' && row.published_at) {
         if (istDateString(new Date(row.published_at)) === todayIst) publishedToday++;
         if (row.published_at >= weekAgo) publishedThisWeek++;
+        publishedSeoScores.push(
+          scoreSeoBlog({
+            slug: row.slug,
+            title: String(seo.meta_title || row.title || ''),
+            description: String(seo.meta_description || row.excerpt || ''),
+            keywords: String(seo.keywords || ''),
+            keyphrase: String(seo.keyphrase || ''),
+            canonical_url: String(seo.canonical_url || ''),
+            og_title: String(seo.og_title || ''),
+            og_description: String(seo.og_description || ''),
+            og_image: String(seo.og_image || ''),
+            featured_image_alt: String(seo.featured_image_alt || ''),
+            author_name: String(seo.author_name || ''),
+            local_city: String(seo.local_city || seo.ai_city || ''),
+            robots_index: seo.robots_index !== false,
+            schema_blogposting: seo.schema_blogposting !== false,
+            schema_faq: seo.schema_faq !== false,
+          }).score,
+        );
       }
       if (row.status === 'archived') continue;
       if (!String(seo.meta_description || row.excerpt || '').trim()) missingMetaDescription++;
@@ -270,7 +292,6 @@ export async function GET(_request: NextRequest) {
 
     const loadedDaily = await loadDailyBlogSettings();
     const dailySettings = loadedDaily.settings;
-    const schedule = dailyBlogScheduleInfo(dailySettings);
     let lastBlog: { id: string; title: string; slug: string; published_at: string | null } | null = null;
     let recentRuns: Array<{
       run_date: string;
@@ -278,6 +299,7 @@ export async function GET(_request: NextRequest) {
       topic: string | null;
       error: string | null;
     }> = [];
+    let postedIndexes: number[] = [];
     const { supabaseAdmin } = getSupabaseAdmin();
     if (supabaseAdmin) {
       if (dailySettings?.last_blog_id) {
@@ -288,15 +310,27 @@ export async function GET(_request: NextRequest) {
           .maybeSingle();
         if (data) lastBlog = data as any;
       }
-      const { data: runs } = await supabaseAdmin
+      let runsRes = await supabaseAdmin
         .from('daily_blog_runs')
-        .select('run_date, status, topic, error')
+        .select('run_date, status, topic, error, slot_index')
         .order('run_date', { ascending: false })
-        .limit(7);
+        .limit(14);
+      if (runsRes.error) {
+        runsRes = await supabaseAdmin
+          .from('daily_blog_runs')
+          .select('run_date, status, topic, error')
+          .order('run_date', { ascending: false })
+          .limit(14);
+      }
+      const runs = runsRes.data;
       recentRuns = (runs || []) as any;
+      postedIndexes = (runs || [])
+        .filter((row: any) => row.run_date === todayIst && row.status === 'success')
+        .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
     }
-
-    const todayDailyPosted = recentRuns.some((r) => r.run_date === todayIst && r.status === 'success');
+    const schedule = dailyBlogScheduleInfo(dailySettings, postedIndexes);
+    const overdue = overdueSlotIndexes(resolveDailyBlogSchedule(dailySettings), postedIndexes);
+    const todayDailyPosted = overdue.length === 0;
 
     return NextResponse.json({
       summary: {
@@ -336,15 +370,7 @@ export async function GET(_request: NextRequest) {
         missingExcerpt,
         missingFaqsOnPublished,
         missingLocalCity,
-        score: Math.max(
-          0,
-          Math.round(
-            100 -
-              ((missingMetaDescription + missingFeaturedImage + missingExcerpt) / Math.max(total, 1)) * 25 -
-              (missingFeaturedAlt / Math.max(total, 1)) * 15 -
-              (missingLocalCity / Math.max(published, 1)) * 10,
-          ),
-        ),
+        score: averageSeoScore(publishedSeoScores),
       },
       dailyPost: {
         missing_table: Boolean(loadedDaily.missing),
@@ -355,6 +381,9 @@ export async function GET(_request: NextRequest) {
         last_blog: lastBlog,
         today: todayIst,
         today_posted: todayDailyPosted,
+        today_posted_count: postedIndexes.length,
+        posts_per_day: schedule.posts_per_day,
+        post_times: schedule.post_times,
         next_run_at: schedule.next_run_at,
         schedule: schedule.schedule,
         cron: schedule.cron,

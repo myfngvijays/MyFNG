@@ -30,6 +30,8 @@ export type DailyBlogSettings = {
   word_count: number;
   category_id: string | null;
   author_id: string | null;
+  posts_per_day?: number | null;
+  post_times?: string[] | unknown;
   last_run_at: string | null;
   last_blog_id: string | null;
   last_status: string | null;
@@ -369,7 +371,7 @@ export async function publishAiServiceBlog(opts: {
         userId: authorId,
         type: 'SYSTEM_ALERT',
         title: usp ? 'Weekly MyFNG USP blog published' : 'Daily blog published',
-        message: `"${blog.title}" went live at 10:00 AM IST.`,
+        message: `"${blog.title}" is live on the daily auto-post schedule.`,
         priority: 'HIGH',
         actionUrl: `/dashboard/digital_marketing/blogs/${blog.id}/edit`,
         metadata: { blog_id: blog.id, status: 'published', ai_daily_post: true },

@@ -579,6 +579,12 @@ const navigationItems: NavItem[] = [
         description: 'General, service & RSA FAQs',
       },
       {
+        name: 'Daily Blogs',
+        href: '/dashboard/super_admin/daily-blogs',
+        icon: FileText,
+        description: 'Daily auto-post count & IST slot times',
+      },
+      {
         name: 'Advanced SEO',
         href: '/dashboard/super_admin/site-seo',
         icon: Search,
@@ -959,6 +965,7 @@ function SuperAdminLayoutInner({
       pathname?.startsWith('/dashboard/super_admin/brands') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/vehicle-images') ||
       pathname?.startsWith('/dashboard/super_admin/public-faqs') ||
+      pathname?.startsWith('/dashboard/super_admin/daily-blogs') ||
       pathname?.startsWith('/dashboard/super_admin/site-seo')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Shared Content': true }));

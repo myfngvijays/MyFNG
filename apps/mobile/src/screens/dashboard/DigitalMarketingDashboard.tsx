@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
@@ -43,7 +45,13 @@ export default function DigitalMarketingDashboard() {
     lastStatus: '',
     recentRuns: [] as DailyRun[],
     packageBlogs: [] as Array<{ id: string; title: string; status: string }>,
+    postsPerDay: 1,
+    postTimes: ['10:00'] as string[],
+    todayPostedCount: 0,
+    scheduleLabel: '10:00 IST',
   });
+  const [draftCount, setDraftCount] = useState(1);
+  const [draftTimes, setDraftTimes] = useState<string[]>(['10:00']);
 
   const fetchUserProfile = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -78,6 +86,10 @@ export default function DigitalMarketingDashboard() {
         lastBlog: daily.last_blog?.title || '',
         lastStatus: daily.last_status || '',
         recentRuns: Array.isArray(daily.recent_runs) ? daily.recent_runs.slice(0, 3) : [],
+        postsPerDay: Number(daily.posts_per_day || 1),
+        postTimes: Array.isArray(daily.post_times) && daily.post_times.length ? daily.post_times : ['10:00'],
+        todayPostedCount: Number(daily.today_posted_count || 0),
+        scheduleLabel: daily.schedule || '10:00 IST',
         packageBlogs: Array.isArray(data?.recentPackage)
           ? data.recentPackage.slice(0, 10).map((b: any) => ({
               id: String(b.id),
@@ -86,6 +98,10 @@ export default function DigitalMarketingDashboard() {
             }))
           : [],
       });
+      const nextCount = Number(daily.posts_per_day || 1);
+      const nextTimes = Array.isArray(daily.post_times) && daily.post_times.length ? daily.post_times : ['10:00'];
+      setDraftCount(nextCount);
+      setDraftTimes(nextTimes.slice(0, nextCount));
     } catch (error) {
       if (__DEV__) console.error('Error fetching dashboard data:', error);
     } finally {
@@ -109,6 +125,58 @@ export default function DigitalMarketingDashboard() {
     navigation.navigate(screen as never);
   };
 
+  const defaultTimes = (count: number) => {
+    const presets: Record<number, string[]> = {
+      1: ['10:00'],
+      2: ['10:00', '16:00'],
+      3: ['10:00', '14:00', '18:00'],
+      4: ['10:00', '13:00', '16:00', '19:00'],
+      5: ['09:00', '12:00', '15:00', '18:00', '21:00'],
+    };
+    return presets[count] || presets[1];
+  };
+
+  const changeCount = (count: number) => {
+    setDraftCount(count);
+    setDraftTimes((prev) => {
+      const fallback = defaultTimes(count);
+      return Array.from({ length: count }, (_, i) => prev[i] || fallback[i]);
+    });
+  };
+
+  const saveSchedule = async () => {
+    setDailyBusy(true);
+    try {
+      await apiFetch('/api/blogs/daily-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts_per_day: draftCount, post_times: draftTimes }),
+      });
+      await fetchDashboardData();
+      Alert.alert('Saved', `Daily schedule: ${draftCount} blog${draftCount > 1 ? 's' : ''}`);
+    } catch (e: any) {
+      Alert.alert('Could not save', e?.message || 'Run database/369_daily_blog_slots.sql');
+    } finally {
+      setDailyBusy(false);
+    }
+  };
+
+  const toggleDaily = async () => {
+    setDailyBusy(true);
+    try {
+      await apiFetch('/api/blogs/daily-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !stats.dailyEnabled }),
+      });
+      await fetchDashboardData();
+    } catch (e: any) {
+      Alert.alert('Update failed', e?.message || 'Could not update daily posting');
+    } finally {
+      setDailyBusy(false);
+    }
+  };
+
   const runDailyNow = async () => {
     setDailyBusy(true);
     try {
@@ -119,10 +187,10 @@ export default function DigitalMarketingDashboard() {
       });
       await fetchDashboardData();
       if (data?.run?.title) {
-        /* posted */
+        Alert.alert('Published', data.run.title);
       }
-    } catch {
-      /* toast handled by caller screens */
+    } catch (e: any) {
+      Alert.alert('Post failed', e?.message || 'Could not publish daily blog');
     } finally {
       setDailyBusy(false);
     }
@@ -159,20 +227,59 @@ export default function DigitalMarketingDashboard() {
 
         <View style={[styles.dailyCard, stats.missingToday ? styles.dailyWarn : styles.dailyOk]}>
           <View style={styles.dailyRow}>
-            <Text style={styles.dailyEyebrow}>DAILY 10:00 AM</Text>
+            <Text style={styles.dailyEyebrow}>DAILY AUTO-POST</Text>
             <Text style={styles.dailyTitle}>
-              {stats.missingToday ? 'Missing today' : stats.dailyEnabled ? 'Posted / on track' : 'Paused'}
+              {stats.missingToday
+                ? 'Slot missing'
+                : stats.dailyEnabled
+                  ? `${stats.todayPostedCount}/${stats.postsPerDay} posted`
+                  : 'Paused'}
             </Text>
           </View>
-          <Text style={styles.dailyMeta} numberOfLines={1}>
-            {stats.lastBlog || stats.lastStatus || 'No daily post yet'}
+          <Text style={styles.dailyMeta} numberOfLines={2}>
+            {stats.scheduleLabel} · {stats.lastBlog || stats.lastStatus || 'No daily post yet'}
           </Text>
+          <Text style={styles.dailyMeta}>Blogs per day</Text>
+          <View style={styles.countRow}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <TouchableOpacity
+                key={n}
+                style={[styles.countChip, draftCount === n && styles.countChipOn]}
+                onPress={() => changeCount(n)}
+                disabled={dailyBusy}
+              >
+                <Text style={[styles.countChipText, draftCount === n && styles.countChipTextOn]}>{n}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.timeRow}>
+            {draftTimes.map((time, idx) => (
+              <View key={`slot-${idx}`} style={styles.timeField}>
+                <Text style={styles.timeLabel}>Slot {idx + 1}</Text>
+                <TextInput
+                  value={time}
+                  onChangeText={(value) => {
+                    const next = [...draftTimes];
+                    next[idx] = value;
+                    setDraftTimes(next);
+                  }}
+                  placeholder="10:00"
+                  keyboardType="numbers-and-punctuation"
+                  style={styles.timeInput}
+                  editable={!dailyBusy}
+                />
+              </View>
+            ))}
+          </View>
           <View style={styles.dailyActions}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={saveSchedule} disabled={dailyBusy}>
+              <Text style={styles.primaryBtnText}>{dailyBusy ? '…' : 'Save schedule'}</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.primaryBtn} onPress={runDailyNow} disabled={dailyBusy}>
               <Text style={styles.primaryBtnText}>{dailyBusy ? '…' : 'Post now'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => handleNavigation('DMContent')}>
-              <Text style={styles.secondaryBtnText}>All blogs</Text>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={toggleDaily} disabled={dailyBusy}>
+              <Text style={styles.secondaryBtnText}>{stats.dailyEnabled ? 'Pause' : 'Enable'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -273,7 +380,36 @@ const styles = StyleSheet.create({
   dailyEyebrow: { fontSize: 10, fontWeight: '700', color: '#C9A227', letterSpacing: 0.4 },
   dailyTitle: { fontSize: 13, fontWeight: '800', color: COLORS.heading },
   dailyMeta: { fontSize: 11, color: COLORS.textSecondary, marginTop: 4 },
-  dailyActions: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  dailyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  countRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  countChip: {
+    width: 36,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  countChipText: { fontSize: 13, fontWeight: '800', color: COLORS.heading },
+  countChipTextOn: { color: COLORS.white },
+  timeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  timeField: { minWidth: 88 },
+  timeLabel: { fontSize: 10, fontWeight: '700', color: COLORS.textSecondary },
+  timeInput: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.heading,
+  },
   primaryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   primaryBtnText: { color: COLORS.white, fontWeight: '700', fontSize: 12 },
   secondaryBtn: { backgroundColor: COLORS.white, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },

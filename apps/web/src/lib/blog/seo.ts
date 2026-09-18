@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { scoreSeoBlog } from '@/lib/seo/seoScore';
 
 export type BlogSeoData = {
   meta_title?: string;
@@ -226,6 +227,33 @@ export function blogSeoToSummary(row: {
     schema_faq: seo.schema_faq !== false,
     eligible_ai_overview: seo.eligible_ai_overview !== false,
     faqs,
+    ...(() => {
+      const scored = scoreSeoBlog({
+        slug: String(row.slug),
+        title: String(seo.meta_title || row.title || '').trim(),
+        description: String(seo.meta_description || row.excerpt || '').trim(),
+        keywords: String(seo.keywords || '').trim(),
+        keyphrase: String(seo.keyphrase || '').trim(),
+        canonical_url: String(seo.canonical_url || '').trim(),
+        og_title: String(seo.og_title || '').trim(),
+        og_description: String(seo.og_description || '').trim(),
+        og_image: String(seo.og_image || '').trim(),
+        featured_image_alt: String(seo.featured_image_alt || '').trim(),
+        author_name: String(seo.author_name || '').trim(),
+        local_city: String(seo.local_city || '').trim(),
+        local_areas: Array.isArray(seo.local_areas) ? seo.local_areas.join(', ') : '',
+        search_intent: String(seo.search_intent || 'Informational').trim(),
+        robots_index: seo.robots_index !== false,
+        schema_blogposting: seo.schema_blogposting !== false,
+        schema_faq: seo.schema_faq !== false,
+        faqs,
+      });
+      return {
+        seo_score: scored.score,
+        seo_grade: scored.grade,
+        seo_missing: scored.missing,
+      };
+    })(),
     indexable: isBlogIndexable(row.seo_data),
     status: String(row.status || ''),
     updated_at: row.updated_at ? String(row.updated_at) : undefined,

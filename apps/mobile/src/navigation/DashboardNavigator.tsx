@@ -170,6 +170,7 @@ import WorkshopManagementScreen from '../screens/dashboard/superadmin/WorkshopMa
 import UserRoleManagementScreen from '../screens/dashboard/superadmin/UserRoleManagementScreen';
 import ReportsAnalyticsScreen from '../screens/dashboard/superadmin/ReportsAnalyticsScreen';
 import SystemSettingsScreen from '../screens/dashboard/superadmin/SystemSettingsScreen';
+import SuperAdminDailyBlogsScreen from '../screens/dashboard/superadmin/SuperAdminDailyBlogsScreen';
 import LeadsManagementScreen from '../screens/dashboard/superadmin/LeadsManagementScreen';
 import AuditLogsScreen from '../screens/dashboard/superadmin/AuditLogsScreen';
 import FinancePayoutScreen from '../screens/dashboard/superadmin/FinancePayoutScreen';
@@ -1451,6 +1452,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         <Stack.Screen name="LeadManagerTeamWhatsApp" component={LeadManagerTeamWhatsAppScreen} options={{ headerShown: false }} />
         <Stack.Screen name="LeadManagerWhatsAppDnd" component={LeadManagerWhatsAppDndScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminSystemMonitor" component={SuperAdminSystemMonitorScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminDailyBlogs" component={SuperAdminDailyBlogsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminDataRights" component={SuperAdminDataRightsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminMetaAdsMcp" component={SuperAdminMetaAdsMcpScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminDltSms" component={SuperAdminDltSmsScreen} options={{ headerShown: false }} />

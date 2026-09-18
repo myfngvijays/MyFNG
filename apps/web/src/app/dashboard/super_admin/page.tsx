@@ -27,6 +27,7 @@ import {
   Percent,
   LogOut,
   Mail,
+  FileText,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -44,6 +45,7 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
+import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
 
 const CHART_COLORS = ['#004AAD', '#0066FF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -147,6 +149,7 @@ const QUICK_LINKS = [
   { href: '/dashboard/super_admin/workshops', label: 'Workshops', icon: Store },
   { href: '/dashboard/super_admin/advance-notifications?section=dashboard', label: 'Push Dashboard', icon: Bell },
   { href: '/dashboard/super_admin/dlt-sms?section=dashboard', label: 'DLT SMS', icon: Mail },
+  { href: '/dashboard/super_admin/daily-blogs', label: 'Daily Blogs', icon: FileText },
 ];
 
 function mapDashboardPeriodToBookingsPreset(period: DashboardPeriod): {
@@ -493,6 +496,8 @@ export default function SuperAdminDashboard() {
             </button>
           </div>
         ) : null}
+
+        <DailyBlogScheduleCard compact />
 
         {/* Date range */}
         <div className="bg-white rounded-xl shadow-sm border p-3 sm:p-4 space-y-3">

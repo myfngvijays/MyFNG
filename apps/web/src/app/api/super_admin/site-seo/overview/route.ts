@@ -1,4 +1,5 @@
 import { classifySitePagePath, listSitePageSitemapEntries, SITE_PAGE_SEO_TABLE, sortSitePageSeoRows, mapSitePageSeoRow } from '@/lib/site-page-seo';
+import { averageSeoScore, scoreSeoPage } from '@/lib/seo/seoScore';
 import { listBlogSeoSummaries } from '@/lib/blog/seo';
 import { buildLiveFileAdminViews } from '@/lib/site-seo-live-files';
 import {
@@ -136,32 +137,70 @@ export async function GET() {
       blogs: blogSitemap.length,
     });
 
-    const attentionPages = rows
-      .filter((row) => row.active && (!row.title.trim() || !row.description.trim() || row.title.length > 60 || row.description.length > 160))
-      .slice(0, 8)
-      .map((row) => ({
+    const pageScores = rows.map((row) => {
+      const scored = scoreSeoPage(row);
+      return {
         id: row.id,
         page_label: row.page_label,
         page_path: row.page_path,
         title_length: row.title.length,
         description_length: row.description.length,
         noindex: row.noindex,
-      }));
+        seo_score: scored.score,
+        seo_grade: scored.grade,
+        missing: scored.missing.slice(0, 4).map((item) => item.label),
+      };
+    });
+    const blogScores = blogs.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      page_label: row.page_label,
+      preview_href: row.preview_href,
+      seo_score: row.seo_score,
+      seo_grade: row.seo_grade,
+      missing: (row.seo_missing || []).slice(0, 4).map((item) => item.label),
+    }));
 
-    const healthScore = Math.max(
+    const pageAvg = averageSeoScore(pageScores.map((row) => row.seo_score));
+    const blogAvg = averageSeoScore(blogScores.map((row) => row.seo_score));
+    const technicalScore = Math.max(
       0,
       100 -
-        health.missingMeta * 15 -
-        health.longTitles * 4 -
-        health.longDescriptions * 3 -
-        (googleVerified ? 0 : 10) -
+        (googleVerified ? 0 : 20) -
+        (bingVerified ? 0 : 8) -
         (health.serviceCount === 0 ? 8 : 0) -
         (health.cityCount === 0 ? 8 : 0),
     );
+    const weighted = [
+      pageScores.length ? { score: pageAvg, weight: 40 } : null,
+      blogScores.length ? { score: blogAvg, weight: 45 } : null,
+      { score: technicalScore, weight: 15 },
+    ].filter(Boolean) as Array<{ score: number; weight: number }>;
+    const weightTotal = weighted.reduce((sum, item) => sum + item.weight, 0) || 1;
+    const healthScore = Math.round(weighted.reduce((sum, item) => sum + item.score * item.weight, 0) / weightTotal);
+
+    const attentionPages = pageScores
+      .filter((row) => row.seo_score < 80)
+      .sort((a, b) => a.seo_score - b.seo_score)
+      .slice(0, 10);
+    const attentionBlogs = blogScores
+      .filter((row) => row.seo_score < 80)
+      .sort((a, b) => a.seo_score - b.seo_score)
+      .slice(0, 10);
+
+    if (pageAvg && pageAvg < 70) {
+      issues.push({ severity: 'warning', message: `Average page SEO score is ${pageAvg}. Fix title, description, keywords and keyphrase.`, tab: 'all' });
+    }
+    if (blogAvg && blogAvg < 70) {
+      issues.push({ severity: 'warning', message: `Average blog SEO score is ${blogAvg}. Fix slug, FAQs, city and meta fields.`, tab: 'blog' });
+    }
 
     return NextResponse.json({
       data: {
         health_score: healthScore,
+        page_avg: pageAvg,
+        blog_avg: blogAvg,
+        technical_score: technicalScore,
         issues,
         counts: {
           managed_total: rows.length,
@@ -183,6 +222,15 @@ export async function GET() {
         },
         links: overviewLinks,
         attention_pages: attentionPages,
+        attention_blogs: attentionBlogs,
+        score_bands: {
+          pages_good: pageScores.filter((row) => row.seo_score >= 80).length,
+          pages_mid: pageScores.filter((row) => row.seo_score >= 60 && row.seo_score < 80).length,
+          pages_low: pageScores.filter((row) => row.seo_score < 60).length,
+          blogs_good: blogScores.filter((row) => row.seo_score >= 80).length,
+          blogs_mid: blogScores.filter((row) => row.seo_score >= 60 && row.seo_score < 80).length,
+          blogs_low: blogScores.filter((row) => row.seo_score < 60).length,
+        },
       },
     });
   } catch (e: any) {

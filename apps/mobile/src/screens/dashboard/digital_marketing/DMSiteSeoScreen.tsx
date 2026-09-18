@@ -18,6 +18,7 @@ import { COLORS, SPACING } from '../../../constants/theme';
 
 type SeoTab = 'overview' | 'pages' | 'workshops' | 'blogs';
 
+type SeoMissing = { label: string; fix: string };
 type PageRow = {
   id: string;
   page_path: string;
@@ -27,6 +28,8 @@ type PageRow = {
   keywords?: string;
   noindex?: boolean;
   active?: boolean;
+  seo_score?: number;
+  seo_missing?: SeoMissing[];
 };
 
 type WorkshopRow = { slug: string; title?: string; name?: string; city?: string; preview_href?: string };
@@ -46,6 +49,8 @@ type BlogRow = {
   faqs?: BlogFaq[];
   status?: string;
   preview_href?: string;
+  seo_score?: number;
+  seo_missing?: SeoMissing[];
 };
 
 const TABS: Array<{ id: SeoTab; label: string }> = [
@@ -213,8 +218,8 @@ export default function DMSiteSeoScreen() {
               <View style={styles.chipGrid}>
                 {[
                   ['Score', `${overview?.health_score ?? '—'}%`],
-                  ['Pages', String(counts.managed_total ?? pages.length)],
-                  ['Workshops', String(counts.workshops_total ?? workshops.length)],
+                  ['Pages avg', `${overview?.page_avg ?? '—'}`],
+                  ['Blogs avg', `${overview?.blog_avg ?? '—'}`],
                   ['Blogs', String(counts.blogs_total ?? blogs.length)],
                 ].map(([label, value]) => (
                   <View key={label} style={styles.chip}>
@@ -248,6 +253,12 @@ export default function DMSiteSeoScreen() {
                 <View style={styles.editor}>
                   <Text style={styles.editorTitle}>{selected.page_label || selected.page_path}</Text>
                   <Text style={styles.path}>{selected.page_path}</Text>
+                  <Text style={styles.scoreLine}>SEO score {selected.seo_score ?? '—'}</Text>
+                  {(selected.seo_missing || []).slice(0, 6).map((item) => (
+                    <Text key={item.label} style={styles.missing}>
+                      • {item.fix || item.label}
+                    </Text>
+                  ))}
                   <TextInput
                     value={selected.title}
                     onChangeText={(title) => setSelected({ ...selected, title })}
@@ -277,7 +288,7 @@ export default function DMSiteSeoScreen() {
                     {page.page_label || page.page_path}
                   </Text>
                   <Text style={styles.rowMeta} numberOfLines={1}>
-                    {page.title}
+                    Score {page.seo_score ?? '—'} · {page.title}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -303,6 +314,12 @@ export default function DMSiteSeoScreen() {
                 <View style={styles.editor}>
                   <Text style={styles.editorTitle}>{selectedBlog.title || selectedBlog.slug}</Text>
                   <Text style={styles.path}>{`/blogs/${selectedBlog.slug}`}</Text>
+                  <Text style={styles.scoreLine}>SEO score {selectedBlog.seo_score ?? '—'}</Text>
+                  {(selectedBlog.seo_missing || []).slice(0, 6).map((item) => (
+                    <Text key={item.label} style={styles.missing}>
+                      • {item.fix || item.label}
+                    </Text>
+                  ))}
                   <TextInput
                     value={selectedBlog.slug}
                     onChangeText={(slug) => setSelectedBlog({ ...selectedBlog, slug, preview_href: `/blogs/${slug}` })}
@@ -404,7 +421,7 @@ export default function DMSiteSeoScreen() {
                       {b.title || b.slug}
                     </Text>
                     <Text style={styles.rowMeta} numberOfLines={1}>
-                      {b.preview_href || `/blogs/${b.slug}`}
+                      Score {b.seo_score ?? '—'} · {b.preview_href || `/blogs/${b.slug}`}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -461,6 +478,8 @@ const styles = StyleSheet.create({
   },
   editorTitle: { fontSize: 14, fontWeight: '800', color: COLORS.heading },
   path: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 8 },
+  scoreLine: { fontSize: 12, fontWeight: '800', color: COLORS.primary, marginBottom: 6 },
+  missing: { fontSize: 11, color: COLORS.textSecondary, marginBottom: 3 },
   input: {
     borderWidth: 1,
     borderColor: COLORS.border,

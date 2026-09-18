@@ -13,8 +13,8 @@ import {
   Sparkles,
   TrendingUp,
   UserCheck,
-  Zap,
 } from 'lucide-react';
+import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
 
 type BlogCard = {
   id: string;
@@ -76,6 +76,9 @@ type DashboardData = {
     last_blog: { id: string; title: string; slug: string; published_at: string | null } | null;
     today: string;
     today_posted: boolean;
+    today_posted_count?: number;
+    posts_per_day?: number;
+    post_times?: string[];
     next_run_at: string;
     schedule: string;
     cron: string;
@@ -135,9 +138,12 @@ const EMPTY: DashboardData = {
     last_blog: null,
     today: '',
     today_posted: false,
+    today_posted_count: 0,
+    posts_per_day: 1,
+    post_times: ['10:00'],
     next_run_at: '',
-    schedule: '10:00 AM IST',
-    cron: '30 4-10 * * *',
+    schedule: '10:00 IST',
+    cron: '30 * * * *',
     provider: 'Supabase Cronon',
     city_rotation: '',
     usp_rotation: '',
@@ -222,7 +228,6 @@ export default function DigitalMarketingDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncingAuthors, setSyncingAuthors] = useState(false);
-  const [dailyBusy, setDailyBusy] = useState(false);
 
   useEffect(() => {
     void loadDashboard();
@@ -263,44 +268,6 @@ export default function DigitalMarketingDashboard() {
       toast.error(e instanceof Error ? e.message : 'Failed to sync authors');
     } finally {
       setSyncingAuthors(false);
-    }
-  }
-
-  async function runDailyNow() {
-    setDailyBusy(true);
-    try {
-      const res = await fetch('/api/blogs/daily-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'run_now' }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.run?.error || json?.error || 'Failed to publish daily blog');
-      toast.success(json?.run?.title ? `Published: ${json.run.title}` : 'Daily blog published');
-      await loadDashboard();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to publish daily blog');
-    } finally {
-      setDailyBusy(false);
-    }
-  }
-
-  async function toggleDaily(enabled: boolean) {
-    setDailyBusy(true);
-    try {
-      const res = await fetch('/api/blogs/daily-settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || 'Failed to update daily posting');
-      toast.success(enabled ? 'Daily 10:00 AM posting is on' : 'Daily posting paused');
-      await loadDashboard();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to update daily posting');
-    } finally {
-      setDailyBusy(false);
     }
   }
 
@@ -365,25 +332,14 @@ export default function DigitalMarketingDashboard() {
           </div>
         </section>
 
+        <DailyBlogScheduleCard compact />
+
         <section
           className={`rounded-xl border px-3 py-2 ${
             dailyAlert ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'
           }`}
         >
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <p className="text-xs font-bold text-[#023D95] inline-flex items-center gap-1">
-              <Zap className="h-3.5 w-3.5 text-[#C9A227]" />
-              Daily 10:00 AM
-            </p>
-            {dailyPost.missing_table ? (
-              statusBadge('failed')
-            ) : !dailyPost.enabled ? (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">Paused</span>
-            ) : dailyPost.today_posted ? (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">Posted today</span>
-            ) : (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">Missing today</span>
-            )}
             <p className="text-[11px] text-slate-600 min-w-0 flex-1 truncate">
               {dailyPost.missing_table
                 ? 'Cronon job missing — add daily-blog-auto-post'
@@ -393,32 +349,14 @@ export default function DigitalMarketingDashboard() {
               {' · '}
               {fmtDateTime(dailyPost.last_run_at)}
             </p>
-            <div className="flex gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={runDailyNow}
-                disabled={dailyBusy || dailyPost.missing_table}
-                className="rounded-lg bg-[#023D95] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-60"
-              >
-                {dailyBusy ? '…' : 'Post now'}
-              </button>
-              <button
-                type="button"
-                onClick={() => toggleDaily(!dailyPost.enabled)}
-                disabled={dailyBusy || dailyPost.missing_table}
-                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
-              >
-                {dailyPost.enabled ? 'Pause' : 'Enable'}
-              </button>
-              <Link href="/dashboard/digital_marketing/blogs" className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                All
-              </Link>
-            </div>
+            <Link href="/dashboard/digital_marketing/blogs" className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              All blogs
+            </Link>
           </div>
           {dailyPost.recent_runs.length ? (
             <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-500">
-              {dailyPost.recent_runs.slice(0, 3).map((run) => (
-                <span key={run.run_date}>
+              {dailyPost.recent_runs.slice(0, 3).map((run, idx) => (
+                <span key={`${run.run_date}-${idx}`}>
                   {run.run_date.slice(5)} {run.status}
                   {run.topic ? ` · ${run.topic}` : ''}
                 </span>

@@ -6,6 +6,7 @@ import {
   SITE_PAGE_SEO_TABLE,
   sortSitePageSeoRows,
 } from '@/lib/site-page-seo';
+import { scoreSeoPage } from '@/lib/seo/seoScore';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { revalidateSitePageSeo } from '@/lib/seo/revalidate';
 import { createClient } from '@/lib/supabase/server';
@@ -51,7 +52,12 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json({ data: sortSitePageSeoRows((data || []).map(mapSitePageSeoRow)) });
+    return NextResponse.json({
+      data: sortSitePageSeoRows((data || []).map(mapSitePageSeoRow)).map((row) => {
+        const scored = scoreSeoPage(row);
+        return { ...row, seo_score: scored.score, seo_grade: scored.grade, seo_missing: scored.missing };
+      }),
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
   }

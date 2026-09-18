@@ -161,12 +161,11 @@ SELECT cron.schedule(
 );
 
 -- -----------------------------------------------------------------------------
--- Daily AI blog (10:00 AM IST, hourly catch-up until 4:00 PM IST)
--- 04:30–10:30 UTC. 5 min timeout — OpenAI draft + cover upload.
+-- Daily AI blog (hourly catch-up for admin-configured IST slot times)
 -- -----------------------------------------------------------------------------
 SELECT cron.schedule(
   'daily-blog-auto-post',
-  '30 4-10 * * *',
+  '30 * * * *',
   $$
   SELECT net.http_get(
     url := 'https://myfng.in/api/cron/daily-blog',

@@ -7,12 +7,64 @@ import { SITE_URL } from '@/lib/seo/metadata';
 import { classifySitePagePath } from '@/lib/site-page-seo';
 import type { SitePageSeoRow } from '@/lib/site-page-seo';
 import { buildBlogSchemaPreview, sanitizeBlogSlug, type BlogSeoSummary } from '@/lib/blog/seo';
+import { scoreSeoBlog, scoreSeoPage, seoScoreTone, type SeoScoreResult } from '@/lib/seo/seoScore';
 import type { WorkshopSeoSummary } from '@/lib/workshop-page-seo';
+import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
 import TechnicalSeoPanel from '@/components/admin/site-seo/TechnicalSeoPanel';
 import SeoOverviewDashboard, { type SeoOverviewData } from '@/components/admin/site-seo/SeoOverviewDashboard';
 import { seoAdminTheme as t } from '@/components/admin/site-seo/seo-admin-theme';
 
 type SeoTab = 'overview' | 'all' | 'static' | 'service' | 'city' | 'workshop' | 'blog' | 'technical';
+type ScoredPage = SitePageSeoRow & { seo_score?: number; seo_grade?: string };
+
+function ScoreBadge({ score }: { score: number }) {
+  const tone = seoScoreTone(score);
+  const cls =
+    tone === 'good'
+      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+      : tone === 'mid'
+        ? 'bg-amber-50 text-amber-700 ring-amber-200'
+        : 'bg-red-50 text-red-700 ring-red-200';
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ring-1 ${cls}`}>{score}</span>
+  );
+}
+
+function ScoreChecklist({ result }: { result: SeoScoreResult }) {
+  return (
+    <div className={`${t.card} p-5`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className={t.sectionTitle}>SEO score</h3>
+          <p className={`mt-2 text-sm ${t.subtitle}`}>
+            {result.passed}/{result.total} policy checks passed. Fix the missing items to raise this URL.
+          </p>
+        </div>
+        <div className="text-right">
+          <p className={`text-3xl font-black ${
+            seoScoreTone(result.score) === 'good' ? t.scoreGood : seoScoreTone(result.score) === 'mid' ? t.scoreMid : t.scoreBad
+          }`}>{result.score}</p>
+          <p className={t.hint}>Grade {result.grade}</p>
+        </div>
+      </div>
+      <div className="mt-4 space-y-2">
+        {result.checks.map((check) => (
+          <div key={check.id} className={t.issueRow}>
+            <div>
+              <p className={`text-sm font-semibold ${check.passed ? 'text-emerald-700' : t.body}`}>
+                {check.passed ? '✓' : '•'} {check.label}
+              </p>
+              {!check.passed ? <p className={`mt-0.5 text-xs ${t.subtitle}`}>{check.fix}</p> : null}
+            </div>
+            <span className={`text-xs font-bold uppercase ${check.passed ? t.charGood : check.severity === 'error' ? t.charBad : t.charMid}`}>
+              {check.passed ? 'OK' : check.severity}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function CharCount({ value, ideal }: { value: string; ideal: number }) {
   const len = value.length;
@@ -52,7 +104,8 @@ const TAB_META: Record<SeoTab, { label: string; subtitle: string }> = {
 };
 
 export default function SiteSeoAdminApp() {
-  const [rows, setRows] = useState<SitePageSeoRow[]>([]);
+  const [needsWorkOnly, setNeedsWorkOnly] = useState(false);
+  const [rows, setRows] = useState<ScoredPage[]>([]);
   const [workshops, setWorkshops] = useState<WorkshopSeoSummary[]>([]);
   const [blogs, setBlogs] = useState<BlogSeoSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +130,7 @@ export default function SiteSeoAdminApp() {
       const res = await fetch('/api/super_admin/site-seo', { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || json?.details || 'Failed to load page SEO');
-      const data = (json.data || []) as SitePageSeoRow[];
+      const data = (json.data || []) as ScoredPage[];
       setRows(data);
       setSelectedId((prev) => {
         if (prev && data.some((row) => row.id === prev)) return prev;
@@ -180,6 +233,7 @@ export default function SiteSeoAdminApp() {
       if (tab === 'service' && kind !== 'service') return false;
       if (tab === 'city' && kind !== 'city') return false;
       if (tab === 'workshop' || tab === 'blog' || tab === 'technical' || tab === 'overview') return false;
+      if (needsWorkOnly && (row.seo_score ?? scoreSeoPage(row).score) >= 80) return false;
       if (!q) return true;
       return (
         row.page_label.toLowerCase().includes(q) ||
@@ -187,7 +241,7 @@ export default function SiteSeoAdminApp() {
         row.title.toLowerCase().includes(q)
       );
     });
-  }, [query, rows, tab]);
+  }, [query, rows, tab, needsWorkOnly]);
 
   const filteredWorkshops = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -202,14 +256,16 @@ export default function SiteSeoAdminApp() {
 
   const filteredBlogs = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return blogs;
-    return blogs.filter(
-      (row) =>
+    return blogs.filter((row) => {
+      if (needsWorkOnly && (row.seo_score ?? scoreSeoBlog(row).score) >= 80) return false;
+      if (!q) return true;
+      return (
         row.page_label.toLowerCase().includes(q) ||
         row.slug.toLowerCase().includes(q) ||
-        row.title.toLowerCase().includes(q),
-    );
-  }, [query, blogs]);
+        row.title.toLowerCase().includes(q)
+      );
+    });
+  }, [query, blogs, needsWorkOnly]);
 
   const selectedWorkshop = useMemo(
     () => workshops.find((row) => row.slug === selectedWorkshopSlug) || null,
@@ -320,7 +376,12 @@ export default function SiteSeoAdminApp() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || json?.details || 'Save failed');
       const updated = json.data as SitePageSeoRow;
-      setRows((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      const scored = scoreSeoPage(updated);
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === updated.id ? { ...updated, seo_score: scored.score, seo_grade: scored.grade } : row,
+        ),
+      );
       toast.success(`SEO saved for ${updated.page_label}`);
       await loadOverview();
     } catch (err: any) {
@@ -339,6 +400,9 @@ export default function SiteSeoAdminApp() {
         : selectedBlog
           ? `${SITE_URL}${selectedBlog.preview_href}`
           : SITE_URL;
+
+  const livePageScore = useMemo(() => (draft ? scoreSeoPage(draft) : null), [draft]);
+  const liveBlogScore = useMemo(() => (blogDraft ? scoreSeoBlog(blogDraft) : null), [blogDraft]);
 
   const blogSchemaPreview = useMemo(
     () =>
@@ -457,6 +521,11 @@ export default function SiteSeoAdminApp() {
           })}
         </div>
         <p className={`mt-2 text-sm ${t.subtitle}`}>{TAB_META[tab].subtitle}</p>
+        {tab === 'blog' ? (
+          <div className="mt-4">
+            <DailyBlogScheduleCard compact />
+          </div>
+        ) : null}
       </div>
 
       {tab === 'technical' ? (
@@ -473,6 +542,10 @@ export default function SiteSeoAdminApp() {
               setSelectedId(id);
               setTab('all');
             }}
+            onSelectBlog={(slug) => {
+              setSelectedBlogSlug(slug);
+              setTab('blog');
+            }}
           />
         </div>
       ) : (
@@ -487,6 +560,16 @@ export default function SiteSeoAdminApp() {
               className={`${t.input} py-2.5 pl-10 pr-3`}
             />
           </div>
+          {tab !== 'workshop' ? (
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
+              <input
+                type="checkbox"
+                checked={needsWorkOnly}
+                onChange={(e) => setNeedsWorkOnly(e.target.checked)}
+              />
+              Needs work only (score under 80)
+            </label>
+          ) : null}
           <div className="mt-4 max-h-[60vh] space-y-1 overflow-y-auto lg:max-h-[calc(100dvh-12rem)]">
             {listLoading ? (
               <p className={`px-2 py-6 text-sm ${t.subtitle}`}>Loading…</p>
@@ -505,7 +588,10 @@ export default function SiteSeoAdminApp() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className={t.listTitle}>{row.page_label}</span>
-                        {!row.indexable ? <span className={t.badge.noindex}>Noindex</span> : null}
+                        <div className="flex items-center gap-1">
+                          <ScoreBadge score={row.seo_score ?? scoreSeoBlog(row).score} />
+                          {!row.indexable ? <span className={t.badge.noindex}>Noindex</span> : null}
+                        </div>
                       </div>
                       <p className={`mt-0.5 truncate text-xs ${t.subtitle}`}>{row.preview_href}</p>
                     </button>
@@ -550,11 +636,12 @@ export default function SiteSeoAdminApp() {
                     onClick={() => setSelectedId(row.id)}
                     className={active ? t.listItemActive : t.listItem}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={t.listTitle}>{row.page_label}</span>
-                      <div className="flex items-center gap-1">
-                        {kind === 'service' ? <span className={t.badge.service}>Service</span> : null}
-                        {kind === 'city' ? <span className={t.badge.city}>City</span> : null}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={t.listTitle}>{row.page_label}</span>
+                        <div className="flex items-center gap-1">
+                          <ScoreBadge score={row.seo_score ?? scoreSeoPage(row).score} />
+                          {kind === 'service' ? <span className={t.badge.service}>Service</span> : null}
+                          {kind === 'city' ? <span className={t.badge.city}>City</span> : null}
                         {!row.active ? (
                           <span className={t.badge.off}>Off</span>
                         ) : row.noindex ? (
@@ -659,6 +746,8 @@ export default function SiteSeoAdminApp() {
                     </div>
                   </div>
                 </div>
+
+                {liveBlogScore ? <ScoreChecklist result={liveBlogScore} /> : null}
 
                 <div className={`${t.card} p-5`}>
                   <h3 className={t.sectionTitle}>Search Preview</h3>
@@ -993,6 +1082,8 @@ export default function SiteSeoAdminApp() {
                   </a>
                 </div>
               </div>
+
+              {livePageScore ? <ScoreChecklist result={livePageScore} /> : null}
 
               <div className={`${t.card} p-5`}>
                 <h3 className={t.sectionTitle}>Search Preview</h3>

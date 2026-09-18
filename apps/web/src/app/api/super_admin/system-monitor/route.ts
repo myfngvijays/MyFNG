@@ -22,7 +22,8 @@ import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlert
 import { graphGet } from '@/lib/meta-ads/graph';
 import { loadTelecallerLeadsShiftLastRun } from '@/lib/services/telecallerLeadsShiftSummary';
 import { getTelecallerLeadsShiftTemplateStatus } from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
-import { isAfterDailyBlogSlot, istDateString } from '@/lib/blog/dailyTopics';
+import { istDateString } from '@/lib/blog/dailyTopics';
+import { overdueSlotIndexes, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -1452,11 +1453,19 @@ async function checkDailyBlog(): Promise<HealthCheck> {
   }
 
   try {
-    const { data, error } = await client
+    let settingsRes = await client
       .from('daily_blog_settings')
-      .select('enabled, last_run_at, last_status, last_error, last_blog_id')
+      .select('enabled, last_run_at, last_status, last_error, last_blog_id, posts_per_day, post_times')
       .eq('id', 1)
       .maybeSingle();
+    if (settingsRes.error && /posts_per_day|post_times/i.test(settingsRes.error.message || '')) {
+      settingsRes = await client
+        .from('daily_blog_settings')
+        .select('enabled, last_run_at, last_status, last_error, last_blog_id')
+        .eq('id', 1)
+        .maybeSingle();
+    }
+    const { data, error } = settingsRes;
     const responseTime = Date.now() - start;
 
     if (error) {
@@ -1486,7 +1495,7 @@ async function checkDailyBlog(): Promise<HealthCheck> {
         status: 'degraded',
         responseTime,
         message: 'OPENAI_API_KEY missing',
-        reason: '10:00 AM IST daily blog generate needs OPENAI_API_KEY.',
+        reason: 'Daily auto-blog generate needs OPENAI_API_KEY.',
         quickFix: {
           label: 'Check Environment Variables',
           action: 'check-env',
@@ -1511,14 +1520,32 @@ async function checkDailyBlog(): Promise<HealthCheck> {
 
     const failed = String(data?.last_status || '') === 'failed';
     const enabled = data?.enabled !== false;
-    const lastRunIst = data?.last_run_at ? istDateString(new Date(data.last_run_at)) : null;
-    const missedToday =
-      enabled &&
-      isAfterDailyBlogSlot(new Date(), 15) &&
-      (lastRunIst !== istDateString() || String(data?.last_status || '') !== 'success');
+    const schedule = resolveDailyBlogSchedule(data);
+    let postedIndexes: number[] = [];
+    try {
+      let runsRes = await client
+        .from('daily_blog_runs')
+        .select('status, slot_index')
+        .eq('run_date', istDateString());
+      if (runsRes.error) {
+        runsRes = await client
+          .from('daily_blog_runs')
+          .select('status')
+          .eq('run_date', istDateString());
+      }
+      postedIndexes = (runsRes.data || [])
+        .filter((row: any) => row.status === 'success')
+        .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
+    } catch {
+      postedIndexes = [];
+    }
+    const overdue = overdueSlotIndexes(schedule, postedIndexes);
+    const missedToday = enabled && overdue.length > 0;
     const crononMissing = crononJob == null;
     const crononOff = crononJob?.active === false;
-    const unhealthy = failed || missedToday || crononMissing || crononOff;
+    const crononHourly = !crononJob?.schedule || /^\d+ \* \* \* \*$/.test(String(crononJob.schedule));
+    const crononNarrow = Boolean(crononJob) && !crononHourly && schedule.posts_per_day > 1;
+    const unhealthy = failed || missedToday || crononMissing || crononOff || crononNarrow;
     return {
       name: 'Daily Blog Auto-Post',
       category: 'Background Jobs',
@@ -1528,24 +1555,28 @@ async function checkDailyBlog(): Promise<HealthCheck> {
         ? 'Cronon job missing'
         : crononOff
           ? 'Cronon job paused'
-          : missedToday
-            ? 'Today’s 10:00 AM blog is missing'
-            : failed
-              ? 'Last 10:00 AM run failed'
-              : enabled
-                ? 'Scheduled 10:00 AM IST'
-                : 'Auto-post paused',
+          : crononNarrow
+            ? 'Cronon still uses the old 10:00–4:00 window'
+            : missedToday
+              ? `${overdue.length} daily slot${overdue.length > 1 ? 's' : ''} missing (${schedule.label})`
+              : failed
+                ? 'Last daily blog run failed'
+                : enabled
+                  ? `Scheduled ${schedule.posts_per_day} blog${schedule.posts_per_day > 1 ? 's' : ''} · ${schedule.label}`
+                  : 'Auto-post paused',
       reason: crononMissing
         ? 'Supabase Cronon has no daily-blog-auto-post job. Other live crons (WhatsApp, health) run from Cronon. Run database/368_daily_blog_pg_cron.sql in SQL Editor.'
         : crononOff
           ? 'Supabase Cronon job daily-blog-auto-post is inactive. Enable it on Integrations → Cronon.'
-          : missedToday
-            ? `No successful daily blog for ${istDateString()} after 10:00 AM IST. Cronon retries hourly until 4:00 PM. Use Digital Marketing → Blogs → Post now.`
-            : failed
-              ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
-              : enabled
-                ? 'Supabase Cronon job daily-blog-auto-post hits /api/cron/daily-blog at 10:00 AM IST and retries hourly until 4:00 PM IST. Posts follow Google AI Overview style. Every Monday is an About MyFNG USP (₹1500 interim, photo-proof, app vs WhatsApp, pickup, Prime).'
-                : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
+          : crononNarrow
+            ? 'Admin can now set 1–5 IST slot times. Unschedule daily-blog-auto-post and run database/368_daily_blog_pg_cron.sql so it fires hourly (`30 * * * *`).'
+            : missedToday
+              ? `No successful post for due slot(s) ${overdue.join(', ')} on ${istDateString()}. Cronon hits /api/cron/daily-blog every hour. Use Digital Marketing → Blogs → Post now, or change times in the schedule card.`
+              : failed
+                ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
+                : enabled
+                  ? `Supabase Cronon job daily-blog-auto-post hits /api/cron/daily-blog hourly. Count and IST times are set from Digital Marketing → Blogs (1–5 slots). Every Monday slot 1 is an About MyFNG USP.`
+                  : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
       quickFix: {
         label: crononMissing || crononOff ? 'Open Cronon SQL' : 'Open Blogs',
         action: 'internal-link',
@@ -1557,7 +1588,11 @@ async function checkDailyBlog(): Promise<HealthCheck> {
         last_run_at: data?.last_run_at || null,
         last_status: data?.last_status || null,
         last_blog_id: data?.last_blog_id || null,
+        posts_per_day: schedule.posts_per_day,
+        post_times: schedule.times,
+        posted_today: postedIndexes.length,
         missed_today: missedToday,
+        overdue_slots: overdue,
         cronon_job: crononJob?.jobname || null,
         cronon_schedule: crononJob?.schedule || null,
         cronon_active: crononJob?.active ?? null,

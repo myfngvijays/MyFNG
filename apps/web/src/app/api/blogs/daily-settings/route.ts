@@ -7,6 +7,8 @@ import {
   refreshDailyBlogCover,
   runDailyBlogPost,
 } from '@/lib/blog/runDailyBlogPost';
+import { resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
+import { istDateString } from '@/lib/blog/dailyTopics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,10 +49,12 @@ async function settingsPayload() {
   }
 
   const settings = loaded.settings;
+  const { supabaseAdmin } = getSupabaseAdmin();
   let lastBlog: { id: string; title: string; slug: string; published_at: string | null } | null = null;
-  if (settings?.last_blog_id) {
-    const { supabaseAdmin } = getSupabaseAdmin();
-    if (supabaseAdmin) {
+  let postedIndexes: number[] = [];
+  let todaySlots: Array<{ index: number; time: string; status: string; topic?: string | null }> = [];
+  if (supabaseAdmin) {
+    if (settings?.last_blog_id) {
       const { data } = await supabaseAdmin
         .from('blogs')
         .select('id, title, slug, published_at')
@@ -58,13 +62,40 @@ async function settingsPayload() {
         .maybeSingle();
       if (data) lastBlog = data as any;
     }
+    const today = istDateString();
+    let runsRes = await supabaseAdmin
+      .from('daily_blog_runs')
+      .select('status, slot_index, topic')
+      .eq('run_date', today);
+    if (runsRes.error) {
+      runsRes = await supabaseAdmin
+        .from('daily_blog_runs')
+        .select('status, topic')
+        .eq('run_date', today);
+    }
+    const runs = runsRes.data;
+    postedIndexes = (runs || [])
+      .filter((row: any) => row.status === 'success')
+      .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
+    const resolved = resolveDailyBlogSchedule(settings);
+    todaySlots = resolved.slots.map((slot) => {
+      const run = (runs || []).find((row: any) => Number(row.slot_index || 1) === slot.index);
+      return {
+        index: slot.index,
+        time: slot.time,
+        status: run?.status || 'pending',
+        topic: run?.topic || null,
+      };
+    });
   }
 
   return {
     missing: false,
     settings,
-    schedule: dailyBlogScheduleInfo(settings),
+    schedule: dailyBlogScheduleInfo(settings, postedIndexes),
     last_blog: lastBlog,
+    today_slots: todaySlots,
+    today_posted_count: postedIndexes.length,
   };
 }
 
@@ -91,6 +122,16 @@ export async function PATCH(request: NextRequest) {
   if (body?.word_count != null) {
     patch.word_count = Math.max(400, Math.min(2500, Number(body.word_count) || 600));
   }
+  if (body?.posts_per_day != null || body?.post_times != null) {
+    const { normalizePostTimes } = await import('@/lib/blog/dailyBlogSlots');
+    const current = await loadDailyBlogSettings();
+    const count = Math.max(
+      1,
+      Math.min(5, Number(body.posts_per_day ?? current.settings?.posts_per_day ?? 1) || 1),
+    );
+    patch.posts_per_day = count;
+    patch.post_times = normalizePostTimes(body.post_times ?? current.settings?.post_times, count);
+  }
   if (body?.category_id !== undefined) {
     patch.category_id = body.category_id ? String(body.category_id) : null;
   }
@@ -101,7 +142,13 @@ export async function PATCH(request: NextRequest) {
   const { error } = await supabaseAdmin.from('daily_blog_settings').update(patch).eq('id', 1);
   if (error) {
     return NextResponse.json(
-      { error: missingSql(error.message) ? 'Run database/365_daily_blog_auto_post.sql' : error.message },
+      {
+        error: missingSql(error.message)
+          ? 'Run database/365_daily_blog_auto_post.sql and database/369_daily_blog_slots.sql'
+          : /posts_per_day|post_times|slot_index/i.test(error.message)
+            ? 'Run database/369_daily_blog_slots.sql to enable multi-post daily schedule'
+            : error.message,
+      },
       { status: 500 },
     );
   }

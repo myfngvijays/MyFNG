@@ -18,6 +18,9 @@ import { seoAdminTheme as t } from '@/components/admin/site-seo/seo-admin-theme'
 
 export type SeoOverviewData = {
   health_score: number;
+  page_avg?: number;
+  blog_avg?: number;
+  technical_score?: number;
   issues: Array<{ severity: 'error' | 'warning' | 'info'; message: string; tab?: string }>;
   counts: {
     managed_total: number;
@@ -48,7 +51,27 @@ export type SeoOverviewData = {
     title_length: number;
     description_length: number;
     noindex: boolean;
+    seo_score?: number;
+    seo_grade?: string;
+    missing?: string[];
   }>;
+  attention_blogs?: Array<{
+    id: string;
+    slug: string;
+    page_label: string;
+    preview_href?: string;
+    seo_score?: number;
+    seo_grade?: string;
+    missing?: string[];
+  }>;
+  score_bands?: {
+    pages_good: number;
+    pages_mid: number;
+    pages_low: number;
+    blogs_good: number;
+    blogs_mid: number;
+    blogs_low: number;
+  };
 };
 
 type Props = {
@@ -56,7 +79,14 @@ type Props = {
   loading?: boolean;
   onOpenTab?: (tab: string) => void;
   onSelectPage?: (id: string) => void;
+  onSelectBlog?: (slug: string) => void;
 };
+
+function scoreClass(score?: number) {
+  if ((score ?? 0) >= 80) return t.scoreGood;
+  if ((score ?? 0) >= 60) return t.scoreMid;
+  return t.scoreBad;
+}
 
 function StatCard({
   label,
@@ -86,7 +116,7 @@ function IssueIcon({ severity }: { severity: 'error' | 'warning' | 'info' }) {
   return <Info className="h-4 w-4 text-sky-500" />;
 }
 
-export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelectPage }: Props) {
+export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelectPage, onSelectBlog }: Props) {
   if (loading) {
     return <div className={`${t.card} p-10 text-center text-sm ${t.subtitle}`}>Loading SEO overview…</div>;
   }
@@ -108,7 +138,7 @@ export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelec
               SEO Health Overview
             </div>
             <p className={`mt-1 text-sm ${t.subtitle}`}>
-              Snapshot of managed pages, sitemap coverage, verification and items needing attention.
+              Policy score for pages + blogs. Fix missing title, description, keywords, FAQs and schema to raise it.
             </p>
           </div>
           <div className={t.scoreBox}>
@@ -119,7 +149,9 @@ export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelec
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Sitemap URLs" value={data.counts.sitemap_total} hint="Pages in sitemap.xml" tone="blue" />
+        <StatCard label="Page SEO avg" value={data.page_avg ?? '—'} hint={`${data.score_bands?.pages_low || 0} pages need work`} tone="blue" />
+        <StatCard label="Blog SEO avg" value={data.blog_avg ?? '—'} hint={`${data.score_bands?.blogs_low || 0} blogs need work`} tone="blue" />
+        <StatCard label="Sitemap URLs" value={data.counts.sitemap_total} hint="Pages in sitemap.xml" />
         <StatCard
           label="Managed Pages"
           value={data.counts.managed_total}
@@ -209,11 +241,11 @@ export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelec
         </section>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-2">
         <section className={`${t.card} p-5`}>
-          <h3 className={t.sectionTitle}>Pages Needing Attention</h3>
+          <h3 className={t.sectionTitle}>Pages needing work</h3>
           {data.attention_pages.length === 0 ? (
-            <p className={`mt-4 text-sm ${t.subtitle}`}>All managed pages look good on title and description length.</p>
+            <p className={`mt-4 text-sm ${t.subtitle}`}>All managed pages score 80 or above.</p>
           ) : (
             <div className="mt-4 space-y-2">
               {data.attention_pages.map((page) => (
@@ -223,18 +255,14 @@ export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelec
                   onClick={() => onSelectPage?.(page.id)}
                   className={t.attentionRow}
                 >
-                  <div>
+                  <div className="min-w-0">
                     <p className={t.listTitle}>{page.page_label}</p>
-                    <p className={`text-xs ${t.subtitle}`}>{page.page_path}</p>
+                    <p className={`truncate text-xs ${t.subtitle}`}>{page.page_path}</p>
+                    {page.missing?.length ? (
+                      <p className={`mt-1 truncate text-xs ${t.charMid}`}>{page.missing.join(' · ')}</p>
+                    ) : null}
                   </div>
-                  <div className="text-right text-xs font-semibold">
-                    <p className={page.title_length > 60 ? t.charMid : t.subtitle}>
-                      Title {page.title_length}/60
-                    </p>
-                    <p className={page.description_length > 160 ? t.charMid : t.subtitle}>
-                      Desc {page.description_length}/160
-                    </p>
-                  </div>
+                  <p className={`shrink-0 text-lg font-black ${scoreClass(page.seo_score)}`}>{page.seo_score ?? '—'}</p>
                 </button>
               ))}
             </div>
@@ -242,13 +270,44 @@ export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelec
         </section>
 
         <section className={`${t.card} p-5`}>
+          <h3 className={t.sectionTitle}>Blogs needing work</h3>
+          {!data.attention_blogs?.length ? (
+            <p className={`mt-4 text-sm ${t.subtitle}`}>All published blogs score 80 or above.</p>
+          ) : (
+            <div className="mt-4 space-y-2">
+              {data.attention_blogs.map((blog) => (
+                <button
+                  key={blog.id}
+                  type="button"
+                  onClick={() => {
+                    onSelectBlog?.(blog.slug);
+                    onOpenTab?.('blog');
+                  }}
+                  className={t.attentionRow}
+                >
+                  <div className="min-w-0">
+                    <p className={t.listTitle}>{blog.page_label}</p>
+                    <p className={`truncate text-xs ${t.subtitle}`}>{blog.preview_href || `/blogs/${blog.slug}`}</p>
+                    {blog.missing?.length ? (
+                      <p className={`mt-1 truncate text-xs ${t.charMid}`}>{blog.missing.join(' · ')}</p>
+                    ) : null}
+                  </div>
+                  <p className={`shrink-0 text-lg font-black ${scoreClass(blog.seo_score)}`}>{blog.seo_score ?? '—'}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <section className={`${t.card} p-5`}>
           <h3 className={t.sectionTitle}>Quick Actions</h3>
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             {[
               { tab: 'all', label: 'Edit page SEO', icon: FileText },
               { tab: 'technical', label: 'Technical SEO settings', icon: Settings2 },
               { tab: 'workshop', label: 'Workshop SEO preview', icon: Store },
-              { tab: 'blog', label: 'Blog SEO preview', icon: Newspaper },
+              { tab: 'blog', label: 'Fix blog SEO scores', icon: Newspaper },
               { tab: 'city', label: 'City landing pages', icon: MapPin },
             ].map((action) => (
               <button
@@ -263,7 +322,6 @@ export default function SeoOverviewDashboard({ data, loading, onOpenTab, onSelec
             ))}
           </div>
         </section>
-      </div>
     </div>
   );
 }

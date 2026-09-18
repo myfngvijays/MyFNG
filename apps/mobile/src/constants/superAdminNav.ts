@@ -198,6 +198,7 @@ export const SA_NAV: SaNavRow[] = [
       { id: 'compliance', label: 'Compliance', icon: 'checkbox-outline', target: 'ComplianceReports', kind: 'stack' },
       { id: 'brands', label: 'Car Brand Images', icon: 'car-outline', target: 'Brands', kind: 'stack' },
       { id: 'faqs', label: 'FAQs (App + Web)', icon: 'help-circle-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Public FAQs', path: '/api/super_admin/public-faqs' } },
+      { id: 'daily_blogs', label: 'Daily Blogs', icon: 'newspaper-outline', target: 'SuperAdminDailyBlogs', kind: 'stack' },
       { id: 'seo', label: 'Advanced SEO', icon: 'search-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Site SEO', path: '/api/super_admin/site-seo/overview' } },
       { id: 'settings', label: 'System Settings', icon: 'settings-outline', target: 'SystemSettings', kind: 'stack' },
     ],
