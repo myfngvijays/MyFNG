@@ -1,5 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { BATCH_BLOG_TOPICS, THANE_BATCH_CITY, batchBlogKey } from '@/lib/blog/batchBlogTopics';
+import {
+  PACKAGE_EDUCATION_TOPICS,
+  packageEducationBlogKey,
+} from '@/lib/blog/packageEducationBlogTopics';
 import { RSA_BLOG_TOPICS, rsaBlogKey } from '@/lib/blog/rsaBlogTopics';
 import { rsaCityByIndex } from '@/lib/blog/dailyCities';
 import { DAILY_BLOG_COVERS, uploadDailyCoverWebp } from '@/lib/blog/dailyCovers';
@@ -97,6 +101,86 @@ export async function runBatchBlogPost(opts: { index: number }): Promise<DailyBl
       run_date: runDate,
       index,
       news: Boolean(picked.news),
+    };
+  }
+}
+
+export async function runPackageEducationBlogPost(opts: { index: number }): Promise<DailyBlogRunResult & {
+  index: number;
+  package_edu?: boolean;
+}> {
+  const index = Number(opts.index);
+  if (!Number.isInteger(index) || index < 0 || index >= PACKAGE_EDUCATION_TOPICS.length) {
+    return { success: false, error: `index must be 0-${PACKAGE_EDUCATION_TOPICS.length - 1}`, index };
+  }
+
+  const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return { success: false, error: adminError || 'Admin client not configured', index };
+  }
+
+  const loaded = await loadDailyBlogSettings();
+  if (loaded.missing) {
+    return { success: false, error: 'Migration 365_daily_blog_auto_post.sql is not applied', index };
+  }
+  if (!loaded.settings) {
+    return { success: false, error: loaded.error || 'Daily blog settings missing', index };
+  }
+
+  const picked = PACKAGE_EDUCATION_TOPICS[index];
+  const cityTarget = THANE_BATCH_CITY;
+  const cover = batchCoverByIndex(index);
+  const batchKey = packageEducationBlogKey(index);
+  const runDate = istDateString();
+
+  const { data: existingRows } = await supabaseAdmin
+    .from('blogs')
+    .select('id, slug, title, seo_data')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(250);
+  const existing = (existingRows || []).find((row: any) => row?.seo_data?.ai_batch_key === batchKey);
+  if (existing?.id) {
+    return {
+      success: true,
+      skipped: true,
+      reason: 'already_posted',
+      blog_id: existing.id,
+      slug: existing.slug,
+      title: existing.title,
+      topic: picked.topic,
+      cover_key: cover.key,
+      run_date: runDate,
+      index,
+      package_edu: true,
+    };
+  }
+
+  try {
+    const published = await publishAiServiceBlog({
+      supabaseAdmin,
+      settings: loaded.settings,
+      picked,
+      cityTarget,
+      cover,
+      runDate,
+      notify: false,
+      seoExtra: {
+        ai_batch_post: true,
+        ai_batch_key: batchKey,
+        ai_package_post: true,
+      },
+    });
+    return { ...published, index, package_edu: true };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: String(error?.message || error || 'Package education blog failed').slice(0, 500),
+      topic: picked.topic,
+      cover_key: cover.key,
+      run_date: runDate,
+      index,
+      package_edu: true,
     };
   }
 }

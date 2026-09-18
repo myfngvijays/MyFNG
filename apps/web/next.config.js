@@ -118,6 +118,8 @@ const nextConfig = {
       // SEO continuity: old MyFNG uses /blogs/*
       { source: '/blog', destination: '/blogs', permanent: true },
       { source: '/blog/:slug', destination: '/blogs/:slug', permanent: true },
+      { source: '/blogs/author/myfng-auto-expert', destination: '/blogs/author/nikhil-yelligetti', permanent: true },
+      { source: '/blog/author/myfng-auto-expert', destination: '/blogs/author/nikhil-yelligetti', permanent: true },
       // Legacy services URLs -> canonical marketing URLs
       { source: '/services/periodic-service', destination: '/car-services/periodic-car-service', permanent: true },
       { source: '/services/engine-service', destination: '/car-services/car-engine-service', permanent: true },

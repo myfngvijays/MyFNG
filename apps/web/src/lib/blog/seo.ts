@@ -32,9 +32,105 @@ export type BlogSeoData = {
   faqs?: Array<{ question: string; answer: string }>;
 };
 
+export type BlogSeoFaq = { question: string; answer: string };
+
 export function parseBlogSeoData(raw: unknown): BlogSeoData {
   if (!raw || typeof raw !== 'object') return {};
   return raw as BlogSeoData;
+}
+
+export function sanitizeBlogSlug(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+export function normalizeBlogFaqs(raw: unknown): BlogSeoFaq[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => ({
+      question: String((item as { question?: unknown })?.question || '').trim(),
+      answer: String((item as { answer?: unknown })?.answer || '').trim(),
+    }))
+    .filter((item) => item.question && item.answer);
+}
+
+export function buildBlogSchemaPreview(input: {
+  slug: string;
+  title: string;
+  description?: string;
+  keywords?: string;
+  author_name?: string;
+  schema_blogposting?: boolean;
+  schema_faq?: boolean;
+  eligible_ai_overview?: boolean;
+  faqs?: BlogSeoFaq[];
+}) {
+  const slug = sanitizeBlogSlug(input.slug);
+  const url = `https://myfng.in/blogs/${slug || 'your-slug'}`;
+  const title = String(input.title || '').trim() || 'Blog title';
+  const description = String(input.description || '').trim() || undefined;
+  const keywords = String(input.keywords || '').trim() || undefined;
+  const authorName = String(input.author_name || '').trim() || 'Nikhil Yelligetti';
+  const faqs = normalizeBlogFaqs(input.faqs);
+  const graph: Array<Record<string, unknown>> = [];
+
+  if (input.schema_blogposting !== false) {
+    graph.push({
+      '@type': 'BlogPosting',
+      '@id': `${url}#blogposting`,
+      mainEntityOfPage: url,
+      headline: title,
+      description,
+      author: {
+        '@type': 'Person',
+        name: authorName,
+        url: 'https://myfng.in/blogs/author/nikhil-yelligetti',
+      },
+      publisher: { '@type': 'Organization', name: 'MyFNG', url: 'https://myfng.in' },
+      keywords,
+    });
+  }
+
+  if (input.schema_faq !== false && faqs.length) {
+    graph.push({
+      '@type': 'FAQPage',
+      '@id': `${url}#faq`,
+      mainEntity: faqs.map((faq) => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+      })),
+    });
+  }
+
+  if (input.eligible_ai_overview !== false) {
+    graph.push({
+      '@type': 'Article',
+      '@id': `${url}#ai-overview`,
+      headline: title,
+      description,
+      mainEntityOfPage: url,
+      author: { '@type': 'Organization', name: 'MyFNG' },
+      keywords,
+    });
+  }
+
+  graph.push({
+    '@type': 'BreadcrumbList',
+    '@id': `${url}#breadcrumbs`,
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://myfng.in' },
+      { '@type': 'ListItem', position: 2, name: 'Blogs', item: 'https://myfng.in/blogs' },
+      { '@type': 'ListItem', position: 3, name: title, item: url },
+    ],
+  });
+
+  return {
+    '@context': 'https://schema.org',
+    '@graph': graph,
+  };
 }
 
 const STOPWORDS = new Set([
@@ -101,15 +197,35 @@ export function blogSeoToSummary(row: {
   updated_at?: string | null;
   published_at?: string | null;
   seo_data?: unknown;
+  faqs?: unknown;
 }) {
   const seo = parseBlogSeoData(row.seo_data);
+  const faqs = normalizeBlogFaqs(row.faqs ?? seo.faqs);
   return {
     id: String(row.id),
     slug: String(row.slug),
+    post_title: String(row.title || '').trim(),
     page_label: String(seo.meta_title || row.title || row.slug).trim(),
     title: String(seo.meta_title || row.title || '').trim(),
     description: String(seo.meta_description || row.excerpt || '').trim(),
     keywords: String(seo.keywords || '').trim(),
+    keyphrase: String(seo.keyphrase || '').trim(),
+    canonical_url: String(seo.canonical_url || '').trim(),
+    og_title: String(seo.og_title || '').trim(),
+    og_description: String(seo.og_description || '').trim(),
+    og_image: String(seo.og_image || '').trim(),
+    featured_image_alt: String(seo.featured_image_alt || '').trim(),
+    search_intent: String(seo.search_intent || 'Informational').trim() || 'Informational',
+    local_city: String(seo.local_city || '').trim(),
+    local_areas: Array.isArray(seo.local_areas) ? seo.local_areas.join(', ') : '',
+    author_name: String(seo.author_name || '').trim(),
+    author_role: String(seo.author_role || '').trim(),
+    robots_index: seo.robots_index !== false,
+    robots_follow: seo.robots_follow !== false,
+    schema_blogposting: seo.schema_blogposting !== false,
+    schema_faq: seo.schema_faq !== false,
+    eligible_ai_overview: seo.eligible_ai_overview !== false,
+    faqs,
     indexable: isBlogIndexable(row.seo_data),
     status: String(row.status || ''),
     updated_at: row.updated_at ? String(row.updated_at) : undefined,
@@ -124,6 +240,16 @@ export type BlogSeoSummary = ReturnType<typeof blogSeoToSummary>;
 export async function listBlogSeoSummaries(): Promise<BlogSeoSummary[]> {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return [];
+
+  const withFaqs = await supabaseAdmin
+    .from('blogs')
+    .select('id, slug, title, excerpt, status, updated_at, published_at, seo_data, faqs:blog_faqs(question, answer, sort_order)')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false });
+
+  if (!withFaqs.error && withFaqs.data) {
+    return withFaqs.data.map((row: any) => blogSeoToSummary(row));
+  }
 
   const { data, error } = await supabaseAdmin
     .from('blogs')

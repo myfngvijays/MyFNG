@@ -8,6 +8,7 @@ export const maxDuration = 300;
 
 /**
  * Daily AI blog at 10:00 AM IST, then hourly catch-up until 4:00 PM IST.
+ * Trigger: Supabase Cronon job `daily-blog-auto-post` (see database/368_daily_blog_pg_cron.sql).
  * GET /api/cron/daily-blog?force=1
  */
 async function handle(request: NextRequest) {

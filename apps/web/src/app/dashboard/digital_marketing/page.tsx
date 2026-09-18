@@ -6,25 +6,14 @@ import toast from 'react-hot-toast';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
 import {
-  AlertCircle,
-  Archive,
-  BarChart3,
-  BookOpen,
+  CalendarClock,
   CheckCircle2,
-  Clock,
   Eye,
-  FileText,
-  FolderOpen,
-  Heart,
-  Layers,
-  PenLine,
   Plus,
   Sparkles,
-  Star,
-  Tag,
   TrendingUp,
-  Users,
   UserCheck,
+  Zap,
 } from 'lucide-react';
 
 type BlogCard = {
@@ -42,6 +31,8 @@ type BlogCard = {
   author_name: string;
 };
 
+type DailyRun = { run_date: string; status: string; topic: string | null; error: string | null };
+
 type DashboardData = {
   summary: {
     total: number;
@@ -54,17 +45,44 @@ type DashboardData = {
     totalViews: number;
     totalLikes: number;
     avgViews: number;
+    avgReadTime: number;
     publishedThisMonth: number;
     createdThisMonth: number;
+    publishedToday: number;
+    publishedThisWeek: number;
+    dailyAi: number;
+    batchAi: number;
+    rsaPosts: number;
+    uspPosts: number;
+    packagePosts: number;
+    unassignedAuthor: number;
   };
-  inventory: { categories: number; tags: number; comments: number; faqs: number };
+  inventory: { categories: number; tags: number; comments: number; pendingComments: number; faqs: number };
   seoHealth: {
     missingMetaDescription: number;
     missingFeaturedImage: number;
     missingFeaturedAlt: number;
     missingExcerpt: number;
     missingFaqsOnPublished: number;
+    missingLocalCity: number;
     score: number;
+  };
+  dailyPost: {
+    missing_table?: boolean;
+    enabled: boolean;
+    last_status: string | null;
+    last_error: string | null;
+    last_run_at: string | null;
+    last_blog: { id: string; title: string; slug: string; published_at: string | null } | null;
+    today: string;
+    today_posted: boolean;
+    next_run_at: string;
+    schedule: string;
+    cron: string;
+    provider: string;
+    city_rotation: string;
+    usp_rotation: string;
+    recent_runs: DailyRun[];
   };
   statusBreakdown: Array<{ status: string; label: string; count: number; color: string }>;
   categoryBreakdown: Array<{ id: string; name: string; slug: string; count: number }>;
@@ -72,6 +90,7 @@ type DashboardData = {
   pendingReview: BlogCard[];
   recentPublished: BlogCard[];
   recentlyUpdated: BlogCard[];
+  recentPackage: BlogCard[];
 };
 
 const EMPTY: DashboardData = {
@@ -86,17 +105,43 @@ const EMPTY: DashboardData = {
     totalViews: 0,
     totalLikes: 0,
     avgViews: 0,
+    avgReadTime: 0,
     publishedThisMonth: 0,
     createdThisMonth: 0,
+    publishedToday: 0,
+    publishedThisWeek: 0,
+    dailyAi: 0,
+    batchAi: 0,
+    rsaPosts: 0,
+    uspPosts: 0,
+    packagePosts: 0,
+    unassignedAuthor: 0,
   },
-  inventory: { categories: 0, tags: 0, comments: 0, faqs: 0 },
+  inventory: { categories: 0, tags: 0, comments: 0, pendingComments: 0, faqs: 0 },
   seoHealth: {
     missingMetaDescription: 0,
     missingFeaturedImage: 0,
     missingFeaturedAlt: 0,
     missingExcerpt: 0,
     missingFaqsOnPublished: 0,
+    missingLocalCity: 0,
     score: 100,
+  },
+  dailyPost: {
+    enabled: true,
+    last_status: null,
+    last_error: null,
+    last_run_at: null,
+    last_blog: null,
+    today: '',
+    today_posted: false,
+    next_run_at: '',
+    schedule: '10:00 AM IST',
+    cron: '30 4-10 * * *',
+    provider: 'Supabase Cronon',
+    city_rotation: '',
+    usp_rotation: '',
+    recent_runs: [],
   },
   statusBreakdown: [],
   categoryBreakdown: [],
@@ -104,11 +149,18 @@ const EMPTY: DashboardData = {
   pendingReview: [],
   recentPublished: [],
   recentlyUpdated: [],
+  recentPackage: [],
 };
 
 function fmtDate(v?: string | null) {
   if (!v) return '—';
   return formatDateDMY(new Date(v));
+}
+
+function fmtDateTime(v?: string | null) {
+  if (!v) return '—';
+  const d = new Date(v);
+  return `${formatDateDMY(d)} · ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })} IST`;
 }
 
 function statusBadge(status: string) {
@@ -117,6 +169,9 @@ function statusBadge(status: string) {
     draft: 'bg-slate-100 text-slate-700',
     pending_review: 'bg-amber-100 text-amber-800',
     archived: 'bg-gray-100 text-gray-600',
+    success: 'bg-emerald-100 text-emerald-800',
+    failed: 'bg-rose-100 text-rose-800',
+    skipped: 'bg-slate-100 text-slate-600',
   };
   const label =
     status === 'pending_review' ? 'Pending Review' : status.charAt(0).toUpperCase() + status.slice(1);
@@ -127,62 +182,37 @@ function statusBadge(status: string) {
   );
 }
 
-function StatCard({
+function StatChip({
   title,
   value,
-  subtitle,
-  icon,
-  accent = 'blue',
+  href,
 }: {
   title: string;
   value: string | number;
-  subtitle?: string;
-  icon: React.ReactNode;
-  accent?: 'blue' | 'green' | 'purple' | 'amber' | 'indigo' | 'rose' | 'cyan' | 'slate';
+  href?: string;
 }) {
-  const tones: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    purple: 'bg-purple-50 text-purple-600',
-    amber: 'bg-amber-50 text-amber-600',
-    indigo: 'bg-indigo-50 text-indigo-600',
-    rose: 'bg-rose-50 text-rose-600',
-    cyan: 'bg-cyan-50 text-cyan-600',
-    slate: 'bg-slate-50 text-slate-600',
-  };
-  return (
-    <div className="card hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs sm:text-sm text-gray-500">{title}</p>
-          <p className="text-2xl sm:text-3xl font-bold text-text-heading mt-0.5">{value}</p>
-          {subtitle ? <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{subtitle}</p> : null}
-        </div>
-        <div className={`p-2.5 rounded-xl shrink-0 ${tones[accent]}`}>{icon}</div>
-      </div>
+  const inner = (
+    <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 hover:border-[#023D95]/30 h-full min-w-0">
+      <p className="text-[10px] leading-tight text-slate-500 truncate">{title}</p>
+      <p className="text-sm font-bold text-[#023D95] tabular-nums leading-tight mt-0.5">{value}</p>
     </div>
   );
+  return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
 function BlogRow({ blog, showAuthor = false }: { blog: BlogCard; showAuthor?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-3 border-b border-gray-100 last:border-0">
+    <div className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0">
       <div className="min-w-0 flex-1">
-        <Link href={`/dashboard/digital_marketing/blogs/${blog.id}/edit`} className="font-medium text-sm text-text-heading hover:text-brand-primary line-clamp-2">
+        <Link href={`/dashboard/digital_marketing/blogs/${blog.id}/edit`} className="font-medium text-[13px] text-[#023D95] hover:underline line-clamp-1">
           {blog.title}
         </Link>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-gray-500">
-          {showAuthor ? <span>{blog.author_name}</span> : null}
-          <span className="inline-flex items-center gap-1">
-            <Eye className="w-3 h-3" /> {blog.views.toLocaleString()}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Clock className="w-3 h-3" /> {blog.read_time || 3} min
-          </span>
-          <span>{fmtDate(blog.published_at || blog.updated_at)}</span>
-        </div>
+        <p className="text-[10px] text-slate-500 truncate">
+          {showAuthor ? `${blog.author_name} · ` : ''}
+          {blog.views.toLocaleString()} views · {fmtDate(blog.published_at || blog.updated_at)}
+        </p>
       </div>
-      <div className="flex flex-col items-end gap-1 shrink-0">{statusBadge(blog.status)}</div>
+      {statusBadge(blog.status)}
     </div>
   );
 }
@@ -192,9 +222,10 @@ export default function DigitalMarketingDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncingAuthors, setSyncingAuthors] = useState(false);
+  const [dailyBusy, setDailyBusy] = useState(false);
 
   useEffect(() => {
-    loadDashboard();
+    void loadDashboard();
   }, []);
 
   async function loadDashboard() {
@@ -203,7 +234,15 @@ export default function DigitalMarketingDashboard() {
       const res = await fetch('/api/blogs/dashboard-stats', { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to load dashboard');
-      setData(json as DashboardData);
+      setData({
+        ...EMPTY,
+        ...json,
+        summary: { ...EMPTY.summary, ...(json.summary || {}) },
+        dailyPost: { ...EMPTY.dailyPost, ...(json.dailyPost || {}) },
+        recentPackage: Array.isArray(json.recentPackage) ? json.recentPackage : [],
+        recentPublished: Array.isArray(json.recentPublished) ? json.recentPublished : [],
+        recentlyUpdated: Array.isArray(json.recentlyUpdated) ? json.recentlyUpdated : [],
+      });
       setError('');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load dashboard');
@@ -227,10 +266,43 @@ export default function DigitalMarketingDashboard() {
     }
   }
 
-  const maxCategory = useMemo(
-    () => Math.max(1, ...data.categoryBreakdown.map((c) => c.count)),
-    [data.categoryBreakdown],
-  );
+  async function runDailyNow() {
+    setDailyBusy(true);
+    try {
+      const res = await fetch('/api/blogs/daily-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run_now' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.run?.error || json?.error || 'Failed to publish daily blog');
+      toast.success(json?.run?.title ? `Published: ${json.run.title}` : 'Daily blog published');
+      await loadDashboard();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to publish daily blog');
+    } finally {
+      setDailyBusy(false);
+    }
+  }
+
+  async function toggleDaily(enabled: boolean) {
+    setDailyBusy(true);
+    try {
+      const res = await fetch('/api/blogs/daily-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update daily posting');
+      toast.success(enabled ? 'Daily 10:00 AM posting is on' : 'Daily posting paused');
+      await loadDashboard();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update daily posting');
+    } finally {
+      setDailyBusy(false);
+    }
+  }
 
   const seoIssues = useMemo(
     () =>
@@ -240,6 +312,7 @@ export default function DigitalMarketingDashboard() {
         { label: 'Missing image ALT text', count: data.seoHealth.missingFeaturedAlt },
         { label: 'Missing excerpt/summary', count: data.seoHealth.missingExcerpt },
         { label: 'Published without FAQs', count: data.seoHealth.missingFaqsOnPublished },
+        { label: 'Published without local city', count: data.seoHealth.missingLocalCity },
       ].filter((x) => x.count > 0),
     [data.seoHealth],
   );
@@ -249,8 +322,8 @@ export default function DigitalMarketingDashboard() {
       <DashboardLayout role="digital_marketing">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto" />
-            <p className="mt-4 text-gray-600 text-sm">Loading blogs dashboard…</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#023D95] mx-auto" />
+            <p className="mt-4 text-slate-600 text-sm">Loading blogs dashboard…</p>
           </div>
         </div>
       </DashboardLayout>
@@ -260,249 +333,210 @@ export default function DigitalMarketingDashboard() {
   if (error) {
     return (
       <DashboardLayout role="digital_marketing">
-        <div className="card border-red-200 bg-red-50 text-red-700 text-sm">{error}</div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 text-red-700 text-sm p-4">{error}</div>
       </DashboardLayout>
     );
   }
 
-  const { summary, inventory } = data;
+  const { summary, inventory, dailyPost } = data;
+  const dailyAlert = !dailyPost.today_posted || dailyPost.last_status === 'failed' || !dailyPost.enabled || dailyPost.missing_table;
 
   return (
     <DashboardLayout role="digital_marketing">
-      <div className="space-y-5 pb-8">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-text-heading">Blogs Dashboard</h1>
-            <p className="text-sm text-gray-500 mt-1">Real-time stats from your blog database — content, SEO & performance</p>
+      <div className="space-y-3 pb-6">
+        <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-slate-900 leading-tight">Blogs dashboard</h1>
+            <p className="text-xs text-slate-500">Daily auto-post · SEO · package series</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/dashboard/digital_marketing/blogs/ai-create">
-              <button type="button" className="btn btn-outline btn-sm inline-flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4" /> AI Draft
-              </button>
+          <div className="flex flex-wrap gap-1.5">
+            <Link href="/dashboard/digital_marketing/site-seo" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              On-page SEO
             </Link>
-            <Link href="/dashboard/digital_marketing/blogs/create">
-              <button type="button" className="btn btn-primary btn-sm inline-flex items-center gap-1.5">
-                <Plus className="w-4 h-4" /> New Blog
-              </button>
+            <Link href="/dashboard/digital_marketing/blogs/ai-create" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              <Sparkles className="w-3.5 h-3.5" /> AI
+            </Link>
+            <Link href="/dashboard/digital_marketing/blogs/create" className="inline-flex items-center gap-1 rounded-lg bg-[#023D95] px-2.5 py-1 text-xs font-semibold text-white">
+              <Plus className="w-3.5 h-3.5" /> New
+            </Link>
+            <Link href="/blogs" target="_blank" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#023D95]">
+              <Eye className="w-3.5 h-3.5" /> Live
             </Link>
           </div>
-        </div>
+        </section>
 
-        <div className="card bg-blue-50 border-blue-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <p className="font-semibold text-text-heading text-sm inline-flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-brand-primary" />
-              Author dashboard sync
+        <section
+          className={`rounded-xl border px-3 py-2 ${
+            dailyAlert ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <p className="text-xs font-bold text-[#023D95] inline-flex items-center gap-1">
+              <Zap className="h-3.5 w-3.5 text-[#C9A227]" />
+              Daily 10:00 AM
             </p>
-            <p className="text-xs text-gray-600 mt-1 max-w-xl">
-              Marketing login se banaye blogs Author par tabhi dikhte hain jab unka <strong>author_id</strong> Digital Author user par set ho.
-              Purane blogs ke liye ek baar ye sync chalao.
+            {dailyPost.missing_table ? (
+              statusBadge('failed')
+            ) : !dailyPost.enabled ? (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">Paused</span>
+            ) : dailyPost.today_posted ? (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">Posted today</span>
+            ) : (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">Missing today</span>
+            )}
+            <p className="text-[11px] text-slate-600 min-w-0 flex-1 truncate">
+              {dailyPost.missing_table
+                ? 'Cronon job missing — add daily-blog-auto-post'
+                : dailyPost.last_blog
+                  ? dailyPost.last_blog.title
+                  : dailyPost.last_error || 'No daily post yet'}
+              {' · '}
+              {fmtDateTime(dailyPost.last_run_at)}
             </p>
-          </div>
-          <button type="button" className="btn btn-primary btn-sm shrink-0" onClick={syncBlogsToAuthor} disabled={syncingAuthors}>
-            {syncingAuthors ? 'Syncing…' : 'Sync all blogs to Author'}
-          </button>
-        </div>
-
-        {/* Primary KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard title="Total Blogs" value={summary.total} subtitle={`${summary.createdThisMonth} created this month`} icon={<FileText className="w-5 h-5" />} accent="blue" />
-          <StatCard title="Published" value={summary.published} subtitle={`${summary.publishedThisMonth} this month`} icon={<CheckCircle2 className="w-5 h-5" />} accent="green" />
-          <StatCard title="Total Views" value={summary.totalViews.toLocaleString()} subtitle={`Avg ${summary.avgViews} per blog`} icon={<Eye className="w-5 h-5" />} accent="indigo" />
-          <StatCard title="Pending Review" value={summary.pendingReview} subtitle={summary.pendingReview ? 'Needs your action' : 'All clear'} icon={<Clock className="w-5 h-5" />} accent="amber" />
-        </div>
-
-        {/* Secondary KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-          <StatCard title="Drafts" value={summary.draft} icon={<PenLine className="w-4 h-4" />} accent="slate" />
-          <StatCard title="Featured" value={summary.featured} icon={<Star className="w-4 h-4" />} accent="amber" />
-          <StatCard title="Premium" value={summary.premium} icon={<Layers className="w-4 h-4" />} accent="purple" />
-          <StatCard title="Archived" value={summary.archived} icon={<Archive className="w-4 h-4" />} accent="slate" />
-          <StatCard title="Categories" value={inventory.categories} icon={<FolderOpen className="w-4 h-4" />} accent="cyan" />
-          <StatCard title="Tags" value={inventory.tags} icon={<Tag className="w-4 h-4" />} accent="blue" />
-          <StatCard title="Comments" value={inventory.comments} icon={<Users className="w-4 h-4" />} accent="green" />
-          <StatCard title="Total Likes" value={summary.totalLikes.toLocaleString()} icon={<Heart className="w-4 h-4" />} accent="rose" />
-        </div>
-
-        {/* Quick Actions + Status */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="card lg:col-span-2">
-            <h2 className="text-base font-semibold text-text-heading mb-3">Quick Actions</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <Link href="/dashboard/digital_marketing/blogs/create" className="btn btn-primary btn-sm justify-center">
-                <Plus className="w-4 h-4" /> Create
-              </Link>
-              <Link href="/dashboard/digital_marketing/blogs" className="btn btn-outline btn-sm justify-center">
-                <BookOpen className="w-4 h-4" /> All Blogs
-              </Link>
-              <Link href="/dashboard/digital_marketing/blogs/categories" className="btn btn-outline btn-sm justify-center">
-                <FolderOpen className="w-4 h-4" /> Categories
-              </Link>
-              <Link href="/blogs" target="_blank" className="btn btn-outline btn-sm justify-center">
-                <Eye className="w-4 h-4" /> Live Site
+            <div className="flex gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={runDailyNow}
+                disabled={dailyBusy || dailyPost.missing_table}
+                className="rounded-lg bg-[#023D95] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {dailyBusy ? '…' : 'Post now'}
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleDaily(!dailyPost.enabled)}
+                disabled={dailyBusy || dailyPost.missing_table}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+              >
+                {dailyPost.enabled ? 'Pause' : 'Enable'}
+              </button>
+              <Link href="/dashboard/digital_marketing/blogs" className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+                All
               </Link>
             </div>
-
-            <h3 className="text-sm font-semibold text-text-heading mt-5 mb-3">Content by Status</h3>
-            <div className="space-y-2.5">
-              {data.statusBreakdown.map((s) => (
-                <div key={s.status}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-600">{s.label}</span>
-                    <span className="font-semibold">{s.count}</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${s.color}`}
-                      style={{ width: `${summary.total ? (s.count / summary.total) * 100 : 0}%` }}
-                    />
-                  </div>
-                </div>
+          </div>
+          {dailyPost.recent_runs.length ? (
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-500">
+              {dailyPost.recent_runs.slice(0, 3).map((run) => (
+                <span key={run.run_date}>
+                  {run.run_date.slice(5)} {run.status}
+                  {run.topic ? ` · ${run.topic}` : ''}
+                </span>
               ))}
             </div>
+          ) : null}
+        </section>
+
+        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
+          <StatChip title="Total" value={summary.total.toLocaleString()} href="/dashboard/digital_marketing/blogs" />
+          <StatChip title="Published" value={summary.published.toLocaleString()} href="/dashboard/digital_marketing/blogs?status=published" />
+          <StatChip title="Views" value={summary.totalViews.toLocaleString()} />
+          <StatChip title="Today" value={summary.publishedToday} />
+          <StatChip title="This week" value={summary.publishedThisWeek} />
+          <StatChip title="Daily AI" value={summary.dailyAi} />
+          <StatChip title="Batch" value={summary.batchAi} />
+          <StatChip title="Package" value={summary.packagePosts} />
+          <StatChip title="RSA" value={summary.rsaPosts} />
+          <StatChip title="USP" value={summary.uspPosts} />
+          <StatChip title="Drafts" value={summary.draft} href="/dashboard/digital_marketing/blogs?status=draft" />
+          <StatChip title="Review" value={summary.pendingReview} href="/dashboard/digital_marketing/blogs?status=pending_review" />
+          <StatChip title="Featured" value={summary.featured} />
+          <StatChip title="Archived" value={summary.archived} href="/dashboard/digital_marketing/blogs?status=archived" />
+          <StatChip title="Categories" value={inventory.categories} href="/dashboard/digital_marketing/blogs/categories" />
+          <StatChip title="Tags" value={inventory.tags} />
+          <StatChip title="Comments" value={inventory.comments} />
+          <StatChip title="FAQs" value={inventory.faqs.toLocaleString()} />
+          <StatChip title="SEO" value={`${data.seoHealth.score}%`} />
+          <StatChip title="No city" value={data.seoHealth.missingLocalCity} />
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-2.5">
+          <div className="rounded-xl border border-[#C9A227]/40 bg-white px-3 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-[#023D95]">Package blogs · {summary.packagePosts}</h2>
+              <Link href="/dashboard/digital_marketing/blogs" className="text-[10px] text-[#004AAD] hover:underline">All →</Link>
+            </div>
+            {data.recentPackage.length ? (
+              data.recentPackage.map((b) => <BlogRow key={b.id} blog={b} showAuthor />)
+            ) : (
+              <p className="text-xs text-slate-500 py-3 text-center">No package blogs yet</p>
+            )}
           </div>
 
-          <div className="card">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-semibold text-text-heading">SEO Health</h2>
-              <span
-                className={`text-lg font-bold ${data.seoHealth.score >= 80 ? 'text-emerald-600' : data.seoHealth.score >= 60 ? 'text-amber-600' : 'text-red-600'}`}
-              >
-                {data.seoHealth.score}%
-              </span>
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-[#023D95] inline-flex items-center gap-1">
+                <CalendarClock className="w-3.5 h-3.5" /> Recently published
+              </h2>
+              <Link href="/dashboard/digital_marketing/blogs" className="text-[10px] text-[#004AAD] hover:underline">Manage →</Link>
+            </div>
+            {data.recentPublished.length ? data.recentPublished.slice(0, 8).map((b) => <BlogRow key={b.id} blog={b} />) : <p className="text-xs text-slate-500 py-3 text-center">Nothing published yet</p>}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-[#023D95] inline-flex items-center gap-1">
+                <TrendingUp className="w-3.5 h-3.5" /> Top views
+              </h2>
+              <Link href="/dashboard/digital_marketing/blogs?status=published" className="text-[10px] text-[#004AAD] hover:underline">View all →</Link>
+            </div>
+            {data.topByViews.length ? data.topByViews.slice(0, 6).map((b) => <BlogRow key={b.id} blog={b} />) : <p className="text-xs text-slate-500 py-3 text-center">No published blogs yet</p>}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-[#023D95]">SEO {data.seoHealth.score}%</h2>
+              <Link href="/dashboard/digital_marketing/blogs?status=published" className="text-[10px] text-[#004AAD] hover:underline">Fix →</Link>
             </div>
             {seoIssues.length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-lg p-3">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                All blogs look SEO-ready
-              </div>
+              <p className="text-xs text-emerald-700 inline-flex items-center gap-1 py-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> SEO ready
+              </p>
             ) : (
-              <ul className="space-y-2">
-                {seoIssues.map((issue) => (
-                  <li key={issue.label} className="flex items-center justify-between text-xs sm:text-sm">
-                    <span className="inline-flex items-center gap-1.5 text-gray-600">
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                      {issue.label}
-                    </span>
+              <ul className="space-y-0.5">
+                {seoIssues.slice(0, 5).map((issue) => (
+                  <li key={issue.label} className="flex items-center justify-between text-[11px] text-slate-600">
+                    <span className="truncate pr-2">{issue.label}</span>
                     <span className="font-semibold text-amber-700">{issue.count}</span>
                   </li>
                 ))}
               </ul>
             )}
-            <Link href="/dashboard/digital_marketing/blogs?status=draft" className="text-xs text-brand-primary hover:underline mt-3 inline-block">
-              Fix in blog editor →
-            </Link>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {data.statusBreakdown.map((s) => (
+                <Link key={s.status} href={`/dashboard/digital_marketing/blogs?status=${s.status}`} className="rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600">
+                  {s.label} {s.count}
+                </Link>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {data.categoryBreakdown.slice(0, 6).map((c) => (
+                <span key={c.id} className="rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600">
+                  {c.name} {c.count}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Main content grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <div className="card">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base font-semibold text-text-heading inline-flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-brand-primary" /> Top by Views
-              </h2>
-              <Link href="/dashboard/digital_marketing/blogs?status=published" className="text-xs text-brand-primary hover:underline">
-                View all →
-              </Link>
+        {data.pendingReview.length ? (
+          <div className="rounded-xl border border-amber-200 bg-white px-3 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-[#023D95]">Pending review</h2>
+              <Link href="/dashboard/digital_marketing/blogs?status=pending_review" className="text-[10px] text-[#004AAD] hover:underline">Review →</Link>
             </div>
-            {data.topByViews.length ? data.topByViews.map((b) => <BlogRow key={b.id} blog={b} />) : <p className="text-sm text-gray-500 py-6 text-center">No published blogs yet</p>}
+            {data.pendingReview.slice(0, 5).map((b) => <BlogRow key={b.id} blog={b} showAuthor />)}
           </div>
+        ) : null}
 
-          <div className="card border-amber-200/60">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base font-semibold text-text-heading inline-flex items-center gap-2">
-                <Clock className="w-4 h-4 text-amber-600" /> Pending Review
-              </h2>
-              <Link href="/dashboard/digital_marketing/blogs?status=pending_review" className="text-xs text-brand-primary hover:underline">
-                Review all →
-              </Link>
-            </div>
-            {data.pendingReview.length ? (
-              data.pendingReview.map((b) => <BlogRow key={b.id} blog={b} showAuthor />)
-            ) : (
-              <p className="text-sm text-gray-500 py-6 text-center">No blogs waiting for review</p>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base font-semibold text-text-heading">Recently Published</h2>
-              <Link href="/dashboard/digital_marketing/blogs" className="text-xs text-brand-primary hover:underline">
-                Manage →
-              </Link>
-            </div>
-            {data.recentPublished.length ? data.recentPublished.map((b) => <BlogRow key={b.id} blog={b} />) : <p className="text-sm text-gray-500 py-6 text-center">Nothing published yet</p>}
-          </div>
-
-          <div className="card">
-            <h2 className="text-base font-semibold text-text-heading mb-3 inline-flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-brand-primary" /> Top Categories
-            </h2>
-            {data.categoryBreakdown.length ? (
-              <div className="space-y-3">
-                {data.categoryBreakdown.map((c) => (
-                  <div key={c.id}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-gray-700 truncate pr-2">{c.name}</span>
-                      <span className="font-semibold shrink-0">{c.count}</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-primary rounded-full" style={{ width: `${(c.count / maxCategory) * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 py-4 text-center">No categories assigned yet</p>
-            )}
-            <Link href="/dashboard/digital_marketing/blogs/categories" className="text-xs text-brand-primary hover:underline mt-3 inline-block">
-              Manage categories →
-            </Link>
-          </div>
-        </div>
-
-        {/* Recent activity table */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-text-heading">Recent Activity</h2>
-            <span className="text-xs text-gray-400">Last updated blogs</span>
-          </div>
-          <div className="overflow-x-auto -mx-4 sm:mx-0">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-                  <th className="pb-2 font-medium px-4 sm:px-0">Title</th>
-                  <th className="pb-2 font-medium">Author</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Views</th>
-                  <th className="pb-2 font-medium">Updated</th>
-                  <th className="pb-2 font-medium text-right px-4 sm:px-0">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentlyUpdated.map((b) => (
-                  <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="py-3 px-4 sm:px-0 max-w-[220px]">
-                      <p className="font-medium text-text-heading truncate">{b.title}</p>
-                    </td>
-                    <td className="py-3 text-gray-600 text-xs">{b.author_name}</td>
-                    <td className="py-3">{statusBadge(b.status)}</td>
-                    <td className="py-3 text-gray-600">{b.views.toLocaleString()}</td>
-                    <td className="py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(b.updated_at)}</td>
-                    <td className="py-3 text-right px-4 sm:px-0">
-                      <Link href={`/dashboard/digital_marketing/blogs/${b.id}/edit`} className="text-xs text-brand-primary hover:underline">
-                        Edit
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!data.recentlyUpdated.length ? <p className="text-sm text-gray-500 py-8 text-center">No blog activity yet</p> : null}
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <p className="text-[11px] text-slate-600">
+            <UserCheck className="w-3.5 h-3.5 inline mr-1" />
+            {summary.unassignedAuthor ? `${summary.unassignedAuthor} blogs need author sync` : 'Authors assigned'}
+          </p>
+          <button type="button" className="rounded-lg bg-[#023D95] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-60" onClick={syncBlogsToAuthor} disabled={syncingAuthors}>
+            {syncingAuthors ? 'Syncing…' : 'Sync authors'}
+          </button>
         </div>
       </div>
     </DashboardLayout>

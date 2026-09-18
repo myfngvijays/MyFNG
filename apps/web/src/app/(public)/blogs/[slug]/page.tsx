@@ -27,7 +27,7 @@ import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLo
 import { ensureAiOverviewHtml, ensureRsaAiOverviewHtml } from '@/lib/blog/dailyAiOverview';
 import { isMyFngServiceFaq, isNewsCarBlog, stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
 import { ensureSeoBlogTitle, rewriteCityDashTitle } from '@/lib/blog/generateAiDraft';
-import { PUBLIC_BLOG_AUTHOR_HREF, publicBlogAuthorName } from '@/lib/blog/publicAuthor';
+import { PUBLIC_BLOG_AUTHOR_HREF, publicBlogAuthorName, publicBlogByline } from '@/lib/blog/publicAuthor';
 
 export const dynamic = 'force-dynamic';
 
@@ -380,7 +380,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   if (titleCity && (seo?.ai_daily_post || seo?.ai_batch_post)) {
     transformed.title = ensureSeoBlogTitle(transformed.title, titleCity);
   }
-  const authorDisplayName = publicBlogAuthorName(transformed);
+  const authorDisplayName = publicBlogByline(transformed);
   (transformed.seo_data as any).author_name = authorDisplayName;
 
   const dateText = formatDateTimeISTAssumeUTC(transformed.published_at || transformed.created_at);

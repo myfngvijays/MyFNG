@@ -1496,6 +1496,19 @@ async function checkDailyBlog(): Promise<HealthCheck> {
       };
     }
 
+    let crononJob: { jobname?: string; schedule?: string; active?: boolean } | null = null;
+    try {
+      const cronRes = await client
+        .schema('cron')
+        .from('job')
+        .select('jobname, schedule, active')
+        .eq('jobname', 'daily-blog-auto-post')
+        .maybeSingle();
+      if (!cronRes.error && cronRes.data) crononJob = cronRes.data as any;
+    } catch {
+      crononJob = null;
+    }
+
     const failed = String(data?.last_status || '') === 'failed';
     const enabled = data?.enabled !== false;
     const lastRunIst = data?.last_run_at ? istDateString(new Date(data.last_run_at)) : null;
@@ -1503,28 +1516,38 @@ async function checkDailyBlog(): Promise<HealthCheck> {
       enabled &&
       isAfterDailyBlogSlot(new Date(), 15) &&
       (lastRunIst !== istDateString() || String(data?.last_status || '') !== 'success');
-    const unhealthy = failed || missedToday;
+    const crononMissing = crononJob == null;
+    const crononOff = crononJob?.active === false;
+    const unhealthy = failed || missedToday || crononMissing || crononOff;
     return {
       name: 'Daily Blog Auto-Post',
       category: 'Background Jobs',
       status: unhealthy ? 'degraded' : 'healthy',
       responseTime,
-      message: missedToday
-        ? 'Today’s 10:00 AM blog is missing'
-        : failed
-          ? 'Last 10:00 AM run failed'
-          : enabled
-            ? 'Scheduled 10:00 AM IST'
-            : 'Auto-post paused',
-      reason: missedToday
-        ? `No successful daily blog for ${istDateString()} after 10:00 AM IST. Cron retries hourly until 4:00 PM. Use Digital Marketing → Blogs → Post now.`
-        : failed
-        ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
-        : enabled
-          ? 'Cron /api/cron/daily-blog runs at 10:00 AM IST and retries hourly until 4:00 PM IST if the post is missing. Posts follow Google AI Overview style. Every Monday is an About MyFNG USP (₹1500 interim, photo-proof, app vs WhatsApp, pickup, Prime).'
-          : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
+      message: crononMissing
+        ? 'Cronon job missing'
+        : crononOff
+          ? 'Cronon job paused'
+          : missedToday
+            ? 'Today’s 10:00 AM blog is missing'
+            : failed
+              ? 'Last 10:00 AM run failed'
+              : enabled
+                ? 'Scheduled 10:00 AM IST'
+                : 'Auto-post paused',
+      reason: crononMissing
+        ? 'Supabase Cronon has no daily-blog-auto-post job. Other live crons (WhatsApp, health) run from Cronon. Run database/368_daily_blog_pg_cron.sql in SQL Editor.'
+        : crononOff
+          ? 'Supabase Cronon job daily-blog-auto-post is inactive. Enable it on Integrations → Cronon.'
+          : missedToday
+            ? `No successful daily blog for ${istDateString()} after 10:00 AM IST. Cronon retries hourly until 4:00 PM. Use Digital Marketing → Blogs → Post now.`
+            : failed
+              ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
+              : enabled
+                ? 'Supabase Cronon job daily-blog-auto-post hits /api/cron/daily-blog at 10:00 AM IST and retries hourly until 4:00 PM IST. Posts follow Google AI Overview style. Every Monday is an About MyFNG USP (₹1500 interim, photo-proof, app vs WhatsApp, pickup, Prime).'
+                : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
       quickFix: {
-        label: 'Open Blogs',
+        label: crononMissing || crononOff ? 'Open Cronon SQL' : 'Open Blogs',
         action: 'internal-link',
         actionPayload: { url: '/dashboard/digital_marketing/blogs' },
       },
@@ -1535,6 +1558,9 @@ async function checkDailyBlog(): Promise<HealthCheck> {
         last_status: data?.last_status || null,
         last_blog_id: data?.last_blog_id || null,
         missed_today: missedToday,
+        cronon_job: crononJob?.jobname || null,
+        cronon_schedule: crononJob?.schedule || null,
+        cronon_active: crononJob?.active ?? null,
       },
     };
   } catch (e: any) {
@@ -1545,6 +1571,89 @@ async function checkDailyBlog(): Promise<HealthCheck> {
       responseTime: Date.now() - start,
       message: e.message || 'Check failed',
       reason: `Daily blog health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSitemap(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Public Sitemap',
+      category: 'SEO',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Cannot check sitemap (DB unavailable)',
+      reason: configError || 'No admin client',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const [{ data: latestBlogs, error: blogError }, { count: pageCount, error: pageError }] = await Promise.all([
+      client
+        .from('blogs')
+        .select('slug, seo_data')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false })
+        .limit(8),
+      client.from('site_page_seo').select('id', { count: 'exact', head: true }).eq('active', true).eq('noindex', false),
+    ]);
+
+    if (blogError) throw blogError;
+    if (pageError && !/does not exist|42P01/i.test(pageError.message)) throw pageError;
+
+    const { listBlogSitemapEntries } = await import('@/lib/workshop-page-seo');
+    const { isBlogIndexable } = await import('@/lib/blog/seo');
+    const sitemapBlogs = await listBlogSitemapEntries();
+    const sitemapSlugs = new Set(sitemapBlogs.map((row) => row.slug));
+    const missing = (latestBlogs || [])
+      .filter((row: any) => isBlogIndexable(row.seo_data))
+      .filter((row: any) => !sitemapSlugs.has(String(row.slug)));
+
+    if (missing.length) {
+      return {
+        name: 'Public Sitemap',
+        category: 'SEO',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: `${missing.length} recent published blog(s) missing from sitemap`,
+        reason: `Missing slugs: ${missing.map((row: any) => row.slug).slice(0, 4).join(', ')}`,
+        lastChecked: new Date().toISOString(),
+        quickFix: {
+          label: 'Open Advanced SEO',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/site-seo' },
+        },
+        details: { sitemap_blogs: sitemapBlogs.length, managed_pages: pageCount || 0, missing: missing.map((row: any) => row.slug) },
+      };
+    }
+
+    return {
+      name: 'Public Sitemap',
+      category: 'SEO',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: `${sitemapBlogs.length} blogs and ${pageCount || 0} pages included automatically`,
+      reason: 'Published blogs and indexable pages are added to /sitemap.xml on publish.',
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'View sitemap.xml',
+        action: 'external-link',
+        actionPayload: { url: 'https://myfng.in/sitemap.xml' },
+      },
+      details: { sitemap_blogs: sitemapBlogs.length, managed_pages: pageCount || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Public Sitemap',
+      category: 'SEO',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Sitemap check failed',
+      reason: e?.message || String(e),
       lastChecked: new Date().toISOString(),
     };
   }
@@ -2802,6 +2911,7 @@ function calculateHealthScore(checks: HealthCheck[]): number {
     'Background Jobs': 4,
     Security: 3,
     Compliance: 5,
+    SEO: 3,
   };
 
   let totalWeight = 0;
@@ -3600,6 +3710,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkCronJobs(),
     checkFeatureCrons(),
     checkDailyBlog(),
+    checkSitemap(),
     checkSSL(),
     checkSARVTelephony(),
     checkSmartfloClickToCall(),

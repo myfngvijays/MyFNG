@@ -1813,6 +1813,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
   if (roleCode === 'DIGITAL_MARKETING') {
     const DMContentScreen = require('../screens/dashboard/digital_marketing/DMContentScreen').default;
     const DMCategoriesScreen = require('../screens/dashboard/digital_marketing/DMCategoriesScreen').default;
+    const DMSiteSeoScreen = require('../screens/dashboard/digital_marketing/DMSiteSeoScreen').default;
     const DMProfileScreen = require('../screens/dashboard/digital_marketing/DMProfileScreen').default;
     
     return (
@@ -1831,6 +1832,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="DMCategories"
           component={DMCategoriesScreen}
           options={{ title: 'Blog Categories' }}
+        />
+        <Stack.Screen
+          name="DMSiteSeo"
+          component={DMSiteSeoScreen}
+          options={{ title: 'On-page SEO' }}
         />
         <Stack.Screen 
           name="DMProfile" 

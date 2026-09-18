@@ -12,7 +12,7 @@ import { listBlogSitemapEntries, listWorkshopSitemapEntries } from '@/lib/worksh
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { revalidateLiveFiles, revalidateTechnicalSeo } from '@/lib/seo/revalidate';
 import { createClient } from '@/lib/supabase/server';
-import { requireSuperAdmin } from '@/lib/super-admin-auth';
+import { requireSiteSeoAccess } from '@/lib/super-admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +45,7 @@ async function buildOverview() {
 export async function GET() {
   try {
     const supabase = await createClient();
-    const auth = await requireSuperAdmin(supabase);
+    const auth = await requireSiteSeoAccess(supabase);
     if (!auth.ok) return auth.res;
 
     const { db, res: dbErr } = await getAdminDb();
@@ -78,7 +78,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const auth = await requireSuperAdmin(supabase);
+    const auth = await requireSiteSeoAccess(supabase);
     if (!auth.ok) return auth.res;
 
     const { db, res: dbErr } = await getAdminDb();

@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import Navbar from '@/components/landing/Navbar';
@@ -10,6 +10,7 @@ import { formatDateDMY } from '@/lib/utils';
 import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
 import { computeReadTimeFromHtml } from '@/lib/blog/text';
 import {
+  isLegacyBlogAuthorSlug,
   isPublicBlogAuthorSlug,
   PUBLIC_BLOG_AUTHOR,
   PUBLIC_BLOG_AUTHOR_HREF,
@@ -23,6 +24,9 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  if (isLegacyBlogAuthorSlug(slug)) {
+    return { alternates: { canonical: `https://myfng.in${PUBLIC_BLOG_AUTHOR_HREF}` } };
+  }
   if (!isPublicBlogAuthorSlug(slug)) return { title: 'Author' };
   return {
     title: `${PUBLIC_BLOG_AUTHOR} | MyFNG Blogs`,
@@ -33,6 +37,7 @@ export async function generateMetadata({
 
 export default async function BlogAuthorPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  if (isLegacyBlogAuthorSlug(slug)) permanentRedirect(PUBLIC_BLOG_AUTHOR_HREF);
   if (!isPublicBlogAuthorSlug(slug)) notFound();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

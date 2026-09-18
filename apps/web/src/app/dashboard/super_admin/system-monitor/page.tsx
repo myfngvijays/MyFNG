@@ -108,6 +108,7 @@ const categoryIcons: Record<string, any> = {
   'Background Jobs': Clock,
   Security: Lock,
   Compliance: Shield,
+  SEO: FileText,
 };
 
 const statusConfig = {

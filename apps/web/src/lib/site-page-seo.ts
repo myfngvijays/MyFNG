@@ -374,15 +374,24 @@ async function fetchPageSeoFromDbRaw(path: string): Promise<SitePageSeoRow | nul
   const normalized = normalizePagePath(path);
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return null;
+  const aliases = Array.from(
+    new Set([
+      normalized,
+      normalized.replace(/^\/car-service-in\//, '/car-service-in-'),
+      normalized.replace(/^\/car-service-in-/, '/car-service-in/'),
+    ]),
+  );
 
   const { data, error } = await supabaseAdmin
     .from(SITE_PAGE_SEO_TABLE)
     .select('*')
-    .eq('page_path', normalized)
-    .maybeSingle();
+    .in('page_path', aliases)
+    .limit(2);
 
-  if (error || !data) return null;
-  const row = mapSitePageSeoRow(data);
+  if (error || !data?.length) return null;
+  const preferred =
+    data.find((item) => normalizePagePath(item.page_path) === normalized) || data[0];
+  const row = mapSitePageSeoRow(preferred);
   if (!row.active || !row.title.trim() || !row.description.trim()) return null;
   return row;
 }
@@ -433,7 +442,12 @@ export async function listSitePageSitemapEntries(): Promise<Array<{ path: string
       byPath.set(path, { ...entry, path });
     }
 
-    // Always publish brand + legal pages even if missing/noindex in DB overrides.
+    // Always include catalog pages even if they are not yet saved in site_page_seo.
+    for (const row of SITE_PAGE_SEO_DEFAULTS) {
+      if (row.noindex) continue;
+      const path = normalizePagePath(row.canonicalPath || row.page_path);
+      if (path && !byPath.has(path)) byPath.set(path, { path });
+    }
     for (const brand of POPULAR_BRAND_PAGES) {
       const path = normalizePagePath(brand.pagePath);
       if (!byPath.has(path)) byPath.set(path, { path });

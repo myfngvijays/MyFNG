@@ -49,6 +49,13 @@ export async function requireSuperAdmin(supabase: any): Promise<AuthOk | AuthFai
   return requireRoleCodes(supabase, ['SUPER_ADMIN']);
 }
 
+/** On-page / Advanced SEO — Super Admin plus Digital Marketing. */
+export const SITE_SEO_ACCESS_ROLES = ['SUPER_ADMIN', 'DIGITAL_MARKETING'] as const;
+
+export async function requireSiteSeoAccess(supabase: any): Promise<AuthOk | AuthFail> {
+  return requireRoleCodes(supabase, SITE_SEO_ACCESS_ROLES);
+}
+
 /** Legacy helper shape used by some booking/customer routes. */
 export async function assertPanelAccessLegacy(
   supabase: any,

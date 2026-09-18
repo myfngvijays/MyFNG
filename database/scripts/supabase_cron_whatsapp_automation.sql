@@ -19,6 +19,7 @@ BEGIN
     WHERE jobname LIKE 'wa-auto-%'
        OR jobname LIKE 'sys-health-alert-%'
        OR jobname LIKE 'wa-telecaller-%'
+       OR jobname = 'daily-blog-auto-post'
   LOOP
     PERFORM cron.unschedule(r.jobid);
     RAISE NOTICE 'Unscheduled % (jobid=%)', r.jobname, r.jobid;
@@ -160,6 +161,24 @@ SELECT cron.schedule(
 );
 
 -- -----------------------------------------------------------------------------
+-- Daily AI blog (10:00 AM IST, hourly catch-up until 4:00 PM IST)
+-- 04:30–10:30 UTC. 5 min timeout — OpenAI draft + cover upload.
+-- -----------------------------------------------------------------------------
+SELECT cron.schedule(
+  'daily-blog-auto-post',
+  '30 4-10 * * *',
+  $$
+  SELECT net.http_get(
+    url := 'https://myfng.in/api/cron/daily-blog',
+    headers := jsonb_build_object(
+      'Authorization', 'Bearer YOUR_CRON_SECRET'
+    ),
+    timeout_milliseconds := 300000
+  );
+  $$
+);
+
+-- -----------------------------------------------------------------------------
 -- Telecaller leads shift summary (13:30 UTC = 19:00 IST)
 -- Shift window: previous day 7:00 PM IST → today 7:00 PM IST
 -- -----------------------------------------------------------------------------
@@ -184,7 +203,7 @@ SELECT jobid, jobname, schedule, active
 FROM cron.job
 WHERE jobname LIKE 'wa-auto-%'
    OR jobname LIKE 'sys-health-alert-%'
-   OR jobname = 'wa-telecaller-leads-shift-summary'
+   OR jobname IN ('wa-telecaller-leads-shift-summary', 'daily-blog-auto-post')
 ORDER BY jobname;
 
 -- After a run, check responses:

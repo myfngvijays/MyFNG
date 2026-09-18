@@ -8,6 +8,7 @@ import KeywordIntentBreakdown from '@/components/blog/KeywordIntentBreakdown';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2, Sparkles, Save, Eye } from 'lucide-react';
+import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 
 type Category = { id: string; name: string };
 type Tag = { id: string; name: string };
@@ -174,6 +175,7 @@ export default function AICreateBlogPage() {
           cta_text: draft.seo.cta_text || 'Book Service Now',
           cta_url: draft.seo.cta_url || draft.links?.cta_url || '',
           related_articles: draft.seo.related_articles || draft.links?.related_articles || [],
+          author_name: PUBLIC_BLOG_AUTHOR,
         },
       };
 

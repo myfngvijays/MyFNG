@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assertCronAuth } from '@/lib/cron/assertCronAuth';
 import { BATCH_BLOG_TOPICS } from '@/lib/blog/batchBlogTopics';
 import { RSA_BLOG_TOPICS } from '@/lib/blog/rsaBlogTopics';
-import { deleteNewsCarBlogs, refreshBatchCoverAt, runBatchBlogPost, runRsaBatchBlogPost } from '@/lib/blog/runBatchBlogPost';
+import { PACKAGE_EDUCATION_TOPICS } from '@/lib/blog/packageEducationBlogTopics';
+import {
+  deleteNewsCarBlogs,
+  refreshBatchCoverAt,
+  runBatchBlogPost,
+  runPackageEducationBlogPost,
+  runRsaBatchBlogPost,
+} from '@/lib/blog/runBatchBlogPost';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
  * One-shot batch publisher. Call once per index (0-49).
@@ -45,14 +52,26 @@ async function handle(request: NextRequest) {
     }, { status: 400 });
   }
 
-  const result = request.nextUrl.searchParams.get('rsa') === '1'
-    ? await runRsaBatchBlogPost({ index: Number(raw) })
-    : await runBatchBlogPost({ index: Number(raw) });
+  const series = request.nextUrl.searchParams.get('packages') === '1'
+    ? 'packages'
+    : request.nextUrl.searchParams.get('rsa') === '1'
+      ? 'rsa'
+      : 'batch';
+  const result = series === 'packages'
+    ? await runPackageEducationBlogPost({ index: Number(raw) })
+    : series === 'rsa'
+      ? await runRsaBatchBlogPost({ index: Number(raw) })
+      : await runBatchBlogPost({ index: Number(raw) });
   return NextResponse.json(
     {
       ...result,
       timestamp: new Date().toISOString(),
-      total: request.nextUrl.searchParams.get('rsa') === '1' ? RSA_BLOG_TOPICS.length : BATCH_BLOG_TOPICS.length,
+      total:
+        series === 'packages'
+          ? PACKAGE_EDUCATION_TOPICS.length
+          : series === 'rsa'
+            ? RSA_BLOG_TOPICS.length
+            : BATCH_BLOG_TOPICS.length,
     },
     { status: result.success ? 200 : 500 },
   );

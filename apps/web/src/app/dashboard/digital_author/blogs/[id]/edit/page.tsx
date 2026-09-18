@@ -62,7 +62,7 @@ export default function DigitalAuthorEditBlogPage() {
       schema_blogposting: true,
       schema_faq: true,
       eligible_ai_overview: true,
-      author_name: 'MyFNG Auto Expert Team',
+      author_name: 'Nikhil Yelligetti',
       author_role: 'Automotive Expert',
       search_intent: 'Informational',
       local_city: '',

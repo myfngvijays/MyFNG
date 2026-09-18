@@ -48,6 +48,7 @@ import {
   Crown,
   Gift,
   Code2,
+  Search,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -1099,6 +1100,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/digital_marketing', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/digital_marketing/blogs', icon: <FileText className="w-5 h-5" />, label: 'Blogs' },
         { href: '/dashboard/digital_marketing/blogs/categories', icon: <Tag className="w-5 h-5" />, label: 'Blog Categories' },
+        { href: '/dashboard/digital_marketing/site-seo', icon: <Search className="w-5 h-5" />, label: 'On-page SEO' },
         { href: '/dashboard/digital_marketing/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
       'DIGITAL_AUTHOR': [

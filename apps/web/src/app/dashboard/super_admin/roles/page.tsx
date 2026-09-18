@@ -44,7 +44,7 @@ const ROLE_MENU_ITEMS: Record<string, string[]> = {
   COMPANY_MECHANIC_RSA: ['Dashboard', 'My Tasks', 'History', 'Profile'],
   COMPANY_VAN_TECHNICIAN: ['Dashboard', 'My Tasks', 'History', 'Profile'],
   COMPANY_VAN_DRIVER: ['Dashboard', 'My Trips', 'History', 'Profile'],
-  DIGITAL_MARKETING: ['Dashboard', 'Blogs', 'Blog Categories', 'Profile'],
+  DIGITAL_MARKETING: ['Dashboard', 'Blogs', 'Blog Categories', 'On-page SEO', 'Profile'],
   DIGITAL_AUTHOR: ['Dashboard', 'My Blogs', 'Profile'],
   CUSTOMER: ['Dashboard', 'My Bookings', 'My Vehicles', 'Invoices', 'Support', 'Profile'],
 };

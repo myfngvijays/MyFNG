@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Dimensions
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
@@ -16,54 +15,88 @@ import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
 import { COLORS, SPACING } from '../../constants/theme';
 
-const { width } = Dimensions.get('window');
+type DailyRun = { run_date: string; status: string; topic?: string | null };
 
 export default function DigitalMarketingDashboard() {
   const navigation = useNavigation();
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [dailyBusy, setDailyBusy] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     published: 0,
     draft: 0,
+    pendingReview: 0,
     categories: 0,
+    totalViews: 0,
+    publishedToday: 0,
+    publishedThisWeek: 0,
+    dailyAi: 0,
+    batchAi: 0,
+    packagePosts: 0,
+    rsaPosts: 0,
+    seoScore: 100,
+    missingToday: false,
+    dailyEnabled: true,
+    lastBlog: '',
+    lastStatus: '',
+    recentRuns: [] as DailyRun[],
+    packageBlogs: [] as Array<{ id: string; title: string; status: string }>,
   });
 
-  useEffect(() => {
-    fetchUserProfile();
-    fetchDashboardData();
-  }, []);
-
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data } = await supabase
-        .from('users_login')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      const { data } = await supabase.from('users_login').select('*').eq('id', user.id).single();
       if (data) setUserProfile(data);
     }
-  };
+  }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const data = await apiFetch<any>('/api/blogs/dashboard-stats');
       const summary = data?.summary || {};
       const inventory = data?.inventory || {};
+      const daily = data?.dailyPost || {};
       setStats({
         total: Number(summary.total || 0),
         published: Number(summary.published || 0),
         draft: Number(summary.draft || 0),
+        pendingReview: Number(summary.pendingReview || 0),
         categories: Number(inventory.categories || 0),
+        totalViews: Number(summary.totalViews || 0),
+        publishedToday: Number(summary.publishedToday || 0),
+        publishedThisWeek: Number(summary.publishedThisWeek || 0),
+        dailyAi: Number(summary.dailyAi || 0),
+        batchAi: Number(summary.batchAi || 0),
+        packagePosts: Number(summary.packagePosts || 0),
+        rsaPosts: Number(summary.rsaPosts || 0),
+        seoScore: Number(data?.seoHealth?.score || 100),
+        missingToday: daily.today_posted === false && daily.enabled !== false,
+        dailyEnabled: daily.enabled !== false,
+        lastBlog: daily.last_blog?.title || '',
+        lastStatus: daily.last_status || '',
+        recentRuns: Array.isArray(daily.recent_runs) ? daily.recent_runs.slice(0, 3) : [],
+        packageBlogs: Array.isArray(data?.recentPackage)
+          ? data.recentPackage.slice(0, 10).map((b: any) => ({
+              id: String(b.id),
+              title: String(b.title || ''),
+              status: String(b.status || ''),
+            }))
+          : [],
       });
     } catch (error) {
       if (__DEV__) console.error('Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void fetchUserProfile();
+    void fetchDashboardData();
+  }, [fetchUserProfile, fetchDashboardData]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -72,194 +105,212 @@ export default function DigitalMarketingDashboard() {
   };
 
   const handleNavigation = (screen: string) => {
-    if (screen === 'dashboard') {
-      // Already on dashboard
-      return;
-    }
+    if (screen === 'dashboard') return;
     navigation.navigate(screen as never);
+  };
+
+  const runDailyNow = async () => {
+    setDailyBusy(true);
+    try {
+      const data = await apiFetch<any>('/api/blogs/daily-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run_now' }),
+      });
+      await fetchDashboardData();
+      if (data?.run?.title) {
+        /* posted */
+      }
+    } catch {
+      /* toast handled by caller screens */
+    } finally {
+      setDailyBusy(false);
+    }
   };
 
   const tabs = [
     { id: 'dashboard', label: 'Home', icon: 'home' },
     { id: 'DMContent', label: 'Blogs', icon: 'document' },
+    { id: 'DMSiteSeo', label: 'SEO', icon: 'search' },
     { id: 'DMCategories', label: 'Categories', icon: 'tag' },
     { id: 'DMProfile', label: 'Profile', icon: 'account' },
   ];
-
-  const renderDashboard = () => (
-    <ScrollView
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      <DashboardHeader 
-        title="📱 Digital Marketing"
-        subtitle="Blogs, categories & profile"
-        userProfile={userProfile}
-      />
-
-      <View style={styles.statsGrid}>
-        <View style={styles.statRow}>
-          <StatCard title="Blogs" value={stats.total.toLocaleString()} color={COLORS.primary} />
-          <StatCard title="Published" value={stats.published.toLocaleString()} color={COLORS.success} />
-        </View>
-        <View style={styles.statRow}>
-          <StatCard title="Drafts" value={stats.draft.toLocaleString()} color={COLORS.warning} />
-          <StatCard title="Categories" value={stats.categories.toLocaleString()} color={COLORS.info} />
-        </View>
-      </View>
-
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleNavigation('DMContent')}
-          >
-            <Text style={styles.actionEmoji}>📝</Text>
-            <Text style={styles.actionText}>Blogs</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleNavigation('DMCategories')}
-          >
-            <Text style={styles.actionEmoji}>🏷️</Text>
-            <Text style={styles.actionText}>Categories</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleNavigation('DMProfile')}
-          >
-            <Text style={styles.actionEmoji}>👤</Text>
-            <Text style={styles.actionText}>Profile</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-    </ScrollView>
-  );
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+        <Text style={styles.loadingText}>Loading content studio…</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {renderDashboard()}
-      <BottomNav
-        activeTab="dashboard"
-        onTabChange={handleNavigation}
-        tabs={tabs}
-      />
-    </View>
-  );
-}
+      <ScrollView
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <DashboardHeader
+          title="Blogs dashboard"
+          subtitle="Daily · package · SEO"
+          userProfile={userProfile}
+        />
 
-interface StatCardProps {
-  title: string;
-  value: string;
-  subtitle?: string;
-  color: string;
-}
+        <View style={[styles.dailyCard, stats.missingToday ? styles.dailyWarn : styles.dailyOk]}>
+          <View style={styles.dailyRow}>
+            <Text style={styles.dailyEyebrow}>DAILY 10:00 AM</Text>
+            <Text style={styles.dailyTitle}>
+              {stats.missingToday ? 'Missing today' : stats.dailyEnabled ? 'Posted / on track' : 'Paused'}
+            </Text>
+          </View>
+          <Text style={styles.dailyMeta} numberOfLines={1}>
+            {stats.lastBlog || stats.lastStatus || 'No daily post yet'}
+          </Text>
+          <View style={styles.dailyActions}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={runDailyNow} disabled={dailyBusy}>
+              <Text style={styles.primaryBtnText}>{dailyBusy ? '…' : 'Post now'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={() => handleNavigation('DMContent')}>
+              <Text style={styles.secondaryBtnText}>All blogs</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-function StatCard({ title, value, subtitle, color }: StatCardProps) {
-  return (
-    <View style={[styles.statCard, { borderLeftColor: color }]}>
-      <Text style={styles.statTitle}>{title}</Text>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
+        <View style={styles.statsGrid}>
+          {[
+            { title: 'Total', value: stats.total.toLocaleString() },
+            { title: 'Live', value: stats.published.toLocaleString() },
+            { title: 'Views', value: stats.totalViews.toLocaleString() },
+            { title: 'Today', value: String(stats.publishedToday) },
+            { title: 'Week', value: String(stats.publishedThisWeek) },
+            { title: 'Daily AI', value: String(stats.dailyAi) },
+            { title: 'Batch', value: String(stats.batchAi) },
+            { title: 'Package', value: String(stats.packagePosts) },
+            { title: 'RSA', value: String(stats.rsaPosts) },
+            { title: 'SEO', value: `${stats.seoScore}%` },
+            { title: 'Drafts', value: String(stats.draft) },
+            { title: 'Cats', value: String(stats.categories) },
+          ].map((item) => (
+            <View key={item.title} style={styles.statChip}>
+              <Text style={styles.statTitle}>{item.title}</Text>
+              <Text style={styles.statValue}>{item.value}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Package blogs · {stats.packagePosts}</Text>
+          {stats.packageBlogs.length ? (
+            stats.packageBlogs.map((blog) => (
+              <TouchableOpacity key={blog.id} style={styles.blogRow} onPress={() => handleNavigation('DMContent')}>
+                <Text style={styles.blogTitle} numberOfLines={1}>{blog.title}</Text>
+                <Text style={styles.blogMeta}>{blog.status}</Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <Text style={styles.empty}>No package blogs yet</Text>
+          )}
+        </View>
+
+        {stats.recentRuns.length ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent daily runs</Text>
+            {stats.recentRuns.map((run) => (
+              <View key={run.run_date} style={styles.runRow}>
+                <Text style={styles.runDate}>{run.run_date}</Text>
+                <Text style={[styles.runStatus, run.status === 'success' ? styles.ok : styles.bad]}>
+                  {run.status}
+                </Text>
+                <Text style={styles.runTopic} numberOfLines={1}>{run.topic || '—'}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick actions</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMContent')}>
+              <Text style={styles.actionEmoji}>📝</Text>
+              <Text style={styles.actionText}>Blogs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMSiteSeo')}>
+              <Text style={styles.actionEmoji}>🔍</Text>
+              <Text style={styles.actionText}>On-page SEO</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMCategories')}>
+              <Text style={styles.actionEmoji}>🏷️</Text>
+              <Text style={styles.actionText}>Categories</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMProfile')}>
+              <Text style={styles.actionEmoji}>👤</Text>
+              <Text style={styles.actionText}>Profile</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+      <BottomNav activeTab="dashboard" onTabChange={handleNavigation} tabs={tabs} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+  container: { flex: 1, backgroundColor: COLORS.background },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
+  loadingText: { marginTop: SPACING.md, color: COLORS.textSecondary },
+  dailyCard: {
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  loadingText: {
-    marginTop: SPACING.md,
-    color: COLORS.textSecondary,
-  },
-  statsGrid: {
-    padding: SPACING.md,
-    gap: SPACING.md,
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  statCard: {
-    flex: 1,
+  dailyOk: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+  dailyWarn: { backgroundColor: '#FFFBEB', borderColor: '#FCD34D' },
+  dailyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  dailyEyebrow: { fontSize: 10, fontWeight: '700', color: '#C9A227', letterSpacing: 0.4 },
+  dailyTitle: { fontSize: 13, fontWeight: '800', color: COLORS.heading },
+  dailyMeta: { fontSize: 11, color: COLORS.textSecondary, marginTop: 4 },
+  dailyActions: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  primaryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  primaryBtnText: { color: COLORS.white, fontWeight: '700', fontSize: 12 },
+  secondaryBtn: { backgroundColor: COLORS.white, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },
+  secondaryBtnText: { color: COLORS.heading, fontWeight: '700', fontSize: 12 },
+  statsGrid: { padding: SPACING.md, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  statChip: {
+    width: '31.5%',
     backgroundColor: COLORS.white,
-    padding: SPACING.md,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  statTitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: SPACING.xs,
-  },
-  statSubtitle: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  section: {
-    padding: SPACING.md,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.md,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.md,
-  },
+  statTitle: { fontSize: 10, color: COLORS.textSecondary },
+  statValue: { fontSize: 14, fontWeight: '800', color: COLORS.primary, marginTop: 2 },
+  section: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.md },
+  sectionTitle: { fontSize: 14, fontWeight: '800', color: COLORS.heading, marginBottom: 6 },
+  blogRow: { paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  blogTitle: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
+  blogMeta: { fontSize: 10, color: COLORS.textSecondary, marginTop: 2, textTransform: 'capitalize' },
+  empty: { fontSize: 12, color: COLORS.textSecondary, paddingVertical: 8 },
+  runRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  runDate: { width: 72, fontSize: 11, fontWeight: '600', color: COLORS.textPrimary },
+  runStatus: { width: 56, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
+  ok: { color: COLORS.success },
+  bad: { color: COLORS.danger },
+  runTopic: { flex: 1, fontSize: 11, color: COLORS.textSecondary },
+  quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionButton: {
     flex: 1,
-    minWidth: (width - SPACING.md * 3) / 2,
+    minWidth: 80,
     backgroundColor: COLORS.white,
-    padding: SPACING.md,
-    borderRadius: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  actionEmoji: {
-    fontSize: 32,
-    marginBottom: SPACING.xs,
-  },
-  actionText: {
-    fontSize: 12,
-    color: COLORS.textPrimary,
-    fontWeight: '600',
-  },
+  actionEmoji: { fontSize: 18, marginBottom: 4 },
+  actionText: { fontSize: 11, color: COLORS.textPrimary, fontWeight: '700' },
 });

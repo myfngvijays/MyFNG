@@ -11,6 +11,7 @@ import type { DailyTargetCity } from '@/lib/blog/dailyCities';
 import type { DailyBlogTopic } from '@/lib/blog/dailyTopics';
 import { USP_BLOG_FACTS } from '@/lib/blog/dailyUspTopics';
 import { RSA_BLOG_FACTS } from '@/lib/blog/rsaBlogTopics';
+import { PACKAGE_EDUCATION_FACTS } from '@/lib/blog/packageEducationBlogTopics';
 import type { WeeklyUspTopic } from '@/lib/blog/dailyUspTopics';
 import {
   generateAiBlogDraft,
@@ -66,6 +67,14 @@ async function resolveAuthorId(supabaseAdmin: any, preferred: string | null): Pr
   };
 
   if (preferred) return pick(preferred);
+
+  const { data: namedAuthor } = await supabaseAdmin
+    .from('users_login')
+    .select('id, full_name, email')
+    .ilike('full_name', '%Nikhil%Yelligetti%')
+    .limit(1)
+    .maybeSingle();
+  if (namedAuthor?.id) return pick(namedAuthor.id);
 
   const { data: roles } = await supabaseAdmin
     .from('roles')
@@ -187,6 +196,7 @@ export async function publishAiServiceBlog(opts: {
 
   const newsCar = Boolean(opts.seoExtra?.ai_news_car);
   const rsaPost = Boolean(opts.seoExtra?.ai_rsa_post);
+  const packagePost = Boolean(opts.seoExtra?.ai_package_post);
   const draft = await generateAiBlogDraft({
     supabase: supabaseAdmin,
     topic,
@@ -197,9 +207,15 @@ export async function publishAiServiceBlog(opts: {
     intent: picked.intent,
     tone: settings.tone || 'Professional',
     wordCount: settings.word_count === 900 ? 600 : settings.word_count || 600,
-    postKind: newsCar ? 'news' : usp ? 'usp' : rsaPost ? 'rsa' : 'service',
+    postKind: newsCar ? 'news' : usp ? 'usp' : rsaPost ? 'rsa' : packagePost ? 'package' : 'service',
     uspFacts: usp ? USP_BLOG_FACTS : undefined,
-    aioFacts: newsCar ? undefined : rsaPost ? RSA_BLOG_FACTS : USP_BLOG_FACTS,
+    aioFacts: newsCar
+      ? undefined
+      : packagePost
+        ? PACKAGE_EDUCATION_FACTS
+        : rsaPost
+          ? RSA_BLOG_FACTS
+          : USP_BLOG_FACTS,
   });
 
   const slug = await uniqueSlug(supabaseAdmin, draft.slug || toBlogSlug(draft.title), runDate);
@@ -261,7 +277,7 @@ export async function publishAiServiceBlog(opts: {
 
   let seoData = autoFillSeoFromSummary(draft.excerpt, {
     ...draft.seo,
-    author_name: author.name,
+    author_name: PUBLIC_BLOG_AUTHOR,
     featured_image_alt: featuredAlt,
     og_image: uploaded.url,
     search_intent: picked.intent,
@@ -285,8 +301,12 @@ export async function publishAiServiceBlog(opts: {
     app_download_url: appLink.url,
     related_articles: draft.seo.related_articles || [],
     ...(opts.seoExtra || {}),
+    author_name: PUBLIC_BLOG_AUTHOR,
   });
-  seoData = normalizeBlogSeoData(seoData);
+  seoData = normalizeBlogSeoData({
+    ...seoData,
+    author_name: PUBLIC_BLOG_AUTHOR,
+  });
 
   const now = new Date().toISOString();
   const { data: blog, error: insertError } = await supabaseAdmin

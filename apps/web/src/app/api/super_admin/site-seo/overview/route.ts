@@ -9,7 +9,7 @@ import {
 import { listPublishedWorkshopSeoSummaries, listWorkshopSitemapEntries, listBlogSitemapEntries } from '@/lib/workshop-page-seo';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { createClient } from '@/lib/supabase/server';
-import { requireSuperAdmin } from '@/lib/super-admin-auth';
+import { requireSiteSeoAccess } from '@/lib/super-admin-auth';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -67,7 +67,7 @@ function analyzePageHealth(rows: ReturnType<typeof mapSitePageSeoRow>[]) {
 export async function GET() {
   try {
     const supabase = await createClient();
-    const auth = await requireSuperAdmin(supabase);
+    const auth = await requireSiteSeoAccess(supabase);
     if (!auth.ok) return auth.res;
 
     const { supabaseAdmin } = getSupabaseAdmin();

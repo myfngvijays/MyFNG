@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Globe, RefreshCw, Save, Search, Sparkles, Store } from 'lucide-react';
+import { Check, Copy, ExternalLink, Globe, Plus, RefreshCw, Save, Search, Sparkles, Store, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { SITE_URL } from '@/lib/seo/metadata';
 import { classifySitePagePath } from '@/lib/site-page-seo';
 import type { SitePageSeoRow } from '@/lib/site-page-seo';
-import type { BlogSeoSummary } from '@/lib/blog/seo';
+import { buildBlogSchemaPreview, sanitizeBlogSlug, type BlogSeoSummary } from '@/lib/blog/seo';
 import type { WorkshopSeoSummary } from '@/lib/workshop-page-seo';
 import TechnicalSeoPanel from '@/components/admin/site-seo/TechnicalSeoPanel';
 import SeoOverviewDashboard, { type SeoOverviewData } from '@/components/admin/site-seo/SeoOverviewDashboard';
@@ -47,7 +47,7 @@ const TAB_META: Record<SeoTab, { label: string; subtitle: string }> = {
   service: { label: 'Service Pages', subtitle: '/car-services/* detail pages' },
   workshop: { label: 'Workshops', subtitle: 'Published workshop public pages' },
   city: { label: 'City Pages', subtitle: 'Car service landing pages by city' },
-  blog: { label: 'Blogs', subtitle: 'Published blog posts (read-only preview)' },
+  blog: { label: 'Blogs', subtitle: 'Full on-page SEO for published blog posts' },
   technical: { label: 'Technical SEO', subtitle: 'Verification, manifest, robots, schema & crawl settings' },
 };
 
@@ -68,6 +68,8 @@ export default function SiteSeoAdminApp() {
   const [selectedWorkshopSlug, setSelectedWorkshopSlug] = useState<string | null>(null);
   const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(null);
   const [draft, setDraft] = useState<SitePageSeoRow | null>(null);
+  const [blogDraft, setBlogDraft] = useState<BlogSeoSummary | null>(null);
+  const [jsonLdCopied, setJsonLdCopied] = useState(false);
 
   const loadPages = useCallback(async () => {
     setLoading(true);
@@ -154,6 +156,12 @@ export default function SiteSeoAdminApp() {
     setDraft(selected ? { ...selected } : null);
   }, [rows, selectedId, tab]);
 
+  useEffect(() => {
+    if (tab !== 'blog') return;
+    const selected = blogs.find((row) => row.slug === selectedBlogSlug) || null;
+    setBlogDraft(selected ? { ...selected, faqs: selected.faqs || [] } : null);
+  }, [blogs, selectedBlogSlug, tab]);
+
   const servicePageCount = useMemo(
     () => rows.filter((row) => classifySitePagePath(row.page_path) === 'service').length,
     [rows],
@@ -213,35 +221,77 @@ export default function SiteSeoAdminApp() {
     [blogs, selectedBlogSlug],
   );
 
-  const seedServicePages = async () => {
+  const syncSeoPaths = async (scope: 'all' | 'service' | 'city' = 'all') => {
     setSeeding(true);
     try {
-      const res = await fetch('/api/super_admin/site-seo/seed-services', { method: 'POST' });
+      const res = await fetch('/api/super_admin/site-seo/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.details || 'Seed failed');
-      toast.success(json.inserted ? `Added ${json.inserted} service page(s)` : 'All service pages already exist');
+      if (!res.ok) throw new Error(json?.error || json?.details || 'Sync failed');
+      const remapped = Number(json.remapped || 0);
+      const inserted = Number(json.inserted || 0);
+      toast.success(
+        remapped || inserted
+          ? `Updated ${remapped} URL(s), added ${inserted} missing page(s)`
+          : 'All SEO URLs already match the live site',
+      );
       await loadPages();
-      setTab('service');
+      await loadOverview();
+      if (scope === 'service') setTab('service');
+      if (scope === 'city') setTab('city');
     } catch (err: any) {
-      toast.error(err?.message || 'Could not seed service pages');
+      toast.error(err?.message || 'Could not sync page SEO URLs');
     } finally {
       setSeeding(false);
     }
   };
 
-  const seedCityPages = async () => {
-    setSeeding(true);
+  const saveBlog = async () => {
+    if (!blogDraft) return;
+    setSaving(true);
     try {
-      const res = await fetch('/api/super_admin/site-seo/seed-cities', { method: 'POST' });
+      const res = await fetch(`/api/super_admin/site-seo/blogs/${blogDraft.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: sanitizeBlogSlug(blogDraft.slug),
+          title: blogDraft.title,
+          description: blogDraft.description,
+          keywords: blogDraft.keywords,
+          keyphrase: blogDraft.keyphrase,
+          canonical_url: blogDraft.canonical_url,
+          og_title: blogDraft.og_title,
+          og_description: blogDraft.og_description,
+          og_image: blogDraft.og_image,
+          featured_image_alt: blogDraft.featured_image_alt,
+          search_intent: blogDraft.search_intent,
+          local_city: blogDraft.local_city,
+          local_areas: blogDraft.local_areas,
+          author_name: blogDraft.author_name,
+          author_role: blogDraft.author_role,
+          robots_index: blogDraft.robots_index,
+          robots_follow: blogDraft.robots_follow,
+          schema_blogposting: blogDraft.schema_blogposting,
+          schema_faq: blogDraft.schema_faq,
+          eligible_ai_overview: blogDraft.eligible_ai_overview,
+          faqs: blogDraft.faqs,
+        }),
+      });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.details || 'Seed failed');
-      toast.success(json.inserted ? `Added ${json.inserted} city page(s)` : 'All city pages already exist');
-      await loadPages();
-      setTab('city');
+      if (!res.ok) throw new Error(json?.error || json?.details || 'Save failed');
+      const updated = json.data as BlogSeoSummary;
+      setBlogs((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      setSelectedBlogSlug(updated.slug);
+      setBlogDraft(updated);
+      toast.success(`Blog SEO saved for ${updated.page_label}`);
+      await loadOverview();
     } catch (err: any) {
-      toast.error(err?.message || 'Could not seed city pages');
+      toast.error(err?.message || 'Could not save blog SEO');
     } finally {
-      setSeeding(false);
+      setSaving(false);
     }
   };
 
@@ -284,16 +334,36 @@ export default function SiteSeoAdminApp() {
     ? `${SITE_URL}${draft.canonical_path || draft.page_path}`
     : selectedWorkshop
       ? `${SITE_URL}/workshop/${selectedWorkshop.slug}`
-      : selectedBlog
-        ? `${SITE_URL}${selectedBlog.preview_href}`
-        : SITE_URL;
+      : blogDraft
+        ? `${SITE_URL}/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`
+        : selectedBlog
+          ? `${SITE_URL}${selectedBlog.preview_href}`
+          : SITE_URL;
+
+  const blogSchemaPreview = useMemo(
+    () =>
+      blogDraft
+        ? buildBlogSchemaPreview({
+            slug: blogDraft.slug,
+            title: blogDraft.title || blogDraft.post_title,
+            description: blogDraft.description,
+            keywords: blogDraft.keywords,
+            author_name: blogDraft.author_name,
+            schema_blogposting: blogDraft.schema_blogposting,
+            schema_faq: blogDraft.schema_faq,
+            eligible_ai_overview: blogDraft.eligible_ai_overview,
+            faqs: blogDraft.faqs,
+          })
+        : null,
+    [blogDraft],
+  );
 
   const listLoading = tab === 'workshop' ? workshopsLoading : tab === 'blog' ? blogsLoading : loading;
 
   return (
     <div className={t.page}>
       <div className={t.header}>
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
           <div>
             <div className={`flex items-center gap-2 text-sm ${t.subtitle}`}>
               <Globe className={`h-4 w-4 ${t.iconAccent}`} />
@@ -301,32 +371,19 @@ export default function SiteSeoAdminApp() {
             </div>
             <h1 className={`mt-1 text-2xl font-black ${t.title}`}>Advanced SEO</h1>
             <p className={`mt-1 max-w-2xl text-sm ${t.subtitle}`}>
-              Manage on-page SEO for static, service and city pages. Preview workshops and blogs. Configure technical SEO site-wide.
+              Manage on-page SEO for static, service, city and blog pages. Preview workshops. Configure technical SEO site-wide.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {tab !== 'workshop' && tab !== 'blog' && tab !== 'technical' && tab !== 'overview' && servicePageCount === 0 ? (
-              <button
-                type="button"
-                onClick={seedServicePages}
-                disabled={seeding || loading}
-                className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm font-semibold text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-60"
-              >
-                <Sparkles className={`h-4 w-4 ${seeding ? 'animate-spin' : ''}`} />
-                {seeding ? 'Seeding…' : 'Seed Service Pages'}
-              </button>
-            ) : null}
-            {tab !== 'workshop' && tab !== 'blog' && tab !== 'technical' && tab !== 'overview' && cityPageCount === 0 ? (
-              <button
-                type="button"
-                onClick={seedCityPages}
-                disabled={seeding || loading}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-60"
-              >
-                <Sparkles className={`h-4 w-4 ${seeding ? 'animate-spin' : ''}`} />
-                {seeding ? 'Seeding…' : 'Seed City Pages'}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => syncSeoPaths('all')}
+              disabled={seeding || loading}
+              className={t.btnGhost}
+            >
+              <Sparkles className={`h-4 w-4 ${seeding ? 'animate-spin' : ''}`} />
+              {seeding ? 'Syncing…' : 'Sync URLs'}
+            </button>
             <button
               type="button"
               onClick={() => load()}
@@ -336,7 +393,17 @@ export default function SiteSeoAdminApp() {
               <RefreshCw className={`h-4 w-4 ${loading || workshopsLoading || blogsLoading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            {tab !== 'workshop' && tab !== 'blog' && tab !== 'technical' && tab !== 'overview' ? (
+            {tab === 'blog' ? (
+              <button
+                type="button"
+                onClick={saveBlog}
+                disabled={saving || blogsLoading || !blogDraft}
+                className={t.btnPrimary}
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Saving…' : 'Save blog SEO'}
+              </button>
+            ) : tab !== 'workshop' && tab !== 'technical' && tab !== 'overview' ? (
               <button
                 type="button"
                 onClick={save}
@@ -351,7 +418,7 @@ export default function SiteSeoAdminApp() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6">
         <div className="flex flex-wrap gap-2">
           {(Object.keys(TAB_META) as SeoTab[]).map((key) => {
             const active = tab === key;
@@ -393,11 +460,11 @@ export default function SiteSeoAdminApp() {
       </div>
 
       {tab === 'technical' ? (
-        <div className="mx-auto max-w-7xl px-4 pb-6 sm:px-6">
+        <div className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6">
           <TechnicalSeoPanel onRefreshAll={load} />
         </div>
       ) : tab === 'overview' ? (
-        <div className="mx-auto max-w-7xl px-4 pb-6 sm:px-6">
+        <div className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6">
           <SeoOverviewDashboard
             data={overview}
             loading={overviewLoading}
@@ -409,8 +476,8 @@ export default function SiteSeoAdminApp() {
           />
         </div>
       ) : (
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 pb-6 sm:px-6 lg:grid-cols-[320px_1fr]">
-        <section className={`${t.card} p-4`}>
+      <div className="mx-auto grid w-full max-w-[1600px] items-start gap-6 px-4 pb-6 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <section className={`${t.card} p-4 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-7rem)] lg:overflow-hidden`}>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
@@ -420,7 +487,7 @@ export default function SiteSeoAdminApp() {
               className={`${t.input} py-2.5 pl-10 pr-3`}
             />
           </div>
-          <div className="mt-4 max-h-[70vh] space-y-1 overflow-y-auto">
+          <div className="mt-4 max-h-[60vh] space-y-1 overflow-y-auto lg:max-h-[calc(100dvh-12rem)]">
             {listLoading ? (
               <p className={`px-2 py-6 text-sm ${t.subtitle}`}>Loading…</p>
             ) : tab === 'blog' ? (
@@ -503,7 +570,7 @@ export default function SiteSeoAdminApp() {
           </div>
         </section>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           {tab === 'workshop' ? (
             !selectedWorkshop ? (
               <div className={`${t.cardMuted} p-10 text-center text-sm ${t.subtitle}`}>
@@ -567,52 +634,342 @@ export default function SiteSeoAdminApp() {
               </>
             )
           ) : tab === 'blog' ? (
-            !selectedBlog ? (
+            !blogDraft ? (
               <div className={`${t.cardMuted} p-10 text-center text-sm ${t.subtitle}`}>
-                Select a blog to preview SEO.
+                Select a blog to edit SEO.
               </div>
             ) : (
               <>
                 <div className={`${t.card} p-5`}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 className={`text-lg font-black ${t.title}`}>{selectedBlog.page_label}</h2>
-                      <p className={`mt-1 text-sm ${t.subtitle}`}>{selectedBlog.preview_href}</p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <h2 className={`text-lg font-black ${t.title}`}>{blogDraft.post_title || blogDraft.page_label}</h2>
+                      <p className={`mt-1 break-all text-sm ${t.subtitle}`}>
+                        {`/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`}
+                      </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <a href={previewUrl} target="_blank" rel="noreferrer" className={t.btnGhost}>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <a href={`${SITE_URL}/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`} target="_blank" rel="noreferrer" className={t.btnGhost}>
                         <ExternalLink className="h-4 w-4" />
                         Preview blog
                       </a>
-                      <a href={selectedBlog.edit_href} className={t.btnDark}>
-                        Edit in Digital Marketing
+                      <a href={blogDraft.edit_href} className={t.btnDark}>
+                        Open full editor
                       </a>
                     </div>
                   </div>
-                </div>
-
-                <div className={t.alert}>
-                  Blog SEO is edited in <strong>Digital Marketing → Blogs</strong>. Posts with Index unchecked are excluded from sitemap.xml.
                 </div>
 
                 <div className={`${t.card} p-5`}>
                   <h3 className={t.sectionTitle}>Search Preview</h3>
                   <div className="mt-4 space-y-1">
-                    <p className={t.searchTitle}>{selectedBlog.title || 'Blog title'}</p>
-                    <p className={t.searchUrl}>{previewUrl}</p>
-                    <p className={`text-sm leading-6 ${t.body}`}>{selectedBlog.description || 'Meta description not set yet.'}</p>
+                    <p className={t.searchTitle}>{blogDraft.title || 'Blog title'}</p>
+                    <p className={t.searchUrl}>{`${SITE_URL}/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`}</p>
+                    <p className={`text-sm leading-6 ${t.body}`}>{blogDraft.description || 'Meta description will appear here.'}</p>
                   </div>
                 </div>
 
                 <div className={`${t.card} p-5`}>
-                  <div className="grid gap-4 text-sm">
-                    <div>
-                      <p className={t.label}>Indexable</p>
-                      <p className={`mt-1 ${t.body}`}>{selectedBlog.indexable ? 'Yes' : 'No (noindex)'}</p>
+                  <div className="grid gap-5">
+                    <Field
+                      label="URL slug"
+                      hint={
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-brand-fng hover:underline"
+                          onClick={() => {
+                            const next = sanitizeBlogSlug(blogDraft.post_title || blogDraft.title);
+                            if (!next) return;
+                            setBlogDraft((prev) => (prev ? { ...prev, slug: next, preview_href: `/blogs/${next}` } : prev));
+                          }}
+                        >
+                          Suggest from title
+                        </button>
+                      }
+                    >
+                      <input
+                        value={blogDraft.slug}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setBlogDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  slug: raw,
+                                  preview_href: `/blogs/${sanitizeBlogSlug(raw) || raw}`,
+                                }
+                              : prev,
+                          );
+                        }}
+                        onBlur={() => {
+                          const next = sanitizeBlogSlug(blogDraft.slug);
+                          if (!next) return;
+                          setBlogDraft((prev) => (prev ? { ...prev, slug: next, preview_href: `/blogs/${next}` } : prev));
+                        }}
+                        placeholder="before-you-blame-the-workshop"
+                        className={t.input}
+                      />
+                      <p className={`mt-1.5 text-xs ${t.subtitle}`}>
+                        Public URL: {SITE_URL}/blogs/{sanitizeBlogSlug(blogDraft.slug) || 'your-slug'}
+                      </p>
+                    </Field>
+                    <Field label="Meta title" hint={<CharCount value={blogDraft.title} ideal={60} />}>
+                      <input
+                        value={blogDraft.title}
+                        onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, title: e.target.value } : prev))}
+                        className={t.input}
+                      />
+                    </Field>
+                    <Field label="Meta description" hint={<CharCount value={blogDraft.description} ideal={155} />}>
+                      <textarea
+                        value={blogDraft.description}
+                        onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, description: e.target.value } : prev))}
+                        rows={4}
+                        className={t.textarea}
+                      />
+                    </Field>
+                    <Field label="Keywords" hint="Comma-separated">
+                      <textarea
+                        value={blogDraft.keywords}
+                        onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, keywords: e.target.value } : prev))}
+                        rows={3}
+                        className={t.textarea}
+                      />
+                    </Field>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <Field label="Focus keyphrase">
+                        <input
+                          value={blogDraft.keyphrase}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, keyphrase: e.target.value } : prev))}
+                          className={t.input}
+                        />
+                      </Field>
+                      <Field label="Search intent">
+                        <select
+                          value={blogDraft.search_intent}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, search_intent: e.target.value } : prev))}
+                          className={t.select}
+                        >
+                          <option value="Informational">Informational</option>
+                          <option value="Commercial">Commercial</option>
+                          <option value="Transactional">Transactional</option>
+                          <option value="Navigational">Navigational</option>
+                        </select>
+                      </Field>
                     </div>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <Field label="Canonical URL">
+                        <input
+                          value={blogDraft.canonical_url}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, canonical_url: e.target.value } : prev))}
+                          placeholder="https://myfng.in/blogs/your-slug"
+                          className={t.input}
+                        />
+                      </Field>
+                      <Field label="OG image URL">
+                        <input
+                          value={blogDraft.og_image}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, og_image: e.target.value } : prev))}
+                          className={t.input}
+                        />
+                      </Field>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <Field label="OG title" hint={<CharCount value={blogDraft.og_title} ideal={60} />}>
+                        <input
+                          value={blogDraft.og_title}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, og_title: e.target.value } : prev))}
+                          className={t.input}
+                        />
+                      </Field>
+                      <Field label="Featured image ALT" hint={<CharCount value={blogDraft.featured_image_alt} ideal={125} />}>
+                        <input
+                          value={blogDraft.featured_image_alt}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, featured_image_alt: e.target.value } : prev))}
+                          className={t.input}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="OG description" hint={<CharCount value={blogDraft.og_description} ideal={155} />}>
+                      <textarea
+                        value={blogDraft.og_description}
+                        onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, og_description: e.target.value } : prev))}
+                        rows={3}
+                        className={t.textarea}
+                      />
+                    </Field>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <Field label="Target city">
+                        <input
+                          value={blogDraft.local_city}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, local_city: e.target.value } : prev))}
+                          placeholder="e.g. Thane"
+                          className={t.input}
+                        />
+                      </Field>
+                      <Field label="Local areas" hint="Comma-separated">
+                        <input
+                          value={blogDraft.local_areas}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, local_areas: e.target.value } : prev))}
+                          placeholder="Wagle Estate, Manpada"
+                          className={t.input}
+                        />
+                      </Field>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <Field label="Author name">
+                        <input
+                          value={blogDraft.author_name}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, author_name: e.target.value } : prev))}
+                          className={t.input}
+                        />
+                      </Field>
+                      <Field label="Author role">
+                        <input
+                          value={blogDraft.author_role}
+                          onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, author_role: e.target.value } : prev))}
+                          className={t.input}
+                        />
+                      </Field>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {[
+                        { key: 'robots_index', label: 'Allow search indexing' },
+                        { key: 'robots_follow', label: 'Allow follow links' },
+                        { key: 'schema_blogposting', label: 'BlogPosting schema' },
+                        { key: 'schema_faq', label: 'FAQ schema' },
+                        { key: 'eligible_ai_overview', label: 'AI Overview (SGE)' },
+                      ].map((item) => (
+                        <label key={item.key} className={t.checkbox}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(blogDraft[item.key as keyof BlogSeoSummary])}
+                            onChange={(e) =>
+                              setBlogDraft((prev) => (prev ? { ...prev, [item.key]: e.target.checked } : prev))
+                            }
+                          />
+                          {item.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`${t.card} p-5`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className={t.label}>Keywords</p>
-                      <p className={`mt-1 ${t.body}`}>{selectedBlog.keywords || '—'}</p>
+                      <h3 className={t.sectionTitle}>Schema builder</h3>
+                      <p className={`mt-2 text-sm ${t.subtitle}`}>
+                        Add FAQ Q&As to generate FAQPage JSON-LD. BlogPosting and AI Overview blocks follow the toggles above.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className={t.btnGhost}
+                      onClick={() =>
+                        setBlogDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                schema_faq: true,
+                                faqs: [...(prev.faqs || []), { question: '', answer: '' }],
+                              }
+                            : prev,
+                        )
+                      }
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add FAQ
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid gap-5 xl:grid-cols-2">
+                    <div className="space-y-3">
+                    {(blogDraft.faqs || []).length === 0 ? (
+                      <div className={`${t.cardMuted} p-4 text-sm ${t.subtitle}`}>
+                        No FAQs yet. Add questions to build FAQ schema for this blog.
+                      </div>
+                    ) : (
+                      (blogDraft.faqs || []).map((faq, idx) => (
+                        <div key={`faq-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">FAQ {idx + 1}</span>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:underline"
+                              onClick={() =>
+                                setBlogDraft((prev) =>
+                                  prev ? { ...prev, faqs: (prev.faqs || []).filter((_, i) => i !== idx) } : prev,
+                                )
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remove
+                            </button>
+                          </div>
+                          <input
+                            value={faq.question}
+                            onChange={(e) =>
+                              setBlogDraft((prev) => {
+                                if (!prev) return prev;
+                                const faqs = [...(prev.faqs || [])];
+                                faqs[idx] = { ...faqs[idx], question: e.target.value };
+                                return { ...prev, faqs, schema_faq: true };
+                              })
+                            }
+                            placeholder="Question"
+                            className={`${t.input} mb-2`}
+                          />
+                          <textarea
+                            value={faq.answer}
+                            onChange={(e) =>
+                              setBlogDraft((prev) => {
+                                if (!prev) return prev;
+                                const faqs = [...(prev.faqs || [])];
+                                faqs[idx] = { ...faqs[idx], answer: e.target.value };
+                                return { ...prev, faqs, schema_faq: true };
+                              })
+                            }
+                            rows={3}
+                            placeholder="Answer"
+                            className={t.textarea}
+                          />
+                        </div>
+                      ))
+                    )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                        <h4 className={t.sectionTitle}>JSON-LD preview</h4>
+                        <div className="flex items-center gap-2">
+                          <span className={t.hint}>
+                            {(blogDraft.faqs || []).filter((f) => f.question.trim() && f.answer.trim()).length} FAQ
+                            {(blogDraft.faqs || []).filter((f) => f.question.trim() && f.answer.trim()).length === 1 ? '' : 's'} in schema
+                          </span>
+                          <button
+                            type="button"
+                            className={t.btnGhost}
+                            onClick={async () => {
+                              const text = JSON.stringify(blogSchemaPreview, null, 2);
+                              try {
+                                await navigator.clipboard.writeText(text);
+                                setJsonLdCopied(true);
+                                toast.success('JSON-LD copied');
+                                window.setTimeout(() => setJsonLdCopied(false), 1600);
+                              } catch {
+                                toast.error('Could not copy JSON-LD');
+                              }
+                            }}
+                          >
+                            {jsonLdCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                            {jsonLdCopied ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+                      <pre className={`${t.codeEditor} max-h-[36rem] overflow-auto`}>
+                        {JSON.stringify(blogSchemaPreview, null, 2)}
+                      </pre>
                     </div>
                   </div>
                 </div>

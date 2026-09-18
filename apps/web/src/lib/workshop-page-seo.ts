@@ -199,7 +199,9 @@ export async function listBlogSitemapEntries(): Promise<Array<{ slug: string; la
   const { data, error } = await supabaseAdmin
     .from('blogs')
     .select('slug, updated_at, published_at, seo_data')
-    .eq('status', 'published');
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(5000);
 
   if (error || !data) return [];
 

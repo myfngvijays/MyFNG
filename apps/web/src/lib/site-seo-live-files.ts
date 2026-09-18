@@ -146,9 +146,52 @@ export async function buildGeneratedSitemapEntries(): Promise<MetadataRoute.Site
   return [...siteRoutes, ...workshopRoutes, ...blogRoutes];
 }
 
+function extractSitemapLocs(xml: string): string[] {
+  const locs: string[] = [];
+  const re = /<loc>\s*([^<]+)\s*<\/loc>/gi;
+  let match: RegExpExecArray | null = re.exec(xml);
+  while (match) {
+    const loc = String(match[1] || '').trim();
+    if (loc) locs.push(loc);
+    match = re.exec(xml);
+  }
+  return locs;
+}
+
+function normalizeSitemapLoc(url: string): string {
+  return String(url || '').trim().replace(/\/+$/, '');
+}
+
+export function mergeSitemapXml(generated: string, custom: string): string {
+  const generatedLocs = new Set(extractSitemapLocs(generated).map(normalizeSitemapLoc));
+  const extra = extractSitemapLocs(custom)
+    .map((loc) => loc.trim())
+    .filter((loc) => loc && !generatedLocs.has(normalizeSitemapLoc(loc)));
+  if (!extra.length) return generated;
+
+  const extraXml = extra
+    .map(
+      (url) => `  <url>
+    <loc>${escapeXml(url)}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>`,
+    )
+    .join('\n');
+
+  return generated.replace('</urlset>', `${extraXml}\n</urlset>`);
+}
+
 export async function generateSitemapXmlContent(): Promise<string> {
   const entries = await buildGeneratedSitemapEntries();
+  const seen = new Set<string>();
   const urls = entries
+    .filter((entry) => {
+      const loc = normalizeSitemapLoc(entry.url);
+      if (!loc || seen.has(loc)) return false;
+      seen.add(loc);
+      return true;
+    })
     .map((entry) => {
       const lastmod = formatSitemapDate(entry.lastModified);
       const changefreq = entry.changeFrequency || 'monthly';
@@ -295,13 +338,16 @@ export async function getLiveFileOverride(key: LiveFileKey): Promise<LiveFileRow
 }
 
 export async function resolveLiveFileContent(key: LiveFileKey): Promise<string> {
+  const generated = await generateLiveFileContent(key);
   try {
     const override = await getLiveFileOverride(key);
-    if (override?.use_custom && override.content.trim()) return override.content;
+    if (!override?.use_custom || !override.content.trim()) return generated;
+    // Custom sitemap can add extra URLs, but new blogs/pages always stay in the generated set.
+    if (key === 'sitemap_xml') return mergeSitemapXml(generated, override.content);
+    return override.content;
   } catch {
-    // Fall through to generated content if cache/DB fails during build.
+    return generated;
   }
-  return generateLiveFileContent(key);
 }
 
 export async function buildLiveFileAdminViews(): Promise<LiveFileAdminView[]> {
@@ -334,6 +380,9 @@ export function migrationHintForLiveFilesError(message: string): string | undefi
 export function liveFileResponseHeaders(key: LiveFileKey): HeadersInit {
   return {
     'Content-Type': LIVE_FILE_META[key].contentType,
-    'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+    'Cache-Control':
+      key === 'sitemap_xml'
+        ? 'public, s-maxage=60, stale-while-revalidate=300'
+        : 'public, s-maxage=300, stale-while-revalidate=600',
   };
 }

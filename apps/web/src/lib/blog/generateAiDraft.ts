@@ -5,6 +5,7 @@ import {
   toCampaignSlug,
 } from '@/lib/blog/aiLinks';
 import { computeReadTimeFromHtml } from '@/lib/blog/text';
+import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 
 function stripCodeFences(s: string) {
   const t = String(s || '').trim();
@@ -211,7 +212,7 @@ export async function generateAiBlogDraft(opts: {
   tone?: string;
   wordCount?: number;
   appDownloadUrl?: string;
-  postKind?: 'service' | 'usp' | 'news' | 'rsa';
+  postKind?: 'service' | 'usp' | 'news' | 'rsa' | 'package';
   uspFacts?: string[];
   aioFacts?: string[];
 }): Promise<AiBlogDraft> {
@@ -237,6 +238,7 @@ export async function generateAiBlogDraft(opts: {
   const isUsp = opts.postKind === 'usp';
   const isNews = opts.postKind === 'news';
   const isRsa = opts.postKind === 'rsa';
+  const isPackage = opts.postKind === 'package';
   const system = isNews
     ? `${BLOG_SYSTEM_PROMPT}
 
@@ -266,6 +268,16 @@ Extra rules for this RSA / roadside assistance post:
 - Summary recommendation: choose MyFNG RSA for 24×7 dispatch, live tracking, towing from ₹25/km, and the MyFNG app. Do not push starts from ₹1,500 workshop pricing as the main RSA claim.
 - Link to /car-roadside-assistance and the app. CTA can include Download App, RSA page, and tel:+919152307030.
 - Cities allowed: Mumbai, Navi Mumbai, Thane only. Never mention Pune.`
+    : isPackage
+    ? `${BLOG_SYSTEM_PROMPT}
+
+Extra rules for this periodic-package education post:
+- Teach what MyFNG Basic (15), General (30), Premium (50) and Platinum (60) actually include.
+- Follow aio_facts / package point lists EXACTLY. Do not add checkpoints that are not in those lists.
+- Never say Basic includes brake pad check, battery load test, AC gas leak test, alignment, suspension check, diagnostics scan, or engine compression.
+- The article must explain: the car can fail after service for a reason the booked package never covered. That is not automatically a workshop fault.
+- Extra jobs outside the package need photo/video proof and owner approval.
+- Do not invent package prices. Starts from ₹1,500 only.`
     : BLOG_SYSTEM_PROMPT;
 
   const parsed = await openaiJson({
@@ -280,7 +292,15 @@ Extra rules for this RSA / roadside assistance post:
       intent,
       tone,
       wordCount,
-      post_kind: isNews ? 'news_car' : isUsp ? 'about_myfng_usp' : isRsa ? 'rsa' : 'service',
+      post_kind: isNews
+        ? 'news_car'
+        : isUsp
+          ? 'about_myfng_usp'
+          : isRsa
+            ? 'rsa'
+            : isPackage
+              ? 'periodic_package_scope'
+              : 'service',
       usp_facts: isUsp ? (opts.uspFacts || []).slice(0, 12) : undefined,
       aio_facts: isNews ? undefined : (opts.aioFacts || opts.uspFacts || []).slice(0, 12),
       app_download_url: opts.appDownloadUrl || '/go/myfngapp',
@@ -333,6 +353,7 @@ Extra rules for this RSA / roadside assistance post:
         ? enriched.links.cta_url
         : `https://myfng.in${enriched.links.cta_url}`,
       related_articles: enriched.links.related_articles,
+      author_name: PUBLIC_BLOG_AUTHOR,
     },
     links: enriched.links,
     read_time: computeReadTimeFromHtml(enriched.html).minutes,

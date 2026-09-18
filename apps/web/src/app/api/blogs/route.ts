@@ -18,6 +18,7 @@ import {
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
 import { authorBlogOrFilter, resolveBlogAuthorId } from '@/lib/blog/ownership';
+import { revalidateBlogSeo } from '@/lib/seo/revalidate';
 
 export async function GET(request: NextRequest) {
   try {
@@ -468,6 +469,10 @@ export async function POST(request: NextRequest) {
       tags: completeBlog.tags?.map((t: any) => t.tag) || [],
       categories: (completeBlog as any).categories?.map((c: any) => c?.category).filter(Boolean) || [],
     } : blog;
+
+    if (String(finalStatus) === 'published') {
+      revalidateBlogSeo(String(slug || blog.slug || ''));
+    }
 
     return NextResponse.json({ blog: transformedBlog, warnings }, { status: 201 });
   } catch (error: any) {

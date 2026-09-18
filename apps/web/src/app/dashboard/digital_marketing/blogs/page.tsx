@@ -247,7 +247,7 @@ function BlogsPageContent() {
         <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-brand-secondary">Daily auto-post · 10:00 AM IST</p>
+              <p className="text-sm font-semibold text-brand-secondary">Daily auto-post · 10:00 AM IST · Cronon</p>
               <p className="mt-1 text-xs text-gray-600">
                 {daily?.missing
                   ? 'Run database/365_daily_blog_auto_post.sql to enable this.'

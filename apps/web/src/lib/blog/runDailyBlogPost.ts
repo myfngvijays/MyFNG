@@ -300,7 +300,8 @@ export async function refreshDailyBlogCover(opts?: { slug?: string }) {
 export function dailyBlogScheduleInfo(settings: DailyBlogSettings | null) {
   return {
     schedule: '10:00 AM IST',
-    cron: '30 4 * * *',
+    cron: '30 4-10 * * *',
+    provider: 'Supabase Cronon → /api/cron/daily-blog',
     next_run_at: nextTenAmIstIso(),
     enabled: Boolean(settings?.enabled),
     last_run_at: settings?.last_run_at || null,

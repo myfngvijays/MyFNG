@@ -8,7 +8,7 @@ import {
 } from '@/lib/site-page-seo';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { createClient } from '@/lib/supabase/server';
-import { requireSuperAdmin } from '@/lib/super-admin-auth';
+import { requireSiteSeoAccess } from '@/lib/super-admin-auth';
 import { revalidateSitePageSeo } from '@/lib/seo/revalidate';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
     const supabase = await createClient();
-    const auth = await requireSuperAdmin(supabase);
+    const auth = await requireSiteSeoAccess(supabase);
     if (!auth.ok) return auth.res;
 
     const { supabaseAdmin } = getSupabaseAdmin();
@@ -82,7 +82,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
     const supabase = await createClient();
-    const auth = await requireSuperAdmin(supabase);
+    const auth = await requireSiteSeoAccess(supabase);
     if (!auth.ok) return auth.res;
 
     const { supabaseAdmin } = getSupabaseAdmin();

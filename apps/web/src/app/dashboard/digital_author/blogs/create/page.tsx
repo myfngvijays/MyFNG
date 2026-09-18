@@ -90,7 +90,7 @@ export default function CreateBlogPage() {
       schema_blogposting: true,
       schema_faq: true,
       eligible_ai_overview: true,
-      author_name: 'MyFNG Auto Expert Team',
+      author_name: 'Nikhil Yelligetti',
       author_role: 'Automotive Expert',
       cta_text: 'Book Your Car Service Now',
       cta_url: 'https://myfng.in/book-service',
