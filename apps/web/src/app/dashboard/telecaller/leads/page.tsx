@@ -256,6 +256,7 @@ function TelecallerCrmLeadsContent() {
   const [totalLeads, setTotalLeads] = useState(0);
   const [visibleColumns, setVisibleColumns] = useState<LeadsColumnVisibility>(DEFAULT_LEADS_COLUMNS);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [columnsQuery, setColumnsQuery] = useState('');
   const columnsMenuRef = useRef<HTMLDivElement>(null);
   const advancedMenuRef = useRef<HTMLDivElement>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -274,6 +275,10 @@ function TelecallerCrmLeadsContent() {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [columnsMenuOpen, showAdvanced]);
+
+  useEffect(() => {
+    if (!columnsMenuOpen) setColumnsQuery('');
+  }, [columnsMenuOpen]);
 
   const showCol = (key: LeadsColumnKey) => {
     if (key === 'assignee' && !isLeadManager) return false;
@@ -917,7 +922,7 @@ function TelecallerCrmLeadsContent() {
                   <ChevronDown className={`h-4 w-4 transition ${columnsMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {columnsMenuOpen ? (
-                  <div className="absolute right-0 z-40 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                  <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                         Show columns
@@ -934,12 +939,30 @@ function TelecallerCrmLeadsContent() {
                         Reset
                       </button>
                     </div>
+                    <label className="relative mb-2 block">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="search"
+                        value={columnsQuery}
+                        onChange={(e) => setColumnsQuery(e.target.value)}
+                        placeholder="Search columns…"
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
+                        autoComplete="off"
+                        autoFocus
+                      />
+                    </label>
                     <div className="max-h-72 space-y-0.5 overflow-y-auto">
                       {LEADS_TABLE_COLUMNS.filter(
                         (c) =>
                           (c.key !== 'assignee' && c.key !== 'source' && c.key !== 'mlScore') ||
                           isLeadManager,
-                      ).map((col) => (
+                      )
+                        .filter((c) => {
+                          const q = columnsQuery.trim().toLowerCase();
+                          if (!q) return true;
+                          return c.label.toLowerCase().includes(q) || c.key.toLowerCase().includes(q);
+                        })
+                        .map((col) => (
                         <label
                           key={col.key}
                           className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${

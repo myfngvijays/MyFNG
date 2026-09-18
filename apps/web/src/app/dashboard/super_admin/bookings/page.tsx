@@ -128,7 +128,7 @@ const BOOKINGS_TABLE_COLUMNS = [
   { key: 'time', label: 'Time', group: 'Core', onByDefault: true, width: 90 },
   { key: 'status', label: 'Status', group: 'Core', onByDefault: true, width: 150 },
   // Optional (columns menu)
-  { key: 'source', label: 'Source', group: 'Core', onByDefault: false, width: 120 },
+  { key: 'source', label: 'Source', group: 'Core', onByDefault: false, width: 168 },
   { key: 'assignee', label: 'Assignee', group: 'Core', onByDefault: false, width: 120 },
   { key: 'phone', label: 'Phone', group: 'Core', onByDefault: false, width: 120 },
   { key: 'utmCampaign', label: 'UTM Campaign', group: 'Core', onByDefault: false, width: 120 },
@@ -358,12 +358,12 @@ function SourceBadge({ lead }: { lead: Record<string, any> }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}
+      className={`inline-flex max-w-full items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${styles}`}
       style={inline}
       title={title}
     >
       <SourceBadgeIcon kind={kind} />
-      {label}
+      <span className="min-w-0 truncate">{label}</span>
     </span>
   );
 }
@@ -472,25 +472,26 @@ function SourceCell({ lead }: { lead: Record<string, any> }) {
   // Incomplete OTP leads: Source column shows Web/Mob OTP Verified
   if (otp && showOtpAsSource) {
     return (
-      <div className="inline-flex items-center gap-1.5 flex-nowrap">
+      <div className="flex max-w-full items-center gap-1 overflow-hidden">
         <span
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${otp.className}`}
+          className={`inline-flex min-w-0 max-w-full items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${otp.className}`}
+          title={otp.label}
         >
           <SourceBadgeIcon kind={otp.kind} />
-          {otp.label}
+          <span className="min-w-0 truncate">{otp.label}</span>
         </span>
       </div>
     );
   }
   return (
-    <div className="inline-flex items-center gap-1.5 flex-nowrap">
+    <div className="flex max-w-full items-center gap-1 overflow-hidden">
       <SourceBadge lead={lead} />
       {isWhatsAppEnquiryLead(lead) ? (
         <span
-          className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 ring-1 ring-amber-200"
+          className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 ring-1 ring-amber-200"
           title="WhatsApp enquiry only — not a confirmed booking"
         >
-          Enquiry
+          Enq
         </span>
       ) : null}
     </div>
@@ -1662,6 +1663,7 @@ function SuperAdminBookingsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [visibleColumns, setVisibleColumns] = useState<BookingsColumnVisibility>(DEFAULT_BOOKINGS_COLUMNS);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [columnsQuery, setColumnsQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
   const [chartDrill, setChartDrill] = useState<{
     dimension: ChartDimension;
@@ -2047,6 +2049,10 @@ function SuperAdminBookingsPage() {
     };
     document.addEventListener('mousedown', onPointerDown);
     return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [columnsMenuOpen]);
+
+  useEffect(() => {
+    if (!columnsMenuOpen) setColumnsQuery('');
   }, [columnsMenuOpen]);
 
   const toggleTableColumn = (key: BookingsTableColumnKey) => {
@@ -2993,7 +2999,7 @@ function SuperAdminBookingsPage() {
                       <ChevronDown className={`h-4 w-4 transition ${columnsMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {columnsMenuOpen ? (
-                      <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                      <div className="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Show columns</p>
                           <div className="flex items-center gap-2">
@@ -3032,9 +3038,26 @@ function SuperAdminBookingsPage() {
                             </button>
                           </div>
                         </div>
+                        <label className="relative mb-2 block">
+                          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="search"
+                            value={columnsQuery}
+                            onChange={(e) => setColumnsQuery(e.target.value)}
+                            placeholder="Search columns…"
+                            className="h-8 w-full rounded-lg border border-gray-200 bg-gray-50 pl-8 pr-3 text-xs font-medium text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
+                            autoComplete="off"
+                            autoFocus
+                          />
+                        </label>
                         <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
                           {BOOKINGS_COLUMN_GROUPS.map((group) => {
-                            const cols = BOOKINGS_TABLE_COLUMNS.filter((col) => col.group === group);
+                            const q = columnsQuery.trim().toLowerCase();
+                            const cols = BOOKINGS_TABLE_COLUMNS.filter((col) => {
+                              if (col.group !== group) return false;
+                              if (!q) return true;
+                              return col.label.toLowerCase().includes(q) || col.key.toLowerCase().includes(q);
+                            });
                             if (cols.length === 0) return null;
                             return (
                               <div key={group}>
@@ -3060,6 +3083,13 @@ function SuperAdminBookingsPage() {
                               </div>
                             );
                           })}
+                          {BOOKINGS_TABLE_COLUMNS.every((col) => {
+                            const q = columnsQuery.trim().toLowerCase();
+                            if (!q) return false;
+                            return !col.label.toLowerCase().includes(q) && !col.key.toLowerCase().includes(q);
+                          }) ? (
+                            <p className="px-2 py-3 text-center text-xs text-gray-500">No columns match “{columnsQuery.trim()}”</p>
+                          ) : null}
                         </div>
                         <p className="mt-2 text-[10px] text-gray-400">
                           Detail fields match lead click view. Select + Actions always stay visible.
@@ -3249,7 +3279,7 @@ function SuperAdminBookingsPage() {
                   </button>
                 ) : null}
 
-                <label className="relative min-w-[180px] flex-1 max-w-sm">
+                <label className="relative min-w-[220px] flex-1 max-w-sm shrink-0">
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
@@ -3766,7 +3796,7 @@ function SuperAdminBookingsPage() {
                       {showCol('date') ? <th className="px-3 py-3 whitespace-nowrap min-w-[110px]">Date</th> : null}
                       {showCol('time') ? <th className="px-3 py-3 whitespace-nowrap min-w-[90px]">Time</th> : null}
                       {showCol('status') ? <th className="px-3 py-3 whitespace-nowrap min-w-[150px]">Status</th> : null}
-                      {showCol('source') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Source</th> : null}
+                      {showCol('source') ? <th className="px-3 py-3 whitespace-nowrap min-w-[168px] w-[168px]">Source</th> : null}
                       {showCol('assignee') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Assignee</th> : null}
                       {showCol('phone') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Phone</th> : null}
                       {showCol('utmCampaign') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">UTM Campaign</th> : null}
@@ -3941,7 +3971,7 @@ function SuperAdminBookingsPage() {
                           </td>
                         ) : null}
                         {showCol('source') ? (
-                          <td className="px-3 py-3 text-sm whitespace-nowrap w-[120px] max-w-[120px]">
+                          <td className="px-3 py-3 text-sm min-w-[168px] w-[168px] max-w-[168px] overflow-hidden">
                             <SourceCell lead={lead} />
                           </td>
                         ) : null}
