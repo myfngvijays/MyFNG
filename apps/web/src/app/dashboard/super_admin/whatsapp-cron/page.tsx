@@ -69,6 +69,15 @@ type CronPayload = {
     canSendTemplate: boolean;
     body_preview?: string;
   } | null;
+  google_ads_funds_template?: {
+    templateName: string;
+    display_name?: string;
+    exists: boolean;
+    isApproved: boolean;
+    metaStatus: string | null;
+    canSendTemplate: boolean;
+    body_preview?: string;
+  } | null;
   smartflo_recordings_cron?: {
     id: string;
     title: string;
@@ -105,6 +114,7 @@ export default function WhatsAppCronPage() {
   const [addingPhone, setAddingPhone] = useState(false);
   const [lastRun, setLastRun] = useState<Record<string, string>>({});
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [fundsTemplateBusy, setFundsTemplateBusy] = useState(false);
   const [smartfloBusy, setSmartfloBusy] = useState(false);
   const [smartfloRunning, setSmartfloRunning] = useState(false);
 
@@ -336,6 +346,25 @@ export default function WhatsAppCronPage() {
     }
   };
 
+  const ensureGoogleAdsFundsTemplate = async () => {
+    setFundsTemplateBusy(true);
+    try {
+      const res = await fetch('/api/super_admin/whatsapp-cron', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ensure-google-ads-funds-template' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Template create/sync failed');
+      toast.success(json?.message || 'Google Ads funds template synced with Meta');
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Template failed');
+    } finally {
+      setFundsTemplateBusy(false);
+    }
+  };
+
   const ensureTcLeadsTemplate = async () => {
     setTemplateBusy(true);
     try {
@@ -498,6 +527,60 @@ export default function WhatsAppCronPage() {
                 <Plus className="h-3.5 w-3.5" />
               )}
               Add number
+            </button>
+          </div>
+        </div>
+
+        {/* Google Ads funds template */}
+        <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+          <div className="border-b bg-blue-50/70 px-4 py-3">
+            <p className="text-sm font-semibold text-blue-950">Google Ads funds WhatsApp template</p>
+            <p className="mt-1 text-xs text-blue-800/80">
+              Remaining ₹1,000 ke neeche 24/7 alert ke liye Meta UTILITY template. Name:{' '}
+              <code className="rounded bg-white px-1">google_ads_funds_alert</code>
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 text-sm">
+              {data?.google_ads_funds_template ? (
+                <>
+                  <p className="font-semibold text-gray-900">
+                    {data.google_ads_funds_template.display_name ||
+                      data.google_ads_funds_template.templateName}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-600">
+                    Status:{' '}
+                    <span
+                      className={
+                        data.google_ads_funds_template.canSendTemplate
+                          ? 'font-bold text-emerald-700'
+                          : 'font-bold text-amber-700'
+                      }
+                    >
+                      {data.google_ads_funds_template.metaStatus ||
+                        (data.google_ads_funds_template.exists ? 'PENDING' : 'NOT CREATED')}
+                    </span>
+                    {data.google_ads_funds_template.canSendTemplate
+                      ? ' · ready to send'
+                      : ' · Create/Sync pe click, Meta approve hone tak wait'}
+                  </p>
+                </>
+              ) : (
+                <p className="text-gray-500">Template status load nahi hua</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => void ensureGoogleAdsFundsTemplate()}
+              disabled={fundsTemplateBusy}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {fundsTemplateBusy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Create / Sync on Meta
             </button>
           </div>
         </div>

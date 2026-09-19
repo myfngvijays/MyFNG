@@ -90,6 +90,12 @@ export const GOOGLE_ADS_TOOLS = [
       { key: 'campaign_id', label: 'Campaign ID' },
     ],
   },
+  {
+    name: 'get_funds_tracker',
+    area: 'account',
+    description: 'Account budget remaining, daily budget, billing / payments account, period spend.',
+    params: [{ key: 'customer_id', label: 'Customer ID' }],
+  },
 ];
 
 export type GoogleAdsListOpts = {
@@ -368,7 +374,7 @@ async function periodMetrics(range: DateRangeInput, customerId?: string) {
     (sum, row) => sum + (num(row, 'metrics.conversionsValue') || num(row, 'metrics.conversions_value')),
     0,
   );
-  return withRates({ spend, clicks, impressions, conversions, conversionValue });
+  return withRates({ spend, clicks, impressions, conversions, allConversions: 0, conversionValue });
 }
 
 export async function getDailySeries(range: DateRangeInput | string = 'LAST_30_DAYS', customerId?: string) {
@@ -403,6 +409,123 @@ export async function getSpendSummary(customerId?: string, dateOpts?: DateRangeI
     currency: account.currency,
     periods: { today, last_7d, last_30d, selected },
     daily,
+  };
+}
+
+export async function getFundsTracker(customerId?: string, spendSummary?: Awaited<ReturnType<typeof getSpendSummary>> | null) {
+  const account = await getAccount(customerId);
+  const budgetQuery = `SELECT account_budget.id, account_budget.name, account_budget.status,
+            account_budget.approved_spending_limit_micros, account_budget.approved_spending_limit_type,
+            account_budget.adjusted_spending_limit_micros, account_budget.amount_served_micros,
+            account_budget.total_adjustments_micros, account_budget.approved_start_date_time,
+            account_budget.approved_end_date_time
+     FROM account_budget
+     WHERE account_budget.status != 'CANCELLED'
+     LIMIT 20`;
+  const billingQuery = `SELECT billing_setup.id, billing_setup.status,
+            billing_setup.payments_account_info.payments_account_id,
+            billing_setup.payments_account_info.payments_account_name,
+            billing_setup.payments_account_info.payments_profile_id,
+            billing_setup.start_date_time
+     FROM billing_setup
+     LIMIT 10`;
+  const campaignBudgetQuery = `SELECT campaign.id, campaign.name, campaign.status,
+            campaign_budget.amount_micros, campaign_budget.total_amount_micros, campaign_budget.period
+     FROM campaign
+     WHERE campaign.status = 'ENABLED'
+     LIMIT 250`;
+  const [budgetRows, billingRows, campaignRows, spend] = await Promise.all([
+    googleAdsSearch(budgetQuery, customerId).catch(() => []),
+    googleAdsSearch(billingQuery, customerId).catch(() => []),
+    googleAdsSearch(campaignBudgetQuery, customerId).catch(() => []),
+    spendSummary
+      ? Promise.resolve(spendSummary)
+      : getSpendSummary(customerId, { during: 'LAST_7_DAYS' }).catch(() => null),
+  ]);
+
+  const budgets = budgetRows.map((row) => {
+    const b = row?.accountBudget || row?.account_budget || {};
+    const limitType = String(b.approvedSpendingLimitType || b.approved_spending_limit_type || '');
+    const infinite = /INFINITE/i.test(limitType);
+    const limit = microsToAmount(b.approvedSpendingLimitMicros ?? b.approved_spending_limit_micros);
+    const adjusted = microsToAmount(b.adjustedSpendingLimitMicros ?? b.adjusted_spending_limit_micros);
+    const served = microsToAmount(b.amountServedMicros ?? b.amount_served_micros);
+    const cap = adjusted > 0 ? adjusted : limit;
+    return {
+      id: String(b.id || ''),
+      name: String(b.name || 'Account budget'),
+      status: String(b.status || ''),
+      infinite,
+      limit: infinite ? null : cap,
+      served,
+      remaining: infinite ? null : Math.max(0, cap - served),
+      start: String(b.approvedStartDateTime || b.approved_start_date_time || ''),
+      end: String(b.approvedEndDateTime || b.approved_end_date_time || ''),
+    };
+  });
+  const approved = budgets.filter((b) => /APPROVED/i.test(b.status));
+  const primary = approved[0] || budgets[0] || null;
+  const remaining = approved.reduce((sum, b) => sum + Number(b.remaining || 0), 0);
+  const served = approved.reduce((sum, b) => sum + Number(b.served || 0), 0);
+  const limit = approved.reduce((sum, b) => sum + Number(b.limit || 0), 0);
+  const infinite = !approved.length || approved.every((b) => b.infinite);
+
+  const billing = billingRows.map((row) => {
+    const b = row?.billingSetup || row?.billing_setup || {};
+    const info = b.paymentsAccountInfo || b.payments_account_info || {};
+    return {
+      id: String(b.id || ''),
+      status: String(b.status || ''),
+      payments_account: String(info.paymentsAccountName || info.payments_account_name || ''),
+      payments_account_id: String(info.paymentsAccountId || info.payments_account_id || ''),
+      payments_profile_id: String(info.paymentsProfileId || info.payments_profile_id || ''),
+      start: String(b.startDateTime || b.start_date_time || ''),
+    };
+  });
+  const pay = billing.find((b) => /APPROVED/i.test(b.status)) || billing[0] || null;
+
+  let dailyBudget = 0;
+  for (const row of campaignRows) {
+    const fields = budgetFields(row);
+    if (String(fields.budget_period || 'DAILY') === 'DAILY') dailyBudget += Number(fields.budget_daily || fields.budget || 0);
+    else if (Number(fields.budget_daily || 0) > 0) dailyBudget += Number(fields.budget_daily);
+  }
+  dailyBudget = Math.round(dailyBudget * 100) / 100;
+
+  const todaySpend = Number(spend?.periods?.today?.spend || 0);
+  const weekSpend = Number(spend?.periods?.last_7d?.spend || 0);
+  const monthSpend = Number(spend?.periods?.last_30d?.spend || 0);
+  const dailyBurn = weekSpend > 0 ? Math.round((weekSpend / 7) * 100) / 100 : todaySpend;
+  const daysLeft =
+    !infinite && remaining > 0 && dailyBurn > 0 ? Math.round((remaining / dailyBurn) * 10) / 10 : dailyBudget > 0 && dailyBurn > 0 ? null : null;
+
+  return {
+    account,
+    currency: account.currency,
+    infinite,
+    billing_type: infinite || !limit ? 'Invoice / monthly' : 'Account budget',
+    funding: pay?.payments_account || (infinite ? 'Monthly invoicing' : 'Account budget'),
+    payments_account: pay?.payments_account || '',
+    payments_account_id: pay?.payments_account_id || '',
+    limit: infinite ? null : limit || null,
+    served,
+    remaining: infinite ? null : remaining || 0,
+    daily_budget: dailyBudget,
+    today_spend: todaySpend,
+    last_7d_spend: weekSpend,
+    last_30d_spend: monthSpend,
+    daily_burn: dailyBurn,
+    days_left: daysLeft,
+    today_vs_daily: dailyBudget > 0 ? Math.round((todaySpend / dailyBudget) * 1000) / 10 : null,
+    budgets,
+    billing,
+    periods: spend?.periods || {},
+    permission_hint: !budgets.length
+      ? 'Account budget row nahi mili — invoice account ho sakta hai. Ads → Billing & payments mein remaining dekho.'
+      : infinite
+        ? 'Spending limit infinite hai (monthly invoice). Remaining prepaid balance API nahi deta.'
+        : '',
+    funds_from_api: !infinite && remaining != null,
   };
 }
 
@@ -860,6 +983,8 @@ export async function runGoogleAdsTool(name: string, params: Record<string, unkn
       return getAccount(customerId);
     case 'get_spend_summary':
       return getSpendSummary(customerId);
+    case 'get_funds_tracker':
+      return getFundsTracker(customerId);
     case 'list_campaigns':
       return { campaigns: await listCampaigns(toolListOpts(params, customerId)) };
     case 'get_campaign':

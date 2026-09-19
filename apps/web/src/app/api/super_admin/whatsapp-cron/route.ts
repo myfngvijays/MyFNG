@@ -38,6 +38,11 @@ import {
   getTelecallerLeadsShiftTemplateStatus,
   TELECALLER_LEADS_SHIFT_TEMPLATE,
 } from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
+import {
+  createGoogleAdsFundsAlertTemplate,
+  getGoogleAdsFundsAlertTemplateStatus,
+  GOOGLE_ADS_FUNDS_ALERT_TEMPLATE,
+} from '@/lib/services/googleAdsFundsAlertTemplate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -73,13 +78,14 @@ export async function GET(request: NextRequest) {
     const auth = await assertAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    const [cronMasterEnabled, settings, jobEnabledMap, alertNumbers, tcLeadsTemplate, smartfloCron] =
+    const [cronMasterEnabled, settings, jobEnabledMap, alertNumbers, tcLeadsTemplate, googleAdsFundsTemplate, smartfloCron] =
       await Promise.all([
         isWhatsAppAutomationCronMasterEnabled(),
         listAutomationSettings(),
         getWhatsAppCronJobEnabledMap(),
         listSystemAlertWhatsAppNumbers(),
         getTelecallerLeadsShiftTemplateStatus().catch(() => null),
+        getGoogleAdsFundsAlertTemplateStatus().catch(() => null),
         getSmartfloRecordingsCronSettings(),
       ]);
 
@@ -164,6 +170,13 @@ export async function GET(request: NextRequest) {
             body_preview: TELECALLER_LEADS_SHIFT_TEMPLATE.body_text,
           }
         : null,
+      google_ads_funds_template: googleAdsFundsTemplate
+        ? {
+            ...googleAdsFundsTemplate,
+            display_name: GOOGLE_ADS_FUNDS_ALERT_TEMPLATE.display_name,
+            body_preview: GOOGLE_ADS_FUNDS_ALERT_TEMPLATE.body_text,
+          }
+        : null,
       smartflo_recordings_cron: smartfloRecordingsCronAdminPayload(smartfloCron, baseUrl),
     });
   } catch (error: unknown) {
@@ -208,6 +221,19 @@ export async function POST(request: NextRequest) {
       const result = await removeSystemAlertWhatsAppNumber(phone, auth.userId);
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
       return NextResponse.json({ success: true, numbers: result.numbers });
+    }
+
+    if (action === 'ensure-google-ads-funds-template') {
+      if (auth.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Only Super Admin can create templates' }, { status: 403 });
+      }
+      const result = await createGoogleAdsFundsAlertTemplate(auth.userId);
+      const status = await getGoogleAdsFundsAlertTemplateStatus();
+      return NextResponse.json({
+        success: true,
+        ...result,
+        status,
+      });
     }
 
     if (action === 'ensure-telecaller-leads-template') {

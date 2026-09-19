@@ -23,6 +23,7 @@ import {
   Target,
   Type,
   Goal,
+  Wallet,
 } from 'lucide-react';
 import GoogleAdsDatePicker from './GoogleAdsDatePicker';
 import GoogleAdsTable from './GoogleAdsTable';
@@ -30,6 +31,7 @@ import GoogleAdsColumnsPicker from './GoogleAdsColumnsPicker';
 import GoogleAdsCampaignDetail from './GoogleAdsCampaignDetail';
 import GoogleAdsConversionsPanel from './GoogleAdsConversionsPanel';
 import GoogleAdsReportPanel from './GoogleAdsReportPanel';
+import GoogleAdsFundsPanel from './GoogleAdsFundsPanel';
 import { datePresetLabel, type DateRangeInput } from '@/lib/google-ads/dateRange';
 import { DEFAULT_CAMPAIGN_COLUMNS, DEFAULT_LIST_COLUMNS, loadCampaignColumns, saveCampaignColumns } from '@/lib/google-ads/columns';
 
@@ -92,6 +94,7 @@ type Row = Period & {
 
 type SectionId =
   | 'overview'
+  | 'funds'
   | 'ask'
   | 'reports'
   | 'brain'
@@ -113,6 +116,7 @@ const STATUS_UI: Record<Payload['status'], { label: string; className: string }>
 
 const NAV: { id: SectionId; label: string; icon: typeof Target }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
+  { id: 'funds', label: 'Funds', icon: Wallet },
   { id: 'ask', label: 'Ask AI', icon: MessageCircle },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
   { id: 'brain', label: 'Brain', icon: Brain },
@@ -134,6 +138,7 @@ const ASK_CHIPS = [
   'Top search terms',
   '7 din ki report banao',
   'Keywords se headlines suggest kar',
+  'Kitna fund bacha hai?',
 ];
 
 function isSectionId(value: string | null): value is SectionId {
@@ -246,6 +251,7 @@ export default function GoogleAdsMcpApp() {
   const [loginCustomerId, setLoginCustomerId] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
   const [overview, setOverview] = useState<any>(null);
+  const [funds, setFunds] = useState<any>(null);
   const [conversionReport, setConversionReport] = useState<any>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [sectionLoading, setSectionLoading] = useState(false);
@@ -374,7 +380,10 @@ export default function GoogleAdsMcpApp() {
     if (!data?.settings?.ready) return;
     const key = `v3:${section}:${dateRange.during}:${dateRange.since || ''}:${dateRange.until || ''}:${statusFilter}:${channel}:${sort}`;
     const apply = (json: any) => {
-      if (section === 'overview') setOverview(json);
+      if (section === 'overview') {
+        setOverview(json);
+        if (json?.funds) setFunds(json.funds);
+      } else if (section === 'funds') setFunds(json);
       else if (section === 'conversions') setConversionReport(json);
       else setRows(json?.campaigns || json?.ad_groups || json?.ads || json?.keywords || json?.search_terms || []);
     };
@@ -384,6 +393,7 @@ export default function GoogleAdsMcpApp() {
     }
     const actions: Record<string, string> = {
       overview: 'overview',
+      funds: 'funds',
       campaigns: 'campaigns',
       ad_groups: 'ad_groups',
       ads: 'ads',
@@ -518,6 +528,7 @@ export default function GoogleAdsMcpApp() {
   const refreshAll = () => {
     cache.current = {};
     setOverview(null);
+    setFunds(null);
     setRows([]);
     setConversionReport(null);
     setGeneratedReport(null);
@@ -690,6 +701,35 @@ use_proto_plus: True
               );
             })}
           </div>
+          {overview?.funds ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <p className="text-[11px] font-bold uppercase text-slate-400">Funds remaining</p>
+                <p className="mt-1 text-xl font-extrabold text-slate-900">
+                  {overview.funds.funds_from_api ? inr(overview.funds.remaining || 0, currency) : 'Invoice account'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {overview.funds.funds_from_api && Number(overview.funds.remaining) < 1000
+                    ? 'Below ₹1,000 — WhatsApp alert on'
+                    : overview.funds.funding || overview.funds.billing_type}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <p className="text-[11px] font-bold uppercase text-slate-400">Daily budget</p>
+                <p className="mt-1 text-xl font-extrabold text-slate-900">{inr(overview.funds.daily_budget || 0, currency)}</p>
+                <p className="mt-1 text-xs text-slate-500">Enabled campaigns combined</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => goSection('funds')}
+                className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-left shadow-sm"
+              >
+                <p className="text-[11px] font-bold uppercase text-[#004AAD]">Billing</p>
+                <p className="mt-1 text-sm font-extrabold text-slate-900">Open Funds tab</p>
+                <p className="mt-1 text-xs text-slate-500">Account budget + pay method</p>
+              </button>
+            </div>
+          ) : null}
           {daily.length > 0 && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{datePresetLabel(dateRange)}</p>
@@ -710,6 +750,20 @@ use_proto_plus: True
             </div>
           )}
         </div>
+      )}
+
+      {section === 'funds' && (
+        <GoogleAdsFundsPanel
+          funds={funds}
+          loading={sectionLoading}
+          onRefresh={() => {
+            cache.current = {};
+            setFunds(null);
+            setRefreshTick((n) => n + 1);
+          }}
+          onTestAlert={async () => post({ action: 'funds_alert', test: true })}
+          onCreateTemplate={async () => post({ action: 'funds_template' })}
+        />
       )}
 
       {section === 'ask' && (

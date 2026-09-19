@@ -29,6 +29,10 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/cron/google-ads-funds-alert",
+      "schedule": "0 */3 * * *"
+    },
+    {
       "path": "/api/cron/customer-reviews-gmb-sync",
       "schedule": "0 */12 * * *"
     },

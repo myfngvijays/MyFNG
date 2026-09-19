@@ -170,6 +170,9 @@ function reportReply(report: any) {
 
 function guessTool(message: string): { name: string; params: Record<string, unknown> } {
   const q = message.toLowerCase();
+  if (/fund|balance|billing|wallet|kitna paisa|budget bacha|fund bacha/.test(q)) {
+    return { name: 'get_funds_tracker', params: {} };
+  }
   if (/search term|kya search/.test(q)) return { name: 'list_search_terms', params: { status: 'ENABLED' } };
   if (/keyword/.test(q)) return { name: 'list_keywords', params: { status: 'ENABLED', sort: 'conversions' } };
   if (/ad group|adgroup/.test(q)) return { name: 'list_ad_groups', params: { status: 'ENABLED', min_spend: 1 } };
@@ -181,6 +184,14 @@ function guessTool(message: string): { name: string; params: Record<string, unkn
 }
 
 function formatToolText(name: string, result: any): string {
+  if (name === 'get_funds_tracker') {
+    return [
+      `Billing: ${result?.billing_type || result?.funding || '—'}`,
+      `Remaining: ${result?.funds_from_api ? inr(result.remaining || 0) : 'Invoice account'}`,
+      `Daily budget: ${inr(result?.daily_budget || 0)} · Today ${inr(result?.today_spend || 0)}`,
+      `7d burn: ${inr(result?.daily_burn || 0)}/day`,
+    ].join('\n');
+  }
   if (name === 'get_spend_summary') {
     const currency = result?.currency || 'INR';
     const p = result?.periods || {};
@@ -419,7 +430,7 @@ export async function answerGoogleAdsChat(input: { message: string; history?: Ch
     throw new Error(friendlyChatError(e));
   });
   const copyAsk = wantsCopy(message);
-  const attachCards = copyAsk || /campaign|keyword|search term|ad group/i.test(message);
+  const attachCards = copyAsk || /campaign|keyword|search term|ad group|fund|billing/i.test(message);
   const cards = attachCards ? cardsFromTool(guessed.name, fallback) : null;
   const heuristic = copyAsk && Array.isArray((fallback as any)?.ads) ? keepTestPause((fallback as any).ads) : formatToolText(guessed.name, fallback);
 

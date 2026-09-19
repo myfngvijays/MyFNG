@@ -9,6 +9,7 @@ import {
   GOOGLE_ADS_MCP_META,
   GOOGLE_ADS_TOOLS,
   getSpendSummary,
+  getFundsTracker,
   listAdGroups,
   listAds,
   getCampaignDetail,
@@ -156,14 +157,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, ...result });
     }
 
-    if (action === 'overview') {
+    if (action === 'funds') {
+      const { getGoogleAdsFundsAlertTemplateStatus } = await import('@/lib/services/googleAdsFundsAlertTemplate');
+      const template = await getGoogleAdsFundsAlertTemplateStatus().catch(() => null);
+      return NextResponse.json({ success: true, ...(await getFundsTracker(body?.customer_id)), template });
+    }
+
+    if (action === 'funds_alert') {
+      const { runGoogleAdsFundsAlert } = await import('@/lib/google-ads/fundsAlert');
+      const result = await runGoogleAdsFundsAlert({
+        test: Boolean(body?.test),
+        force: Boolean(body?.force),
+      });
+      return NextResponse.json({ success: true, ...result });
+    }
+
+    if (action === 'funds_template') {
+      const { createGoogleAdsFundsAlertTemplate, getGoogleAdsFundsAlertTemplateStatus } = await import(
+        '@/lib/services/googleAdsFundsAlertTemplate'
+      );
+      const result = await createGoogleAdsFundsAlertTemplate(gate.userId);
       return NextResponse.json({
         success: true,
-        ...(await getSpendSummary(body?.customer_id, {
-          during: body?.during,
-          since: body?.since,
-          until: body?.until,
-        })),
+        ...result,
+        template: await getGoogleAdsFundsAlertTemplateStatus(),
+      });
+    }
+
+    if (action === 'overview') {
+      const summary = await getSpendSummary(body?.customer_id, {
+        during: body?.during,
+        since: body?.since,
+        until: body?.until,
+      });
+      const funds = await getFundsTracker(body?.customer_id, summary).catch(() => null);
+      return NextResponse.json({
+        success: true,
+        ...summary,
+        funds,
       });
     }
 

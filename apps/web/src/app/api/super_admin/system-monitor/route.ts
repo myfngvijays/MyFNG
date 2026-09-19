@@ -20,6 +20,7 @@ import { getMcpHttpToken, MCP_PUBLIC_ORIGIN } from '@/lib/mcp/httpAuth';
 import { getMetaAdsSettings } from '@/lib/meta-ads/settings';
 import { formatAdsCustomerId, getGoogleAdsSettings } from '@/lib/google-ads/settings';
 import { listAccessibleCustomerIds } from '@/lib/google-ads/client';
+import { getGoogleAdsFundsAlertSnapshot } from '@/lib/google-ads/fundsAlert';
 import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlertWhatsAppNumbers';
 import { graphGet } from '@/lib/meta-ads/graph';
 import { loadTelecallerLeadsShiftLastRun } from '@/lib/services/telecallerLeadsShiftSummary';
@@ -1403,6 +1404,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/auto-dial-fresh-hours',
     '/api/cron/crm-ml-dl',
     '/api/cron/openai-balance-alert',
+    '/api/cron/google-ads-funds-alert',
     '/api/cron/daily-blog',
   ];
 
@@ -3505,6 +3507,77 @@ async function checkMetaAdsMcp(): Promise<HealthCheck> {
   }
 }
 
+async function checkGoogleAdsFundsAlert(): Promise<HealthCheck> {
+  const start = Date.now();
+  const quickFix = {
+    label: 'Open Google Ads Funds',
+    action: 'internal-link' as const,
+    actionPayload: { url: '/dashboard/super_admin/google-ads-mcp?section=funds' },
+  };
+  try {
+    const [snapshot, numbers] = await Promise.all([
+      getGoogleAdsFundsAlertSnapshot(),
+      getEnabledSystemAlertWhatsAppNumbers(),
+    ]);
+    const remaining = snapshot.last_remaining;
+    const isLow = remaining != null && remaining < snapshot.threshold;
+    const templateReady = Boolean(snapshot.template?.canSendTemplate);
+    const status: ServiceStatus = !snapshot.enabled
+      ? 'degraded'
+      : !numbers.length
+        ? 'degraded'
+        : isLow
+          ? 'degraded'
+          : !templateReady
+            ? 'degraded'
+            : 'healthy';
+    const message = !snapshot.enabled
+      ? 'Funds WhatsApp alert is off'
+      : !numbers.length
+        ? 'No WhatsApp alert numbers'
+        : !templateReady
+          ? `Template ${snapshot.template?.metaStatus || 'not created'}`
+          : remaining == null
+            ? 'Waiting for first funds check'
+            : isLow
+              ? `Low funds · ₹${Math.round(remaining).toLocaleString('en-IN')}`
+              : `₹${Math.round(remaining).toLocaleString('en-IN')} remaining`;
+    const reason = !snapshot.enabled
+      ? 'google_ads_funds_alert_enabled is false. Turn it on in system_settings to WhatsApp when remaining ≤ ₹1,000.'
+      : !numbers.length
+        ? 'Add numbers on Super Admin → WhatsApp Cron (system alert numbers). Cron will skip until then.'
+        : !templateReady
+          ? 'Create/approve google_ads_funds_alert on WhatsApp Cron. Text-only works inside 24h WhatsApp window; template is needed for 24/7.'
+          : remaining == null
+            ? 'Cron /api/cron/google-ads-funds-alert has not stored a remaining balance yet. Invoice accounts never get a prepaid remaining.'
+            : isLow
+              ? `Google Ads remaining is below ₹${snapshot.threshold.toLocaleString('en-IN')}. Top up Billing & payments. Last WhatsApp: ${snapshot.last_sent_at || 'not sent yet'}.`
+              : `Prepaid remaining is above ₹${snapshot.threshold.toLocaleString('en-IN')}. Cron checks every 3 hours.`;
+    return {
+      name: 'Google Ads Funds Alert',
+      category: 'AI',
+      status,
+      responseTime: Date.now() - start,
+      message,
+      reason,
+      quickFix,
+      lastChecked: new Date().toISOString(),
+      details: { ...snapshot, whatsapp_numbers: numbers.length },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Google Ads Funds Alert',
+      category: 'AI',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Funds alert check failed',
+      reason: String(e?.message || e),
+      quickFix,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkGoogleAdsMcp(): Promise<HealthCheck> {
   const start = Date.now();
   const quickFix = {
@@ -3779,6 +3852,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkMcpRemote(),
     checkMetaAdsMcp(),
     checkGoogleAdsMcp(),
+    checkGoogleAdsFundsAlert(),
     checkEmailService(),
     checkWalletSystem(),
     checkAdvanceCoupons(),

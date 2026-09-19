@@ -29,7 +29,7 @@ import {
   type AdsColumn,
 } from '../../../lib/googleAdsColumns';
 
-type Section = 'overview' | 'ask' | 'reports' | 'campaigns' | 'ad_groups' | 'ads' | 'keywords' | 'search_terms' | 'conversions' | 'connect';
+type Section = 'overview' | 'funds' | 'ask' | 'reports' | 'campaigns' | 'ad_groups' | 'ads' | 'keywords' | 'search_terms' | 'conversions' | 'connect';
 const DATE_PRESETS = [
   { id: 'TODAY', label: 'Today' },
   { id: 'YESTERDAY', label: 'Yesterday' },
@@ -46,6 +46,7 @@ const DATE_PRESETS = [
 
 const SECTION_LABEL: Record<Section, string> = {
   overview: 'Overview',
+  funds: 'Funds',
   ask: 'Ask AI',
   reports: 'Reports',
   campaigns: 'Campaigns',
@@ -96,6 +97,7 @@ export function SuperAdminGoogleAdsMcpScreen() {
   const [saving, setSaving] = useState(false);
   const [payload, setPayload] = useState<any>(null);
   const [overview, setOverview] = useState<any>(null);
+  const [funds, setFunds] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [conversionReport, setConversionReport] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +118,7 @@ export function SuperAdminGoogleAdsMcpScreen() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [reportBusy, setReportBusy] = useState(false);
+  const [fundsAlertBusy, setFundsAlertBusy] = useState(false);
 
   const postAction = async (body: Record<string, unknown>, timeoutMs = 30000) =>
     apiFetch<any>('/api/super_admin/google-ads-mcp', {
@@ -166,7 +169,12 @@ export function SuperAdminGoogleAdsMcpScreen() {
     const run = async () => {
       try {
         if (section === 'overview') {
-          setOverview(await postAction({ action: 'overview', during, since, until }).catch(() => null));
+          const json = await postAction({ action: 'overview', during, since, until }).catch(() => null);
+          setOverview(json);
+          if (json?.funds) setFunds(json.funds);
+        }
+        if (section === 'funds') {
+          setFunds(await postAction({ action: 'funds' }, 45000).catch(() => null));
         }
         if (section === 'conversions') {
           setConversionReport(await postAction({ action: 'conversions', during, since, until }).catch(() => null));
@@ -337,6 +345,84 @@ export function SuperAdminGoogleAdsMcpScreen() {
                 ))}
               </ScrollView>
             ) : null}
+            {section === 'funds' && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Funds</Text>
+                <Text style={styles.hint}>
+                  Remaining ₹1,000 ke neeche WhatsApp. 24/7 ke liye template google_ads_funds_alert approve hona chahiye.
+                </Text>
+                {funds ? (
+                  <>
+                    <Text style={styles.summaryVal}>
+                      {funds.funds_from_api ? inr(funds.remaining || 0, currency) : 'Invoice'}
+                    </Text>
+                    {funds.funds_from_api && Number(funds.remaining) < 1000 ? (
+                      <Text style={[styles.cardMeta, { color: '#B45309', fontWeight: '700' }]}>
+                        Low funds — top-up Ads Billing.
+                      </Text>
+                    ) : null}
+                    <Text style={styles.cardMeta}>
+                      Daily {inr(funds.daily_budget || 0, currency)} · Today {inr(funds.today_spend || 0, currency)}
+                    </Text>
+                    <Text style={styles.cardMeta}>
+                      7d burn {inr(funds.daily_burn || 0, currency)}/day · {funds.funding || funds.billing_type}
+                    </Text>
+                    {(funds.budgets || []).map((b: any) => (
+                      <Text key={b.id || b.name} style={styles.cardMeta}>
+                        {b.name} · {b.infinite ? 'Unlimited' : inr(b.remaining || 0, currency)} left
+                      </Text>
+                    ))}
+                    {funds?.template ? (
+                      <Text style={styles.cardMeta}>
+                        Template {funds.template.canSendTemplate ? 'APPROVED' : funds.template.metaStatus || 'NOT CREATED'}
+                      </Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={styles.chip}
+                      disabled={fundsAlertBusy}
+                      onPress={async () => {
+                        setFundsAlertBusy(true);
+                        try {
+                          const json = await postAction({ action: 'funds_template' }, 45000);
+                          Alert.alert('Template', json?.message || json?.template?.metaStatus || 'Synced');
+                          if (json?.template) setFunds((prev: any) => ({ ...(prev || {}), template: json.template }));
+                        } catch (e: any) {
+                          Alert.alert('Template', e?.message || 'Failed');
+                        } finally {
+                          setFundsAlertBusy(false);
+                        }
+                      }}
+                    >
+                      <Text style={styles.chipText}>{fundsAlertBusy ? 'Working…' : 'Create template'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.chip}
+                      disabled={fundsAlertBusy}
+                      onPress={async () => {
+                        setFundsAlertBusy(true);
+                        try {
+                          const json = await postAction({ action: 'funds_alert', test: true }, 45000);
+                          Alert.alert(
+                            'WhatsApp',
+                            json?.sent
+                              ? `Test sent to ${json.sent} number(s).`
+                              : json?.reason || 'Alert skipped.',
+                          );
+                        } catch (e: any) {
+                          Alert.alert('WhatsApp', e?.message || 'Failed');
+                        } finally {
+                          setFundsAlertBusy(false);
+                        }
+                      }}
+                    >
+                      <Text style={styles.chipText}>{fundsAlertBusy ? 'Sending…' : 'Test WhatsApp'}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={styles.hint}>Loading funds…</Text>
+                )}
+              </View>
+            )}
             {section === 'overview' && (
               <>
                 {!ready ? (
@@ -346,6 +432,19 @@ export function SuperAdminGoogleAdsMcpScreen() {
                   <Text style={styles.hint}>
                     {overview.account.name} · {overview.account.id}
                   </Text>
+                ) : null}
+                {funds || overview?.funds ? (
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryLbl}>Funds</Text>
+                    <Text style={styles.summaryVal}>
+                      {(funds || overview.funds).funds_from_api
+                        ? inr((funds || overview.funds).remaining || 0, currency)
+                        : 'Invoice'}
+                    </Text>
+                    <Text style={styles.cardMeta}>
+                      Daily {inr((funds || overview.funds).daily_budget || 0, currency)}
+                    </Text>
+                  </View>
                 ) : null}
                 <View style={styles.summaryGrid}>
                   {[

@@ -41,6 +41,13 @@ export function registerGoogleAdsTools(server: McpServer, prefix = '') {
   );
 
   server.tool(
+    n('get_funds_tracker'),
+    d('Account budget remaining, daily budget, billing account, period spend.'),
+    { customer_id: z.string().optional() },
+    async (args) => wrap('get_funds_tracker', args),
+  );
+
+  server.tool(
     n('list_campaigns'),
     d('Campaigns with spend, clicks, conversions.'),
     {

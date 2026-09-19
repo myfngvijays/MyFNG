@@ -92,6 +92,7 @@ export const MYFNG_MCP_TOOLS: McpToolDef[] = [
   { name: 'google_list_accessible_customers', area: 'Google Ads', description: 'Google Ads customer IDs this user can access' },
   { name: 'google_get_account', area: 'Google Ads', description: 'Google Ads account name, currency, timezone' },
   { name: 'google_get_spend_summary', area: 'Google Ads', description: 'Today / 7d / 30d Google spend + conversions' },
+  { name: 'google_get_funds_tracker', area: 'Google Ads', description: 'Account budget remaining, daily budget, billing' },
   { name: 'google_list_campaigns', area: 'Google Ads', description: 'Google campaigns with spend and results' },
   { name: 'google_get_campaign', area: 'Google Ads', description: 'One Google campaign detail + daily' },
   { name: 'google_list_ad_groups', area: 'Google Ads', description: 'Google ad groups' },
