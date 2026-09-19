@@ -195,6 +195,9 @@ export default function DailyBlogScheduleCard({ compact = false }: { compact?: b
           ))}
         </div>
       ) : null}
+      {data?.schedule?.last_error ? (
+        <p className="mt-2 text-[11px] font-semibold text-rose-700">Last error: {data.schedule.last_error}</p>
+      ) : null}
 
       {!compact && data?.schedule?.usp_rotation ? (
         <p className="mt-2 text-[11px] text-slate-500">{data.schedule.usp_rotation}</p>

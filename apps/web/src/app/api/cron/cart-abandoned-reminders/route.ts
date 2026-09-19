@@ -4,6 +4,7 @@ import { isWhatsAppCronJobEnabled } from '@/lib/services/whatsappCronJobFlags';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 180;
 
 function assertCronAuth(req: NextRequest): string | null {
   const secret = process.env.CRON_SECRET || process.env.NOTIFICATION_CRON_SECRET;
@@ -31,9 +32,17 @@ export async function GET(request: NextRequest) {
   }
 
   const result = await runCartAbandonedReminderJob();
+  let dailyBlog: unknown = null;
+  try {
+    const { maybeCatchUpDailyBlog } = await import('@/lib/blog/runDailyBlogPost');
+    dailyBlog = await maybeCatchUpDailyBlog();
+  } catch (error) {
+    dailyBlog = { skipped: true, reason: error instanceof Error ? error.message : 'daily_blog_catchup_failed' };
+  }
   return NextResponse.json({
     success: true,
     timestamp: new Date().toISOString(),
     result,
+    daily_blog: dailyBlog,
   });
 }

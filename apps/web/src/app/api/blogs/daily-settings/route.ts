@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   dailyBlogScheduleInfo,
   loadDailyBlogSettings,
+  maybeCatchUpDailyBlog,
   refreshDailyBlogCover,
   runDailyBlogPost,
 } from '@/lib/blog/runDailyBlogPost';
@@ -102,7 +103,14 @@ async function settingsPayload() {
 export async function GET() {
   const auth = await requireBlogAdmin();
   if ('response' in auth) return auth.response;
-  return NextResponse.json(await settingsPayload());
+  const payload = await settingsPayload();
+  const waiting = (payload.today_slots || []).some((slot) => slot.status !== 'success' && slot.status !== 'failed');
+  if (payload.settings?.enabled !== false && waiting) {
+    after(() => {
+      void maybeCatchUpDailyBlog();
+    });
+  }
+  return NextResponse.json(payload);
 }
 
 export async function PATCH(request: NextRequest) {

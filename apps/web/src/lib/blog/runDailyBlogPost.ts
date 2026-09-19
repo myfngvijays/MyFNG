@@ -13,7 +13,7 @@ import {
 } from '@/lib/blog/dailyUspTopics';
 import { publishAiServiceBlog, type DailyBlogRunResult, type DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
-import { firstDueSlot, nextDailySlotIso, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
+import { firstDueSlot, nextDailySlotIso, overdueSlotIndexes, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
 
 export type { DailyBlogRunResult, DailyBlogSettings };
 
@@ -140,6 +140,41 @@ async function repairBrokenCityTitles(supabaseAdmin: any) {
   }
 }
 
+export async function maybeCatchUpDailyBlog(): Promise<DailyBlogRunResult | { skipped: true; reason: string }> {
+  const loaded = await loadDailyBlogSettings();
+  if (loaded.missing || !loaded.settings) {
+    return { skipped: true, reason: 'settings_missing' };
+  }
+  const settings = loaded.settings;
+  if (!settings.enabled) return { skipped: true, reason: 'disabled' };
+
+  const lastStatus = String(settings.last_status || '');
+  const lastRunMs = settings.last_run_at ? Date.parse(settings.last_run_at) : 0;
+  if (lastStatus === 'running' && lastRunMs && Date.now() - lastRunMs < 8 * 60 * 1000) {
+    return { skipped: true, reason: 'already_running' };
+  }
+
+  const schedule = resolveDailyBlogSchedule(settings);
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { skipped: true, reason: 'admin_missing' };
+
+  const runDate = istDateString();
+  let runsRes = await supabaseAdmin
+    .from('daily_blog_runs')
+    .select('status, slot_index')
+    .eq('run_date', runDate);
+  if (runsRes.error) {
+    runsRes = await supabaseAdmin.from('daily_blog_runs').select('status').eq('run_date', runDate);
+  }
+  const postedIndexes = (runsRes.data || [])
+    .filter((row: any) => row.status === 'success')
+    .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
+  const overdue = overdueSlotIndexes(schedule, postedIndexes);
+  if (!overdue.length) return { skipped: true, reason: 'no_overdue_slot' };
+
+  return runDailyBlogPost();
+}
+
 export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<DailyBlogRunResult> {
   const force = Boolean(opts?.force);
   const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
@@ -215,6 +250,16 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
   if (!force && postedIndexes.includes(due.index)) {
     return { success: true, skipped: true, reason: 'already_posted_today', run_date: runDate };
   }
+
+  await supabaseAdmin
+    .from('daily_blog_settings')
+    .update({
+      last_run_at: new Date().toISOString(),
+      last_status: 'running',
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', 1);
 
   const { data: recent } = await supabaseAdmin
     .from('blogs')
