@@ -2129,8 +2129,9 @@ export default function MetaAdsMcpApp() {
               Optional: Claude connector URL (not required for this admin page)
             </summary>
             <p className="mt-2 text-xs text-slate-500">
-              Same Meta credentials, public MCP at <code className="rounded bg-slate-100 px-1">{data.claude.connector_url}</code>.
-              Bearer token MyFNG MCP page se generate hota hai.
+              Claude ke liye preferred: MyFNG MCP URL <code className="rounded bg-slate-100 px-1">https://myfng.in/api/mcp</code> — tools{' '}
+              <code className="rounded bg-slate-100 px-1">meta_*</code>. Alag connector bhi chalta hai:{' '}
+              <code className="rounded bg-slate-100 px-1">{data.claude.connector_url}</code>. Bearer token MyFNG MCP page se.
             </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <code className="flex-1 overflow-x-auto rounded-xl bg-slate-950 px-3 py-2.5 text-sm text-emerald-300">

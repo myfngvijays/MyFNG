@@ -66,8 +66,20 @@ export const GOOGLE_ADS_TOOLS = [
   {
     name: 'get_campaign',
     area: 'campaigns',
-    description: 'One campaign: settings, budget, daily metrics, ad groups, ads, keywords.',
-    params: [{ key: 'campaign_id', label: 'Campaign ID', required: true }],
+    description: 'One campaign: settings, budget, daily metrics, ad groups, ads, keywords. Use when user names a campaign.',
+    params: [
+      { key: 'campaign_id', label: 'Campaign ID', required: true },
+      { key: 'during', label: 'Date range', placeholder: 'LAST_7_DAYS' },
+    ],
+  },
+  {
+    name: 'generate_report',
+    area: 'insights',
+    description: 'Deep report for a period. Pass campaign_id when user asks for one campaign.',
+    params: [
+      { key: 'period', label: 'today | last_7d | last_30d | briefing' },
+      { key: 'campaign_id', label: 'Campaign ID' },
+    ],
   },
   {
     name: 'list_conversions',
@@ -128,8 +140,14 @@ export function applyListFilters<T extends {
   const sort = String(opts.sort || 'spend');
   const lowerBetter = new Set(['cpl', 'cpc', 'cpi', 'cpia', 'cpm']);
   next = [...next].sort((a, b) => {
-    const av = Number((a as any)[sort]);
-    const bv = Number((b as any)[sort]);
+    const av =
+      sort === 'conversions'
+        ? Number((a as any).conversions || 0) || Number((a as any).all_conversions || 0)
+        : Number((a as any)[sort]);
+    const bv =
+      sort === 'conversions'
+        ? Number((b as any).conversions || 0) || Number((b as any).all_conversions || 0)
+        : Number((b as any)[sort]);
     const aMissing = Number.isNaN(av);
     const bMissing = Number.isNaN(bv);
     if (aMissing && bMissing) return 0;
@@ -213,11 +231,12 @@ type Bucket = {
   clicks: number;
   impressions: number;
   conversions: number;
+  allConversions: number;
   conversionValue: number;
 };
 
 function emptyBucket(): Bucket {
-  return { spend: 0, clicks: 0, impressions: 0, conversions: 0, conversionValue: 0 };
+  return { spend: 0, clicks: 0, impressions: 0, conversions: 0, allConversions: 0, conversionValue: 0 };
 }
 
 function rowBucket(row: any): Bucket {
@@ -226,6 +245,7 @@ function rowBucket(row: any): Bucket {
     clicks: num(row, 'metrics.clicks'),
     impressions: num(row, 'metrics.impressions'),
     conversions: num(row, 'metrics.conversions'),
+    allConversions: num(row, 'metrics.allConversions') || num(row, 'metrics.all_conversions'),
     conversionValue: num(row, 'metrics.conversionsValue') || num(row, 'metrics.conversions_value'),
   };
 }
@@ -236,6 +256,7 @@ function addBucket(a: Bucket, b: Bucket): Bucket {
     clicks: a.clicks + b.clicks,
     impressions: a.impressions + b.impressions,
     conversions: a.conversions + b.conversions,
+    allConversions: a.allConversions + b.allConversions,
     conversionValue: a.conversionValue + b.conversionValue,
   };
 }
@@ -243,16 +264,19 @@ function addBucket(a: Bucket, b: Bucket): Bucket {
 function withRates(bucket: Bucket) {
   const spend = Math.round(bucket.spend * 100) / 100;
   const conversions = Math.round(bucket.conversions * 100) / 100;
+  const all_conversions = Math.round((bucket.allConversions || (bucket as any).all_conversions || 0) * 100) / 100;
   const conversion_value = Math.round((bucket.conversionValue || 0) * 100) / 100;
+  const denom = conversions > 0 ? conversions : all_conversions;
   return {
     spend,
     clicks: bucket.clicks,
     impressions: bucket.impressions,
     conversions,
+    all_conversions,
     conversion_value,
     ctr: bucket.impressions > 0 ? Math.round((bucket.clicks / bucket.impressions) * 10000) / 100 : 0,
     cpc: bucket.clicks > 0 ? Math.round((spend / bucket.clicks) * 100) / 100 : null,
-    cpl: conversions > 0 ? Math.round((spend / conversions) * 100) / 100 : null,
+    cpl: denom > 0 ? Math.round((spend / denom) * 100) / 100 : null,
     roas: spend > 0 && conversion_value > 0 ? Math.round((conversion_value / spend) * 100) / 100 : null,
   };
 }
@@ -571,7 +595,8 @@ export async function listKeywords(limitOrOpts: number | GoogleAdsListOpts = 40,
   const rows = await googleAdsSearch(
     `SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
             ad_group_criterion.status, ad_group.name, campaign.name,
-            metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions
+            metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions,
+            metrics.all_conversions, metrics.conversions_value
      FROM keyword_view
      WHERE ${dateWhere(rangeOf(opts))}${campaignWhere(opts)}
      ORDER BY metrics.cost_micros DESC
@@ -611,7 +636,8 @@ export async function listSearchTerms(limitOrOpts: number | GoogleAdsListOpts = 
   const opts = listOpts(limitOrOpts, customerId, range);
   const rows = await googleAdsSearch(
     `SELECT search_term_view.search_term, campaign.name, ad_group.name,
-            metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions
+            metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions,
+            metrics.all_conversions, metrics.conversions_value
      FROM search_term_view
      WHERE ${dateWhere(rangeOf(opts))}${campaignWhere(opts)}
      ORDER BY metrics.clicks DESC
@@ -838,6 +864,15 @@ export async function runGoogleAdsTool(name: string, params: Record<string, unkn
       return { campaigns: await listCampaigns(toolListOpts(params, customerId)) };
     case 'get_campaign':
       return getCampaignDetail(String(params.campaign_id || ''), toolListOpts(params, customerId));
+    case 'generate_report': {
+      const { generateGoogleAdsReport } = await import('./report');
+      return generateGoogleAdsReport(String(params.period || 'last_7d'), {
+        during: params.during != null ? String(params.during) : undefined,
+        since: params.since != null ? String(params.since) : undefined,
+        until: params.until != null ? String(params.until) : undefined,
+        campaign_id: params.campaign_id != null ? String(params.campaign_id) : undefined,
+      });
+    }
     case 'list_ad_groups':
       return { ad_groups: await listAdGroups(toolListOpts(params, customerId)) };
     case 'list_ads':

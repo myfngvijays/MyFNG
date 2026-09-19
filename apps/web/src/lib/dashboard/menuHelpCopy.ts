@@ -126,11 +126,11 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/super_admin/myfng-mcp': {
     title: 'MyFNG MCP',
     body:
-      'Claude.ai ke liye public HTTPS link chahiye: https://myfng.in/api/mcp — Mac file path nahi.\n\nAdd custom connector (Web) → Auth Always required → Anthropic hosted OAuth client → Connect → Super Admin se Approve.',
+      'Claude.ai ke liye public HTTPS link chahiye: https://myfng.in/api/mcp — Mac file path nahi.\n\nAdd custom connector (Web) → Auth Always required → Anthropic hosted OAuth client → Connect → Super Admin se Approve.\n\nIsi URL pe Meta Ads (meta_*) aur Google Ads (google_*) tools bhi hain — pehle un pages pe Connect karo.',
     tips: [
       'Claude cloud localhost / /Users/... path use nahi kar sakta.',
       'Claude.ai OAuth use karta hai. Bearer token Cursor / Claude Code ke liye optional hai.',
-      'Sirf SELECT — koi write tool nahi.',
+      'Sirf SELECT — koi write tool nahi. Ads tools read-only hain.',
     ],
   },
   '/dashboard/super_admin/compliance-reports': {

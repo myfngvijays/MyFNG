@@ -29,6 +29,7 @@ import GoogleAdsTable from './GoogleAdsTable';
 import GoogleAdsColumnsPicker from './GoogleAdsColumnsPicker';
 import GoogleAdsCampaignDetail from './GoogleAdsCampaignDetail';
 import GoogleAdsConversionsPanel from './GoogleAdsConversionsPanel';
+import GoogleAdsReportPanel from './GoogleAdsReportPanel';
 import { datePresetLabel, type DateRangeInput } from '@/lib/google-ads/dateRange';
 import { DEFAULT_CAMPAIGN_COLUMNS, DEFAULT_LIST_COLUMNS, loadCampaignColumns, saveCampaignColumns } from '@/lib/google-ads/columns';
 
@@ -102,7 +103,7 @@ type SectionId =
   | 'conversions'
   | 'connect'
   | 'mcp';
-type ChatMsg = { role: 'user' | 'assistant'; content: string; cards?: any; report?: any };
+type ChatMsg = { role: 'user' | 'assistant'; content: string; cards?: any; report?: any; blocks?: any[] };
 
 const STATUS_UI: Record<Payload['status'], { label: string; className: string }> = {
   ready: { label: 'Connected', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
@@ -132,6 +133,7 @@ const ASK_CHIPS = [
   'Enabled campaigns',
   'Top search terms',
   '7 din ki report banao',
+  'Keywords se headlines suggest kar',
 ];
 
 function isSectionId(value: string | null): value is SectionId {
@@ -148,6 +150,75 @@ function inr(n: number, currency = 'INR') {
 
 function num(n: number) {
   return new Intl.NumberFormat('en-IN').format(n || 0);
+}
+
+function cleanAskText(value: string) {
+  return String(value || '')
+    .replace(/\*\*/g, '')
+    .replace(/^#+\s*/gm, '')
+    .trim();
+}
+
+function AskMetricCards({ items }: { items: any[] }) {
+  if (!items?.length) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {items.map((item, idx) => (
+        <div key={`${item.name}-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-sm font-extrabold text-slate-900">{item.name}</p>
+            {(item.tags || []).map((tag: string) => (
+              <span key={tag} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                {tag}
+              </span>
+            ))}
+          </div>
+          {item.headline ? <p className="mt-0.5 text-[11px] text-slate-500">{item.headline}</p> : null}
+          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+            {(item.metrics || []).map((x: any) => (
+              <div key={x.label} className="rounded-lg bg-white px-2 py-1">
+                <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{x.label}</p>
+                <p className="text-xs font-extrabold text-slate-900">{x.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AskReportCard({ report }: { report: any }) {
+  const currency = report?.currency || 'INR';
+  const m = report?.metrics || {};
+  return (
+    <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800">
+      <p className="text-xs font-extrabold">{report.label || report.title}</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {[
+          ['Spend', inr(m.spend || 0, currency)],
+          ['Clicks', num(m.clicks || 0)],
+          ['Results', num(m.conversions || 0)],
+          ['CPL', m.cpl != null ? inr(m.cpl, currency) : '—'],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="rounded-lg bg-white px-2 py-1.5">
+            <p className="text-[10px] font-bold uppercase text-slate-400">{label}</p>
+            <p className="text-sm font-extrabold">{value}</p>
+          </div>
+        ))}
+      </div>
+      {(report.insights?.lines || []).slice(0, 3).map((line: string) => (
+        <p key={line} className="text-[11px] text-slate-600">
+          • {line}
+        </p>
+      ))}
+      {(report.ad_groups || []).slice(0, 6).map((row: any) => (
+        <p key={row.id || row.name} className="truncate text-[11px] text-slate-600">
+          {row.name} · {inr(row.spend || 0, currency)} · {row.conversions || 0} results
+        </p>
+      ))}
+    </div>
+  );
 }
 
 function metricLine(row: Period, currency: string) {
@@ -203,6 +274,7 @@ export default function GoogleAdsMcpApp() {
   const [playbookSaving, setPlaybookSaving] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
   const [generatedReport, setGeneratedReport] = useState<any>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const cache = useRef<Record<string, any>>({});
 
@@ -262,7 +334,10 @@ export default function GoogleAdsMcpApp() {
       body: JSON.stringify(body),
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json?.error || 'Request failed');
+    if (!res.ok) {
+      if (res.status === 401) throw new Error('Session expire ho gaya. Page refresh karke login karo.');
+      throw new Error(json?.error || 'Request failed');
+    }
     return json;
   };
 
@@ -336,7 +411,7 @@ export default function GoogleAdsMcpApp() {
       })
       .catch((e) => setError(e?.message || 'Load failed'))
       .finally(() => setSectionLoading(false));
-  }, [section, dateRange.during, dateRange.since, dateRange.until, statusFilter, channel, sort, data?.settings?.ready]);
+  }, [section, dateRange.during, dateRange.since, dateRange.until, statusFilter, channel, sort, data?.settings?.ready, refreshTick]);
 
   useEffect(() => {
     if (!detailId || !data?.settings?.ready) return;
@@ -364,9 +439,18 @@ export default function GoogleAdsMcpApp() {
       const json = await post({
         action: 'chat',
         message,
-        history: chat.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+        history: chat.slice(-8).map((m) => ({ role: m.role, content: String(m.content || '').slice(0, 400) })),
       });
-      setChat((prev) => [...prev, { role: 'assistant', content: json.reply || 'No reply', cards: json.cards, report: json.report }]);
+      setChat((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: cleanAskText(json.reply || 'No reply'),
+          cards: json.cards,
+          report: json.report,
+          blocks: json.blocks,
+        },
+      ]);
     } catch (e: any) {
       setChat((prev) => [...prev, { role: 'assistant', content: e?.message || 'Ask AI failed' }]);
     } finally {
@@ -411,16 +495,17 @@ export default function GoogleAdsMcpApp() {
     }
   };
 
-  const generateReport = async (period: string) => {
+  const generateReport = async (period: string, campaignId?: string) => {
     setReportBusy(true);
     setError(null);
     try {
       const json = await post({
         action: 'generate_report',
         period,
-        during: dateRange.during,
-        since: dateRange.since,
-        until: dateRange.until,
+        campaign_id: campaignId || '',
+        ...(period === 'custom'
+          ? { during: dateRange.during, since: dateRange.since, until: dateRange.until }
+          : {}),
       });
       setGeneratedReport(json.report);
     } catch (e: any) {
@@ -428,6 +513,17 @@ export default function GoogleAdsMcpApp() {
     } finally {
       setReportBusy(false);
     }
+  };
+
+  const refreshAll = () => {
+    cache.current = {};
+    setOverview(null);
+    setRows([]);
+    setConversionReport(null);
+    setGeneratedReport(null);
+    setError(null);
+    setRefreshTick((n) => n + 1);
+    void load();
   };
 
   const goSection = (id: SectionId) => {
@@ -514,6 +610,15 @@ use_proto_plus: True
                 setOverview(null);
               }}
             />
+            <button
+              type="button"
+              onClick={refreshAll}
+              disabled={loading || sectionLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50"
+            >
+              {loading || sectionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Refresh
+            </button>
             <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusUi.className}`}>{statusUi.label}</span>
           </div>
         </div>
@@ -647,17 +752,21 @@ use_proto_plus: True
                       m.role === 'user' ? 'rounded-br-md bg-[#004AAD] text-white' : 'bg-white text-slate-800'
                     }`}
                   >
-                    {m.content}
-                    {Array.isArray(m.cards?.items) ? (
-                      <div className="mt-2 space-y-1.5">
-                        {m.cards.items.map((item: any, idx: number) => (
-                          <div key={`${item.name}-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                            <p className="font-bold">{item.name}</p>
-                            <p>{(item.metrics || []).map((x: any) => `${x.label} ${x.value}`).join(' · ')}</p>
+                    {m.role === 'assistant' ? (
+                      <p className="text-sm font-semibold text-slate-800">{cleanAskText(m.content)}</p>
+                    ) : (
+                      m.content
+                    )}
+                    {m.report ? <AskReportCard report={m.report} /> : null}
+                    {Array.isArray(m.blocks)
+                      ? m.blocks.map((block: any) => (
+                          <div key={block.title} className="mt-3">
+                            <p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">{block.title}</p>
+                            <AskMetricCards items={block.items || []} />
                           </div>
-                        ))}
-                      </div>
-                    ) : null}
+                        ))
+                      : null}
+                    {!m.blocks?.length && Array.isArray(m.cards?.items) ? <AskMetricCards items={m.cards.items} /> : null}
                   </div>
                 </div>
               ))
@@ -703,46 +812,12 @@ use_proto_plus: True
       )}
 
       {section === 'reports' && (
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { id: 'today', label: 'Today' },
-              { id: 'last_7d', label: 'Last 7 days' },
-              { id: 'last_30d', label: 'Last 30 days' },
-              { id: 'briefing', label: 'Full briefing' },
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={reportBusy || !data?.settings?.ready}
-                onClick={() => void generateReport(item.id)}
-                className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-blue-200 disabled:opacity-50"
-              >
-                <FileBarChart className="h-5 w-5 text-[#004AAD]" />
-                <p className="mt-2 font-extrabold text-slate-900">{item.label}</p>
-              </button>
-            ))}
-          </div>
-          {reportBusy && (
-            <div className="flex items-center text-slate-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Report bana raha hoon…
-            </div>
-          )}
-          {generatedReport?.markdown && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-2 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => void copy('report', generatedReport.markdown)}
-                  className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-bold"
-                >
-                  {copied === 'report' ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <pre className="whitespace-pre-wrap text-sm text-slate-800">{generatedReport.markdown}</pre>
-            </div>
-          )}
-        </div>
+        <GoogleAdsReportPanel
+          report={generatedReport}
+          busy={reportBusy}
+          ready={Boolean(data?.settings?.ready)}
+          onGenerate={(period, campaignId) => void generateReport(period, campaignId)}
+        />
       )}
 
       {section === 'brain' && (
@@ -1000,7 +1075,8 @@ use_proto_plus: True
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-extrabold text-slate-900">MyFNG Google Ads MCP</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Same bearer token as Meta Ads / MyFNG MCP. Add this connector URL in Claude.
+              Preferred: Claude mein MyFNG MCP <code className="rounded bg-slate-100 px-1">https://myfng.in/api/mcp</code> — tools{' '}
+              <code className="rounded bg-slate-100 px-1">google_*</code>. Ye alag URL optional hai (same bearer).
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <code className="rounded-lg bg-slate-100 px-2 py-1 text-xs">{data?.claude?.this_host_url}</code>

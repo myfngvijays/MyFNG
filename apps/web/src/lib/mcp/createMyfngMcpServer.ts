@@ -1,6 +1,8 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { registerGoogleAdsTools } from '../google-ads/createServer';
+import { registerMetaAdsTools } from '../meta-ads/createServer';
 
 /**
  * Load the Cursor MCP factory at runtime.
@@ -128,6 +130,18 @@ export async function createMyfngMcpServer() {
       }
       cachedFactory = mod.createMyfngMcpServer;
     }
+
+    const baseFactory = cachedFactory;
+    cachedFactory = () => {
+      const server = baseFactory();
+      try {
+        registerMetaAdsTools(server, 'meta_');
+        registerGoogleAdsTools(server, 'google_');
+      } catch {
+        /* Ads tools optional if a handler fails to register */
+      }
+      return server;
+    };
   }
   return cachedFactory();
 }

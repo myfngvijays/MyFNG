@@ -341,6 +341,30 @@ export default function MyFngMcpApp() {
             </button>
           </details>
 
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-800">
+            <p className="font-extrabold text-[#004AAD]">Ads access — same Claude URL</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Claude ko naya Meta/Google connector add karne ki zaroorat nahi. Isi{' '}
+              <code className="rounded bg-white px-1">/api/mcp</code> pe tools{' '}
+              <code className="rounded bg-white px-1">meta_*</code> aur{' '}
+              <code className="rounded bg-white px-1">google_*</code> hain. Pehle accounts connect karo:
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <a
+                href="/dashboard/super_admin/meta-ads-mcp"
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#004AAD] shadow-sm"
+              >
+                Connect Meta Ads
+              </a>
+              <a
+                href="/dashboard/super_admin/google-ads-mcp"
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#004AAD] shadow-sm"
+              >
+                Connect Google Ads
+              </a>
+            </div>
+          </div>
+
           <div className="space-y-4">
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
               <Terminal className="h-4 w-4" /> Tools ({data.tool_count})

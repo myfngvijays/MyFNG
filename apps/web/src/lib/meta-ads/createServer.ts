@@ -18,29 +18,27 @@ async function wrap(name: string, params: Record<string, unknown>) {
   }
 }
 
-export function createMetaAdsMcpServer() {
-  const server = new McpServer({
-    name: 'myfng-meta-ads',
-    version: '1.0.0',
-  });
+export function registerMetaAdsTools(server: McpServer, prefix = '') {
+  const n = (name: string) => `${prefix}${name}`;
+  const d = (desc: string) => (prefix ? `Meta Ads — ${desc}` : desc);
 
   server.tool(
-    'get_account_info',
-    'MyFNG Meta ad account name, currency, status, spend-to-date (read-only).',
+    n('get_account_info'),
+    d('MyFNG Meta ad account name, currency, status, spend-to-date (read-only).'),
     { account_id: z.string().optional() },
     async (args) => wrap('get_account_info', args),
   );
 
   server.tool(
-    'list_ad_accounts',
-    'Ad accounts this Meta token can access.',
+    n('list_ad_accounts'),
+    d('Ad accounts this Meta token can access.'),
     { limit: z.number().int().min(1).max(100).optional() },
     async (args) => wrap('list_ad_accounts', args),
   );
 
   server.tool(
-    'list_campaigns',
-    'Campaigns on the MyFNG ad account with last-7d spend and leads.',
+    n('list_campaigns'),
+    d('Campaigns on the MyFNG ad account with last-7d spend and leads.'),
     {
       account_id: z.string().optional(),
       status: z.string().optional(),
@@ -50,15 +48,15 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
-    'get_campaign',
-    'One campaign plus last-7d insights.',
+    n('get_campaign'),
+    d('One campaign plus last-7d insights.'),
     { campaign_id: z.string() },
     async (args) => wrap('get_campaign', args),
   );
 
   server.tool(
-    'list_adsets',
-    'Ad sets under a campaign or the whole account.',
+    n('list_adsets'),
+    d('Ad sets under a campaign or the whole account.'),
     {
       campaign_id: z.string().optional(),
       account_id: z.string().optional(),
@@ -68,8 +66,8 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
-    'list_ads',
-    'Ads under an ad set, campaign, or account.',
+    n('list_ads'),
+    d('Ads under an ad set, campaign, or account.'),
     {
       adset_id: z.string().optional(),
       campaign_id: z.string().optional(),
@@ -80,8 +78,8 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
-    'get_insights',
-    'Spend, CTR, leads for account / campaign / ad set / ad.',
+    n('get_insights'),
+    d('Spend, CTR, leads for account / campaign / ad set / ad.'),
     {
       object_id: z.string().optional(),
       level: z.string().optional(),
@@ -91,8 +89,8 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
-    'get_insights_breakdown',
-    'Campaign results broken down by placement, age/gender, or device.',
+    n('get_insights_breakdown'),
+    d('Campaign results broken down by placement, age/gender, or device.'),
     {
       object_id: z.string().optional(),
       level: z.string().optional(),
@@ -103,22 +101,22 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
-    'get_spend_summary',
-    'Today / 7d / 30d spend, clicks, leads, and CPL.',
+    n('get_spend_summary'),
+    d('Today / 7d / 30d spend, clicks, leads, and CPL.'),
     { account_id: z.string().optional() },
     async (args) => wrap('get_spend_summary', args),
   );
 
   server.tool(
-    'get_funds_tracker',
-    'Ad account funds: lifetime spend, balance / amount due, spend cap, remaining, payment source.',
+    n('get_funds_tracker'),
+    d('Ad account funds: lifetime spend, balance / amount due, spend cap, remaining, payment source.'),
     { account_id: z.string().optional() },
     async (args) => wrap('get_funds_tracker', args),
   );
 
   server.tool(
-    'list_ad_transactions',
-    'Recent Meta ad billing or credit transactions (if the token can read them).',
+    n('list_ad_transactions'),
+    d('Recent Meta ad billing or credit transactions (if the token can read them).'),
     {
       account_id: z.string().optional(),
       limit: z.number().int().min(1).max(100).optional(),
@@ -127,22 +125,22 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
-    'list_pages',
-    'Facebook / Instagram pages assigned to this Meta token (read-only).',
+    n('list_pages'),
+    d('Facebook / Instagram pages assigned to this Meta token (read-only).'),
     { limit: z.number().int().min(1).max(100).optional() },
     async (args) => wrap('list_pages', args),
   );
 
   server.tool(
-    'get_page',
-    'One Facebook page: fans, followers, Instagram account.',
+    n('get_page'),
+    d('One Facebook page: fans, followers, Instagram account.'),
     { page_id: z.string() },
     async (args) => wrap('get_page', args),
   );
 
   server.tool(
-    'get_page_insights',
-    'Page impressions, engagements, and fans for a date preset.',
+    n('get_page_insights'),
+    d('Page impressions, engagements, and fans for a date preset.'),
     {
       page_id: z.string(),
       date_preset: z.string().optional(),
@@ -151,28 +149,35 @@ export function createMetaAdsMcpServer() {
   );
 
   server.tool(
-    'list_pixels',
-    'Pixels / datasets on the MyFNG ad account.',
+    n('list_pixels'),
+    d('Pixels / datasets on the MyFNG ad account.'),
     { account_id: z.string().optional() },
     async (args) => wrap('list_pixels', args),
   );
 
   server.tool(
-    'get_pixel',
-    'One pixel: name, last fired time, status.',
+    n('get_pixel'),
+    d('One pixel: name, last fired time, status.'),
     { pixel_id: z.string() },
     async (args) => wrap('get_pixel', args),
   );
 
   server.tool(
-    'get_pixel_stats',
-    'Pixel event counts (PageView, Lead, Purchase, …) for the last N days.',
+    n('get_pixel_stats'),
+    d('Pixel event counts (PageView, Lead, Purchase, …) for the last N days.'),
     {
       pixel_id: z.string(),
       days: z.number().int().min(1).max(90).optional(),
     },
     async (args) => wrap('get_pixel_stats', args),
   );
+}
 
+export function createMetaAdsMcpServer() {
+  const server = new McpServer({
+    name: 'myfng-meta-ads',
+    version: '1.0.0',
+  });
+  registerMetaAdsTools(server);
   return server;
 }

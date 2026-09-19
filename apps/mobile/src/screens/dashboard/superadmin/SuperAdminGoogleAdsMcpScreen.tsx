@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Share,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,7 +29,7 @@ import {
   type AdsColumn,
 } from '../../../lib/googleAdsColumns';
 
-type Section = 'overview' | 'ask' | 'campaigns' | 'ad_groups' | 'ads' | 'keywords' | 'search_terms' | 'conversions' | 'connect';
+type Section = 'overview' | 'ask' | 'reports' | 'campaigns' | 'ad_groups' | 'ads' | 'keywords' | 'search_terms' | 'conversions' | 'connect';
 const DATE_PRESETS = [
   { id: 'TODAY', label: 'Today' },
   { id: 'YESTERDAY', label: 'Yesterday' },
@@ -46,6 +47,7 @@ const DATE_PRESETS = [
 const SECTION_LABEL: Record<Section, string> = {
   overview: 'Overview',
   ask: 'Ask AI',
+  reports: 'Reports',
   campaigns: 'Campaigns',
   ad_groups: 'Ad groups',
   ads: 'Ads',
@@ -55,7 +57,7 @@ const SECTION_LABEL: Record<Section, string> = {
   connect: 'Connect',
 };
 
-const ASK_CHIPS = ['Kaunsi copy chalaun?', 'Aaj kitna spend?', '7 din ki report'];
+const ASK_CHIPS = ['Kaunsi copy chalaun?', 'Aaj kitna spend?', '7 din ki report', 'Keywords se headlines suggest kar'];
 
 const LIST_ACTIONS: Partial<Record<Section, string>> = {
   campaigns: 'campaigns',
@@ -112,6 +114,8 @@ export function SuperAdminGoogleAdsMcpScreen() {
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [report, setReport] = useState<any>(null);
+  const [reportBusy, setReportBusy] = useState(false);
 
   const postAction = async (body: Record<string, unknown>, timeoutMs = 30000) =>
     apiFetch<any>('/api/super_admin/google-ads-mcp', {
@@ -214,7 +218,11 @@ export function SuperAdminGoogleAdsMcpScreen() {
     setChat((prev) => [...prev, { role: 'user', content: message }]);
     try {
       const json = await postAction({ action: 'chat', message, history: chat.slice(-6) }, 70000);
-      setChat((prev) => [...prev, { role: 'assistant', content: json?.reply || 'No reply' }]);
+      const report = json?.report;
+      const extra = report
+        ? `\n${report.label || ''}\nSpend ${inr(report.metrics?.spend || 0, 'INR')} · ${report.metrics?.clicks || 0} clicks · ${report.metrics?.conversions || 0} results · ${report.metrics?.all_conversions || 0} all conv.`
+        : '';
+      setChat((prev) => [...prev, { role: 'assistant', content: `${json?.reply || 'No reply'}${extra}` }]);
     } catch (e: any) {
       setChat((prev) => [...prev, { role: 'assistant', content: e?.message || 'Ask AI failed' }]);
     } finally {
@@ -271,7 +279,16 @@ export function SuperAdminGoogleAdsMcpScreen() {
         <Text style={styles.topTitle} numberOfLines={1}>
           Google Ads
         </Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => {
+            setRefreshing(true);
+            void load();
+          }}
+          hitSlop={12}
+        >
+          <Ionicons name="refresh" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
       </View>
       {loading ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
@@ -346,6 +363,130 @@ export function SuperAdminGoogleAdsMcpScreen() {
                   ))}
                 </View>
               </>
+            )}
+
+            {section === 'reports' && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Generate report</Text>
+                <Text style={styles.hint}>Enabled campaigns only. Ek campaign tap karke uski report kholo.</Text>
+                <View style={styles.chipRow}>
+                  {[
+                    ['today', 'Today'],
+                    ['last_7d', '7 days'],
+                    ['last_30d', '30 days'],
+                    ['briefing', 'Briefing'],
+                  ].map(([id, label]) => (
+                    <TouchableOpacity
+                      key={id}
+                      style={styles.chip}
+                      disabled={reportBusy}
+                      onPress={async () => {
+                        setReportBusy(true);
+                        try {
+                          const json = await postAction(
+                            { action: 'generate_report', period: id, campaign_id: report?.campaign_id || '' },
+                            70000,
+                          );
+                          setReport(json?.report || null);
+                        } catch (e: any) {
+                          Alert.alert('Report', e?.message || 'Failed');
+                        } finally {
+                          setReportBusy(false);
+                        }
+                      }}
+                    >
+                      <Text style={styles.chipText}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {reportBusy ? <ActivityIndicator color={COLORS.primary} /> : null}
+                {report ? (
+                  <>
+                    {(report.campaigns || []).length ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                        <TouchableOpacity
+                          style={[styles.chip, !report.campaign_id ? styles.chipActive : null]}
+                          disabled={reportBusy}
+                          onPress={async () => {
+                            setReportBusy(true);
+                            try {
+                              const json = await postAction(
+                                { action: 'generate_report', period: report.period || 'last_7d', campaign_id: '' },
+                                70000,
+                              );
+                              setReport(json?.report || null);
+                            } catch (e: any) {
+                              Alert.alert('Report', e?.message || 'Failed');
+                            } finally {
+                              setReportBusy(false);
+                            }
+                          }}
+                        >
+                          <Text style={[styles.chipText, !report.campaign_id ? styles.chipTextActive : null]}>All enabled</Text>
+                        </TouchableOpacity>
+                        {(report.campaigns || []).map((c: any) => (
+                          <TouchableOpacity
+                            key={c.id}
+                            style={[styles.chip, String(report.campaign_id) === String(c.id) ? styles.chipActive : null]}
+                            disabled={reportBusy}
+                            onPress={async () => {
+                              setReportBusy(true);
+                              try {
+                                const json = await postAction(
+                                  { action: 'generate_report', period: report.period || 'last_7d', campaign_id: c.id },
+                                  70000,
+                                );
+                                setReport(json?.report || null);
+                              } catch (e: any) {
+                                Alert.alert('Report', e?.message || 'Failed');
+                              } finally {
+                                setReportBusy(false);
+                              }
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.chipText,
+                                String(report.campaign_id) === String(c.id) ? styles.chipTextActive : null,
+                              ]}
+                            >
+                              {c.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    ) : null}
+                    <Text style={styles.sectionTitle}>{report.label || report.title}</Text>
+                    <Text style={styles.summaryVal}>{inr(report.metrics?.spend || 0, currency)}</Text>
+                    <Text style={styles.cardMeta}>
+                      {report.metrics?.clicks || 0} clicks · {report.metrics?.conversions || 0} results
+                    </Text>
+                    {(report.insights?.lines || []).map((line: string) => (
+                      <Text key={line} style={styles.cardMeta}>
+                        • {line}
+                      </Text>
+                    ))}
+                    {(report.campaign_id ? [report.campaign] : report.campaigns || [])
+                      .filter(Boolean)
+                      .map((c: any) => (
+                        <Text key={c.id} style={styles.cardMeta}>
+                          {c.name} · {inr(c.spend || 0, currency)} · {c.conversions || 0} results
+                        </Text>
+                      ))}
+                    {(report.ad_groups || []).map((g: any) => (
+                      <Text key={g.id || g.name} style={styles.cardMeta}>
+                        {g.name} · {inr(g.spend || 0, currency)}
+                      </Text>
+                    ))}
+                    <TouchableOpacity
+                      style={styles.saveBtn}
+                      onPress={() => void Share.share({ message: report.markdown || report.title || 'Google Ads report' })}
+                    >
+                      <Text style={styles.saveBtnText}>Export text</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : null}
+              </View>
             )}
 
             {section === 'ask' && (

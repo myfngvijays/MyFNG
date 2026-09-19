@@ -7,6 +7,9 @@ export { ADWORDS_SCOPE };
 
 type SearchRow = Record<string, any>;
 
+let cachedAccessToken: { token: string; exp: number; refreshToken: string } | null = null;
+let refreshInflight: Promise<string> | null = null;
+
 async function refreshAccessToken(settings: GoogleAdsSettings): Promise<string> {
   if (!settings.refreshToken) {
     throw new Error('Google Ads is not connected. Super Admin → Google Ads → Connect with Google (Ads scope).');
@@ -14,22 +17,47 @@ async function refreshAccessToken(settings: GoogleAdsSettings): Promise<string> 
   if (!settings.clientId || !settings.clientSecret) {
     throw new Error('GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are missing.');
   }
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: settings.clientId,
-      client_secret: settings.clientSecret,
-      refresh_token: settings.refreshToken,
-      grant_type: 'refresh_token',
-    }).toString(),
-    cache: 'no-store',
-  });
-  const json = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string; error_description?: string };
-  if (!res.ok || !json.access_token) {
-    throw new Error(json.error_description || json.error || `Google OAuth refresh failed (${res.status})`);
+  if (
+    cachedAccessToken &&
+    cachedAccessToken.refreshToken === settings.refreshToken &&
+    cachedAccessToken.exp > Date.now()
+  ) {
+    return cachedAccessToken.token;
   }
-  return json.access_token;
+  if (refreshInflight) return refreshInflight;
+
+  refreshInflight = (async () => {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: settings.clientId,
+        client_secret: settings.clientSecret,
+        refresh_token: settings.refreshToken,
+        grant_type: 'refresh_token',
+      }).toString(),
+      cache: 'no-store',
+    });
+    const json = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string; error_description?: string };
+    if (!res.ok || !json.access_token) {
+      cachedAccessToken = null;
+      const detail = json.error_description || json.error || `Google OAuth refresh failed (${res.status})`;
+      if (/unauthor|unauthentic|invalid_grant|invalid_client/i.test(detail)) {
+        throw new Error('Google Ads login expire ho gaya. Connect tab se dubara Connect with Google karo.');
+      }
+      throw new Error(detail);
+    }
+    cachedAccessToken = {
+      token: json.access_token,
+      refreshToken: settings.refreshToken,
+      exp: Date.now() + 45 * 60 * 1000,
+    };
+    return json.access_token;
+  })().finally(() => {
+    refreshInflight = null;
+  });
+
+  return refreshInflight;
 }
 
 function adsHeaders(settings: GoogleAdsSettings, accessToken: string, withLoginCustomer: boolean): HeadersInit {

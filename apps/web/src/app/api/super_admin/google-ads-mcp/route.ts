@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
         during: body?.during,
         since: body?.since,
         until: body?.until,
+        campaign_id: body?.campaign_id,
       });
       return NextResponse.json({ success: true, report });
     }

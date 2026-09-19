@@ -7,7 +7,9 @@ export type McpToolArea =
   | 'People'
   | 'Bookings'
   | 'System'
-  | 'Safety';
+  | 'Safety'
+  | 'Meta Ads'
+  | 'Google Ads';
 
 export type McpToolDef = {
   name: string;
@@ -28,6 +30,7 @@ export const MYFNG_MCP_META = {
     'Row cap via MYFNG_MCP_MAX_ROWS (default 50, max 100).',
     'Bookings = real statuses (BOOKING_CONFIRMED / IN_SERVICE / SERVICE_DONE…), not every new lead.',
     'This package is standalone. Claude.ai uses the public HTTPS URL /api/mcp with OAuth — not a local file path.',
+    'Same connector also exposes Meta Ads (meta_*) and Google Ads (google_*) once those accounts are connected in Super Admin.',
   ],
 };
 
@@ -67,6 +70,37 @@ export const MYFNG_MCP_TOOLS: McpToolDef[] = [
 
   { name: 'describe_schema', area: 'Safety', description: 'Allowlisted tables this MCP can read' },
   { name: 'run_readonly_query', area: 'Safety', description: 'Equality-filter SELECT on allowlisted tables only' },
+
+  { name: 'meta_get_account_info', area: 'Meta Ads', description: 'Meta ad account name, currency, spend-to-date' },
+  { name: 'meta_list_ad_accounts', area: 'Meta Ads', description: 'Ad accounts this Meta token can access' },
+  { name: 'meta_list_campaigns', area: 'Meta Ads', description: 'Meta campaigns with last-7d spend and leads' },
+  { name: 'meta_get_campaign', area: 'Meta Ads', description: 'One Meta campaign + insights' },
+  { name: 'meta_list_adsets', area: 'Meta Ads', description: 'Meta ad sets' },
+  { name: 'meta_list_ads', area: 'Meta Ads', description: 'Meta ads under campaign / ad set' },
+  { name: 'meta_get_insights', area: 'Meta Ads', description: 'Spend, CTR, leads for account / campaign / ad' },
+  { name: 'meta_get_insights_breakdown', area: 'Meta Ads', description: 'Breakdown by placement / age / device' },
+  { name: 'meta_get_spend_summary', area: 'Meta Ads', description: 'Today / 7d / 30d Meta spend + CPL' },
+  { name: 'meta_get_funds_tracker', area: 'Meta Ads', description: 'Balance, spend cap, remaining funds' },
+  { name: 'meta_list_ad_transactions', area: 'Meta Ads', description: 'Recent Meta billing transactions' },
+  { name: 'meta_list_pages', area: 'Meta Ads', description: 'Facebook / Instagram pages on this token' },
+  { name: 'meta_get_page', area: 'Meta Ads', description: 'One page: fans, followers, IG' },
+  { name: 'meta_get_page_insights', area: 'Meta Ads', description: 'Page impressions and engagements' },
+  { name: 'meta_list_pixels', area: 'Meta Ads', description: 'Pixels / datasets on the ad account' },
+  { name: 'meta_get_pixel', area: 'Meta Ads', description: 'One pixel status + last fire' },
+  { name: 'meta_get_pixel_stats', area: 'Meta Ads', description: 'Pixel event counts for last N days' },
+
+  { name: 'google_list_accessible_customers', area: 'Google Ads', description: 'Google Ads customer IDs this user can access' },
+  { name: 'google_get_account', area: 'Google Ads', description: 'Google Ads account name, currency, timezone' },
+  { name: 'google_get_spend_summary', area: 'Google Ads', description: 'Today / 7d / 30d Google spend + conversions' },
+  { name: 'google_list_campaigns', area: 'Google Ads', description: 'Google campaigns with spend and results' },
+  { name: 'google_get_campaign', area: 'Google Ads', description: 'One Google campaign detail + daily' },
+  { name: 'google_list_ad_groups', area: 'Google Ads', description: 'Google ad groups' },
+  { name: 'google_list_ads', area: 'Google Ads', description: 'Google ads / RSA headlines' },
+  { name: 'google_list_keywords', area: 'Google Ads', description: 'Keywords with spend + conversions' },
+  { name: 'google_list_search_terms', area: 'Google Ads', description: 'Search terms that triggered ads' },
+  { name: 'google_list_conversions', area: 'Google Ads', description: 'Conversion actions + counts' },
+  { name: 'google_generate_report', area: 'Google Ads', description: 'Deep Google Ads report (optional campaign_id)' },
+  { name: 'google_search', area: 'Google Ads', description: 'Read-only GAQL SELECT' },
 ];
 
 export const MYFNG_MCP_AREAS = [
@@ -77,4 +111,6 @@ export const MYFNG_MCP_AREAS = [
   'Bookings',
   'System',
   'Safety',
+  'Meta Ads',
+  'Google Ads',
 ] as const satisfies readonly McpToolArea[];

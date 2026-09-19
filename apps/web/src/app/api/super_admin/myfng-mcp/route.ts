@@ -151,6 +151,7 @@ export async function GET(request: NextRequest) {
         'Authentication: Always required (Detected). OAuth client: Anthropic hosted client metadata',
         'Add, then Connect. Sign in as Super Admin and Approve',
         'Optional: generate a Bearer token on this page for Cursor / Claude Code headers',
+        'Meta Ads + Google Ads tools (meta_* / google_*) issi URL pe hain. Pehle Super Admin → Meta Ads / Google Ads pe Connect karo.',
       ],
       checked_at: new Date().toISOString(),
     });
