@@ -75,6 +75,18 @@ export const API_SERVICES_CATALOG: ApiServiceEntry[] = [
     docsUrl: 'https://developers.facebook.com/docs/marketing-api',
   },
   {
+    id: 'google-ads',
+    name: 'Google Ads API',
+    tier: 'paid',
+    category: 'Marketing',
+    description: 'Read-only MyFNG Google Ads: spend, campaigns, GAQL via Super Admin Google Ads + official MCP.',
+    billingModel: 'Google ads spend (API read uses developer token; ad delivery is paid)',
+    adminMenus: ['Google Ads MCP'],
+    envKeys: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_OAUTH_CLIENT_ID'],
+    dashboardHref: '/dashboard/super_admin/google-ads-mcp',
+    docsUrl: 'https://developers.google.com/google-ads/api/docs/start',
+  },
+  {
     id: 'whatsapp',
     name: 'WhatsApp Business (Meta)',
     tier: 'paid',
@@ -233,6 +245,7 @@ export const ADMIN_MENU_API_SUMMARY: Array<{
   { menu: 'Manual Invoice', href: '/dashboard/super_admin/manual-invoices', tier: 'free', services: ['Supabase (Razorpay records)'] },
   { menu: 'System Monitor', href: '/dashboard/super_admin/system-monitor', tier: 'platform', services: ['Probes all configured APIs'] },
   { menu: 'Meta Ads MCP', href: '/dashboard/super_admin/meta-ads-mcp', tier: 'paid', services: ['Meta Marketing API'] },
+  { menu: 'Google Ads MCP', href: '/dashboard/super_admin/google-ads-mcp', tier: 'paid', services: ['Google Ads API'] },
 ];
 
 export function getEnvConfiguredKeys(): Record<string, boolean> {
@@ -260,6 +273,8 @@ export function getEnvConfiguredKeys(): Record<string, boolean> {
     TELECRM_WEBHOOK_SECRET: !!process.env.TELECRM_WEBHOOK_SECRET,
     META_ADS_ACCESS_TOKEN: !!process.env.META_ADS_ACCESS_TOKEN,
     META_ADS_ACCOUNT_ID: !!process.env.META_ADS_ACCOUNT_ID,
+    GOOGLE_ADS_DEVELOPER_TOKEN: !!process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    GOOGLE_ADS_CUSTOMER_ID: !!process.env.GOOGLE_ADS_CUSTOMER_ID,
     ISANCTION_API_KEY: !!process.env.ISANCTION_API_KEY,
     TWILIO_ACCOUNT_SID: !!process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: !!process.env.TWILIO_AUTH_TOKEN,

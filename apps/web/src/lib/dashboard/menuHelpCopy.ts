@@ -161,6 +161,16 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Save ke baad production website refresh karo.',
     ],
   },
+  '/dashboard/super_admin/google-ads-mcp': {
+    title: 'Google Ads',
+    body:
+      'Ask AI, Reports, Brain playbook, Overview, Campaigns / Ad groups / Ads / Keywords / Search terms with status + channel + sort + search.\n\nGMB refresh token kaam nahi karega — Connect with Google se naya Ads refresh token chahiye.',
+    tips: [
+      'Ask AI: “Kaunsi copy chalaun?” — Keep / Test / Pause live numbers se.',
+      'Lists pe 7d/30d, Enabled/Paused, Search/PMax, sort, search box.',
+      'Read-only: pause/scale Google Ads UI mein.',
+    ],
+  },
   '/dashboard/super_admin/meta-ads-mcp': {
     title: 'Meta Ads',
     body:

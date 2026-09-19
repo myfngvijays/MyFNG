@@ -664,7 +664,7 @@ function SystemMonitorHealth() {
             <h2 className="text-lg font-semibold text-gray-900">Environment Variables Status</h2>
           </div>
           <p className="text-sm text-gray-500 mb-4">
-            Required runtime keys. Click-to-Call, Smartflo token, Meta Ads, and MCP also count as
+            Required runtime keys. Click-to-Call, Smartflo token, Meta Ads, Google Ads, and MCP also count as
             Set when saved in Super Admin (not only <code className="bg-gray-100 px-1 rounded">.env.local</code>).
             Webhook secret and SMTP are optional — WhatsApp is the primary channel.
           </p>
@@ -683,7 +683,7 @@ function SystemMonitorHealth() {
             <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <p className="text-sm text-amber-800">
                 <strong>How to fix:</strong> Server env (Vercel / <code className="bg-amber-100 px-1 py-0.5 rounded">.env.local</code>)
-                or the matching admin page — Click to Call, Meta Ads MCP, WhatsApp Cron alert numbers. Restart local
+                or the matching admin page — Click to Call, Meta Ads, Google Ads, WhatsApp Cron alert numbers. Restart local
                 server after changing <code className="bg-amber-100 px-1 py-0.5 rounded">.env.local</code>.
               </p>
             </div>

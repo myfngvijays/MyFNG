@@ -18,6 +18,8 @@ import { getOpenAiCreditBalanceStatus } from '@/lib/chatbot_v2/openAiCreditBalan
 import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
 import { getMcpHttpToken, MCP_PUBLIC_ORIGIN } from '@/lib/mcp/httpAuth';
 import { getMetaAdsSettings } from '@/lib/meta-ads/settings';
+import { formatAdsCustomerId, getGoogleAdsSettings } from '@/lib/google-ads/settings';
+import { listAccessibleCustomerIds } from '@/lib/google-ads/client';
 import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlertWhatsAppNumbers';
 import { graphGet } from '@/lib/meta-ads/graph';
 import { loadTelecallerLeadsShiftLastRun } from '@/lib/services/telecallerLeadsShiftSummary';
@@ -3503,6 +3505,59 @@ async function checkMetaAdsMcp(): Promise<HealthCheck> {
   }
 }
 
+async function checkGoogleAdsMcp(): Promise<HealthCheck> {
+  const start = Date.now();
+  const quickFix = {
+    label: 'Open Google Ads',
+    action: 'internal-link' as const,
+    actionPayload: { url: '/dashboard/super_admin/google-ads-mcp' },
+  };
+  try {
+    const settings = await getGoogleAdsSettings();
+    if (!settings.developerToken || !settings.refreshToken) {
+      return {
+        name: 'Google Ads MCP',
+        category: 'AI',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Ads API not connected',
+        reason: 'Set GOOGLE_ADS_* and Super Admin → Google Ads → Connect with Google (Ads scope).',
+        quickFix,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    const customers = await checkWithTimeout(() => listAccessibleCustomerIds());
+    const label = settings.customerId ? formatAdsCustomerId(settings.customerId) : `${customers.length} accessible`;
+    return {
+      name: 'Google Ads MCP',
+      category: 'AI',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: `Connected · ${label}`,
+      reason: 'Google Ads API is reachable. Super Admin can load spend and campaigns.',
+      quickFix,
+      lastChecked: new Date().toISOString(),
+      details: {
+        customerId: settings.customerId || null,
+        loginCustomerId: settings.loginCustomerId || null,
+        fromEnv: settings.fromEnv,
+        accessible: customers.length,
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Google Ads MCP',
+      category: 'AI',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Google Ads API failed',
+      reason: String(e?.message || e),
+      quickFix,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkMcpRemote(): Promise<HealthCheck> {
   const start = Date.now();
   const url = `${MCP_PUBLIC_ORIGIN}/api/mcp`;
@@ -3723,6 +3778,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkDltSms(),
     checkMcpRemote(),
     checkMetaAdsMcp(),
+    checkGoogleAdsMcp(),
     checkEmailService(),
     checkWalletSystem(),
     checkAdvanceCoupons(),
@@ -3784,9 +3840,10 @@ export async function GET() {
       return { category: cat, status, total: catChecks.length, healthy: catChecks.filter(c => c.status === 'healthy').length };
     });
 
-    const [clickCfg, metaAds, mcpToken, alertNumbers] = await Promise.all([
+    const [clickCfg, metaAds, googleAds, mcpToken, alertNumbers] = await Promise.all([
       getClickToCallConfig(),
       getMetaAdsSettings(),
+      getGoogleAdsSettings(),
       getMcpHttpToken(),
       getEnabledSystemAlertWhatsAppNumbers().catch(() => [] as string[]),
     ]);
@@ -3821,6 +3878,15 @@ export async function GET() {
       ),
       META_ADS_ACCOUNT_ID: Boolean(
         String(process.env.META_ADS_ACCOUNT_ID || metaAds.accountId || '').trim(),
+      ),
+      GOOGLE_ADS_DEVELOPER_TOKEN: Boolean(
+        String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN || googleAds.developerToken || '').trim(),
+      ),
+      GOOGLE_ADS_CUSTOMER_ID: Boolean(
+        String(process.env.GOOGLE_ADS_CUSTOMER_ID || googleAds.customerId || '').trim(),
+      ),
+      GOOGLE_ADS_REFRESH_TOKEN: Boolean(
+        String(process.env.GOOGLE_ADS_REFRESH_TOKEN || googleAds.refreshToken || '').trim(),
       ),
     };
 

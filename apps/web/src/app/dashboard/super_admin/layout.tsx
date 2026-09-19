@@ -64,6 +64,7 @@ import {
   Headphones,
   Brain,
   Plug,
+  Target,
   BookOpen,
   Mail,
   Hash,
@@ -786,6 +787,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/meta-ads-mcp',
     icon: Megaphone,
     description: 'Spend, chat, voice reports',
+  },
+  {
+    name: 'Google Ads',
+    href: '/dashboard/super_admin/google-ads-mcp',
+    icon: Target,
+    description: 'Spend, campaigns, official MCP',
   },
   {
     name: 'Config Changes',
