@@ -325,10 +325,10 @@ const navigationItems: NavItem[] = [
         description: 'Top hero carousel banners',
       },
       {
-        name: 'Promo Banners',
+        name: 'Service Page Images',
         href: '/dashboard/super_admin/website-images/promo-banners',
         icon: Megaphone,
-        description: 'Loan, E-Challan, Fuel, Sell Car etc.',
+        description: 'Top cards on Services (Ganesh Prime, loan, etc.)',
       },
       {
         name: 'Customer Reviews',

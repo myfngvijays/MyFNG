@@ -35,6 +35,18 @@ export async function GET() {
     const auth = await requireSuperAdmin(supabase);
     if (!auth.ok) return auth.res;
 
+    await supabase
+      .from(TABLE)
+      .update({ is_active: false })
+      .or(
+        [
+          'title.eq.Ganesh Chaturthi Prime',
+          'image_url.ilike.%ganesh-chaturthi-promo%',
+          'image_url.ilike.%ganesh-chaturthi-services%',
+          'image_url.ilike.%ganesh-chaturthi-banner%',
+        ].join(',')
+      );
+
     const { data, error } = await supabase
       .from(TABLE)
       .select('*')

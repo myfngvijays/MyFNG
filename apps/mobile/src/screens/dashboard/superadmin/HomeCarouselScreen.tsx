@@ -38,7 +38,10 @@ const ROUTES = [
   { value: 'Settings__Membership', label: 'Membership' },
 ];
 
-export default function HomeCarouselScreen({ navigation }: any) {
+export default function HomeCarouselScreen({ navigation, route }: any) {
+  const isPromo = route?.params?.kind === 'promo';
+  const apiBase = isPromo ? '/api/super_admin/promo-banners' : '/api/super_admin/home-carousel';
+  const screenTitle = isPromo ? 'Service Page Images' : 'Home Carousel';
   const [rows, setRows] = useState<BannerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,10 +60,10 @@ export default function HomeCarouselScreen({ navigation }: any) {
   async function fetchRows() {
     setLoading(true);
     try {
-      const res = await apiFetch<{ data: BannerRow[] }>('/api/super_admin/home-carousel');
+      const res = await apiFetch<{ data: BannerRow[] }>(apiBase);
       setRows(res.data || []);
     } catch (e: any) {
-      Alert.alert('Home Carousel', e?.message || 'Failed to load banners');
+      Alert.alert(screenTitle, e?.message || 'Failed to load banners');
     } finally {
       setLoading(false);
     }
@@ -119,7 +122,7 @@ export default function HomeCarouselScreen({ navigation }: any) {
       const fd = new FormData();
       fd.append('file', { uri, name, type } as any);
       fd.append('title', title || 'banner');
-      const res = await apiUpload<{ image_url?: string }>('/api/super_admin/home-carousel/upload-image', fd);
+      const res = await apiUpload<{ image_url?: string }>(`${apiBase}/upload-image`, fd);
       return String(res.image_url || '');
     } finally {
       setUploading(false);
@@ -146,13 +149,13 @@ export default function HomeCarouselScreen({ navigation }: any) {
         is_active: !!form.is_active,
       };
       if (editing) {
-        await apiFetch(`/api/super_admin/home-carousel/${editing.id}`, {
+        await apiFetch(`${apiBase}/${editing.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
-        await apiFetch('/api/super_admin/home-carousel', {
+        await apiFetch(apiBase, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -175,7 +178,7 @@ export default function HomeCarouselScreen({ navigation }: any) {
         style: 'destructive',
         onPress: async () => {
           try {
-            await apiFetch(`/api/super_admin/home-carousel/${id}`, { method: 'DELETE' });
+            await apiFetch(`${apiBase}/${id}`, { method: 'DELETE' });
             await fetchRows();
           } catch (e: any) {
             Alert.alert('Delete failed', e?.message || 'Could not delete');
@@ -189,7 +192,7 @@ export default function HomeCarouselScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Home Carousel" onBack={() => navigation.goBack()} />
+      <DashboardHeader title={screenTitle} onBack={() => navigation.goBack()} />
       <View style={styles.body}>
         <TouchableOpacity style={styles.primaryBtn} onPress={openCreate}>
           <Text style={styles.primaryText}>Add Banner</Text>

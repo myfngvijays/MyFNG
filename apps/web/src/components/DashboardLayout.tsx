@@ -832,7 +832,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           children: [
             { href: '/dashboard/super_admin/website-images', icon: <Globe className="w-5 h-5" />, label: 'All Images' },
             { href: '/dashboard/super_admin/website-images/home-carousel', icon: <Globe className="w-5 h-5" />, label: 'Home Carousel' },
-            { href: '/dashboard/super_admin/website-images/promo-banners', icon: <Megaphone className="w-5 h-5" />, label: 'Promo Banners' },
+            { href: '/dashboard/super_admin/website-images/promo-banners', icon: <Megaphone className="w-5 h-5" />, label: 'Service Page Images' },
             { href: '/dashboard/super_admin/website-images/customer-reviews', icon: <Star className="w-5 h-5" />, label: 'Customer Reviews' },
             { href: '/dashboard/super_admin/website-images/rsa-hero', icon: <AlertTriangle className="w-5 h-5" />, label: 'RSA Hero' },
             { href: '/dashboard/super_admin/membership-plans', icon: <Star className="w-5 h-5" />, label: 'Membership Plans' },

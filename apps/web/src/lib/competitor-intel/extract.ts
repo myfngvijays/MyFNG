@@ -46,6 +46,34 @@ function allMatches(html: string, re: RegExp) {
   return out;
 }
 
+export function competitorPageKey(raw: string) {
+  try {
+    const href = /:\/\//.test(raw) ? raw : `https://${String(raw).replace(/^\/+/, '')}`;
+    const url = new URL(href);
+    const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+    const path = (url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname || '/') || '/';
+    return { host, path, pathLower: path.toLowerCase() };
+  } catch {
+    const cleaned = String(raw || '').split('?')[0].split('#')[0];
+    const rawPath = (cleaned.length > 1 ? cleaned.replace(/\/+$/, '') : cleaned || '/') || '/';
+    const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+    return { host: '', path, pathLower: path.toLowerCase() };
+  }
+}
+
+export function loosePath(path: string) {
+  return String(path || '/').toLowerCase().replace(/\/+$/, '').replace(/-/g, '') || '/';
+}
+
+export function sameCompetitorPage(a?: string | null, b?: string | null) {
+  if (!a || !b) return false;
+  const left = competitorPageKey(a);
+  const right = competitorPageKey(b);
+  if (loosePath(left.path) !== loosePath(right.path)) return false;
+  if (left.host && right.host) return left.host === right.host;
+  return true;
+}
+
 export function normalizeCompetitorUrl(raw: string, baseOrigin: string) {
   try {
     const url = new URL(raw, baseOrigin);

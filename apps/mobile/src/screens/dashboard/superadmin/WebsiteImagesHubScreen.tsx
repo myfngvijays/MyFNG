@@ -17,6 +17,10 @@ export default function WebsiteImagesHubScreen({ navigation }: any) {
           <Text style={styles.cardTitle}>Home Carousel Images</Text>
           <Text style={styles.cardMeta}>Hero banners with preview + replace photo</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('HomeCarousel', { kind: 'promo' })}>
+          <Text style={styles.cardTitle}>Service Page Images</Text>
+          <Text style={styles.cardMeta}>Top Services cards — upload 1029×376 images</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );

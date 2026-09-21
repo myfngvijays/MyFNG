@@ -117,7 +117,8 @@ const LIGHT_MISA_BANNER: HeroBanner = {
   overlay: 'rgba(0,0,0,0)',
 };
 
-function buildHomeHeroBanners(_remote: HeroBanner[] = []) {
+function buildHomeHeroBanners(remote: HeroBanner[] = []) {
+  if (remote.length > 0) return remote;
   return [GANESH_PRIME_BANNER, LIGHT_SERVICE_BANNER, LIGHT_MISA_BANNER];
 }
 

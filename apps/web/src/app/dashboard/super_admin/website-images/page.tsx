@@ -73,8 +73,8 @@ export default function WebsiteImagesHubPage() {
             Icon={ShieldAlert}
           />
           <Tile
-            title="Promo Banners"
-            subtitle="Loan, E-Challan, Fuel, Sell Car etc. (Home & Packages screens)"
+            title="Service Page Images"
+            subtitle="Top Services cards — upload 1029×376 images, add as many as you want"
             href="/dashboard/super_admin/website-images/promo-banners"
             Icon={Megaphone}
           />

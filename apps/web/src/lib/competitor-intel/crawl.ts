@@ -27,6 +27,7 @@ type CrawlResult = {
   competitor_id?: string;
   run_id?: string;
   checked_url?: string;
+  page?: Record<string, any> | null;
   pages_scanned: number;
   new_pages: number;
   changed_pages: number;
@@ -152,6 +153,7 @@ export async function crawlCompetitor(competitorId: string, options: CrawlOption
   let newPages = 0;
   let changedPages = 0;
   let keywordsUpserted = 0;
+  let savedPage: Record<string, any> | null = null;
   const allClaims: AioClaim[] = [];
 
   try {
@@ -245,6 +247,7 @@ export async function crawlCompetitor(competitorId: string, options: CrawlOption
       }
 
       const parsed = parseCompetitorHtml(fetched.body || '', fetched.finalUrl || url, origin);
+      if (options.onlyUrl) checkedUrl = parsed.url || fetched.finalUrl || url;
       pagesScanned += 1;
       allClaims.push(...parsed.aioClaims);
 
@@ -287,7 +290,26 @@ export async function crawlCompetitor(competitorId: string, options: CrawlOption
           .insert({ ...pagePayload, first_seen_at: now, last_changed_at: now })
           .select('id')
           .single();
-        if (insertPageError || !inserted) continue;
+        if (insertPageError || !inserted) {
+          if (options.onlyUrl) {
+            await supabaseAdmin
+              .from(T.runs)
+              .update({ finished_at: new Date().toISOString(), status: 'failed', error: clip(insertPageError?.message || 'Could not save page', 500) })
+              .eq('id', runInsert.id);
+            return {
+              success: false,
+              competitor_id: row.id,
+              run_id: runInsert.id,
+              checked_url: parsed.url,
+              pages_scanned: pagesScanned,
+              new_pages: 0,
+              changed_pages: 0,
+              keywords_upserted: 0,
+              error: insertPageError?.message || 'Could not save page',
+            };
+          }
+          continue;
+        }
         pageId = inserted.id;
         newPages += 1;
         await supabaseAdmin.from(T.changes).insert({
@@ -370,6 +392,11 @@ export async function crawlCompetitor(competitorId: string, options: CrawlOption
         }
         keywordsUpserted += 1;
       }
+
+      if (pageId) {
+        const { data: stored } = await supabaseAdmin.from(T.pages).select('*').eq('id', pageId).maybeSingle();
+        savedPage = stored || { id: pageId, ...pagePayload, headings: parsed.headings };
+      }
     }
 
     for (const gap of buildAioGapsFromClaims(allClaims)) {
@@ -421,7 +448,8 @@ export async function crawlCompetitor(competitorId: string, options: CrawlOption
       success: true,
       competitor_id: row.id,
       run_id: runInsert.id,
-      checked_url: checkedUrl,
+      checked_url: savedPage?.url || checkedUrl,
+      page: savedPage,
       pages_scanned: pagesScanned,
       new_pages: newPages,
       changed_pages: changedPages,

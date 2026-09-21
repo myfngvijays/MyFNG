@@ -42,13 +42,14 @@ export default function SuperAdminCompetitorsScreen() {
   const [scanning, setScanning] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [checkUrl, setCheckUrl] = useState('');
+  const [focusedUrl, setFocusedUrl] = useState('');
   const [list, setList] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [detail, setDetail] = useState<any>(null);
   const [tab, setTab] = useState<TabId>('overview');
   const [missing, setMissing] = useState('');
 
-  const load = useCallback(async (id?: string) => {
+  const load = useCallback(async (id?: string, url?: string | null) => {
     try {
       const data = await apiFetch<any>('/api/super_admin/competitors');
       if (data?.missing) {
@@ -63,7 +64,9 @@ export default function SuperAdminCompetitorsScreen() {
       const nextId = id || selectedId || rows[0]?.id || '';
       setSelectedId(nextId);
       if (nextId) {
-        const one = await apiFetch<any>(`/api/super_admin/competitors/${nextId}`);
+        const focus = url === undefined ? focusedUrl : url;
+        const qs = focus ? `?url=${encodeURIComponent(focus)}` : '';
+        const one = await apiFetch<any>(`/api/super_admin/competitors/${nextId}${qs}`);
         setDetail(one);
       } else {
         setDetail(null);
@@ -74,7 +77,7 @@ export default function SuperAdminCompetitorsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedId]);
+  }, [focusedUrl, selectedId]);
 
   useEffect(() => {
     void load();
@@ -93,22 +96,42 @@ export default function SuperAdminCompetitorsScreen() {
 
   const scanNow = async (url?: string) => {
     if (!selectedId) return;
+    const target = String(url || '').trim();
     setScanning(true);
+    if (target) {
+      setFocusedUrl(target);
+      setTab('overview');
+    } else {
+      setFocusedUrl('');
+    }
     try {
       const data = await apiFetch<any>(`/api/super_admin/competitors/${selectedId}/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(url ? { url } : {}),
+        body: JSON.stringify(target ? { url: target } : {}),
       });
-      await load(selectedId);
+      const nextFocus = data?.page?.url || data?.checked_url || target || '';
+      if (nextFocus) {
+        setFocusedUrl(nextFocus);
+        setCheckUrl(nextFocus);
+      } else {
+        setFocusedUrl('');
+      }
+      await load(selectedId, nextFocus || null);
       if (data?.stopped) Alert.alert('Scan stopped', `${data.pages_scanned || 0} page(s) saved before stop.`);
-      else Alert.alert('Scan finished', url ? `Checked ${data.checked_url || url}` : 'Latest public pages, keywords and AIO gaps are updated.');
+      else Alert.alert('Scan finished', nextFocus ? `Showing only ${nextFocus}` : 'Latest public pages, keywords and AIO gaps are updated.');
     } catch (e: any) {
       Alert.alert('Scan failed', e?.message || 'Could not crawl public pages');
     } finally {
       setScanning(false);
       setStopping(false);
     }
+  };
+
+  const clearFocus = async () => {
+    setFocusedUrl('');
+    setCheckUrl('');
+    await load(selectedId, null);
   };
 
   const stopScan = async () => {
@@ -140,6 +163,8 @@ export default function SuperAdminCompetitorsScreen() {
       Alert.alert('Update failed', e?.message || 'Could not update gap');
     }
   };
+
+  const page = (detail?.pages || [])[0];
 
   return (
     <SafeAreaView style={styles.shell} edges={['top']}>
@@ -178,7 +203,7 @@ export default function SuperAdminCompetitorsScreen() {
             {list.map((item) => (
               <TouchableOpacity
                 key={item.id}
-                onPress={() => { setSelectedId(item.id); void load(item.id); }}
+                onPress={() => { setSelectedId(item.id); setFocusedUrl(''); setCheckUrl(''); void load(item.id, null); }}
                 style={[styles.compChip, selectedId === item.id && styles.compChipOn]}
               >
                 <Text style={[styles.compName, selectedId === item.id && styles.compNameOn]}>{item.name}</Text>
@@ -187,23 +212,8 @@ export default function SuperAdminCompetitorsScreen() {
             ))}
           </ScrollView>
 
-          <View style={styles.tabRow}>
-            {TABS.map((item) => (
-              <TouchableOpacity key={item.id} onPress={() => setTab(item.id)} style={[styles.tab, tab === item.id && styles.tabOn]}>
-                <Text style={[styles.tabText, tab === item.id && styles.tabTextOn]}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {!detail ? (
-            <Text style={styles.meta}>No competitor loaded.</Text>
-          ) : tab === 'overview' ? (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{detail.competitor?.name}</Text>
-              <Text style={styles.meta}>{detail.competitor?.domain}</Text>
-              <Text style={styles.stat}>Pages {detail.stats?.pages || 0} · Keywords {detail.stats?.keywords || 0}</Text>
-              <Text style={styles.stat}>Today {detail.stats?.changes_today || 0} · Open AIO {detail.stats?.open_aio_gaps || 0}</Text>
-              <Text style={styles.meta}>Last crawl {fmtWhen(detail.last_run?.finished_at || detail.last_run?.started_at)}</Text>
+          {detail ? (
+            <>
               <TextInput
                 value={checkUrl}
                 onChangeText={setCheckUrl}
@@ -233,6 +243,69 @@ export default function SuperAdminCompetitorsScreen() {
                   </>
                 )}
               </View>
+            </>
+          ) : null}
+
+          <View style={styles.tabRow}>
+            {TABS.map((item) => (
+              <TouchableOpacity key={item.id} onPress={() => setTab(item.id)} style={[styles.tab, tab === item.id && styles.tabOn]}>
+                <Text style={[styles.tabText, tab === item.id && styles.tabTextOn]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {focusedUrl ? (
+            <View style={styles.focusBar}>
+              <Text style={styles.focusText}>
+                {scanning && !page ? 'Fetching this page live…' : `Only ${detail?.focus?.url || page?.url || focusedUrl}`}
+              </Text>
+              <TouchableOpacity onPress={() => void clearFocus()}>
+                <Text style={styles.focusClear}>Show all</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {!detail ? (
+            <Text style={styles.meta}>No competitor loaded.</Text>
+          ) : tab === 'overview' && focusedUrl ? (
+            <View style={styles.card}>
+              {page ? (
+                <>
+                  <Text style={styles.cardTitle}>{page.title || page.path}</Text>
+                  <Text style={styles.meta}>{page.url}</Text>
+                  <Text style={styles.stat}>H1: {page.h1 || '—'}</Text>
+                  <Text style={styles.stat}>Meta: {page.meta_description || '—'}</Text>
+                  <Text style={styles.stat}>{page.word_count || 0} words · {page.http_status || 'ok'}</Text>
+                  <Text style={styles.meta}>Seen {fmtWhen(page.last_seen_at)} · Changed {fmtWhen(page.last_changed_at)}</Text>
+                  <View style={styles.wrapRow}>
+                    {(detail.keywords || []).map((row: any) => (
+                      <View key={row.id} style={styles.keyword}>
+                        <Text style={styles.keywordText}>{row.keyword}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {(page.aio_claims || []).map((claim: any, index: number) => (
+                    <Text key={`${claim.dimension}-${index}`} style={styles.stat}>{claim.dimension}: {claim.text}</Text>
+                  ))}
+                  {(detail.changes || []).map((row: any) => (
+                    <View key={row.id} style={styles.changeRow}>
+                      <Text style={styles.chip}>{row.change_type}</Text>
+                      <Text style={styles.stat}>{row.after_value || '—'}</Text>
+                      <Text style={styles.meta}>{fmtWhen(row.detected_at)}</Text>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <Text style={styles.meta}>{scanning ? 'Fetching live title, H1, meta, keywords and AIO claims…' : 'Could not fetch this URL. Check this URL again.'}</Text>
+              )}
+            </View>
+          ) : tab === 'overview' ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{detail.competitor?.name}</Text>
+              <Text style={styles.meta}>{detail.competitor?.domain}</Text>
+              <Text style={styles.stat}>Pages {detail.stats?.pages || 0} · Keywords {detail.stats?.keywords || 0}</Text>
+              <Text style={styles.stat}>Today {detail.stats?.changes_today || 0} · Open AIO {detail.stats?.open_aio_gaps || 0}</Text>
+              <Text style={styles.meta}>Last crawl {fmtWhen(detail.last_run?.finished_at || detail.last_run?.started_at)}</Text>
             </View>
           ) : tab === 'pages' ? (
             (detail.pages || []).map((row: any) => (
@@ -324,6 +397,22 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
   secondaryBtn: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, backgroundColor: '#fff' },
   secondaryBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.heading },
+  focusBar: {
+    marginTop: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  focusText: { flex: 1, fontSize: 12, fontWeight: '700', color: COLORS.heading },
+  focusClear: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
+  changeRow: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   urlInput: {
     marginTop: 10,
     borderWidth: 1,

@@ -105,8 +105,14 @@ export default function HomeCarouselImagesPage() {
   // Show DB rows if any, else fall back to default placeholders so the admin
   // can immediately see "this is what's currently in the app" and click Replace.
   const visibleRows: BannerRow[] = useMemo(() => {
-    if (rows.length > 0) return rows;
-    return DEFAULT_BANNERS;
+    if (rows.length === 0) return DEFAULT_BANNERS;
+    const extras = DEFAULT_BANNERS.filter((fallback) => {
+      if (fallback.id === 'default-prime') return !rows.some((row) => /ganesh/i.test(`${row.title || ''} ${row.image_url || ''}`));
+      if (fallback.id === 'default-service') return !rows.some((row) => /car-service-light/i.test(row.image_url || ''));
+      if (fallback.id === 'default-ai') return !rows.some((row) => /misa-ai-light/i.test(row.image_url || ''));
+      return false;
+    });
+    return extras.length ? [...extras, ...rows] : rows;
   }, [rows]);
 
   async function fetchRows() {

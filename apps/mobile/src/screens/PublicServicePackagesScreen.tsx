@@ -56,29 +56,14 @@ type PromoBanner = {
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
 
-const GANESH_PRIME_PROMO: PromoBanner = {
-  image_url: '',
-  imageSource: require('../../assets/myfng-prime-ganesh-chaturthi-banner.png'),
-  route_name: 'Settings',
-  route_params: { subPage: 'Membership', membershipType: 'SERVICE' },
-};
-
-function withGaneshPrimePromo(banners: PromoBanner[]) {
-  const rest = banners.filter((banner) => {
-    const key = `${banner.image_url} ${banner.route_name}`.toLowerCase();
-    return !key.includes('prime') && !key.includes('ganesh') && !key.includes('membership');
-  });
-  return [GANESH_PRIME_PROMO, ...rest];
-}
-
-// Fallback list — overridden by admin-managed `home_promo_banners` table
-// (Super Admin → Website Images → Promo Banners).
-const FALLBACK_SERVICE_PAGE_PROMO_BANNERS: PromoBanner[] = withGaneshPrimePromo([
+// Fallback list — overridden by admin-managed `home_promo_banners`
+// (Super Admin → App Content → Service Page Images).
+const FALLBACK_SERVICE_PAGE_PROMO_BANNERS: PromoBanner[] = [
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`, route_name: '', route_params: {} },
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`, route_name: '', route_params: {} },
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`, route_name: '', route_params: {} },
   { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`, route_name: '', route_params: {} },
-]);
+];
 
 const PROMO_BANNER_LINKS: Record<string, string> = {
   loan: 'https://myfng.in/car-loan',
@@ -344,12 +329,13 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
         const banners: PromoBanner[] = data
           .filter((row: any) => !!row.image_url)
+          .filter((row: any) => !/ganesh-chaturthi-(promo|services|banner)/i.test(String(row.image_url || '')))
           .map((row: any) => ({
-            image_url: String(row.image_url),
+            image_url: String(row.image_url || ''),
             route_name: String(row.route_name || ''),
             route_params: row.route_params || {},
           }));
-          if (active && banners.length > 0) setPromoBanners(withGaneshPrimePromo(banners));
+          if (active && banners.length > 0) setPromoBanners(banners);
       } catch {
         // ignore — keep fallback list
       }
@@ -427,7 +413,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
                   <Image
                     source={currentBanner.imageSource || { uri: currentBanner.image_url }}
                     style={s.promoImage}
-                    resizeMode="contain"
+                    resizeMode="cover"
                   />
                 </TouchableOpacity>
               );
@@ -760,13 +746,10 @@ const s = StyleSheet.create({
     marginTop: 12,
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
   promoTouchable: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    aspectRatio: 1029 / 376,
   },
   promoImage: {
     width: '100%',

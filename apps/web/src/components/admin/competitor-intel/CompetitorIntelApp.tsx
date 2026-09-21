@@ -45,6 +45,7 @@ type Detail = {
   keywords: any[];
   changes: any[];
   aio_gaps: any[];
+  focus?: { url: string; path?: string; found: boolean } | null;
   stats: {
     pages: number;
     keywords: number;
@@ -91,6 +92,7 @@ export default function CompetitorIntelApp() {
   const [scanning, setScanning] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [checkUrl, setCheckUrl] = useState('');
+  const [focusedUrl, setFocusedUrl] = useState('');
   const [missing, setMissing] = useState('');
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -114,12 +116,14 @@ export default function CompetitorIntelApp() {
     return rows as CompetitorListItem[];
   }, []);
 
-  const loadDetail = useCallback(async (id: string) => {
+  const loadDetail = useCallback(async (id: string, url?: string | null) => {
     if (!id) {
       setDetail(null);
       return;
     }
-    const res = await fetch(`/api/super_admin/competitors/${id}`, { cache: 'no-store' });
+    const focus = String(url || '').trim();
+    const qs = focus ? `?url=${encodeURIComponent(focus)}` : '';
+    const res = await fetch(`/api/super_admin/competitors/${id}${qs}`, { cache: 'no-store' });
     const data = await res.json();
     if (data?.missing) {
       setMissing(data.error || 'Run database/371_competitor_intel.sql');
@@ -136,13 +140,13 @@ export default function CompetitorIntelApp() {
       const rows = await loadList();
       const nextId = id || selectedId || rows[0]?.id || '';
       setSelectedId(nextId);
-      if (nextId) await loadDetail(nextId);
+      if (nextId) await loadDetail(nextId, focusedUrl || null);
     } catch (err: any) {
       setError(err?.message || 'Load failed');
     } finally {
       setLoading(false);
     }
-  }, [loadDetail, loadList, selectedId]);
+  }, [focusedUrl, loadDetail, loadList, selectedId]);
 
   useEffect(() => {
     void refresh();
@@ -152,24 +156,44 @@ export default function CompetitorIntelApp() {
 
   const scanNow = async (url?: string) => {
     if (!selectedId) return;
+    const target = String(url || '').trim();
     setScanning(true);
     setError('');
+    if (target) {
+      setFocusedUrl(target);
+      setTab('overview');
+    } else {
+      setFocusedUrl('');
+    }
     try {
       const res = await fetch(`/api/super_admin/competitors/${selectedId}/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(url ? { url } : {}),
+        body: JSON.stringify(target ? { url: target } : {}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Scan failed');
       if (data?.stopped) setError('');
-      await refresh(selectedId);
+      const nextFocus = data?.page?.url || data?.checked_url || target || '';
+      if (nextFocus) {
+        setFocusedUrl(nextFocus);
+        setCheckUrl(nextFocus);
+      }
+      await loadList();
+      await loadDetail(selectedId, nextFocus || null);
     } catch (err: any) {
       setError(err?.message || 'Scan failed');
     } finally {
       setScanning(false);
       setStopping(false);
     }
+  };
+
+  const clearFocus = async () => {
+    setFocusedUrl('');
+    setCheckUrl('');
+    setQuery('');
+    if (selectedId) await loadDetail(selectedId);
   };
 
   const stopScan = async () => {
@@ -184,7 +208,7 @@ export default function CompetitorIntelApp() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Could not stop scan');
-      await loadDetail(selectedId);
+      await loadDetail(selectedId, focusedUrl || null);
     } catch (err: any) {
       setError(err?.message || 'Could not stop scan');
       setStopping(false);
@@ -196,10 +220,10 @@ export default function CompetitorIntelApp() {
     const busy = scanning || isActiveScan(detail?.last_run?.status);
     if (!busy) return;
     const timer = window.setInterval(() => {
-      void loadDetail(selectedId);
+      void loadDetail(selectedId, focusedUrl || null);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [selectedId, scanning, detail?.last_run?.status, loadDetail]);
+  }, [selectedId, scanning, detail?.last_run?.status, focusedUrl, loadDetail]);
 
 
   const updateGap = async (gapId: string, status: string) => {
@@ -209,7 +233,7 @@ export default function CompetitorIntelApp() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: gapId, status }),
     });
-    await loadDetail(selectedId);
+    await loadDetail(selectedId, focusedUrl || null);
     await loadList();
   };
 
@@ -294,18 +318,32 @@ export default function CompetitorIntelApp() {
             <input
               value={checkUrl}
               onChange={(e) => setCheckUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && checkUrl.trim()) void scanNow(checkUrl.trim());
+              }}
               placeholder={detail?.competitor?.domain ? `https://${detail.competitor.domain}/services` : 'https://caryaar.com/services'}
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
               disabled={!selectedId || scanning || isActiveScan(detail?.last_run?.status)}
             />
-            <button
-              type="button"
-              disabled={!selectedId || !checkUrl.trim() || scanning || isActiveScan(detail?.last_run?.status)}
-              onClick={() => void scanNow(checkUrl.trim())}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-60"
-            >
-              <Search className="h-4 w-4" /> Check this URL
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!selectedId || !checkUrl.trim() || scanning || isActiveScan(detail?.last_run?.status)}
+                onClick={() => void scanNow(checkUrl.trim())}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-60"
+              >
+                <Search className="h-4 w-4" /> Check this URL
+              </button>
+              {focusedUrl ? (
+                <button
+                  type="button"
+                  onClick={() => void clearFocus()}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
+                >
+                  Show all
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {showAdd && (
@@ -325,6 +363,8 @@ export default function CompetitorIntelApp() {
                 type="button"
                 onClick={() => {
                   setSelectedId(item.id);
+                  setFocusedUrl('');
+                  setCheckUrl('');
                   void loadDetail(item.id);
                 }}
                 className={`min-w-[180px] rounded-2xl border px-4 py-3 text-left ${
@@ -373,7 +413,118 @@ export default function CompetitorIntelApp() {
               ))}
             </div>
 
-            {tab === 'overview' && (
+            {focusedUrl && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#023D95]/20 bg-[#023D95]/5 px-4 py-3">
+                <p className="text-sm text-slate-700">
+                  {scanning && !pages[0]
+                    ? 'Fetching this page live…'
+                    : <>Showing only <span className="font-semibold text-slate-900">{detail.focus?.url || pages[0]?.url || focusedUrl}</span></>}
+                </p>
+                <button type="button" onClick={() => void clearFocus()} className="text-sm font-semibold text-[#023D95]">
+                  Show all pages
+                </button>
+              </div>
+            )}
+
+            {tab === 'overview' && focusedUrl && (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    { label: 'Pages tracked', value: detail.stats.pages },
+                    { label: 'Keywords', value: detail.stats.keywords },
+                    { label: 'Changes', value: detail.stats.changes_7d },
+                    { label: 'Open AIO gaps', value: detail.stats.open_aio_gaps },
+                  ].map((stat) => (
+                    <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{stat.label}</p>
+                      <p className="mt-1 text-3xl font-black text-slate-900">{stat.value}</p>
+                    </div>
+                  ))}
+                </div>
+                {pages[0] ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">This URL</p>
+                        <h2 className="mt-1 text-xl font-black text-slate-900">{pages[0].title || pages[0].path}</h2>
+                        <a href={pages[0].url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-[#023D95]">
+                          {pages[0].url} <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${statusTone(pages[0].http_status >= 400 ? 'failed' : 'success')}`}>
+                        {pages[0].http_status || 'ok'}
+                      </span>
+                    </div>
+                    <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-[11px] font-bold uppercase text-slate-400">H1</dt>
+                        <dd className="mt-0.5 text-sm text-slate-800">{pages[0].h1 || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-bold uppercase text-slate-400">Meta</dt>
+                        <dd className="mt-0.5 text-sm text-slate-800">{pages[0].meta_description || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-bold uppercase text-slate-400">Path</dt>
+                        <dd className="mt-0.5 text-sm text-slate-800">{pages[0].path}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-bold uppercase text-slate-400">Words</dt>
+                        <dd className="mt-0.5 text-sm text-slate-800">{pages[0].word_count || 0}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-bold uppercase text-slate-400">First seen</dt>
+                        <dd className="mt-0.5 text-sm text-slate-800">{fmtWhen(pages[0].first_seen_at)} IST</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-bold uppercase text-slate-400">Last seen / changed</dt>
+                        <dd className="mt-0.5 text-sm text-slate-800">{fmtWhen(pages[0].last_seen_at)} · {fmtWhen(pages[0].last_changed_at)}</dd>
+                      </div>
+                    </dl>
+                    <div className="mt-4">
+                      <p className="text-[11px] font-bold uppercase text-slate-400">Keywords on this page</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {keywords.length ? keywords.map((row) => (
+                          <span key={row.id} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-800">
+                            {row.keyword}
+                          </span>
+                        )) : <span className="text-sm text-slate-500">No keywords on this URL.</span>}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <p className="text-[11px] font-bold uppercase text-slate-400">AIO claims on this page</p>
+                      <div className="mt-2 space-y-2">
+                        {(pages[0].aio_claims || []).length ? (pages[0].aio_claims || []).map((claim: any, index: number) => (
+                          <p key={`${claim.dimension}-${index}`} className="text-sm text-slate-700">
+                            <span className="font-semibold uppercase text-orange-600">{claim.dimension}:</span> {claim.text}
+                          </p>
+                        )) : <p className="text-sm text-slate-500">No AIO claims on this URL.</p>}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <p className="text-[11px] font-bold uppercase text-slate-400">Changes for this URL</p>
+                      <div className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100">
+                        {changes.length ? changes.map((row) => (
+                          <div key={row.id} className="px-3 py-2">
+                            <p className="text-[11px] font-bold uppercase text-orange-700">{row.change_type} · {fmtWhen(row.detected_at)}</p>
+                            {row.after_value && <p className="text-sm text-slate-700">{row.after_value}</p>}
+                            {row.before_value && row.change_type !== 'new_page' && (
+                              <p className="text-xs text-slate-400">Was: {row.before_value}</p>
+                            )}
+                          </div>
+                        )) : <p className="px-3 py-2 text-sm text-slate-500">No stored changes for this URL.</p>}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+                    {scanning ? 'Fetching live title, H1, meta, keywords and AIO claims…' : (error || 'Could not fetch this URL. Check this URL again.')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tab === 'overview' && !focusedUrl && (
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {[
@@ -423,7 +574,7 @@ export default function CompetitorIntelApp() {
               </div>
             )}
 
-            {tab !== 'overview' && tab !== 'aio' && (
+            {tab !== 'overview' && tab !== 'aio' && !focusedUrl && (
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input

@@ -114,10 +114,7 @@ export default function PromoBannersPage() {
     }
   }, [form.route_params_text]);
 
-  const visibleRows: BannerRow[] = useMemo(() => {
-    if (rows.length > 0) return rows;
-    return DEFAULT_BANNERS;
-  }, [rows]);
+  const visibleRows: BannerRow[] = useMemo(() => (rows.length === 0 ? DEFAULT_BANNERS : rows), [rows]);
 
   async function fetchRows() {
     setLoading(true);
@@ -281,10 +278,10 @@ export default function PromoBannersPage() {
     <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Promo Banners</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Service Page Images</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Promotional cards on the mobile Home & Service Packages screens (Loan, E-Challan, Fuel, Sell Car etc).
-            Replace any image instantly &mdash; the new banner appears in the app within seconds.
+            Top cards on the app <strong>Services</strong> screen (and Home promo strip). Size{' '}
+            <strong>1029×376</strong>. Use <strong>Add Banner</strong> to upload more images of this size.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -403,6 +400,7 @@ export default function PromoBannersPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                 <div>
                   <label className="text-sm font-semibold text-gray-700">Image Upload</label>
+                  <p className="text-xs text-gray-500 mt-0.5">Recommended size 1029×376 (same as loan / e-challan cards).</p>
                   <div className="mt-1 flex items-center gap-3">
                     <input
                       ref={fileInputRef}
@@ -442,7 +440,7 @@ export default function PromoBannersPage() {
                 </div>
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                   <div className="text-xs font-semibold text-gray-600 mb-2">Preview</div>
-                  <div className="aspect-[16/9] w-full rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
+                  <div className="aspect-[1029/376] w-full rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
                     {preview || form.image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={preview || form.image_url} alt="preview" className="h-full w-full object-cover" />

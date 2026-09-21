@@ -5,6 +5,109 @@ export const dynamic = 'force-dynamic';
 
 const TABLE = 'home_carousel_banners';
 
+const LIGHT_CAROUSEL = {
+  ganesh: {
+    title: 'Ganesh Chaturthi Prime',
+    image_url: 'https://myfng.in/media/banners/myfng-prime-ganesh-chaturthi-banner.png',
+    route_name: 'Settings__Membership',
+    route_params: { membershipType: 'SERVICE' },
+    display_order: 0,
+    is_active: true,
+  },
+  service: {
+    title: 'Car Service',
+    image_url: 'https://myfng.in/media/banners/myfng-car-service-light-banner.png',
+    route_name: 'PublicBookServiceNow',
+  },
+  ai: {
+    title: 'MyFNG AI',
+    image_url: 'https://myfng.in/media/banners/myfng-misa-ai-light-banner.png',
+    route_name: 'AIBooking',
+  },
+} as const;
+
+function bannerText(row: { title?: string | null; image_url?: string | null; route_name?: string | null }) {
+  return `${row?.title || ''} ${row?.image_url || ''} ${row?.route_name || ''}`;
+}
+
+function isGaneshBanner(row: { title?: string | null; image_url?: string | null }) {
+  return /ganesh/i.test(bannerText(row));
+}
+
+function isServiceBanner(row: { title?: string | null; image_url?: string | null; route_name?: string | null }) {
+  if (row.route_name === 'PublicBookServiceNow' || row.route_name === 'PublicServicePackages') return true;
+  return /service/i.test(`${row.title || ''}`) && !/rsa|roadside/i.test(bannerText(row)) && !/prime|ganesh|membership/i.test(bannerText(row));
+}
+
+function isAiBanner(row: { title?: string | null; image_url?: string | null; route_name?: string | null }) {
+  return row.route_name === 'AIBooking' || /misa|\bai\b/i.test(`${row.title || ''} ${row.image_url || ''}`);
+}
+
+function needsLightImage(row: { image_url?: string | null }, lightUrl: string) {
+  return !String(row.image_url || '').includes(lightUrl.split('/').pop() || 'light-banner');
+}
+
+function isKeepLightBanner(row: { title?: string | null; image_url?: string | null }) {
+  const url = String(row.image_url || '');
+  return isGaneshBanner(row)
+    || url.includes('car-service-light-banner')
+    || url.includes('misa-ai-light-banner');
+}
+
+async function applyLightCarousel(supabase: any, rows: any[]) {
+  let next = [...rows];
+
+  if (!next.some(isGaneshBanner)) {
+    const { data: inserted } = await supabase.from(TABLE).insert(LIGHT_CAROUSEL.ganesh).select().single();
+    if (inserted) next = [inserted, ...next];
+  }
+
+  const service = next.find(isServiceBanner);
+  if (service && needsLightImage(service, LIGHT_CAROUSEL.service.image_url)) {
+    const { data: updated } = await supabase
+      .from(TABLE)
+      .update({
+        title: LIGHT_CAROUSEL.service.title,
+        image_url: LIGHT_CAROUSEL.service.image_url,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', service.id)
+      .select()
+      .single();
+    if (updated) next = next.map((row) => (row.id === updated.id ? updated : row));
+  }
+
+  const ai = next.find(isAiBanner);
+  if (ai && needsLightImage(ai, LIGHT_CAROUSEL.ai.image_url)) {
+    const { data: updated } = await supabase
+      .from(TABLE)
+      .update({
+        title: LIGHT_CAROUSEL.ai.title,
+        image_url: LIGHT_CAROUSEL.ai.image_url,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', ai.id)
+      .select()
+      .single();
+    if (updated) next = next.map((row) => (row.id === updated.id ? updated : row));
+  }
+
+  const staleIds = next.filter((row) => row.is_active !== false && !isKeepLightBanner(row)).map((row) => row.id);
+  if (staleIds.length) {
+    const { data: hidden } = await supabase
+      .from(TABLE)
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .in('id', staleIds)
+      .select();
+    const hiddenIds = new Set((hidden || []).map((row: { id: string }) => row.id));
+    next = next.map((row) => (hiddenIds.has(row.id) ? { ...row, is_active: false } : row));
+  }
+
+  return next;
+}
+
 async function requireSuperAdmin(supabase: any) {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) return { ok: false, res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
@@ -56,7 +159,9 @@ export async function GET() {
         { status: 500 }
       );
     }
-    return NextResponse.json({ data: data || [] });
+
+    const rows = await applyLightCarousel(supabase, data || []);
+    return NextResponse.json({ data: rows });
   } catch (e: any) {
     console.error('[home-carousel][GET] exception:', e);
     return NextResponse.json({ error: 'Internal server error', details: e?.message }, { status: 500 });
