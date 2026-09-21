@@ -56,6 +56,13 @@ export async function requireSiteSeoAccess(supabase: any): Promise<AuthOk | Auth
   return requireRoleCodes(supabase, SITE_SEO_ACCESS_ROLES);
 }
 
+/** Competitors under Advanced SEO — Super Admin plus Digital Marketing. */
+export const COMPETITOR_INTEL_ACCESS_ROLES = ['SUPER_ADMIN', 'DIGITAL_MARKETING'] as const;
+
+export async function requireCompetitorIntelAccess(supabase: any): Promise<AuthOk | AuthFail> {
+  return requireRoleCodes(supabase, COMPETITOR_INTEL_ACCESS_ROLES);
+}
+
 /** Legacy helper shape used by some booking/customer routes. */
 export async function assertPanelAccessLegacy(
   supabase: any,

@@ -1406,6 +1406,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/openai-balance-alert',
     '/api/cron/google-ads-funds-alert',
     '/api/cron/daily-blog',
+    '/api/cron/competitor-seo',
   ];
 
   if (!cronSecret) {
@@ -1610,6 +1611,127 @@ async function checkDailyBlog(): Promise<HealthCheck> {
       responseTime: Date.now() - start,
       message: e.message || 'Check failed',
       reason: `Daily blog health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkCompetitorIntel(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Competitor Intel',
+      category: 'SEO',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify competitor tables: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const tableRes = await checkWithTimeout(() =>
+      client.from('competitors').select('id', { count: 'exact', head: true }),
+    );
+    if (tableRes.error) {
+      const missing = /does not exist|42P01/i.test(tableRes.error.message || '');
+      return {
+        name: 'Competitor Intel',
+        category: 'SEO',
+        status: missing ? 'down' : 'degraded',
+        responseTime: Date.now() - start,
+        message: missing ? 'competitors table missing' : tableRes.error.message,
+        reason: missing
+          ? 'Run database/371_competitor_intel.sql in Supabase SQL Editor, then open Advanced SEO → Competitors.'
+          : tableRes.error.message,
+        quickFix: {
+          label: 'Open Competitors',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/competitors' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    let crononJob: { jobname?: string; schedule?: string; active?: boolean } | null = null;
+    try {
+      const cronRes = await client
+        .schema('cron')
+        .from('job')
+        .select('jobname, schedule, active')
+        .eq('jobname', 'competitor-seo-monitor')
+        .maybeSingle();
+      if (!cronRes.error && cronRes.data) crononJob = cronRes.data as any;
+    } catch {
+      crononJob = null;
+    }
+
+    const { data: lastRun } = await client
+      .from('competitor_crawl_runs')
+      .select('started_at, finished_at, status, pages_scanned, error')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const lastAt = lastRun?.finished_at || lastRun?.started_at;
+    const ageHours = lastAt ? (Date.now() - new Date(lastAt).getTime()) / 36e5 : Infinity;
+    const failed = String(lastRun?.status || '') === 'failed';
+    const crononMissing = !crononJob;
+    const crononOff = crononJob?.active === false;
+    const overdue = ageHours > 12;
+
+    const status: ServiceStatus = failed || crononOff
+      ? 'degraded'
+      : crononMissing && overdue
+        ? 'degraded'
+        : overdue
+          ? 'degraded'
+          : 'healthy';
+
+    return {
+      name: 'Competitor Intel',
+      category: 'SEO',
+      status,
+      responseTime: Date.now() - start,
+      message: failed
+        ? 'Last competitor crawl failed'
+        : !lastRun
+          ? 'Tables ready — no crawl yet'
+          : overdue
+            ? `Last crawl ${Math.round(ageHours)}h ago`
+            : `Last crawl ${lastRun.pages_scanned || 0} pages`,
+      reason: failed
+        ? String(lastRun?.error || 'Last /api/cron/competitor-seo run failed.')
+        : crononMissing
+          ? 'Supabase Cronon has no competitor-seo-monitor job. Vercel cron is a backup. Run database/372_competitor_intel_pg_cron.sql.'
+          : crononOff
+            ? 'Cronon job competitor-seo-monitor is inactive.'
+            : overdue
+              ? 'No successful crawl in 12h. Use Advanced SEO → Competitors → Scan now, or wait for the 6-hour cron.'
+              : 'Public-page competitor SEO monitor is current.',
+      quickFix: {
+        label: 'Open Competitors',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/competitors' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: {
+        last_run_at: lastAt || null,
+        last_status: lastRun?.status || null,
+        cronon_job: crononJob?.jobname || null,
+        cronon_active: crononJob?.active ?? null,
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Competitor Intel',
+      category: 'SEO',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: String(e?.message || e),
       lastChecked: new Date().toISOString(),
     };
   }
@@ -3875,6 +3997,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkCronJobs(),
     checkFeatureCrons(),
     checkDailyBlog(),
+    checkCompetitorIntel(),
     checkSitemap(),
     checkSSL(),
     checkSARVTelephony(),

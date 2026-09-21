@@ -346,6 +346,10 @@ export default function DigitalMarketingDashboard() {
               <Text style={styles.actionEmoji}>🔍</Text>
               <Text style={styles.actionText}>On-page SEO</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMCompetitors')}>
+              <Text style={styles.actionEmoji}>📡</Text>
+              <Text style={styles.actionText}>Competitors</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMCategories')}>
               <Text style={styles.actionEmoji}>🏷️</Text>
               <Text style={styles.actionText}>Categories</Text>

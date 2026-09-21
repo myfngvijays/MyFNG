@@ -858,6 +858,15 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/super_admin/tracking-scripts', icon: <Code2 className="w-5 h-5" />, label: 'Tracking Scripts' },
         { href: '/dashboard/super_admin/system-monitor', icon: <Shield className="w-5 h-5" />, label: 'System Monitor' },
         { href: '/dashboard/super_admin/daily-blogs', icon: <FileText className="w-5 h-5" />, label: 'Daily Blogs' },
+        {
+          href: '/dashboard/super_admin/site-seo',
+          icon: <Search className="w-5 h-5" />,
+          label: 'Advanced SEO',
+          children: [
+            { href: '/dashboard/super_admin/site-seo', icon: <Search className="w-5 h-5" />, label: 'On-page SEO' },
+            { href: '/dashboard/super_admin/competitors', icon: <Search className="w-5 h-5" />, label: 'Competitors' },
+          ],
+        },
         { href: '/dashboard/super_admin/settings', icon: <Settings className="w-5 h-5" />, label: 'System Settings' },
       ],
       'WORKSHOP_ADMIN': [
@@ -1101,7 +1110,15 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/digital_marketing', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/digital_marketing/blogs', icon: <FileText className="w-5 h-5" />, label: 'Blogs' },
         { href: '/dashboard/digital_marketing/blogs/categories', icon: <Tag className="w-5 h-5" />, label: 'Blog Categories' },
-        { href: '/dashboard/digital_marketing/site-seo', icon: <Search className="w-5 h-5" />, label: 'On-page SEO' },
+        {
+          href: '/dashboard/digital_marketing/site-seo',
+          icon: <Search className="w-5 h-5" />,
+          label: 'Advanced SEO',
+          children: [
+            { href: '/dashboard/digital_marketing/site-seo', icon: <Search className="w-5 h-5" />, label: 'On-page SEO' },
+            { href: '/dashboard/digital_marketing/competitors', icon: <Globe className="w-5 h-5" />, label: 'Competitors' },
+          ],
+        },
         { href: '/dashboard/digital_marketing/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
       'DIGITAL_AUTHOR': [

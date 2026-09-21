@@ -75,6 +75,10 @@
     {
       "path": "/api/cron/daily-blog",
       "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/cron/competitor-seo",
+      "schedule": "20 */6 * * *"
     }
   ],
   "functions": {
@@ -83,6 +87,9 @@
     },
     "src/app/api/cron/daily-blog/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/cron/competitor-seo/route.ts": {
+      "maxDuration": 180
     }
   }
 }

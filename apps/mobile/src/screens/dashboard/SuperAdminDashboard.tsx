@@ -628,6 +628,7 @@ export default function SuperAdminDashboard() {
             <AdminQuickLink icon="people-outline" label="Users & Roles" onPress={() => handleNavigation('users')} />
             <AdminQuickLink icon="heart-outline" label="Monitor" onPress={() => (navigation as any).navigate('SuperAdminSystemMonitor')} />
             <AdminQuickLink icon="newspaper-outline" label="Daily Blogs" onPress={() => (navigation as any).navigate('SuperAdminDailyBlogs')} />
+            <AdminQuickLink icon="scan-outline" label="Competitors" onPress={() => (navigation as any).navigate('SuperAdminCompetitors')} />
             <AdminQuickLink icon="settings-outline" label="Settings" onPress={() => handleNavigation('settings')} />
           </View>
         </View>

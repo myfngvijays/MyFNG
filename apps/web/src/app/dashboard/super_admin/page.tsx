@@ -28,6 +28,7 @@ import {
   LogOut,
   Mail,
   FileText,
+  Radar,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -150,6 +151,7 @@ const QUICK_LINKS = [
   { href: '/dashboard/super_admin/advance-notifications?section=dashboard', label: 'Push Dashboard', icon: Bell },
   { href: '/dashboard/super_admin/dlt-sms?section=dashboard', label: 'DLT SMS', icon: Mail },
   { href: '/dashboard/super_admin/daily-blogs', label: 'Daily Blogs', icon: FileText },
+  { href: '/dashboard/super_admin/competitors', label: 'Competitors', icon: Radar },
 ];
 
 function mapDashboardPeriodToBookingsPreset(period: DashboardPeriod): {

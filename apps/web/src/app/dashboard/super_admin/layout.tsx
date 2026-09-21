@@ -68,6 +68,7 @@ import {
   BookOpen,
   Mail,
   Hash,
+  Radar,
 } from 'lucide-react';
 
 type NavItem = {
@@ -585,11 +586,24 @@ const navigationItems: NavItem[] = [
         icon: FileText,
         description: 'Daily auto-post count & IST slot times',
       },
+    ],
+  },
+  {
+    name: 'Advanced SEO',
+    icon: Search,
+    description: 'On-page SEO and competitor watch',
+    children: [
       {
-        name: 'Advanced SEO',
+        name: 'On-page SEO',
         href: '/dashboard/super_admin/site-seo',
         icon: Search,
         description: 'Website page titles, meta & OG tags',
+      },
+      {
+        name: 'Competitors',
+        href: '/dashboard/super_admin/competitors',
+        icon: Radar,
+        description: 'Keywords, content changes, AIO gaps',
       },
     ],
   },
@@ -860,6 +874,7 @@ function SuperAdminLayoutInner({
     'Wallet & Offers': false,
     'Push Notifications': false,
     'Shared Content': false,
+    'Advanced SEO': false,
     'App Customers': false,
     Analytics: false,
     WhatsApp: false,
@@ -972,10 +987,15 @@ function SuperAdminLayoutInner({
       pathname?.startsWith('/dashboard/super_admin/brands') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/vehicle-images') ||
       pathname?.startsWith('/dashboard/super_admin/public-faqs') ||
-      pathname?.startsWith('/dashboard/super_admin/daily-blogs') ||
-      pathname?.startsWith('/dashboard/super_admin/site-seo')
+      pathname?.startsWith('/dashboard/super_admin/daily-blogs')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Shared Content': true }));
+    }
+    if (
+      pathname?.startsWith('/dashboard/super_admin/site-seo') ||
+      pathname?.startsWith('/dashboard/super_admin/competitors')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'Advanced SEO': true }));
     }
     if (
       pathname?.startsWith('/dashboard/super_admin/analytics-hub') ||

@@ -320,6 +320,9 @@ export default function DigitalMarketingDashboard() {
             <Link href="/dashboard/digital_marketing/site-seo" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
               On-page SEO
             </Link>
+            <Link href="/dashboard/digital_marketing/competitors" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              Competitors
+            </Link>
             <Link href="/dashboard/digital_marketing/blogs/ai-create" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
               <Sparkles className="w-3.5 h-3.5" /> AI
             </Link>

@@ -200,8 +200,17 @@ export const SA_NAV: SaNavRow[] = [
       { id: 'brands', label: 'Car Brand Images', icon: 'car-outline', target: 'Brands', kind: 'stack' },
       { id: 'faqs', label: 'FAQs (App + Web)', icon: 'help-circle-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Public FAQs', path: '/api/super_admin/public-faqs' } },
       { id: 'daily_blogs', label: 'Daily Blogs', icon: 'newspaper-outline', target: 'SuperAdminDailyBlogs', kind: 'stack' },
-      { id: 'seo', label: 'Advanced SEO', icon: 'search-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Site SEO', path: '/api/super_admin/site-seo/overview' } },
       { id: 'settings', label: 'System Settings', icon: 'settings-outline', target: 'SystemSettings', kind: 'stack' },
+    ],
+  },
+  {
+    type: 'group',
+    id: 'advanced_seo',
+    label: 'Advanced SEO',
+    icon: 'search-outline',
+    children: [
+      { id: 'seo', label: 'On-page SEO', icon: 'search-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'On-page SEO', path: '/api/super_admin/site-seo/overview' } },
+      { id: 'competitors', label: 'Competitors', icon: 'scan-outline', target: 'SuperAdminCompetitors', kind: 'stack' },
     ],
   },
 ];

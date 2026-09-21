@@ -85,6 +85,21 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Deep AI recording transcribe karke SOP score, queries, coaching dikhata hai.',
     ],
   },
+  '/dashboard/super_admin/competitors': {
+    title: 'Competitors',
+    body:
+      'Advanced SEO → Competitors.\n\nPublic pages crawl: naya URL, title/H1/meta change, keywords, aur Google AI Overview claim gaps. CarYaar seeded. Public blogs/FAQs competitor ka naam nahi leti.',
+    tips: [
+      'Scan now pehle snapshot leta hai. Cron har 6 ghante public pages hi dekhta hai.',
+      'AIO Gaps tab: unka claim vs MyFNG fact. Covered mark karo jab matching FAQ/page live ho.',
+      'SQL: database/371_competitor_intel.sql. Cron: database/372_competitor_intel_pg_cron.sql.',
+    ],
+  },
+  '/dashboard/digital_marketing/competitors': {
+    title: 'Competitors',
+    body:
+      'Advanced SEO → Competitors. Same panel Super Admin ke liye.\n\nKeywords + daily content changes + AIO gaps. Counter content MyFNG facts se likho, competitor brand name mat lo.',
+  },
   '/dashboard/super_admin/ai-suite': {
     title: 'AI Suite',
     body:
