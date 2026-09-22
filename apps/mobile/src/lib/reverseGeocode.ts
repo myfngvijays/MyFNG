@@ -420,8 +420,9 @@ export async function reverseGeocodeCoords(latitude: number, longitude: number):
 }
 
 export async function getCurrentCoords(): Promise<{ latitude: number; longitude: number } | null> {
-  const { status } = await Location.requestForegroundPermissionsAsync();
-  if (status !== 'granted') return null;
+  const { requestLocationAccess } = await import('./launchPermissions');
+  const access = await requestLocationAccess();
+  if (!access.granted) return null;
 
   let position = await Location.getLastKnownPositionAsync({ maxAge: 60_000 }).catch(() => null);
   if (!position) {

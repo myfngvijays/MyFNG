@@ -170,7 +170,11 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
       (error) => {
         console.error('Geolocation error:', error);
         setIsDetectingLocation(false);
-        setLocationError('Unable to detect location. Please enter manually.');
+        setLocationError(
+          error?.code === 1
+            ? 'Location is not allowed. Tap Allow on the location icon in the browser address bar, then try Detect Location again.'
+            : 'Unable to detect location. Please enter manually.',
+        );
       },
       {
         enableHighAccuracy: true,

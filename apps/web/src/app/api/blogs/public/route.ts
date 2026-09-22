@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { computeReadTimeFromHtml } from '@/lib/blog/text';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
 import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
+import { normalizeBlogMediaAbsoluteUrl, normalizeBlogRecordForResponse } from '@/lib/blog/normalizeBlogMedia';
 
 export const revalidate = 120;
 
@@ -101,13 +102,17 @@ export async function GET(request: NextRequest) {
       const title = city && (seo.ai_daily_post || seo.ai_batch_post)
         ? ensureSeoBlogTitle(String(blog.title || ''), city)
         : blog.title;
-      return {
+      const normalized = normalizeBlogRecordForResponse({
         ...blog,
         title,
         read_time: computeReadTimeFromHtml(String(blog.content || '')).minutes,
         author: { full_name: PUBLIC_BLOG_AUTHOR },
         tags: blog.tags?.map((t: any) => t.tag).filter(Boolean) || [],
         categories: (blog.categories || []).map((c: any) => c?.category).filter(Boolean) || [],
+      });
+      return {
+        ...normalized,
+        featured_image_url: normalizeBlogMediaAbsoluteUrl(String(normalized.featured_image || '')),
       };
     });
 

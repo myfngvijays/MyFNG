@@ -14,12 +14,6 @@
   <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" tools:node="remove"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
-  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-  <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
-  <uses-permission android:name="android.permission.READ_CALL_LOG"/>
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-  <uses-feature android:name="android.hardware.telephony" android:required="false"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
@@ -65,29 +59,6 @@
     <!-- Firebase Phone Auth: in-app reCAPTCHA (avoid external browser redirect) -->
     <activity android:name="com.google.firebase.auth.internal.GenericIdpActivity" android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTask" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
     <activity android:name="com.google.firebase.auth.internal.RecaptchaActivity" android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTask" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
-    <service
-      android:name=".callerid.CallerIdOverlayService"
-      android:exported="false"
-      android:foregroundServiceType="specialUse">
-      <property
-        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-        android:value="Show MyFNG customer identity over the incoming call screen"/>
-    </service>
-    <receiver
-      android:name=".callerid.CallerIdPhoneReceiver"
-      android:exported="true">
-      <intent-filter>
-        <action android:name="android.intent.action.PHONE_STATE"/>
-      </intent-filter>
-    </receiver>
-    <receiver
-      android:name=".callerid.CallerIdPushReceiver"
-      android:exported="true"
-      android:permission="com.google.android.c2dm.permission.SEND">
-      <intent-filter android:priority="999">
-        <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
-      </intent-filter>
-    </receiver>
     <uses-library android:name="org.apache.http.legacy" android:required="false"/>
   </application>
 </manifest>

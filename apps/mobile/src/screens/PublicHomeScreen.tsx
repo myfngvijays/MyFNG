@@ -36,6 +36,7 @@ import { useAppFooter } from '../context/AppFooterContext';
 import SectionHeading from '../components/SectionHeading';
 import CompleteTransparencySection from '../components/CompleteTransparencySection';
 import { openPhoneCall } from '../lib/phone';
+import { resolvePublicMediaUrl } from '../lib/publicMediaUrl';
 import { COLORS } from '../constants/theme';
 import {
   BLOGS as BLOG_ITEMS,
@@ -104,6 +105,25 @@ const LIGHT_SERVICE_BANNER: HeroBanner = {
   imageSource: require('../../assets/myfng-car-service-light-banner.png'),
   overlay: 'rgba(0,0,0,0)',
 };
+
+function BlogCover({ uri }: { uri?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!uri || failed) {
+    return (
+      <View style={[styles.blogImage, { alignItems: 'center', justifyContent: 'center' }]}>
+        <Text style={{ fontSize: 28 }}>📝</Text>
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={styles.blogImage}
+      resizeMode="cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 const LIGHT_MISA_BANNER: HeroBanner = {
   id: 'ai',
@@ -328,9 +348,16 @@ export default function PublicHomeScreen({ navigation }: Props) {
       .then((count) => setCartItemCount(count))
       .catch(() => setCartItemCount(0));
 
-    void detectHeaderLocation()
-      .then((locationLabel) => setDetectedCity(locationLabel))
-      .catch(() => setDetectedCity('Location unavailable'));
+    void (async () => {
+      try {
+        const { ensureNotificationThenLocation } = await import('../lib/launchPermissions');
+        await ensureNotificationThenLocation();
+        const locationLabel = await detectHeaderLocation();
+        setDetectedCity(locationLabel);
+      } catch {
+        setDetectedCity('Location unavailable');
+      }
+    })();
 
     fetchPublicFaqs({ group: 'GENERAL', platform: 'app' })
       .then(setGeneralFaqs)
@@ -451,7 +478,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
                   year: 'numeric',
                 })
               : '',
-            image: b.featured_image || '',
+            image: resolvePublicMediaUrl(
+              b.featured_image_url || b.featured_image || b?.seo_data?.og_image,
+            ),
             slug: b.slug || '',
             views: Number(b.views || 0),
           }));
@@ -1079,13 +1108,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                     else Linking.openURL('https://myfng.in/blog');
                   }}
                 >
-                  {post.image ? (
-                    <Image source={{ uri: post.image }} style={styles.blogImage} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.blogImage, { backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={{ fontSize: 28 }}>📝</Text>
-                    </View>
-                  )}
+                  <BlogCover uri={post.image} />
                   <View style={styles.blogTextWrap}>
                     <Text style={styles.blogTitle} numberOfLines={2}>{post.title}</Text>
                     <Text style={styles.blogExcerpt} numberOfLines={2}>{post.excerpt}</Text>

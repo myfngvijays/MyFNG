@@ -1,6 +1,5 @@
 import { Alert } from 'react-native';
 import { apiFetch } from './api';
-import { setCallerIdPending } from './callerIdNative';
 import { openPhoneCall } from './phone';
 
 function normalizePhone10(raw: unknown): string | null {
@@ -56,16 +55,6 @@ export async function clickToCallCustomer(opts: {
       (json as any)?.message ||
         'Answer your phone first — customer will be connected after you pick up.',
     );
-
-    setCallerIdPending({
-      leadId: opts.leadId,
-      name: opts.customerName,
-      phone: to,
-      leadNumber: opts.leadNumber,
-      place: opts.place,
-      direction: 'outbound',
-      sessionId: (json as any)?.session_id,
-    });
 
     if (!opts.silent) {
       Alert.alert('Calling…', message);

@@ -16,6 +16,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
+import { resolvePublicMediaUrl } from '../../../lib/publicMediaUrl';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 type Blog = {
@@ -307,7 +308,7 @@ export default function DMContentScreen() {
                 <View key={blog.id} style={styles.card}>
                   {blog.featured_image ? (
                     <View>
-                      <Image source={{ uri: blog.featured_image }} style={styles.cover} />
+                      <Image source={{ uri: resolvePublicMediaUrl(blog.featured_image) }} style={styles.cover} />
                       {blog.category ? (
                         <View style={styles.catBadge}>
                           <Text style={styles.catBadgeText}>{blog.category.name}</Text>

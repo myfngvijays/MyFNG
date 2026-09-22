@@ -30,7 +30,6 @@ import {
   CRM_OPEN_LEAD_EVENT,
   takePendingOpenCrmLead,
 } from '../../../components/telecaller/IncomingCallLeadOverlay';
-import { syncIosCallerDirectory } from '../../../lib/callerIdNative';
 import CrmHomeTab from './CrmHomeTab';
 import CrmQueueTab from './CrmQueueTab';
 import CrmBookWizard from './CrmBookWizard';
@@ -672,11 +671,6 @@ export default function TelecallerAdvancedCRM() {
       if (id) openLead(id, true);
     });
     return () => sub.remove();
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-    void syncIosCallerDirectory();
   }, []);
 
   const dateProps = {

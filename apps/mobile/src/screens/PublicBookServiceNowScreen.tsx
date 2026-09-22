@@ -28,6 +28,7 @@ import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { reverseGeocodeCoords } from '../lib/reverseGeocode';
+import { openAppPermissionSettings, requestLocationAccess } from '../lib/launchPermissions';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import { getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
@@ -371,6 +372,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [cities, setCities] = useState<CityRow[]>([]);
   const [cityModal, setCityModal] = useState(false);
   const [locationDetecting, setLocationDetecting] = useState(false);
+  const [locationBlocked, setLocationBlocked] = useState<null | 'ask' | 'settings'>(null);
   const [detectedCityNotServiceable, setDetectedCityNotServiceable] = useState<string | null>(null);
 
   const [carQuery, setCarQuery] = useState(() => {
@@ -1114,16 +1116,26 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     const list = cityList && cityList.length > 0 ? cityList : cities;
     if (list.length === 0) return;
     setLocationDetecting(true);
+    setLocationBlocked(null);
     setDetectedCityNotServiceable(null);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      const access = await requestLocationAccess();
+      if (!access.granted) {
         setLocationDetecting(false);
-        Alert.alert('Permission denied', 'Location permission is needed to auto-detect your city.');
+        setLocationBlocked(access.canAskAgain ? 'ask' : 'settings');
         return;
       }
       const last = await Location.getLastKnownPositionAsync();
-      const loc = last || await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const loc =
+        last ||
+        (await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12_000)),
+        ]));
+      if (!loc?.coords) {
+        setLocationBlocked('ask');
+        return;
+      }
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&zoom=14&addressdetails=1`,
         { headers: { 'User-Agent': 'MyFNG-App/1.0' } }
@@ -1175,9 +1187,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const autoDetectAddress = useCallback(async () => {
     setAddressDetecting(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Location permission is needed to auto-detect address.');
+      const access = await requestLocationAccess();
+      if (!access.granted) {
+        setLocationBlocked(access.canAskAgain ? 'ask' : 'settings');
         setAddressDetecting(false);
         return;
       }
@@ -1204,9 +1216,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const fetchNewAddrLocation = useCallback(async () => {
     setNewAddrLocating(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Location permission is needed.');
+      const access = await requestLocationAccess();
+      if (!access.granted) {
+        setLocationBlocked(access.canAskAgain ? 'ask' : 'settings');
         return;
       }
       let position = await Location.getLastKnownPositionAsync().catch(() => null);
@@ -2920,6 +2932,33 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     {locationDetecting ? 'Detecting…' : 'Auto Detect Location'}
                   </Text>
                 </TouchableOpacity>
+
+                {locationBlocked ? (
+                  <View style={styles.locationBlockedBanner}>
+                    <Ionicons name="location-outline" size={16} color="#1D4ED8" style={{ marginTop: 2 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.locationBlockedTitle}>
+                        Location is not allowed — we can’t detect your city
+                      </Text>
+                      <Text style={styles.locationBlockedSub}>
+                        {locationBlocked === 'settings'
+                          ? 'Go to Phone Settings → MyFNG → Location → Allow, then tap Allow Location here.'
+                          : 'Allow location so we can pick your city automatically.'}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.locationAllowBtn}
+                        onPress={() => {
+                          if (locationBlocked === 'settings') openAppPermissionSettings();
+                          void autoDetectLocation();
+                        }}
+                      >
+                        <Text style={styles.locationAllowBtnText}>
+                          {locationBlocked === 'settings' ? 'Open Settings' : 'Allow Location'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
 
                 {detectedCityNotServiceable ? (
                   <View style={styles.notServiceableBanner}>
@@ -5330,6 +5369,28 @@ const styles = StyleSheet.create({
 
   notServiceableBanner: { padding: 14, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FDBA74', borderRadius: 14, marginBottom: 12 },
   notServiceableTitle: { fontSize: 13, fontWeight: '700', color: '#9A3412' },
+  locationBlockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 14,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  locationBlockedTitle: { fontSize: 13, fontWeight: '800', color: '#1E3A8A' },
+  locationBlockedSub: { fontSize: 12, color: '#1D4ED8', marginTop: 4, lineHeight: 16 },
+  locationAllowBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  locationAllowBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   notServiceableSub: { fontSize: 11, fontWeight: '600', color: '#C2410C', marginTop: 4 },
 
   carSearchWrap: { marginBottom: 12, zIndex: 10 },

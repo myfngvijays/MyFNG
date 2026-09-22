@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout, clearAccessToken } from '../lib/supabase';
-import { syncCallerIdAuth } from '../lib/callerIdNative';
 import {
   deactivateStaffFcmPushTokens,
   registerAndSyncFcmPushToken,
@@ -73,7 +72,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(({ data: { session } }) => {
         if (session?.user) {
           rememberAccessToken(session.access_token);
-          syncCallerIdAuth(session.access_token);
           setUser(session.user);
 
           // Fetch user profile with role
@@ -117,7 +115,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
           if (session?.access_token) {
             rememberAccessToken(session.access_token);
-            syncCallerIdAuth(session.access_token);
           }
           if (session?.user) {
             setUser((prev) => (prev?.id === session.user.id ? prev : session.user));
@@ -125,14 +122,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         if (event === 'SIGNED_OUT') {
-          syncCallerIdAuth('');
           setUser(null);
           setUserProfile(null);
           return;
         }
         if (session?.user) {
           rememberAccessToken(session.access_token);
-          syncCallerIdAuth(session.access_token);
           setUser((prev) => (prev?.id === session.user.id ? prev : session.user));
           supabase
             .from('users_login')
@@ -220,7 +215,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* session already gone */
     }
     clearAccessToken();
-    syncCallerIdAuth('');
     setUser(null);
     setUserProfile(null);
   };

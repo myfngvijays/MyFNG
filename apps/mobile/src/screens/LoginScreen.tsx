@@ -140,12 +140,16 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     await setCustomerSessionToken(sessionToken);
     void loadWalletRules(ENV.API_URL).catch(() => {});
 
-    // Register FCM token immediately after session is saved (RPC — no VPS push-token API needed).
-    void registerCustomerFcmPushToken(ENV.API_URL, sessionToken).then((result) => {
-      if (!result.ok) {
-        console.warn('[push] login token register failed:', result);
-      }
-    });
+    // Notification then location — never together or location dialog is dropped.
+    void import('../lib/launchPermissions').then(({ ensureNotificationThenLocation }) =>
+      ensureNotificationThenLocation()
+        .then(() => registerCustomerFcmPushToken(ENV.API_URL, sessionToken))
+        .then((result) => {
+          if (!result.ok) {
+            console.warn('[push] login token register failed:', result);
+          }
+        }),
+    );
 
     isNewCustomerRef.current = authResponse?.is_new_customer === true;
 
@@ -432,8 +436,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           let longitude: number | null = null;
           let location_label: string | null = null;
           try {
+            const { ensureNotificationThenLocation } = await import('../lib/launchPermissions');
+            await ensureNotificationThenLocation();
             const Location = await import('expo-location');
-            const { status } = await Location.requestForegroundPermissionsAsync();
+            const { status } = await Location.getForegroundPermissionsAsync();
             if (status === 'granted') {
               const last = await Location.getLastKnownPositionAsync().catch(() => null);
               const loc =

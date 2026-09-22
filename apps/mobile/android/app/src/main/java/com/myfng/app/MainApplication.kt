@@ -1,15 +1,10 @@
 package com.myfng.app
 
-import android.app.Activity
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.res.Configuration
 import android.os.Build
-import android.os.Bundle
-import com.myfng.app.callerid.CallerIdPackage
-import com.myfng.app.callerid.CallerIdStore
-
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactNativeHost
@@ -30,7 +25,6 @@ class MainApplication : Application(), ReactApplication {
         object : DefaultReactNativeHost(this) {
           override fun getPackages(): List<ReactPackage> {
             val packages = PackageList(this).packages
-            packages.add(CallerIdPackage())
             return packages
           }
 
@@ -64,22 +58,6 @@ class MainApplication : Application(), ReactApplication {
       load()
     }
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
-    registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-      private var started = 0
-      override fun onActivityStarted(activity: Activity) {
-        started += 1
-        CallerIdStore.appForeground = started > 0
-      }
-      override fun onActivityStopped(activity: Activity) {
-        started = (started - 1).coerceAtLeast(0)
-        CallerIdStore.appForeground = started > 0
-      }
-      override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-      override fun onActivityResumed(activity: Activity) {}
-      override fun onActivityPaused(activity: Activity) {}
-      override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-      override fun onActivityDestroyed(activity: Activity) {}
-    })
   }
 
   override fun onConfigurationChanged(newConfig: Configuration) {

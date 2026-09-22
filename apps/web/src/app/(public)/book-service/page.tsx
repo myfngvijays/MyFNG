@@ -82,6 +82,7 @@ export default function BookServicePage() {
   const [isDetectingAddress, setIsDetectingAddress] = useState(false);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [detectedCityNotServiceable, setDetectedCityNotServiceable] = useState<string | null>(null);
+  const [locationBlocked, setLocationBlocked] = useState(false);
   const cityDropdownRef = useRef<HTMLDivElement>(null);
   
   // Car Model State
@@ -738,6 +739,7 @@ export default function BookServicePage() {
     if (cities.length === 0) return;
 
     setIsDetectingLocation(true);
+    setLocationBlocked(false);
     
     // Check localStorage first
     const storedCity = localStorage.getItem('detected_city');
@@ -812,6 +814,7 @@ export default function BookServicePage() {
           (error) => {
             console.error('Geolocation error:', error);
             setIsDetectingLocation(false);
+            setLocationBlocked(error?.code === 1 || /denied/i.test(String(error?.message || '')));
           },
           {
             enableHighAccuracy: false,
@@ -821,6 +824,7 @@ export default function BookServicePage() {
         );
       } else {
         setIsDetectingLocation(false);
+        setLocationBlocked(true);
       }
     } catch (error) {
       console.error('Location detection error:', error);
@@ -2071,6 +2075,24 @@ export default function BookServicePage() {
                             <p className="text-xs sm:text-sm text-blue-700 font-medium">Detecting your location...</p>
                       </div>
                     </div>
+                      )}
+
+                      {!isDetectingLocation && locationBlocked && !formData.city && (
+                        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                          <p className="text-xs sm:text-sm font-semibold text-blue-900">
+                            Location is not allowed — we can’t detect your city.
+                          </p>
+                          <p className="text-xs text-blue-700 mt-1">
+                            Tap Allow on the location icon in the browser address bar, then try Auto Detect again.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void autoDetectLocation()}
+                            className="mt-2 px-3 py-1.5 text-xs font-semibold bg-brand-primary text-white rounded-lg"
+                          >
+                            Allow Location
+                          </button>
+                        </div>
                       )}
 
                       {/* No service in detected city */}

@@ -2,6 +2,7 @@ import { NativeModules, Platform, PermissionsAndroid } from 'react-native';
 import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import { ENV, isAndroidEmulator, isIosSimulator } from '../config/environment';
 import { trackEvent } from '../lib/trackEvent';
+import { withPermissionLock } from '../lib/permissionLock';
 
 async function trackPushEngagement(
   remoteMessage: FirebaseMessagingTypes.RemoteMessage | null | undefined,
@@ -86,7 +87,7 @@ export function isPushConfigured(): boolean {
 /** @deprecated Use isPushConfigured */
 export const isExpoPushConfigured = isPushConfigured;
 
-async function requestNotificationPermission(): Promise<boolean> {
+export async function requestOsNotificationPermission(): Promise<boolean> {
   const messaging = getMessagingModule();
   if (!messaging) return false;
 
@@ -157,7 +158,7 @@ async function acquireFcmPushToken(): Promise<PushRegisterResult> {
     };
   }
 
-  const permitted = await requestNotificationPermission();
+  const permitted = await withPermissionLock(() => requestOsNotificationPermission());
   if (!permitted) {
     console.warn('[FCM] Notification permission denied by user');
     trackEvent('push_permission_denied');

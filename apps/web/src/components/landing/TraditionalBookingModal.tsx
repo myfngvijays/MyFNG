@@ -43,6 +43,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
   // Location State
   const [cities, setCities] = useState<any[]>([]);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationBlocked, setLocationBlocked] = useState(false);
   
   // Car Model State
   const [carModels, setCarModels] = useState<any[]>([]);
@@ -389,6 +390,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
     if (cities.length === 0) return;
 
     setIsDetectingLocation(true);
+    setLocationBlocked(false);
     
     // Check localStorage first
     const storedCity = localStorage.getItem('detected_city');
@@ -452,6 +454,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
           (error) => {
             console.error('Geolocation error:', error);
             setIsDetectingLocation(false);
+            setLocationBlocked(error?.code === 1 || /denied/i.test(String(error?.message || '')));
           },
           {
             enableHighAccuracy: false,
@@ -775,6 +778,20 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
                         <Loader2 className="w-5 h-5 text-brand-primary animate-spin" />
                         <p className="text-sm text-blue-700 font-medium">Detecting your location...</p>
                       </div>
+                    </div>
+                  )}
+
+                  {!isDetectingLocation && locationBlocked && !formData.city && (
+                    <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                      <p className="text-sm font-semibold text-blue-900">Location is not allowed — we can’t detect your city.</p>
+                      <p className="text-xs text-blue-700 mt-1">Allow location in the browser, then tap Auto Detect.</p>
+                      <button
+                        type="button"
+                        onClick={() => void autoDetectLocation()}
+                        className="mt-2 px-3 py-1.5 text-xs font-semibold bg-brand-primary text-white rounded-lg"
+                      >
+                        Allow Location
+                      </button>
                     </div>
                   )}
 

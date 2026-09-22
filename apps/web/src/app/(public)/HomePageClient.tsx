@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
 
 const AppDownloadPopup = dynamic(() => import('@/components/landing/AppDownloadPopup'), { ssr: false });
 const AppDownloadSection = dynamic(() => import('@/components/landing/AppDownloadSection'));
@@ -241,7 +242,9 @@ export default function HomePage() {
             const tag = String(b?.category?.name || b?.category?.[0]?.name || 'Blog').trim() || 'Blog';
             const excerpt =
               excerptRaw.length > 110 ? `${excerptRaw.slice(0, 107).trimEnd()}...` : excerptRaw;
-            const featuredImage = String(b?.featured_image || '').trim() || undefined;
+            const featuredImage =
+              normalizeBlogMediaUrl(String(b?.featured_image || b?.featured_image_url || '').trim()) ||
+              undefined;
             const views = Number(b?.views || 0);
             return { title, slug, excerpt, readTime, views, tag, featuredImage };
           })
