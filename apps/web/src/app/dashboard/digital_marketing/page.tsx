@@ -11,6 +11,7 @@ import {
   Eye,
   Plus,
   Sparkles,
+  Target,
   TrendingUp,
   UserCheck,
 } from 'lucide-react';
@@ -322,6 +323,12 @@ export default function DigitalMarketingDashboard() {
             </Link>
             <Link href="/dashboard/digital_marketing/competitors" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
               Competitors
+            </Link>
+            <Link href="/dashboard/digital_marketing/meta-ads" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              Meta Ads
+            </Link>
+            <Link href="/dashboard/digital_marketing/google-ads" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              <Target className="w-3.5 h-3.5" /> Google Ads
             </Link>
             <Link href="/dashboard/digital_marketing/blogs/ai-create" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
               <Sparkles className="w-3.5 h-3.5" /> AI

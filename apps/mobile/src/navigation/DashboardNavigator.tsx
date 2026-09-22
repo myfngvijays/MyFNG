@@ -1821,6 +1821,8 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     const DMCategoriesScreen = require('../screens/dashboard/digital_marketing/DMCategoriesScreen').default;
     const DMSiteSeoScreen = require('../screens/dashboard/digital_marketing/DMSiteSeoScreen').default;
     const SuperAdminCompetitorsScreen = require('../screens/dashboard/superadmin/SuperAdminCompetitorsScreen').default;
+    const { SuperAdminMetaAdsMcpScreen } = require('../screens/dashboard/superadmin/SuperAdminMoreScreens');
+    const { SuperAdminGoogleAdsMcpScreen } = require('../screens/dashboard/superadmin/SuperAdminGoogleAdsMcpScreen');
     const DMProfileScreen = require('../screens/dashboard/digital_marketing/DMProfileScreen').default;
     
     return (
@@ -1849,6 +1851,16 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="DMCompetitors"
           component={SuperAdminCompetitorsScreen}
           options={{ title: 'Competitors', headerShown: false }}
+        />
+        <Stack.Screen
+          name="DMMetaAds"
+          component={SuperAdminMetaAdsMcpScreen}
+          options={{ title: 'Meta Ads', headerShown: false }}
+        />
+        <Stack.Screen
+          name="DMGoogleAds"
+          component={SuperAdminGoogleAdsMcpScreen}
+          options={{ title: 'Google Ads', headerShown: false }}
         />
         <Stack.Screen 
           name="DMProfile" 

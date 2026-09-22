@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
+import { requireAdsMcpAccess } from '@/lib/super-admin-auth';
 import {
   CLAUDE_CONNECTORS_URL,
   MCP_PUBLIC_ORIGIN,
@@ -32,26 +33,13 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-async function requireSuperAdmin(request: NextRequest) {
+async function requireAdsAccess(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) return { ok: false as const, status: 401, error: 'Unauthorized' };
-
-  const { data: userProfile, error: profileError } = await supabase
-    .from('users_login')
-    .select('id, role:roles!role_id(role_code)')
-    .eq('id', user.id)
-    .single();
-
-  const roleCode = (userProfile?.role as { role_code?: string } | null)?.role_code;
-  if (profileError || roleCode !== 'SUPER_ADMIN') {
-    return { ok: false as const, status: 403, error: 'Forbidden' };
+  const auth = await requireAdsMcpAccess(supabase);
+  if (!auth.ok) {
+    return { ok: false as const, status: auth.res.status || 403, error: 'Forbidden' };
   }
-
-  return { ok: true as const, userId: String((userProfile as { id?: string })?.id || user.id) };
+  return { ok: true as const, userId: auth.user.id, roleCode: auth.roleCode };
 }
 
 function requestOrigin(request: NextRequest): string {
@@ -63,7 +51,7 @@ function requestOrigin(request: NextRequest): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const gate = await requireSuperAdmin(request);
+    const gate = await requireAdsAccess(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
     const origin = requestOrigin(request);
@@ -111,7 +99,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const gate = await requireSuperAdmin(request);
+    const gate = await requireAdsAccess(request);
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
     const body = await request.json().catch(() => ({}));

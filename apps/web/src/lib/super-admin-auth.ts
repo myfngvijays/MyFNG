@@ -63,6 +63,13 @@ export async function requireCompetitorIntelAccess(supabase: any): Promise<AuthO
   return requireRoleCodes(supabase, COMPETITOR_INTEL_ACCESS_ROLES);
 }
 
+/** Meta Ads / Google Ads MCP — Super Admin plus Digital Marketing. */
+export const ADS_MCP_ACCESS_ROLES = ['SUPER_ADMIN', 'DIGITAL_MARKETING'] as const;
+
+export async function requireAdsMcpAccess(supabase: any): Promise<AuthOk | AuthFail> {
+  return requireRoleCodes(supabase, ADS_MCP_ACCESS_ROLES);
+}
+
 /** Legacy helper shape used by some booking/customer routes. */
 export async function assertPanelAccessLegacy(
   supabase: any,

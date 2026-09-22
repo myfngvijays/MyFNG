@@ -176,6 +176,24 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Save ke baad production website refresh karo.',
     ],
   },
+  '/dashboard/digital_marketing/google-ads': {
+    title: 'Google Ads',
+    body:
+      'Same Google Ads panel as Super Admin — spend, campaigns, Ask AI, reports.\n\nConnect with Google Super Admin pe already ho to yahan numbers live aate hain.',
+    tips: [
+      'Ask AI: “Kaunsi copy chalaun?” — Keep / Test / Pause live numbers se.',
+      'Read-only: pause/scale Google Ads UI mein.',
+    ],
+  },
+  '/dashboard/digital_marketing/meta-ads': {
+    title: 'Meta Ads',
+    body:
+      'Same Meta Ads panel as Super Admin — spend, chat, voice, reports.\n\nToken Super Admin ne save kiya ho to Digital Marketing yahan live spend dekh sakta hai.',
+    tips: [
+      'Chip: “Kaunsi copy chalaun?” — Keep / Test / Pause cards.',
+      'Read-only: pause/scale Ads Manager mein.',
+    ],
+  },
   '/dashboard/super_admin/google-ads-mcp': {
     title: 'Google Ads',
     body:

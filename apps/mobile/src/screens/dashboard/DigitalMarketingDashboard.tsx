@@ -350,6 +350,14 @@ export default function DigitalMarketingDashboard() {
               <Text style={styles.actionEmoji}>📡</Text>
               <Text style={styles.actionText}>Competitors</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMMetaAds')}>
+              <Text style={styles.actionEmoji}>📣</Text>
+              <Text style={styles.actionText}>Meta Ads</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMGoogleAds')}>
+              <Text style={styles.actionEmoji}>🎯</Text>
+              <Text style={styles.actionText}>Google Ads</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMCategories')}>
               <Text style={styles.actionEmoji}>🏷️</Text>
               <Text style={styles.actionText}>Categories</Text>

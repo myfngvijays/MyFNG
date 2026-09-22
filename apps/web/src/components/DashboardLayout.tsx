@@ -49,6 +49,7 @@ import {
   Gift,
   Code2,
   Search,
+  Target,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -1119,6 +1120,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             { href: '/dashboard/digital_marketing/competitors', icon: <Globe className="w-5 h-5" />, label: 'Competitors' },
           ],
         },
+        { href: '/dashboard/digital_marketing/meta-ads', icon: <Megaphone className="w-5 h-5" />, label: 'Meta Ads' },
+        { href: '/dashboard/digital_marketing/google-ads', icon: <Target className="w-5 h-5" />, label: 'Google Ads' },
         { href: '/dashboard/digital_marketing/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
       'DIGITAL_AUTHOR': [
