@@ -1,41 +1,19 @@
-import { after, NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   dailyBlogScheduleInfo,
   loadDailyBlogSettings,
-  maybeCatchUpDailyBlog,
   refreshDailyBlogCover,
   runDailyBlogPost,
 } from '@/lib/blog/runDailyBlogPost';
 import { resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
 import { istDateString } from '@/lib/blog/dailyTopics';
+import { requireBlogAdmin } from '@/lib/blog/requireBlogAdmin';
+import { logDailyBlogEvent } from '@/lib/blog/dailyBlogLog';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
-
-async function requireBlogAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) {
-    return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  }
-
-  const { data: profile } = await supabase
-    .from('users_login')
-    .select('id, roles!inner(role_code)')
-    .eq('id', user.id)
-    .maybeSingle();
-  const roleCode = (profile?.roles as any)?.role_code as string | undefined;
-  if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
-    return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { userId: user.id };
-}
 
 async function settingsPayload() {
   const loaded = await loadDailyBlogSettings();
@@ -103,14 +81,7 @@ async function settingsPayload() {
 export async function GET() {
   const auth = await requireBlogAdmin();
   if ('response' in auth) return auth.response;
-  const payload = await settingsPayload();
-  const waiting = (payload.today_slots || []).some((slot) => slot.status !== 'success' && slot.status !== 'failed');
-  if (payload.settings?.enabled !== false && waiting) {
-    after(() => {
-      void maybeCatchUpDailyBlog();
-    });
-  }
-  return NextResponse.json(payload);
+  return NextResponse.json(await settingsPayload());
 }
 
 export async function PATCH(request: NextRequest) {
@@ -148,6 +119,14 @@ export async function PATCH(request: NextRequest) {
   }
 
   const { error } = await supabaseAdmin.from('daily_blog_settings').update(patch).eq('id', 1);
+  if (!error) {
+    await logDailyBlogEvent({
+      source: 'admin_settings',
+      action: 'settings_changed',
+      status: 'info',
+      details: patch,
+    });
+  }
   if (error) {
     return NextResponse.json(
       {
@@ -178,7 +157,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
   }
 
-  const result = await runDailyBlogPost({ force: true });
+  const result = await runDailyBlogPost({ force: true, source: 'admin_run_now' });
   const payload = await settingsPayload();
   return NextResponse.json(
     { ...payload, run: result },

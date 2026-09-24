@@ -475,6 +475,14 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     title: 'Blogs',
     body: 'Saare blog posts yahan se create, edit, review, aur publish karo.',
   },
+  '/dashboard/digital_marketing/blogs/auto-post-logs': {
+    title: 'Auto-post logs',
+    body: 'Daily AI blogs — last 7 days kitne post hue, cron skip/fail reason, aur Post now history.',
+  },
+  '/dashboard/super_admin/daily-blogs': {
+    title: 'Daily Blogs',
+    body: 'Kitne blogs/day, IST slot times, Post now, aur auto-post logs (skip/fail/success).',
+  },
   '/dashboard/digital_marketing/blogs/categories': {
     title: 'Blog Categories',
     body: 'Public blog categories add/edit/hide. Cards ek line mein 4 dikhte hain.',

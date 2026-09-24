@@ -586,6 +586,12 @@ const navigationItems: NavItem[] = [
         icon: FileText,
         description: 'Daily auto-post count & IST slot times',
       },
+      {
+        name: 'Auto-post logs',
+        href: '/dashboard/super_admin/daily-blogs',
+        icon: ClipboardList,
+        description: 'Every cron tick, skip, fail, and Post now',
+      },
     ],
   },
   {

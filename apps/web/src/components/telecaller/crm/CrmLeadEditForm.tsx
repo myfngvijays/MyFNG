@@ -1098,6 +1098,14 @@ export default function CrmLeadEditForm({
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <button
+                type="submit"
+                form="crm-lead-edit-form"
+                disabled={saving}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-white px-3 text-sm font-extrabold text-[#023D95] shadow disabled:opacity-60"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
               {onCall && (formData.customer_phone || lead.customer_phone) ? (
                 <button
                   type="button"
@@ -1213,7 +1221,7 @@ export default function CrmLeadEditForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <form id="crm-lead-edit-form" onSubmit={handleSubmit} noValidate className="space-y-4">
         <SectionCard title="Customer Details" icon={User} tone="emerald">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1753,7 +1761,7 @@ export default function CrmLeadEditForm({
           </div>
         </SectionCard>
 
-        <div className="fixed bottom-0 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 py-3 sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]">
+        <div className="fixed bottom-3 sm:bottom-4 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(12px,env(safe-area-inset-bottom,0px))] sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]">
           <div className="mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3">
             <button type="button" onClick={handleCancel} className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
               <X className="w-4 h-4" /> Back

@@ -93,7 +93,17 @@ export default function DailyBlogScheduleCard({ compact = false }: { compact?: b
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.run?.error || json?.error || 'Failed to publish');
-      toast.success(json?.run?.title ? `Published: ${json.run.title}` : 'Daily blog published');
+      if (json?.run?.skipped) {
+        toast.success(
+          json.run.reason === 'already_running'
+            ? 'A post is already running. Wait a minute, then try again.'
+            : json.run.reason === 'already_posted_today'
+              ? 'Today’s slots are already posted'
+              : 'Nothing to post right now',
+        );
+      } else {
+        toast.success(json?.run?.title ? `Published: ${json.run.title}` : 'Daily blog published');
+      }
       await load();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to publish');

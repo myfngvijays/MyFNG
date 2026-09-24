@@ -858,7 +858,15 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/super_admin/analytics-hub?section=overview', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics Hub' },
         { href: '/dashboard/super_admin/tracking-scripts', icon: <Code2 className="w-5 h-5" />, label: 'Tracking Scripts' },
         { href: '/dashboard/super_admin/system-monitor', icon: <Shield className="w-5 h-5" />, label: 'System Monitor' },
-        { href: '/dashboard/super_admin/daily-blogs', icon: <FileText className="w-5 h-5" />, label: 'Daily Blogs' },
+        {
+          href: '/dashboard/super_admin/daily-blogs',
+          icon: <FileText className="w-5 h-5" />,
+          label: 'Daily Blogs',
+          children: [
+            { href: '/dashboard/super_admin/daily-blogs', icon: <FileText className="w-5 h-5" />, label: 'Schedule' },
+            { href: '/dashboard/super_admin/daily-blogs', icon: <ClipboardList className="w-5 h-5" />, label: 'Auto-post logs' },
+          ],
+        },
         {
           href: '/dashboard/super_admin/site-seo',
           icon: <Search className="w-5 h-5" />,
@@ -1110,6 +1118,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       'DIGITAL_MARKETING': [
         { href: '/dashboard/digital_marketing', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/digital_marketing/blogs', icon: <FileText className="w-5 h-5" />, label: 'Blogs' },
+        { href: '/dashboard/digital_marketing/blogs/auto-post-logs', icon: <ClipboardList className="w-5 h-5" />, label: 'Auto-post logs' },
         { href: '/dashboard/digital_marketing/blogs/categories', icon: <Tag className="w-5 h-5" />, label: 'Blog Categories' },
         {
           href: '/dashboard/digital_marketing/site-seo',

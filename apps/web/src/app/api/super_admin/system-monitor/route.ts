@@ -1550,7 +1550,51 @@ async function checkDailyBlog(): Promise<HealthCheck> {
     const crononOff = crononJob?.active === false;
     const crononHourly = !crononJob?.schedule || /^\d+ \* \* \* \*$/.test(String(crononJob.schedule));
     const crononNarrow = Boolean(crononJob) && !crononHourly && schedule.posts_per_day > 1;
-    const unhealthy = failed || missedToday || crononMissing || crononOff || crononNarrow;
+    let logsMissing = false;
+    let missedRecentDays = 0;
+    try {
+      const logsRes = await client.from('daily_blog_cron_logs').select('id', { count: 'exact', head: true });
+      logsMissing = Boolean(logsRes.error && /does not exist|relation|42P01|PGRST205/i.test(logsRes.error.message || ''));
+    } catch {
+      logsMissing = true;
+    }
+    try {
+      const since = new Date(Date.now() - 3 * 86400000).toISOString();
+      const blogsRes = await client
+        .from('blogs')
+        .select('published_at, seo_data')
+        .eq('status', 'published')
+        .gte('published_at', since)
+        .limit(40);
+      const byDay = new Map<string, number>();
+      for (const row of blogsRes.data || []) {
+        const seo = (row as any)?.seo_data || {};
+        if (!seo.ai_daily_post || seo.ai_batch_post) continue;
+        const day = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date(String((row as any).published_at)));
+        byDay.set(day, (byDay.get(day) || 0) + 1);
+      }
+      const todayIst = istDateString();
+      for (let i = 1; i <= 2; i += 1) {
+        const d = new Date();
+        d.setUTCDate(d.getUTCDate() - i);
+        const key = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(d);
+        if (key === todayIst) continue;
+        if ((byDay.get(key) || 0) < schedule.posts_per_day) missedRecentDays += 1;
+      }
+    } catch {
+      missedRecentDays = 0;
+    }
+    const unhealthy = failed || missedToday || crononMissing || crononOff || crononNarrow || missedRecentDays > 0;
     return {
       name: 'Daily Blog Auto-Post',
       category: 'Background Jobs',
@@ -1564,11 +1608,13 @@ async function checkDailyBlog(): Promise<HealthCheck> {
             ? 'Cronon still uses the old 10:00–4:00 window'
             : missedToday
               ? `${overdue.length} daily slot${overdue.length > 1 ? 's' : ''} missing (${schedule.label})`
-              : failed
-                ? 'Last daily blog run failed'
-                : enabled
-                  ? `Scheduled ${schedule.posts_per_day} blog${schedule.posts_per_day > 1 ? 's' : ''} · ${schedule.label}`
-                  : 'Auto-post paused',
+              : missedRecentDays > 0
+                ? `${missedRecentDays} recent day${missedRecentDays > 1 ? 's' : ''} under-posted`
+                : failed
+                  ? 'Last daily blog run failed'
+                  : enabled
+                    ? `Scheduled ${schedule.posts_per_day} blog${schedule.posts_per_day > 1 ? 's' : ''} · ${schedule.label}`
+                    : 'Auto-post paused',
       reason: crononMissing
         ? 'Supabase Cronon has no daily-blog-auto-post job. Other live crons (WhatsApp, health) run from Cronon. Run database/368_daily_blog_pg_cron.sql in SQL Editor.'
         : crononOff
@@ -1576,16 +1622,18 @@ async function checkDailyBlog(): Promise<HealthCheck> {
           : crononNarrow
             ? 'Admin can now set 1–5 IST slot times. Unschedule daily-blog-auto-post and run database/368_daily_blog_pg_cron.sql so it fires hourly (`30 * * * *`).'
             : missedToday
-              ? `No successful post for due slot(s) ${overdue.join(', ')} on ${istDateString()}. Cronon hits /api/cron/daily-blog every hour. Use Digital Marketing → Blogs → Post now, or change times in the schedule card.`
-              : failed
-                ? String(data?.last_error || 'Last daily blog run failed. Check /api/cron/daily-blog.')
-                : enabled
-                  ? `Supabase Cronon job daily-blog-auto-post hits /api/cron/daily-blog hourly. Count and IST times are set from Digital Marketing → Blogs (1–5 slots). Every Monday slot 1 is an About MyFNG USP.`
-                  : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
+              ? `No successful post for due slot(s) ${overdue.join(', ')} on ${istDateString()}. Open Auto-post logs for skip/fail reasons. Use Post now for missed slots.`
+              : missedRecentDays > 0
+                ? 'One or more of the last 2 IST days posted fewer blogs than the schedule. Open Auto-post logs.'
+                : failed
+                  ? String(data?.last_error || 'Last daily blog run failed. Check Auto-post logs.')
+                  : enabled
+                    ? `Supabase Cronon job daily-blog-auto-post hits /api/cron/daily-blog hourly. Catch-up also runs from cart cron even if WhatsApp cart reminders are paused. Logs: Digital Marketing → Auto-post logs.`
+                    : 'Daily blog setting is off. Enable it from Digital Marketing → Blogs.',
       quickFix: {
-        label: crononMissing || crononOff ? 'Open Cronon SQL' : 'Open Blogs',
+        label: 'Open auto-post logs',
         action: 'internal-link',
-        actionPayload: { url: '/dashboard/digital_marketing/blogs' },
+        actionPayload: { url: '/dashboard/digital_marketing/blogs/auto-post-logs' },
       },
       lastChecked: new Date().toISOString(),
       details: {
@@ -1601,6 +1649,8 @@ async function checkDailyBlog(): Promise<HealthCheck> {
         cronon_job: crononJob?.jobname || null,
         cronon_schedule: crononJob?.schedule || null,
         cronon_active: crononJob?.active ?? null,
+        cron_logs_table: logsMissing ? 'missing' : 'ok',
+        missed_recent_days: missedRecentDays,
       },
     };
   } catch (e: any) {

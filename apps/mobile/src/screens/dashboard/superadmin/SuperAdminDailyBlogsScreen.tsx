@@ -38,10 +38,23 @@ export default function SuperAdminDailyBlogsScreen() {
   const [draftTimes, setDraftTimes] = useState<string[]>(['10:00']);
   const [postedCount, setPostedCount] = useState(0);
   const [missing, setMissing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<{ title?: string; message?: string; level?: string } | null>(null);
+  const [days, setDays] = useState<Array<{ date: string; posted: number; expected: number; missing: number }>>([]);
+  const [events, setEvents] = useState<
+    Array<{ created_at?: string; status?: string; source?: string; blog_title?: string; reason?: string; error?: string; slot_index?: number }>
+  >([]);
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<any>('/api/blogs/daily-settings');
+      const [data, logs] = await Promise.all([
+        apiFetch<any>('/api/blogs/daily-settings'),
+        apiFetch<any>('/api/blogs/daily-logs').catch(() => null),
+      ]);
+      if (logs) {
+        setDiagnosis(logs.diagnosis || null);
+        setDays(Array.isArray(logs.days) ? logs.days : []);
+        setEvents(Array.isArray(logs.events) ? logs.events.slice(0, 12) : []);
+      }
       const count = Number(data?.schedule?.posts_per_day || data?.settings?.posts_per_day || 1);
       const times = Array.isArray(data?.schedule?.post_times)
         ? data.schedule.post_times
@@ -204,6 +217,32 @@ export default function SuperAdminDailyBlogsScreen() {
               <Text style={styles.secondaryBtnText}>{busy ? '…' : 'Post now'}</Text>
             </TouchableOpacity>
           </View>
+
+          <Text style={styles.logsTitle}>Auto-post logs</Text>
+          {diagnosis ? (
+            <View style={[styles.diagBox, diagnosis.level === 'error' ? styles.diagErr : diagnosis.level === 'ok' ? styles.diagOk : styles.diagWarn]}>
+              <Text style={styles.diagTitle}>{diagnosis.title}</Text>
+              <Text style={styles.diagMsg}>{diagnosis.message}</Text>
+            </View>
+          ) : null}
+          <View style={styles.dayRow}>
+            {days.map((day) => (
+              <View key={day.date} style={[styles.dayChip, day.missing > 0 ? styles.dayMiss : styles.dayOk]}>
+                <Text style={styles.dayDate}>{String(day.date).slice(5)}</Text>
+                <Text style={styles.dayCount}>{day.posted}/{day.expected}</Text>
+              </View>
+            ))}
+          </View>
+          {events.map((row, idx) => (
+            <View key={`${row.created_at}-${idx}`} style={styles.eventRow}>
+              <Text style={styles.eventMeta}>
+                {row.status || 'info'} · {row.source || '—'}{row.slot_index ? ` · slot ${row.slot_index}` : ''}
+              </Text>
+              <Text style={styles.eventDetail} numberOfLines={3}>
+                {row.blog_title || row.error || row.reason || '—'}
+              </Text>
+            </View>
+          ))}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -270,4 +309,20 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   secondaryBtnText: { color: COLORS.heading, fontWeight: '700', fontSize: 12 },
+  logsTitle: { marginTop: 22, fontSize: 16, fontWeight: '800', color: COLORS.heading },
+  diagBox: { marginTop: 10, borderRadius: 10, padding: 10 },
+  diagOk: { backgroundColor: '#ECFDF5' },
+  diagWarn: { backgroundColor: '#FFFBEB' },
+  diagErr: { backgroundColor: '#FEF2F2' },
+  diagTitle: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  diagMsg: { marginTop: 4, fontSize: 12, color: '#374151' },
+  dayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  dayChip: { minWidth: 64, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 },
+  dayOk: { backgroundColor: '#ECFDF5' },
+  dayMiss: { backgroundColor: '#FEF2F2' },
+  dayDate: { fontSize: 10, fontWeight: '700', color: '#6B7280' },
+  dayCount: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  eventRow: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  eventMeta: { fontSize: 10, fontWeight: '700', color: '#6B7280' },
+  eventDetail: { marginTop: 2, fontSize: 12, color: '#111827' },
 });

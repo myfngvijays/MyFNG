@@ -16,6 +16,7 @@ import {
   Pressable,
   KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../../components/Icon';
 import { supabase, withTimeout } from '../../../lib/supabase';
 import CarLoading from '../../../components/CarLoading';
@@ -409,6 +410,8 @@ export default function TelecallerLeadDetailScreen({
   showLeadIq: showLeadIqProp,
 }: any) {
   const { user, userProfile } = useAuth();
+  const insets = useSafeAreaInsets();
+  const saveBarBottomPad = Math.max(insets.bottom, 10) + 16;
   const { leadId } = route.params;
   const roleCode = String(userProfile?.role?.role_code || '').toUpperCase();
   const showLeadIq =
@@ -1986,12 +1989,27 @@ export default function TelecallerLeadDetailScreen({
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerBarTitle}>Lead Details</Text>
-        <View style={{ width: 40 }} />
+        {editing ? (
+          <TouchableOpacity
+            style={[styles.headerSaveBtn, saving && { opacity: 0.65 }]}
+            disabled={saving}
+            onPress={() => void saveLeadEdits()}
+            activeOpacity={0.85}
+          >
+            {saving ? (
+              <ActivityIndicator color="#023D95" size="small" />
+            ) : (
+              <Text style={styles.headerSaveBtnText}>Save</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 56 }} />
+        )}
       </View>
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.scrollContent, editing && { paddingBottom: 100 }]}
+        contentContainerStyle={[styles.scrollContent, editing && { paddingBottom: 88 + saveBarBottomPad }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={
@@ -3579,7 +3597,7 @@ export default function TelecallerLeadDetailScreen({
     </Modal>
 
     {editing ? (
-      <View style={styles.saveBar}>
+      <View style={[styles.saveBar, { paddingBottom: saveBarBottomPad }]}>
         <TouchableOpacity
           style={[styles.saveBarBtn, saving && { opacity: 0.65 }]}
           disabled={saving}
@@ -3916,6 +3934,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#fff',
+  },
+  headerSaveBtn: {
+    minWidth: 60,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSaveBtnText: {
+    color: '#023D95',
+    fontSize: 14,
+    fontWeight: '800',
   },
   container: {
     flex: 1,
@@ -4255,7 +4287,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: SPACING.md,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 18 : 12,
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderTopWidth: 1,
     borderTopColor: '#E8EEF7',

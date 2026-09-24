@@ -147,15 +147,25 @@ async function resolveCategoryId(
   return first?.id || null;
 }
 
+function isSlugTakenError(error: { message?: string; code?: string } | null | undefined) {
+  const message = String(error?.message || '');
+  return error?.code === '23505' || /blogs_slug|duplicate key|unique constraint/i.test(message);
+}
+
 async function uniqueSlug(supabaseAdmin: any, base: string, runDate: string): Promise<string> {
   const compact = runDate.replace(/-/g, '');
-  let slug = base || `daily-car-service-${compact}`;
-  for (let i = 0; i < 6; i++) {
-    const candidate = i === 0 ? slug : `${base}-${compact}${i > 1 ? `-${i}` : ''}`;
+  const root = (base || `daily-car-service`).replace(/-+$/g, '') || 'daily-car-service';
+  const variants = [
+    root,
+    `${root}-${compact}`,
+    `${root}-${compact}-${Date.now().toString(36)}`,
+    `${root}-${compact}-${Math.random().toString(36).slice(2, 7)}`,
+  ];
+  for (const candidate of variants) {
     const { data } = await supabaseAdmin.from('blogs').select('id').eq('slug', candidate).maybeSingle();
     if (!data?.id) return candidate;
   }
-  return `${base}-${compact}-${Date.now().toString(36)}`;
+  return `${root}-${compact}-${Date.now().toString(36)}`;
 }
 
 async function ensureTagIds(supabaseAdmin: any, names: string[]): Promise<string[]> {
@@ -311,27 +321,36 @@ export async function publishAiServiceBlog(opts: {
   });
 
   const now = new Date().toISOString();
-  const { data: blog, error: insertError } = await supabaseAdmin
+  const payload = {
+    title: draft.title,
+    slug,
+    excerpt: draft.excerpt,
+    content,
+    seo_data: seoData,
+    category_id: categoryId,
+    author_id: authorId,
+    created_by: authorId,
+    updated_by: authorId,
+    read_time: minutes || draft.read_time || 5,
+    featured_image: uploaded.url,
+    status: 'published',
+    is_featured: false,
+    is_premium: false,
+    published_at: now,
+  };
+  let { data: blog, error: insertError } = await supabaseAdmin
     .from('blogs')
-    .insert({
-      title: draft.title,
-      slug,
-      excerpt: draft.excerpt,
-      content,
-      seo_data: seoData,
-      category_id: categoryId,
-      author_id: authorId,
-      created_by: authorId,
-      updated_by: authorId,
-      read_time: minutes || draft.read_time || 5,
-      featured_image: uploaded.url,
-      status: 'published',
-      is_featured: false,
-      is_premium: false,
-      published_at: now,
-    })
+    .insert(payload)
     .select('id, title, slug')
     .single();
+
+  if (isSlugTakenError(insertError)) {
+    const retrySlug = await uniqueSlug(supabaseAdmin, `${toBlogSlug(draft.title)}-${runDate.replace(/-/g, '')}`, runDate);
+    payload.slug = retrySlug;
+    const retry = await supabaseAdmin.from('blogs').insert(payload).select('id, title, slug').single();
+    blog = retry.data;
+    insertError = retry.error;
+  }
 
   if (insertError || !blog?.id) {
     throw new Error(insertError?.message || 'Failed to insert blog');

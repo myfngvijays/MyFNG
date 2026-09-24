@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
+import DailyBlogActivityLog from '@/components/blog/DailyBlogActivityLog';
 
 export default function SuperAdminDailyBlogsPage() {
   return (
@@ -16,6 +17,7 @@ export default function SuperAdminDailyBlogsPage() {
         </div>
 
         <DailyBlogScheduleCard />
+        <DailyBlogActivityLog />
 
         <div className="flex flex-wrap gap-2">
           <Link

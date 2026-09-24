@@ -22,23 +22,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: authError }, { status: 401 });
   }
 
+  let dailyBlog: unknown = null;
+  try {
+    const { maybeCatchUpDailyBlog } = await import('@/lib/blog/runDailyBlogPost');
+    dailyBlog = await maybeCatchUpDailyBlog({ source: 'cart_catchup' });
+  } catch (error) {
+    dailyBlog = { skipped: true, reason: error instanceof Error ? error.message : 'daily_blog_catchup_failed' };
+  }
+
   if (!(await isWhatsAppCronJobEnabled('cart-abandoned-reminders'))) {
     return NextResponse.json({
       success: true,
       skipped: true,
       reason: 'job_disabled_in_admin',
       timestamp: new Date().toISOString(),
+      daily_blog: dailyBlog,
     });
   }
 
   const result = await runCartAbandonedReminderJob();
-  let dailyBlog: unknown = null;
-  try {
-    const { maybeCatchUpDailyBlog } = await import('@/lib/blog/runDailyBlogPost');
-    dailyBlog = await maybeCatchUpDailyBlog();
-  } catch (error) {
-    dailyBlog = { skipped: true, reason: error instanceof Error ? error.message : 'daily_blog_catchup_failed' };
-  }
   return NextResponse.json({
     success: true,
     timestamp: new Date().toISOString(),

@@ -362,6 +362,9 @@ export default function DigitalMarketingDashboard() {
             <Link href="/dashboard/digital_marketing/blogs" className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
               All blogs
             </Link>
+            <Link href="/dashboard/digital_marketing/blogs/auto-post-logs" className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              Logs
+            </Link>
           </div>
           {dailyPost.recent_runs.length ? (
             <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-500">

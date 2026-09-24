@@ -66,6 +66,11 @@ export default function DMContentScreen() {
   const [draftCount, setDraftCount] = useState(1);
   const [draftTimes, setDraftTimes] = useState<string[]>(['10:00']);
   const [postedCount, setPostedCount] = useState(0);
+  const [diagnosis, setDiagnosis] = useState<{ title?: string; message?: string; level?: string } | null>(null);
+  const [days, setDays] = useState<Array<{ date: string; posted: number; expected: number; missing: number }>>([]);
+  const [events, setEvents] = useState<
+    Array<{ status?: string; source?: string; blog_title?: string; reason?: string; error?: string; slot_index?: number }>
+  >([]);
 
   const load = useCallback(async () => {
     try {
@@ -88,7 +93,15 @@ export default function DMContentScreen() {
 
   const loadDaily = useCallback(async () => {
     try {
-      const data = await apiFetch<any>('/api/blogs/daily-settings');
+      const [data, logs] = await Promise.all([
+        apiFetch<any>('/api/blogs/daily-settings'),
+        apiFetch<any>('/api/blogs/daily-logs').catch(() => null),
+      ]);
+      if (logs) {
+        setDiagnosis(logs.diagnosis || null);
+        setDays(Array.isArray(logs.days) ? logs.days : []);
+        setEvents(Array.isArray(logs.events) ? logs.events.slice(0, 10) : []);
+      }
       const enabled = Boolean(data?.settings?.enabled ?? data?.schedule?.enabled);
       const count = Number(data?.schedule?.posts_per_day || data?.settings?.posts_per_day || 1);
       const times = Array.isArray(data?.schedule?.post_times)
@@ -177,6 +190,7 @@ export default function DMContentScreen() {
               onRefresh={() => {
                 setRefreshing(true);
                 void load();
+                void loadDaily();
               }}
             />
           }
@@ -295,6 +309,27 @@ export default function DMContentScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {diagnosis ? (
+            <View style={styles.logsCard}>
+              <Text style={styles.dailyTitle}>Auto-post logs</Text>
+              <Text style={styles.diagTitle}>{diagnosis.title}</Text>
+              <Text style={styles.dailyMeta}>{diagnosis.message}</Text>
+              <View style={styles.dayRow}>
+                {days.map((day) => (
+                  <View key={day.date} style={styles.dayChip}>
+                    <Text style={styles.timeLabel}>{String(day.date).slice(5)}</Text>
+                    <Text style={styles.dayCount}>{day.posted}/{day.expected}</Text>
+                  </View>
+                ))}
+              </View>
+              {events.slice(0, 6).map((row, idx) => (
+                <Text key={`${row.source}-${idx}`} style={styles.eventLine} numberOfLines={2}>
+                  {row.status || 'info'} · {row.blog_title || row.error || row.reason || row.source || '—'}
+                </Text>
+              ))}
+            </View>
+          ) : null}
 
           <Text style={styles.count}>
             Showing {blogs.length === 0 ? 0 : 1}-{blogs.length} of {total} blogs
@@ -440,6 +475,19 @@ const styles = StyleSheet.create({
   dailyBtnOn: { backgroundColor: '#004AAD', borderColor: '#004AAD' },
   dailyBtnText: { fontSize: 12, fontWeight: '700', color: '#004AAD' },
   dailyBtnTextOn: { color: '#fff' },
+  logsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  diagTitle: { marginTop: 6, fontSize: 13, fontWeight: '800', color: '#111827' },
+  dayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  dayChip: { minWidth: 58, backgroundColor: '#F8FAFC', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 },
+  dayCount: { fontSize: 13, fontWeight: '800', color: '#023D95' },
+  eventLine: { marginTop: 6, fontSize: 11, color: '#4B5563' },
   count: { fontSize: 13, color: '#4B5563', marginBottom: 4 },
   empty: { textAlign: 'center', color: COLORS.textSecondary, marginTop: 40 },
   card: {

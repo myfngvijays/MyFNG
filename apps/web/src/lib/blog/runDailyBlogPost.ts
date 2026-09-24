@@ -14,11 +14,32 @@ import {
 import { publishAiServiceBlog, type DailyBlogRunResult, type DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
 import { firstDueSlot, nextDailySlotIso, overdueSlotIndexes, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
+import { logDailyBlogEvent, type DailyBlogLogSource } from '@/lib/blog/dailyBlogLog';
 
 export type { DailyBlogRunResult, DailyBlogSettings };
 
 function missingTable(error: { message?: string } | null | undefined) {
   return /does not exist|relation|42P01|PGRST205/i.test(String(error?.message || ''));
+}
+
+const LOCK_STALE_MS = 8 * 60 * 1000;
+
+async function claimDailyBlogLock(supabaseAdmin: any): Promise<boolean> {
+  const now = new Date().toISOString();
+  const staleIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
+  const claimed = await supabaseAdmin
+    .from('daily_blog_settings')
+    .update({
+      last_run_at: now,
+      last_status: 'running',
+      last_error: null,
+      updated_at: now,
+    })
+    .eq('id', 1)
+    .or(`last_status.is.null,last_status.neq.running,last_run_at.is.null,last_run_at.lt.${staleIso}`)
+    .select('id')
+    .maybeSingle();
+  return Boolean(claimed.data?.id) && !claimed.error;
 }
 
 export async function loadDailyBlogSettings(): Promise<{
@@ -140,7 +161,10 @@ async function repairBrokenCityTitles(supabaseAdmin: any) {
   }
 }
 
-export async function maybeCatchUpDailyBlog(): Promise<DailyBlogRunResult | { skipped: true; reason: string }> {
+export async function maybeCatchUpDailyBlog(opts?: {
+  source?: DailyBlogLogSource;
+}): Promise<DailyBlogRunResult | { skipped: true; reason: string }> {
+  const source = opts?.source || 'cart_catchup';
   const loaded = await loadDailyBlogSettings();
   if (loaded.missing || !loaded.settings) {
     return { skipped: true, reason: 'settings_missing' };
@@ -150,8 +174,17 @@ export async function maybeCatchUpDailyBlog(): Promise<DailyBlogRunResult | { sk
 
   const lastStatus = String(settings.last_status || '');
   const lastRunMs = settings.last_run_at ? Date.parse(settings.last_run_at) : 0;
-  if (lastStatus === 'running' && lastRunMs && Date.now() - lastRunMs < 8 * 60 * 1000) {
+  if (lastStatus === 'running' && lastRunMs && Date.now() - lastRunMs < LOCK_STALE_MS) {
     return { skipped: true, reason: 'already_running' };
+  }
+  if (lastStatus === 'running' && lastRunMs && Date.now() - lastRunMs >= LOCK_STALE_MS) {
+    await logDailyBlogEvent({
+      source,
+      action: 'stale_running_reset',
+      status: 'info',
+      reason: 'stale_running_reset',
+      details: { last_run_at: settings.last_run_at },
+    });
   }
 
   const schedule = resolveDailyBlogSchedule(settings);
@@ -172,23 +205,52 @@ export async function maybeCatchUpDailyBlog(): Promise<DailyBlogRunResult | { sk
   const overdue = overdueSlotIndexes(schedule, postedIndexes);
   if (!overdue.length) return { skipped: true, reason: 'no_overdue_slot' };
 
-  return runDailyBlogPost();
+  return runDailyBlogPost({ source });
 }
 
-export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<DailyBlogRunResult> {
+export async function runDailyBlogPost(opts?: {
+  force?: boolean;
+  source?: DailyBlogLogSource;
+}): Promise<DailyBlogRunResult> {
   const force = Boolean(opts?.force);
+  const source = opts?.source || 'cron';
+  const started = Date.now();
   const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
   if (!supabaseAdmin) {
-    return { success: false, error: adminError || 'Admin client not configured' };
+    const error = adminError || 'Admin client not configured';
+    await logDailyBlogEvent({
+      source,
+      action: 'failed',
+      status: 'failed',
+      error,
+      duration_ms: Date.now() - started,
+    });
+    return { success: false, error };
   }
   await repairBrokenCityTitles(supabaseAdmin).catch(() => undefined);
 
   const loaded = await loadDailyBlogSettings();
   if (loaded.missing) {
-    return { success: false, error: 'Migration 365_daily_blog_auto_post.sql is not applied' };
+    const error = 'Migration 365_daily_blog_auto_post.sql is not applied';
+    await logDailyBlogEvent({
+      source,
+      action: 'failed',
+      status: 'failed',
+      error,
+      duration_ms: Date.now() - started,
+    });
+    return { success: false, error };
   }
   if (!loaded.settings) {
-    return { success: false, error: loaded.error || 'Daily blog settings missing' };
+    const error = loaded.error || 'Daily blog settings missing';
+    await logDailyBlogEvent({
+      source,
+      action: 'failed',
+      status: 'failed',
+      error,
+      duration_ms: Date.now() - started,
+    });
+    return { success: false, error };
   }
 
   const settings = loaded.settings;
@@ -196,7 +258,14 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
   const day = dayOfYearIst();
 
   if (!settings.enabled && !force) {
-    await writeRun(supabaseAdmin, { run_date: runDate, status: 'skipped', error: 'disabled' });
+    await logDailyBlogEvent({
+      source,
+      action: 'skipped',
+      status: 'skipped',
+      reason: 'disabled',
+      run_date: runDate,
+      duration_ms: Date.now() - started,
+    });
     return { success: true, skipped: true, reason: 'disabled', run_date: runDate };
   }
 
@@ -238,28 +307,51 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
   const due = firstDueSlot(schedule, postedIndexes, new Date(), force);
   if (!due) {
     const done = postedIndexes.length >= schedule.posts_per_day;
+    const reason = done ? 'already_posted_today' : 'waiting_for_next_slot';
+    await logDailyBlogEvent({
+      source,
+      action: 'skipped',
+      status: 'skipped',
+      reason,
+      run_date: runDate,
+      duration_ms: Date.now() - started,
+      details: { posted_indexes: postedIndexes, posts_per_day: schedule.posts_per_day, times: schedule.times },
+    });
     return {
       success: true,
       skipped: true,
-      reason: done ? 'already_posted_today' : 'waiting_for_next_slot',
+      reason,
       blog_id: (todayRuns || []).find((row: any) => row.status === 'success')?.blog_id || liveToday[0]?.id,
       run_date: runDate,
     };
   }
 
   if (!force && postedIndexes.includes(due.index)) {
+    await logDailyBlogEvent({
+      source,
+      action: 'skipped',
+      status: 'skipped',
+      reason: 'already_posted_today',
+      slot_index: due.index,
+      run_date: runDate,
+      duration_ms: Date.now() - started,
+    });
     return { success: true, skipped: true, reason: 'already_posted_today', run_date: runDate };
   }
 
-  await supabaseAdmin
-    .from('daily_blog_settings')
-    .update({
-      last_run_at: new Date().toISOString(),
-      last_status: 'running',
-      last_error: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', 1);
+  const locked = await claimDailyBlogLock(supabaseAdmin);
+  if (!locked) {
+    await logDailyBlogEvent({
+      source,
+      action: 'skipped',
+      status: 'skipped',
+      reason: 'already_running',
+      slot_index: due.index,
+      run_date: runDate,
+      duration_ms: Date.now() - started,
+    });
+    return { success: true, skipped: true, reason: 'already_running', run_date: runDate };
+  }
 
   const { data: recent } = await supabaseAdmin
     .from('blogs')
@@ -299,6 +391,18 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
       cover_key: cover.key,
       status: 'success',
     });
+    await logDailyBlogEvent({
+      source,
+      action: 'posted',
+      status: 'success',
+      slot_index: due.index,
+      run_date: runDate,
+      topic: picked.topic,
+      blog_id: published.blog_id || null,
+      blog_title: published.title || null,
+      duration_ms: Date.now() - started,
+      details: { slug: published.slug || null, cover_key: cover.key, force },
+    });
 
     return published;
   } catch (error: any) {
@@ -310,6 +414,17 @@ export async function runDailyBlogPost(opts?: { force?: boolean }): Promise<Dail
       cover_key: cover.key,
       status: 'failed',
       error: message.slice(0, 500),
+    });
+    await logDailyBlogEvent({
+      source,
+      action: 'failed',
+      status: 'failed',
+      slot_index: due.index,
+      run_date: runDate,
+      topic: picked.topic,
+      error: message,
+      duration_ms: Date.now() - started,
+      details: { cover_key: cover.key, force },
     });
     return { success: false, error: message, topic: picked.topic, cover_key: cover.key, run_date: runDate };
   }
