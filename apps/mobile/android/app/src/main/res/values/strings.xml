@@ -1,5 +1,7 @@
 <resources>
   <string name="app_name">MyFNG</string>
+  <string name="facebook_app_id">2662238024237088</string>
+  <string name="fb_login_protocol_scheme">fb2662238024237088</string>
   <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
   <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
 </resources>

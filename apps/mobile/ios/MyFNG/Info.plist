@@ -31,6 +31,15 @@
         <array>
           <string>com.myfng.app</string>
           <string>myfng</string>
+          <string>fb2662238024237088</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLName</key>
+        <string>facebook-sdk</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>fb2662238024237088</string>
         </array>
       </dict>
       <dict>
@@ -62,7 +71,20 @@
       <string>upi</string>
       <string>credpay</string>
       <string>razorpay</string>
+      <string>fbapi</string>
+      <string>fb-messenger-share-api</string>
+      <string>fbauth2</string>
     </array>
+    <key>FacebookAppID</key>
+    <string>2662238024237088</string>
+    <key>FacebookDisplayName</key>
+    <string>MyFNG</string>
+    <key>FacebookAutoLogAppEventsEnabled</key>
+    <true/>
+    <key>FacebookAdvertiserIDCollectionEnabled</key>
+    <true/>
+    <key>NSUserTrackingUsageDescription</key>
+    <string>MyFNG uses this identifier to measure ads and show relevant service offers.</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSAppTransportSecurity</key>

@@ -15,6 +15,8 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 
+import com.facebook.FacebookSdk
+import com.facebook.appevents.AppEventsLogger
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
@@ -52,6 +54,9 @@ class MainApplication : Application(), ReactApplication {
       val manager = getSystemService(NotificationManager::class.java)
       manager?.createNotificationChannel(channel)
     }
+    FacebookSdk.setAutoInitEnabled(true)
+    FacebookSdk.fullyInitialize()
+    AppEventsLogger.activateApp(this)
     SoLoader.init(this, OpenSourceMergedSoMapping)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.

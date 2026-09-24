@@ -7,6 +7,10 @@ import FirebaseMessaging
 import GoogleMaps
 #endif
 import UserNotifications
+import AppTrackingTransparency
+#if canImport(FBSDKCoreKit)
+import FBSDKCoreKit
+#endif
 
 @UIApplicationMain
 public class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
@@ -32,6 +36,15 @@ public class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate, Mes
        !gmsApiKey.isEmpty,
        !gmsApiKey.hasPrefix("$(") {
       GMSServices.provideAPIKey(gmsApiKey)
+    }
+    #endif
+
+    #if canImport(FBSDKCoreKit)
+    ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+    Settings.shared.isAutoLogAppEventsEnabled = true
+    Settings.shared.isAdvertiserIDCollectionEnabled = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+      self.enableFacebookAdvertiserTracking()
     }
     #endif
 
@@ -88,7 +101,24 @@ public class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate, Mes
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
+    #if canImport(FBSDKCoreKit)
+    let facebook = ApplicationDelegate.shared.application(app, open: url, options: options)
+    #else
+    let facebook = false
+    #endif
+    return facebook || super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
+  }
+
+  private func enableFacebookAdvertiserTracking() {
+    #if canImport(FBSDKCoreKit)
+    if #available(iOS 14, *) {
+      ATTrackingManager.requestTrackingAuthorization { status in
+        Settings.shared.isAdvertiserTrackingEnabled = (status == .authorized)
+      }
+    } else {
+      Settings.shared.isAdvertiserTrackingEnabled = true
+    }
+    #endif
   }
 
   // Universal Links

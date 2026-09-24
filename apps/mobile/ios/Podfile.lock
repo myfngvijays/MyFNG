@@ -324,7 +324,13 @@ PODS:
   - EXUpdatesInterface (1.1.0):
     - ExpoModulesCore
   - fast_float (6.1.4)
+  - FBAEMKit (18.1.1):
+    - FBSDKCoreKit_Basics (= 18.1.1)
   - FBLazyVector (0.79.6)
+  - FBSDKCoreKit (18.1.1):
+    - FBAEMKit (= 18.1.1)
+    - FBSDKCoreKit_Basics (= 18.1.1)
+  - FBSDKCoreKit_Basics (18.1.1)
   - Firebase/Analytics (11.11.0):
     - Firebase/Core
   - Firebase/Auth (11.11.0):
@@ -2250,6 +2256,7 @@ DEPENDENCIES:
   - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
   - fast_float (from `../node_modules/react-native/third-party-podspecs/fast_float.podspec`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
+  - FBSDKCoreKit (~> 18.0)
   - fmt (from `../node_modules/react-native/third-party-podspecs/fmt.podspec`)
   - glog (from `../node_modules/react-native/third-party-podspecs/glog.podspec`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
@@ -2338,6 +2345,9 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - Clarity
+    - FBAEMKit
+    - FBSDKCoreKit
+    - FBSDKCoreKit_Basics
     - Firebase
     - FirebaseAnalytics
     - FirebaseAppCheckInterop
@@ -2608,7 +2618,10 @@ SPEC CHECKSUMS:
   EXTaskManager: 2b246319ee42b15142caa0b9a168d52979821700
   EXUpdatesInterface: 64f35449b8ef89ce08cdd8952a4d119b5de6821d
   fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
+  FBAEMKit: fbb0a50e13109400d0615e7630a0db26ec6b8206
   FBLazyVector: 07309209b7b914451b8f822544a18e2a0a85afff
+  FBSDKCoreKit: 0063014b3b1f7e975e70b60232b0cf8003839746
+  FBSDKCoreKit_Basics: f4a1e0f38769eb71abaf6395b85e015318fcda49
   Firebase: 6a8f201c61eda24e98f1ce2b44b1b9c2caf525cc
   FirebaseAnalytics: acfa848bf81e1a4dbf60ef1f0eddd7328fe6673e
   FirebaseAppCheckInterop: 06fe5a3799278ae4667e6c432edd86b1030fa3df
@@ -2715,6 +2728,6 @@ SPEC CHECKSUMS:
   UMAppLoader: 55159b69750129faa7a51c493cb8ea55a7b64eb9
   Yoga: c0ce6ae14686223fe24e3cf8ae86a46d7617b728
 
-PODFILE CHECKSUM: aa8c89c8c38ad8a91fcffd3750f277c89f1dfc09
+PODFILE CHECKSUM: 4c706878763f1c6f0d6e414ef9dff9dfd0b958e6
 
 COCOAPODS: 1.16.2
