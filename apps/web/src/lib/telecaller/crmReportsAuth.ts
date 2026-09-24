@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
+import { getRequestUser } from '@/lib/supabase/requestUser';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
@@ -19,11 +20,9 @@ export async function requireCrmReportsContext(
   request: NextRequest,
 ): Promise<CrmReportsContext | NextResponse> {
   const supabase = await createClientFromRequest(request);
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await getRequestUser(supabase, request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const user = auth.user;
 
   const profile = await resolveUserProfile(supabase, user);
   const teleCallerId = String(profile?.id || '').trim();

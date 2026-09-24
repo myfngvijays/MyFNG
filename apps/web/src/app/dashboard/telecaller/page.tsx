@@ -250,7 +250,7 @@ export default function TelecallerCrmHomePage() {
     } catch (e: any) {
       const aborted = e?.name === 'AbortError';
       setLoadError(
-        aborted
+        aborted || /unauthorized/i.test(String(e?.message || ''))
           ? 'Could not reach the server. Check your connection and try again.'
           : e?.message || 'Could not load CRM',
       );

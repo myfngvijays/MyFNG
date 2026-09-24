@@ -145,7 +145,10 @@ export default function CrmHomeTab({
       setLoadError('');
       onRemindersCount?.(Number(res?.kpis?.reminders_pending || 0));
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Could not load CRM';
+      const raw = e instanceof Error ? e.message : 'Could not load CRM';
+      const message = /unauthorized|not authenticated/i.test(raw)
+        ? 'Could not reach the server. Pull to refresh or tap Retry.'
+        : raw;
       setLoadError(message);
       if (!dataRef.current) {
         console.warn('CRM dashboard failed', message);
@@ -171,33 +174,6 @@ export default function CrmHomeTab({
       sub.remove();
     };
   }, [load, isActive]);
-
-  if (loading && !data) {
-    return (
-      <View style={styles.center}>
-        <CarLoading size="compact" label="Loading MyFNG CRM..." />
-      </View>
-    );
-  }
-
-  if (!data) {
-    return (
-      <View style={styles.center}>
-        <Text style={[styles.muted, { textAlign: 'center', paddingHorizontal: 24 }]}>
-          {loadError || 'Could not load CRM. Check your connection.'}
-        </Text>
-        <TouchableOpacity
-          onPress={() => {
-            setLoading(true);
-            void load(true);
-          }}
-          style={{ marginTop: 16, paddingHorizontal: 20, paddingVertical: 10 }}
-        >
-          <Text style={{ color: COLORS.primary, fontWeight: '700' }}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
 
   const kpis = data?.kpis || {};
   const trend = Array.isArray(data?.trend) ? data.trend : [];
@@ -245,6 +221,25 @@ export default function CrmHomeTab({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
+      {loadError && !data ? (
+        <View style={styles.loadBanner}>
+          <Text style={styles.loadBannerText}>{loadError}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setLoading(true);
+              void load(true);
+            }}
+          >
+            <Text style={styles.loadBannerRetry}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {loading && !data ? (
+        <View style={{ paddingVertical: 12 }}>
+          <CarLoading size="compact" label="Loading MyFNG CRM..." />
+        </View>
+      ) : null}
+
       <View style={styles.hero}>
         <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={styles.name}>{data?.profile?.name || 'Telecaller'}</Text>
@@ -606,6 +601,18 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: SPACING.md, paddingTop: 4, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   muted: { color: COLORS.textSecondary },
+  loadBanner: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    gap: 6,
+  },
+  loadBannerText: { color: '#991B1B', fontSize: 13, fontWeight: '600' },
+  loadBannerRetry: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
   hero: {
     flexDirection: 'row',
     justifyContent: 'space-between',

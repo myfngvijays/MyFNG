@@ -183,6 +183,7 @@ export default function CrmQueueTab({
 }: Props) {
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
   /** Debounced search text (matches web ~350ms) — drives API loads */
@@ -415,8 +416,15 @@ export default function CrmQueueTab({
         timeoutMs: 25000,
       });
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
+      setLoadError('');
     } catch (e) {
+      const raw = e instanceof Error ? e.message : 'Could not load leads';
       console.error('queue load failed', e);
+      setLoadError(
+        /unauthorized|not authenticated/i.test(raw)
+          ? 'Could not reach the server. Pull to refresh.'
+          : raw,
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -881,6 +889,15 @@ export default function CrmQueueTab({
       {loading && leads.length === 0 ? (
         <View style={{ marginTop: 36, alignItems: 'center' }}>
           <CarLoading size="compact" label="Loading leads..." />
+        </View>
+      ) : !loading && leads.length === 0 && loadError ? (
+        <View style={{ marginTop: 36, alignItems: 'center', paddingHorizontal: 24, gap: 10 }}>
+          <Text style={{ textAlign: 'center', color: COLORS.textSecondary, fontWeight: '600' }}>
+            {loadError}
+          </Text>
+          <TouchableOpacity onPress={() => { setLoading(true); void load(); }}>
+            <Text style={{ color: COLORS.primary, fontWeight: '800' }}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : viewMode === 'chart' ? (
         <ScrollView

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
+import { getRequestUser } from '@/lib/supabase/requestUser';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { syncRecentWhatsAppInboundLeads } from '@/lib/whatsappAgents/inboundServiceLead';
@@ -53,8 +54,9 @@ function leadMessagePreview(lead: Record<string, any>): string | null {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClientFromRequest(request);
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await getRequestUser(supabase, request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const user = auth.user;
 
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     const db = supabaseAdmin || supabase;
