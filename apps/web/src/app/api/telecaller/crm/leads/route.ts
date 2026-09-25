@@ -23,7 +23,11 @@ import {
   resolveCrmLeadOrderColumn,
 } from '@/lib/telecaller/crmLeadFilters';
 import { applyStuckRingingPatch } from '@/lib/telecaller/healLeadDispositions';
-import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
+import {
+  closeLeadFollowUps,
+  crmLeadClosedForFollowUp,
+  healStaleFollowUps,
+} from '@/lib/telecaller/crmFollowUpClose';
 import {
   computeServiceLeadOverview,
   enrichBookingLead,
@@ -75,6 +79,14 @@ export async function GET(request: NextRequest) {
     }
 
     const seesAll = crmSeesAllLeads(roleCode);
+    try {
+      await healStaleFollowUps(db, {
+        telecallerId: seesAll ? String(request.nextUrl.searchParams.get('telecaller_id') || '').trim() || null : teleCallerId,
+        completedBy: teleCallerId,
+      });
+    } catch (fuHealErr) {
+      console.warn('[crm/leads] stale follow-up heal skipped', fuHealErr);
+    }
 
     // Never block the leads list on WhatsApp inbound sync (was ~10s+ per request).
     // Opt-in only: ?sync_wa=1
@@ -288,7 +300,13 @@ export async function GET(request: NextRequest) {
     }
     if (closedHeal.length) void Promise.allSettled(closedHeal);
 
-    const leads = deduped.map((row: any) => {
+    let visible = deduped;
+    const followFilter = String(filter || '').trim().toLowerCase();
+    if (!searching && (followFilter === 'callback' || followFilter === 'followup' || followFilter === 'follow_up')) {
+      visible = deduped.filter((row: any) => !crmLeadClosedForFollowUp(row));
+    }
+
+    const leads = visible.map((row: any) => {
       const hist = Array.isArray(row?.coupon_meta?.profile_history)
         ? row.coupon_meta.profile_history
         : [];

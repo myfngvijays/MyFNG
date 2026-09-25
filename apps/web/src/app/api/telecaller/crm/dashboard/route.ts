@@ -10,6 +10,7 @@ import {
 } from '@/lib/telecaller/crmRoles';
 import { applyCrmNewLeadFilter } from '@/lib/telecaller/crmLeadFilters';
 import { healStuckRingingFromActivity } from '@/lib/telecaller/healLeadDispositions';
+import { healStaleFollowUps } from '@/lib/telecaller/crmFollowUpClose';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -98,6 +99,14 @@ export async function GET(request: NextRequest) {
     }
     const seesAll = crmSeesAllLeads(roleCode);
     const telecallerFilter = String(new URL(request.url).searchParams.get('telecaller_id') || '').trim();
+    try {
+      await healStaleFollowUps(db, {
+        telecallerId: seesAll ? telecallerFilter || null : teleCallerId,
+        completedBy: teleCallerId,
+      });
+    } catch (fuHealErr) {
+      console.warn('[crm/dashboard] stale follow-up heal skipped', fuHealErr);
+    }
 
     const url = new URL(request.url);
     const allTime =
