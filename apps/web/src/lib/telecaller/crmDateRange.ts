@@ -46,6 +46,11 @@ export function istYmd(date = new Date()) {
   return istYmdFromParts(y, m, d);
 }
 
+/** 0=Sun … 6=Sat for a calendar date in Asia/Kolkata. */
+export function istWeekday(year: number, month0: number, day = 1) {
+  return new Date(Date.UTC(year, month0, day, 6, 30)).getUTCDay();
+}
+
 export function istHm(date = new Date()) {
   const ist = new Date(date.getTime() + IST_OFFSET_MS);
   const h = String(ist.getUTCHours()).padStart(2, '0');

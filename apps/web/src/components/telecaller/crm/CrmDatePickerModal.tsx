@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
   CRM_DATE_PRESETS,
+  istWeekday,
   istYmd,
   resolveCrmDateRange,
   type CrmDatePreset,
@@ -42,7 +43,7 @@ function ymdFromParts(y: number, m0: number, day: number) {
 }
 
 function buildMonthCells(year: number, month0: number) {
-  const firstDow = new Date(year, month0, 1).getDay();
+  const firstDow = istWeekday(year, month0, 1);
   const daysInMonth = new Date(year, month0 + 1, 0).getDate();
   const cells: Array<{ ymd: string | null; day: number | null }> = [];
   for (let i = 0; i < firstDow; i++) cells.push({ ymd: null, day: null });

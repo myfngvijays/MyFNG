@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Icon } from '../Icon';
 import { COLORS } from '../../constants/theme';
-import { istYmd } from '../../lib/crmDateRange';
+import { istWeekday, istYmd } from '../../lib/crmDateRange';
 
 const MINUTE_STEPS = [0, 10, 20, 30, 40, 50] as const;
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -57,13 +57,21 @@ function monthTitle(d: Date) {
   return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 }
 
+function chunkWeeks<T>(cells: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+  return rows;
+}
+
 function buildMonthCells(month: Date): Array<Date | null> {
-  const first = new Date(month.getFullYear(), month.getMonth(), 1);
-  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const year = month.getFullYear();
+  const month0 = month.getMonth();
+  const firstDow = istWeekday(year, month0, 1);
+  const daysInMonth = new Date(year, month0 + 1, 0).getDate();
   const cells: Array<Date | null> = [];
-  for (let i = 0; i < first.getDay(); i += 1) cells.push(null);
+  for (let i = 0; i < firstDow; i += 1) cells.push(null);
   for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push(new Date(month.getFullYear(), month.getMonth(), day));
+    cells.push(new Date(year, month0, day));
   }
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
@@ -173,41 +181,43 @@ export default function CrmFollowUpDateTime({ date, time, onChange, required }: 
                 </Text>
               ))}
             </View>
-            <View style={styles.grid}>
-              {cells.map((cell, idx) => {
-                if (!cell) return <View key={`e-${idx}`} style={styles.dayCell} />;
-                const value = toYmd(cell);
-                const selected = date === value;
-                const isToday = value === todayYmd;
-                const isPast = value < todayYmd;
-                return (
-                  <TouchableOpacity
-                    key={value}
-                    style={[
-                      styles.dayCell,
-                      selected && styles.daySelected,
-                      isToday && !selected && styles.dayToday,
-                      isPast && !selected && styles.dayPast,
-                    ]}
-                    onPress={() => {
-                      onChange({ date: value, time });
-                      setShowDate(false);
-                    }}
-                  >
-                    <Text
+            {chunkWeeks(cells).map((week, wi) => (
+              <View key={`w-${wi}`} style={styles.weekRow}>
+                {week.map((cell, idx) => {
+                  if (!cell) return <View key={`e-${wi}-${idx}`} style={styles.dayCell} />;
+                  const value = toYmd(cell);
+                  const selected = date === value;
+                  const isToday = value === todayYmd;
+                  const isPast = value < todayYmd;
+                  return (
+                    <TouchableOpacity
+                      key={value}
                       style={[
-                        styles.dayText,
-                        selected && styles.dayTextSelected,
-                        isToday && !selected && styles.dayTextToday,
-                        isPast && !selected && styles.dayTextPast,
+                        styles.dayCell,
+                        selected && styles.daySelected,
+                        isToday && !selected && styles.dayToday,
+                        isPast && !selected && styles.dayPast,
                       ]}
+                      onPress={() => {
+                        onChange({ date: value, time });
+                        setShowDate(false);
+                      }}
                     >
-                      {cell.getDate()}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                      <Text
+                        style={[
+                          styles.dayText,
+                          selected && styles.dayTextSelected,
+                          isToday && !selected && styles.dayTextToday,
+                          isPast && !selected && styles.dayTextPast,
+                        ]}
+                      >
+                        {cell.getDate()}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
             <TouchableOpacity
               style={styles.todayLink}
               onPress={() => {
@@ -306,15 +316,14 @@ const styles = StyleSheet.create({
   monthTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
   weekRow: { flexDirection: 'row', marginBottom: 4 },
   weekday: {
-    width: `${100 / 7}%`,
+    flex: 1,
     textAlign: 'center',
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textSecondary,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: {
-    width: `${100 / 7}%`,
+    flex: 1,
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',

@@ -25,6 +25,7 @@ import { COLORS, SPACING } from '../../../constants/theme';
 import {
   istYmd,
   istDayBounds,
+  istWeekday,
 } from '../../../lib/crmDateRange';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
 
@@ -60,8 +61,14 @@ function ymdFromParts(y: number, m0: number, day: number) {
   return `${y}-${String(m0 + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+function chunkWeeks<T>(cells: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+  return rows;
+}
+
 function buildMonthCells(year: number, month0: number) {
-  const firstDow = new Date(year, month0, 1).getDay(); // 0 Sun
+  const firstDow = istWeekday(year, month0, 1);
   const daysInMonth = new Date(year, month0 + 1, 0).getDate();
   const cells: Array<{ ymd: string | null; day: number | null }> = [];
   for (let i = 0; i < firstDow; i++) cells.push({ ymd: null, day: null });
@@ -1069,41 +1076,45 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
               ))}
             </View>
 
-            <View style={styles.calGrid}>
-              {buildMonthCells(viewYear, viewMonth0).map((cell, idx) => {
-                if (!cell.ymd) {
-                  return <View key={`e-${idx}`} style={styles.calDayCell} />;
-                }
-                const ymd = cell.ymd;
-                const rangeStart = draftStart;
-                const rangeEnd =
-                  calendarPickMode === 'single' ? draftStart : draftEnd || draftStart;
-                const lo = rangeStart <= rangeEnd ? rangeStart : rangeEnd;
-                const hi = rangeStart <= rangeEnd ? rangeEnd : rangeStart;
-                const selected = ymd === lo || ymd === hi;
-                const inRange = calendarPickMode === 'range' && ymd > lo && ymd < hi;
-                const isToday = ymd === todayYmd;
-                return (
-                  <TouchableOpacity
-                    key={ymd}
-                    style={[styles.calDayCell, inRange && styles.calDayInRange]}
-                    onPress={() => onCalendarDayPress(ymd)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.calDayInner, selected && styles.calDaySelected]}>
-                      <Text
-                        style={[
-                          styles.calDayText,
-                          isToday && !selected && styles.calDayTodayText,
-                          selected && styles.calDaySelectedText,
-                        ]}
+            <View>
+              {chunkWeeks(buildMonthCells(viewYear, viewMonth0)).map((week, wi) => (
+                <View key={`w-${wi}`} style={styles.calWeekRow}>
+                  {week.map((cell, idx) => {
+                    if (!cell.ymd) {
+                      return <View key={`e-${wi}-${idx}`} style={styles.calDayCell} />;
+                    }
+                    const ymd = cell.ymd;
+                    const rangeStart = draftStart;
+                    const rangeEnd =
+                      calendarPickMode === 'single' ? draftStart : draftEnd || draftStart;
+                    const lo = rangeStart <= rangeEnd ? rangeStart : rangeEnd;
+                    const hi = rangeStart <= rangeEnd ? rangeEnd : rangeStart;
+                    const selected = ymd === lo || ymd === hi;
+                    const inRange = calendarPickMode === 'range' && ymd > lo && ymd < hi;
+                    const isToday = ymd === todayYmd;
+                    return (
+                      <TouchableOpacity
+                        key={ymd}
+                        style={[styles.calDayCell, inRange && styles.calDayInRange]}
+                        onPress={() => onCalendarDayPress(ymd)}
+                        activeOpacity={0.75}
                       >
-                        {cell.day}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                        <View style={[styles.calDayInner, selected && styles.calDaySelected]}>
+                          <Text
+                            style={[
+                              styles.calDayText,
+                              isToday && !selected && styles.calDayTodayText,
+                              selected && styles.calDaySelectedText,
+                            ]}
+                          >
+                            {cell.day}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
             </View>
 
             <Text style={styles.calSelectionHint}>
@@ -1431,12 +1442,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textSecondary,
   },
-  calGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
   calDayCell: {
-    width: `${100 / 7}%` as any,
+    flex: 1,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
