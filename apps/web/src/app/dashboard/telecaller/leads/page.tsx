@@ -22,6 +22,7 @@ import {
   leadStatusCardColors,
   mergeCrmStatusFilters,
 } from '@/lib/telecaller/leadDisplayStatus';
+import { crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
 import { createClient } from '@/lib/supabase/client';
 import {
   Phone,
@@ -481,8 +482,11 @@ function TelecallerCrmLeadsContent() {
     if (appliedQ.trim()) return leads;
     return leads.filter((lead) => {
       if (advIncomplete && !lead.is_incomplete) return false;
-      if (advFollowUp && !lead.follow_up_required && !lead.next_follow_up_at && !lead.reminder?.at) {
-        return false;
+      if (advFollowUp) {
+        if (crmLeadClosedForFollowUp(lead)) return false;
+        if (!lead.follow_up_required && !lead.next_follow_up_at && !lead.reminder?.at) {
+          return false;
+        }
       }
       if (advHasVehicle) {
         const reg = String(lead.vehicle_number || '')

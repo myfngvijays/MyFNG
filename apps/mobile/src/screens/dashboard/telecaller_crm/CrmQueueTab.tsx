@@ -32,6 +32,7 @@ import {
 } from '../../../lib/crmFilterPrefs';
 import { leadStatusCardColors, leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
 import { mergeCrmStatusFilters } from '../../../lib/telecaller/crmStatusFilters';
+import { crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import { MlScorePill } from '../../../components/telecaller/LeadBrainCard';
 
@@ -481,8 +482,11 @@ export default function CrmQueueTab({
     if (appliedQ.trim()) return leads;
     return leads.filter((lead) => {
       if (advIncomplete && !lead.is_incomplete) return false;
-      if (advFollowUp && !lead.follow_up_required && !lead.next_follow_up_at && !lead.reminder?.at) {
-        return false;
+      if (advFollowUp) {
+        if (crmLeadClosedForFollowUp(lead)) return false;
+        if (!lead.follow_up_required && !lead.next_follow_up_at && !lead.reminder?.at) {
+          return false;
+        }
       }
       if (advHasVehicle) {
         const reg = String(lead.vehicle_number || '')

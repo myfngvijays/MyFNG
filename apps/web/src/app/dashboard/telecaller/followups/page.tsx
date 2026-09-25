@@ -106,7 +106,7 @@ export default function FollowUpsPage() {
         .from('telecaller_follow_ups')
         .select(`
           *,
-          lead:service_leads(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model),
+          lead:service_leads(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model, status, coupon_meta),
           telecaller:users_login!telecaller_id(id, full_name)
         `);
 
@@ -142,7 +142,31 @@ export default function FollowUpsPage() {
       const { data, error } = await query.limit(scopeAll ? 500 : 200);
 
       if (error) throw error;
-      setFollowUps(data || []);
+      const { crmLeadClosedForFollowUp } = await import('@/lib/telecaller/crmFollowUpClose');
+      const rows = (data || []).filter((fu: any) => {
+        if (filter === 'completed') return true;
+        return !crmLeadClosedForFollowUp(fu.lead);
+      });
+      const stale = (data || []).filter(
+        (fu: any) => filter !== 'completed' && crmLeadClosedForFollowUp(fu.lead),
+      );
+      if (stale.length) {
+        void Promise.allSettled(
+          stale.map((fu: any) =>
+            supabase
+              .from('telecaller_follow_ups')
+              .update({
+                status: 'COMPLETED',
+                completed_at: new Date().toISOString(),
+                completion_notes: 'Auto-closed — lead already In Service / Service Done / Lost',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', fu.id)
+              .eq('status', 'PENDING'),
+          ),
+        );
+      }
+      setFollowUps(rows);
     } catch (error) {
       console.error('Error fetching follow-ups:', error);
     } finally {

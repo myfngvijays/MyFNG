@@ -993,12 +993,23 @@ export default function CrmLeadEditForm({
         applied_coupon: nextApplied || null,
       };
 
-      if (formData.callback_date && formData.callback_time) {
+      if (
+        selectedActivity.id === 'CALLBACK' &&
+        formData.callback_date &&
+        formData.callback_time
+      ) {
         const iso = istDateTimeToIso(formData.callback_date, formData.callback_time);
         if (iso) {
           payload.follow_up_required = true;
           payload.next_follow_up_at = iso;
         }
+      } else if (
+        selectedActivity.id === 'IN_SERVICE' ||
+        selectedActivity.id === 'SERVICE_DONE' ||
+        selectedActivity.id === 'LOST'
+      ) {
+        payload.follow_up_required = false;
+        payload.next_follow_up_at = null;
       }
 
       const res = await fetch(`/api/telecaller/leads/${leadId}`, {

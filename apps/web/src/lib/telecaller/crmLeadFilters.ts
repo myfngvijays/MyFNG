@@ -112,10 +112,15 @@ export function applyCrmQueueStatusFilter(
     return next;
   }
   if (f === 'callback' || f === 'followup' || f === 'follow_up') {
-    return query.filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK');
+    return query
+      .filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK')
+      .not('status', 'in', '(IN_PROGRESS,COMPLETED,READY_FOR_DELIVERY,DELIVERED,CLOSED,CANCELLED,REJECTED)');
   }
   if (f === 'overdue_callback') {
-    return query.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
+    return query
+      .eq('follow_up_required', true)
+      .lte('next_follow_up_at', new Date().toISOString())
+      .not('status', 'in', '(IN_PROGRESS,COMPLETED,READY_FOR_DELIVERY,DELIVERED,CLOSED,CANCELLED,REJECTED)');
   }
   if (f === 'incomplete') return query.eq('is_incomplete', true);
   return query.filter('coupon_meta->>last_call_result', 'eq', f.toUpperCase());

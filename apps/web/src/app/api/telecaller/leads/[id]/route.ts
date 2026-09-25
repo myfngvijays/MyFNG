@@ -12,6 +12,7 @@ import {
 } from '@/lib/telecaller/crmQuote';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
+import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
 
 const LEAD_SELECT_FULL =
   'id, lead_number, status, customer_name, customer_phone, customer_id, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, service_type, service_type_ids, subservice_ids, estimated_amount, discount_amount, coupon_code, preferred_slot_start, preferred_slot_end, pickup_required, pickup_address, customer_address, city, city_id, pincode, workshop_id, coupon_meta';
@@ -314,6 +315,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     // Allow telecaller to advance lead disposition (e.g. Booking confirmed → VALIDATED)
+    if (body?.follow_up_required === false || body?.next_follow_up_at === null) {
+      update.follow_up_required = false;
+      update.next_follow_up_at = null;
+    } else if (body?.next_follow_up_at) {
+      update.follow_up_required = true;
+      update.next_follow_up_at = body.next_follow_up_at;
+    }
+
     if (body?.status != null && String(body.status).trim()) {
       const nextStatus = String(body.status).trim().toUpperCase();
       const ALLOWED_STATUS_SET = new Set([
@@ -526,6 +535,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       } catch (waErr: any) {
         console.error('[telecaller/leads PATCH] WhatsApp failed:', waErr?.message || waErr);
         whatsapp = { sent: false, skipped: true, skipReason: waErr?.message || 'whatsapp_error' };
+      }
+    }
+
+    const closedLead = {
+      status: String(update.status || updated?.status || existingLead.status || ''),
+      coupon_meta:
+        (update.coupon_meta as { last_call_result?: string } | undefined) ||
+        (updated?.coupon_meta as { last_call_result?: string } | undefined) ||
+        ((existingLead as any).coupon_meta as { last_call_result?: string } | undefined),
+    };
+    if (crmLeadClosedForFollowUp(closedLead)) {
+      try {
+        await closeLeadFollowUps(db, leadId, {
+          completedBy: userProfile?.id || null,
+          note: 'Auto-closed — lead moved to In Service / Service Done / Lost',
+        });
+      } catch (fuErr) {
+        console.warn('[telecaller/leads PATCH] close follow-ups skipped', fuErr);
       }
     }
 

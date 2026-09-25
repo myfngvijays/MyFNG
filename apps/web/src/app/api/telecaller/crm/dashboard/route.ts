@@ -241,7 +241,15 @@ export async function GET(request: NextRequest) {
       () =>
         applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT')),
       () =>
-        applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK')),
+        applyActivityRange(
+          leadBase()
+            .filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK')
+            .not(
+              'status',
+              'in',
+              '(IN_PROGRESS,COMPLETED,READY_FOR_DELIVERY,DELIVERED,CLOSED,CANCELLED,REJECTED)',
+            ),
+        ),
       () => applyCreatedRange(leadBase().eq('status', 'VALIDATED')),
       () => applyCreatedRange(leadBase().eq('status', 'IN_PROGRESS')),
       () => applyCreatedRange(leadBase().eq('status', 'COMPLETED')),

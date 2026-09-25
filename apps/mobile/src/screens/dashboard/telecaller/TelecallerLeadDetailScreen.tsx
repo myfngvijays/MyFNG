@@ -24,6 +24,7 @@ import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
 import { formatPreferredSlotLabel } from '../../../lib/preferredSlot';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
+import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
 import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
 import { parseIds } from '../../../lib/parseIds';
 import {
@@ -1029,13 +1030,22 @@ export default function TelecallerLeadDetailScreen({
           updated_at: new Date().toISOString(),
         };
         if (selected.lead_status) leadUpdate.status = selected.lead_status;
-        if (whenIso) {
+        const wantsFollowUp = (selected.requires_follow_up || selected.id === 'CALLBACK') && whenIso;
+        if (wantsFollowUp) {
           leadUpdate.follow_up_required = true;
           leadUpdate.next_follow_up_at = whenIso;
+        } else if (
+          crmLeadClosedForFollowUp({
+            status: selected.lead_status,
+            coupon_meta: { last_call_result: selected.id },
+          })
+        ) {
+          leadUpdate.follow_up_required = false;
+          leadUpdate.next_follow_up_at = null;
         }
         await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
 
-        if (whenIso) {
+        if (wantsFollowUp) {
           const { data: profile } = await supabase
             .from('users_login')
             .select('id')
@@ -1057,6 +1067,15 @@ export default function TelecallerLeadDetailScreen({
               status: 'PENDING',
             },
           ]);
+        } else if (
+          crmLeadClosedForFollowUp({
+            status: selected.lead_status,
+            coupon_meta: { last_call_result: selected.id },
+          })
+        ) {
+          await closeLeadFollowUps(supabase, leadId, {
+            note: `Auto-closed — ${statusLabel}`,
+          });
         }
       } catch (actErr) {
         console.warn('[LeadDetail] activity log during save failed', actErr);
@@ -1704,14 +1723,23 @@ export default function TelecallerLeadDetailScreen({
       if (selected.lead_status) {
         leadUpdate.status = selected.lead_status;
       }
-      if (whenIso) {
+      const wantsFollowUp = (selected.requires_follow_up || selected.id === 'CALLBACK') && whenIso;
+      if (wantsFollowUp) {
         leadUpdate.follow_up_required = true;
         leadUpdate.next_follow_up_at = whenIso;
+      } else if (
+        crmLeadClosedForFollowUp({
+          status: selected.lead_status,
+          coupon_meta: { last_call_result: selected.id },
+        })
+      ) {
+        leadUpdate.follow_up_required = false;
+        leadUpdate.next_follow_up_at = null;
       }
 
       await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
 
-      if (whenIso) {
+      if (wantsFollowUp) {
         const { data: profile } = await supabase
           .from('users_login')
           .select('id')
@@ -1735,6 +1763,15 @@ export default function TelecallerLeadDetailScreen({
             status: 'PENDING',
           },
         ]);
+      } else if (
+        crmLeadClosedForFollowUp({
+          status: selected.lead_status,
+          coupon_meta: { last_call_result: selected.id },
+        })
+      ) {
+        await closeLeadFollowUps(supabase, leadId, {
+          note: `Auto-closed — ${statusLabel}`,
+        });
       }
 
       activityTouchedRef.current = false;

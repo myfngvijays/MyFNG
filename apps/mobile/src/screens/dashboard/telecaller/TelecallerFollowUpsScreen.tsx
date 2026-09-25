@@ -26,6 +26,7 @@ import {
   istYmd,
   istDayBounds,
 } from '../../../lib/crmDateRange';
+import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
 
 type ScopeFilter = 'all' | 'today' | 'calendar' | 'completed';
 type TypeFilter = 'all' | 'CALLBACK';
@@ -229,6 +230,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             customer_phone,
             status,
             service_type,
+            coupon_meta,
             deleted_at
           ),
           telecaller:telecaller_id(full_name)
@@ -245,7 +247,16 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       );
       if (pendingErr) throw pendingErr;
 
-      const pendingList = (pendingRaw || []).filter((fu: any) => !fu.lead?.deleted_at);
+      const pendingList = (pendingRaw || []).filter((fu: any) => {
+        if (fu.lead?.deleted_at) return false;
+        if (crmLeadClosedForFollowUp(fu.lead)) {
+          void closeLeadFollowUps(supabase, String(fu.lead_id), {
+            note: 'Auto-closed — lead already In Service / Service Done / Lost',
+          });
+          return false;
+        }
+        return true;
+      });
       const pendingLeadIds = new Set(pendingList.map((fu: any) => String(fu.lead_id)));
 
       const now = new Date();
@@ -269,6 +280,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
               customer_phone,
               status,
               service_type,
+              coupon_meta,
               deleted_at
             ),
             telecaller:telecaller_id(full_name)

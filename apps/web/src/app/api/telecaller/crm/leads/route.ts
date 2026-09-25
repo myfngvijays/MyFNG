@@ -23,6 +23,7 @@ import {
   resolveCrmLeadOrderColumn,
 } from '@/lib/telecaller/crmLeadFilters';
 import { applyStuckRingingPatch } from '@/lib/telecaller/healLeadDispositions';
+import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
 import {
   computeServiceLeadOverview,
   enrichBookingLead,
@@ -269,6 +270,23 @@ export async function GET(request: NextRequest) {
     } catch (remErr) {
       console.warn('[crm/leads] reminder attach skipped', remErr);
     }
+
+    const closedHeal: Array<Promise<unknown>> = [];
+    for (const row of deduped) {
+      if (!crmLeadClosedForFollowUp(row)) continue;
+      if (!reminderByLead.has(String(row.id)) && !row.follow_up_required && !row.next_follow_up_at) {
+        continue;
+      }
+      reminderByLead.delete(String(row.id));
+      row.follow_up_required = false;
+      row.next_follow_up_at = null;
+      closedHeal.push(
+        closeLeadFollowUps(db, String(row.id), {
+          note: 'Auto-closed — lead already In Service / Service Done / Lost',
+        }),
+      );
+    }
+    if (closedHeal.length) void Promise.allSettled(closedHeal);
 
     const leads = deduped.map((row: any) => {
       const hist = Array.isArray(row?.coupon_meta?.profile_history)
