@@ -32,11 +32,12 @@ export default function WorkshopPublicPagesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingPage, setEditingPage] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [generatingCovers, setGeneratingCovers] = useState(false);
   const [formData, setFormData] = useState({
     workshop_id: '',
     slug: '',
     profile_image: '',
-    cover_image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1200&h=400&fit=crop',
+    cover_image: '/media/workshop-covers/default.png',
     short_description: '',
     full_description: '',
     services_offered: [] as string[],
@@ -253,7 +254,7 @@ export default function WorkshopPublicPagesPage() {
         .from('workshop_public_pages')
         .select(`
           *,
-          workshop:workshops(id, name, city, state)
+          workshop:workshops(id, name, workshop_name, city, state)
         `)
         .order('created_at', { ascending: false });
 
@@ -271,7 +272,7 @@ export default function WorkshopPublicPagesPage() {
     try {
       const { data, error } = await supabase
         .from('workshops')
-        .select('id, name, address, city, state, pincode, phone, email, public_gmb_url, audit_score')
+        .select('id, name, workshop_name, address, city, state, pincode, phone, email, public_gmb_url, audit_score')
         .eq('is_verified', true)
         .order('name');
 
@@ -342,7 +343,7 @@ export default function WorkshopPublicPagesPage() {
     return allMatches[0];
   };
 
-  const DEFAULT_COVER_IMAGE = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1200&h=400&fit=crop';
+  const DEFAULT_COVER_IMAGE = '/media/workshop-covers/default.png';
   const DEFAULT_GALLERY_IMAGES = [
     'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=800&h=600&fit=crop',
     'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=600&fit=crop',
@@ -800,6 +801,23 @@ Visit us today and experience the difference!`;
   };
 
   const handleFetchGMB = () => doFetchGmb();
+
+  const handleGenerateLocationCovers = async () => {
+    if (generatingCovers) return;
+    if (!confirm('Create workshop photo covers for every public page? Only the location name changes on each card.')) return;
+    setGeneratingCovers(true);
+    try {
+      const res = await fetch('/api/super_admin/workshops/public-pages/location-covers', { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to generate covers');
+      toast.success(`${json.count || 0} location covers created`);
+      fetchPages();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to generate covers');
+    } finally {
+      setGeneratingCovers(false);
+    }
+  };
 
   const handleAddGalleryImage = () => {
     if (galleryInput.trim()) {
@@ -1381,6 +1399,15 @@ Visit us today and experience the difference!`;
           <p className="text-gray-600 mt-1">Manage public-facing workshop pages</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleGenerateLocationCovers}
+            disabled={generatingCovers}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-white text-[#023D95] border-[#023D95]/30 hover:bg-[#F0F7FF] disabled:opacity-60"
+            title="Same workshop photo on every card, with that service center name"
+          >
+            <ImageIcon className={`w-4 h-4 ${generatingCovers ? 'animate-pulse' : ''}`} />
+            {generatingCovers ? 'Making covers...' : 'Make location covers'}
+          </button>
           {gbpConnected && (
             <button
               onClick={handleSyncAll}

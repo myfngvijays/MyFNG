@@ -1666,6 +1666,78 @@ async function checkDailyBlog(): Promise<HealthCheck> {
   }
 }
 
+async function checkWorkshopListing(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Workshop listing toggle',
+      category: 'Database',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify workshops.is_active: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { error } = await checkWithTimeout(() =>
+      client.from('workshops').select('id, is_active').limit(1),
+    );
+    const missing = Boolean(
+      error && /is_active/i.test(error.message || '') && /schema cache|does not exist|Could not find/i.test(error.message || ''),
+    );
+    if (missing) {
+      return {
+        name: 'Workshop listing toggle',
+        category: 'Database',
+        status: 'down',
+        responseTime: Date.now() - start,
+        message: 'workshops.is_active column missing',
+        reason: 'Run database/379_workshops_is_active.sql in Supabase SQL Editor so Super Admin can hide closed workshops without deleting them.',
+        quickFix: {
+          label: 'Open Workshops',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/workshops' },
+        },
+        lastChecked: new Date().toISOString(),
+        details: { error: error?.message },
+      };
+    }
+    if (error) {
+      return {
+        name: 'Workshop listing toggle',
+        category: 'Database',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: error.message,
+        reason: error.message,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Workshop listing toggle',
+      category: 'Database',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'workshops.is_active ready',
+      reason: 'Listing on/off column exists.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'Workshop listing toggle',
+      category: 'Database',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: e?.message || 'Check failed',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkCompetitorIntel(): Promise<HealthCheck> {
   const start = Date.now();
   const { client, configError } = getAdminClient();
@@ -4047,6 +4119,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkCronJobs(),
     checkFeatureCrons(),
     checkDailyBlog(),
+    checkWorkshopListing(),
     checkCompetitorIntel(),
     checkSitemap(),
     checkSSL(),

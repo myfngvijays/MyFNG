@@ -14,6 +14,7 @@ import {
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -110,7 +111,7 @@ export default function WorkshopManagementScreen({ navigation }: any) {
   const handleDisable = async (workshopId: string) => {
     Alert.alert(
       'Disable Workshop',
-      'This will stop all lead assignments to this workshop.',
+      'Hide this workshop from the customer app, website, and telecaller pincode list. It will not be deleted.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -118,18 +119,17 @@ export default function WorkshopManagementScreen({ navigation }: any) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase
+              await apiFetch('/api/super_admin/workshops/listing', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: workshopId, is_active: false }),
+              });
+              await supabase
                 .from('workshops')
-                .update({
-                  is_active: false,
-                  disabled_at: new Date().toISOString()
-                })
+                .update({ disabled_at: new Date().toISOString() })
                 .eq('id', workshopId);
-
-              if (!error) {
-                Alert.alert('Disabled', 'Workshop has been disabled');
-                fetchWorkshops();
-              }
+              Alert.alert('Hidden', 'Workshop is hidden from customer and telecaller lists');
+              fetchWorkshops();
             } catch (error) {
               Alert.alert('Error', 'Failed to disable workshop');
             }
@@ -141,18 +141,17 @@ export default function WorkshopManagementScreen({ navigation }: any) {
 
   const handleEnable = async (workshopId: string) => {
     try {
-      const { error } = await supabase
+      await apiFetch('/api/super_admin/workshops/listing', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workshopId, is_active: true }),
+      });
+      await supabase
         .from('workshops')
-        .update({
-          is_active: true,
-          disabled_at: null
-        })
+        .update({ disabled_at: null })
         .eq('id', workshopId);
-
-      if (!error) {
-        Alert.alert('Success', 'Workshop enabled successfully');
-        fetchWorkshops();
-      }
+      Alert.alert('Success', 'Workshop enabled successfully');
+      fetchWorkshops();
     } catch (error) {
       Alert.alert('Error', 'Failed to enable workshop');
     }
@@ -347,6 +346,10 @@ export default function WorkshopManagementScreen({ navigation }: any) {
           <Icon name="refresh" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
+
+      <Text style={{ paddingHorizontal: SPACING.md, paddingTop: 8, fontSize: 12, color: COLORS.textSecondary }}>
+        Active / Inactive hides a workshop from the customer app, website, and telecaller. It is not deleted.
+      </Text>
 
       {/* Search */}
       <View style={styles.searchContainer}>

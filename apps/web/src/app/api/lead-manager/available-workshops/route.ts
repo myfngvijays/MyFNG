@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         gst_number
       `)
       .eq('is_verified', true)
+      .eq('is_active', true)
       .order('audit_score', { ascending: false, nullsFirst: false })
       .order('name');
 

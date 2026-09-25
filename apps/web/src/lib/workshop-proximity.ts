@@ -59,8 +59,9 @@ export async function getWorkshopGeofenceRadiusM(supabaseAdmin: any): Promise<nu
 export async function loadWorkshopGeofencePoints(supabaseAdmin: any): Promise<WorkshopGeofencePoint[]> {
   const { data: workshops } = await supabaseAdmin
     .from('workshops')
-    .select('id, name, workshop_name, city, latitude, longitude, is_verified')
+    .select('id, name, workshop_name, city, latitude, longitude, is_verified, is_active')
     .eq('is_verified', true)
+    .eq('is_active', true)
     .not('latitude', 'is', null)
     .not('longitude', 'is', null)
     .limit(300);

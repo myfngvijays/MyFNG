@@ -50,3 +50,8 @@ export function isMyFngBrandedWorkshop(input: {
     .join(' ');
   return /my\s*fng|myfng/i.test(hay);
 }
+
+/** Off in Super Admin = hide from app, website locator, telecaller pincode. Not deleted. */
+export function isWorkshopPubliclyListed(w?: { is_active?: boolean | null } | null): boolean {
+  return w?.is_active !== false;
+}

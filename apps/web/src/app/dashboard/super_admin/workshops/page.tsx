@@ -14,6 +14,7 @@ export default function WorkshopManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
+  const [listingBusyId, setListingBusyId] = useState<string | null>(null);
   
   // Edit Modal State
   const [showEditModal, setShowEditModal] = useState(false);
@@ -51,8 +52,10 @@ export default function WorkshopManagementPage() {
         .order('created_at', { ascending: false });
 
       if (filterStatus === 'active') {
-        query = query.eq('is_verified', true);
+        query = query.eq('is_active', true);
       } else if (filterStatus === 'inactive') {
+        query = query.eq('is_active', false);
+      } else if (filterStatus === 'pending') {
         query = query.eq('is_verified', false);
       }
 
@@ -166,10 +169,20 @@ export default function WorkshopManagementPage() {
             editingWorkshop.commission_percentage === '' || editingWorkshop.commission_percentage == null
               ? null
               : Number(editingWorkshop.commission_percentage),
+          is_active: editingWorkshop.is_active !== false,
         })
         .eq('id', editingWorkshop.id);
 
       if (error) throw error;
+
+      await fetch('/api/super_admin/workshops/listing', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingWorkshop.id,
+          is_active: editingWorkshop.is_active !== false,
+        }),
+      });
       
       alert('Workshop updated successfully!');
       setShowEditModal(false);
@@ -184,24 +197,36 @@ export default function WorkshopManagementPage() {
   const handleApprove = async (workshopId: string) => {
     if (!confirm('Approve this workshop?')) return;
     try {
-      const { error } = await supabase.from('workshops').update({ is_verified: true }).eq('id', workshopId);
+      const { error } = await supabase
+        .from('workshops')
+        .update({ is_verified: true, is_active: true })
+        .eq('id', workshopId);
       if (!error) { alert('Approved!'); fetchWorkshops(); }
     } catch { alert('Failed'); }
   };
 
-  const handleDisable = async (workshopId: string) => {
-    if (!confirm('Disable this workshop?')) return;
+  const toggleWorkshopListing = async (workshop: any, next: boolean) => {
+    const id = String(workshop?.id || '');
+    if (!id || listingBusyId) return;
+    setListingBusyId(id);
+    setWorkshops((prev) => prev.map((w) => (w.id === id ? { ...w, is_active: next } : w)));
     try {
-      const { error } = await supabase.from('workshops').update({ is_verified: false }).eq('id', workshopId);
-      if (!error) { alert('Disabled!'); fetchWorkshops(); }
-    } catch { alert('Failed'); }
-  };
-
-  const handleEnable = async (workshopId: string) => {
-    try {
-      const { error } = await supabase.from('workshops').update({ is_verified: true }).eq('id', workshopId);
-      if (!error) { alert('Enabled!'); fetchWorkshops(); }
-    } catch { alert('Failed'); }
+      const res = await fetch('/api/super_admin/workshops/listing', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, is_active: next }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Could not update listing');
+      setWorkshops((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, is_active: json.is_active !== false } : w)),
+      );
+    } catch (err: any) {
+      setWorkshops((prev) => prev.map((w) => (w.id === id ? { ...w, is_active: !next } : w)));
+      alert(err?.message || 'Could not update listing. Try again.');
+    } finally {
+      setListingBusyId(null);
+    }
   };
 
   const escapeCsv = (value: any) => {
@@ -810,7 +835,9 @@ export default function WorkshopManagementPage() {
                 <Store className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 flex-shrink-0" />
                 <span className="truncate">Workshop Management</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Manage workshops, approvals, and zones</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
+                Toggle Active / Inactive to show or hide a workshop in the app, website, and telecaller. Nothing is deleted.
+              </p>
             </div>
             <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
               <AdminPageRefresh onClick={() => void fetchWorkshops()} loading={loading} />
@@ -968,6 +995,9 @@ export default function WorkshopManagementPage() {
             ))}
           </div>
         </div>
+        <p className="text-xs text-slate-500 -mt-2">
+          Active / Inactive toggle hides a workshop from the customer app, website locator, and telecaller pincode list. Workshop is not deleted.
+        </p>
 
         {/* Workshops Table - Desktop */}
         <div className="bg-white rounded-lg shadow overflow-hidden hidden lg:block">
@@ -978,7 +1008,7 @@ export default function WorkshopManagementPage() {
                   <th className="px-4 md:px-6 py-2 md:py-3">Workshop</th>
                   <th className="px-4 md:px-6 py-2 md:py-3">Contact</th>
                   <th className="px-4 md:px-6 py-2 md:py-3">Location / Zone</th>
-                  <th className="px-4 md:px-6 py-2 md:py-3">Status</th>
+                  <th className="px-4 md:px-6 py-2 md:py-3">Show in App</th>
                   <th className="px-4 md:px-6 py-2 md:py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -1009,20 +1039,29 @@ export default function WorkshopManagementPage() {
                       )}
                     </td>
                     <td className="px-4 md:px-6 py-3 md:py-4">
-                      <span className={`px-2 py-0.5 sm:py-1 text-xs font-semibold rounded-full ${workshop.is_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {workshop.is_verified ? 'Active' : 'Inactive'}
-                      </span>
+                      <button
+                        type="button"
+                        disabled={listingBusyId === workshop.id}
+                        onClick={() => toggleWorkshopListing(workshop, workshop.is_active === false)}
+                        className="inline-flex items-center gap-2 disabled:opacity-60"
+                        aria-pressed={workshop.is_active !== false}
+                      >
+                        <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${workshop.is_active !== false ? 'bg-green-600' : 'bg-slate-300'}`}>
+                          <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${workshop.is_active !== false ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                        </span>
+                        <span className={`text-xs font-semibold ${workshop.is_active !== false ? 'text-green-700' : 'text-slate-500'}`}>
+                          {workshop.is_active !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </button>
                     </td>
                     <td className="px-4 md:px-6 py-3 md:py-4 text-right text-xs sm:text-sm font-medium">
                       <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 sm:gap-2">
                         <button onClick={() => handleEditClick(workshop)} className="text-blue-600 hover:text-blue-900 whitespace-nowrap">
                           Edit
                         </button>
-                        {workshop.is_verified ? (
-                          <button onClick={() => handleDisable(workshop.id)} className="text-red-600 hover:text-red-900 whitespace-nowrap">Disable</button>
-                        ) : (
+                        {!workshop.is_verified ? (
                           <button onClick={() => handleApprove(workshop.id)} className="text-green-600 hover:text-green-900 whitespace-nowrap">Approve</button>
-                        )}
+                        ) : null}
                         <button onClick={() => router.push(`/dashboard/super_admin/inventory/pricing`)} className="text-purple-600 hover:text-purple-900 whitespace-nowrap">
                           Manage Rate
                         </button>
@@ -1057,9 +1096,20 @@ export default function WorkshopManagementPage() {
                     <div className="text-[11px] text-gray-400 mt-1">{workshop.short_address || workshop.workshop_area}</div>
                   )}
                 </div>
-                <span className={`px-2 py-1 inline-flex text-xs font-semibold rounded-full flex-shrink-0 ${workshop.is_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                  {workshop.is_verified ? 'Active' : 'Inactive'}
-                </span>
+                <button
+                  type="button"
+                  disabled={listingBusyId === workshop.id}
+                  onClick={() => toggleWorkshopListing(workshop, workshop.is_active === false)}
+                  className="inline-flex items-center gap-2 flex-shrink-0 disabled:opacity-60"
+                  aria-pressed={workshop.is_active !== false}
+                >
+                  <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${workshop.is_active !== false ? 'bg-green-600' : 'bg-slate-300'}`}>
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${workshop.is_active !== false ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </span>
+                  <span className={`text-xs font-semibold ${workshop.is_active !== false ? 'text-green-700' : 'text-slate-500'}`}>
+                    {workshop.is_active !== false ? 'Active' : 'Inactive'}
+                  </span>
+                </button>
               </div>
               
               <div className="space-y-2 mb-3">
@@ -1089,15 +1139,11 @@ export default function WorkshopManagementPage() {
                 <button onClick={() => handleEditClick(workshop)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-900 border border-blue-200 rounded-lg hover:bg-blue-50">
                   Edit
                 </button>
-                {workshop.is_verified ? (
-                  <button onClick={() => handleDisable(workshop.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-red-600 hover:text-red-900 border border-red-200 rounded-lg hover:bg-red-50">
-                    Disable
-                  </button>
-                ) : (
+                {!workshop.is_verified ? (
                   <button onClick={() => handleApprove(workshop.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-green-600 hover:text-green-900 border border-green-200 rounded-lg hover:bg-green-50">
                     Approve
                   </button>
-                )}
+                ) : null}
                 <button onClick={() => router.push(`/dashboard/super_admin/inventory/pricing`)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm text-purple-600 hover:text-purple-900 border border-purple-200 rounded-lg hover:bg-purple-50">
                   Manage Rate
                 </button>
@@ -1132,6 +1178,25 @@ export default function WorkshopManagementPage() {
               {/* Basic Info */}
               <div className="col-span-2">
                 <h3 className="text-xs sm:text-sm font-bold text-gray-500 uppercase mb-2 sm:mb-3">Basic Information</h3>
+                <label className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-800">Show in app / website / telecaller</span>
+                    <span className="block text-xs text-slate-500">Off hides it from customer and pincode lists. Workshop is not deleted.</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingWorkshop({
+                        ...editingWorkshop,
+                        is_active: editingWorkshop.is_active === false,
+                      })
+                    }
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${editingWorkshop.is_active !== false ? 'bg-green-600' : 'bg-slate-300'}`}
+                    aria-pressed={editingWorkshop.is_active !== false}
+                  >
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${editingWorkshop.is_active !== false ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </label>
               </div>
               
               <div className="col-span-2">

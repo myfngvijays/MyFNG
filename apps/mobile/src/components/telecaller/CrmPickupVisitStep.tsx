@@ -219,9 +219,10 @@ export default function CrmPickupVisitStep({
           const { data: rows } = await supabase
             .from('workshops')
             .select(
-              'id, name, city, address, pincode, service_pincode, mapping_pincodes, phone, is_verified',
+              'id, name, city, address, pincode, service_pincode, mapping_pincodes, phone, is_verified, is_active',
             )
             .eq('is_verified', true)
+            .eq('is_active', true)
             .limit(500);
 
           let all = Array.isArray(rows) ? rows : [];

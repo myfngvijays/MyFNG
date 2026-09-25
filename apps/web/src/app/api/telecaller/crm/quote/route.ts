@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
         .from('workshops')
         .select('id, name, city, phone, address, audit_score, one_day_capacity, is_verified')
         .eq('is_verified', true)
+        .eq('is_active', true)
         .order('audit_score', { ascending: false, nullsFirst: false })
         .limit(30);
       if (body?.city) q = q.ilike('city', `%${String(body.city)}%`);

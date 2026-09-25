@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { workshopPublicPageAddress, isMyFngBrandedWorkshop } from '@/lib/workshopDisplay';
+import { workshopPublicPageAddress, isMyFngBrandedWorkshop, isWorkshopPubliclyListed } from '@/lib/workshopDisplay';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,9 +19,10 @@ export async function GET() {
       supabaseAdmin
         .from('workshops')
         .select(
-          'id,name,workshop_name,workshop_area,near_famous_area,city,state,address,short_address,landmark,pincode,service_pincode,mapping_pincodes,latitude,longitude,map_link,near_area_google_map,is_verified,phone',
+          'id,name,workshop_name,workshop_area,near_famous_area,city,state,address,short_address,landmark,pincode,service_pincode,mapping_pincodes,latitude,longitude,map_link,near_area_google_map,is_verified,is_active,phone',
         )
         .eq('is_verified', true)
+        .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(250),
       supabaseAdmin
@@ -48,6 +49,7 @@ export async function GET() {
 
     const list = (workshops || [])
       .filter((w: any) => {
+        if (!isWorkshopPubliclyListed(w)) return false;
         const gmb = gmbByWorkshop.get(String(w.id)) || null;
         return isMyFngBrandedWorkshop({
           name: w.name,

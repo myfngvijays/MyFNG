@@ -1366,8 +1366,9 @@ export default function TelecallerLeadDetailScreen({
         const [{ data: rows }, { data: pageRows }] = await Promise.all([
           supabase
             .from('workshops')
-            .select('id, name, workshop_name, workshop_area, near_famous_area, city, state, address, short_address, landmark, pincode, phone, is_verified')
+            .select('id, name, workshop_name, workshop_area, near_famous_area, city, state, address, short_address, landmark, pincode, phone, is_verified, is_active')
             .eq('is_verified', true)
+            .eq('is_active', true)
             .limit(80),
           supabase
             .from('workshop_public_pages')

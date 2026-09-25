@@ -83,6 +83,7 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
           'id, name, workshop_name, short_address, address, city, pincode, service_pincode, mapping_pincodes, phone, working_time, map_link, near_area_google_map'
         )
         .eq('is_verified', true)
+        .eq('is_active', true)
         .limit(Math.max(limit * 4, 40));
 
       if (error) {
@@ -102,6 +103,7 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
       .from('workshops')
       .select('id, name, workshop_name, short_address, address, city, pincode, service_pincode, phone, working_time, map_link, near_area_google_map')
       .eq('is_verified', true)
+      .eq('is_active', true)
       .ilike('city', `%${city}%`)
       .limit(limit);
 
@@ -498,7 +500,8 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
     const { data: workshopCandidates } = await supabase
       .from('workshops')
       .select('id, name, pincode, service_pincode, mapping_pincodes, city')
-      .eq('is_verified', true);
+      .eq('is_verified', true)
+      .eq('is_active', true);
     const workshops = filterWorkshopsForPincode(workshopCandidates || [], pincode);
 
     if (!cityId && (!workshops || workshops.length === 0)) {
@@ -641,7 +644,8 @@ export async function getCityByPincode(pincode: string) {
     const { data: workshopCandidates } = await supabase
       .from('workshops')
       .select('id, city, service_pincode, mapping_pincodes')
-      .eq('is_verified', true);
+      .eq('is_verified', true)
+      .eq('is_active', true);
 
     const matchedWorkshop = filterWorkshopsForPincode(workshopCandidates || [], pincode)[0];
     if (!matchedWorkshop?.city) return null;

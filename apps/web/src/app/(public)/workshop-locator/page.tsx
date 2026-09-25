@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { MapPin, Search, Star, Phone, ArrowRight, Sparkles, Loader2, SlidersHorizontal, X } from 'lucide-react';
 import WorkshopMap, { type WorkshopMapMarker } from '@/components/workshops/WorkshopMap';
-import { isMyFngBrandedWorkshop, workshopPublicPageAddress } from '@/lib/workshopDisplay';
+import { isMyFngBrandedWorkshop, isWorkshopPubliclyListed, workshopPublicPageAddress } from '@/lib/workshopDisplay';
 
 type WorkshopPublicPageRow = {
   id: string;
@@ -174,7 +174,7 @@ export default function WorkshopsPage() {
             cover_image,
             views_count,
             gmb_data,
-            workshop:workshops(name,workshop_name,is_verified,address,short_address,workshop_area,near_famous_area,landmark,city,state,pincode,phone,latitude,longitude,map_link)
+            workshop:workshops(name,workshop_name,is_verified,is_active,address,short_address,workshop_area,near_famous_area,landmark,city,state,pincode,phone,latitude,longitude,map_link)
           `
           )
           .eq('is_published', true)
@@ -187,6 +187,7 @@ export default function WorkshopsPage() {
         const list = ((data as any) ?? []).filter((row: any) => {
           const w = row?.workshop;
           if (w?.is_verified === false) return false;
+          if (!isWorkshopPubliclyListed(w)) return false;
           return isMyFngBrandedWorkshop({
             name: w?.name,
             workshop_name: w?.workshop_name,

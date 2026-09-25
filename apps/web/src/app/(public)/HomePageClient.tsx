@@ -441,8 +441,9 @@ export default function HomePage() {
         const supabase = createClient();
         const { data, error } = await supabase
           .from('workshops')
-          .select('id,name,workshop_name,latitude,longitude,map_link,is_verified')
+          .select('id,name,workshop_name,latitude,longitude,map_link,is_verified,is_active')
           .eq('is_verified', true)
+          .eq('is_active', true)
           .limit(500);
         if (error) throw error;
         if (cancelled) return;

@@ -21,7 +21,7 @@ import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottom
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { WebView } from 'react-native-webview';
 import { trackEvent } from '../lib/trackEvent';
-import { workshopPublicPageAddress, isMyFngBrandedWorkshop } from '../lib/workshopDisplay';
+import { workshopPublicPageAddress, isMyFngBrandedWorkshop, isWorkshopPubliclyListed } from '../lib/workshopDisplay';
 import { ENV } from '../config/environment';
 
 type Props = {
@@ -456,9 +456,10 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
           supabase
             .from('workshops')
             .select(
-              'id,name,workshop_name,workshop_area,near_famous_area,city,state,address,short_address,landmark,pincode,service_pincode,mapping_pincodes,latitude,longitude,map_link,near_area_google_map,is_verified,phone',
+              'id,name,workshop_name,workshop_area,near_famous_area,city,state,address,short_address,landmark,pincode,service_pincode,mapping_pincodes,latitude,longitude,map_link,near_area_google_map,is_verified,is_active,phone',
             )
             .eq('is_verified', true)
+            .eq('is_active', true)
             .order('created_at', { ascending: false })
             .limit(250),
           supabase
@@ -479,6 +480,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
 
         loaded = ((data as any[]) || [])
           .filter((w) =>
+            isWorkshopPubliclyListed(w) &&
             isMyFngBrandedWorkshop({
               name: w.name,
               workshop_name: w.workshop_name,

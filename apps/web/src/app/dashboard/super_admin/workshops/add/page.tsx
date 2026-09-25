@@ -178,7 +178,8 @@ export default function AddWorkshopPage() {
         ifsc_code: formData.ifsc_code || null,
         upi_id: formData.upi_id || null,
         
-        is_verified: true // Auto-verify when added by Super Admin
+        is_verified: true, // Auto-verify when added by Super Admin
+        is_active: true,
       };
 
       const { error } = await supabase

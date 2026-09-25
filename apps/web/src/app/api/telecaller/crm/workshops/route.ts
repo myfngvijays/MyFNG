@@ -36,9 +36,10 @@ export async function GET(request: NextRequest) {
     const { data: rows, error } = await db
       .from('workshops')
       .select(
-        'id, name, workshop_name, workshop_area, near_famous_area, city, state, address, short_address, landmark, pincode, service_pincode, mapping_pincodes, phone, is_verified, audit_score, one_day_capacity, latitude, longitude',
+        'id, name, workshop_name, workshop_area, near_famous_area, city, state, address, short_address, landmark, pincode, service_pincode, mapping_pincodes, phone, is_verified, is_active, audit_score, one_day_capacity, latitude, longitude',
       )
       .eq('is_verified', true)
+      .eq('is_active', true)
       .order('audit_score', { ascending: false, nullsFirst: false })
       .limit(500);
 
