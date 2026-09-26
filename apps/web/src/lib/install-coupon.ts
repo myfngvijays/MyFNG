@@ -14,8 +14,31 @@ import { getWalletConfig, parseWalletPlatform, type WalletPlatform } from '@/lib
 const MAX_INSTALL_CREDIT = 10000;
 const FIRST_LOGIN_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
-export function installCouponIdempotencyKey(customerId: string) {
-  return `install-coupon:${customerId}`;
+export function installCouponIdempotencyKey(customerId: string, code?: string) {
+  const normalized = normalizeCode(code);
+  return normalized ? `install-coupon:${customerId}:${normalized}` : `install-coupon:${customerId}`;
+}
+
+function isInstallCouponIdempotencyKey(customerId: string, key: unknown) {
+  return String(key || '').startsWith(`install-coupon:${customerId}`);
+}
+
+function couponCodeFromCredit(row: {
+  idempotency_key?: string | null;
+  metadata?: unknown;
+}) {
+  const meta =
+    row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const fromMeta = normalizeCode(meta.coupon_code);
+  if (fromMeta) return fromMeta;
+  const key = String(row.idempotency_key || '');
+  const prefix = `install-coupon:`;
+  if (!key.startsWith(prefix)) return '';
+  const rest = key.slice(prefix.length);
+  const colon = rest.indexOf(':');
+  return colon >= 0 ? normalizeCode(rest.slice(colon + 1)) : '';
 }
 
 function normalizeCode(code: unknown) {
@@ -69,17 +92,31 @@ async function loadCustomerRow(
   };
 }
 
-async function findExistingInstallCredit(
+async function listInstallCredits(
   supabaseAdmin: SupabaseClient,
   customerId: string,
 ) {
   const { data } = await supabaseAdmin
     .from('wallet_transactions')
-    .select('id, amount, balance_after, metadata')
+    .select('id, amount, balance_after, metadata, idempotency_key')
     .eq('customer_id', customerId)
-    .eq('idempotency_key', installCouponIdempotencyKey(customerId))
-    .maybeSingle();
-  return data || null;
+    .eq('transaction_type', 'CREDIT')
+    .like('idempotency_key', `install-coupon:${customerId}%`);
+  return data || [];
+}
+
+function claimedInstallCodes(
+  rows: Array<{ idempotency_key?: string | null; metadata?: unknown }>,
+  fallbackCode?: string | null,
+) {
+  const codes = new Set<string>();
+  for (const row of rows) {
+    const code = couponCodeFromCredit(row);
+    if (code) codes.add(code);
+  }
+  const fallback = normalizeCode(fallbackCode);
+  if (fallback) codes.add(fallback);
+  return [...codes];
 }
 
 export async function getInstallCouponEligibility(
@@ -91,13 +128,15 @@ export async function getInstallCouponEligibility(
     return { eligible: false, can_claim: false, already_claimed: false, reason: 'not_found' as const };
   }
 
-  const existing = await findExistingInstallCredit(supabaseAdmin, customerId);
-  if (customer.install_coupon_code || existing) {
+  const existing = await listInstallCredits(supabaseAdmin, customerId);
+  const codes = claimedInstallCodes(existing, customer.install_coupon_code);
+  if (codes.length) {
     return {
       eligible: false,
-      can_claim: false,
+      can_claim: true,
       already_claimed: true,
-      code: customer.install_coupon_code || null,
+      code: codes[codes.length - 1] || null,
+      codes,
       reason: 'already_claimed' as const,
     };
   }
@@ -109,11 +148,12 @@ export async function getInstallCouponEligibility(
       eligible: false,
       can_claim: true,
       already_claimed: false,
+      codes: [] as string[],
       reason: 'window_closed' as const,
     };
   }
 
-  return { eligible: true, can_claim: true, already_claimed: false, reason: 'ok' as const };
+  return { eligible: true, can_claim: true, already_claimed: false, codes: [] as string[], reason: 'ok' as const };
 }
 
 export async function claimInstallCoupon(opts: {
@@ -132,11 +172,12 @@ export async function claimInstallCoupon(opts: {
     return { ok: false as const, error: 'Customer not found.', status: 404 };
   }
 
-  const existing = await findExistingInstallCredit(opts.supabaseAdmin, customer.id);
-  if (customer.install_coupon_code || existing) {
+  const existingCredits = await listInstallCredits(opts.supabaseAdmin, customer.id);
+  const alreadyUsed = claimedInstallCodes(existingCredits, customer.install_coupon_code);
+  if (alreadyUsed.includes(code)) {
     return {
       ok: false as const,
-      error: 'A first-login coupon was already applied on this account.',
+      error: 'You have already used this coupon.',
       status: 409,
     };
   }
@@ -226,7 +267,7 @@ export async function claimInstallCoupon(opts: {
     .eq('source', config.WELCOME_SOURCE);
   const welcomeAlready = roundMoney(
     (welcomeRows || [])
-      .filter((row: { idempotency_key?: string }) => row.idempotency_key !== installCouponIdempotencyKey(customer.id))
+      .filter((row: { idempotency_key?: string }) => !isInstallCouponIdempotencyKey(customer.id, row.idempotency_key))
       .reduce((sum: number, row: { amount?: number }) => sum + Number(row.amount || 0), 0),
   );
   const expiresAt =
@@ -235,7 +276,7 @@ export async function claimInstallCoupon(opts: {
 
   const credited = await creditWallet(opts.supabaseAdmin, customer.id, amount, {
     source: config.WELCOME_SOURCE,
-    idempotencyKey: installCouponIdempotencyKey(customer.id),
+    idempotencyKey: installCouponIdempotencyKey(customer.id, code),
     sourceRefId: String(coupon.id),
     expiresAt,
     metadata: {
@@ -260,17 +301,19 @@ export async function claimInstallCoupon(opts: {
         customer_phone: customerPhone,
         wallet_credit: amount,
       },
-      idempotencyKey: installCouponIdempotencyKey(customer.id),
+      idempotencyKey: installCouponIdempotencyKey(customer.id, code),
     });
     if (!redeem.success) {
       console.warn('[claimInstallCoupon] redemption audit failed:', redeem.error);
     }
 
     const patch: Record<string, unknown> = {
-      install_coupon_code: code,
-      install_coupon_type: typeSlug,
       updated_at: nowIso,
     };
+    if (!customer.install_coupon_code) {
+      patch.install_coupon_code = code;
+      patch.install_coupon_type = typeSlug;
+    }
     if (typeSlug === 'society') patch.society_code = code;
     const { error: tagErr } = await opts.supabaseAdmin
       .from('customers')
@@ -294,5 +337,6 @@ export async function claimInstallCoupon(opts: {
     wallet_total: walletTotal,
     expires_at: expiresAt,
     society: typeSlug === 'society',
+    codes: [...alreadyUsed, code],
   };
 }

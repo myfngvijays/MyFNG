@@ -199,21 +199,27 @@ function RedeemInstallCodeCard({ onApplied }: { onApplied?: () => void }) {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [claimedCode, setClaimedCode] = useState<string | null>(null);
-  const [canClaim, setCanClaim] = useState(true);
+  const [claimedCodes, setClaimedCodes] = useState<string[]>([]);
+  const [applyError, setApplyError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch<{ can_claim?: boolean; already_claimed?: boolean; code?: string | null }>(
-          '/api/customer/wallet/claim-install-coupon',
-        );
+        const res = await apiFetch<{
+          already_claimed?: boolean;
+          code?: string | null;
+          codes?: string[];
+        }>('/api/customer/wallet/claim-install-coupon');
         if (cancelled) return;
-        setCanClaim(res?.can_claim !== false && !res?.already_claimed);
-        if (res?.already_claimed) setClaimedCode(res.code || 'applied');
+        const next = Array.isArray(res?.codes)
+          ? res.codes.filter(Boolean)
+          : res?.code
+            ? [res.code]
+            : [];
+        if (next.length) setClaimedCodes(next);
       } catch {
-        if (!cancelled) setCanClaim(true);
+        /* keep the input available */
       } finally {
         if (!cancelled) setChecking(false);
       }
@@ -224,16 +230,18 @@ function RedeemInstallCodeCard({ onApplied }: { onApplied?: () => void }) {
   const apply = async () => {
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) {
-      Alert.alert('Coupon', 'Enter a festive or society code');
+      setApplyError('Enter a festive or society code');
       return;
     }
     setLoading(true);
+    setApplyError('');
     try {
       const res = await apiFetch<{
         coupon_amount?: number;
         welcome_amount?: number;
         wallet_total?: number;
         coupon_code?: string;
+        codes?: string[];
       }>('/api/customer/wallet/claim-install-coupon', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,8 +249,10 @@ function RedeemInstallCodeCard({ onApplied }: { onApplied?: () => void }) {
       });
       const extra = Number(res?.coupon_amount || 0);
       const total = Number(res?.wallet_total || 0);
-      setClaimedCode(res?.coupon_code || trimmed);
-      setCanClaim(false);
+      const next = Array.isArray(res?.codes) && res.codes.length
+        ? res.codes.filter(Boolean)
+        : [...claimedCodes, res?.coupon_code || trimmed];
+      setClaimedCodes(Array.from(new Set(next.map((c) => String(c).toUpperCase()))));
       setCode('');
       Alert.alert(
         'Added to wallet',
@@ -250,7 +260,7 @@ function RedeemInstallCodeCard({ onApplied }: { onApplied?: () => void }) {
       );
       onApplied?.();
     } catch (e: any) {
-      Alert.alert('Coupon', e?.message || 'Could not apply this coupon.');
+      setApplyError(e?.message || 'Could not apply this coupon.');
     } finally {
       setLoading(false);
     }
@@ -258,31 +268,29 @@ function RedeemInstallCodeCard({ onApplied }: { onApplied?: () => void }) {
 
   if (checking) return null;
 
-  if (!canClaim && claimedCode) {
-    return (
-      <View style={styles.redeemCard}>
-        <View style={styles.redeemDoneRow}>
-          <Ionicons name="checkmark-circle" size={18} color="#059669" />
-          <Text style={styles.redeemDoneText}>
-            Wallet code applied{claimedCode && claimedCode !== 'applied' ? `: ${claimedCode}` : ''}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.redeemCard}>
       <Text style={styles.redeemTitle}>Have a festive or society code?</Text>
       <Text style={styles.redeemSub}>
         Missed it at login? Enter here — amount adds to your welcome wallet.
       </Text>
+      {claimedCodes.length ? (
+        <View style={styles.redeemDoneRow}>
+          <Ionicons name="checkmark-circle" size={18} color="#059669" />
+          <Text style={styles.redeemDoneText}>
+            Wallet code applied: {claimedCodes.join(', ')}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.redeemRow}>
         <TextInput
           style={styles.redeemInput}
           value={code}
-          onChangeText={setCode}
-          placeholder="Enter code"
+          onChangeText={(value) => {
+            setCode(value);
+            if (applyError) setApplyError('');
+          }}
+          placeholder={claimedCodes.length ? 'Enter another code' : 'Enter code'}
           placeholderTextColor="#94A3B8"
           autoCapitalize="characters"
           autoCorrect={false}
@@ -301,6 +309,7 @@ function RedeemInstallCodeCard({ onApplied }: { onApplied?: () => void }) {
           )}
         </TouchableOpacity>
       </View>
+      {applyError ? <Text style={styles.redeemError}>{applyError}</Text> : null}
     </View>
   );
 }
@@ -559,10 +568,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  redeemError: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
   redeemDoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginTop: 10,
   },
   redeemDoneText: {
     flex: 1,

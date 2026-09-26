@@ -51,11 +51,7 @@ export function InstallCouponModal({ visible, onClose, welcomeAmount = 1000 }: P
       setApplied(res || { coupon_code: trimmed });
     } catch (e: any) {
       const msg = String(e?.message || '');
-      if (msg.toLowerCase().includes('already')) {
-        setError('A first-login coupon was already applied on this account.');
-      } else {
-        setError(msg || 'Could not apply this coupon.');
-      }
+      setError(msg || 'Could not apply this coupon.');
     } finally {
       setLoading(false);
     }
