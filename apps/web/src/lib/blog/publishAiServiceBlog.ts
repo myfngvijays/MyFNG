@@ -155,17 +155,14 @@ function isSlugTakenError(error: { message?: string; code?: string } | null | un
 async function uniqueSlug(supabaseAdmin: any, base: string, runDate: string): Promise<string> {
   const compact = runDate.replace(/-/g, '');
   const root = (base || `daily-car-service`).replace(/-+$/g, '') || 'daily-car-service';
-  const variants = [
-    root,
-    `${root}-${compact}`,
-    `${root}-${compact}-${Date.now().toString(36)}`,
-    `${root}-${compact}-${Math.random().toString(36).slice(2, 7)}`,
-  ];
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const preferred = `${root}-${compact}-${suffix}`;
+  const variants = [preferred, `${root}-${compact}`, root];
   for (const candidate of variants) {
     const { data } = await supabaseAdmin.from('blogs').select('id').eq('slug', candidate).maybeSingle();
     if (!data?.id) return candidate;
   }
-  return `${root}-${compact}-${Date.now().toString(36)}`;
+  return `${root}-${compact}-${suffix}-${Math.random().toString(36).slice(2, 5)}`;
 }
 
 async function ensureTagIds(supabaseAdmin: any, names: string[]): Promise<string[]> {

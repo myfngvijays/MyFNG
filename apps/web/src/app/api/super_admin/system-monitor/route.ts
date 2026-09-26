@@ -1551,10 +1551,20 @@ async function checkDailyBlog(): Promise<HealthCheck> {
     const crononHourly = !crononJob?.schedule || /^\d+ \* \* \* \*$/.test(String(crononJob.schedule));
     const crononNarrow = Boolean(crononJob) && !crononHourly && schedule.posts_per_day > 1;
     let logsMissing = false;
+    let cronAuthDenied = false;
     let missedRecentDays = 0;
     try {
       const logsRes = await client.from('daily_blog_cron_logs').select('id', { count: 'exact', head: true });
       logsMissing = Boolean(logsRes.error && /does not exist|relation|42P01|PGRST205/i.test(logsRes.error.message || ''));
+      if (!logsRes.error) {
+        const recentAuth = await client
+          .from('daily_blog_cron_logs')
+          .select('reason, created_at')
+          .eq('reason', 'cron_auth_denied')
+          .gte('created_at', new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString())
+          .limit(3);
+        cronAuthDenied = (recentAuth.data || []).length >= 2;
+      }
     } catch {
       logsMissing = true;
     }
@@ -1594,13 +1604,15 @@ async function checkDailyBlog(): Promise<HealthCheck> {
     } catch {
       missedRecentDays = 0;
     }
-    const unhealthy = failed || missedToday || crononMissing || crononOff || crononNarrow || missedRecentDays > 0;
+    const unhealthy = failed || missedToday || crononMissing || crononOff || crononNarrow || missedRecentDays > 0 || cronAuthDenied;
     return {
       name: 'Daily Blog Auto-Post',
       category: 'Background Jobs',
       status: unhealthy ? 'degraded' : 'healthy',
       responseTime,
-      message: crononMissing
+      message: cronAuthDenied
+        ? 'Hourly blog cron is getting Unauthorized'
+        : crononMissing
         ? 'Cronon job missing'
         : crononOff
           ? 'Cronon job paused'
@@ -1615,7 +1627,9 @@ async function checkDailyBlog(): Promise<HealthCheck> {
                   : enabled
                     ? `Scheduled ${schedule.posts_per_day} blog${schedule.posts_per_day > 1 ? 's' : ''} · ${schedule.label}`
                     : 'Auto-post paused',
-      reason: crononMissing
+      reason: cronAuthDenied
+        ? 'Cronon is calling /api/cron/daily-blog with the wrong CRON_SECRET, so slots never post. Vercel cron + cart catch-up now also fill yesterday’s missed slots.'
+        : crononMissing
         ? 'Supabase Cronon has no daily-blog-auto-post job. Other live crons (WhatsApp, health) run from Cronon. Run database/368_daily_blog_pg_cron.sql in SQL Editor.'
         : crononOff
           ? 'Supabase Cronon job daily-blog-auto-post is inactive. Enable it on Integrations → Cronon.'
@@ -1650,6 +1664,7 @@ async function checkDailyBlog(): Promise<HealthCheck> {
         cronon_schedule: crononJob?.schedule || null,
         cronon_active: crononJob?.active ?? null,
         cron_logs_table: logsMissing ? 'missing' : 'ok',
+        cron_auth_denied: cronAuthDenied,
         missed_recent_days: missedRecentDays,
       },
     };

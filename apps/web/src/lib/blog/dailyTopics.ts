@@ -123,6 +123,16 @@ export function istDateString(now = new Date()): string {
   }).format(now);
 }
 
+/** IST calendar date minus whole days, e.g. 1 → yesterday. */
+export function istDateDaysAgo(days: number, now = new Date()): string {
+  const today = istDateString(now);
+  const [y, m, d] = today.split('-').map(Number);
+  const utc = Date.UTC(y, m - 1, d) - Math.max(0, Number(days) || 0) * 86400000;
+  const dt = new Date(utc);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+}
+
 export function nextTenAmIstIso(now = new Date()): string {
   const date = istDateString(now);
   const [y, m, d] = date.split('-').map(Number);

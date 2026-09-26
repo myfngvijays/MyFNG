@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertCronAuth } from '@/lib/cron/assertCronAuth';
-import { runDailyBlogPost } from '@/lib/blog/runDailyBlogPost';
+import { assertCronAuth, cronAuthDebug } from '@/lib/cron/assertCronAuth';
+import { maybeCatchUpDailyBlog, runDailyBlogPost } from '@/lib/blog/runDailyBlogPost';
 import { logDailyBlogEvent } from '@/lib/blog/dailyBlogLog';
 
 export const dynamic = 'force-dynamic';
@@ -21,12 +21,15 @@ async function handle(request: NextRequest) {
       status: 'failed',
       reason: 'cron_auth_denied',
       error: String(authError),
+      details: cronAuthDebug(request),
     });
     return NextResponse.json({ error: authError }, { status: 401 });
   }
 
   const force = request.nextUrl.searchParams.get('force') === '1';
-  const result = await runDailyBlogPost({ force, source: 'cron' });
+  const result = force
+    ? await runDailyBlogPost({ force, source: 'cron' })
+    : await maybeCatchUpDailyBlog({ source: 'cron' });
 
   return NextResponse.json(
     { ...result, timestamp: new Date().toISOString() },

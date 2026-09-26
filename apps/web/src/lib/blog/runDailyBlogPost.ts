@@ -3,6 +3,7 @@ import { dailyCityScheduleLabel, pickDailyCity } from '@/lib/blog/dailyCities';
 import { DAILY_BLOG_COVERS, pickDailyCover, uploadDailyCoverWebp } from '@/lib/blog/dailyCovers';
 import {
   dayOfYearIst,
+  istDateDaysAgo,
   istDateString,
   pickDailyTopic,
 } from '@/lib/blog/dailyTopics';
@@ -13,7 +14,7 @@ import {
 } from '@/lib/blog/dailyUspTopics';
 import { publishAiServiceBlog, type DailyBlogRunResult, type DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
-import { firstDueSlot, nextDailySlotIso, overdueSlotIndexes, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
+import { firstDueSlot, nextDailySlotIso, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
 import { logDailyBlogEvent, type DailyBlogLogSource } from '@/lib/blog/dailyBlogLog';
 
 export type { DailyBlogRunResult, DailyBlogSettings };
@@ -191,28 +192,35 @@ export async function maybeCatchUpDailyBlog(opts?: {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { skipped: true, reason: 'admin_missing' };
 
-  const runDate = istDateString();
-  let runsRes = await supabaseAdmin
-    .from('daily_blog_runs')
-    .select('status, slot_index')
-    .eq('run_date', runDate);
-  if (runsRes.error) {
-    runsRes = await supabaseAdmin.from('daily_blog_runs').select('status').eq('run_date', runDate);
+  for (const daysAgo of [1, 0]) {
+    const runDate = istDateDaysAgo(daysAgo);
+    let runsRes = await supabaseAdmin
+      .from('daily_blog_runs')
+      .select('status, slot_index')
+      .eq('run_date', runDate);
+    if (runsRes.error) {
+      runsRes = await supabaseAdmin.from('daily_blog_runs').select('status').eq('run_date', runDate);
+    }
+    const postedIndexes = (runsRes.data || [])
+      .filter((row: any) => row.status === 'success')
+      .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
+    const ignoreClock = daysAgo > 0;
+    const due = firstDueSlot(schedule, postedIndexes, new Date(), ignoreClock);
+    if (due) {
+      return runDailyBlogPost({ source, runDate, ignoreClock });
+    }
   }
-  const postedIndexes = (runsRes.data || [])
-    .filter((row: any) => row.status === 'success')
-    .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
-  const overdue = overdueSlotIndexes(schedule, postedIndexes);
-  if (!overdue.length) return { skipped: true, reason: 'no_overdue_slot' };
-
-  return runDailyBlogPost({ source });
+  return { skipped: true, reason: 'no_overdue_slot' };
 }
 
 export async function runDailyBlogPost(opts?: {
   force?: boolean;
   source?: DailyBlogLogSource;
+  runDate?: string;
+  ignoreClock?: boolean;
 }): Promise<DailyBlogRunResult> {
   const force = Boolean(opts?.force);
+  const ignoreClock = Boolean(opts?.ignoreClock || opts?.force);
   const source = opts?.source || 'cron';
   const started = Date.now();
   const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
@@ -254,8 +262,10 @@ export async function runDailyBlogPost(opts?: {
   }
 
   const settings = loaded.settings;
-  const runDate = istDateString();
-  const day = dayOfYearIst();
+  const runDate = /^\d{4}-\d{2}-\d{2}$/.test(String(opts?.runDate || ''))
+    ? String(opts?.runDate)
+    : istDateString();
+  const day = dayOfYearIst(new Date(`${runDate}T12:00:00+05:30`));
 
   if (!settings.enabled && !force) {
     await logDailyBlogEvent({
@@ -304,7 +314,7 @@ export async function runDailyBlogPost(opts?: {
     });
   }
 
-  const due = firstDueSlot(schedule, postedIndexes, new Date(), force);
+  const due = firstDueSlot(schedule, postedIndexes, new Date(), ignoreClock);
   if (!due) {
     const done = postedIndexes.length >= schedule.posts_per_day;
     const reason = done ? 'already_posted_today' : 'waiting_for_next_slot';
