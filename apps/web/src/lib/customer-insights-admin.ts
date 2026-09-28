@@ -3,7 +3,7 @@ import { enrichBookingLead, enrichLeadsServiceDisplay, getLeadVehicleLabel, getL
 import { getPostBookingMembershipConfig } from './post-booking-membership-config';
 import { syncServiceLeadMembershipPricingForAdmin, resolveAdminBookingPayableAmount } from './post-booking-membership-offer';
 import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
-import { resolveAppPlatform, type AppPlatform } from './app-platform';
+import { normalizeAppPlatform, resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
 import { loadCrmManualReferencesForCustomer } from './crm-manual-references';
 import { parseReferredBy } from './telecaller/crmLeadReference';
@@ -15,14 +15,16 @@ import {
 } from './report-date-range';
 
 /** App Settings toggle + whether an active FCM device token exists. */
-export type CustomerPushStatus = 'ON' | 'OFF' | 'NO_TOKEN';
+export type CustomerPushStatus = 'ON' | 'OFF' | 'NO_TOKEN' | 'UNINSTALLED';
 
 export function resolveCustomerPushStatus(
   pushEnabled: boolean | null | undefined,
   hasActiveDevice: boolean,
+  hadInactiveDevice = false,
 ): CustomerPushStatus {
+  if (hasActiveDevice) return pushEnabled === false ? 'OFF' : 'ON';
   if (pushEnabled === false) return 'OFF';
-  if (hasActiveDevice) return 'ON';
+  if (hadInactiveDevice) return 'UNINSTALLED';
   return 'NO_TOKEN';
 }
 
@@ -45,11 +47,28 @@ export function applyExcludeReferralTestDummies(query: any) {
 }
 
 const IN_QUERY_CHUNK = 80;
+const PAGE_SIZE = 1000;
+const FETCH_ALL_CAP = 250_000;
 
 function chunkIds(ids: string[], size = IN_QUERY_CHUNK): string[][] {
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
   return chunks;
+}
+
+/** PostgREST caps a single select (often 1000 or 10000). Page until exhausted. */
+export async function fetchAllPaged<T = any>(build: () => any): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; from < FETCH_ALL_CAP; from += PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1);
+    if (error) {
+      throw new Error(error.message || 'Paged fetch failed');
+    }
+    const batch = (data || []) as T[];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return rows;
 }
 
 async function selectByIdChunks(
@@ -92,57 +111,95 @@ export async function resolveListFilterCustomerIds(
   }
 
   if (normalized === 'WITH_MEMBERSHIP') {
-    const { data } = await supabaseAdmin
-      .from('customer_memberships')
-      .select('customer_id')
-      .eq('status', 'ACTIVE')
-      .gt('ends_at', new Date().toISOString())
-      .limit(10000);
-    return uniqueIds(data || []);
+    const data = await fetchAllPaged(() =>
+      supabaseAdmin
+        .from('customer_memberships')
+        .select('customer_id')
+        .eq('status', 'ACTIVE')
+        .gt('ends_at', new Date().toISOString())
+        .order('customer_id'),
+    );
+    return uniqueIds(data);
   }
 
   if (normalized === 'WITH_WALLET') {
-    const { data } = await supabaseAdmin
-      .from('wallet_accounts')
-      .select('customer_id')
-      .gt('current_balance', 0)
-      .limit(10000);
-    return uniqueIds(data || []);
+    const data = await fetchAllPaged(() =>
+      supabaseAdmin.from('wallet_accounts').select('customer_id').gt('current_balance', 0).order('customer_id'),
+    );
+    return uniqueIds(data);
   }
 
   if (normalized === 'WITH_COUPON') {
-    const { data } = await supabaseAdmin
-      .from('customer_coupon_assignments')
-      .select('customer_id')
-      .limit(10000);
-    return uniqueIds(data || []);
+    const data = await fetchAllPaged(() =>
+      supabaseAdmin.from('customer_coupon_assignments').select('customer_id').order('customer_id'),
+    );
+    return uniqueIds(data);
   }
 
   if (normalized === 'PUSH_OFF') {
-    const { data } = await supabaseAdmin
-      .from('customer_notification_preferences')
-      .select('customer_id')
-      .eq('push_enabled', false)
-      .limit(10000);
-    return uniqueIds(data || []);
-  }
-
-  if (normalized === 'PUSH_ON') {
-    const [{ data: devices }, { data: offPrefs }] = await Promise.all([
-      supabaseAdmin
-        .from('notification_devices')
-        .select('customer_id')
-        .eq('platform', MOBILE_PUSH_PLATFORM)
-        .eq('is_active', true)
-        .limit(20000),
+    const data = await fetchAllPaged(() =>
       supabaseAdmin
         .from('customer_notification_preferences')
         .select('customer_id')
         .eq('push_enabled', false)
-        .limit(10000),
+        .order('customer_id'),
+    );
+    return uniqueIds(data);
+  }
+
+  if (normalized === 'PUSH_ON') {
+    const [devices, offPrefs] = await Promise.all([
+      fetchAllPaged(() =>
+        supabaseAdmin
+          .from('notification_devices')
+          .select('customer_id')
+          .eq('platform', MOBILE_PUSH_PLATFORM)
+          .eq('is_active', true)
+          .order('id'),
+      ),
+      fetchAllPaged(() =>
+        supabaseAdmin
+          .from('customer_notification_preferences')
+          .select('customer_id')
+          .eq('push_enabled', false)
+          .order('customer_id'),
+      ),
     ]);
-    const off = new Set(uniqueIds(offPrefs || []));
-    return uniqueIds(devices || []).filter((id) => !off.has(id));
+    const off = new Set(uniqueIds(offPrefs));
+    return uniqueIds(devices).filter((id) => !off.has(id));
+  }
+
+  if (normalized === 'UNINSTALLED') {
+    const [inactive, active, offPrefs] = await Promise.all([
+      fetchAllPaged(() =>
+        supabaseAdmin
+          .from('notification_devices')
+          .select('customer_id')
+          .eq('platform', MOBILE_PUSH_PLATFORM)
+          .eq('is_active', false)
+          .not('customer_id', 'is', null)
+          .order('id'),
+      ),
+      fetchAllPaged(() =>
+        supabaseAdmin
+          .from('notification_devices')
+          .select('customer_id')
+          .eq('platform', MOBILE_PUSH_PLATFORM)
+          .eq('is_active', true)
+          .not('customer_id', 'is', null)
+          .order('id'),
+      ),
+      fetchAllPaged(() =>
+        supabaseAdmin
+          .from('customer_notification_preferences')
+          .select('customer_id')
+          .eq('push_enabled', false)
+          .order('customer_id'),
+      ),
+    ]);
+    const activeSet = new Set(uniqueIds(active));
+    const off = new Set(uniqueIds(offPrefs));
+    return uniqueIds(inactive).filter((id) => !activeSet.has(id) && !off.has(id));
   }
 
   return null;
@@ -179,7 +236,8 @@ async function fetchCustomerSessions(
   customerIds?: string[],
 ): Promise<Array<{ customer_id: string; user_agent?: string | null; app_platform?: string | null; created_at?: string }>> {
   const load = async (select: string) => {
-    if (customerIds?.length) {
+    if (Array.isArray(customerIds)) {
+      if (!customerIds.length) return { ok: true as const, data: [] };
       const rows: any[] = [];
       for (const slice of chunkIds(customerIds)) {
         const { data, error } = await supabaseAdmin
@@ -192,12 +250,14 @@ async function fetchCustomerSessions(
       }
       return { ok: true as const, data: rows };
     }
-    const { data, error } = await supabaseAdmin
-      .from('customer_sessions')
-      .select(select)
-      .order('created_at', { ascending: false });
-    if (error) return { ok: false as const, data: [] };
-    return { ok: true as const, data: data || [] };
+    try {
+      const data = await fetchAllPaged(() =>
+        supabaseAdmin.from('customer_sessions').select(select).order('created_at', { ascending: false }),
+      );
+      return { ok: true as const, data };
+    } catch {
+      return { ok: false as const, data: [] };
+    }
   };
 
   const primary = await load('customer_id, app_platform, user_agent, created_at');
@@ -322,17 +382,21 @@ export async function fetchCustomerOverview(
   const preset = options?.preset || 'all_time';
   const dateFiltered = shouldApplyDateRangeFilter(preset);
 
-  let customersQuery = supabaseAdmin.from('customers').select('id, phone, app_platform, full_name, phone_verified');
-  customersQuery = applyExcludeReferralTestDummies(customersQuery);
-  customersQuery = applyReportDateRangeFilter(
-    customersQuery,
-    'created_at',
-    preset,
-    options?.start,
-    options?.end,
-  );
-
-  const { data: customersData } = await customersQuery;
+  const customersData = await fetchAllPaged(() => {
+    let customersQuery = supabaseAdmin
+      .from('customers')
+      .select('id, phone, app_platform, full_name, phone_verified')
+      .order('id');
+    customersQuery = applyExcludeReferralTestDummies(customersQuery);
+    customersQuery = applyReportDateRangeFilter(
+      customersQuery,
+      'created_at',
+      preset,
+      options?.start,
+      options?.end,
+    );
+    return customersQuery;
+  });
   const customers = (customersData || []).filter(
     (c: any) => !isReferralTestDummyCustomer(c),
   );
@@ -358,6 +422,7 @@ export async function fetchCustomerOverview(
       push_on: 0,
       push_off: 0,
       push_no_token: 0,
+      push_uninstalled: 0,
     };
   }
 
@@ -379,6 +444,7 @@ export async function fetchCustomerOverview(
     sessions,
     pushPrefsRes,
     pushDevicesRes,
+    inactiveDevicesRes,
   ] = await Promise.all([
     dateFiltered
       ? supabaseAdmin
@@ -386,7 +452,13 @@ export async function fetchCustomerOverview(
           .select('current_balance')
           .in('customer_id', customerIds)
           .gt('current_balance', 0)
-      : supabaseAdmin.from('wallet_accounts').select('current_balance').gt('current_balance', 0),
+      : fetchAllPaged(() =>
+          supabaseAdmin
+            .from('wallet_accounts')
+            .select('current_balance')
+            .gt('current_balance', 0)
+            .order('customer_id'),
+        ).then((data) => ({ data })),
     membershipQuery,
     dateFiltered
       ? phoneOrFilter
@@ -415,13 +487,23 @@ export async function fetchCustomerOverview(
           .from('customer_coupon_assignments')
           .select('id', { count: 'exact', head: true })
           .is('redeemed_at', null),
-    fetchCustomerSessions(supabaseAdmin, dateFiltered ? customerIds : undefined),
+    fetchCustomerSessions(
+      supabaseAdmin,
+      customers
+        .filter((c: any) => !normalizeAppPlatform(c.app_platform))
+        .map((c: any) => String(c.id)),
+    ),
     dateFiltered
       ? supabaseAdmin
           .from('customer_notification_preferences')
           .select('customer_id, push_enabled')
           .in('customer_id', customerIds)
-      : supabaseAdmin.from('customer_notification_preferences').select('customer_id, push_enabled'),
+      : fetchAllPaged(() =>
+          supabaseAdmin
+            .from('customer_notification_preferences')
+            .select('customer_id, push_enabled')
+            .order('customer_id'),
+        ).then((data) => ({ data })),
     dateFiltered
       ? supabaseAdmin
           .from('notification_devices')
@@ -429,12 +511,31 @@ export async function fetchCustomerOverview(
           .eq('platform', MOBILE_PUSH_PLATFORM)
           .eq('is_active', true)
           .in('customer_id', customerIds)
-      : supabaseAdmin
+      : fetchAllPaged(() =>
+          supabaseAdmin
+            .from('notification_devices')
+            .select('customer_id')
+            .eq('platform', MOBILE_PUSH_PLATFORM)
+            .eq('is_active', true)
+            .not('customer_id', 'is', null)
+            .order('id'),
+        ).then((data) => ({ data })),
+    dateFiltered
+      ? supabaseAdmin
           .from('notification_devices')
           .select('customer_id')
           .eq('platform', MOBILE_PUSH_PLATFORM)
-          .eq('is_active', true)
-          .not('customer_id', 'is', null),
+          .eq('is_active', false)
+          .in('customer_id', customerIds)
+      : fetchAllPaged(() =>
+          supabaseAdmin
+            .from('notification_devices')
+            .select('customer_id')
+            .eq('platform', MOBILE_PUSH_PLATFORM)
+            .eq('is_active', false)
+            .not('customer_id', 'is', null)
+            .order('id'),
+        ).then((data) => ({ data })),
   ]);
 
   const latestSessionByCustomer = indexLatestSessions(sessions);
@@ -486,16 +587,23 @@ export async function fetchCustomerOverview(
   for (const d of pushDevicesRes.data || []) {
     if (d.customer_id) pushDeviceIds.add(String(d.customer_id));
   }
+  const inactiveDeviceIds = new Set<string>();
+  for (const d of inactiveDevicesRes.data || []) {
+    if (d.customer_id) inactiveDeviceIds.add(String(d.customer_id));
+  }
   let pushOn = 0;
   let pushOff = 0;
   let pushNoToken = 0;
+  let pushUninstalled = 0;
   for (const customer of customers) {
     const status = resolveCustomerPushStatus(
       pushOffIds.has(String(customer.id)) ? false : true,
       pushDeviceIds.has(String(customer.id)),
+      inactiveDeviceIds.has(String(customer.id)),
     );
     if (status === 'ON') pushOn += 1;
     else if (status === 'OFF') pushOff += 1;
+    else if (status === 'UNINSTALLED') pushUninstalled += 1;
     else pushNoToken += 1;
   }
 
@@ -517,6 +625,7 @@ export async function fetchCustomerOverview(
     push_on: pushOn,
     push_off: pushOff,
     push_no_token: pushNoToken,
+    push_uninstalled: pushUninstalled,
   };
 }
 
@@ -547,10 +656,10 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
     selectByIdChunks(
       supabaseAdmin,
       'notification_devices',
-      'customer_id, last_seen_at, device_name',
+      'customer_id, last_seen_at, device_name, is_active',
       ids,
       'customer_id',
-      (q) => q.eq('platform', MOBILE_PUSH_PLATFORM).eq('is_active', true),
+      (q) => q.eq('platform', MOBILE_PUSH_PLATFORM),
     ),
   ]);
 
@@ -586,8 +695,13 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
     string,
     { last_seen_at?: string | null; device_name?: string | null }
   >();
+  const inactiveDeviceByCustomer = new Set<string>();
   for (const d of pushDevices || []) {
     const cid = String(d.customer_id);
+    if (d.is_active === false) {
+      inactiveDeviceByCustomer.add(cid);
+      continue;
+    }
     if (!pushDeviceByCustomer.has(cid)) {
       pushDeviceByCustomer.set(cid, {
         last_seen_at: d.last_seen_at,
@@ -646,7 +760,11 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
     const pushEnabled = pushEnabledByCustomer.has(cid)
       ? pushEnabledByCustomer.get(cid)
       : true;
-    const pushStatus = resolveCustomerPushStatus(pushEnabled, Boolean(device));
+    const pushStatus = resolveCustomerPushStatus(
+      pushEnabled,
+      Boolean(device),
+      inactiveDeviceByCustomer.has(cid),
+    );
 
     return {
       ...c,
@@ -785,9 +903,8 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
       .select('id, device_name, last_seen_at, is_active')
       .eq('customer_id', customerId)
       .eq('platform', MOBILE_PUSH_PLATFORM)
-      .eq('is_active', true)
       .order('last_seen_at', { ascending: false })
-      .limit(5),
+      .limit(8),
     supabaseAdmin
       .from('customer_profiles')
       .select('gender, dob, alt_phone, loyalty_tier, preferences')
@@ -981,8 +1098,13 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
 
   const pushEnabled = pushPrefsRes.data?.push_enabled !== false;
   const pushDevices = pushDevicesRes.data || [];
-  const pushHasDevice = pushDevices.length > 0;
-  const pushStatus = resolveCustomerPushStatus(pushEnabled, pushHasDevice);
+  const activePushDevices = pushDevices.filter((d: any) => d.is_active !== false);
+  const pushHasDevice = activePushDevices.length > 0;
+  const pushStatus = resolveCustomerPushStatus(
+    pushEnabled,
+    pushHasDevice,
+    pushDevices.some((d: any) => d.is_active === false),
+  );
 
   return {
     customer: {
@@ -992,8 +1114,8 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
       push_enabled: pushEnabled,
       push_has_device: pushHasDevice,
       push_status: pushStatus,
-      push_last_seen_at: pushDevices[0]?.last_seen_at || null,
-      push_device_name: pushDevices[0]?.device_name || null,
+      push_last_seen_at: activePushDevices[0]?.last_seen_at || pushDevices[0]?.last_seen_at || null,
+      push_device_name: activePushDevices[0]?.device_name || pushDevices[0]?.device_name || null,
     },
     vehicles: vehiclesRes.data || [],
     addresses: addressesRes.data || [],

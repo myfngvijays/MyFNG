@@ -3,10 +3,11 @@ import { resolveAdminCrmStatusId } from './telecaller/leadDisplayStatus';
 import {
   applyExcludeReferralTestDummies,
   enrichCustomerListRows,
+  fetchAllPaged,
   isReferralTestDummyCustomer,
   matchesPlatformFilter,
 } from './customer-insights-admin';
-import { resolveReportDateRange, rowsToCsv } from './report-date-range';
+import { applyReportDateRangeFilter, resolveReportDateRange, rowsToCsv } from './report-date-range';
 
 const SERVICE_LEADS_CSV_COLUMNS = [
   { key: 'lead_number', label: 'Lead #' },
@@ -225,28 +226,24 @@ export async function exportCustomersCsv(
   const platform = String(opts.platform || 'ALL').trim().toUpperCase();
   const search = String(opts.search || '').trim();
 
-  let query = supabaseAdmin
-    .from('customers')
-    .select(
-      'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
-    )
-    .gte('created_at', range.start)
-    .lte('created_at', range.end)
-    .order('created_at', { ascending: false })
-    .limit(10000);
+  const data = await fetchAllPaged(() => {
+    let query = supabaseAdmin
+      .from('customers')
+      .select(
+        'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
+      )
+      .order('created_at', { ascending: false });
+    query = applyExcludeReferralTestDummies(query);
+    query = applyReportDateRangeFilter(query, 'created_at', opts.preset, opts.start, opts.end);
+    if (search) {
+      query = query.or(
+        [`full_name.ilike.%${search}%`, `phone.ilike.%${search}%`, `email.ilike.%${search}%`].join(','),
+      );
+    }
+    return query;
+  });
 
-  query = applyExcludeReferralTestDummies(query);
-
-  if (search) {
-    query = query.or(
-      [`full_name.ilike.%${search}%`, `phone.ilike.%${search}%`, `email.ilike.%${search}%`].join(','),
-    );
-  }
-
-  const { data, error } = await query;
-  if (error) throw new Error('Failed to export customers');
-
-  let customers = await enrichCustomerListRows(supabaseAdmin, data || []);
+  let customers = await enrichCustomerListRows(supabaseAdmin, data);
   customers = customers.filter((c) => !isReferralTestDummyCustomer(c));
 
   if (filter === 'WITH_BOOKING') {
@@ -265,6 +262,8 @@ export async function exportCustomersCsv(
     customers = customers.filter((c) => c.push_status === 'OFF');
   } else if (filter === 'PUSH_NO_TOKEN') {
     customers = customers.filter((c) => c.push_status === 'NO_TOKEN');
+  } else if (filter === 'UNINSTALLED') {
+    customers = customers.filter((c) => c.push_status === 'UNINSTALLED');
   }
 
   if (platform !== 'ALL') {

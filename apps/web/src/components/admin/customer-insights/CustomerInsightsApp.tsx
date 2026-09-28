@@ -69,10 +69,11 @@ type Overview = {
   push_on?: number;
   push_off?: number;
   push_no_token?: number;
+  push_uninstalled?: number;
 };
 
 type AppPlatform = 'ANDROID' | 'IOS' | null;
-type PushStatus = 'ON' | 'OFF' | 'NO_TOKEN';
+type PushStatus = 'ON' | 'OFF' | 'NO_TOKEN' | 'UNINSTALLED';
 
 type CustomerRow = {
   id: string;
@@ -103,12 +104,14 @@ type CustomerRow = {
 function pushStatusLabel(status?: PushStatus | null) {
   if (status === 'ON') return 'Push On';
   if (status === 'OFF') return 'Push Off';
+  if (status === 'UNINSTALLED') return 'Uninstalled';
   return 'No Token';
 }
 
 function pushStatusBadgeClass(status?: PushStatus | null) {
   if (status === 'ON') return 'bg-emerald-100 text-emerald-800';
   if (status === 'OFF') return 'bg-red-100 text-red-700';
+  if (status === 'UNINSTALLED') return 'bg-slate-800 text-white';
   return 'bg-amber-100 text-amber-800';
 }
 
@@ -236,24 +239,37 @@ function StatCard({
   value,
   sub,
   icon,
+  onClick,
+  active,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon: React.ReactNode;
+  onClick?: () => void;
+  active?: boolean;
 }) {
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-extrabold text-gray-900">{value}</p>
-          {sub ? <p className="mt-1 text-xs text-gray-500">{sub}</p> : null}
-        </div>
-        <div className="rounded-xl bg-blue-50 p-2 text-blue-600">{icon}</div>
+  const className = `rounded-2xl border p-4 shadow-sm text-left ${
+    active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'
+  } ${onClick ? 'cursor-pointer hover:border-blue-300' : ''}`;
+  const inner = (
+    <div className="flex items-start justify-between gap-2">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+        <p className="mt-1 text-2xl font-extrabold text-gray-900">{value}</p>
+        {sub ? <p className="mt-1 text-xs text-gray-500">{sub}</p> : null}
       </div>
+      <div className="rounded-xl bg-blue-50 p-2 text-blue-600">{icon}</div>
     </div>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {inner}
+      </button>
+    );
+  }
+  return <div className={className}>{inner}</div>;
 }
 
 export default function CustomerInsightsApp() {
@@ -905,24 +921,50 @@ export default function CustomerInsightsApp() {
               icon={<Wallet className="h-5 w-5" />}
             />
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard
               label="Push On"
               value={overview.push_on ?? 0}
               sub="Active FCM token"
               icon={<BellRing className="h-5 w-5" />}
+              active={filter === 'PUSH_ON'}
+              onClick={() => {
+                setFilter('PUSH_ON');
+                setPage(1);
+              }}
             />
             <StatCard
               label="Push Off"
               value={overview.push_off ?? 0}
               sub="Disabled in app settings"
               icon={<BellOff className="h-5 w-5" />}
+              active={filter === 'PUSH_OFF'}
+              onClick={() => {
+                setFilter('PUSH_OFF');
+                setPage(1);
+              }}
+            />
+            <StatCard
+              label="Uninstalled"
+              value={overview.push_uninstalled ?? 0}
+              sub="Had app, FCM token gone"
+              icon={<Smartphone className="h-5 w-5" />}
+              active={filter === 'UNINSTALLED'}
+              onClick={() => {
+                setFilter('UNINSTALLED');
+                setPage(1);
+              }}
             />
             <StatCard
               label="No Push Token"
               value={overview.push_no_token ?? 0}
               sub="Permission denied / never registered"
               icon={<Bell className="h-5 w-5" />}
+              active={filter === 'PUSH_NO_TOKEN'}
+              onClick={() => {
+                setFilter('PUSH_NO_TOKEN');
+                setPage(1);
+              }}
             />
           </div>
         </div>
@@ -1012,6 +1054,7 @@ export default function CustomerInsightsApp() {
                 <option value="WITH_COUPON">With coupons</option>
                 <option value="PUSH_ON">Push On</option>
                 <option value="PUSH_OFF">Push Off (app)</option>
+                <option value="UNINSTALLED">Uninstalled</option>
                 <option value="PUSH_NO_TOKEN">No Push Token</option>
               </select>
             </div>
@@ -1162,7 +1205,9 @@ export default function CustomerInsightsApp() {
                                   ? c.push_device_name
                                     ? `Token on ${c.push_device_name}`
                                     : 'Active push token'
-                                  : 'No active FCM token (permission / not registered)'
+                                  : c.push_status === 'UNINSTALLED'
+                                    ? 'App token was registered, then FCM marked it invalid (uninstall)'
+                                    : 'No active FCM token (permission / not registered)'
                             }
                           >
                             {pushStatusLabel(c.push_status)}
@@ -1403,7 +1448,9 @@ export default function CustomerInsightsApp() {
                                       ]
                                         .filter(Boolean)
                                         .join(' · ') || 'Active token'
-                                    : 'No device token'}
+                                    : detail.customer.push_status === 'UNINSTALLED'
+                                      ? 'App uninstalled (FCM token invalid)'
+                                      : 'No device token'}
                               </div>
                             </div>
                           ),

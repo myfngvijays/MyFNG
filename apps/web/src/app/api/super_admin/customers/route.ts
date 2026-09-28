@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   applyExcludeReferralTestDummies,
   enrichCustomerListRows,
+  fetchAllPaged,
   fetchCustomerOverview,
   fetchCustomersByIds,
   isReferralTestDummyCustomer,
@@ -136,22 +137,15 @@ export async function GET(request: NextRequest) {
     } else if (filterIds) {
       data = await fetchCustomersByIds(supabaseAdmin, filterIds, applyCustomerQuery);
     } else {
-      let query = supabaseAdmin
-        .from('customers')
-        .select(
-          'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
-        )
-        .order('created_at', { ascending: false })
-        .limit(10000);
-      query = applyCustomerQuery(query);
-      const result = await query;
-      if (result.error) {
-        return NextResponse.json(
-          { error: 'Failed to fetch customers', details: result.error.message },
-          { status: 500 },
-        );
-      }
-      data = result.data || [];
+      data = await fetchAllPaged(() => {
+        let query = supabaseAdmin
+          .from('customers')
+          .select(
+            'id, phone, email, full_name, firebase_uid, phone_verified, last_login_at, created_at, is_active, app_platform, account_status, account_status_reason, account_status_changed_at',
+          )
+          .order('created_at', { ascending: false });
+        return applyCustomerQuery(query);
+      });
     }
 
     let customers = await enrichCustomerListRows(supabaseAdmin, data || []);
@@ -173,6 +167,8 @@ export async function GET(request: NextRequest) {
       customers = customers.filter((c) => c.push_status === 'OFF');
     } else if (filter === 'PUSH_NO_TOKEN') {
       customers = customers.filter((c) => c.push_status === 'NO_TOKEN');
+    } else if (filter === 'UNINSTALLED') {
+      customers = customers.filter((c) => c.push_status === 'UNINSTALLED');
     }
 
     if (platform !== 'ALL') {

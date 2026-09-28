@@ -687,6 +687,10 @@ export function LeadManagerAppCustomersScreen() {
             <Text style={styles.statVal}>{overview.total ?? overview.total_customers ?? '—'}</Text>
             <Text style={styles.statLbl}>Customers</Text>
           </View>
+          <View style={[styles.stat, { backgroundColor: '#F1F5F9' }]}>
+            <Text style={styles.statVal}>{overview.push_uninstalled ?? 0}</Text>
+            <Text style={styles.statLbl}>Uninstalled</Text>
+          </View>
         </View>
       ) : null}
       {loading ? (
@@ -708,7 +712,13 @@ export function LeadManagerAppCustomersScreen() {
                 </Text>
               </View>
               <Text style={styles.meta}>
-                {[item.phone, item.email, item.app_platform].filter(Boolean).join(' · ')}
+                {[
+                  item.phone,
+                  item.app_platform,
+                  item.push_status === 'UNINSTALLED' ? 'Uninstalled' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </Text>
             </TouchableOpacity>
           )}
