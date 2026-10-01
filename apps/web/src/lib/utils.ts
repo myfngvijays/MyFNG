@@ -18,7 +18,14 @@ function toValidDate(input: string | number | Date | null | undefined): Date | n
 export function formatDateDMY(date: string | number | Date | null | undefined): string {
   const d = toValidDate(date);
   if (!d) return '';
-  return `${pad2(d.getDate())}-${pad2(d.getMonth() + 1)}-${d.getFullYear()}`;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return `${get('day')}-${get('month')}-${get('year')}`;
 }
 
 export function formatTime12h(date: string | number | Date | null | undefined): string {

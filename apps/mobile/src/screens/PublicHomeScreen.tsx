@@ -473,6 +473,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             excerpt: b.excerpt || '',
             date: b.published_at
               ? new Date(b.published_at).toLocaleDateString('en-IN', {
+                  timeZone: 'Asia/Kolkata',
                   month: 'short',
                   day: 'numeric',
                   year: 'numeric',

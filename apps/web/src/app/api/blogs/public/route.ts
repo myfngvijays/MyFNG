@@ -9,6 +9,7 @@ import { computeReadTimeFromHtml } from '@/lib/blog/text';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
 import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 import { normalizeBlogMediaAbsoluteUrl, normalizeBlogRecordForResponse } from '@/lib/blog/normalizeBlogMedia';
+import { slotIsoForRunDate } from '@/lib/blog/dailyBlogSlots';
 
 export const revalidate = 120;
 
@@ -102,9 +103,15 @@ export async function GET(request: NextRequest) {
       const title = city && (seo.ai_daily_post || seo.ai_batch_post)
         ? ensureSeoBlogTitle(String(blog.title || ''), city)
         : blog.title;
+      const assigned = String(seo.ai_run_date || '').slice(0, 10);
+      const publishedAt =
+        seo.ai_daily_post && /^\d{4}-\d{2}-\d{2}$/.test(assigned)
+          ? slotIsoForRunDate(String(seo.ai_slot_time || '10:00'), assigned)
+          : blog.published_at;
       const normalized = normalizeBlogRecordForResponse({
         ...blog,
         title,
+        published_at: publishedAt,
         read_time: computeReadTimeFromHtml(String(blog.content || '')).minutes,
         author: { full_name: PUBLIC_BLOG_AUTHOR },
         tags: blog.tags?.map((t: any) => t.tag).filter(Boolean) || [],

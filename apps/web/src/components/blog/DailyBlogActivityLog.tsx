@@ -8,7 +8,7 @@ function formatLogReason(reason?: string | null) {
     case 'waiting_for_next_slot':
       return 'Waiting for next IST slot';
     case 'already_posted_today':
-      return 'All due slots already posted';
+      return 'That IST date already has its live posts';
     case 'disabled':
       return 'Auto-post is paused';
     case 'no_overdue_slot':
@@ -241,6 +241,7 @@ export default function DailyBlogActivityLog() {
                   </td>
                   <td className="py-1.5 pr-3 text-slate-600">{row.slot_index || '—'}</td>
                   <td className="py-1.5 pr-3 text-slate-700">
+                    {row.run_date ? <span className="block text-[10px] text-slate-500">For {row.run_date}</span> : null}
                     {row.blog_title || row.topic || formatLogReason(row.reason)}
                     {row.error ? <span className="block text-rose-700">{row.error}</span> : null}
                     {row.duration_ms != null ? (

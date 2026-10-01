@@ -3,7 +3,6 @@ import { dailyCityScheduleLabel, pickDailyCity } from '@/lib/blog/dailyCities';
 import { DAILY_BLOG_COVERS, pickDailyCover, uploadDailyCoverWebp } from '@/lib/blog/dailyCovers';
 import {
   dayOfYearIst,
-  istDateDaysAgo,
   istDateString,
   pickDailyTopic,
 } from '@/lib/blog/dailyTopics';
@@ -14,8 +13,20 @@ import {
 } from '@/lib/blog/dailyUspTopics';
 import { publishAiServiceBlog, type DailyBlogRunResult, type DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
-import { firstDueSlot, nextDailySlotIso, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
-import { logDailyBlogEvent, type DailyBlogLogSource } from '@/lib/blog/dailyBlogLog';
+import {
+  firstDueSlot,
+  mergeLivePostedIndexes,
+  nextDailySlotIso,
+  resolveDailyBlogSchedule,
+  uniquePostedIndexes,
+} from '@/lib/blog/dailyBlogSlots';
+import {
+  alignDailyBlogAttribution,
+  dailyBlogAssignedDate,
+  logDailyBlogEvent,
+  type DailyBlogLogSource,
+} from '@/lib/blog/dailyBlogLog';
+import { slotIsoForRunDate } from '@/lib/blog/dailyBlogSlots';
 
 export type { DailyBlogRunResult, DailyBlogSettings };
 
@@ -127,6 +138,39 @@ async function writeRun(
     .eq('id', 1);
 }
 
+function runIndexesFromRows(rows: any[] | null | undefined): number[] {
+  return uniquePostedIndexes(
+    (rows || [])
+      .filter((row: any) => row?.status === 'success')
+      .map((row: any, idx: number) => Number(row.slot_index || idx + 1)),
+  );
+}
+
+async function loadLiveDailyPostsOnDate(supabaseAdmin: any, runDate: string) {
+  const [{ data }, runsRes] = await Promise.all([
+    supabaseAdmin
+      .from('blogs')
+      .select('id, slug, title, published_at, seo_data')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(40),
+    supabaseAdmin
+      .from('daily_blog_runs')
+      .select('blog_id, run_date, status')
+      .eq('run_date', runDate)
+      .eq('status', 'success'),
+  ]);
+  const runByBlogId = new Map<string, string>();
+  for (const row of runsRes.data || []) {
+    if (row?.blog_id) runByBlogId.set(String(row.blog_id), String(row.run_date || runDate).slice(0, 10));
+  }
+  return (data || []).filter((row: any) => {
+    const seo = row?.seo_data || {};
+    if (!seo.ai_daily_post || seo.ai_batch_post) return false;
+    return dailyBlogAssignedDate(row, runByBlogId) === runDate;
+  });
+}
+
 async function repairBrokenCityTitles(supabaseAdmin: any) {
   const { data } = await supabaseAdmin
     .from('blogs')
@@ -188,29 +232,11 @@ export async function maybeCatchUpDailyBlog(opts?: {
     });
   }
 
-  const schedule = resolveDailyBlogSchedule(settings);
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { skipped: true, reason: 'admin_missing' };
+  await alignDailyBlogAttribution(supabaseAdmin, settings).catch(() => 0);
 
-  for (const daysAgo of [1, 0]) {
-    const runDate = istDateDaysAgo(daysAgo);
-    let runsRes = await supabaseAdmin
-      .from('daily_blog_runs')
-      .select('status, slot_index')
-      .eq('run_date', runDate);
-    if (runsRes.error) {
-      runsRes = await supabaseAdmin.from('daily_blog_runs').select('status').eq('run_date', runDate);
-    }
-    const postedIndexes = (runsRes.data || [])
-      .filter((row: any) => row.status === 'success')
-      .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
-    const ignoreClock = daysAgo > 0;
-    const due = firstDueSlot(schedule, postedIndexes, new Date(), ignoreClock);
-    if (due) {
-      return runDailyBlogPost({ source, runDate, ignoreClock });
-    }
-  }
-  return { skipped: true, reason: 'no_overdue_slot' };
+  return runDailyBlogPost({ source, runDate: istDateString(), ignoreClock: false });
 }
 
 export async function runDailyBlogPost(opts?: {
@@ -291,28 +317,12 @@ export async function runDailyBlogPost(opts?: {
       .eq('run_date', runDate);
   }
   const todayRuns = todayQuery.data;
-  const postedIndexes = (todayRuns || [])
-    .filter((row: any) => row.status === 'success')
-    .map((row: any, idx: number) => Number(row.slot_index || idx + 1));
-
-  const { data: recentPublished } = await supabaseAdmin
-    .from('blogs')
-    .select('id, slug, title, published_at, seo_data')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .limit(30);
-  const liveToday = (recentPublished || []).filter((row: any) => {
-    const seo = row?.seo_data || {};
-    if (!seo.ai_daily_post || seo.ai_batch_post) return false;
-    if (!row?.published_at) return false;
-    return istDateString(new Date(row.published_at)) === runDate;
-  });
-  if (postedIndexes.length < liveToday.length) {
-    liveToday.forEach((row: any, idx: number) => {
-      const slot = idx + 1;
-      if (!postedIndexes.includes(slot)) postedIndexes.push(slot);
-    });
-  }
+  const liveToday = await loadLiveDailyPostsOnDate(supabaseAdmin, runDate);
+  const postedIndexes = mergeLivePostedIndexes(
+    runIndexesFromRows(todayRuns),
+    liveToday.length,
+    schedule.posts_per_day,
+  );
 
   const due = firstDueSlot(schedule, postedIndexes, new Date(), ignoreClock);
   if (!due) {
@@ -390,6 +400,8 @@ export async function runDailyBlogPost(opts?: {
       cityTarget,
       cover,
       runDate,
+      slotIndex: due.index,
+      slotTime: due.time,
       usp,
     });
 

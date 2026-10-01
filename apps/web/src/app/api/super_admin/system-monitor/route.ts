@@ -1628,7 +1628,7 @@ async function checkDailyBlog(): Promise<HealthCheck> {
                     ? `Scheduled ${schedule.posts_per_day} blog${schedule.posts_per_day > 1 ? 's' : ''} · ${schedule.label}`
                     : 'Auto-post paused',
       reason: cronAuthDenied
-        ? 'Cronon is calling /api/cron/daily-blog with the wrong CRON_SECRET, so slots never post. Vercel cron + cart catch-up now also fill yesterday’s missed slots.'
+        ? 'Cronon is calling /api/cron/daily-blog with the wrong CRON_SECRET, so today’s slots never post. Fix the Bearer secret, then the next hourly tick will post only today’s due IST slots.'
         : crononMissing
         ? 'Supabase Cronon has no daily-blog-auto-post job. Other live crons (WhatsApp, health) run from Cronon. Run database/368_daily_blog_pg_cron.sql in SQL Editor.'
         : crononOff

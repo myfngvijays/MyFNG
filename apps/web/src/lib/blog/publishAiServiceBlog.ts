@@ -21,6 +21,7 @@ import {
 } from '@/lib/blog/generateAiDraft';
 import { isMyFngServiceFaq } from '@/lib/blog/newsCarBlog';
 import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
+import { slotIsoForRunDate } from '@/lib/blog/dailyBlogSlots';
 
 export type DailyBlogSettings = {
   id: number;
@@ -192,6 +193,8 @@ export async function publishAiServiceBlog(opts: {
   cityTarget: DailyTargetCity;
   cover: DailyCoverPick;
   runDate: string;
+  slotIndex?: number;
+  slotTime?: string;
   usp?: WeeklyUspTopic | null;
   seoExtra?: Record<string, unknown>;
   notify?: boolean;
@@ -295,6 +298,8 @@ export async function publishAiServiceBlog(opts: {
     eligible_ai_overview: true,
     ai_generated: true,
     ai_daily_post: true,
+    ai_run_date: runDate,
+    ai_slot_index: opts.slotIndex || 1,
     ai_usp_post: Boolean(usp),
     ai_usp_key: usp?.key || null,
     ai_cover_key: cover.key,
@@ -317,7 +322,7 @@ export async function publishAiServiceBlog(opts: {
     author_name: PUBLIC_BLOG_AUTHOR,
   });
 
-  const now = new Date().toISOString();
+  const now = slotIsoForRunDate(opts.slotTime || '10:00', runDate);
   const payload = {
     title: draft.title,
     slug,

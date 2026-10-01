@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 /**
- * Daily AI blogs for admin-configured IST slots (1–5). Cronon hits this hourly.
+ * Daily AI blogs for today’s IST slots only. Missed previous days stay skipped. Cronon hits this hourly.
  * Trigger: Supabase Cronon job `daily-blog-auto-post` (see database/368_daily_blog_pg_cron.sql).
  * GET /api/cron/daily-blog?force=1
  */

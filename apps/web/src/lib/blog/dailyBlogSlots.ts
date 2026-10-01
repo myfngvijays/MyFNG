@@ -91,6 +91,13 @@ export function resolveDailyBlogSchedule(settings?: {
   };
 }
 
+export function slotIsoForRunDate(time: string, runDate: string): string {
+  const [y, m, d] = String(runDate).split('-').map(Number);
+  const [hh, mm] = String(time || DEFAULT_DAILY_TIME).split(':').map(Number);
+  const utc = Date.UTC(y, m - 1, d, (hh || 10) - 5, (mm || 0) - 30, 0);
+  return new Date(utc).toISOString();
+}
+
 export function slotIsoForTime(time: string, now = new Date(), nextDay = false): string {
   const date = istDateString(now);
   const [y, m, d] = date.split('-').map(Number);
@@ -107,6 +114,32 @@ export function nextDailySlotIso(schedule: DailyBlogSchedule, now = new Date(), 
   if (upcoming) return slotIsoForTime(upcoming.time, now, false);
   const first = schedule.slots[0];
   return slotIsoForTime(first?.time || DEFAULT_DAILY_TIME, now, true);
+}
+
+export function uniquePostedIndexes(indexes: number[]): number[] {
+  const slots = new Set<number>();
+  for (const raw of indexes) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1) slots.add(Math.floor(n));
+  }
+  return [...slots].sort((a, b) => a - b);
+}
+
+export function mergeLivePostedIndexes(
+  postedIndexes: number[],
+  liveCount: number,
+  postsPerDay: number,
+): number[] {
+  const max = Math.max(1, Number(postsPerDay) || 1);
+  const slots = new Set(uniquePostedIndexes(postedIndexes).filter((n) => n <= max));
+  const want = Math.min(max, Math.max(0, Number(liveCount) || 0));
+  while (slots.size < want) {
+    let next = 1;
+    while (slots.has(next) && next <= max) next += 1;
+    if (next > max) break;
+    slots.add(next);
+  }
+  return [...slots].sort((a, b) => a - b);
 }
 
 export function firstDueSlot(

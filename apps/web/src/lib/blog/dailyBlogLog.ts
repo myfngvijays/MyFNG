@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { istDateString } from '@/lib/blog/dailyTopics';
-import { dueSlotIndexes, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
+import { istDateDaysAgo, istDateString } from '@/lib/blog/dailyTopics';
+import { dueSlotIndexes, istMinutesNow, resolveDailyBlogSchedule, slotIsoForRunDate } from '@/lib/blog/dailyBlogSlots';
 import type { DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
 
 export type DailyBlogLogSource =
@@ -94,12 +94,119 @@ export function istDateFromIso(iso: string | null | undefined): string | null {
   }).format(date);
 }
 
+export function dailyBlogAssignedDate(
+  row: { id?: string; published_at?: string | null; seo_data?: any },
+  runByBlogId?: Map<string, string>,
+): string | null {
+  const id = String(row?.id || '');
+  const fromRun = id ? runByBlogId?.get(id) : undefined;
+  if (fromRun && /^\d{4}-\d{2}-\d{2}$/.test(fromRun)) return fromRun;
+  const seo = row?.seo_data || {};
+  const fromSeo = String(seo.ai_run_date || seo.run_date || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fromSeo)) return fromSeo;
+  return istDateFromIso(row?.published_at);
+}
+
+export async function alignDailyBlogAttribution(
+  supabaseAdmin: any,
+  settings?: DailyBlogSettings | null,
+): Promise<number> {
+  if (!supabaseAdmin) return 0;
+  const schedule = resolveDailyBlogSchedule(settings);
+  const since = istDateDaysAgo(14);
+  let runsRes = await supabaseAdmin
+    .from('daily_blog_runs')
+    .select('run_date, slot_index, blog_id, status, created_at')
+    .eq('status', 'success')
+    .not('blog_id', 'is', null)
+    .gte('run_date', since);
+  if (runsRes.error) {
+    runsRes = await supabaseAdmin
+      .from('daily_blog_runs')
+      .select('run_date, blog_id, status, created_at')
+      .eq('status', 'success')
+      .gte('run_date', since);
+  }
+  const runs = (runsRes.data || []).filter((row: any) => row?.blog_id && row?.run_date);
+  if (!runs.length) return 0;
+
+  const ids = [...new Set(runs.map((row: any) => String(row.blog_id)))];
+  const { data: blogs } = await supabaseAdmin
+    .from('blogs')
+    .select('id, published_at, seo_data')
+    .in('id', ids);
+  const byId = new Map((blogs || []).map((row: any) => [String(row.id), row]));
+  let fixed = 0;
+  const firstSlotMin = schedule.slots[0]?.minutes ?? 10 * 60;
+
+  for (const run of runs) {
+    const blog = byId.get(String(run.blog_id));
+    if (!blog) continue;
+    const oldDate = String(run.run_date).slice(0, 10);
+    let runDate = oldDate;
+    if (run.created_at) {
+      const created = new Date(run.created_at);
+      const createdIst = istDateFromIso(run.created_at);
+      if (!Number.isNaN(created.getTime()) && createdIst === oldDate && istMinutesNow(created) < firstSlotMin) {
+        runDate = istDateDaysAgo(1, created);
+      }
+    }
+    const slotIndex = Math.max(1, Number(run.slot_index) || 1);
+    const slot = schedule.slots.find((item) => item.index === slotIndex) || schedule.slots[0];
+    const publishedAt = slotIsoForRunDate(slot?.time || '10:00', runDate);
+    const seo = { ...(blog.seo_data || {}) };
+    const sameSeo = String(seo.ai_run_date || '') === runDate && Number(seo.ai_slot_index || 0) === slotIndex;
+    const samePub = String(blog.published_at || '').slice(0, 19) === publishedAt.slice(0, 19);
+    const sameRun = oldDate === runDate;
+    if (sameSeo && samePub && sameRun) continue;
+
+    if (!sameRun) {
+      const moved = await supabaseAdmin
+        .from('daily_blog_runs')
+        .update({ run_date: runDate })
+        .eq('blog_id', blog.id)
+        .eq('run_date', oldDate);
+      if (moved.error) {
+        await supabaseAdmin.from('daily_blog_runs').upsert(
+          {
+            run_date: runDate,
+            slot_index: slotIndex,
+            blog_id: blog.id,
+            status: 'success',
+            topic: seo.ai_topic || null,
+          },
+          { onConflict: 'run_date,slot_index' },
+        );
+      }
+    }
+
+    const { error } = await supabaseAdmin
+      .from('blogs')
+      .update({
+        published_at: publishedAt,
+        seo_data: {
+          ...seo,
+          ai_daily_post: true,
+          ai_run_date: runDate,
+          ai_slot_index: slotIndex,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', blog.id);
+    if (!error) {
+      fixed += 1;
+      byId.set(String(blog.id), { ...blog, published_at: publishedAt, seo_data: { ...seo, ai_run_date: runDate } });
+    }
+  }
+  return fixed;
+}
+
 export function formatLogReason(reason?: string | null) {
   switch (String(reason || '')) {
     case 'waiting_for_next_slot':
       return 'Waiting for next IST slot';
     case 'already_posted_today':
-      return 'All due slots already posted';
+      return 'That IST date already has its live posts';
     case 'disabled':
       return 'Auto-post is paused';
     case 'no_overdue_slot':
@@ -191,6 +298,8 @@ export async function loadDailyBlogOpsSnapshot(opts?: {
     return empty;
   }
 
+  await alignDailyBlogAttribution(supabaseAdmin, opts?.settings).catch(() => 0);
+
   const since = addDaysIst(today, -(dayCount - 1));
   const sinceIso = `${since}T00:00:00+05:30`;
 
@@ -217,16 +326,30 @@ export async function loadDailyBlogOpsSnapshot(opts?: {
   const tableMissing = Boolean(logsRes.error && missingTable(logsRes.error));
   if (tableMissing) logsTableMissing = true;
 
-  const dailyBlogs = (blogsRes.data || []).filter((row: any) => {
+  const dailyBlogs: any[] = (blogsRes.data || []).filter((row: any) => {
     const seo = row?.seo_data || {};
     return Boolean(seo.ai_daily_post) && !seo.ai_batch_post;
   });
+  const runByBlogId = new Map<string, string>();
+  for (const row of runsRes.data || []) {
+    if (row?.blog_id && row?.run_date && String(row.status || '') === 'success') {
+      runByBlogId.set(String(row.blog_id), String(row.run_date).slice(0, 10));
+    }
+  }
+  const missingIds = [...runByBlogId.keys()].filter((id) => !dailyBlogs.some((row: any) => String(row.id) === id));
+  if (missingIds.length) {
+    const extra = await supabaseAdmin
+      .from('blogs')
+      .select('id, title, slug, published_at, seo_data')
+      .in('id', missingIds);
+    for (const row of extra.data || []) dailyBlogs.push(row);
+  }
 
   const days: DailyBlogDaySummary[] = [];
   for (let i = 0; i < dayCount; i += 1) {
     const date = addDaysIst(today, -i);
     const blogs = dailyBlogs
-      .filter((row: any) => istDateFromIso(row.published_at) === date)
+      .filter((row: any) => dailyBlogAssignedDate(row, runByBlogId) === date)
       .map((row: any) => ({
         id: String(row.id),
         title: String(row.title || ''),
@@ -265,7 +388,7 @@ export async function loadDailyBlogOpsSnapshot(opts?: {
           source: 'reconstructed',
           action: 'posted',
           status: 'success' as const,
-          run_date: istDateFromIso(row.published_at),
+          run_date: dailyBlogAssignedDate(row, runByBlogId),
           blog_id: row.id,
           blog_title: row.title,
         })),
@@ -313,7 +436,7 @@ export async function loadDailyBlogOpsSnapshot(opts?: {
       level: 'error',
       title: `Aaj ${todayDue} slot due, 0 post`,
       message:
-        'Cron hit nahi hua, OpenAI fail hua, ya catch-up skip ho gaya. Hourly Cronon + cart catch-up dono check karo. Post now se missed slot turant nikal sakte ho.',
+        'Aaj ka due slot abhi live nahi hai. Cron / Post now sirf aaj ke IST slots nikalte hain — pichle din ke missed blogs skip rehte hain.',
     };
   } else if ((todayRow?.missing || 0) > 0) {
     diagnosis = {
