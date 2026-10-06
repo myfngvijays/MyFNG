@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import type { Metadata, Viewport } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import Navbar from '@/components/landing/Navbar';
@@ -26,7 +26,7 @@ import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent'
 import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLocalSeoHtml, splitBlogHtmlAtMidpoint, stripExistingCta } from '@/lib/blog/aiLinks';
 import { ensureAiOverviewHtml, ensureRsaAiOverviewHtml } from '@/lib/blog/dailyAiOverview';
 import { isMyFngServiceFaq, isNewsCarBlog, stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
-import { ensureSeoBlogTitle, rewriteCityDashTitle } from '@/lib/blog/generateAiDraft';
+import { ensureSeoBlogTitle, rewriteCityDashTitle, stripDatedAutoSlugSuffix } from '@/lib/blog/generateAiDraft';
 import { PUBLIC_BLOG_AUTHOR_HREF, publicBlogAuthorName, publicBlogByline } from '@/lib/blog/publicAuthor';
 
 export const dynamic = 'force-dynamic';
@@ -213,7 +213,27 @@ async function fetchPublishedBlogForMeta(slug: string) {
     .eq('slug', slug)
     .eq('status', 'published')
     .maybeSingle();
+  if (!data) await redirectLegacyBlogSlug(supabase, slug);
   return data as any;
+}
+
+function legacySlugsOf(seo: unknown) {
+  const raw = (seo as { legacy_slugs?: unknown } | null)?.legacy_slugs;
+  return Array.isArray(raw) ? raw.map((item) => String(item || '').trim()).filter(Boolean) : [];
+}
+
+async function redirectLegacyBlogSlug(supabase: ReturnType<typeof createClient>, slug: string) {
+  const root = stripDatedAutoSlugSuffix(slug);
+  if (!root || root === slug) return;
+  const candidates = [root, ...Array.from({ length: 8 }, (_, index) => `${root}-${index + 2}`)];
+  const { data } = await supabase
+    .from('blogs')
+    .select('slug, seo_data')
+    .in('slug', candidates)
+    .eq('status', 'published');
+  const hit = (data || []).find((row) => legacySlugsOf(row.seo_data).includes(slug));
+  const next = String(hit?.slug || '').trim();
+  if (next && next !== slug) permanentRedirect(`/blogs/${next}`);
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -332,7 +352,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     .eq('status', 'published')
     .maybeSingle();
 
-  if (error || !blog) notFound();
+  if (error || !blog) {
+    await redirectLegacyBlogSlug(supabase, slug);
+    notFound();
+  }
 
   const { data: faqs } = await supabase
     .from('blog_faqs')

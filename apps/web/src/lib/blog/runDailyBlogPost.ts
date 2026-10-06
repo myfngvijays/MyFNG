@@ -11,7 +11,7 @@ import {
   isWeeklyUspDay,
   pickWeeklyUspTopic,
 } from '@/lib/blog/dailyUspTopics';
-import { publishAiServiceBlog, type DailyBlogRunResult, type DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
+import { normalizeDatedBlogSlugs, publishAiServiceBlog, type DailyBlogRunResult, type DailyBlogSettings } from '@/lib/blog/publishAiServiceBlog';
 import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
 import {
   firstDueSlot,
@@ -262,6 +262,7 @@ export async function runDailyBlogPost(opts?: {
     return { success: false, error };
   }
   await repairBrokenCityTitles(supabaseAdmin).catch(() => undefined);
+  await normalizeDatedBlogSlugs(supabaseAdmin).catch(() => undefined);
 
   const loaded = await loadDailyBlogSettings();
   if (loaded.missing) {

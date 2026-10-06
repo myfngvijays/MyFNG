@@ -20,6 +20,13 @@ export function toBlogSlug(title: string) {
     .replace(/(^-|-$)/g, '');
 }
 
+/** Auto-post used to append `-YYYYMMDD-<random>` so every URL stayed unique. */
+const DATED_AUTO_SLUG_SUFFIX = /-\d{8}-[a-z0-9]{8,}$/i;
+
+export function stripDatedAutoSlugSuffix(slug: string) {
+  return toBlogSlug(String(slug || '').replace(DATED_AUTO_SLUG_SUFFIX, ''));
+}
+
 const BLOG_SYSTEM_PROMPT = `
 You are an expert automotive content writer for MyFNG (India).
 Write helpful, accurate, non-duplicative blog drafts.

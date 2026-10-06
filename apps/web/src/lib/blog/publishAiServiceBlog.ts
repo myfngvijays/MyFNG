@@ -17,6 +17,7 @@ import {
   generateAiBlogDraft,
   generateAiFaqs,
   generateAiTagNames,
+  stripDatedAutoSlugSuffix,
   toBlogSlug,
 } from '@/lib/blog/generateAiDraft';
 import { isMyFngServiceFaq } from '@/lib/blog/newsCarBlog';
@@ -153,17 +154,111 @@ function isSlugTakenError(error: { message?: string; code?: string } | null | un
   return error?.code === '23505' || /blogs_slug|duplicate key|unique constraint/i.test(message);
 }
 
-async function uniqueSlug(supabaseAdmin: any, base: string, runDate: string): Promise<string> {
-  const compact = runDate.replace(/-/g, '');
-  const root = (base || `daily-car-service`).replace(/-+$/g, '') || 'daily-car-service';
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const preferred = `${root}-${compact}-${suffix}`;
-  const variants = [preferred, `${root}-${compact}`, root];
-  for (const candidate of variants) {
+async function uniqueSlug(supabaseAdmin: any, base: string): Promise<string> {
+  const root = stripDatedAutoSlugSuffix(base) || 'daily-car-service';
+  for (let n = 0; n < 40; n += 1) {
+    const candidate = n === 0 ? root : `${root}-${n + 1}`;
     const { data } = await supabaseAdmin.from('blogs').select('id').eq('slug', candidate).maybeSingle();
     if (!data?.id) return candidate;
   }
-  return `${root}-${compact}-${suffix}-${Math.random().toString(36).slice(2, 5)}`;
+  return `${root}-${Date.now().toString(36)}`;
+}
+
+function legacySlugList(seo: Record<string, unknown> | null | undefined) {
+  const raw = seo?.legacy_slugs;
+  return Array.isArray(raw) ? raw.map((item) => String(item || '').trim()).filter(Boolean) : [];
+}
+
+/** Drop `-YYYYMMDD-random` from already published auto-post URLs. Old paths stay in seo_data.legacy_slugs. */
+export async function normalizeDatedBlogSlugs(supabaseAdmin: any) {
+  const { data, error } = await supabaseAdmin
+    .from('blogs')
+    .select('id, slug, seo_data')
+    .or('slug.like.%-2024%,slug.like.%-2025%,slug.like.%-2026%,slug.like.%-2027%,slug.like.%-2028%');
+  if (error || !Array.isArray(data) || !data.length) return { updated: 0 };
+
+  const renames: Array<{ id: string; from: string; to: string }> = [];
+  for (const row of data) {
+    const oldSlug = String(row.slug || '').trim();
+    const root = stripDatedAutoSlugSuffix(oldSlug);
+    if (!root || root === oldSlug) continue;
+
+    let candidate = root;
+    for (let n = 2; n < 40; n += 1) {
+      const { data: hit } = await supabaseAdmin.from('blogs').select('id').eq('slug', candidate).maybeSingle();
+      if (!hit?.id || String(hit.id) === String(row.id)) break;
+      candidate = `${root}-${n}`;
+    }
+    if (candidate === oldSlug) continue;
+
+    const seo = { ...(row.seo_data || {}) } as Record<string, unknown>;
+    const legacy = legacySlugList(seo);
+    if (!legacy.includes(oldSlug)) legacy.push(oldSlug);
+    seo.legacy_slugs = legacy;
+    if (typeof seo.canonical_url === 'string' && seo.canonical_url.includes(`/blogs/${oldSlug}`)) {
+      seo.canonical_url = seo.canonical_url.replaceAll(`/blogs/${oldSlug}`, `/blogs/${candidate}`);
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('blogs')
+      .update({ slug: candidate, seo_data: seo, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+    if (!updateError) renames.push({ id: String(row.id), from: oldSlug, to: candidate });
+  }
+
+  if (renames.length) await rewriteRenamedBlogLinks(supabaseAdmin, renames);
+  return { updated: renames.length };
+}
+
+async function rewriteRenamedBlogLinks(
+  supabaseAdmin: any,
+  renames: Array<{ from: string; to: string }>,
+) {
+  const pageSize = 200;
+  for (let from = 0; ; from += pageSize) {
+    const { data } = await supabaseAdmin
+      .from('blogs')
+      .select('id, content, seo_data')
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) break;
+
+    for (const row of rows) {
+      let content = String(row.content || '');
+      let seoText = JSON.stringify(row.seo_data || {});
+      let changed = false;
+      for (const rename of renames) {
+        const needle = `/blogs/${rename.from}`;
+        const next = `/blogs/${rename.to}`;
+        if (content.includes(needle)) {
+          content = content.replaceAll(needle, next);
+          changed = true;
+        }
+        if (seoText.includes(needle)) {
+          seoText = seoText.replaceAll(needle, next);
+          changed = true;
+        }
+      }
+      if (!changed) continue;
+      let seoData: unknown = row.seo_data;
+      try {
+        seoData = JSON.parse(seoText);
+      } catch {
+        seoData = row.seo_data;
+      }
+      await supabaseAdmin
+        .from('blogs')
+        .update({
+          content,
+          seo_data: seoData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+    }
+
+    if (rows.length < pageSize) break;
+  }
 }
 
 async function ensureTagIds(supabaseAdmin: any, names: string[]): Promise<string[]> {
@@ -230,7 +325,7 @@ export async function publishAiServiceBlog(opts: {
           : USP_BLOG_FACTS,
   });
 
-  const slug = await uniqueSlug(supabaseAdmin, draft.slug || toBlogSlug(draft.title), runDate);
+  const slug = await uniqueSlug(supabaseAdmin, draft.slug || toBlogSlug(draft.title));
   const appLink = await ensureBlogAppDownloadLink({
     supabaseAdmin,
     slug,
@@ -347,7 +442,7 @@ export async function publishAiServiceBlog(opts: {
     .single();
 
   if (isSlugTakenError(insertError)) {
-    const retrySlug = await uniqueSlug(supabaseAdmin, `${toBlogSlug(draft.title)}-${runDate.replace(/-/g, '')}`, runDate);
+    const retrySlug = await uniqueSlug(supabaseAdmin, toBlogSlug(draft.title));
     payload.slug = retrySlug;
     const retry = await supabaseAdmin.from('blogs').insert(payload).select('id, title, slug').single();
     blog = retry.data;
@@ -384,7 +479,7 @@ export async function publishAiServiceBlog(opts: {
     ).then(() => undefined, () => undefined);
   }
 
-  revalidateBlogSeo(slug);
+  revalidateBlogSeo(String(blog.slug || slug));
 
   if (opts.notify !== false && authorId) {
     try {
@@ -405,7 +500,7 @@ export async function publishAiServiceBlog(opts: {
   return {
     success: true,
     blog_id: blog.id,
-    slug,
+    slug: String(blog.slug || slug),
     title: blog.title,
     topic: picked.topic,
     cover_key: cover.key,
