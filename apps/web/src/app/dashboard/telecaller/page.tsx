@@ -33,6 +33,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { shouldKeepPreviousDashboardKpis } from '@/lib/telecaller/crmDashboardGuard';
+import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 type Kpis = {
