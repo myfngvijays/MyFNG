@@ -34,7 +34,6 @@ import {
   Cpu,
   Radio,
   AlertCircle,
-  Droplets,
   Calendar,
   Wrench,
   ArrowUp,
@@ -145,22 +144,20 @@ export default function HomePage() {
     []
   );
   const [homeReviews, setHomeReviews] = useState(dummyHomeReviews);
-  const heroServiceSlides = useMemo(
-    () =>
-      [
-        {
-          title: 'MyFNG Prime — Ganesh Chaturthi',
-          image: '/media/banners/myfng-prime-ganesh-chaturthi-banner.png',
-          festive: true,
-        },
-        ...DEFAULT_SERVICES.map((service) => ({
-          title: service.title,
-          image: service.image,
-          festive: false,
-        })),
-      ].filter((service) => Boolean(service.image)),
-    []
-  );
+  const heroServiceSlides = useMemo(() => {
+    const navratriSlide = {
+      title: 'Navratri Offer',
+      image: '/media/banners/myfng-navratri-car-service-offer-1600x800.jpg',
+      festive: true,
+    };
+    const serviceSlides = DEFAULT_SERVICES.filter((service) => Boolean(service.image)).map((service) => ({
+      title: service.title,
+      image: service.image,
+      festive: false,
+    }));
+    // Periodic, then Navratri, then the next service, then Navratri, and so on.
+    return serviceSlides.flatMap((service) => [service, navratriSlide]);
+  }, []);
   const [heroServiceSlideIdx, setHeroServiceSlideIdx] = useState(0);
   const [heroSlidesReady, setHeroSlidesReady] = useState(false);
   const activeHeroServiceSlide =
@@ -973,8 +970,8 @@ export default function HomePage() {
               <div className="relative z-10 perspective-1000">
                 {/* Main Image - Using the clean futuristic car image */}
                 <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/20 bg-white p-2 border border-white/50 backdrop-blur-sm">
-                  <div className="rounded-2xl overflow-hidden relative bg-gradient-to-b from-gray-100 to-white">
-                     {/* Using a placeholder car illustration or the existing image but styled cleaner */}
+                  <div className={`rounded-2xl overflow-hidden relative aspect-[2/1] ${activeHeroServiceSlide?.festive ? 'bg-[#f6d48a]' : 'bg-gradient-to-b from-gray-100 to-white'}`}>
+                     {/* 2:1 matches the 1600×800 Navratri banner so it is not cropped. */}
                      <img
                       src={
                         activeHeroServiceSlide?.image ||
@@ -983,8 +980,8 @@ export default function HomePage() {
                       alt={activeHeroServiceSlide?.title || 'Featured service image'}
                       className={
                         activeHeroServiceSlide?.festive
-                          ? 'w-full object-cover h-[260px] sm:h-[340px] lg:h-[360px]'
-                          : 'w-full object-cover h-[260px] sm:h-[340px] lg:h-[360px] mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500'
+                          ? 'absolute inset-0 h-full w-full object-cover object-center'
+                          : 'absolute inset-0 h-full w-full object-cover object-center mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500'
                       }
                     />
                     {/* Gradient Overlay for better text visibility if needed */}
@@ -1711,14 +1708,6 @@ export default function HomePage() {
               </div>
 
                   <div className="glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
-                      <Droplets className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                </div>
-                    <h3 className="text-white font-bold text-base sm:text-lg mb-1.5">Fuel Delivery</h3>
-                    <p className="text-gray-400 text-xs sm:text-sm">Out of fuel? Emergency fuel delivery</p>
-              </div>
-
-                  <div className="hidden sm:block glass p-4 sm:p-6 rounded-2xl border border-white/10 hover:border-orange-500/50 transition animate-fade-in-up" style={{ animationDelay: '0.7s' }}>
                     <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-3 sm:mb-4">
                       <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>

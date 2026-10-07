@@ -51,11 +51,11 @@ type CustomerReview = {
 };
 
 const RSA_REVIEWS_FALLBACK: CustomerReview[] = [
-  { name: 'Ravi Deshmukh', car: 'Maruti Baleno', stars: 5, text: 'Battery died at midnight on highway. MyFNG sent jumpstart help within 35 mins. Lifesaver!', date: 'Jan 2025' },
-  { name: 'Sneha Kapoor', car: 'Hyundai i20', stars: 5, text: 'Flat tyre in heavy rain. The technician was professional and quick. Highly recommend their RSA service.', date: 'Dec 2024' },
-  { name: 'Vikram Singh', car: 'Honda City', stars: 4, text: 'Car broke down on expressway. Towing was smooth and the workshop did a great job fixing the issue.', date: 'Feb 2025' },
-  { name: 'Ananya Joshi', car: 'Tata Nexon', stars: 5, text: 'Ran out of fuel and panicked. MyFNG delivered diesel within 40 minutes. Amazing service!', date: 'Nov 2024' },
-  { name: 'Karan Mehta', car: 'Kia Seltos', stars: 5, text: 'Accident towing service was very careful with my car. No additional scratches. Very professional team.', date: 'Jan 2025' },
+  { name: 'Rahul', car: 'Maruti Swift', stars: 5, text: 'Jumpstart on Eastern Express, Thane. Technician reached in 22 minutes.', date: '6 Oct 2026, 9:40 PM' },
+  { name: 'Amit', car: 'Hyundai i20', stars: 5, text: 'Towing from the Mumbai highway was smooth. The car reached the workshop safely.', date: '5 Oct 2026, 6:15 PM' },
+  { name: 'Sachin', car: 'Honda City', stars: 5, text: 'Night puncture in Pune. Spare was fitted on the spot.', date: '5 Oct 2026, 11:20 PM' },
+  { name: 'Praveen', car: 'Hyundai Creta', stars: 5, text: 'Accident recovery in Navi Mumbai. The car was loaded carefully.', date: '4 Oct 2026, 8:05 PM' },
+  { name: 'Mehul', car: 'Maruti Baleno', stars: 5, text: 'Battery died in a Thane basement. Jumpstart done, no tow needed.', date: '4 Oct 2026, 7:30 AM' },
 ];
 
 const DEFAULT_FAQ_COUNT = 5;
@@ -112,7 +112,9 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
     let active = true;
     fetchPublicFaqs({ group: 'RSA', section: 'rsa', platform: 'app' })
       .then((items) => {
-        if (active && items.length) setRsaFaqs(items);
+        if (active && items.length) {
+          setRsaFaqs(items.filter((item) => !/fuel/i.test(item.q || '')));
+        }
       })
       .catch(() => {});
     return () => {
@@ -296,7 +298,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
                   <Text style={s.priceValue}>On Demand</Text>
                 </View>
                 <Text style={s.priceSuffixInline}>As per service type</Text>
-                {['Jumpstart, puncture, fuel & minor fixes', 'AI-powered emergency dispatch', '24×7 customer support'].map((t) => (
+                {['Jumpstart, puncture & minor fixes', 'AI-powered emergency dispatch', '24×7 customer support'].map((t) => (
                   <View key={t} style={s.priceBullet}>
                     <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                     <Text style={s.priceBulletText}>{t}</Text>

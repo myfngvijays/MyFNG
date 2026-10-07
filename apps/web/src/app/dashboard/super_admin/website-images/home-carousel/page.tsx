@@ -40,8 +40,8 @@ const ROUTES = [
 const DEFAULT_BANNERS: BannerRow[] = [
   {
     id: 'default-prime',
-    title: 'Ganesh Chaturthi Prime',
-    image_url: '/media/banners/myfng-prime-ganesh-chaturthi-banner.png',
+    title: 'Navratri Prime',
+    image_url: '/media/banners/myfng-prime-navratri-banner.png',
     route_name: 'Settings__Membership',
     route_params: { membershipType: 'SERVICE' },
     display_order: 1,
@@ -102,17 +102,11 @@ export default function HomeCarouselImagesPage() {
     }
   }, [form.route_params_text]);
 
-  // Show DB rows if any, else fall back to default placeholders so the admin
-  // can immediately see "this is what's currently in the app" and click Replace.
+  // Placeholders only when the table is empty. Saved banners are shown as stored,
+  // so Replace and Delete are not undone by the three default cards.
   const visibleRows: BannerRow[] = useMemo(() => {
     if (rows.length === 0) return DEFAULT_BANNERS;
-    const extras = DEFAULT_BANNERS.filter((fallback) => {
-      if (fallback.id === 'default-prime') return !rows.some((row) => /ganesh/i.test(`${row.title || ''} ${row.image_url || ''}`));
-      if (fallback.id === 'default-service') return !rows.some((row) => /car-service-light/i.test(row.image_url || ''));
-      if (fallback.id === 'default-ai') return !rows.some((row) => /misa-ai-light/i.test(row.image_url || ''));
-      return false;
-    });
-    return extras.length ? [...extras, ...rows] : rows;
+    return rows;
   }, [rows]);
 
   async function fetchRows() {

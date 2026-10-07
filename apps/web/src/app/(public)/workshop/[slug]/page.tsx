@@ -992,14 +992,13 @@ export default function WorkshopPublicPage() {
                   </div>
                 </div>
                 <p className="text-[14px] text-[#444] leading-[1.8] mb-6">
-                  Stranded on the road? MyFNG RSA gets you moving again fast. Whether it&apos;s a flat tyre, dead battery, engine breakdown, or fuel emergency — our trained mechanics reach you within minutes.
+                  Stranded on the road? MyFNG RSA gets you moving again fast. Whether it&apos;s a flat tyre, dead battery, or engine breakdown — our trained mechanics reach you within minutes.
                 </p>
                 <div className="grid grid-cols-2 gap-2.5 mb-6">
                   {[
                     'Flat Tyre Change & Repair',
                     'Battery Jumpstart',
                     'Emergency Towing',
-                    'Fuel Delivery',
                     'Key Lockout Help',
                     'On-Spot Minor Repairs',
                   ].map((item) => (

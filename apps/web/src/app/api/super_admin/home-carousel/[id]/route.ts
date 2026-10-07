@@ -27,6 +27,20 @@ async function requireSuperAdmin(supabase: any) {
   return { ok: true, user };
 }
 
+function isTransientSupabaseError(error: { message?: string } | null | undefined) {
+  const msg = String(error?.message || '');
+  return /fetch failed|timeout|ECONNRESET|UND_ERR|network/i.test(msg);
+}
+
+async function withSupabaseRetry<T extends { error: { message?: string } | null }>(run: () => Promise<T>): Promise<T> {
+  let last = await run();
+  for (let attempt = 1; attempt < 3 && last.error && isTransientSupabaseError(last.error); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    last = await run();
+  }
+  return last;
+}
+
 export async function PUT(request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = await paramsPromise;
   try {
@@ -47,7 +61,9 @@ export async function PUT(request: NextRequest, { params: paramsPromise }: { par
     if (is_active !== undefined) patch.is_active = !!is_active;
     patch.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().single();
+    const { data, error } = await withSupabaseRetry(() =>
+      supabase.from(TABLE).update(patch).eq('id', id).select().single()
+    );
     if (error) {
       console.error('[home-carousel][PUT] supabase error:', error);
       const code = (error as any).code as string | undefined;
@@ -80,7 +96,10 @@ export async function DELETE(_request: NextRequest, { params: paramsPromise }: {
     if (!auth.ok) return auth.res;
 
     const id = params.id;
-    const { error } = await supabase.from(TABLE).delete().eq('id', id);
+    const { error } = await withSupabaseRetry(async () => {
+      const result = await supabase.from(TABLE).delete().eq('id', id);
+      return { error: result.error };
+    });
     if (error) {
       console.error('[home-carousel][DELETE] supabase error:', error);
       const code = (error as any).code as string | undefined;

@@ -86,7 +86,7 @@ function AppDownloadBanner({
     <div className={`flex items-center ${compact ? 'gap-1' : 'gap-2'}`}>
       <a
         href={downloadHref}
-        className={`inline-flex items-center justify-center bg-white text-blue-700 hover:bg-blue-50 rounded-md font-bold transition-all shadow-sm whitespace-nowrap ${
+        className={`inline-flex items-center justify-center bg-[#fff7d6] text-[#6b1224] hover:bg-white rounded-md font-bold transition-all shadow-sm whitespace-nowrap ${
           roomy
             ? compact
               ? 'gap-1.5 px-3 py-1.5 h-8 text-[11px]'
@@ -103,18 +103,18 @@ function AppDownloadBanner({
 
   return (
     <div className="text-white relative">
-      {/* Mobile only: compact red strip with offer + timer */}
-      <div className="lg:hidden bg-red-600">
+      {/* Mobile only: compact festive strip with offer + timer */}
+      <div className="lg:hidden bg-[#6b1224]">
         <div className="container mx-auto px-3 py-1 pr-8 flex items-center justify-center gap-2">
-          <span className="text-[10px] font-bold text-yellow-100 whitespace-nowrap">
-            Limited-Time Launch Offer →
+          <span className="text-[10px] font-bold text-[#fde68a] whitespace-nowrap">
+            Navratri Offer →
           </span>
           {timerDigits(true)}
         </div>
       </div>
 
-      {/* Blue download strip */}
-      <div className={`bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 ${roomy ? 'py-0.5' : ''}`}>
+      {/* Festive download strip */}
+      <div className={`bg-gradient-to-r from-[#6b1224] via-[#9a3412] to-[#c2410c] ${roomy ? 'py-0.5' : ''}`}>
         <div className={`container mx-auto px-3 lg:px-6 pr-8 lg:pr-10 flex items-center gap-2 lg:gap-4 lg:justify-center ${roomy ? 'py-2.5 lg:py-3' : 'py-1.5 lg:py-2'}`}>
           <p className="text-[11px] lg:text-sm font-bold leading-snug min-w-0 flex-1 break-words lg:flex-none lg:whitespace-nowrap">
             Download MyFNG App &amp;
@@ -123,10 +123,10 @@ function AppDownloadBanner({
             Get 10% OFF
           </p>
 
-          {/* Desktop only: offer + timer inside blue banner */}
+          {/* Desktop only: offer + timer inside the festive banner */}
           <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
-            <span className="text-sm font-bold text-yellow-200 whitespace-nowrap">
-              Limited-Time Launch Offer →
+            <span className="text-sm font-bold text-[#fde68a] whitespace-nowrap">
+              Navratri Offer →
             </span>
             {timerDigits(false)}
           </div>

@@ -81,16 +81,16 @@ type HeroBanner = {
   overlay: string;
 };
 
-const GANESH_PRIME_BANNER: HeroBanner = {
-  id: 'ganesh-prime',
-  title: 'Ganesh Chaturthi Prime',
+const NAVRATRI_PRIME_BANNER: HeroBanner = {
+  id: 'navratri-prime',
+  title: 'Navratri Prime',
   desc: 'Prime Membership ₹699/year',
   route: 'Settings',
   routeParams: { subPage: 'Membership', membershipType: 'SERVICE' },
   icon: 'ribbon',
   colors: ['#023D95', '#2563EB'],
   image: '',
-  imageSource: require('../../assets/myfng-prime-ganesh-chaturthi-banner.png'),
+  imageSource: require('../../assets/myfng-prime-navratri-banner.png'),
   overlay: 'rgba(0,0,0,0)',
 };
 
@@ -139,7 +139,7 @@ const LIGHT_MISA_BANNER: HeroBanner = {
 
 function buildHomeHeroBanners(remote: HeroBanner[] = []) {
   if (remote.length > 0) return remote;
-  return [GANESH_PRIME_BANNER, LIGHT_SERVICE_BANNER, LIGHT_MISA_BANNER];
+  return [NAVRATRI_PRIME_BANNER, LIGHT_SERVICE_BANNER, LIGHT_MISA_BANNER];
 }
 
 const FALLBACK_HERO_BANNERS: HeroBanner[] = buildHomeHeroBanners();
@@ -377,17 +377,23 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           setHeroBanners(
             buildHomeHeroBanners(
-              data.map((row: any) => ({
-                id: String(row.id),
-                title: row.title || '',
-                desc: '',
-                route: row.route_name || 'PublicHome',
-                routeParams: row.route_params || undefined,
-                icon: 'sparkles' as const,
-                colors: ['#004AAD', '#0A57BF'] as [string, string],
-                image: row.image_url,
-                overlay: 'rgba(0,0,0,0)',
-              })),
+              data.map((row: any) => {
+                const title = String(row.title || '');
+                const imageUrl = String(row.image_url || '');
+                const replaceGanesh = /ganesh/i.test(`${title} ${imageUrl}`);
+                return {
+                  id: String(row.id),
+                  title: replaceGanesh ? NAVRATRI_PRIME_BANNER.title : title,
+                  desc: '',
+                  route: row.route_name || 'PublicHome',
+                  routeParams: row.route_params || undefined,
+                  icon: 'sparkles' as const,
+                  colors: ['#004AAD', '#0A57BF'] as [string, string],
+                  image: replaceGanesh ? '' : imageUrl,
+                  imageSource: replaceGanesh ? NAVRATRI_PRIME_BANNER.imageSource : undefined,
+                  overlay: 'rgba(0,0,0,0)',
+                };
+              }),
             ),
           );
         } catch {
@@ -718,7 +724,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 <Image
                   source={activeHero.imageSource || { uri: activeHero.image }}
                   style={styles.heroFullImage}
-                  resizeMode="cover"
+                  resizeMode="contain"
                 />
               </TouchableOpacity>
               <View style={styles.heroDots}>
@@ -1364,12 +1370,12 @@ const styles = StyleSheet.create({
   },
   heroTouchable: {
     width: '100%',
-    aspectRatio: 16 / 8,
+    aspectRatio: 2 / 1,
+    backgroundColor: '#FAFBFF',
   },
   heroFullImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 32,
   },
   heroCta: {
     marginTop: 16,

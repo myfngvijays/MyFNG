@@ -4,288 +4,267 @@ import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
 import Link from 'next/link';
-import { Bot, Car, CheckCircle2, Eye, MapPin, MessageCircle, Phone, Shield, Smartphone, Sparkles, Target, TrendingUp, Truck, Users, Wrench, Zap } from 'lucide-react';
+import { Bot, CheckCircle2, Eye, MapPin, MessageCircle, Phone, Shield, Smartphone, Sparkles, Target, TrendingUp, Truck, Wrench, Zap } from 'lucide-react';
+
+const PROBLEMS = [
+  { title: 'Unclear Estimates', desc: 'Hidden charges and surprise bills after service' },
+  { title: 'Unnecessary Delays', desc: 'No updates, no timeline, no accountability' },
+  { title: 'Zero Transparency', desc: 'Duplicate parts, fake repairs, no proof of work' },
+];
+
+const OFFERINGS = [
+  { icon: Shield, title: 'Verified Workshops Only', desc: 'Every partner workshop is audited, graded, and continuously monitored for quality and pricing.' },
+  { icon: Eye, title: 'Complete Transparency', desc: 'Real-time updates with photos and videos — pre-inspection, work in progress, parts used, and delivery.' },
+  { icon: CheckCircle2, title: 'No Hidden Surprises', desc: 'Clear estimates before work begins. No work done without customer approval.' },
+  { icon: Truck, title: 'Free Pickup & Drop', desc: 'Convenience is built into the system, not offered as an upsell.' },
+  { icon: Shield, title: 'Warranty on Services', desc: 'Every service comes with warranty coverage for complete peace of mind.' },
+  { icon: Phone, title: '24/7 Roadside Assistance', desc: 'In-house RSA after acquiring Roadserve — truly integrated car care.' },
+];
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[#F5F7FA] text-[#142033]">
       <Navbar />
 
-      {/* Hero Section */}
-      <section className="relative pt-28 sm:pt-36 pb-16 sm:pb-20 bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-800 overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl" />
-          <div className="absolute bottom-10 right-10 w-72 h-72 bg-purple-400 rounded-full blur-3xl" />
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#023D95] via-[#0357b8] to-[#0088E8] pt-28 text-white sm:pt-36">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+          <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-[#7ec8ff]/20 blur-3xl" />
         </div>
-        <div className="container mx-auto px-4 sm:px-6 relative z-10">
-          <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/20 text-white px-4 py-1.5 rounded-full text-sm font-medium mb-6">
-              <Car className="w-4 h-4" />
-              India&apos;s First AI-Powered Car Care Platform
-            </div>
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-tight">
-              About <span className="text-yellow-300">MY FNG</span>
-            </h1>
-            <p className="mt-5 text-lg sm:text-xl text-blue-100 max-w-3xl mx-auto leading-relaxed">
-              Your Friendly Neighbourhood Garage. Built to fix what the traditional car service industry has ignored for decades – trust, transparency, and convenience.
+        <div className="container relative z-10 mx-auto px-4 pb-14 sm:px-6 sm:pb-16">
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/80">
+              India&apos;s first AI-powered car care platform
             </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-white/80 text-sm">
-              <div className="flex items-center gap-2"><Users className="w-4 h-4 text-yellow-300" /> 10,000+ Happy Customers</div>
-              <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-yellow-300" /> Mumbai, Thane & Pune</div>
-              <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-yellow-300" /> Verified Workshops Only</div>
-            </div>
+            <h1 className="mt-5 text-5xl font-semibold tracking-tight text-white sm:text-6xl md:text-7xl">
+              About <span className="text-white">MY</span> <span className="text-[#b9e0ff]">FNG</span>
+            </h1>
+            <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
+              Your Friendly Neighbourhood Garage. Built to fix what the traditional car service industry has ignored for decades — trust, transparency, and convenience.
+            </p>
+          </div>
+        </div>
+        <div className="relative z-10 border-t border-white/10">
+          <div className="container mx-auto grid grid-cols-1 divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {[
+              ['10,000+', 'Happy customers'],
+              ['Mumbai, Thane & Pune', 'And expanding'],
+              ['Verified only', 'Every workshop is audited'],
+            ].map(([value, label]) => (
+              <div key={label} className="px-6 py-5 text-center">
+                <div className="text-sm font-semibold tracking-wide text-white sm:text-base">{value}</div>
+                <div className="mt-1 text-xs uppercase tracking-[0.18em] text-white/50">{label}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* The Problem */}
-      <section className="py-8 sm:py-12">
+      <section className="py-16 sm:py-20">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">The Problem We&apos;re Solving</h2>
-              <p className="mt-3 text-gray-600 max-w-2xl mx-auto">
+          <div className="mx-auto max-w-5xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#0088E8]">01 — The problem</p>
+            <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <h2 className="max-w-xl text-3xl font-semibold tracking-tight sm:text-4xl">The problem we&apos;re solving</h2>
+              <p className="max-w-md text-sm leading-relaxed text-[#5c6778] sm:text-base">
                 Car owners are forced to choose between overpriced authorized centers or unorganized local garages with uncertain quality.
               </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {[
-                { icon: '😤', title: 'Unclear Estimates', desc: 'Hidden charges and surprise bills after service' },
-                { icon: '⏳', title: 'Unnecessary Delays', desc: 'No updates, no timeline, no accountability' },
-                { icon: '❌', title: 'Zero Transparency', desc: 'Duplicate parts, fake repairs, no proof of work' },
-              ].map(({ icon, title, desc }) => (
-                <div key={title} className="bg-red-50 border border-red-100 rounded-2xl p-5 text-center">
-                  <span className="text-3xl">{icon}</span>
-                  <h3 className="mt-3 font-bold text-gray-900">{title}</h3>
-                  <p className="mt-1 text-sm text-gray-600">{desc}</p>
-                </div>
+            <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
+              {PROBLEMS.map((item, index) => (
+                <article key={item.title} className="rounded-3xl border border-[#d7e4f5] bg-white p-6 shadow-[0_12px_40px_-28px_rgba(12,26,51,0.45)]">
+                  <div className="text-xs font-semibold tracking-[0.22em] text-[#0088E8]">0{index + 1}</div>
+                  <h3 className="mt-4 text-lg font-semibold">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[#5c6778]">{item.desc}</p>
+                </article>
               ))}
             </div>
-            <p className="mt-8 text-center text-lg font-semibold text-brand-primary">
+            <p className="mt-8 text-center text-base font-medium text-[#023D95] sm:text-lg">
               MY FNG was founded to fundamentally change how car servicing works in India.
             </p>
           </div>
         </div>
       </section>
 
-      {/* What We Do */}
-      <section className="py-12 sm:py-16 bg-gray-50">
+      <section className="border-y border-[#d7e4f5] bg-white py-16 sm:py-20">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-10">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">What We Do</h2>
-              <p className="mt-3 text-gray-600 max-w-3xl mx-auto">
-                MY FNG is a technology-driven car service aggregator that connects car owners with verified, top-quality multi-brand workshops – managing the entire service experience end-to-end.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {[
-                { icon: Shield, title: 'Verified Workshops Only', desc: 'Every partner workshop is audited, graded, and continuously monitored for quality and pricing.' },
-                { icon: Eye, title: 'Complete Transparency', desc: 'Real-time updates with photos & videos – pre-inspection, work in progress, parts used, and delivery.' },
-                { icon: CheckCircle2, title: 'No Hidden Surprises', desc: 'Clear estimates before work begins. No work done without customer approval.' },
-                { icon: Truck, title: 'Free Pickup & Drop', desc: 'Convenience is built into the system, not offered as an upsell.' },
-                { icon: Shield, title: 'Warranty on Services', desc: 'Every service comes with warranty coverage for complete peace of mind.' },
-                { icon: Phone, title: '24/7 Roadside Assistance', desc: 'In-house RSA after acquiring Roadserve – truly integrated car care.' },
-              ].map(({ icon: Icon, title, desc }) => (
-                <div key={title} className="bg-white border border-gray-200 rounded-2xl p-5 hover:shadow-lg transition-shadow">
-                  <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center mb-3">
-                    <Icon className="w-5 h-5 text-blue-600" />
+          <div className="mx-auto max-w-5xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#0088E8]">02 — What we do</p>
+            <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">A managed service, not a directory of garages</h2>
+            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-[#5c6778] sm:text-base">
+              MY FNG is a technology-driven car service aggregator that connects car owners with verified, top-quality multi-brand workshops — managing the entire service experience end-to-end.
+            </p>
+            <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {OFFERINGS.map(({ icon: Icon, title, desc }) => (
+                <article key={title} className="rounded-3xl border border-[#d7e4f5] bg-[#f8fbff] p-6">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#023D95] text-white">
+                    <Icon className="h-4 w-4" />
                   </div>
-                  <h3 className="font-bold text-gray-900">{title}</h3>
-                  <p className="mt-2 text-sm text-gray-600 leading-relaxed">{desc}</p>
-                </div>
+                  <h3 className="mt-5 text-base font-semibold">{title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[#5c6778]">{desc}</p>
+                </article>
               ))}
             </div>
-            <p className="mt-8 text-center text-gray-700 font-medium">
-              Customers don&apos;t deal with workshops directly. <span className="font-bold text-gray-900">MY FNG owns the experience.</span>
+            <p className="mt-8 text-center text-[#3d4a5c]">
+              Customers don&apos;t deal with workshops directly. <span className="font-semibold text-[#023D95]">MY FNG owns the experience.</span>
             </p>
           </div>
         </div>
       </section>
 
-      {/* AI & Technology Section */}
-      <section className="py-12 sm:py-16">
+      <section className="bg-gradient-to-br from-[#023D95] to-[#0367C4] py-16 text-white sm:py-20">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-4 py-1.5 rounded-full text-sm font-bold mb-3">
-                <Sparkles className="w-4 h-4" />
-                AI-Powered Platform
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Built for Scale, Powered by Technology</h2>
-              <p className="mt-3 text-gray-600 max-w-3xl mx-auto">
-                India&apos;s first AI-focused car service booking platform – designed to eliminate outdated, form-heavy booking flows.
-              </p>
-            </div>
+          <div className="mx-auto max-w-5xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#b9e0ff]">03 — Technology</p>
+            <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">Built for scale, powered by technology</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/65 sm:text-base">
+              India&apos;s first AI-focused car service booking platform — designed to eliminate outdated, form-heavy booking flows.
+            </p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* MISA AI Bot */}
-              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-6 sm:p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-                    <Bot className="w-6 h-6 text-white" />
+            <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <article className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#023D95]">
+                    <Bot className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">MISA</h3>
-                    <p className="text-sm text-gray-500">MyFNG Instant Service Assistant</p>
-                    <p className="text-sm text-gray-600">Smart Booking Assistant</p>
+                    <h3 className="text-xl font-semibold text-white">MISA</h3>
+                    <p className="text-sm text-white/55">MyFNG Instant Service Assistant</p>
                   </div>
                 </div>
-                <p className="text-gray-700 leading-relaxed mb-4">
-                  Our AI-powered assistant MISA (MyFNG Instant Service Assistant) helps you book car services in under 60 seconds – no forms, no calls. Just chat naturally and get instant recommendations, pricing, and scheduling.
+                <p className="mt-5 text-sm leading-relaxed text-white/75">
+                  Our AI-powered assistant helps you book car services in under 60 seconds — no forms, no calls. Just chat naturally and get instant recommendations, pricing, and scheduling.
                 </p>
-                <ul className="space-y-2">
+                <ul className="mt-5 space-y-2.5">
                   {[
                     'Natural language service booking',
                     'Instant price estimates',
-                    'Smart service recommendations based on car age & mileage',
-                    'Available 24/7 on app & website',
+                    'Smart recommendations based on car age and mileage',
+                    'Available 24/7 on app and website',
                   ].map((item) => (
-                    <li key={item} className="flex items-start gap-2 text-sm text-gray-700">
-                      <CheckCircle2 className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                    <li key={item} className="flex items-start gap-2 text-sm text-white/80">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#b9e0ff]" />
                       {item}
                     </li>
                   ))}
                 </ul>
-              </div>
+              </article>
 
-              {/* MyFNG App */}
-              <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-6 sm:p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
-                    <Smartphone className="w-6 h-6 text-white" />
+              <article className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#023D95]">
+                    <Smartphone className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">MyFNG App</h3>
-                    <p className="text-sm text-gray-600">Everything in Your Pocket</p>
+                    <h3 className="text-xl font-semibold text-white">MyFNG App</h3>
+                    <p className="text-sm text-white/55">Everything in your pocket</p>
                   </div>
                 </div>
-                <p className="text-gray-700 leading-relaxed mb-4">
-                  The MyFNG mobile app puts complete car care in your hands – book services, track live progress with photos, chat with MISA AI, manage your service history, and get exclusive app-only discounts.
+                <p className="mt-5 text-sm leading-relaxed text-white/75">
+                  Book services, track live progress with photos, chat with MISA, manage your service history, and get exclusive app-only discounts.
                 </p>
-                <ul className="space-y-2">
+                <ul className="mt-5 space-y-2.5">
                   {[
                     'Book in 60 seconds via AI or manual flow',
                     'Live tracking with real-time photo updates',
                     'MyFNG Prime membership for extra savings',
-                    'Available on Android & iOS',
+                    'Available on Android and iOS',
                   ].map((item) => (
-                    <li key={item} className="flex items-start gap-2 text-sm text-gray-700">
-                      <CheckCircle2 className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <li key={item} className="flex items-start gap-2 text-sm text-white/80">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#b9e0ff]" />
                       {item}
                     </li>
                   ))}
                 </ul>
-                <div className="flex items-center gap-3 mt-4">
-                  <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white bg-[#01875f] px-3 py-1.5 rounded-full">
+                <div className="mt-6 flex items-center gap-3">
+                  <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer" className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#023D95]">
                     Google Play
                   </a>
-                  <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white bg-black px-3 py-1.5 rounded-full">
+                  <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/20 px-4 py-2 text-xs font-semibold text-white">
                     App Store
                   </a>
                 </div>
-              </div>
+              </article>
             </div>
 
-            {/* Tech Roadmap */}
-            <div className="mt-8 bg-gray-50 border border-gray-200 rounded-2xl p-6">
-              <h3 className="font-bold text-gray-900 mb-4">Our Technology Roadmap</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {[
-                  { icon: Zap, text: 'Faster Bookings' },
-                  { icon: Bot, text: 'Smarter Diagnostics' },
-                  { icon: MessageCircle, text: 'Better Communication' },
-                  { icon: TrendingUp, text: 'Workshop Efficiency' },
-                ].map(({ icon: Icon, text }) => (
-                  <div key={text} className="flex items-center gap-2 bg-white rounded-xl border border-gray-100 px-3 py-2.5">
-                    <Icon className="w-4 h-4 text-brand-primary flex-shrink-0" />
-                    <span className="text-sm font-medium text-gray-700">{text}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-sm text-gray-600">This is not just a service platform – it is infrastructure for the future of car care.</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { icon: Zap, text: 'Faster bookings' },
+                { icon: Bot, text: 'Smarter diagnostics' },
+                { icon: MessageCircle, text: 'Better communication' },
+                { icon: TrendingUp, text: 'Workshop efficiency' },
+              ].map(({ icon: Icon, text }) => (
+                <div key={text} className="flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-3">
+                  <Icon className="h-4 w-4 flex-shrink-0 text-[#b9e0ff]" />
+                  <span className="text-sm text-white/80">{text}</span>
+                </div>
+              ))}
             </div>
+            <p className="mt-5 text-sm text-white/55">This is not just a service platform. It is infrastructure for the future of car care.</p>
           </div>
         </div>
       </section>
 
-      {/* Vision & Mission */}
-      <section className="py-12 sm:py-16 bg-gradient-to-br from-blue-50 to-indigo-50">
+      <section className="py-16 sm:py-20">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white border border-blue-200 rounded-2xl p-6 sm:p-8">
-              <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center mb-4">
-                <Target className="w-5 h-5 text-blue-600" />
-              </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Our Vision</h2>
-              <p className="mt-3 text-gray-700 leading-relaxed">
-                To become India&apos;s most trusted and seamless car care platform, serving millions of car owners with consistency, transparency, and reliability – city by city.
+          <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
+            <article className="rounded-3xl bg-white p-7 shadow-[0_12px_40px_-28px_rgba(12,26,51,0.45)] sm:p-9">
+              <Target className="h-5 w-5 text-[#0088E8]" />
+              <h2 className="mt-5 text-2xl font-semibold">Our vision</h2>
+              <p className="mt-3 text-sm leading-relaxed text-[#5c6778] sm:text-base">
+                To become India&apos;s most trusted and seamless car care platform, serving millions of car owners with consistency, transparency, and reliability — city by city.
               </p>
-            </div>
-            <div className="bg-white border border-indigo-200 rounded-2xl p-6 sm:p-8">
-              <div className="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center mb-4">
-                <Sparkles className="w-5 h-5 text-indigo-600" />
-              </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Our Mission</h2>
-              <p className="mt-3 text-gray-700 leading-relaxed">
+            </article>
+            <article className="rounded-3xl bg-gradient-to-br from-[#023D95] to-[#0088E8] p-7 text-white sm:p-9">
+              <Sparkles className="h-5 w-5 text-[#b9e0ff]" />
+              <h2 className="mt-5 text-2xl font-semibold text-white">Our mission</h2>
+              <p className="mt-3 text-sm leading-relaxed text-white/70 sm:text-base">
                 To remove stress, confusion, and unfair practices from car servicing by combining:
               </p>
-              <ul className="mt-3 space-y-2">
+              <ul className="mt-4 space-y-2">
                 {['The best workshops', 'Strong operational processes', 'Technology and AI', 'A customer-first mindset'].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-sm text-gray-700">
-                    <CheckCircle2 className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                  <li key={item} className="flex items-center gap-2 text-sm text-white/85">
+                    <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-[#b9e0ff]" />
                     {item}
                   </li>
                 ))}
               </ul>
-            </div>
+            </article>
           </div>
         </div>
       </section>
 
-      {/* Where We Operate */}
-      <section className="py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Where We Operate</h2>
-            <p className="mt-3 text-gray-600">Currently serving car owners across major cities – and expanding rapidly.</p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              {['Mumbai', 'Navi Mumbai', 'Thane', 'Palghar', 'Pune'].map((city) => (
-                <div key={city} className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2.5 rounded-xl">
-                  <MapPin className="w-4 h-4 text-blue-600" />
-                  <span className="font-semibold text-gray-900">{city}</span>
-                </div>
-              ))}
-            </div>
+      <section className="border-y border-[#d7e4f5] bg-white py-14">
+        <div className="container mx-auto px-4 text-center sm:px-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#0088E8]">Where we operate</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight">Currently serving, and expanding</h2>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+            {['Mumbai', 'Navi Mumbai', 'Thane', 'Palghar', 'Pune'].map((city) => (
+              <span key={city} className="inline-flex items-center gap-2 text-sm font-medium text-[#142033]">
+                <MapPin className="h-4 w-4 text-[#0088E8]" />
+                {city}
+              </span>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Why Trust Us */}
-      <section className="py-12 sm:py-16 bg-gray-50">
+      <section className="py-16 sm:py-20">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Why Customers Trust MY FNG</h2>
-            <p className="mt-4 text-gray-700 text-lg leading-relaxed">
-              Thousands of car owners choose MY FNG not because we are cheaper – but because we are clear, reliable, and accountable.
+          <div className="mx-auto max-w-3xl rounded-[32px] bg-gradient-to-br from-[#023D95] to-[#0088E8] px-6 py-12 text-center text-white sm:px-12">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.28em] text-[#b9e0ff]">Why customers trust MY FNG</h2>
+            <p className="mt-5 text-base leading-relaxed text-white/70 sm:text-lg">
+              Thousands of car owners choose MY FNG not because we are cheaper — but because we are clear, reliable, and accountable.
             </p>
-            <div className="mt-6 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 sm:p-8 text-white">
-              <p className="text-lg">When you book with MY FNG, you&apos;re not booking a garage.</p>
-              <p className="mt-2 text-2xl sm:text-3xl font-bold">You&apos;re booking peace of mind.</p>
-            </div>
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-              <Link
-                href="/car-services"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-6 py-3 text-white font-bold hover:bg-brand-primary-hover transition"
-              >
-                <Wrench className="w-4 h-4" />
+            <p className="mt-8 text-lg text-white/80">When you book with MY FNG, you&apos;re not booking a garage.</p>
+            <p className="mt-2 text-3xl font-semibold text-white sm:text-4xl">You&apos;re booking peace of mind.</p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link href="/car-services" className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-[#023D95]">
+                <Wrench className="h-4 w-4" />
                 Explore Services
               </Link>
-              <Link
-                href="/book-service"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-6 py-3 text-gray-900 font-bold hover:bg-gray-50 transition"
-              >
-                <Zap className="w-4 h-4" />
+              <Link href="/book-service" className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white">
+                <Zap className="h-4 w-4" />
                 Book Service
               </Link>
             </div>
@@ -293,9 +272,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* App Download Section */}
       <AppDownloadSection />
-
       <Footer />
     </div>
   );

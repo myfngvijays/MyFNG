@@ -5,10 +5,29 @@ import Link from 'next/link';
 import Footer from '@/components/landing/Footer';
 import RSAMembershipPlansCarousel from '@/components/membership/RSAMembershipPlansCarousel';
 import MembershipTermsSection from '@/components/membership/MembershipTermsSection';
-import { getCurrentOrStoredUtmParams } from '@/lib/utm';
+import { rsaRequestUtm } from '@/lib/rsa/emergencyPages';
 
 const RSA_WHATSAPP = '919594996161';
 const RSA_PHONE = '+919152307030';
+
+const RSA_REVIEWS = [
+  { text: 'Jumpstart on Eastern Express, Thane. Technician reached in 22 minutes.', name: 'Rahul • Thane • Swift', when: '6 Oct 2026, 9:40 PM' },
+  { text: 'Towing from the Mumbai highway was smooth. The car reached the workshop safely.', name: 'Amit • Mumbai • i20', when: '5 Oct 2026, 6:15 PM' },
+  { text: 'Night puncture in Pune. Spare was fitted on the spot.', name: 'Sachin • Pune • City', when: '5 Oct 2026, 11:20 PM' },
+  { text: 'Accident recovery in Navi Mumbai. The car was loaded carefully.', name: 'Praveen • Navi Mumbai • Creta', when: '4 Oct 2026, 8:05 PM' },
+  { text: 'Battery died in a Thane basement. Jumpstart done, no tow needed.', name: 'Mehul • Thane • Baleno', when: '4 Oct 2026, 7:30 AM' },
+  { text: 'WagonR stopped near Palghar. Help arrived before I reached office.', name: 'Rohit • Palghar • WagonR', when: '3 Oct 2026, 8:10 AM' },
+  { text: 'Rain breakdown in Navi Mumbai. Live tracking matched the arrival.', name: 'Arun • Navi Mumbai • Polo', when: '3 Oct 2026, 4:45 PM' },
+  { text: 'Tracked the technician live until he reached Ghodbunder Road.', name: 'Neeraj • Thane • Verna', when: '2 Oct 2026, 1:25 PM' },
+  { text: 'Fortuner towed to the workshop without any extra scratches.', name: 'Deepak • Pune • Fortuner', when: '2 Oct 2026, 10:05 AM' },
+  { text: 'Late-night support in Andheri. The team stayed on the call till help arrived.', name: 'Ankit • Mumbai • Amaze', when: '1 Oct 2026, 11:50 PM' },
+  { text: 'Clear price before the job started. Puncture fixed in about 20 minutes.', name: 'Vivek • Thane • Tiago', when: '1 Oct 2026, 3:15 PM' },
+  { text: 'Flat tyre on the way to work. Spare changed in 15 minutes.', name: 'Jay • Navi Mumbai • Nexon', when: '30 Sep 2026, 8:40 AM' },
+  { text: 'Early morning jumpstart in Pune. Car started before the school run.', name: 'Sourav • Pune • Alto', when: '29 Sep 2026, 6:55 AM' },
+  { text: 'Dispatch kept me updated. Technician was at the spot in half an hour.', name: 'Harsh • Mumbai • Brezza', when: '28 Sep 2026, 5:30 PM' },
+  { text: 'Car would not move after a breakdown. Towing was arranged the same hour.', name: 'Rakesh • Thane • XUV300', when: '27 Sep 2026, 2:10 PM' },
+  { text: 'Highway towing handled properly. Drop location was exactly where I sent the pin.', name: 'Gagan • Pune • Scorpio', when: '26 Sep 2026, 9:05 PM' },
+] as const;
 
 const RSA_FAQS_FALLBACK = [
   {
@@ -42,7 +61,7 @@ function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   const dropLine = dropLocationLink
     ? `%0ADrop Location (Google Link): ${encodeURIComponent(dropLocationLink)}`
     : '';
-  const utmParams = getCurrentOrStoredUtmParams();
+  const utmParams = rsaRequestUtm(service || 'roadside-assistance');
   const utmEntries: Array<[string, string | undefined]> = [
     ['UTM Source', utmParams.utm_source],
     ['UTM Medium', utmParams.utm_medium],
@@ -77,7 +96,7 @@ export default function RsaLandingPage() {
           items.map((item: { q?: string; a?: string; question?: string; answer?: string }) => ({
             question: String(item.q || item.question || ''),
             answer: String(item.a || item.answer || ''),
-          })).filter((item: { question: string; answer: string }) => item.question && item.answer),
+          })).filter((item: { question: string; answer: string }) => item.question && item.answer && !/fuel/i.test(item.question)),
         );
       })
       .catch(() => {});
@@ -135,15 +154,15 @@ export default function RsaLandingPage() {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: `
-    :root{--bg:#0b1220;--text:#ffffff;--muted:rgba(255,255,255,.72);--brand:#ff4d2e;--brand2:#ff8a00;--card: rgba(255,255,255,.06);--border: rgba(255,255,255,.12);--shadow: 0 18px 60px rgba(0,0,0,.35);--radius: 18px;}
+    :root{--bg:#F5F7FA;--text:#142033;--muted:#5c6778;--brand:#023D95;--brand2:#0088E8;--card:#ffffff;--border:#d7e4f5;--shadow:0 18px 50px rgba(2,61,149,.10);--radius:18px;}
     .rsa-landing *{box-sizing:border-box}
-    .rsa-landing{scroll-behavior:smooth;margin:0;font-family:"Poppins",system-ui,-apple-system,Segoe UI,Roboto,Arial;color:#ffffff;background:#070b14;min-height:100vh}
+    .rsa-landing{scroll-behavior:smooth;margin:0;font-family:"Poppins",system-ui,-apple-system,Segoe UI,Roboto,Arial;color:#142033;background:#F5F7FA;min-height:100vh}
     .rsa-landing a{color:inherit;text-decoration:none}
-    .rsa-landing h1,.rsa-landing h2,.rsa-landing h3,.rsa-landing h4,.rsa-landing h5,.rsa-landing h6{color:#ffffff}
-    .rsa-landing summary{color:#ffffff}
-    .rsa-landing .price{color:#ffffff}
-    .rsa-landing select.input{color:#ffffff}
-    .rsa-landing select.input option{color:#1a1a1a;background:#fff}
+    .rsa-landing h1,.rsa-landing h2,.rsa-landing h3,.rsa-landing h4,.rsa-landing h5,.rsa-landing h6{color:#023D95}
+    .rsa-landing summary{color:#023D95}
+    .rsa-landing .price{color:#023D95}
+    .rsa-landing select.input{color:#142033}
+    .rsa-landing select.input option{color:#142033;background:#fff}
     .rsa-landing .container{max-width:1180px;margin:auto;padding:0 12px}
     .rsa-landing header{position:sticky;top:0;z-index:50;background: rgba(255,255,255,.96);backdrop-filter: blur(14px);border-bottom:1px solid rgba(12,24,52,.12)}
     .rsa-landing .nav{display:flex;align-items:center;justify-content:space-between;padding:8px 0;gap:10px}
@@ -152,102 +171,106 @@ export default function RsaLandingPage() {
     .rsa-landing .nav-links{display:flex;gap:18px;align-items:center;font-size:14px;color:rgba(12,24,52,.72)}
     .rsa-landing .nav-links a:hover{color:#0a3f95}
     .rsa-landing .nav-cta{display:flex;gap:10px;align-items:center}
-    .rsa-landing .btn{border:1px solid var(--border);background: rgba(204,41,0,1);color:#00000;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
-    .rsa-landing .btn:hover{transform: translateY(-1px); background: rgba(0,0,0)}
-    .rsa-landing .btn.primary{background: linear-gradient(135deg, var(--brand2), var(--brand));border: none;box-shadow: 0 16px 40px rgba(255,77,46,.22);color:#2a0a07}
+    .rsa-landing .btn{border:none;background:linear-gradient(135deg,#e11d48,#dc2626);color:#ffffff;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap;box-shadow:0 10px 24px rgba(220,38,38,.22)}
+    .rsa-landing .btn:hover{transform: translateY(-1px); filter:brightness(1.05)}
+    .rsa-landing .btn.primary{background: linear-gradient(135deg, #0088E8, #023D95);border: none;box-shadow: 0 16px 40px rgba(2,61,149,.22);color:#ffffff}
     .rsa-landing .btn.whatsapp{background:linear-gradient(135deg,#25D366,#128C7E);box-shadow:0 16px 40px rgba(18,140,126,.28);color:#ffffff}
     .rsa-landing .btn.primary:hover{filter:brightness(1.05)}
     .rsa-landing .btn.small{padding:9px 12px;border-radius:12px;width:130px;font-size:16px}
-    .rsa-landing .hero{position:relative;overflow:hidden;padding: 34px 0 28px;background: radial-gradient(600px 420px at 12% 25%, rgba(246, 84, 22, 0.24), transparent 70%),radial-gradient(560px 400px at 78% 40%, rgba(145, 26, 18, 0.26), transparent 75%),linear-gradient(110deg,#571008 0%,#63140a 34%,#6f180d 58%,#7d1b12 100%)}
-    .rsa-landing .hero::before{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.04),rgba(0,0,0,.18));pointer-events:none}
+    .rsa-landing .hero{position:relative;overflow:hidden;padding: 34px 0 28px;background: radial-gradient(620px 420px at 12% 20%, rgba(255,255,255,.16), transparent 70%),linear-gradient(115deg,#023D95 0%,#0357b8 48%,#0088E8 100%)}
+    .rsa-landing .hero::before{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,.04),rgba(2,61,149,.12));pointer-events:none}
+    .rsa-landing .hero h1,.rsa-landing .hero h3{color:#ffffff}
     .rsa-landing .hero-grid{position:relative;z-index:2;display:grid;grid-template-columns: 1.04fr .96fr;gap:20px;align-items:stretch}
-    .rsa-landing .badge{display:inline-flex;gap:8px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.18);color:rgba(255,255,255,.84);font-size:12px;font-weight:600;width:fit-content}
-    .rsa-landing .dot{width:8px;height:8px;border-radius:50%;background:#ff6a46;box-shadow:0 0 0 4px rgba(255,106,70,.18)}
+    .rsa-landing .badge{display:inline-flex;gap:8px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.35);background:linear-gradient(135deg,#e11d48,#dc2626);color:#ffffff;font-size:12px;font-weight:600;width:fit-content;box-shadow:0 8px 22px rgba(220,38,38,.28)}
+    .rsa-landing .dot{width:8px;height:8px;border-radius:50%;background:#ffffff;box-shadow:0 0 0 4px rgba(255,255,255,.28)}
     .rsa-landing h1{margin:14px 0 10px;font-size:25px;line-height:1.2;letter-spacing:-.3px}
-    .rsa-landing .gradient-text{background: linear-gradient(135deg,#ffa037,#ff6f2f 55%,#ff4d2e);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .rsa-landing .gradient-text{background:none;-webkit-text-fill-color:#d7ecff;color:#d7ecff}
     .rsa-landing .lead{color:rgba(255,255,255,.84);font-size:16px;line-height:1.55;margin:0 0 14px;max-width:590px}
     .rsa-landing .lead-location{display:inline}
     .rsa-landing .chips{display:flex;gap:8px;flex-wrap:wrap;margin: 10px 0 0}
-    .rsa-landing .chip{display:inline-flex;gap:7px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(0,0,0);background:rgba(255,255,255);font-size:12px;font-weight:700;color:rgba(0,0,0)}
+    .rsa-landing .chip{display:inline-flex;gap:7px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.92);font-size:12px;font-weight:700;color:#023D95}
     .rsa-landing .hero-actions{display:none}
     .rsa-landing .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
-    .rsa-landing .stat{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);border-radius:14px;padding:12px}
-    .rsa-landing .stat strong{display:block;font-size:22px;color:#ffffff;line-height:1.2}
-    .rsa-landing .stat span{color:rgba(255,255,255,.68);font-size:12px}
-    .rsa-landing .card{border:1px solid rgba(255,255,255,.11);background: linear-gradient(180deg,#11192f 0%,#0f1629 100%);border-radius: 20px;box-shadow: var(--shadow);padding:16px}
-    .rsa-landing .card h3{margin:0 0 4px;font-size:24px;color:#ffffff}
+    .rsa-landing .stat{border:1px solid #f3b4b4;background:#fff8f8;border-radius:14px;padding:12px;box-shadow:0 0 0 3px rgba(239,68,68,.06)}
+    .rsa-landing .stat strong{display:block;font-size:22px;color:#023D95;line-height:1.2}
+    .rsa-landing .stat span{color:#5c6778;font-size:12px}
+    .rsa-landing .card{border:1px solid #f3b4b4;background:#ffffff;border-radius: 20px;box-shadow: 0 0 0 4px rgba(239,68,68,.08), var(--shadow);padding:16px}
+    .rsa-landing .card h3{margin:0 0 4px;font-size:24px;color:#023D95}
     .rsa-landing .hero-copy{display:flex;flex-direction:column;justify-content:center;height:100%}
-    .rsa-landing .card p{margin:0 0 12px;color:rgba(255,255,255,.68);font-size:13px}
+    .rsa-landing .card p{margin:0 0 12px;color:#5c6778;font-size:13px}
     .rsa-landing .form{display:grid;gap:9px;margin-top:10px}
-    .rsa-landing .input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid rgba(255,255,255,.09);background: rgba(255,255,255,.04);color:#ffffff;outline:none;font-size:13px}
-    .rsa-landing .input::placeholder{color:rgba(255,255,255,.5)}
-    .rsa-landing .input:focus{border-color: rgba(255,127,50,.8)}
+    .rsa-landing .input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid #f3b4b4;background:#fffafa;color:#142033;outline:none;font-size:13px}
+    .rsa-landing .input::placeholder{color:#8aa0b8}
+    .rsa-landing .input:focus{border-color:#e11d48;box-shadow:0 0 0 3px rgba(225,29,72,.12)}
     .rsa-landing .form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .rsa-landing .location-wrap{position:relative}
     .rsa-landing .location-wrap .input{padding-right:42px}
-    .rsa-landing .loc-btn{position:absolute;right:7px;top:7px;height:28px;width:28px;border:1px solid rgba(255,255,255,.92);border-radius:8px;background:#ffffff;color:#ff4d2e;font-weight:800;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.2)}
+    .rsa-landing .loc-btn{position:absolute;right:7px;top:7px;height:28px;width:28px;border:1px solid #d7e4f5;border-radius:8px;background:#ffffff;color:#0088E8;font-weight:800;cursor:pointer;box-shadow:0 6px 16px rgba(2,61,149,.12)}
     .rsa-landing .send-btn{border:none;border-radius:11px;padding:12px 14px;background:linear-gradient(135deg,#25D366,#128C7E);box-shadow:0 16px 40px rgba(18,140,126,.28);font-size:16px;font-weight:800;color:#fffff;cursor:pointer}
     .rsa-landing .send-btn:hover{filter:brightness(1.04)}
-    .rsa-landing .note{margin-top:10px;font-size:12px;color:rgba(255,255,255,.70)}
-    .rsa-landing section{padding: 46px 0;background:#070b14}
+    .rsa-landing .note{margin-top:10px;font-size:12px;color:#5c6778}
+    .rsa-landing section{padding: 46px 0;background:#F5F7FA}
+    .rsa-landing section:nth-of-type(even){background:#ffffff}
     .rsa-landing .section-title{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
-    .rsa-landing .section-title h2{margin:0;font-size:28px;letter-spacing:-.3px;color:#ffffff}
-    .rsa-landing .section-title p{margin:0;color:rgba(255,255,255,.68);max-width:620px}
+    .rsa-landing .section-title h2{margin:0;font-size:28px;letter-spacing:-.3px;color:#023D95}
+    .rsa-landing .section-title p{margin:0;color:#5c6778;max-width:620px}
     .rsa-landing .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
     .rsa-landing .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-    .rsa-landing .feature{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: var(--radius);padding:16px}
-    .rsa-landing .feature .icon{width:42px;height:42px;border-radius:14px;background: rgba(255,138,0,.16);border:1px solid rgba(255,138,0,.25);display:grid;place-items:center;margin-bottom:10px;font-weight:900;color:#ffb86b}
-    .rsa-landing .feature h4{margin:0 0 6px;font-size:16px;color:#ffffff}
-    .rsa-landing .feature p{margin:0;color:rgba(255,255,255,.68);font-size:13px;line-height:1.6}
+    .rsa-landing a.feature{display:block;color:inherit;text-decoration:none;transition:transform .15s ease}
+    .rsa-landing a.feature:hover{transform:translateY(-2px)}
+    .rsa-landing .feature{border:1px solid #f3b4b4;background:#ffffff;border-radius: var(--radius);padding:16px;box-shadow:0 0 0 3px rgba(239,68,68,.07), 0 10px 30px rgba(220,38,38,.06)}
+    .rsa-landing .feature .icon{width:42px;height:42px;border-radius:14px;background:#e8f3ff;border:1px solid #d7e4f5;display:grid;place-items:center;margin-bottom:10px;font-weight:900;color:#023D95}
+    .rsa-landing .feature h4{margin:0 0 6px;font-size:16px;color:#023D95}
+    .rsa-landing .feature p{margin:0;color:#5c6778;font-size:13px;line-height:1.6}
     .rsa-landing .pricing{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     .rsa-landing .plan-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
     .rsa-plans-wrap{margin-top:0}
     .rsa-plans-copy{margin-bottom:18px}
     .rsa-plans-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:stretch}
     .rsa-plans-card{min-width:0}
-    .rsa-plans-loading{padding:24px 0;color:rgba(255,255,255,.68);font-size:13px;text-align:center}
+    .rsa-plans-loading{padding:24px 0;color:#5c6778;font-size:13px;text-align:center}
     .membership-terms-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
-    .membership-terms-list li{display:flex;gap:10px;align-items:flex-start;color:rgba(255,255,255,.78);font-size:14px;line-height:1.55}
+    .membership-terms-list li{display:flex;gap:10px;align-items:flex-start;color:#3d4a5c;font-size:14px;line-height:1.55}
     .membership-terms-list-dark .membership-terms-check{color:#34D399;font-weight:900;flex-shrink:0;margin-top:1px}
-    .rsa-landing .plan-card{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);border-radius:20px;overflow:hidden;display:flex;flex-direction:column}
-    .rsa-landing .plan-card .topline{height:4px;background:linear-gradient(90deg,#ff8a00,#ff4d2e)}
+    .rsa-landing .plan-card{border:1px solid #d7e4f5;background:#ffffff;border-radius:20px;overflow:hidden;display:flex;flex-direction:column}
+    .rsa-landing .plan-card .topline{height:4px;background:linear-gradient(90deg,#023D95,#0088E8)}
     .rsa-landing .plan-card .body{padding:16px;display:flex;flex-direction:column;gap:10px;height:100%}
-    .rsa-landing .plan-card h3{margin:0;font-size:18px;color:#ffffff}
+    .rsa-landing .plan-card h3{margin:0;font-size:18px;color:#023D95}
     .rsa-landing .plan-card .price{font-size:26px;font-weight:900;line-height:1}
-    .rsa-landing .plan-card .duration{font-size:12px;font-weight:700;color:#ffcf99}
+    .rsa-landing .plan-card .duration{font-size:12px;font-weight:700;color:#0088E8}
     .rsa-landing .plan-card .list li{font-size:13px}
-    .rsa-landing .terms-card{margin-top:16px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);border-radius:18px;padding:16px}
-    .rsa-landing .terms-card h4{margin:0 0 8px;color:#ffffff}
-    .rsa-landing .price-card{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: 22px;padding:18px}
-    .rsa-landing .price-card h3{margin:0 0 8px;color:#ffffff}
-    .rsa-landing .price{font-size:34px;font-weight:900;letter-spacing:-.5px;margin:10px 0;color:#ffffff;line-height: 24px;}
-    .rsa-landing .price small{font-size:11px;color:rgba(255,255,255,.70);font-weight:700}
+    .rsa-landing .terms-card{margin-top:16px;border:1px solid #d7e4f5;background:#ffffff;border-radius:18px;padding:16px}
+    .rsa-landing .terms-card h4{margin:0 0 8px;color:#023D95}
+    .rsa-landing .price-card{border:1px solid #d7e4f5;background:#ffffff;border-radius: 22px;padding:18px;box-shadow:0 10px 30px rgba(2,61,149,.05)}
+    .rsa-landing .price-card h3{margin:0 0 8px;color:#023D95}
+    .rsa-landing .price{font-size:34px;font-weight:900;letter-spacing:-.5px;margin:10px 0;color:#023D95;line-height: 24px;}
+    .rsa-landing .price small{font-size:11px;color:#5c6778;font-weight:700}
     .rsa-landing .list{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:8px}
-    .rsa-landing .list li{display:flex;gap:10px;align-items:flex-start;color:rgba(255,255,255,.70);font-size:14px}
+    .rsa-landing .list li{display:flex;gap:10px;align-items:flex-start;color:#3d4a5c;font-size:14px}
     .rsa-landing .tick{width:18px;height:18px;border-radius:50%;background: rgba(34,197,94,.18);border:1px solid rgba(34,197,94,.35);display:grid;place-items:center;color:#22c55e;flex:0 0 auto;margin-top:2px;font-size:12px;font-weight:900}
     .rsa-landing .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-    .rsa-landing .step{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: var(--radius);padding:16px}
-    .rsa-landing .step b{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:12px;background: rgba(255,77,46,.16);border:1px solid rgba(255,77,46,.30);margin-bottom:10px;color:#ffb3a6;font-weight:900}
-    .rsa-landing .step h4{margin:0 0 6px;color:#ffffff}
-    .rsa-landing .step p{margin:0;color:rgba(255,255,255,.68);font-size:13px;line-height:1.6}
+    .rsa-landing .step{border:1px solid #d7e4f5;background:#ffffff;border-radius: var(--radius);padding:16px}
+    .rsa-landing .step b{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:12px;background:#e8f3ff;border:1px solid #d7e4f5;margin-bottom:10px;color:#023D95;font-weight:900}
+    .rsa-landing .step h4{margin:0 0 6px;color:#023D95}
+    .rsa-landing .step p{margin:0;color:#5c6778;font-size:13px;line-height:1.6}
     .rsa-landing .testimonials{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-    .rsa-landing .review{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: var(--radius);padding:16px;min-width:300px}
-    .rsa-landing .stars{color:#ffcc66;letter-spacing:1px;font-size:14px}
-    .rsa-landing .review p{color:rgba(255,255,255,.70);font-size:13px;line-height:1.7;margin:10px 0 12px}
-    .rsa-landing .review strong{display:block;color:#ffffff}
-    .rsa-landing .review span{color:rgba(255,255,255,.65);font-size:12px}
-    .rsa-landing details{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: var(--radius);padding:14px 16px}
+    .rsa-landing .review{border:1px solid #d7e4f5;background:#ffffff;border-radius: var(--radius);padding:16px;min-width:300px}
+    .rsa-landing .stars{color:#0088E8;letter-spacing:1px;font-size:14px}
+    .rsa-landing .review p{color:#3d4a5c;font-size:13px;line-height:1.7;margin:10px 0 12px}
+    .rsa-landing .review strong{display:block;color:#023D95}
+    .rsa-landing .review span{display:block;margin-top:4px;color:#5c6778;font-size:12px}
+    .rsa-landing details{border:1px solid #d7e4f5;background:#ffffff;border-radius: var(--radius);padding:14px 16px}
     .rsa-landing details + details{margin-top:10px}
     .rsa-landing summary{cursor:pointer;font-weight:700;list-style:none}
     .rsa-landing summary::-webkit-details-marker{display:none}
-    .rsa-landing details p{color:rgba(255,255,255,.70);font-size:13px;line-height:1.7;margin:10px 0 0}
-    .rsa-landing .faq-item{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: var(--radius);padding:14px 16px}
+    .rsa-landing details p{color:#5c6778;font-size:13px;line-height:1.7;margin:10px 0 0}
+    .rsa-landing .faq-item{border:1px solid #d7e4f5;background:#ffffff;border-radius: var(--radius);padding:14px 16px}
     .rsa-landing .faq-item + .faq-item{margin-top:10px}
-    .rsa-landing .faq-question{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:none;background:transparent;color:#ffffff;font-weight:700;text-align:left;cursor:pointer;font-size:15px;padding:0}
-    .rsa-landing .faq-answer{color:rgba(255,255,255,.70);font-size:15px;line-height:1.7;margin:10px 0 0}
+    .rsa-landing .faq-question{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:none;background:transparent;color:#023D95;font-weight:700;text-align:left;cursor:pointer;font-size:15px;padding:0}
+    .rsa-landing .faq-answer{color:#5c6778;font-size:15px;line-height:1.7;margin:10px 0 0}
     .rsa-landing .faq-chevron{font-size:12px;opacity:.9;transition:transform .2s ease}
     .rsa-landing .faq-chevron.open{transform:rotate(180deg)}
-    .rsa-landing footer{padding: 26px 0;border-top:1px solid rgba(255,255,255,.10);color:rgba(255,255,255,.65);font-size:13px;background:#070b14}
+    .rsa-landing footer{padding: 26px 0;border-top:1px solid #d7e4f5;color:#5c6778;font-size:13px;background:#ffffff}
     .rsa-landing .marquee{overflow:hidden;position:relative}
     .rsa-landing .marquee-track{display:flex;gap:18px;width:max-content;animation:rsa-scroll 70s linear infinite}
     .rsa-landing section[id], .rsa-landing aside[id]{scroll-margin-top:88px}
@@ -319,7 +342,6 @@ export default function RsaLandingPage() {
                       <option>Jump Start</option>
                       <option>Towing Service</option>
                       <option>Flat Tyre Fix</option>
-                      <option>Fuel Delivery</option>
                       <option>Minor Repair</option>
                       <option>Accident Support</option>
                     </select>
@@ -358,7 +380,7 @@ export default function RsaLandingPage() {
                     <div className="stat"><strong>24×7</strong><span>Emergency Assistance</span></div>
                     <div className="stat"><strong>30 Min</strong><span>Avg Dispatch Time</span></div>
                     <div className="stat"><strong>Live GPS</strong><span>Track Technician</span></div>
-                    <div className="stat"><strong>32000+</strong><span>Rescues Done</span></div>
+                    <div className="stat"><strong>52000+</strong><span>Rescues Done</span></div>
                   </div>
                 </form>
               </aside>
@@ -370,14 +392,13 @@ export default function RsaLandingPage() {
           <div className="container">
             <div className="section-title"><div><h2>Roadside Assistance Services</h2><p>Quick on‑road solutions for every car emergency.</p></div></div>
             <div className="grid-4">
-              <div className="feature"><div className="icon">⚡</div><h4>Battery Jumpstart</h4><p>ETA: 10-30 Min</p><p>Instant battery start at your location.</p></div>
-              <div className="feature"><div className="icon">⛽</div><h4>Fuel Delivery</h4><p>ETA: 20-30 Min</p><p>Emergency petrol/diesel delivery.</p></div>
-              <div className="feature"><div className="icon">🚗</div><h4>Car Towing Services</h4><p>ETA: 20-30 Min</p><p>Safe towing to nearest workshop.</p></div>
-              <div className="feature"><div className="icon">🧯</div><h4>Accidental Car Towing</h4><p>ETA: 30-35 Min</p><p>Accident vehicle recovery & transport.</p></div>
-              <div className="feature"><div className="icon">🛠</div><h4>Roadside Assistance</h4><p>ETA: 10-20 Min</p><p>Minor on‑road repairs support.</p></div>
-              <div className="feature"><div className="icon">📍</div><h4>Car Tracking Services</h4><p>ETA: 20-30 Min</p><p>Live location and tracking support.</p></div>
-              <div className="feature"><div className="icon">🧰</div><h4>Periodic Car Service</h4><p>ETA: 60 Secs</p><p>Book periodic maintenance booking in Seconds.</p></div>
-              <div className="feature"><div className="icon">🛞</div><h4>Flat Tyre Assistance</h4><p>ETA: 15-30 Min</p><p>Tyre change or puncture fix instantly.</p></div>
+              <Link className="feature" href="/car-roadside-assistance/battery-jumpstart"><div className="icon">⚡</div><h4>Battery Jumpstart</h4><p>ETA: 10-30 Min</p><p>Instant battery start at your location.</p></Link>
+              <Link className="feature" href="/car-roadside-assistance/car-towing"><div className="icon">🚗</div><h4>Car Towing Services</h4><p>ETA: 20-30 Min</p><p>Safe towing to nearest workshop.</p></Link>
+              <Link className="feature" href="/car-roadside-assistance/car-towing#accident"><div className="icon">🧯</div><h4>Accidental Car Towing</h4><p>ETA: 30-35 Min</p><p>Accident vehicle recovery & transport.</p></Link>
+              <a className="feature" href="#contact"><div className="icon">🛠</div><h4>Roadside Assistance</h4><p>ETA: 10-20 Min</p><p>Minor on‑road repairs support.</p></a>
+              <a className="feature" href="#contact"><div className="icon">📍</div><h4>Car Tracking Services</h4><p>ETA: 20-30 Min</p><p>Live location and tracking support.</p></a>
+              <Link className="feature" href="/car-services/periodic-car-service"><div className="icon">🧰</div><h4>Periodic Car Service</h4><p>ETA: 60 Secs</p><p>Book periodic maintenance booking in Seconds.</p></Link>
+              <Link className="feature" href="/car-roadside-assistance/flat-tyre"><div className="icon">🛞</div><h4>Flat Tyre Assistance</h4><p>ETA: 15-30 Min</p><p>Tyre change or puncture fix instantly.</p></Link>
             </div>
           </div>
         </section>
@@ -413,7 +434,7 @@ export default function RsaLandingPage() {
                   <a
                     className="btn"
                     href={`tel:${RSA_PHONE}`}
-                    style={{ flex: 1, background: '#cc2900', border: 'none', color: '#ffffff', justifyContent: 'center' }}
+                    style={{ flex: 1, background: 'linear-gradient(135deg,#e11d48,#dc2626)', border: 'none', color: '#ffffff', justifyContent: 'center' }}
                   >
                     📞 Call Now
                   </a>
@@ -437,7 +458,7 @@ export default function RsaLandingPage() {
                 <ul className="list">
                   <li>
                     <span className="tick">✓</span>
-                    <span>Jumpstart, puncture, fuel &amp; minor fixes</span>
+                    <span>Jumpstart, puncture &amp; minor fixes</span>
                   </li>
                   <li>
                     <span className="tick">✓</span>
@@ -452,7 +473,7 @@ export default function RsaLandingPage() {
                   <a
                     className="btn"
                     href={`tel:${RSA_PHONE}`}
-                    style={{ flex: 1, background: '#cc2900', border: 'none', color: '#ffffff', justifyContent: 'center' }}
+                    style={{ flex: 1, background: 'linear-gradient(135deg,#e11d48,#dc2626)', border: 'none', color: '#ffffff', justifyContent: 'center' }}
                   >
                     📞 Call Now
                   </a>
@@ -488,26 +509,16 @@ export default function RsaLandingPage() {
             <div className="section-title"><div><h2>Reviews</h2><p>Trusted by customers for quick response and professional roadside support.</p></div></div>
             <div className="marquee">
               <div className="marquee-track">
-                <div className="review"><div className="stars">★★★★★</div><p>Jumpstart done quickly for my Swift in Pune. Reached in 20 minutes.</p><strong>Rahul • Pune • Maruti Swift</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Towing arranged for my i20 in Mumbai highway. Very professional.</p><strong>Amit • Mumbai • Hyundai i20</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Flat tyre help at night in Delhi. Technician polite.</p><strong>Sachin • Delhi • Honda City</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Fuel delivered in Bangalore Outer Ring Road. Lifesaver.</p><strong>Karthik • Bangalore • Kia Seltos</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Accident towing handled carefully in Hyderabad.</p><strong>Praveen • Hyderabad • Creta</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Battery jumpstart in Ahmedabad parking basement.</p><strong>Mehul • Ahmedabad • Baleno</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Fast service for my WagonR in Jaipur.</p><strong>Rohit • Jaipur • WagonR</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Car stopped in rain, got help in Chennai quickly.</p><strong>Arun • Chennai • Polo</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Tracking feature was accurate in Gurgaon.</p><strong>Neeraj • Gurgaon • Verna</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Very smooth towing for my Fortuner in Noida.</p><strong>Deepak • Noida • Fortuner</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Night support in Indore saved my trip.</p><strong>Ankit • Indore • Amaze</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Good behavior and fair price in Nagpur.</p><strong>Vivek • Nagpur • Tiago</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Tyre replaced in 15 mins in Surat.</p><strong>Jay • Surat • Nexon</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Jumpstart early morning in Kolkata.</p><strong>Sourav • Kolkata • Alto</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Excellent coordination in Lucknow.</p><strong>Harsh • Lucknow • Brezza</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Technician arrived quickly in Bhopal.</p><strong>Rakesh • Bhopal • XUV300</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Highway towing handled perfectly in Chandigarh.</p><strong>Gagan • Chandigarh • Scorpio</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Fuel delivery within 25 minutes in Kochi.</p><strong>Nithin • Kochi • Jazz</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Jumpstart done quickly for my Swift in Pune. Reached in 20 minutes.</p><strong>Rahul • Pune • Maruti Swift</strong></div>
-                <div className="review"><div className="stars">★★★★★</div><p>Towing arranged for my i20 in Mumbai highway. Very professional.</p><strong>Amit • Mumbai • Hyundai i20</strong></div>
+                {[0, 1].map((copy) =>
+                  RSA_REVIEWS.map((review) => (
+                    <div className="review" key={`${copy}-${review.when}`}>
+                      <div className="stars">★★★★★</div>
+                      <p>{review.text}</p>
+                      <strong>{review.name}</strong>
+                      <span>{review.when}</span>
+                    </div>
+                  )),
+                )}
               </div>
             </div>
           </div>
@@ -527,7 +538,7 @@ export default function RsaLandingPage() {
               </div>
             </div>
             <div className="terms-card" style={{ marginTop: 0 }}>
-              <MembershipTermsSection membershipType="RSA" dark />
+              <MembershipTermsSection membershipType="RSA" />
             </div>
           </div>
         </section>

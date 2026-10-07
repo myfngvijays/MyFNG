@@ -328,7 +328,7 @@ const navigationItems: NavItem[] = [
         name: 'Service Page Images',
         href: '/dashboard/super_admin/website-images/promo-banners',
         icon: Megaphone,
-        description: 'Top cards on Services (Ganesh Prime, loan, etc.)',
+        description: 'Top cards on Services (Prime, loan, etc.)',
       },
       {
         name: 'Customer Reviews',

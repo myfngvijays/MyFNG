@@ -83,8 +83,6 @@ const ALL_ITEMS: SearchItem[] = [
     screen: 'RoadsideAssistance', keywords: ['jumpstart', 'battery dead', 'car not starting', 'dead battery'] },
   { id: 'rsa-towing', title: 'Car Towing', category: 'RSA Service', icon: 'car',
     screen: 'RoadsideAssistance', keywords: ['towing', 'tow', 'car tow', 'accident towing', 'breakdown tow'] },
-  { id: 'rsa-fuel', title: 'Fuel Delivery', category: 'RSA Service', icon: 'add-circle',
-    screen: 'RoadsideAssistance', keywords: ['fuel', 'petrol', 'diesel', 'fuel delivery', 'ran out of fuel', 'no fuel'] },
   { id: 'rsa-flat', title: 'Flat Tyre Assistance', category: 'RSA Service', icon: 'ellipse-outline',
     screen: 'RoadsideAssistance', keywords: ['flat tyre', 'puncture', 'tyre burst', 'spare tyre'] },
   { id: 'ai', title: 'AI Assistant', category: 'Booking', icon: 'sparkles',

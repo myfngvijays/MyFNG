@@ -145,7 +145,6 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
             <IndentBullet>Vehicle towing</IndentBullet>
             <IndentBullet>Battery jump-start support</IndentBullet>
             <IndentBullet>Flat tyre assistance</IndentBullet>
-            <IndentBullet>Emergency fuel delivery (where available)</IndentBullet>
             <IndentBullet>Minor on-road mechanical or electrical assistance</IndentBullet>
             <Bullet>Appointment scheduling and booking confirmations</Bullet>
             <Bullet>Service coordination and communication between Users and service providers</Bullet>
