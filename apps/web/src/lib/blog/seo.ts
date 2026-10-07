@@ -295,7 +295,7 @@ export async function listBlogListingSchemaItems(limit = 8): Promise<Array<{ nam
 
   const { data, error } = await supabaseAdmin
     .from('blogs')
-    .select('slug, title, seo_data')
+    .select('slug, title, seo_data, category:blog_categories(name, slug)')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(limit);
@@ -303,7 +303,14 @@ export async function listBlogListingSchemaItems(limit = 8): Promise<Array<{ nam
   if (error || !data) return [];
 
   return data
-    .filter((row: any) => isBlogIndexable(row.seo_data))
+    .filter((row: any) => {
+      if (!isBlogIndexable(row.seo_data)) return false;
+      const seo = row.seo_data && typeof row.seo_data === 'object' ? row.seo_data : {};
+      if (seo.ai_news_car === true || seo.ai_news_car === 'true') return false;
+      const category = Array.isArray(row.category) ? row.category[0] : row.category;
+      const label = `${category?.name || ''} ${category?.slug || ''}`;
+      return !/automobile news|car news|auto news|new cars?/i.test(label);
+    })
     .map((row: any) => ({
       name: String(parseBlogSeoData(row.seo_data).meta_title || row.title || row.slug),
       url: `https://myfng.in/blogs/${row.slug}`,

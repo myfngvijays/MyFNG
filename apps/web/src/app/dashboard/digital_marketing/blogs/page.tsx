@@ -18,7 +18,6 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
-import DailyBlogActivityLog from '@/components/blog/DailyBlogActivityLog';
 
 interface Blog {
   id: string;
@@ -74,6 +73,7 @@ function BlogsPageContent() {
   const [pagination, setPagination] = useState({ page: 1, limit: 8, total: 0, totalPages: 0 });
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [desk, setDesk] = useState<'blogs' | 'news'>('blogs');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
@@ -93,7 +93,7 @@ function BlogsPageContent() {
   useEffect(() => {
     void fetchBlogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, debouncedSearch, pagination.page, selectedCategory]);
+  }, [filter, debouncedSearch, pagination.page, selectedCategory, desk]);
 
   async function fetchCategories() {
     try {
@@ -114,6 +114,7 @@ function BlogsPageContent() {
       if (filter !== 'all') params.append('status', filter);
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (selectedCategory) params.append('category_id', selectedCategory);
+      params.append('desk', desk);
       params.append('page', pagination.page.toString());
       params.append('limit', '8');
 
@@ -156,6 +157,10 @@ function BlogsPageContent() {
 
   const startIndex = pagination.total === 0 ? 0 : (pagination.page - 1) * 8 + 1;
   const endIndex = Math.min(pagination.page * 8, pagination.total);
+  const visibleCategories = categories.filter((category) => {
+    const news = /automobile news/i.test(category.name);
+    return desk === 'news' ? news : !news;
+  });
 
   return (
     <DashboardLayout role="digital_marketing">
@@ -181,8 +186,7 @@ function BlogsPageContent() {
           </div>
         </div>
 
-        <DailyBlogScheduleCard />
-        <DailyBlogActivityLog />
+        <DailyBlogScheduleCard compact />
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 sm:left-4 sm:h-5 sm:w-5" />
@@ -198,6 +202,29 @@ function BlogsPageContent() {
           />
         </div>
 
+        <div className="flex flex-wrap gap-2">
+          {([
+            { id: 'blogs' as const, label: 'Blogs' },
+            { id: 'news' as const, label: 'Automobile News' },
+          ]).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setDesk(tab.id);
+                setSelectedCategory('');
+                setPagination((p) => ({ ...p, page: 1 }));
+              }}
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold sm:px-6 sm:py-2 sm:text-sm ${
+                desk === tab.id ? 'bg-[#023D95] text-white' : 'bg-white text-[#023D95] ring-1 ring-[#023D95]/30'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {desk === 'blogs' ? (
         <div className="flex flex-wrap gap-2 sm:gap-3">
           <button
             type="button"
@@ -213,7 +240,7 @@ function BlogsPageContent() {
           >
             All
           </button>
-          {categories.map((category) => (
+          {visibleCategories.map((category) => (
             <button
               key={category.id}
               type="button"
@@ -231,6 +258,7 @@ function BlogsPageContent() {
             </button>
           ))}
         </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           {[
@@ -270,14 +298,17 @@ function BlogsPageContent() {
               <span className="font-semibold">
                 {startIndex}-{endIndex}
               </span>{' '}
-              of <span className="font-semibold">{pagination.total}</span> blogs
+              of <span className="font-semibold">{pagination.total}</span> {desk === 'news' ? 'news stories' : 'blogs'}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4 md:gap-8">
               {blogs.map((blog) => {
+                const isNews = desk === 'news' || /automobile news/i.test(blog.category?.name || '');
                 const href =
                   blog.status === 'published'
-                    ? `/blogs/${blog.slug}`
+                    ? isNews
+                      ? `/automobile-news/${blog.slug}`
+                      : `/blogs/${blog.slug}`
                     : `/dashboard/digital_marketing/blogs/${blog.id}`;
                 const imageSrc = blog.featured_image
                   ? normalizeBlogMediaUrl(blog.featured_image) || blog.featured_image

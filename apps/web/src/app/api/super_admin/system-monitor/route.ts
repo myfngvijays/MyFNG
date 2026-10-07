@@ -27,6 +27,7 @@ import { loadTelecallerLeadsShiftLastRun } from '@/lib/services/telecallerLeadsS
 import { getTelecallerLeadsShiftTemplateStatus } from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
 import { istDateString } from '@/lib/blog/dailyTopics';
 import { overdueSlotIndexes, resolveDailyBlogSchedule } from '@/lib/blog/dailyBlogSlots';
+import { automobileNewsSlotsDue } from '@/lib/blog/automobileNewsSlots';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -1406,6 +1407,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/openai-balance-alert',
     '/api/cron/google-ads-funds-alert',
     '/api/cron/daily-blog',
+    '/api/cron/automobile-news',
     '/api/cron/competitor-seo',
   ];
 
@@ -4096,6 +4098,105 @@ async function checkWebsiteTracking(): Promise<HealthCheck> {
   }
 }
 
+async function checkAutomobileNews(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  const openAi = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+  const runDate = istDateString();
+  const expected = automobileNewsSlotsDue();
+
+  if (!client) {
+    return {
+      name: 'Automobile News Auto-Post',
+      category: 'Background Jobs',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot count today's automobile news: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  if (!openAi) {
+    return {
+      name: 'Automobile News Auto-Post',
+      category: 'Background Jobs',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'OPENAI_API_KEY missing',
+      reason: 'The daily 10-story automobile news cron cannot write stories without OPENAI_API_KEY.',
+      quickFix: {
+        label: 'Check Environment Variables',
+        action: 'check-env',
+        actionPayload: { vars: ['OPENAI_API_KEY'] },
+      },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error } = await client
+      .from('blogs')
+      .select('seo_data')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(80);
+    if (error) throw new Error(error.message);
+
+    const posted = (data || []).filter((row: any) => {
+      const seo = row?.seo_data || {};
+      return seo.ai_daily_news === true && String(seo.ai_daily_news_date || '') === runDate;
+    }).length;
+
+    let crononActive: boolean | null = null;
+    try {
+      const cronRes = await client
+        .schema('cron')
+        .from('job')
+        .select('jobname, active')
+        .eq('jobname', 'automobile-news-auto-post')
+        .maybeSingle();
+      if (!cronRes.error) crononActive = cronRes.data ? Boolean((cronRes.data as any).active) : false;
+    } catch {
+      crononActive = null;
+    }
+
+    const behind = posted < expected;
+    const finishedLate = expected >= 10 && posted < 10;
+    const cronMissing = crononActive === false;
+    const status: ServiceStatus = finishedLate || behind || cronMissing ? 'degraded' : 'healthy';
+    const reason = cronMissing
+      ? 'Supabase Cronon has no active automobile-news-auto-post job. Run database/383_automobile_news_pg_cron.sql with the real CRON_SECRET. Vercel cron is only the backup.'
+      : finishedLate
+        ? `Only ${posted} of 10 automobile news stories were posted for ${runDate}. Slots are every 30 minutes from 10:00 to 14:30 IST.`
+        : behind
+          ? `${posted} automobile news stories posted so far. ${expected} slots have already closed.`
+          : `Automobile news posts one story every 30 minutes from 10:00 to 14:30 IST, then stops at 10. Today: ${posted}/10.`;
+
+    return {
+      name: 'Automobile News Auto-Post',
+      category: 'Background Jobs',
+      status,
+      responseTime: Date.now() - start,
+      message: `${posted}/10 stories today`,
+      reason,
+      quickFix: { label: 'Open Automobile News', action: 'internal-link', actionPayload: { url: '/automobile-news' } },
+      lastChecked: new Date().toISOString(),
+      details: { posted, quota: 10, expected, run_date: runDate, cronon_active: crononActive },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Automobile News Auto-Post',
+      category: 'Background Jobs',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -4134,6 +4235,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkCronJobs(),
     checkFeatureCrons(),
     checkDailyBlog(),
+    checkAutomobileNews(),
     checkWorkshopListing(),
     checkCompetitorIntel(),
     checkSitemap(),

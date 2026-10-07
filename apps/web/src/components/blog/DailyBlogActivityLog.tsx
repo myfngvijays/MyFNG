@@ -66,6 +66,18 @@ type LogsPayload = {
   diagnosis?: { level: 'ok' | 'warn' | 'error'; title: string; message: string };
 };
 
+function istDay(iso?: string | null) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return String(iso).slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 function fmtWhen(iso?: string | null) {
   if (!iso) return '—';
   const date = new Date(iso);
@@ -87,7 +99,7 @@ function statusCls(status?: string) {
   return 'bg-slate-100 text-slate-700';
 }
 
-export default function DailyBlogActivityLog() {
+export default function DailyBlogActivityLog({ todayOnly = false }: { todayOnly?: boolean }) {
   const [data, setData] = useState<LogsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'success' | 'failed' | 'skipped' | 'info'>('all');
@@ -107,11 +119,21 @@ export default function DailyBlogActivityLog() {
     void load();
   }, []);
 
+  const today = data?.today || '';
+  const days = useMemo(() => {
+    const rows = data?.days || [];
+    if (!todayOnly || !today) return rows;
+    return rows.filter((day) => day.date === today);
+  }, [data?.days, today, todayOnly]);
+
   const events = useMemo(() => {
-    const rows = data?.events || [];
+    const rows = (data?.events || []).filter((row) => {
+      if (!todayOnly || !today) return true;
+      return row.run_date === today || istDay(row.created_at) === today;
+    });
     if (filter === 'all') return rows;
     return rows.filter((row) => String(row.status || '') === filter);
-  }, [data?.events, filter]);
+  }, [data?.events, filter, today, todayOnly]);
 
   const diagnosis = data?.diagnosis;
   const bannerCls =
@@ -122,12 +144,12 @@ export default function DailyBlogActivityLog() {
         : 'border-emerald-200 bg-emerald-50';
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
+    <section className={`rounded-xl border border-slate-200 bg-white ${todayOnly ? 'px-3 py-2 space-y-2' : 'p-4 sm:p-5 space-y-4'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-[#023D95]">Auto-post logs</p>
           <p className="mt-0.5 text-xs text-slate-600">
-            Har cron hit, skip, fail, catch-up, aur admin Post now — last 7 days.
+            {todayOnly ? 'Sirf aaj ke cron hits.' : 'Har cron hit, skip, fail, catch-up, aur admin Post now — last 7 days.'}
           </p>
         </div>
         <button
@@ -159,8 +181,8 @@ export default function DailyBlogActivityLog() {
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-        {(data?.days || []).map((day) => {
+      <div className={`grid gap-2 ${todayOnly ? 'grid-cols-1 max-w-[140px]' : 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-7'}`}>
+        {days.map((day) => {
           const ok = day.posted >= day.expected && day.expected > 0;
           const empty = day.posted === 0 && day.expected > 0;
           return (
@@ -182,10 +204,12 @@ export default function DailyBlogActivityLog() {
         })}
       </div>
 
-      {(data?.days || []).some((d) => d.blogs.length) ? (
+      {days.some((d) => d.blogs.length) ? (
         <div className="space-y-1">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Published daily posts</p>
-          {(data?.days || []).flatMap((day) =>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            {todayOnly ? 'Published today' : 'Published daily posts'}
+          </p>
+          {days.flatMap((day) =>
             day.blogs.map((blog) => (
               <div key={blog.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <span className="min-w-0 truncate text-slate-800">

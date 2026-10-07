@@ -1,3 +1,5 @@
+import { getCityPageBySlug } from '@/lib/city-pages';
+
 export type DailyTargetCity = {
   name: string;
   slug: string;
@@ -6,33 +8,50 @@ export type DailyTargetCity = {
   keywords: string[];
 };
 
-export const DAILY_CITY_THANE: DailyTargetCity = {
-  name: 'Thane',
-  slug: 'thane',
-  pagePath: '/car-service-in-thane',
-  areas: [
-    'Ghodbunder Road',
-    'Manpada',
-    'Vartak Nagar',
-    'Majiwada',
-    'Wagle Estate',
-    'Naupada',
-    'Hiranandani Estate',
-    'Kasarvadavali',
-    'Owale',
-    'Kalwa',
-    'Kopri',
-    'Kolshet',
-  ],
-  keywords: [
-    'car service in Thane',
-    'car garage Thane',
-    'car workshop Ghodbunder Road',
-    'car pickup and drop Thane',
-    'periodic car service Thane',
-    'car mechanic near me Thane',
-  ],
-};
+function cityTarget(slug: string, keywords: string[], fallbackName: string): DailyTargetCity {
+  const page = getCityPageBySlug(slug);
+  return {
+    name: page?.name || fallbackName,
+    slug,
+    pagePath: page?.pagePath || `/car-service-in-${slug}`,
+    areas: (page?.areas || []).slice(0, 12),
+    keywords,
+  };
+}
+
+export const DAILY_CITY_THANE: DailyTargetCity = cityTarget('thane', [
+  'car service in Thane',
+  'car garage Thane',
+  'car workshop Ghodbunder Road',
+  'car pickup and drop Thane',
+  'periodic car service Thane',
+  'car mechanic near me Thane',
+], 'Thane');
+
+export const DAILY_CITY_KALYAN: DailyTargetCity = cityTarget('kalyan', [
+  'car service in Kalyan',
+  'car garage Kalyan',
+  'car workshop Kalyan East',
+  'car pickup and drop Kalyan',
+  'periodic car service Kalyan',
+  'car mechanic near me Kalyan',
+], 'Kalyan');
+
+export const DAILY_CITY_DOMBIVLI: DailyTargetCity = cityTarget('dombivli', [
+  'car service in Dombivli',
+  'car garage Dombivli',
+  'car workshop Dombivli East',
+  'car pickup and drop Dombivli',
+  'periodic car service Dombivli',
+  'car mechanic near me Dombivli',
+], 'Dombivli');
+
+/** One daily slot each: post 1 Thane, post 2 Kalyan, post 3 Dombivli. */
+export const DAILY_POST_CITIES: DailyTargetCity[] = [
+  DAILY_CITY_THANE,
+  DAILY_CITY_KALYAN,
+  DAILY_CITY_DOMBIVLI,
+];
 
 export const DAILY_CITY_NAVI_MUMBAI: DailyTargetCity = {
   name: 'Navi Mumbai',
@@ -118,24 +137,10 @@ export const DAILY_CITY_PUNE: DailyTargetCity = {
   ],
 };
 
-/** Sat = Pune, Sun = Mumbai, Mon–Fri alternate Thane / Navi Mumbai. */
-export function pickDailyCity(now = new Date()): DailyTargetCity {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Kolkata',
-    weekday: 'short',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const weekday = parts.find((p) => p.type === 'weekday')?.value;
-  if (weekday === 'Sat') return DAILY_CITY_PUNE;
-  if (weekday === 'Sun') return DAILY_CITY_MUMBAI;
-
-  const year = Number(parts.find((p) => p.type === 'year')?.value);
-  const month = Number(parts.find((p) => p.type === 'month')?.value);
-  const day = Number(parts.find((p) => p.type === 'day')?.value);
-  const dayOfYear = Math.floor((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86400000) + 1;
-  return dayOfYear % 2 === 0 ? DAILY_CITY_THANE : DAILY_CITY_NAVI_MUMBAI;
+/** Slot 1 = Thane, slot 2 = Kalyan, slot 3 = Dombivli. Extra slots stay inside these three. */
+export function pickDailyCity(slotIndex = 1): DailyTargetCity {
+  const index = Math.max(0, (Number(slotIndex) || 1) - 1);
+  return DAILY_POST_CITIES[index % DAILY_POST_CITIES.length];
 }
 
 export const BATCH_TARGET_CITIES: DailyTargetCity[] = [
@@ -162,5 +167,5 @@ export function rsaCityByIndex(index: number): DailyTargetCity {
 }
 
 export function dailyCityScheduleLabel() {
-  return 'Mon–Fri Thane / Navi Mumbai · Saturday Pune · Sunday Mumbai';
+  return 'Thane · Kalyan · Dombivli';
 }

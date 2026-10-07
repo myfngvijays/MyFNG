@@ -10,6 +10,7 @@ import { ensureSeoBlogTitle } from '@/lib/blog/generateAiDraft';
 import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 import { normalizeBlogMediaAbsoluteUrl, normalizeBlogRecordForResponse } from '@/lib/blog/normalizeBlogMedia';
 import { slotIsoForRunDate } from '@/lib/blog/dailyBlogSlots';
+import { isAutomobileNewsRow } from '@/lib/blog/automobileNews';
 
 export const revalidate = 120;
 
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
         return primary === category_id || mapped.includes(category_id);
       });
     }
+    filteredBlogs = filteredBlogs.filter((blog: any) => !isAutomobileNewsRow(blog));
 
     if (error) {
       console.error('Blog fetch error:', error);

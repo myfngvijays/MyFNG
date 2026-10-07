@@ -50,7 +50,7 @@ Content rules:
 - MyFNG offers car PICKUP AND DROP: we collect the car, service it at the workshop, and return it.
 - Main conversion is downloading the MyFNG app. Mention the app naturally 2-3 times and use the provided app_download_url for every app-download link.
 - Do not write "About MyFNG" or "Book on the MyFNG app" headings. Those two sections are added automatically after the draft.
-- Local SEO: write ONLY for the given city. Never mention another city (do not write Pune if the city is Thane or Navi Mumbai).
+- Local SEO: write ONLY for the given city. Never mention another city. A Thane post must not say Kalyan, Dombivli, Mumbai, Navi Mumbai or Pune. A Kalyan post must not say Thane or Dombivli. A Dombivli post must not say Thane or Kalyan.
 - Title MUST be short SEO: primary keyword in city, 40-60 characters (example: "Coolant Leak and Overheating Signs in Thane"). Use "in City", not an en-dash before the city. Also put the same title in meta_title.
 - You MUST include at least 4 locality names from local_areas and EVERY phrase from local_keywords VERBATIM, woven into sentences (not a dump list).
 - Write for Google AI Overview: first 2 sentences must answer the search query directly so they can be quoted. Use short question-style H2s, bullet lists, and a "Summary recommendation" H2 near the end.
@@ -140,6 +140,8 @@ export function ensureSeoBlogTitle(title: string, city?: string, focusKeyword?: 
 export function rewriteCityDashTitle(text: string) {
   return String(text || '')
     .replace(/\s+[–—-]\s+Navi Mumbai\b/gi, ' in Navi Mumbai')
+    .replace(/\s+[–—-]\s+Dombivli\b/gi, ' in Dombivli')
+    .replace(/\s+[–—-]\s+Kalyan\b/gi, ' in Kalyan')
     .replace(/\s+[–—-]\s+Thane\b/gi, ' in Thane')
     .replace(/\s+[–—-]\s+Pune\b/gi, ' in Pune')
     .replace(/\s+[–—-]\s+Mumbai\b/gi, ' in Mumbai');

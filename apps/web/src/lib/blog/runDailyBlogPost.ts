@@ -391,7 +391,7 @@ export async function runDailyBlogPost(opts?: {
     ? { topic: usp.topic, focusKeyword: usp.focusKeyword, intent: usp.intent }
     : pickDailyTopic(day + (due.index - 1) * 17, usedKeywords);
   const cover = pickDailyCover(day + (due.index - 1) * 5);
-  const cityTarget = pickDailyCity();
+  const cityTarget = pickDailyCity(due.index);
 
   try {
     const published = await publishAiServiceBlog({

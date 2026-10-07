@@ -1098,9 +1098,14 @@ export default function PublicHomeScreen({ navigation }: Props) {
               title="Latest from Blog"
               subtitle="Tips, guides and car care insights"
               rightAccessory={
-                <TouchableOpacity onPress={() => Linking.openURL('https://myfng.in/blog')}>
-                  <Text style={styles.blogReadMore}>Read More →</Text>
-                </TouchableOpacity>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <TouchableOpacity onPress={() => Linking.openURL('https://myfng.in/blog')}>
+                    <Text style={styles.blogReadMore}>Read More →</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => Linking.openURL('https://myfng.in/automobile-news')}>
+                    <Text style={styles.blogReadMore}>Automobile News →</Text>
+                  </TouchableOpacity>
+                </View>
               }
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>

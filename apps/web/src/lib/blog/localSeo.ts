@@ -120,8 +120,40 @@ export const MUMBAI_AREAS: string[] = [
   'Dahisar',
 ];
 
+export const KALYAN_AREAS: string[] = [
+  'Kalyan West',
+  'Kalyan East',
+  'Chikanghar',
+  'Khadakpada',
+  'Bail Bazar',
+  'Shahad',
+  'Pisavali',
+  'Adharwadi',
+  'Rambaug',
+  'Godrej Hill',
+  'Dudh Naka',
+  'Syndicate',
+];
+
+export const DOMBIVLI_AREAS: string[] = [
+  'Dombivli East',
+  'Dombivli West',
+  'Kolegaon',
+  'Sonarpada',
+  'Palava',
+  'Khoni',
+  'Thakurli',
+  'Kopar',
+  'Pendse Nagar',
+  'Sunil Nagar',
+  'MIDC Dombivli',
+  'Manpada Dombivli',
+];
+
 export function resolveLocalAreas(seo: any): string[] {
   const city = normalizeCity(seo?.local_city).toLowerCase();
+  if (city === 'kalyan') return KALYAN_AREAS.slice();
+  if (city === 'dombivli' || city === 'dombivali') return DOMBIVLI_AREAS.slice();
   if (city.includes('navi mumbai') || city.includes('navi-mumbai')) return NAVI_MUMBAI_AREAS.slice();
   if (city.includes('thane')) return THANE_AREAS.slice();
   if (city.includes('mumbai')) return MUMBAI_AREAS.slice();

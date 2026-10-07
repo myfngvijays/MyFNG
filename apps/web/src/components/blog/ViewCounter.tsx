@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from 'react';
 
-export default function ViewCounter({ slug, initialViews }: { slug: string; initialViews: number }) {
+export default function ViewCounter({
+  slug,
+  initialViews,
+  withLabel = false,
+}: {
+  slug: string;
+  initialViews: number;
+  withLabel?: boolean;
+}) {
   const [views, setViews] = useState<number>(Number(initialViews || 0));
 
   useEffect(() => {
@@ -28,7 +36,13 @@ export default function ViewCounter({ slug, initialViews }: { slug: string; init
     };
   }, [slug]);
 
-  return <span>{views.toLocaleString('en-IN')}</span>;
+  const label = views === 1 ? 'view' : 'views';
+  return (
+    <span>
+      {views.toLocaleString('en-IN')}
+      {withLabel ? ` ${label}` : ''}
+    </span>
+  );
 }
 
 

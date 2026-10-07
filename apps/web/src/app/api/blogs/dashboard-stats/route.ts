@@ -171,6 +171,7 @@ export async function GET(_request: NextRequest) {
     let rsaPosts = 0;
     let uspPosts = 0;
     let packagePosts = 0;
+    let newsPosts = 0;
     let unassignedAuthor = 0;
     const publishedSeoScores: number[] = [];
     const packageRows: Array<{
@@ -187,6 +188,7 @@ export async function GET(_request: NextRequest) {
       created_at: string | null;
       author_name: string;
     }> = [];
+    const newsRows: typeof packageRows = [];
 
     for (const row of allBlogs) {
       totalViews += Number(row.views || 0);
@@ -201,6 +203,23 @@ export async function GET(_request: NextRequest) {
       if (seo.ai_package_post) {
         packagePosts++;
         packageRows.push({
+          id: String(row.id),
+          title: String(row.title || ''),
+          slug: String(row.slug || ''),
+          status: String(row.status || ''),
+          views: Number(row.views || 0),
+          likes: Number(row.likes || 0),
+          is_featured: Boolean(row.is_featured),
+          read_time: Number(row.read_time || 0),
+          published_at: row.published_at || null,
+          updated_at: row.updated_at || null,
+          created_at: row.created_at || null,
+          author_name: 'Nikhil Yelligetti',
+        });
+      }
+      if (seo.ai_news_car === true || seo.ai_news_car === 'true') {
+        newsPosts++;
+        newsRows.push({
           id: String(row.id),
           title: String(row.title || ''),
           slug: String(row.slug || ''),
@@ -354,6 +373,7 @@ export async function GET(_request: NextRequest) {
         rsaPosts,
         uspPosts,
         packagePosts,
+        newsPosts,
         unassignedAuthor,
       },
       inventory: {
@@ -416,6 +436,9 @@ export async function GET(_request: NextRequest) {
             }))
           : packageRows.sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')))
       ).slice(0, 10),
+      recentNews: newsRows
+        .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')))
+        .slice(0, 8),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

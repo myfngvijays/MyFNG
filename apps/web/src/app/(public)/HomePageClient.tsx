@@ -1831,9 +1831,14 @@ export default function HomePage() {
           })()}
 
           <div className="text-center mt-8 sm:mt-10 md:mt-12">
-            <Link href="/blogs" className="btn btn-outline text-sm sm:text-base md:text-lg px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 rounded-xl">
-              Read All Blogs <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-1 sm:ml-2" />
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link href="/blogs" className="btn btn-outline text-sm sm:text-base md:text-lg px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 rounded-xl">
+                Read All Blogs <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-1 sm:ml-2" />
+              </Link>
+              <Link href="/automobile-news" className="btn btn-outline text-sm sm:text-base md:text-lg px-6 sm:px-8 md:px-10 py-2.5 sm:py-3 md:py-4 rounded-xl">
+                Automobile News
+              </Link>
+            </div>
           </div>
         </div>
       </section>

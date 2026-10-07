@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status'); // draft, published, archived
     const category_id = searchParams.get('category_id');
+    const desk = searchParams.get('desk');
     const tag_id = searchParams.get('tag_id');
     const search = searchParams.get('search');
     const featured = searchParams.get('featured') === 'true';
@@ -87,6 +88,12 @@ export async function GET(request: NextRequest) {
     
     if (search) {
       query = query.or(`title.ilike.%${search}%,excerpt.ilike.%${search}%,content.ilike.%${search}%`);
+    }
+
+    if (desk === 'news') {
+      query = query.contains('seo_data', { ai_news_car: true });
+    } else if (desk === 'blogs') {
+      query = query.not('seo_data', 'cs', '{"ai_news_car":true}');
     }
 
     // Digital Author can only see their own blogs (author or creator)

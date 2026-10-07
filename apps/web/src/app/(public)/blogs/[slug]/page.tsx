@@ -26,6 +26,7 @@ import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent'
 import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLocalSeoHtml, splitBlogHtmlAtMidpoint, stripExistingCta } from '@/lib/blog/aiLinks';
 import { ensureAiOverviewHtml, ensureRsaAiOverviewHtml } from '@/lib/blog/dailyAiOverview';
 import { isMyFngServiceFaq, isNewsCarBlog, stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
+import { isAutomobileNewsRow } from '@/lib/blog/automobileNews';
 import { ensureSeoBlogTitle, rewriteCityDashTitle, stripDatedAutoSlugSuffix } from '@/lib/blog/generateAiDraft';
 import { PUBLIC_BLOG_AUTHOR_HREF, publicBlogAuthorName, publicBlogByline } from '@/lib/blog/publicAuthor';
 
@@ -355,6 +356,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   if (error || !blog) {
     await redirectLegacyBlogSlug(supabase, slug);
     notFound();
+  }
+
+  if (isAutomobileNewsRow(blog)) {
+    permanentRedirect(`/automobile-news/${blog.slug}`);
   }
 
   const { data: faqs } = await supabase

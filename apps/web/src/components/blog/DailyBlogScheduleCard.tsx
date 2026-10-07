@@ -123,7 +123,7 @@ export default function DailyBlogScheduleCard({ compact = false }: { compact?: b
           <p className="mt-0.5 text-xs text-slate-600">
             {data?.missing
               ? data.error || 'Run database/369_daily_blog_slots.sql'
-              : `${posted}/${count} posted today · ${data?.schedule?.schedule || '10:00 IST'}`}
+              : `${posted}/${count} posted today · ${data?.schedule?.city_rotation || 'Thane · Kalyan · Dombivli'} · ${data?.schedule?.schedule || '10:00 IST'}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -146,7 +146,7 @@ export default function DailyBlogScheduleCard({ compact = false }: { compact?: b
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-end gap-3">
+      <div className={`mt-3 flex flex-wrap items-end gap-3 ${compact ? 'hidden' : ''}`}>
         <label className="text-xs font-semibold text-slate-700">
           Blogs per day
           <select
@@ -195,7 +195,59 @@ export default function DailyBlogScheduleCard({ compact = false }: { compact?: b
         </button>
       </div>
 
-      {data?.today_slots?.length ? (
+      {compact ? (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[11px] font-semibold text-[#023D95]">Edit times</summary>
+          <div className="mt-2 flex flex-wrap items-end gap-3">
+            <label className="text-xs font-semibold text-slate-700">
+              Blogs per day
+              <select
+                value={count}
+                disabled={busy || Boolean(data?.missing)}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setCount(next);
+                  setTimes((prev) => {
+                    const defaults = defaultTimesForCount(next);
+                    return Array.from({ length: next }, (_, i) => prev[i] || defaults[i]);
+                  });
+                }}
+                className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+              >
+                {Array.from({ length: MAX_DAILY_BLOGS }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+            {times.map((time, idx) => (
+              <label key={`compact-slot-${idx}`} className="text-xs font-semibold text-slate-700">
+                Slot {idx + 1}
+                <input
+                  type="time"
+                  value={time}
+                  disabled={busy || Boolean(data?.missing)}
+                  onChange={(e) => {
+                    const next = [...times];
+                    next[idx] = e.target.value;
+                    setTimes(next);
+                  }}
+                  className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                />
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={saveSchedule}
+              disabled={busy || Boolean(data?.missing)}
+              className="rounded-lg border border-[#023D95] bg-white px-3 py-1.5 text-xs font-semibold text-[#023D95] disabled:opacity-60"
+            >
+              Save schedule
+            </button>
+          </div>
+        </details>
+      ) : null}
+
+      {data?.today_slots?.length && !compact ? (
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
           {data.today_slots.map((slot) => (
             <span key={slot.index}>

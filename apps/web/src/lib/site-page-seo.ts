@@ -272,6 +272,26 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
     city: 'Mumbai',
   },
   {
+    page_path: '/automobile-news',
+    page_label: 'Automobile News',
+    display_order: 111,
+    title: 'Automobile News | New Cars & Launches | MYFNG',
+    description:
+      'Original automobile news from MYFNG. New car launches, facelifts and owner notes for Mumbai, Navi Mumbai, Thane, Palghar and Pune.',
+    keywords: [
+      'automobile news',
+      'new car launches India',
+      'car news Mumbai',
+      'new cars Thane',
+      'car news Pune',
+      'latest automobile news',
+      'MYFNG',
+    ],
+    keyphrase: 'automobile news',
+    canonicalPath: '/automobile-news',
+    city: 'Mumbai',
+  },
+  {
     page_path: '/privacy-policy',
     page_label: 'Privacy Policy',
     display_order: 12,

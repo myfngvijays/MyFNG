@@ -190,6 +190,12 @@ export default function BlogPageClient() {
               />
             </div>
 
+            <div className="mb-4">
+              <Link href="/automobile-news" className="text-sm font-semibold text-brand-primary">
+                Automobile News →
+              </Link>
+            </div>
+
             {/* Category Filter */}
             <div className="flex flex-wrap gap-2 sm:gap-3">
               <button

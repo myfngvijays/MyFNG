@@ -47,16 +47,21 @@ export default async function BlogAuthorPage({ params }: { params: Promise<{ slu
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
   const { data: blogs } = await supabase
     .from('blogs')
-    .select('id, slug, title, excerpt, featured_image, published_at, created_at, content, category:blog_categories(name)')
+    .select('id, slug, title, excerpt, featured_image, published_at, created_at, content, category:blog_categories(name, slug)')
     .ilike('status', 'published')
     .order('published_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .limit(80);
 
-  const posts = (blogs || []).map((blog: any) => ({
-    ...blog,
-    read_time: computeReadTimeFromHtml(String(blog.content || '')).minutes,
-  }));
+  const posts = (blogs || []).map((blog: any) => {
+    const category = Array.isArray(blog.category) ? blog.category[0] : blog.category;
+    const news = /automobile-news|automobile news/i.test(`${category?.name || ''} ${category?.slug || ''}`);
+    return {
+      ...blog,
+      href: news ? `/automobile-news/${blog.slug}` : `/blogs/${blog.slug}`,
+      read_time: computeReadTimeFromHtml(String(blog.content || '')).minutes,
+    };
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -97,7 +102,7 @@ export default async function BlogAuthorPage({ params }: { params: Promise<{ slu
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {posts.map((blog: any) => (
                 <article key={blog.id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group">
-                  <Link href={`/blogs/${blog.slug}`} className="block">
+                  <Link href={blog.href} className="block">
                     <div className="aspect-video relative overflow-hidden bg-gray-200">
                       {blog.featured_image ? (
                         <Image
@@ -126,7 +131,7 @@ export default async function BlogAuthorPage({ params }: { params: Promise<{ slu
                         {blog.read_time} min read
                       </span>
                     </div>
-                    <Link href={`/blogs/${blog.slug}`}>
+                    <Link href={blog.href}>
                       <h2 className="text-lg font-bold text-slate-900 group-hover:text-[#0a4ea3] line-clamp-2">
                         {blog.title}
                       </h2>
@@ -135,7 +140,7 @@ export default async function BlogAuthorPage({ params }: { params: Promise<{ slu
                       <p className="mt-2 text-sm text-gray-600 line-clamp-3">{blog.excerpt}</p>
                     ) : null}
                     <Link
-                      href={`/blogs/${blog.slug}`}
+                      href={blog.href}
                       className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[#0a4ea3]"
                     >
                       Read More <ArrowRight className="w-4 h-4" />

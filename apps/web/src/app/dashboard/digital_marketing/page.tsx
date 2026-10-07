@@ -16,6 +16,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
+import AutomobileNewsScheduleCard from '@/components/blog/AutomobileNewsScheduleCard';
 
 type BlogCard = {
   id: string;
@@ -56,6 +57,7 @@ type DashboardData = {
     rsaPosts: number;
     uspPosts: number;
     packagePosts: number;
+    newsPosts: number;
     unassignedAuthor: number;
   };
   inventory: { categories: number; tags: number; comments: number; pendingComments: number; faqs: number };
@@ -93,6 +95,7 @@ type DashboardData = {
   topByViews: BlogCard[];
   pendingReview: BlogCard[];
   recentPublished: BlogCard[];
+  recentNews: BlogCard[];
   recentlyUpdated: BlogCard[];
   recentPackage: BlogCard[];
 };
@@ -119,6 +122,7 @@ const EMPTY: DashboardData = {
     rsaPosts: 0,
     uspPosts: 0,
     packagePosts: 0,
+    newsPosts: 0,
     unassignedAuthor: 0,
   },
   inventory: { categories: 0, tags: 0, comments: 0, pendingComments: 0, faqs: 0 },
@@ -155,6 +159,7 @@ const EMPTY: DashboardData = {
   topByViews: [],
   pendingReview: [],
   recentPublished: [],
+  recentNews: [],
   recentlyUpdated: [],
   recentPackage: [],
 };
@@ -343,6 +348,7 @@ export default function DigitalMarketingDashboard() {
         </section>
 
         <DailyBlogScheduleCard compact />
+        <AutomobileNewsScheduleCard />
 
         <section
           className={`rounded-xl border px-3 py-2 ${
@@ -389,6 +395,7 @@ export default function DigitalMarketingDashboard() {
           <StatChip title="Package" value={summary.packagePosts} />
           <StatChip title="RSA" value={summary.rsaPosts} />
           <StatChip title="USP" value={summary.uspPosts} />
+          <StatChip title="News" value={summary.newsPosts} href="/automobile-news" />
           <StatChip title="Drafts" value={summary.draft} href="/dashboard/digital_marketing/blogs?status=draft" />
           <StatChip title="Review" value={summary.pendingReview} href="/dashboard/digital_marketing/blogs?status=pending_review" />
           <StatChip title="Featured" value={summary.featured} />
@@ -402,6 +409,18 @@ export default function DigitalMarketingDashboard() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-2.5">
+          <div className="rounded-xl border border-[#023D95]/30 bg-white px-3 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-[#023D95]">Automobile news · {summary.newsPosts}</h2>
+              <Link href="/automobile-news" target="_blank" className="text-[10px] text-[#004AAD] hover:underline">Live →</Link>
+            </div>
+            {data.recentNews.length ? (
+              data.recentNews.map((b) => <BlogRow key={b.id} blog={b} />)
+            ) : (
+              <p className="text-xs text-slate-500 py-3 text-center">No automobile news yet</p>
+            )}
+          </div>
+
           <div className="rounded-xl border border-[#C9A227]/40 bg-white px-3 py-2">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-sm font-semibold text-[#023D95]">Package blogs · {summary.packagePosts}</h2>
