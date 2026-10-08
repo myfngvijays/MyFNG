@@ -8,6 +8,7 @@ import { breadcrumbSchema, collectionPageSchema } from '@/lib/seo/schemas';
 import { buildPageMetadata, SITE_URL } from '@/lib/seo/metadata';
 import { AUTOMOBILE_NEWS_PAGE_SIZE, listAutomobileNews, type AutomobileNewsItem } from '@/lib/blog/automobileNews';
 import { PUBLIC_BLOG_AUTHOR, PUBLIC_BLOG_AUTHOR_HREF } from '@/lib/blog/publicAuthor';
+import { formatNewsClock, formatNewsListingDate } from '@/lib/blog/newsClock';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,26 +22,11 @@ function storyHref(slug: string) {
 }
 
 function storyDate(value?: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  }).format(date);
+  return formatNewsListingDate(value);
 }
 
 function storyTime(value?: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date);
+  return formatNewsClock(value);
 }
 
 function mastheadDate() {

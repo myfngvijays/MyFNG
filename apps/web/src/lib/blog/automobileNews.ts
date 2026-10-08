@@ -98,7 +98,12 @@ export async function getAutomobileNewsArticle(slug: string) {
   if (error || !data) return null;
   const row = data as NewsRow & { content?: string | null };
   if (!isBlogIndexable(row.seo_data) || !isAutomobileNewsRow(row)) return null;
-  return { ...mapItem(row), content: String(row.content || '') };
+  const seo = row.seo_data && typeof row.seo_data === 'object' ? row.seo_data as { news_photo_caption?: unknown } : {};
+  return {
+    ...mapItem(row),
+    content: String(row.content || ''),
+    photoCaption: String(seo.news_photo_caption || '').trim(),
+  };
 }
 
 export async function listAutomobileNews(page = 1) {

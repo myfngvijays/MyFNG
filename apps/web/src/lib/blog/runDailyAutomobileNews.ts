@@ -138,7 +138,7 @@ Rules:
 - Write 450-700 words in HTML: one intro paragraph, then h2 sections, then a short "What to check" list.
 - Include exactly one external link to source_url using source_name as the anchor.
 - Include one internal link to https://myfng.in/automobile-news.
-- image_query is 2-5 words naming the real car, brand, or place in the headline, suitable for a Wikimedia photo search. If the headline has no car, use "indian car traffic".
+- image_query is 2-5 words naming a visible car, brand, showroom, traffic, or petrol pump from the headline. Example: "Mahindra XUV700" or "Mumbai cars traffic". Never a person, bank, keyboard, aircraft, or logo. If the headline has no car, use "cars on road India".
 Return JSON: {"title":"","excerpt":"","content_html":"","image_query":""}`,
         },
         {
@@ -183,37 +183,97 @@ function licenseAllowed(name: string) {
   return /cc0|cc by|cc-by|public domain|pd\b/.test(value);
 }
 
-async function findCommonsPhoto(query: string): Promise<CommonsPhoto | null> {
+const CAR_TITLE = /\b(car|cars|automobile|sedan|suv|hatchback|mpv|vehicle|taxi|showroom|dealership|traffic|maruti|suzuki|hyundai|tata|mahindra|honda|toyota|skoda|kia|volkswagen|bmw|mercedes|audi|ferrari|porsche|ambassador|creta|nexon|xuv|scorpio|thar|brezza|swift|elevate|slavia|bolero)\b/i;
+const BAD_TITLE = /\b(navy|aircraft|air[- ]traffic|carrier|keyboard|warship|helicopter|fighter|soldier|sailor|cockpit|radar|missile|portrait|logo|diagram|uniform|submarine)\b/i;
+
+function photoQueries(title: string, imageQuery: string) {
+  const queries: string[] = [];
+  const add = (value: string) => {
+    const next = value.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (next && !queries.some((item) => item.toLowerCase() === next.toLowerCase())) queries.push(next);
+  };
+  if (/mahindra/i.test(title)) add('Mahindra XUV700 India car');
+  if (/\btata\b/i.test(title)) add('Tata Nexon car India');
+  if (/hyundai/i.test(title)) add('Hyundai Creta India');
+  if (/honda/i.test(title)) add('Honda car India');
+  if (/skoda/i.test(title)) add('Skoda Slavia car');
+  if (/used car|resale|second[- ]hand|pre-owned/i.test(title)) add('used car dealership');
+  if (/loan|repo|\brbi\b|emi|interest/i.test(title)) add('Maruti Suzuki showroom India');
+  if (/supercar|luxury|classic/i.test(title)) add('Ferrari supercar');
+  if (/mumbai/i.test(title)) add('Mumbai cars traffic');
+  if (/petrol|diesel|fuel/i.test(title)) add('Indian oil petrol station');
+  if (imageQuery && !BAD_TITLE.test(imageQuery)) {
+    add(/car|suv|traffic|showroom|dealership/i.test(imageQuery) ? imageQuery : `${imageQuery} car`);
+  }
+  add('cars on road India');
+  return queries.slice(0, 4);
+}
+
+function photoScore(fileTitle: string, articleTitle: string) {
+  if (BAD_TITLE.test(fileTitle) || !CAR_TITLE.test(fileTitle)) return -1;
+  let score = 2;
+  const words = articleTitle.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 3);
+  const haystack = fileTitle.toLowerCase();
+  for (const word of words) {
+    if (haystack.includes(word)) score += 4;
+  }
+  if (/india|mumbai|delhi|pune|thane/.test(haystack) && /india|mumbai|delhi|pune|thane/i.test(articleTitle)) score += 3;
+  return score;
+}
+
+async function searchCommons(query: string): Promise<CommonsPhoto[]> {
   const endpoint = new URL('https://commons.wikimedia.org/w/api.php');
   endpoint.searchParams.set('action', 'query');
   endpoint.searchParams.set('format', 'json');
   endpoint.searchParams.set('generator', 'search');
   endpoint.searchParams.set('gsrsearch', `${query} filetype:bitmap`);
   endpoint.searchParams.set('gsrnamespace', '6');
-  endpoint.searchParams.set('gsrlimit', '8');
+  endpoint.searchParams.set('gsrlimit', '10');
   endpoint.searchParams.set('prop', 'imageinfo');
-  endpoint.searchParams.set('iiprop', 'url|extmetadata|mime');
+  endpoint.searchParams.set('iiprop', 'url|extmetadata|mime|size');
   endpoint.searchParams.set('iiurlwidth', '1400');
   const response = await fetch(endpoint, { headers: { 'User-Agent': COMMONS_UA }, cache: 'no-store' });
-  if (!response.ok) return null;
+  if (!response.ok) return [];
   const json = await response.json();
   const pages = Object.values(json?.query?.pages || {}) as Array<any>;
+  pages.sort((a, b) => Number(a?.index || 0) - Number(b?.index || 0));
+  const photos: CommonsPhoto[] = [];
   for (const page of pages) {
     const info = page?.imageinfo?.[0];
     const meta = info?.extmetadata || {};
     const license = plainText(String(meta?.LicenseShortName?.value || meta?.License?.value || ''));
     const mime = String(info?.mime || '');
+    const title = plainText(String(page?.title || query)).replace(/^File:/i, '');
+    const width = Number(info?.width || 0);
     if (!info?.thumburl && !info?.url) continue;
     if (!/^image\/(jpeg|png|webp)/.test(mime)) continue;
+    if (width && width < 700) continue;
     if (!licenseAllowed(license)) continue;
-    return {
+    if (photoScore(title, query) < 0) continue;
+    photos.push({
       url: String(info.thumburl || info.url),
       artist: plainText(String(meta?.Artist?.value || 'Wikimedia Commons')).slice(0, 180),
       license: license.slice(0, 80),
-      title: plainText(String(page?.title || query)).replace(/^File:/i, ''),
-    };
+      title,
+    });
   }
-  return null;
+  return photos;
+}
+
+async function pickNewsPhoto(articleTitle: string, imageQuery: string, usedTitles: Set<string>): Promise<CommonsPhoto | null> {
+  let best: { photo: CommonsPhoto; score: number } | null = null;
+  for (const query of photoQueries(articleTitle, imageQuery)) {
+    const photos = await searchCommons(query);
+    for (const photo of photos) {
+      const key = photo.title.toLowerCase();
+      if (usedTitles.has(key)) continue;
+      const score = photoScore(photo.title, articleTitle);
+      if (score < 0) continue;
+      if (!best || score > best.score) best = { photo, score };
+    }
+    if (best && best.score >= 6) break;
+  }
+  return best?.photo || null;
 }
 
 async function uploadPhoto(supabaseAdmin: any, slug: string, photo: CommonsPhoto) {
@@ -233,11 +293,6 @@ async function uploadPhoto(supabaseAdmin: any, slug: string, photo: CommonsPhoto
   });
   if (error) throw new Error(error.message || 'Failed to upload news photo');
   return mediaPathFromStorage('service-media', storagePath);
-}
-
-function withPhoto(html: string, imageUrl: string, alt: string, photo: CommonsPhoto) {
-  const figure = `<figure><img src="${imageUrl}" alt="${alt.replace(/"/g, '')}" /><figcaption>Reference photo: ${photo.title}. ${photo.artist}. ${photo.license}. Via Wikimedia Commons. This may not be the exact car or year in the story.</figcaption></figure>`;
-  return `${figure}\n${html}`;
 }
 
 function ensureSourceLink(html: string, item: RssItem) {
@@ -356,9 +411,11 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
     .order('published_at', { ascending: false })
     .limit(200);
   const used = new Set<string>();
+  const usedPhotos = new Set<string>();
   for (const row of recent || []) {
     const seo = (row as any)?.seo_data || {};
     if (seo.news_headline_key) used.add(String(seo.news_headline_key));
+    if (seo.news_commons_title) usedPhotos.add(String(seo.news_commons_title).toLowerCase());
     used.add(headlineKey(String((row as any)?.title || '')));
   }
 
@@ -389,13 +446,15 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
   for (const item of fresh.slice(0, 3)) {
     try {
       const draft = await openaiNews(item);
-      const photo = await findCommonsPhoto(draft.imageQuery) || await findCommonsPhoto('india car');
+      const photo = await pickNewsPhoto(draft.title, draft.imageQuery, usedPhotos);
       const slug = await uniqueSlug(supabaseAdmin, draft.title);
       let imageUrl = '';
-      let html = ensureSourceLink(draft.html, item);
+      const html = ensureSourceLink(draft.html, item);
+      let caption = '';
       if (photo) {
         imageUrl = await uploadPhoto(supabaseAdmin, slug, photo);
-        html = withPhoto(html, imageUrl, draft.title, photo);
+        caption = `Reference photo: ${photo.title}. ${photo.artist}. ${photo.license}. Via Wikimedia Commons.`;
+        usedPhotos.add(photo.title.toLowerCase());
       }
 
       const { data: category } = await supabaseAdmin
@@ -439,6 +498,8 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
         news_headline_key: headlineKey(item.title),
         news_source_name: item.sourceName || null,
         news_source_url: item.sourceUrl || item.link,
+        news_commons_title: photo?.title || null,
+        news_photo_caption: caption || null,
         author_name: PUBLIC_BLOG_AUTHOR,
         local_areas: ['Mumbai', 'Navi Mumbai', 'Thane', 'Palghar', 'Pune'],
         robots_index: true,

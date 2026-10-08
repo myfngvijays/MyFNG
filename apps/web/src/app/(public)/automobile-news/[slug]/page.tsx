@@ -13,22 +13,27 @@ import { stripExistingCta } from '@/lib/blog/aiLinks';
 import { stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
 import { PUBLIC_BLOG_AUTHOR, PUBLIC_BLOG_AUTHOR_HREF } from '@/lib/blog/publicAuthor';
 import ViewCounter from '@/components/blog/ViewCounter';
+import { formatNewsArticleWhen, newsDatePublishedIso } from '@/lib/blog/newsClock';
 
 export const revalidate = 120;
 
 function storyDate(value?: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date);
+  return formatNewsArticleWhen(value);
+}
+
+function dropDuplicateLeadPhoto(html: string, featured?: string | null) {
+  const match = String(html || '').match(/^\s*<figure\b[\s\S]*?<\/figure>\s*/i);
+  if (!match || !featured) return { html, caption: '' };
+  const src = match[0].match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i)?.[1] || '';
+  const featuredPath = featured.split('?')[0];
+  const same = src && (src.split('?')[0] === featuredPath || src.includes(featuredPath) || featuredPath.includes(src.split('?')[0]));
+  if (!same) return { html, caption: '' };
+  const caption = match[0]
+    .match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1]
+    ?.replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || '';
+  return { html: html.slice(match[0].length), caption };
 }
 
 export async function generateMetadata({
@@ -59,9 +64,12 @@ export default async function AutomobileNewsArticlePage({
   const article = await getAutomobileNewsArticle(slug);
   if (!article) notFound();
 
-  const html = stripMyFngServiceHtml(
-    stripExistingCta(normalizeBlogContentForDisplay(article.content)),
+  const prepared = dropDuplicateLeadPhoto(
+    stripMyFngServiceHtml(stripExistingCta(normalizeBlogContentForDisplay(article.content))),
+    article.image,
   );
+  const html = prepared.html;
+  const photoCaption = article.photoCaption || prepared.caption;
   const pageUrl = `${SITE_URL}/automobile-news/${article.slug}`;
 
   return (
@@ -73,7 +81,7 @@ export default async function AutomobileNewsArticlePage({
             '@type': 'NewsArticle',
             headline: article.title,
             description: article.excerpt || undefined,
-            datePublished: article.publishedAt || undefined,
+            datePublished: newsDatePublishedIso(article.publishedAt),
             image: article.image ? `${SITE_URL}${article.image}` : undefined,
             mainEntityOfPage: pageUrl,
             author: {
@@ -106,9 +114,12 @@ export default async function AutomobileNewsArticlePage({
           <ViewCounter slug={article.slug} initialViews={article.views} withLabel />
         </p>
         {article.image ? (
-          <div className="relative mt-6 aspect-[16/9] overflow-hidden bg-[#e8eef6]">
-            <Image src={article.image} alt={article.title} fill className="object-cover" priority sizes="768px" />
-          </div>
+          <figure className="mt-6">
+            <div className="relative aspect-[16/9] overflow-hidden bg-[#e8eef6]">
+              <Image src={article.image} alt={article.title} fill className="object-cover" priority sizes="768px" />
+            </div>
+            {photoCaption ? <figcaption className="mt-2 text-xs leading-5 text-[#5c6778]">{photoCaption}</figcaption> : null}
+          </figure>
         ) : null}
         {article.excerpt ? <p className="mt-6 text-xl leading-8 text-[#243044]">{article.excerpt}</p> : null}
         <div
