@@ -186,6 +186,33 @@ function licenseAllowed(name: string) {
 const CAR_TITLE = /\b(car|cars|automobile|sedan|suv|hatchback|mpv|vehicle|showroom|dealership|traffic|maruti|suzuki|hyundai|tata|mahindra|honda|toyota|skoda|kia|volkswagen|bmw|mercedes|audi|ferrari|porsche|lamborghini|mclaren|bugatti|ambassador|creta|nexon|xuv|scorpio|thar|brezza|swift|elevate|slavia|bolero|huracan|huracán|aventador)\b/i;
 const BAD_TITLE = /\b(navy|aircraft|air[- ]traffic|carrier|keyboard|warship|helicopter|fighter|soldier|sailor|cockpit|radar|missile|portrait|logo|diagram|uniform|submarine|taxi|geograph\.org\.uk)\b/i;
 
+const NAMED_CARS: Array<{ test: RegExp; queries: string[]; file: RegExp }> = [
+  { test: /bigster/i, queries: ['intitle:Dacia Bigster', 'intitle:Renault Boreal'], file: /bigster|boreal/i },
+  { test: /boreal/i, queries: ['intitle:Renault Boreal'], file: /boreal/i },
+  { test: /elevate/i, queries: ['intitle:Honda Elevate'], file: /elevate/i },
+  { test: /creta/i, queries: ['intitle:Hyundai Creta'], file: /creta/i },
+  { test: /nexon/i, queries: ['intitle:Tata Nexon'], file: /nexon/i },
+  { test: /xuv\s?7/i, queries: ['intitle:Mahindra XUV700'], file: /xuv\s?700/i },
+  { test: /scorpio/i, queries: ['intitle:Mahindra Scorpio'], file: /scorpio/i },
+  { test: /\bthar\b/i, queries: ['intitle:Mahindra Thar'], file: /\bthar\b/i },
+  { test: /brezza/i, queries: ['intitle:Brezza'], file: /brezza/i },
+  { test: /slavia/i, queries: ['intitle:Skoda Slavia'], file: /slavia/i },
+  { test: /seltos/i, queries: ['intitle:Kia Seltos'], file: /seltos/i },
+  { test: /virtus/i, queries: ['intitle:Virtus'], file: /virtus/i },
+  { test: /kushaq/i, queries: ['intitle:Kushaq'], file: /kushaq/i },
+  { test: /harrier/i, queries: ['intitle:Tata Harrier'], file: /harrier/i },
+  { test: /innova/i, queries: ['intitle:Toyota Innova'], file: /innova/i },
+  { test: /fortuner/i, queries: ['intitle:Fortuner'], file: /fortuner/i },
+  { test: /\bpunch\b/i, queries: ['intitle:Tata Punch'], file: /\bpunch\b/i },
+  { test: /fronx/i, queries: ['intitle:Fronx'], file: /fronx/i },
+  { test: /\bexter\b/i, queries: ['intitle:Hyundai Exter'], file: /\bexter\b/i },
+  { test: /\bvenue\b/i, queries: ['intitle:Hyundai Venue'], file: /\bvenue\b/i },
+  { test: /alcazar/i, queries: ['intitle:Alcazar'], file: /alcazar/i },
+  { test: /hector/i, queries: ['intitle:MG Hector'], file: /hector/i },
+  { test: /kiger/i, queries: ['intitle:Renault Kiger'], file: /kiger/i },
+  { test: /duster/i, queries: ['intitle:Renault Duster'], file: /duster/i },
+];
+
 type PhotoSubject = 'supercar' | 'used' | 'showroom' | 'brand' | 'traffic' | 'general';
 
 function photoSubject(title: string): PhotoSubject {
@@ -198,6 +225,8 @@ function photoSubject(title: string): PhotoSubject {
 }
 
 function photoQueries(title: string, imageQuery: string) {
+  const named = NAMED_CARS.find((car) => car.test.test(title));
+  if (named) return named.queries;
   const queries: string[] = [];
   const add = (value: string) => {
     const next = value.replace(/[^\w\s:-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -222,16 +251,17 @@ function photoQueries(title: string, imageQuery: string) {
   } else if (subject === 'traffic') {
     if (/petrol|diesel|fuel/i.test(title)) add('Indian oil petrol station');
     else add('cars on road India');
-  } else if (imageQuery && !BAD_TITLE.test(imageQuery)) {
-    add(imageQuery);
   }
-  if (!queries.length) add('cars on road India');
+  if (!queries.length && imageQuery && !BAD_TITLE.test(imageQuery)) add(imageQuery);
   return queries.slice(0, 3);
 }
 
-function photoMatches(fileTitle: string, subject: PhotoSubject) {
+function photoMatches(fileTitle: string, articleTitle: string) {
   const title = fileTitle.toLowerCase();
-  if (BAD_TITLE.test(title) || /taxi|geograph\.org\.uk|red bull|rallycross/.test(title)) return false;
+  if (BAD_TITLE.test(title) || /taxi|geograph\.org\.uk|red bull|rallycross|\brally\b|asean|interior|dashboard/.test(title)) return false;
+  const named = NAMED_CARS.find((car) => car.test.test(articleTitle));
+  if (named) return named.file.test(fileTitle);
+  const subject = photoSubject(articleTitle);
   if (subject === 'supercar') return /lamborghini|ferrari|porsche|mclaren|bugatti|huracan|huracán|aventador/.test(title);
   if (subject === 'used') return /used car/.test(title);
   if (subject === 'showroom') return /showroom|dealership|motors/.test(title) && CAR_TITLE.test(title);
@@ -279,13 +309,12 @@ async function searchCommons(query: string): Promise<CommonsPhoto[]> {
 }
 
 async function pickNewsPhoto(articleTitle: string, imageQuery: string, usedTitles: Set<string>): Promise<CommonsPhoto | null> {
-  const subject = photoSubject(articleTitle);
   for (const query of photoQueries(articleTitle, imageQuery)) {
     const photos = await searchCommons(query);
     for (const photo of photos) {
       const key = photo.title.toLowerCase();
       if (usedTitles.has(key)) continue;
-      if (!photoMatches(photo.title, subject)) continue;
+      if (!photoMatches(photo.title, articleTitle)) continue;
       return photo;
     }
   }
