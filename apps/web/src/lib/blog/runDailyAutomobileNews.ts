@@ -237,8 +237,10 @@ function photoQueries(title: string, imageQuery: string) {
     add('Lamborghini Huracan');
     add('Ferrari supercar');
     add('Porsche 911');
-  } else   if (subject === 'used') {
-    add('intitle:used cars');
+  } else if (subject === 'used') {
+    if (/delhi/i.test(title)) add('Maruti Esteem Chandni Chowk Delhi');
+    else if (/mumbai/i.test(title)) add('cars Mumbai India');
+    else add('used cars India');
   } else if (subject === 'showroom') {
     add('Maruti Suzuki showroom India');
     add('car showroom India');
@@ -263,7 +265,10 @@ function photoMatches(fileTitle: string, articleTitle: string) {
   if (named) return named.file.test(fileTitle);
   const subject = photoSubject(articleTitle);
   if (subject === 'supercar') return /lamborghini|ferrari|porsche|mclaren|bugatti|huracan|huracán|aventador/.test(title);
-  if (subject === 'used') return /used car/.test(title);
+  if (subject === 'used') {
+    if (/delhi/i.test(articleTitle)) return /delhi|chandni/.test(title) && /car|maruti|esteem|hyundai|honda/.test(title);
+    return /used car|india/.test(title) && !/cairo|stallings|geograph|taxi/.test(title);
+  }
   if (subject === 'showroom') return /showroom|dealership|motors/.test(title) && CAR_TITLE.test(title);
   if (subject === 'brand') return CAR_TITLE.test(title);
   return CAR_TITLE.test(title);
