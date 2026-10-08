@@ -8,11 +8,15 @@ import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 import { stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
 import { revalidateBlogSeo } from '@/lib/seo/revalidate';
 import { currentAutomobileNewsSlot } from '@/lib/blog/automobileNewsSlots';
+import { isEvBikeServiceText, isEvBikeText, resolveNewsTopic } from '@/lib/blog/newsTopic';
 
 export const AUTOMOBILE_NEWS_PER_DAY = 10;
 
-const RSS_URL =
-  'https://news.google.com/rss/search?q=(car%20OR%20automobile%20OR%20SUV%20OR%20sedan%20OR%20%22petrol%20price%22%20OR%20%22diesel%20price%22%20OR%20FASTag%20OR%20RTO)%20(India%20OR%20Mumbai%20OR%20Pune%20OR%20Delhi)&hl=en-IN&gl=IN&ceid=IN:en';
+const RSS_FEEDS = [
+  'https://news.google.com/rss/search?q=(car%20OR%20automobile%20OR%20SUV%20OR%20sedan%20OR%20%22petrol%20price%22%20OR%20%22diesel%20price%22%20OR%20FASTag%20OR%20RTO)%20(India%20OR%20Mumbai%20OR%20Pune%20OR%20Delhi)&hl=en-IN&gl=IN&ceid=IN:en',
+  'https://news.google.com/rss/search?q=(%22electric%20scooter%22%20OR%20%22EV%20scooter%22%20OR%20Ather%20OR%20%22Ola%20Electric%22%20OR%20%22TVS%20iQube%22%20OR%20Chetak%20OR%20%22electric%20bike%22)%20(India%20OR%20Mumbai%20OR%20Pune)&hl=en-IN&gl=IN&ceid=IN:en',
+  'https://news.google.com/rss/search?q=(%22electric%20scooter%22%20OR%20Ather%20OR%20%22Ola%20Electric%22%20OR%20iQube%20OR%20Chetak)%20(service%20OR%20servicing%20OR%20maintenance%20OR%20warranty%20OR%20workshop%20OR%20battery)%20(India%20OR%20Mumbai)&hl=en-IN&gl=IN&ceid=IN:en',
+];
 
 const COMMONS_UA = 'MyFNG/1.0 (editorial; attribution; automobile-news)';
 
@@ -63,6 +67,12 @@ function plainText(value: string) {
     .trim();
 }
 
+function headlineRank(item: RssItem, posted: { bike: boolean; service: boolean }) {
+  if (!posted.service && isEvBikeServiceText(item.title)) return 0;
+  if (!posted.bike && isEvBikeText(item.title)) return 1;
+  return 2;
+}
+
 function headlineKey(title: string) {
   return plainText(title)
     .toLowerCase()
@@ -99,14 +109,25 @@ function parseRss(xml: string): RssItem[] {
   return items;
 }
 
-async function fetchHeadlines(): Promise<RssItem[]> {
-  const response = await fetch(RSS_URL, {
+async function fetchFeed(url: string): Promise<RssItem[]> {
+  const response = await fetch(url, {
     headers: { 'User-Agent': COMMONS_UA, Accept: 'application/rss+xml, application/xml, text/xml' },
     cache: 'no-store',
   });
-  if (!response.ok) throw new Error(`News feed returned HTTP ${response.status}`);
-  const xml = await response.text();
-  const items = parseRss(xml);
+  if (!response.ok) return [];
+  return parseRss(await response.text());
+}
+
+async function fetchHeadlines(): Promise<RssItem[]> {
+  const batches = await Promise.all(RSS_FEEDS.map((url) => fetchFeed(url).catch(() => [] as RssItem[])));
+  const seen = new Set<string>();
+  const items: RssItem[] = [];
+  for (const item of batches.flat()) {
+    const key = headlineKey(item.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    items.push(item);
+  }
   if (!items.length) throw new Error('News feed returned no headlines');
   return items;
 }
@@ -132,14 +153,15 @@ async function openaiNews(item: RssItem) {
           content: `You write original automobile news briefs for MYFNG Automobile News.
 Rules:
 - Do not copy sentences from any article. Paraphrase.
-- Use only facts that are explicit in the supplied headline and source name. You may explain what that fact means for car owners in Mumbai, Navi Mumbai, Thane, Palghar and Pune.
+- Use only facts that are explicit in the supplied headline and source name. You may explain what that fact means for car and electric-scooter owners in Mumbai, Navi Mumbai, Thane, Palghar and Pune.
 - Do not invent prices, percentages, dates, fines, mileage, or statistics.
 - Do not mention MyFNG pickup, the MyFNG app, booking a service, fuel delivery, Prime, or "download the app".
 - Write 450-700 words in HTML: one intro paragraph, then h2 sections, then a short "What to check" list.
 - Include exactly one external link to source_url using source_name as the anchor.
 - Include one internal link to https://myfng.in/automobile-news.
-- image_query is 2-5 words naming a visible car, brand, showroom, traffic, or petrol pump from the headline. Example: "Mahindra XUV700" or "Mumbai cars traffic". Never a person, bank, keyboard, aircraft, or logo. If the headline has no car, use "cars on road India".
-Return JSON: {"title":"","excerpt":"","content_html":"","image_query":""}`,
+- image_query is 2-5 words naming a visible car, electric scooter, brand, showroom, workshop, traffic, or petrol pump from the headline. Example: "Mahindra XUV700", "Ather 450X", or "Ola electric scooter". Never a person, bank, keyboard, aircraft, or logo. If the headline has no vehicle, use "cars on road India" for cars and "electric scooter India" for scooters or bikes.
+- topic is exactly one of New Launch, EV News, Sales, Market, Industry. New Launch = a new car, price reveal, unveil, or facelift. EV News = an electric or hybrid car, an electric scooter or bike, or service, battery, warranty, and workshop news for an electric scooter or bike. Sales = monthly sales, volumes, or market share. Market = loans, rates, used cars, or resale. Industry = brands, policy, people, culture, and everything else.
+Return JSON: {"title":"","excerpt":"","content_html":"","image_query":"","topic":"New Launch"}`,
         },
         {
           role: 'user',
@@ -165,9 +187,17 @@ Return JSON: {"title":"","excerpt":"","content_html":"","image_query":""}`,
   const title = String(parsed?.title || '').trim();
   const excerpt = String(parsed?.excerpt || '').trim();
   const html = stripMyFngServiceHtml(String(parsed?.content_html || ''));
+  const topic = resolveNewsTopic(parsed?.topic, title, excerpt);
   const imageQuery = String(parsed?.image_query || '').replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!title || !excerpt || !html) throw new Error('AI response missing required fields');
-  return { title, excerpt, html, imageQuery: imageQuery || 'indian car' };
+  const fallbackQuery = isEvBikeText(`${title} ${excerpt}`) ? 'electric scooter India' : 'indian car';
+  return {
+    title,
+    excerpt,
+    html,
+    imageQuery: imageQuery || fallbackQuery,
+    topic,
+  };
 }
 
 type CommonsPhoto = {
@@ -184,9 +214,20 @@ function licenseAllowed(name: string) {
 }
 
 const CAR_TITLE = /\b(car|cars|automobile|sedan|suv|hatchback|mpv|vehicle|showroom|dealership|traffic|maruti|suzuki|hyundai|tata|mahindra|honda|toyota|skoda|kia|volkswagen|bmw|mercedes|audi|ferrari|porsche|lamborghini|mclaren|bugatti|ambassador|creta|nexon|xuv|scorpio|thar|brezza|swift|elevate|slavia|bolero|huracan|huracán|aventador)\b/i;
-const BAD_TITLE = /\b(navy|aircraft|air[- ]traffic|carrier|keyboard|warship|helicopter|fighter|soldier|sailor|cockpit|radar|missile|portrait|logo|diagram|uniform|submarine|taxi|geograph\.org\.uk)\b/i;
+const BAD_TITLE = /\b(navy|aircraft|air[- ]traffic|carrier|keyboard|warship|helicopter|fighter|soldier|sailor|cockpit|radar|missile|portrait|logo|diagram|uniform|submarine|taxi|geograph\.org\.uk|rally|raid|expedition|convoy|asean|numaligarh|emblem|badge|grille|lettering|crashed|waymo|robotaxi|interior|dashboard)\b/i;
+const GENERIC_QUERY = /^(indian car|cars on road india|car|cars|automobile|new cars?|luxury cars?|suv|electric car)$/i;
+
+const NAMED_BIKES: Array<{ test: RegExp; queries: string[]; file: RegExp }> = [
+  { test: /ather/i, queries: ['Ather 450X', 'Ather scooter'], file: /ather/i },
+  { test: /ola electric|ola s1|\bola\b/i, queries: ['Ola S1 Pro', 'Ola electric scooter'], file: /\bola\b/i },
+  { test: /iqube/i, queries: ['TVS iQube'], file: /iqube/i },
+  { test: /chetak/i, queries: ['Bajaj Chetak'], file: /chetak/i },
+  { test: /\bvida\b/i, queries: ['Hero Vida electric scooter'], file: /vida/i },
+  { test: /simple one|simple energy/i, queries: ['Simple One electric scooter'], file: /simple one|simple energy/i },
+];
 
 const NAMED_CARS: Array<{ test: RegExp; queries: string[]; file: RegExp }> = [
+  { test: /type\s*0[01]/i, queries: ['intitle:Jaguar Type 00'], file: /type 00/i },
   { test: /bigster/i, queries: ['intitle:Dacia Bigster', 'intitle:Renault Boreal'], file: /bigster|boreal/i },
   { test: /boreal/i, queries: ['intitle:Renault Boreal'], file: /boreal/i },
   { test: /elevate/i, queries: ['intitle:Honda Elevate'], file: /elevate/i },
@@ -213,20 +254,55 @@ const NAMED_CARS: Array<{ test: RegExp; queries: string[]; file: RegExp }> = [
   { test: /duster/i, queries: ['intitle:Renault Duster'], file: /duster/i },
 ];
 
-type PhotoSubject = 'supercar' | 'used' | 'showroom' | 'brand' | 'traffic' | 'general';
+const BRANDS: Array<{ test: RegExp; queries: string[]; file: RegExp }> = [
+  { test: /\bbmw\b/i, queries: ['BMW iX', 'BMW i4'], file: /\bbmw\b/i },
+  { test: /mercedes|\bbenz\b/i, queries: ['Mercedes-Benz W223', 'Mercedes-Benz S-Class'], file: /mercedes/i },
+  { test: /\baudi\b/i, queries: ['Audi e-tron', 'Audi Q8'], file: /\baudi\b/i },
+  { test: /jaguar/i, queries: ['Jaguar I-Pace', 'Jaguar F-Pace'], file: /i-pace|f-pace/i },
+  { test: /lexus/i, queries: ['Lexus LX', 'Lexus ES'], file: /lexus/i },
+  { test: /volvo/i, queries: ['Volvo XC90', 'Volvo XC60'], file: /volvo/i },
+  { test: /porsche/i, queries: ['Porsche 911', 'Porsche Cayenne'], file: /porsche/i },
+  { test: /land rover|range rover/i, queries: ['Range Rover'], file: /range rover|land rover/i },
+  { test: /mahindra/i, queries: ['Mahindra XUV700 India'], file: /xuv\s?700|scorpio|\bthar\b/i },
+  { test: /\btata\b/i, queries: ['Tata Nexon car India'], file: /nexon|harrier|\bpunch\b/i },
+  { test: /hyundai/i, queries: ['Hyundai Creta India'], file: /creta|venue|alcazar/i },
+  { test: /honda/i, queries: ['Honda Elevate', 'Honda City'], file: /elevate|\bcity\b/i },
+  { test: /skoda/i, queries: ['Skoda Slavia car'], file: /slavia|kushaq/i },
+  { test: /maruti/i, queries: ['Maruti Suzuki Brezza'], file: /brezza|swift|baleno/i },
+  { test: /\bkia\b/i, queries: ['Kia Seltos'], file: /seltos/i },
+  { test: /toyota/i, queries: ['Toyota Innova'], file: /innova|fortuner/i },
+];
+
+type PhotoSubject = 'supercar' | 'used' | 'showroom' | 'brand' | 'traffic' | 'luxury' | 'launch' | 'general';
 
 function photoSubject(title: string): PhotoSubject {
   if (/supercar|\bimports?\b|classic/i.test(title)) return 'supercar';
   if (/used car|resale|second[- ]hand|pre-owned/i.test(title)) return 'used';
   if (/loan|repo|\brbi\b|\bemi\b|interest/i.test(title)) return 'showroom';
-  if (/mahindra|\btata\b|hyundai|honda|skoda|maruti|\bkia\b|toyota/i.test(title)) return 'brand';
+  if (BRANDS.some((brand) => brand.test.test(title))) return 'brand';
+  if (/luxury/i.test(title)) return 'luxury';
+  if (/launch|unveil|new cars|facelift/i.test(title)) return 'launch';
   if (/mumbai|petrol|diesel|fuel|traffic/i.test(title)) return 'traffic';
   return 'general';
 }
 
+function bikePhotoQueries(title: string, imageQuery: string) {
+  const blob = `${title} ${imageQuery}`;
+  if (!isEvBikeText(blob)) return null;
+  const named = NAMED_BIKES.find((bike) => bike.test.test(blob));
+  if (isEvBikeServiceText(blob)) {
+    return named ? [...named.queries, 'electric scooter workshop'] : ['electric scooter workshop', 'Ather 450X', 'Ola electric scooter'];
+  }
+  return named ? named.queries : ['Ather 450X', 'Ola electric scooter', 'TVS iQube'];
+}
+
 function photoQueries(title: string, imageQuery: string) {
-  const named = NAMED_CARS.find((car) => car.test.test(title));
+  const bikes = bikePhotoQueries(title, imageQuery);
+  if (bikes) return bikes;
+  const named = NAMED_CARS.find((car) => car.test.test(title) || car.test.test(imageQuery));
   if (named) return named.queries;
+  const brand = BRANDS.find((item) => item.test.test(title) || item.test.test(imageQuery));
+  if (brand) return brand.queries;
   const queries: string[] = [];
   const add = (value: string) => {
     const next = value.replace(/[^\w\s:-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -237,6 +313,13 @@ function photoQueries(title: string, imageQuery: string) {
     add('Lamborghini Huracan');
     add('Ferrari supercar');
     add('Porsche 911');
+  } else if (subject === 'luxury') {
+    add('Mercedes-Benz W223');
+    add('BMW 7 Series');
+  } else if (subject === 'launch') {
+    add('Hyundai Creta India');
+    add('Tata Nexon');
+    add('Mahindra XUV700');
   } else if (subject === 'used') {
     if (/delhi/i.test(title)) add('Maruti Esteem Chandni Chowk Delhi');
     else if (/mumbai/i.test(title)) add('cars Mumbai India');
@@ -244,33 +327,35 @@ function photoQueries(title: string, imageQuery: string) {
   } else if (subject === 'showroom') {
     add('Maruti Suzuki showroom India');
     add('car showroom India');
-  } else if (subject === 'brand') {
-    if (/mahindra/i.test(title)) add('Mahindra XUV700 India');
-    if (/\btata\b/i.test(title)) add('Tata Nexon car India');
-    if (/hyundai/i.test(title)) add('Hyundai Creta India');
-    if (/honda/i.test(title)) add('Honda car India');
-    if (/skoda/i.test(title)) add('Skoda Slavia car');
   } else if (subject === 'traffic') {
     if (/petrol|diesel|fuel/i.test(title)) add('Indian oil petrol station');
     else add('cars on road India');
   }
-  if (!queries.length && imageQuery && !BAD_TITLE.test(imageQuery)) add(imageQuery);
+  if (!queries.length && imageQuery && !BAD_TITLE.test(imageQuery) && !GENERIC_QUERY.test(imageQuery)) add(imageQuery);
   return queries.slice(0, 3);
 }
 
 function photoMatches(fileTitle: string, articleTitle: string) {
   const title = fileTitle.toLowerCase();
-  if (BAD_TITLE.test(title) || /taxi|geograph\.org\.uk|red bull|rallycross|\brally\b|asean|interior|dashboard/.test(title)) return false;
+  if (BAD_TITLE.test(title) || /taxi|geograph\.org\.uk|red bull|rallycross/.test(title)) return false;
+  if (isEvBikeText(articleTitle)) {
+    const named = NAMED_BIKES.find((bike) => bike.test.test(articleTitle));
+    if (named) return named.file.test(fileTitle);
+    return /\b(scooter|ather|ola|iqube|chetak|vida|motorcycle|workshop)\b/.test(title);
+  }
   const named = NAMED_CARS.find((car) => car.test.test(articleTitle));
   if (named) return named.file.test(fileTitle);
+  const brand = BRANDS.find((item) => item.test.test(articleTitle));
+  if (brand) return brand.file.test(fileTitle);
   const subject = photoSubject(articleTitle);
   if (subject === 'supercar') return /lamborghini|ferrari|porsche|mclaren|bugatti|huracan|huracán|aventador/.test(title);
+  if (subject === 'luxury') return /mercedes|bmw|audi|jaguar|lexus|porsche|bentley|rolls/.test(title);
+  if (subject === 'launch') return /creta|nexon|xuv\s?700|harrier|seltos|venue|punch|innova/.test(title);
   if (subject === 'used') {
     if (/delhi/i.test(articleTitle)) return /delhi|chandni/.test(title) && /car|maruti|esteem|hyundai|honda/.test(title);
     return /used car|india/.test(title) && !/cairo|stallings|geograph|taxi/.test(title);
   }
   if (subject === 'showroom') return /showroom|dealership|motors/.test(title) && CAR_TITLE.test(title);
-  if (subject === 'brand') return CAR_TITLE.test(title);
   return CAR_TITLE.test(title);
 }
 
@@ -456,16 +541,24 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
 
   const { data: recent } = await supabaseAdmin
     .from('blogs')
-    .select('title, seo_data')
+    .select('title, seo_data, content')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(200);
   const used = new Set<string>();
   const usedPhotos = new Set<string>();
+  const postedEv = { bike: false, service: false };
   for (const row of recent || []) {
     const seo = (row as any)?.seo_data || {};
+    if (seo.ai_daily_news === true && String(seo.ai_daily_news_date || '') === runDate) {
+      const title = String((row as any)?.title || '');
+      if (isEvBikeServiceText(title)) postedEv.service = true;
+      else if (isEvBikeText(title)) postedEv.bike = true;
+    }
     if (seo.news_headline_key) used.add(String(seo.news_headline_key));
-    if (seo.news_commons_title) usedPhotos.add(String(seo.news_commons_title).toLowerCase());
+    const commonsTitle = String(seo.news_commons_title || '').trim()
+      || (String((row as any)?.content || '').match(/Reference photo:\s*([^.]{3,180}?\.(?:jpg|jpeg|png|webp))/i)?.[1] || '');
+    if (commonsTitle) usedPhotos.add(commonsTitle.toLowerCase());
     used.add(headlineKey(String((row as any)?.title || '')));
   }
 
@@ -481,7 +574,9 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
     };
   }
 
-  const fresh = headlines.filter((item) => !used.has(headlineKey(item.title)));
+  const fresh = headlines
+    .filter((item) => !used.has(headlineKey(item.title)))
+    .sort((a, b) => headlineRank(a, postedEv) - headlineRank(b, postedEv));
   if (!fresh.length) {
     return {
       success: true,
@@ -550,6 +645,7 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
         news_source_url: item.sourceUrl || item.link,
         news_commons_title: photo?.title || null,
         news_photo_caption: caption || null,
+        news_topic: draft.topic,
         author_name: PUBLIC_BLOG_AUTHOR,
         local_areas: ['Mumbai', 'Navi Mumbai', 'Thane', 'Palghar', 'Pune'],
         robots_index: true,

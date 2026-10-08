@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { isBlogIndexable } from '@/lib/blog/seo';
 import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
+import { resolveNewsTopic, type NewsTopic } from '@/lib/blog/newsTopic';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const AUTOMOBILE_NEWS_PAGE_SIZE = 8;
@@ -23,6 +24,7 @@ export type AutomobileNewsItem = {
   readTime: number;
   views: number;
   category: string | null;
+  topic: NewsTopic;
 };
 
 type NewsRow = {
@@ -66,17 +68,28 @@ function newsClient(): SupabaseClient | null {
 
 function mapItem(row: NewsRow): AutomobileNewsItem {
   const primary = Array.isArray(row.category) ? row.category[0] : row.category;
+  const title = String(row.title || '').trim();
+  const excerpt = String(row.excerpt || '').trim();
+  const seo = row.seo_data && typeof row.seo_data === 'object' ? row.seo_data as { news_topic?: unknown } : {};
   return {
     id: String(row.id),
     slug: String(row.slug),
-    title: String(row.title || '').trim(),
-    excerpt: String(row.excerpt || '').trim(),
+    title,
+    excerpt,
     image: normalizeBlogMediaUrl(row.featured_image),
     publishedAt: row.published_at ? String(row.published_at) : null,
     readTime: Number(row.read_time || 0) || 3,
     views: Number(row.views || 0),
     category: primary?.name ? String(primary.name) : 'Automobile News',
+    topic: resolveNewsTopic(seo.news_topic, title, excerpt),
   };
+}
+
+export function pickRelatedNews(items: AutomobileNewsItem[], currentSlug: string, topic: string, count = 3) {
+  const rest = items.filter((item) => item.slug !== currentSlug);
+  const same = rest.filter((item) => item.topic === topic);
+  const others = rest.filter((item) => item.topic !== topic);
+  return [...same, ...others].slice(0, count);
 }
 
 export async function getAutomobileNewsArticle(slug: string) {
@@ -103,37 +116,67 @@ export async function getAutomobileNewsArticle(slug: string) {
     ...mapItem(row),
     content: String(row.content || ''),
     photoCaption: String(seo.news_photo_caption || '').trim(),
+    seo: row.seo_data,
   };
 }
 
-export async function listAutomobileNews(page = 1) {
+export async function listAutomobileNews(page = 1, pageSize = AUTOMOBILE_NEWS_PAGE_SIZE) {
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const size = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : AUTOMOBILE_NEWS_PAGE_SIZE;
   const client = newsClient();
   if (!client) {
-    return { items: [] as AutomobileNewsItem[], total: 0, page: safePage, pageSize: AUTOMOBILE_NEWS_PAGE_SIZE };
+    return { items: [] as AutomobileNewsItem[], total: 0, page: safePage, pageSize: size };
   }
 
-  const { data, error } = await client
+  const start = (safePage - 1) * size;
+  const newsFilter = `seo_data->>ai_news_car.eq.true,slug.in.(${NEWS_CAR_SLUGS.join(',')})`;
+  const { data, error, count } = await client
     .from('blogs')
-    .select(`
+    .select(
+      `
       id, slug, title, excerpt, featured_image, published_at, read_time, views, seo_data,
-      category:blog_categories(name, slug),
-      categories:blog_category_mapping(category:blog_categories(name, slug))
-    `)
+      category:blog_categories(name, slug)
+    `,
+      { count: 'exact' },
+    )
     .ilike('status', 'published')
+    .or(newsFilter)
     .order('published_at', { ascending: false, nullsFirst: false })
-    .limit(500);
+    .range(start, start + size - 1);
 
   if (error || !data) {
-    return { items: [] as AutomobileNewsItem[], total: 0, page: safePage, pageSize: AUTOMOBILE_NEWS_PAGE_SIZE };
+    console.error('Automobile news list failed', error?.message || error);
+    return { items: [] as AutomobileNewsItem[], total: 0, page: safePage, pageSize: size };
   }
 
   const news = (data as NewsRow[]).filter((row) => isBlogIndexable(row.seo_data) && isAutomobileNewsRow(row));
-  const start = (safePage - 1) * AUTOMOBILE_NEWS_PAGE_SIZE;
   return {
-    items: news.slice(start, start + AUTOMOBILE_NEWS_PAGE_SIZE).map(mapItem),
-    total: news.length,
+    items: news.map(mapItem),
+    total: count ?? news.length,
     page: safePage,
-    pageSize: AUTOMOBILE_NEWS_PAGE_SIZE,
+    pageSize: size,
   };
+}
+
+export async function listMyfngBlogsForNews(seed: string, count = 3) {
+  const client = newsClient();
+  if (!client) return [] as Array<{ slug: string; title: string }>;
+  const { data, error } = await client
+    .from('blogs')
+    .select('id, slug, title, seo_data')
+    .ilike('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(80);
+  if (error || !data) return [];
+  const blogs = (data as NewsRow[]).filter((row) => {
+    return Boolean(row.slug && row.title) && isBlogIndexable(row.seo_data) && !isAutomobileNewsRow(row);
+  });
+  if (!blogs.length) return [];
+  let hash = 0;
+  for (const char of String(seed || 'news')) hash = (hash * 33 + char.charCodeAt(0)) >>> 0;
+  const start = hash % blogs.length;
+  return Array.from({ length: Math.min(count, blogs.length) }, (_, index) => {
+    const row = blogs[(start + index) % blogs.length];
+    return { slug: String(row.slug), title: String(row.title || '').trim() };
+  });
 }
