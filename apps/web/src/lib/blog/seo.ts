@@ -67,9 +67,14 @@ export function buildBlogSchemaPreview(input: {
   schema_faq?: boolean;
   eligible_ai_overview?: boolean;
   faqs?: BlogSeoFaq[];
+  publicPath?: string;
 }) {
   const slug = sanitizeBlogSlug(input.slug);
-  const url = `https://myfng.in/blogs/${slug || 'your-slug'}`;
+  const publicPath = String(input.publicPath || `/blogs/${slug || 'your-slug'}`);
+  const url = `https://myfng.in${publicPath.startsWith('/') ? publicPath : `/${publicPath}`}`;
+  const newsArticle = publicPath.startsWith('/automobile-news/');
+  const sectionName = newsArticle ? 'Automobile News' : 'Blogs';
+  const sectionUrl = newsArticle ? 'https://myfng.in/automobile-news' : 'https://myfng.in/blogs';
   const title = String(input.title || '').trim() || 'Blog title';
   const description = String(input.description || '').trim() || undefined;
   const keywords = String(input.keywords || '').trim() || undefined;
@@ -123,7 +128,7 @@ export function buildBlogSchemaPreview(input: {
     '@id': `${url}#breadcrumbs`,
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://myfng.in' },
-      { '@type': 'ListItem', position: 2, name: 'Blogs', item: 'https://myfng.in/blogs' },
+      { '@type': 'ListItem', position: 2, name: sectionName, item: sectionUrl },
       { '@type': 'ListItem', position: 3, name: title, item: url },
     ],
   });
@@ -201,6 +206,9 @@ export function blogSeoToSummary(row: {
   faqs?: unknown;
 }) {
   const seo = parseBlogSeoData(row.seo_data);
+  const rawSeo = row.seo_data && typeof row.seo_data === 'object' ? (row.seo_data as { ai_news_car?: unknown }) : {};
+  const kind: 'blog' | 'news' = rawSeo.ai_news_car === true || rawSeo.ai_news_car === 'true' ? 'news' : 'blog';
+  const publicPath = kind === 'news' ? `/automobile-news/${row.slug}` : `/blogs/${row.slug}`;
   const faqs = normalizeBlogFaqs(row.faqs ?? seo.faqs);
   return {
     id: String(row.id),
@@ -211,7 +219,8 @@ export function blogSeoToSummary(row: {
     description: String(seo.meta_description || row.excerpt || '').trim(),
     keywords: String(seo.keywords || '').trim(),
     keyphrase: String(seo.keyphrase || '').trim(),
-    canonical_url: String(seo.canonical_url || '').trim(),
+    kind,
+    canonical_url: String(seo.canonical_url || `https://myfng.in${publicPath}`).trim(),
     og_title: String(seo.og_title || '').trim(),
     og_description: String(seo.og_description || '').trim(),
     og_image: String(seo.og_image || '').trim(),
@@ -234,7 +243,7 @@ export function blogSeoToSummary(row: {
         description: String(seo.meta_description || row.excerpt || '').trim(),
         keywords: String(seo.keywords || '').trim(),
         keyphrase: String(seo.keyphrase || '').trim(),
-        canonical_url: String(seo.canonical_url || '').trim(),
+        canonical_url: String(seo.canonical_url || `https://myfng.in${publicPath}`).trim(),
         og_title: String(seo.og_title || '').trim(),
         og_description: String(seo.og_description || '').trim(),
         og_image: String(seo.og_image || '').trim(),
@@ -259,7 +268,7 @@ export function blogSeoToSummary(row: {
     updated_at: row.updated_at ? String(row.updated_at) : undefined,
     published_at: row.published_at ? String(row.published_at) : undefined,
     edit_href: `/dashboard/digital_marketing/blogs/${row.id}/edit`,
-    preview_href: `/blogs/${row.slug}`,
+    preview_href: publicPath,
   };
 }
 

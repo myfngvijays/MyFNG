@@ -168,7 +168,7 @@ export async function getDltSnapshot(logLimit = 40): Promise<DltSmsSnapshot> {
       id: 'telemarketer',
       label: 'Own operator SMS pipe connected',
       done: Boolean(primaryTm && primaryTm.api_url),
-      hint: 'No MSG91. Register yourselves as telemarketer on Jio TrueConnect, then paste the operator HTTP URL Jio gives you.',
+      hint: 'WhySMS pipe: telemarketer ID, operator URL, and API key.',
     },
     {
       id: 'cta',

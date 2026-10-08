@@ -224,6 +224,15 @@ function BlogsPageContent() {
           ))}
         </div>
 
+        {desk === 'news' ? (
+          <Link
+            href="/dashboard/digital_marketing/site-seo?tab=static&path=/automobile-news"
+            className="inline-flex w-fit items-center rounded-lg border border-[#023D95]/30 bg-white px-3 py-2 text-xs font-semibold text-[#023D95]"
+          >
+            Automobile News page SEO
+          </Link>
+        ) : null}
+
         {desk === 'blogs' ? (
         <div className="flex flex-wrap gap-2 sm:gap-3">
           <button
@@ -389,6 +398,14 @@ function BlogsPageContent() {
                         >
                           <Edit className="h-3 w-3" /> Edit
                         </Link>
+                        {isNews ? (
+                          <Link
+                            href={`/dashboard/digital_marketing/site-seo?tab=news&slug=${blog.slug}`}
+                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#023D95] px-2 py-1.5 text-[11px] font-semibold text-white"
+                          >
+                            SEO
+                          </Link>
+                        ) : null}
                         {blog.status === 'draft' || blog.status === 'pending_review' ? (
                           <button
                             type="button"

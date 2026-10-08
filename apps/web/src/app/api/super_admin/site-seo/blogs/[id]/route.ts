@@ -72,10 +72,17 @@ export async function PUT(request: NextRequest, { params }: Params) {
       }
     }
 
+    const isNews =
+      (current as { ai_news_car?: unknown }).ai_news_car === true ||
+      (current as { ai_news_car?: unknown }).ai_news_car === 'true';
+    const publicBase = isNews ? 'https://myfng.in/automobile-news' : 'https://myfng.in/blogs';
     const oldCanonical = String(body.canonical_url ?? current.canonical_url ?? '').trim();
-    const oldSlugUrl = `https://myfng.in/blogs/${existing.slug}`;
+    const oldSlugUrl = `${publicBase}/${existing.slug}`;
+    const blogsSlugUrl = `https://myfng.in/blogs/${existing.slug}`;
     const nextCanonical =
-      !oldCanonical || oldCanonical === oldSlugUrl ? `https://myfng.in/blogs/${nextSlug}` : oldCanonical;
+      !oldCanonical || oldCanonical === oldSlugUrl || (isNews && oldCanonical === blogsSlugUrl)
+        ? `${publicBase}/${nextSlug}`
+        : oldCanonical;
 
     const next = {
       ...current,

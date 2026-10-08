@@ -14,8 +14,13 @@ import TechnicalSeoPanel from '@/components/admin/site-seo/TechnicalSeoPanel';
 import SeoOverviewDashboard, { type SeoOverviewData } from '@/components/admin/site-seo/SeoOverviewDashboard';
 import { seoAdminTheme as t } from '@/components/admin/site-seo/seo-admin-theme';
 
-type SeoTab = 'overview' | 'all' | 'static' | 'service' | 'city' | 'workshop' | 'blog' | 'technical';
+type SeoTab = 'overview' | 'all' | 'static' | 'service' | 'city' | 'workshop' | 'blog' | 'news' | 'technical';
 type ScoredPage = SitePageSeoRow & { seo_score?: number; seo_grade?: string };
+
+function postPublicPath(row: { slug: string; kind?: 'blog' | 'news' }) {
+  const slug = sanitizeBlogSlug(row.slug) || row.slug || 'your-slug';
+  return row.kind === 'news' ? `/automobile-news/${slug}` : `/blogs/${slug}`;
+}
 
 function ScoreBadge({ score }: { score: number }) {
   const tone = seoScoreTone(score);
@@ -99,7 +104,8 @@ const TAB_META: Record<SeoTab, { label: string; subtitle: string }> = {
   service: { label: 'Service Pages', subtitle: '/car-services/* detail pages' },
   workshop: { label: 'Workshops', subtitle: 'Published workshop public pages' },
   city: { label: 'City Pages', subtitle: 'Car service landing pages by city' },
-  blog: { label: 'Blogs', subtitle: 'Full on-page SEO for published blog posts' },
+  blog: { label: 'Blogs', subtitle: 'Full on-page SEO for published service blogs' },
+  news: { label: 'Automobile News', subtitle: 'Listing page is under Static Pages. Each story has its own on-page SEO here.' },
   technical: { label: 'Technical SEO', subtitle: 'Verification, manifest, robots, schema & crawl settings' },
 };
 
@@ -204,14 +210,32 @@ export default function SiteSeoAdminApp() {
   }, [load]);
 
   useEffect(() => {
-    if (tab === 'workshop' || tab === 'blog' || tab === 'technical' || tab === 'overview') return;
+    const params = new URLSearchParams(window.location.search);
+    const nextTab = params.get('tab');
+    if (nextTab === 'news' || nextTab === 'blog' || nextTab === 'static' || nextTab === 'all') {
+      setTab(nextTab);
+    }
+    const slug = params.get('slug');
+    if (slug) setSelectedBlogSlug(slug);
+  }, []);
+
+  useEffect(() => {
+    const path = new URLSearchParams(window.location.search).get('path');
+    if (!path || !rows.length) return;
+    const hit = rows.find((row) => row.page_path === path);
+    if (hit) setSelectedId(hit.id);
+  }, [rows]);
+
+  useEffect(() => {
+    if (tab === 'workshop' || tab === 'blog' || tab === 'news' || tab === 'technical' || tab === 'overview') return;
     const selected = rows.find((row) => row.id === selectedId) || null;
     setDraft(selected ? { ...selected } : null);
   }, [rows, selectedId, tab]);
 
   useEffect(() => {
-    if (tab !== 'blog') return;
-    const selected = blogs.find((row) => row.slug === selectedBlogSlug) || null;
+    if (tab !== 'blog' && tab !== 'news') return;
+    const pool = blogs.filter((row) => (tab === 'news' ? row.kind === 'news' : row.kind !== 'news'));
+    const selected = pool.find((row) => row.slug === selectedBlogSlug) || null;
     setBlogDraft(selected ? { ...selected, faqs: selected.faqs || [] } : null);
   }, [blogs, selectedBlogSlug, tab]);
 
@@ -232,7 +256,7 @@ export default function SiteSeoAdminApp() {
       if (tab === 'static' && kind !== 'static') return false;
       if (tab === 'service' && kind !== 'service') return false;
       if (tab === 'city' && kind !== 'city') return false;
-      if (tab === 'workshop' || tab === 'blog' || tab === 'technical' || tab === 'overview') return false;
+      if (tab === 'workshop' || tab === 'blog' || tab === 'news' || tab === 'technical' || tab === 'overview') return false;
       if (needsWorkOnly && (row.seo_score ?? scoreSeoPage(row).score) >= 80) return false;
       if (!q) return true;
       return (
@@ -257,6 +281,21 @@ export default function SiteSeoAdminApp() {
   const filteredBlogs = useMemo(() => {
     const q = query.trim().toLowerCase();
     return blogs.filter((row) => {
+      if (row.kind === 'news') return false;
+      if (needsWorkOnly && (row.seo_score ?? scoreSeoBlog(row).score) >= 80) return false;
+      if (!q) return true;
+      return (
+        row.page_label.toLowerCase().includes(q) ||
+        row.slug.toLowerCase().includes(q) ||
+        row.title.toLowerCase().includes(q)
+      );
+    });
+  }, [query, blogs, needsWorkOnly]);
+
+  const filteredNews = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return blogs.filter((row) => {
+      if (row.kind !== 'news') return false;
       if (needsWorkOnly && (row.seo_score ?? scoreSeoBlog(row).score) >= 80) return false;
       if (!q) return true;
       return (
@@ -342,7 +381,7 @@ export default function SiteSeoAdminApp() {
       setBlogs((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
       setSelectedBlogSlug(updated.slug);
       setBlogDraft(updated);
-      toast.success(`Blog SEO saved for ${updated.page_label}`);
+      toast.success(`${blogDraft.kind === 'news' ? 'News' : 'Blog'} SEO saved for ${updated.page_label}`);
       await loadOverview();
     } catch (err: any) {
       toast.error(err?.message || 'Could not save blog SEO');
@@ -396,7 +435,7 @@ export default function SiteSeoAdminApp() {
     : selectedWorkshop
       ? `${SITE_URL}/workshop/${selectedWorkshop.slug}`
       : blogDraft
-        ? `${SITE_URL}/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`
+        ? `${SITE_URL}${postPublicPath(blogDraft)}`
         : selectedBlog
           ? `${SITE_URL}${selectedBlog.preview_href}`
           : SITE_URL;
@@ -417,12 +456,14 @@ export default function SiteSeoAdminApp() {
             schema_faq: blogDraft.schema_faq,
             eligible_ai_overview: blogDraft.eligible_ai_overview,
             faqs: blogDraft.faqs,
+            publicPath: postPublicPath(blogDraft),
           })
         : null,
     [blogDraft],
   );
 
-  const listLoading = tab === 'workshop' ? workshopsLoading : tab === 'blog' ? blogsLoading : loading;
+  const listLoading = tab === 'workshop' ? workshopsLoading : tab === 'blog' || tab === 'news' ? blogsLoading : loading;
+  const postRows = tab === 'news' ? filteredNews : filteredBlogs;
 
   return (
     <div className={t.page}>
@@ -435,7 +476,7 @@ export default function SiteSeoAdminApp() {
             </div>
             <h1 className={`mt-1 text-2xl font-black ${t.title}`}>Advanced SEO</h1>
             <p className={`mt-1 max-w-2xl text-sm ${t.subtitle}`}>
-              Manage on-page SEO for static, service, city and blog pages. Preview workshops. Configure technical SEO site-wide.
+              Manage on-page SEO for static pages, service pages, city pages, blogs and automobile news.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -457,7 +498,7 @@ export default function SiteSeoAdminApp() {
               <RefreshCw className={`h-4 w-4 ${loading || workshopsLoading || blogsLoading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            {tab === 'blog' ? (
+            {tab === 'blog' || tab === 'news' ? (
               <button
                 type="button"
                 onClick={saveBlog}
@@ -465,7 +506,7 @@ export default function SiteSeoAdminApp() {
                 className={t.btnPrimary}
               >
                 <Save className="h-4 w-4" />
-                {saving ? 'Saving…' : 'Save blog SEO'}
+                {saving ? 'Saving…' : tab === 'news' ? 'Save news SEO' : 'Save blog SEO'}
               </button>
             ) : tab !== 'workshop' && tab !== 'technical' && tab !== 'overview' ? (
               <button
@@ -514,8 +555,10 @@ export default function SiteSeoAdminApp() {
                     : key === 'workshop'
                       ? ` (${workshops.length})`
                       : key === 'blog'
-                        ? ` (${blogs.length})`
-                        : ''}
+                        ? ` (${blogs.filter((row) => row.kind !== 'news').length})`
+                        : key === 'news'
+                          ? ` (${blogs.filter((row) => row.kind === 'news').length})`
+                          : ''}
               </button>
             );
           })}
@@ -544,7 +587,8 @@ export default function SiteSeoAdminApp() {
             }}
             onSelectBlog={(slug) => {
               setSelectedBlogSlug(slug);
-              setTab('blog');
+              const row = blogs.find((item) => item.slug === slug);
+              setTab(row?.kind === 'news' ? 'news' : 'blog');
             }}
           />
         </div>
@@ -556,7 +600,7 @@ export default function SiteSeoAdminApp() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={tab === 'workshop' ? 'Search workshops…' : tab === 'blog' ? 'Search blogs…' : 'Search pages…'}
+              placeholder={tab === 'workshop' ? 'Search workshops…' : tab === 'news' ? 'Search news…' : tab === 'blog' ? 'Search blogs…' : 'Search pages…'}
               className={`${t.input} py-2.5 pl-10 pr-3`}
             />
           </div>
@@ -573,11 +617,13 @@ export default function SiteSeoAdminApp() {
           <div className="mt-4 max-h-[60vh] space-y-1 overflow-y-auto lg:max-h-[calc(100dvh-12rem)]">
             {listLoading ? (
               <p className={`px-2 py-6 text-sm ${t.subtitle}`}>Loading…</p>
-            ) : tab === 'blog' ? (
-              filteredBlogs.length === 0 ? (
-                <p className={`px-2 py-6 text-sm ${t.subtitle}`}>No published blogs found.</p>
+            ) : tab === 'blog' || tab === 'news' ? (
+              postRows.length === 0 ? (
+                <p className={`px-2 py-6 text-sm ${t.subtitle}`}>
+                  {tab === 'news' ? 'No published automobile news found.' : 'No published blogs found.'}
+                </p>
               ) : (
-                filteredBlogs.map((row) => {
+                postRows.map((row) => {
                   const active = row.slug === selectedBlogSlug;
                   return (
                     <button
@@ -720,10 +766,10 @@ export default function SiteSeoAdminApp() {
                 </div>
               </>
             )
-          ) : tab === 'blog' ? (
+          ) : tab === 'blog' || tab === 'news' ? (
             !blogDraft ? (
               <div className={`${t.cardMuted} p-10 text-center text-sm ${t.subtitle}`}>
-                Select a blog to edit SEO.
+                {tab === 'news' ? 'Select a news story to edit SEO.' : 'Select a blog to edit SEO.'}
               </div>
             ) : (
               <>
@@ -732,13 +778,13 @@ export default function SiteSeoAdminApp() {
                     <div className="min-w-0">
                       <h2 className={`text-lg font-black ${t.title}`}>{blogDraft.post_title || blogDraft.page_label}</h2>
                       <p className={`mt-1 break-all text-sm ${t.subtitle}`}>
-                        {`/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`}
+                        {postPublicPath(blogDraft)}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-2">
-                      <a href={`${SITE_URL}/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`} target="_blank" rel="noreferrer" className={t.btnGhost}>
+                      <a href={`${SITE_URL}${postPublicPath(blogDraft)}`} target="_blank" rel="noreferrer" className={t.btnGhost}>
                         <ExternalLink className="h-4 w-4" />
-                        Preview blog
+                        {blogDraft.kind === 'news' ? 'Preview story' : 'Preview blog'}
                       </a>
                       <a href={blogDraft.edit_href} className={t.btnDark}>
                         Open full editor
@@ -753,7 +799,7 @@ export default function SiteSeoAdminApp() {
                   <h3 className={t.sectionTitle}>Search Preview</h3>
                   <div className="mt-4 space-y-1">
                     <p className={t.searchTitle}>{blogDraft.title || 'Blog title'}</p>
-                    <p className={t.searchUrl}>{`${SITE_URL}/blogs/${sanitizeBlogSlug(blogDraft.slug) || blogDraft.slug}`}</p>
+                    <p className={t.searchUrl}>{`${SITE_URL}${postPublicPath(blogDraft)}`}</p>
                     <p className={`text-sm leading-6 ${t.body}`}>{blogDraft.description || 'Meta description will appear here.'}</p>
                   </div>
                 </div>
@@ -769,7 +815,7 @@ export default function SiteSeoAdminApp() {
                           onClick={() => {
                             const next = sanitizeBlogSlug(blogDraft.post_title || blogDraft.title);
                             if (!next) return;
-                            setBlogDraft((prev) => (prev ? { ...prev, slug: next, preview_href: `/blogs/${next}` } : prev));
+                            setBlogDraft((prev) => (prev ? { ...prev, slug: next, preview_href: postPublicPath({ slug: next, kind: prev.kind }) } : prev));
                           }}
                         >
                           Suggest from title
@@ -785,7 +831,7 @@ export default function SiteSeoAdminApp() {
                               ? {
                                   ...prev,
                                   slug: raw,
-                                  preview_href: `/blogs/${sanitizeBlogSlug(raw) || raw}`,
+                                  preview_href: postPublicPath({ slug: sanitizeBlogSlug(raw) || raw, kind: prev.kind }),
                                 }
                               : prev,
                           );
@@ -793,13 +839,13 @@ export default function SiteSeoAdminApp() {
                         onBlur={() => {
                           const next = sanitizeBlogSlug(blogDraft.slug);
                           if (!next) return;
-                          setBlogDraft((prev) => (prev ? { ...prev, slug: next, preview_href: `/blogs/${next}` } : prev));
+                          setBlogDraft((prev) => (prev ? { ...prev, slug: next, preview_href: postPublicPath({ slug: next, kind: prev.kind }) } : prev));
                         }}
                         placeholder="before-you-blame-the-workshop"
                         className={t.input}
                       />
                       <p className={`mt-1.5 text-xs ${t.subtitle}`}>
-                        Public URL: {SITE_URL}/blogs/{sanitizeBlogSlug(blogDraft.slug) || 'your-slug'}
+                        Public URL: {SITE_URL}{postPublicPath(blogDraft)}
                       </p>
                     </Field>
                     <Field label="Meta title" hint={<CharCount value={blogDraft.title} ideal={60} />}>
@@ -851,7 +897,7 @@ export default function SiteSeoAdminApp() {
                         <input
                           value={blogDraft.canonical_url}
                           onChange={(e) => setBlogDraft((prev) => (prev ? { ...prev, canonical_url: e.target.value } : prev))}
-                          placeholder="https://myfng.in/blogs/your-slug"
+                          placeholder={blogDraft.kind === 'news' ? 'https://myfng.in/automobile-news/your-slug' : 'https://myfng.in/blogs/your-slug'}
                           className={t.input}
                         />
                       </Field>

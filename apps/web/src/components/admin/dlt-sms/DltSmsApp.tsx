@@ -33,7 +33,7 @@ import type {
   DltSmsTemplate,
   DltStatusCounts,
 } from '@/lib/dlt-sms/types';
-import { DLT_EVENT_KEYS, DLT_OPERATORS, DLT_PROVIDERS, DEFAULT_OPERATOR_BODY } from '@/lib/dlt-sms/types';
+import { DLT_EVENT_KEYS, DLT_OPERATORS } from '@/lib/dlt-sms/types';
 
 type SectionId =
   | 'dashboard'
@@ -190,7 +190,7 @@ function DltSmsAppInner() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || json.message || 'Save failed');
       await load();
-      setNotice('Saved');
+      setNotice(body.action === 'send' ? 'Operator accepted the SMS. Check the phone.' : 'Saved');
       return json;
     } catch (e: any) {
       setError(e?.message || 'Save failed');
@@ -336,6 +336,8 @@ function DashboardSection({
         <CountCard title="Consent Template" counts={data.stats.consent} onClick={() => onNavigate('consent')} />
         <CountCard title="Content Template" counts={data.stats.content} onClick={() => onNavigate('content')} />
       </div>
+      <ApprovedTemplatesCard templates={data.contentTemplates} onOpen={() => onNavigate('content')} />
+      <PipeCard rows={data.telemarketers} onOpen={() => onNavigate('telemarketers')} />
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="mb-3 text-sm font-semibold text-slate-800">Setup checklist</h3>
         <ol className="space-y-2">
@@ -356,11 +358,108 @@ function DashboardSection({
           ))}
         </ol>
         <p className="mt-4 text-xs text-slate-500">
-          Jio TrueConnect does not expose a public API to register headers/templates. Approve them on the
-          operator site, then paste DLT IDs here. Sending uses <strong>your own Jio/Airtel operator pipe</strong> — not
-          MSG91 or any aggregator.
+          Approved on Jio means the template ID is registered. The operator still drops the SMS when the sent
+          text does not match that approved body.
         </p>
       </div>
+    </div>
+  );
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  TRANSACTIONAL: 'Transactional',
+  SERVICE_IMPLICIT: 'Service Inferred',
+  SERVICE_EXPLICIT: 'Service Explicit',
+  PROMOTIONAL: 'Promotional',
+};
+
+function ApprovedTemplatesCard({
+  templates,
+  onOpen,
+}: {
+  templates: DltSmsTemplate[];
+  onOpen: () => void;
+}) {
+  const approved = templates.filter((row) => row.status === 'APPROVED');
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-800">Approved content templates</h3>
+        <button type="button" onClick={onOpen} className="text-xs font-semibold text-blue-700">
+          Open
+        </button>
+      </div>
+      {approved.length === 0 ? (
+        <p className="text-sm text-slate-500">No approved content template stored.</p>
+      ) : (
+        <div className="space-y-3">
+          {approved.map((row) => (
+            <div key={row.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-semibold text-slate-900">{row.name}</span>
+                <StatusPill status={row.status} />
+                <span className="text-xs text-slate-500">{CATEGORY_LABEL[row.category] || row.category}</span>
+                {row.event_key ? <span className="text-xs text-slate-500">{row.event_key}</span> : null}
+              </div>
+              <div className="mt-1 font-mono text-xs text-slate-600">DLT {row.dlt_template_id || '—'}</div>
+              <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-700">{row.template_text}</pre>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PipeCard({ rows, onOpen }: { rows: DltSmsTelemarketer[]; onOpen: () => void }) {
+  const pipe = rows.find((row) => row.is_primary && row.is_active) || rows.find((row) => row.is_active) || null;
+  const extra = pipe?.extra_config && typeof pipe.extra_config === 'object' ? pipe.extra_config : {};
+  const method = String(extra.http_method || 'POST');
+  const auth = String(extra.auth_type || 'bearer');
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-800">Telemarketer pipe</h3>
+        <button type="button" onClick={onOpen} className="text-xs font-semibold text-blue-700">
+          Open
+        </button>
+      </div>
+      {!pipe ? (
+        <p className="text-sm text-slate-500">No SMS pipe saved.</p>
+      ) : (
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-slate-500">Name</dt>
+            <dd className="font-medium text-slate-900">
+              {pipe.name}
+              {pipe.is_primary ? ' · Primary' : ''}
+              {pipe.is_active ? '' : ' · inactive'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Telemarketer ID</dt>
+            <dd className="font-mono text-slate-900">{pipe.tm_id || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Header</dt>
+            <dd className="font-medium text-slate-900">{pipe.default_header || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">API key</dt>
+            <dd className="font-medium text-slate-900">{pipe.has_api_key ? pipe.api_key_hint : 'Not saved'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Send</dt>
+            <dd className="text-slate-900">
+              {method} · {auth === 'query' ? 'API key in URL' : auth}
+            </dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt className="text-xs text-slate-500">API URL</dt>
+            <dd className="break-all font-mono text-xs text-slate-800">{pipe.api_url || '—'}</dd>
+          </div>
+        </dl>
+      )}
     </div>
   );
 }
@@ -697,7 +796,7 @@ function TemplatesSection({
               required
               value={form.template_text || ''}
               onChange={(e) => setForm((p) => ({ ...p, template_text: e.target.value }))}
-              placeholder="Your MyFNG OTP is {#otp#}. Valid 10 min. Do not share."
+              placeholder="{#number#} is the One Time Password (OTP) to log in to your MYFNG account."
             />
           </Field>
         </div>
@@ -756,200 +855,53 @@ function TemplatesSection({
 
 function TelemarketersSection({
   rows,
-  headers,
-  saving,
-  post,
 }: {
   rows: DltSmsTelemarketer[];
   headers: DltSmsHeader[];
   saving: boolean;
   post: (body: Record<string, unknown>) => Promise<unknown>;
 }) {
-  const blank = {
-    name: 'MyFNG own pipe',
-    provider: 'MYFNG',
-    tm_id: '',
-    api_key: '',
-    api_url: '',
-    default_header: headers.find((h) => h.status === 'APPROVED')?.header || '',
-    is_primary: rows.length === 0,
-    is_active: true,
-    extra_config: {
-      http_method: 'POST',
-      auth_type: 'bearer',
-      content_type: 'application/json',
-      body_template: DEFAULT_OPERATOR_BODY,
-      success_contains: '',
-    },
-  };
-  const [form, setForm] = useState<any>(blank);
-  const extra = form.extra_config && typeof form.extra_config === 'object' ? form.extra_config : {};
-  const setExtra = (key: string, value: string) =>
-    setForm((p: any) => ({ ...p, extra_config: { ...(p.extra_config || {}), [key]: value } }));
-
+  if (rows.length === 0) {
+    return <p className="text-sm text-slate-500">No telemarketer saved.</p>;
+  }
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-950">
-        <p className="font-semibold">Koi aggregator nahi — MyFNG khud SMS engine hai.</p>
-        <p className="mt-1">
-          TRAI DLT (TrueConnect) sirf registry hai. Phone tak SMS tab jata hai jab Jio/Airtel tumhe{' '}
-          <strong>telemarketer / enterprise HTTP</strong> de. TrueConnect → My Telemarketers pe apni company chain
-          karo, operator se URL + key lo, yahan paste karo.
-        </p>
-      </div>
-      <form
-        className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void post({ action: 'upsert_telemarketer', ...form }).then(() => setForm(blank));
-        }}
-      >
-        <Field label="Pipe name">
-          <input className={inputCls} value={form.name} onChange={(e) => setForm((p: any) => ({ ...p, name: e.target.value }))} required />
-        </Field>
-        <Field label="Operator">
-          <select className={inputCls} value={form.provider} onChange={(e) => setForm((p: any) => ({ ...p, provider: e.target.value }))}>
-            {DLT_PROVIDERS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Your DLT Telemarketer ID">
-          <input
-            className={inputCls}
-            value={form.tm_id}
-            onChange={(e) => setForm((p: any) => ({ ...p, tm_id: e.target.value }))}
-            placeholder="Jio TrueConnect → My Telemarketers"
-          />
-        </Field>
-        <Field label="Default header">
-          <input
-            className={`${inputCls} uppercase`}
-            value={form.default_header}
-            onChange={(e) => setForm((p: any) => ({ ...p, default_header: e.target.value.toUpperCase() }))}
-          />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Operator HTTP URL (own pipe)">
-            <input
-              className={inputCls}
-              value={form.api_url}
-              onChange={(e) => setForm((p: any) => ({ ...p, api_url: e.target.value }))}
-              placeholder="https://… jio/airtel enterprise SMS endpoint"
-              required={!form.id}
-            />
-          </Field>
-        </div>
-        <Field label="HTTP method">
-          <select className={inputCls} value={extra.http_method || 'POST'} onChange={(e) => setExtra('http_method', e.target.value)}>
-            <option>POST</option>
-            <option>PUT</option>
-            <option>GET</option>
-          </select>
-        </Field>
-        <Field label="Auth">
-          <select className={inputCls} value={extra.auth_type || 'bearer'} onChange={(e) => setExtra('auth_type', e.target.value)}>
-            <option value="bearer">Bearer token</option>
-            <option value="header">Custom header</option>
-            <option value="basic">Basic</option>
-            <option value="none">None (IP whitelist)</option>
-          </select>
-        </Field>
-        <Field label="Operator API key / token">
-          <input
-            className={inputCls}
-            type="password"
-            autoComplete="off"
-            value={form.api_key}
-            onChange={(e) => setForm((p: any) => ({ ...p, api_key: e.target.value }))}
-            placeholder={form.has_api_key ? 'Leave blank to keep existing' : 'From Jio/Airtel TM portal'}
-          />
-        </Field>
-        <Field label="Success text (optional)">
-          <input
-            className={inputCls}
-            value={extra.success_contains || ''}
-            onChange={(e) => setExtra('success_contains', e.target.value)}
-            placeholder="success / SUBMITTED"
-          />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Request body template">
-            <textarea
-              className={`${inputCls} font-mono`}
-              rows={8}
-              value={extra.body_template || DEFAULT_OPERATOR_BODY}
-              onChange={(e) => setExtra('body_template', e.target.value)}
-            />
-          </Field>
-          <p className="mt-1 text-xs text-slate-500">
-            Tokens: {'{{pe_id}}'} {'{{header}}'} {'{{dlt_template_id}}'} {'{{phone}}'} {'{{mobile}}'} {'{{message}}'}
-          </p>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={Boolean(form.is_primary)}
-            onChange={(e) => setForm((p: any) => ({ ...p, is_primary: e.target.checked }))}
-          />
-          Primary pipe
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={form.is_active !== false}
-            onChange={(e) => setForm((p: any) => ({ ...p, is_active: e.target.checked }))}
-          />
-          Active
-        </label>
-        <div className="sm:col-span-2">
-          <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">
-            <Plus className="h-4 w-4" /> {form.id ? 'Update own pipe' : 'Save own pipe'}
-          </button>
-        </div>
-      </form>
-      <div className="space-y-2">
-        {rows.map((row) => (
-          <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-4">
-            <div>
-              <div className="font-semibold text-slate-900">
-                {row.name} <span className="text-xs font-normal text-slate-500">{row.provider}</span>
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {row.api_url || 'no operator URL'} · Header {row.default_header || '—'} · Key{' '}
-                {row.has_api_key ? row.api_key_hint : 'none'} · TM {row.tm_id || '—'}
-                {row.is_primary ? ' · PRIMARY' : ''}
-                {row.is_active ? '' : ' · inactive'}
-              </div>
+      {rows.map((row) => {
+        const extra = row.extra_config && typeof row.extra_config === 'object' ? row.extra_config : {};
+        const method = String(extra.http_method || 'GET');
+        const auth = String(extra.auth_type || 'query');
+        return (
+          <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold text-slate-900">{row.name}</h3>
+              {row.is_primary ? <span className="text-xs font-semibold text-blue-700">Primary</span> : null}
+              {row.is_active ? <span className="text-xs font-semibold text-emerald-700">Active</span> : <span className="text-xs text-slate-500">Inactive</span>}
             </div>
-            <div>
-              <button
-                type="button"
-                className="mr-2 text-blue-700"
-                onClick={() =>
-                  setForm({
-                    ...row,
-                    api_key: '',
-                    extra_config: {
-                      http_method: 'POST',
-                      auth_type: 'bearer',
-                      body_template: DEFAULT_OPERATOR_BODY,
-                      ...(row.extra_config || {}),
-                    },
-                  })
-                }
-              >
-                <Pencil className="inline h-4 w-4" />
-              </button>
-              <button type="button" className="text-red-600" onClick={() => void post({ action: 'delete_telemarketer', id: row.id })}>
-                <Trash2 className="inline h-4 w-4" />
-              </button>
-            </div>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <PipeField label="Telemarketer ID" value={row.tm_id} mono />
+              <PipeField label="Header" value={row.default_header} />
+              <PipeField label="Operator" value={row.provider} />
+              <PipeField label="API key" value={row.has_api_key ? row.api_key_hint : 'Not saved'} />
+              <PipeField label="HTTP method" value={method} />
+              <PipeField label="Auth" value={auth === 'query' ? 'API key in URL' : auth} />
+              <PipeField label="Campaign" value={String(extra.campaign_id || '')} />
+              <PipeField label="Route" value={[extra.route_id, extra.route_name].filter(Boolean).join(' · ')} />
+              <div className="sm:col-span-2">
+                <PipeField label="API URL" value={row.api_url} mono />
+              </div>
+            </dl>
           </div>
-        ))}
-      </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PipeField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={`mt-0.5 break-all text-slate-900 ${mono ? 'font-mono text-xs' : 'font-medium'}`}>{value || '—'}</dd>
     </div>
   );
 }
@@ -1072,7 +1024,7 @@ function ComposeSection({
           try {
             vars = JSON.parse(varsText || '{}');
           } catch {
-            alert('Variables must be valid JSON, e.g. {"otp":"123456"}');
+            alert('Variables must be valid JSON, e.g. {"number":"123456"}');
             return;
           }
           void post({ action: 'send', phone, templateId, vars });

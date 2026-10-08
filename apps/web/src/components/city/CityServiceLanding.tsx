@@ -27,6 +27,13 @@ function areaKeywordLabel(area: string) {
   return `Car Service in ${text}`;
 }
 
+function areaPage(area: string, currentSlug: string) {
+  const slug = area.trim().toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const page = getCityPageBySlug(slug);
+  if (!page || page.slug === currentSlug) return null;
+  return page;
+}
+
 function CityServiceLandingView({ city }: { city: CityPageConfig }) {
   const areas = city.areas || [];
   const nearby = nearbyCityPages(city);
@@ -174,14 +181,26 @@ function CityServiceLandingView({ city }: { city: CityPageConfig }) {
                 Pickup & drop is available across these {city.name} locations.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
-                {areas.map((area) => (
-                  <span
-                    key={area}
-                    className="rounded-full bg-[#eef4ff] px-3 py-1.5 text-sm font-semibold text-[#0a4ea3]"
-                  >
-                    {areaKeywordLabel(area)}
-                  </span>
-                ))}
+                {areas.map((area) => {
+                  const page = areaPage(area, city.slug);
+                  const label = areaKeywordLabel(area);
+                  return page ? (
+                    <Link
+                      key={area}
+                      href={page.pagePath}
+                      className="rounded-full bg-[#eef4ff] px-3 py-1.5 text-sm font-semibold text-[#0a4ea3] hover:bg-[#dbe8ff]"
+                    >
+                      {label}
+                    </Link>
+                  ) : (
+                    <span
+                      key={area}
+                      className="rounded-full bg-[#eef4ff] px-3 py-1.5 text-sm font-semibold text-[#0a4ea3]"
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
               {nearby.length ? (
                 <div className="mt-6 pt-5 border-t border-gray-100">

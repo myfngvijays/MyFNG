@@ -1,8 +1,10 @@
 import {
   buildSitePageSeoInsert,
+  getDefaultSeoForPath,
   mapSitePageSeoRow,
   migrationHintForSitePageSeoError,
   MIGRATION_269_HINT,
+  normalizePagePath,
   SITE_PAGE_SEO_TABLE,
   sortSitePageSeoRows,
 } from '@/lib/site-page-seo';
@@ -34,6 +36,16 @@ export async function GET() {
 
     const { db, res: dbErr } = await getAdminDb();
     if (!db) return dbErr!;
+
+    const newsPath = '/automobile-news';
+    const { data: newsRow } = await db
+      .from(SITE_PAGE_SEO_TABLE)
+      .select('id')
+      .eq('page_path', newsPath)
+      .maybeSingle();
+    if (!newsRow?.id && getDefaultSeoForPath(newsPath)) {
+      await db.from(SITE_PAGE_SEO_TABLE).insert(buildSitePageSeoInsert({ page_path: normalizePagePath(newsPath) }));
+    }
 
     const { data, error } = await db
       .from(SITE_PAGE_SEO_TABLE)

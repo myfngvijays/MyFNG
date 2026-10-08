@@ -46,7 +46,7 @@ export const SMS_TEMPLATES = {
     `Payment of ₹${amount} received for ${leadNumber}. Thank you!`,
 
   OTP_VERIFICATION: (otp: string) =>
-    `Your MyFNG verification code is: ${otp}. Valid for 10 minutes. Do not share with anyone.`,
+    `${otp} is the One Time Password (OTP) to log in to your MYFNG account. Your OTP will expire in 5 minutes. Do not share this OTP with anyone. - My FNG Autocare Private Limited`,
 };
 
 /**

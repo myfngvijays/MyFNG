@@ -38,10 +38,11 @@ function timeoutSignal(ms = 20000): AbortSignal {
 function fillOperatorTemplate(
   template: string,
   ctx: Record<string, string>,
+  encodeValues = false,
 ): string {
   let out = template;
   for (const [key, value] of Object.entries(ctx)) {
-    out = out.replaceAll(`{{${key}}}`, value);
+    out = out.replaceAll(`{{${key}}}`, encodeValues ? encodeURIComponent(value) : value);
   }
   return out;
 }
@@ -79,7 +80,7 @@ async function sendOwnOperatorHttp(opts: {
   };
 
   const method = String(opts.extra.http_method || 'POST').toUpperCase();
-  const url = fillOperatorTemplate(urlTpl, ctx);
+  const url = fillOperatorTemplate(urlTpl, ctx, true);
   const bodyTpl = String(opts.extra.body_template || DEFAULT_OPERATOR_BODY);
   const body = fillOperatorTemplate(bodyTpl, ctx);
   const contentType = String(opts.extra.content_type || 'application/json');
@@ -112,8 +113,11 @@ async function sendOwnOperatorHttp(opts: {
   }
 
   const successNeedle = String(opts.extra.success_contains || '').trim().toLowerCase();
+  const plain = text.trim();
+  const operatorRejected = /^ERR\b/i.test(plain) || /invalid api key/i.test(plain);
   const looksOk =
     res.ok &&
+    !operatorRejected &&
     (successNeedle
       ? text.toLowerCase().includes(successNeedle)
       : json?.status !== 'error' && json?.ok !== false && json?.type !== 'error');
@@ -123,9 +127,34 @@ async function sendOwnOperatorHttp(opts: {
   }
 
   const id = String(
-    json?.id || json?.messageId || json?.message_id || json?.txn_id || json?.request_id || json?.job_id || '',
+    json?.id || json?.messageId || json?.message_id || json?.txn_id || json?.request_id || json?.job_id || plain.slice(0, 80),
   );
-  return { ok: true, id: id || text.slice(0, 80), error: '' };
+  const dlrError = await whysmsDeliveryError(urlTpl, opts.apiKey, plain);
+  if (dlrError) return { ok: false, id, error: dlrError };
+  return { ok: true, id, error: '' };
+}
+
+async function whysmsDeliveryError(apiUrl: string, apiKey: string, shootText: string): Promise<string> {
+  if (!/whysms\.in/i.test(apiUrl) || !apiKey) return '';
+  const shoot = shootText.includes('/') ? shootText.split('/').pop()?.trim() || '' : shootText.trim();
+  if (!shoot || shoot.length < 8) return '';
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+  try {
+    const res = await fetch(
+      `https://app.whysms.in/app/miscapi/${encodeURIComponent(apiKey)}/getDLR/${encodeURIComponent(shoot)}`,
+      { signal: timeoutSignal(15000) },
+    );
+    const body = await res.text();
+    const parsed = JSON.parse(body);
+    const row = Array.isArray(parsed) ? parsed[0] : parsed;
+    const dlr = String(row?.DLR || '').trim();
+    if (/fail/i.test(dlr)) {
+      return 'Operator rejected this SMS. The text does not match the approved Jio template, so it will not reach the phone.';
+    }
+  } catch {
+    return '';
+  }
+  return '';
 }
 
 export async function sendDltSms(opts: {
@@ -157,7 +186,9 @@ export async function sendDltSms(opts: {
   }
 
   const entity = await getDltEntity();
-  const vars = opts.vars || {};
+  const vars = { ...(opts.vars || {}) };
+  if (!vars.number && vars.otp) vars.number = String(vars.otp);
+  if (!vars.otp && vars.number) vars.otp = String(vars.number);
   const message = opts.messageOverride || renderTemplate(template.template_text, vars);
   const header = String(tm.default_header || '').trim().toUpperCase();
   const dltId = String(template.dlt_template_id || '').trim();

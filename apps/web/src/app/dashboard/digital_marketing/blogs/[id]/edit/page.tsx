@@ -527,6 +527,14 @@ export default function DigitalMarketingEditBlogPage() {
             </BlogSectionCard>
 
             <BlogSectionCard title="SEO settings" description="Meta tags for search & social sharing." icon={<Globe className="w-4 h-4" />}>
+              {formData.seo_data?.ai_news_car ? (
+                <p className="mb-3 text-xs text-gray-600">
+                  This story is published at <span className="font-semibold">/automobile-news/{formData.slug}</span>.{' '}
+                  <a href={`/dashboard/digital_marketing/site-seo?tab=news&slug=${formData.slug}`} className="font-semibold text-[#023D95] hover:underline">
+                    Open full SEO panel
+                  </a>
+                </p>
+              ) : null}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="label">Meta Title</label>
@@ -560,7 +568,7 @@ export default function DigitalMarketingEditBlogPage() {
                 </div>
                 <div className="md:col-span-2">
                   <label className="label">Canonical URL (optional)</label>
-                  <input type="url" value={String(formData.seo_data?.canonical_url || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, canonical_url: e.target.value } }))} className={BLOG_INPUT} placeholder="https://myfng.in/blogs/your-slug" />
+                  <input type="url" value={String(formData.seo_data?.canonical_url || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, canonical_url: e.target.value } }))} className={BLOG_INPUT} placeholder={formData.seo_data?.ai_news_car ? 'https://myfng.in/automobile-news/your-slug' : 'https://myfng.in/blogs/your-slug'} />
                 </div>
               </div>
             </BlogSectionCard>

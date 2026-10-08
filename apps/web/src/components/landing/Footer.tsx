@@ -9,6 +9,33 @@ import {
   DEFAULT_PLAY_STORE_URL,
 } from '@/lib/mobile-app-version-config';
 import type { FooterWorkshopLink } from '@/lib/workshop/footer-locations';
+import { CITY_PAGES, THANE_LOCALITIES, type CityCluster } from '@/lib/city-pages';
+
+function footerCities(cluster: CityCluster | CityCluster[], hub: string) {
+  const clusters = Array.isArray(cluster) ? cluster : [cluster];
+  return CITY_PAGES.filter((city) => clusters.includes(city.cluster)).sort((a, b) => {
+    if (a.slug === hub) return -1;
+    if (b.slug === hub) return 1;
+    return a.displayOrder - b.displayOrder;
+  });
+}
+
+const POPULAR_THANE_AREAS = THANE_LOCALITIES.slice(0, 8).flatMap((name) => {
+  const city = CITY_PAGES.find((item) => item.name === name);
+  return city ? [city] : [];
+});
+
+const FOOTER_AREA_CITIES = [
+  ...footerCities('mumbai', 'mumbai'),
+  ...footerCities('pune', 'pune'),
+  ...footerCities(['thane-belt', 'thane-local', 'dombivli-local', 'kalyan-local'], 'thane'),
+  ...footerCities('navi-mumbai', 'navi-mumbai'),
+];
+
+const OFFICE_MAPS_URL = 'https://maps.google.com/maps?cid=9338020820420071773';
+const SUPPORT_EMAIL = 'mailto:support@myfng.in';
+const SUPPORT_PHONE = 'tel:+919152307030';
+const footerLinkClass = 'text-blue-800 font-bold hover:underline';
 
 const ctaTitles = [
   "Serious Car Owners Don't Postpone Maintenance.",
@@ -23,7 +50,6 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(false);
   const [footerPhone, setFooterPhone] = useState('');
-  const [popularWorkshopLinks, setPopularWorkshopLinks] = useState<FooterWorkshopLink[]>([]);
   const [allWorkshopLinks, setAllWorkshopLinks] = useState<FooterWorkshopLink[]>([]);
   const initialized = useRef(false);
 
@@ -41,14 +67,10 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
-        setPopularWorkshopLinks(Array.isArray(data.popular) ? data.popular : []);
         setAllWorkshopLinks(Array.isArray(data.locations) ? data.locations : []);
       })
       .catch(() => {
-        if (!cancelled) {
-          setPopularWorkshopLinks([]);
-          setAllWorkshopLinks([]);
-        }
+        if (!cancelled) setAllWorkshopLinks([]);
       });
 
     return () => {
@@ -103,7 +125,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
 
   const locationGridClass = (id: string) =>
     isMobile
-      ? `overflow-hidden transition-all duration-400 ${isOpen(id) ? 'max-h-[2000px]' : 'max-h-0'}`
+      ? `overflow-hidden transition-all duration-400 ${isOpen(id) ? 'max-h-[8000px]' : 'max-h-0'}`
       : '';
 
   return (
@@ -242,15 +264,13 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
             <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="service-areas">Popular Service Areas</AccordionTitle>
               <ul className={listClass('service-areas')}>
-                {popularWorkshopLinks.map((item) => (
-                  <li key={item.href} className="mb-0">
+                {POPULAR_THANE_AREAS.map((city) => (
+                  <li key={city.slug} className="mb-0">
                     <TrackedLink
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={city.pagePath}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
-                      {item.label}
+                      {`Car Service in ${city.name}`}
                     </TrackedLink>
                   </li>
                 ))}
@@ -258,24 +278,39 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
             </div>
           </div>
 
-          {/* REMAINING LOCATIONS */}
-          <div className={`${isMobile ? 'mt-[15px] border-b border-white/[0.08] py-0 mb-[15px]' : 'mt-4'}`}>
-            <AccordionTitle id="all-locations">Trusted Car Service Centers Near You</AccordionTitle>
-            <div
-              className={`grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 ${locationGridClass('all-locations')}`}
-            >
-              {allWorkshopLinks.map((loc) => (
-                <TrackedLink
-                  key={loc.href + loc.label}
-                  href={loc.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-white text-[10px] font-bold no-underline hover:text-white transition-all duration-300"
-                >
-                  {loc.label}
-                </TrackedLink>
+          {/* CITY AND LOCAL AREA PAGES */}
+          <div className={`${isMobile ? 'mt-[15px] border-b border-white/[0.08] py-0 mb-[15px]' : 'mt-8 border-t border-white/[0.08] pt-6'}`}>
+            <AccordionTitle id="service-cities">Car Service Areas</AccordionTitle>
+            <ul className={`m-0 grid list-none grid-cols-1 gap-x-3 p-0 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 ${locationGridClass('service-cities')}`}>
+              {FOOTER_AREA_CITIES.map((city) => (
+                <li key={city.slug} className="mb-0 min-w-0">
+                  <TrackedLink
+                    href={city.pagePath}
+                    className="block whitespace-nowrap text-[11px] font-bold leading-[2.2] text-white no-underline transition-all duration-300 hover:text-white"
+                  >
+                    {`Car Service in ${city.name}`}
+                  </TrackedLink>
+                </li>
               ))}
-            </div>
+            </ul>
+          </div>
+
+          <div className={`${isMobile ? 'mt-[15px] border-b border-white/[0.08] py-0 mb-[15px]' : 'mt-8 border-t border-white/[0.08] pt-6'}`}>
+            <AccordionTitle id="all-locations">Trusted Car Service Centers Near You</AccordionTitle>
+            <ul className={`m-0 grid list-none grid-cols-1 gap-x-6 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 ${locationGridClass('all-locations')}`}>
+              {allWorkshopLinks.map((loc) => (
+                <li key={loc.href + loc.label} className="mb-0 min-w-0">
+                  <TrackedLink
+                    href={loc.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block whitespace-nowrap text-[11px] font-bold leading-[2.2] text-white no-underline transition-all duration-300 hover:text-white"
+                  >
+                    {loc.label.replace(/^Car Service in /i, 'Car repairs in ')}
+                  </TrackedLink>
+                </li>
+              ))}
+            </ul>
           </div>
 
           {/* FOOTER BOTTOM */}
@@ -294,19 +329,24 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                     MY FNG – Your Friendly Neighbourhood Garage.<br />
                     Multi-brand car servicing &amp; repairs across Mumbai &amp; Pune.
                   </p>
-                  <p className="text-[11px] leading-[1.7] font-semibold mt-2 text-gray-700">
+                  <a
+                    href={OFFICE_MAPS_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 block text-[11px] leading-[1.7] font-semibold text-blue-800 hover:underline"
+                  >
                     A/309, Centrum Business Square, Road No 16,<br />
                     Wagle Industrial Estate, Thane (W), Thane-400604
-                  </p>
+                  </a>
                 </div>
 
                 {/* Contact Info */}
                 <div className="text-center md:text-left">
                   <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Contact Us</h4>
                   <div className="text-[11px] leading-[2] font-semibold text-gray-700">
-                    <div><span className="text-blue-800 font-bold">Email:</span> support@myfng.in</div>
-                    <div><span className="text-blue-800 font-bold">Car Service:</span> +91-9152307030</div>
-                    <div><span className="text-blue-800 font-bold">Roadside Assistance:</span> +91-9152307030</div>
+                    <div><span className="text-blue-800 font-bold">Email:</span> <a className={footerLinkClass} href={SUPPORT_EMAIL}>support@myfng.in</a></div>
+                    <div><span className="text-blue-800 font-bold">Car Service:</span> <a className={footerLinkClass} href={SUPPORT_PHONE}>+91-9152307030</a></div>
+                    <div><span className="text-blue-800 font-bold">Roadside Assistance:</span> <a className={footerLinkClass} href={SUPPORT_PHONE}>+91-9152307030</a></div>
                     <div><span className="text-blue-800 font-bold">Working Days:</span> Monday – Saturday</div>
                     <div><span className="text-blue-800 font-bold">Hours:</span> 09:30 AM - 06:30 PM</div>
                   </div>
@@ -439,7 +479,9 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
               </a>
             </p>
             <p className="text-white/75">
-              A/309, Centrum Business Square, Road No. 16, Wagle Industrial Estate, Thane (West), Maharashtra 400604
+              <a className="hover:text-white hover:underline" href={OFFICE_MAPS_URL} target="_blank" rel="noopener noreferrer">
+                A/309, Centrum Business Square, Road No. 16, Wagle Industrial Estate, Thane (West), Maharashtra 400604
+              </a>
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-5 border-t border-white/[0.08] text-[11px] text-[#aaa]">

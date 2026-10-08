@@ -10,7 +10,14 @@ export function revalidatePublicSitemap() {
 
 export function revalidateBlogSeo(slug?: string) {
   revalidatePublicSitemap();
-  if (slug) revalidateTag(`blog-seo:${slug.trim().toLowerCase()}`);
+  revalidatePath('/blogs');
+  revalidatePath('/automobile-news');
+  if (slug) {
+    const clean = slug.trim().toLowerCase();
+    revalidateTag(`blog-seo:${clean}`);
+    revalidatePath(`/blogs/${clean}`);
+    revalidatePath(`/automobile-news/${clean}`);
+  }
 }
 
 export function revalidateWorkshopSeo(slug?: string) {

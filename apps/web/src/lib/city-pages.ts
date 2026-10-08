@@ -1,4 +1,4 @@
-export type CityCluster = 'mumbai' | 'pune' | 'thane-belt' | 'navi-mumbai';
+export type CityCluster = 'mumbai' | 'pune' | 'thane-belt' | 'thane-local' | 'dombivli-local' | 'kalyan-local' | 'navi-mumbai';
 
 export type CityPageConfig = {
   slug: string;
@@ -28,6 +28,45 @@ function city(
   };
 }
 
+export const THANE_LOCALITIES = [
+  'Ghodbunder Road', 'Manpada', 'Vartak Nagar', 'Majiwada', 'Wagle Estate',
+  'Naupada', 'Hiranandani Estate', 'Kasarvadavali', 'Owale', 'Kalwa', 'Kopri',
+  'Kolshet', 'Thane West', 'Thane East', 'Pokhran Road', 'Kapurbawdi', 'Balkum',
+  'Louiswadi', 'Cadbury Junction', 'Teen Hath Naka', 'Panch Pakhadi', 'Anand Nagar',
+  'Brahmand', 'Waghbil', 'Kavesar', 'Dhokali', 'Patlipada', 'Hiranandani Meadows', 'Yeoor',
+];
+
+function localitySlug(name: string) {
+  return name.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+export const DOMBIVLI_LOCALITIES = [
+  'Dombivli East', 'Dombivli West', 'Kolegaon', 'Sonarpada', 'Palava',
+  'Khoni', 'Thakurli', 'Kopar', 'Cross Road', 'Gharda Circle', 'Reti Bunder',
+  'Pendse Nagar', 'Sunil Nagar', 'MIDC Dombivli', 'Manpada Dombivli', 'Dombivli Station',
+];
+
+export const KALYAN_LOCALITIES = [
+  'Kalyan West', 'Kalyan East', 'Chikanghar', 'Khadakpada', 'Bail Bazar',
+  'Shahad', 'Pisavali', 'Tisgaon', 'Malang Gad Road', 'Adharwadi', 'Rambaug',
+  'Godrej Hill', 'Dudh Naka', 'Syndicate', 'Kalyan Station',
+];
+
+function localityPages(
+  names: string[],
+  cluster: CityCluster,
+  startOrder: number,
+  taken: Set<string>,
+): CityPageConfig[] {
+  return names.flatMap((name, index) => {
+    const slug = localitySlug(name);
+    if (taken.has(slug)) return [];
+    taken.add(slug);
+    const neighbors = names.filter((item) => item !== name).slice(0, 8);
+    return [city(slug, name, startOrder + index, cluster, neighbors)];
+  });
+}
+
 export const CITY_PAGES: CityPageConfig[] = [
   city('mumbai', 'Mumbai', 201, 'mumbai', [
     'Andheri', 'Malad', 'Borivali', 'Kandivali', 'Goregaon', 'Mulund',
@@ -38,13 +77,7 @@ export const CITY_PAGES: CityPageConfig[] = [
     'Viman Nagar', 'Pimple Saudagar', 'Aundh', 'Katraj', 'Tathawade', 'Wagholi',
     'Pimpri', 'Chinchwad', 'Koregaon Park', 'Magarpatta',
   ]),
-  city('thane', 'Thane', 203, 'thane-belt', [
-    'Ghodbunder Road', 'Manpada', 'Vartak Nagar', 'Majiwada', 'Wagle Estate',
-    'Naupada', 'Hiranandani Estate', 'Kasarvadavali', 'Owale', 'Kalwa', 'Kopri',
-    'Kolshet', 'Thane West', 'Thane East', 'Pokhran Road', 'Kapurbawdi', 'Balkum',
-    'Louiswadi', 'Cadbury Junction', 'Teen Hath Naka', 'Panch Pakhadi', 'Anand Nagar',
-    'Brahmand', 'Waghbil', 'Kavesar', 'Dhokali', 'Patlipada', 'Hiranandani Meadows', 'Yeoor',
-  ]),
+  city('thane', 'Thane', 203, 'thane-belt', THANE_LOCALITIES),
   city('navi-mumbai', 'Navi Mumbai', 204, 'navi-mumbai', [
     'Vashi', 'Nerul', 'Koparkhairane', 'Kharghar', 'Belapur', 'Airoli', 'Sanpada',
     'Seawoods', 'Ulwe', 'Kamothe', 'Panvel', 'Kalamboli', 'Ghansoli', 'Juinagar',
@@ -122,16 +155,8 @@ export const CITY_PAGES: CityPageConfig[] = [
     'Taloja', 'Taloja Station', 'Kharghar', 'Pendhar', 'Kalamboli', 'MIDC Taloja',
   ]),
 
-  city('dombivli', 'Dombivli', 401, 'thane-belt', [
-    'Dombivli East', 'Dombivli West', 'Kolegaon', 'Sonarpada', 'Palava',
-    'Khoni', 'Thakurli', 'Kopar', 'Cross Road', 'Gharda Circle', 'Reti Bunder',
-    'Pendse Nagar', 'Sunil Nagar', 'MIDC Dombivli', 'Manpada Dombivli', 'Dombivli Station',
-  ]),
-  city('kalyan', 'Kalyan', 402, 'thane-belt', [
-    'Kalyan West', 'Kalyan East', 'Chikanghar', 'Khadakpada', 'Bail Bazar',
-    'Shahad', 'Pisavali', 'Tisgaon', 'Malang Gad Road', 'Adharwadi', 'Rambaug',
-    'Godrej Hill', 'Dudh Naka', 'Syndicate', 'Kalyan Station',
-  ]),
+  city('dombivli', 'Dombivli', 401, 'thane-belt', DOMBIVLI_LOCALITIES),
+  city('kalyan', 'Kalyan', 402, 'thane-belt', KALYAN_LOCALITIES),
   city('ambernath', 'Ambernath', 403, 'thane-belt', [
     'Ambernath East', 'Ambernath West', 'B-Cabin', 'Chikhloli', 'Kansai',
     'Morivali', 'Shiv Mandir', 'Ambernath Station', 'Badlapur Road Ambernath',
@@ -148,6 +173,13 @@ export const CITY_PAGES: CityPageConfig[] = [
     'Ulhasnagar Camp 4', 'Ulhasnagar Camp 5', 'Shahad', 'Vithalwadi',
   ]),
 ];
+
+const takenLocalitySlugs = new Set(CITY_PAGES.map((item) => item.slug));
+CITY_PAGES.push(
+  ...localityPages(THANE_LOCALITIES, 'thane-local', 420, takenLocalitySlugs),
+  ...localityPages(DOMBIVLI_LOCALITIES, 'dombivli-local', 520, takenLocalitySlugs),
+  ...localityPages(KALYAN_LOCALITIES, 'kalyan-local', 560, takenLocalitySlugs),
+);
 
 export function getCityPageBySlug(slug: string): CityPageConfig | null {
   const normalized = String(slug || '').trim().toLowerCase().replace(/^car-service-in-/, '');
