@@ -183,42 +183,60 @@ function licenseAllowed(name: string) {
   return /cc0|cc by|cc-by|public domain|pd\b/.test(value);
 }
 
-const CAR_TITLE = /\b(car|cars|automobile|sedan|suv|hatchback|mpv|vehicle|taxi|showroom|dealership|traffic|maruti|suzuki|hyundai|tata|mahindra|honda|toyota|skoda|kia|volkswagen|bmw|mercedes|audi|ferrari|porsche|ambassador|creta|nexon|xuv|scorpio|thar|brezza|swift|elevate|slavia|bolero)\b/i;
-const BAD_TITLE = /\b(navy|aircraft|air[- ]traffic|carrier|keyboard|warship|helicopter|fighter|soldier|sailor|cockpit|radar|missile|portrait|logo|diagram|uniform|submarine)\b/i;
+const CAR_TITLE = /\b(car|cars|automobile|sedan|suv|hatchback|mpv|vehicle|showroom|dealership|traffic|maruti|suzuki|hyundai|tata|mahindra|honda|toyota|skoda|kia|volkswagen|bmw|mercedes|audi|ferrari|porsche|lamborghini|mclaren|bugatti|ambassador|creta|nexon|xuv|scorpio|thar|brezza|swift|elevate|slavia|bolero|huracan|huracán|aventador)\b/i;
+const BAD_TITLE = /\b(navy|aircraft|air[- ]traffic|carrier|keyboard|warship|helicopter|fighter|soldier|sailor|cockpit|radar|missile|portrait|logo|diagram|uniform|submarine|taxi|geograph\.org\.uk)\b/i;
+
+type PhotoSubject = 'supercar' | 'used' | 'showroom' | 'brand' | 'traffic' | 'general';
+
+function photoSubject(title: string): PhotoSubject {
+  if (/supercar|\bimports?\b|classic/i.test(title)) return 'supercar';
+  if (/used car|resale|second[- ]hand|pre-owned/i.test(title)) return 'used';
+  if (/loan|repo|\brbi\b|\bemi\b|interest/i.test(title)) return 'showroom';
+  if (/mahindra|\btata\b|hyundai|honda|skoda|maruti|\bkia\b|toyota/i.test(title)) return 'brand';
+  if (/mumbai|petrol|diesel|fuel|traffic/i.test(title)) return 'traffic';
+  return 'general';
+}
 
 function photoQueries(title: string, imageQuery: string) {
   const queries: string[] = [];
   const add = (value: string) => {
-    const next = value.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+    const next = value.replace(/[^\w\s:-]/g, ' ').replace(/\s+/g, ' ').trim();
     if (next && !queries.some((item) => item.toLowerCase() === next.toLowerCase())) queries.push(next);
   };
-  if (/mahindra/i.test(title)) add('Mahindra XUV700 India car');
-  if (/\btata\b/i.test(title)) add('Tata Nexon car India');
-  if (/hyundai/i.test(title)) add('Hyundai Creta India');
-  if (/honda/i.test(title)) add('Honda car India');
-  if (/skoda/i.test(title)) add('Skoda Slavia car');
-  if (/used car|resale|second[- ]hand|pre-owned/i.test(title)) add('used car dealership');
-  if (/loan|repo|\brbi\b|emi|interest/i.test(title)) add('Maruti Suzuki showroom India');
-  if (/supercar|luxury|classic/i.test(title)) add('Ferrari supercar');
-  if (/mumbai/i.test(title)) add('Mumbai cars traffic');
-  if (/petrol|diesel|fuel/i.test(title)) add('Indian oil petrol station');
-  if (imageQuery && !BAD_TITLE.test(imageQuery)) {
-    add(/car|suv|traffic|showroom|dealership/i.test(imageQuery) ? imageQuery : `${imageQuery} car`);
+  const subject = photoSubject(title);
+  if (subject === 'supercar') {
+    add('Lamborghini Huracan');
+    add('Ferrari supercar');
+    add('Porsche 911');
+  } else   if (subject === 'used') {
+    add('intitle:used cars');
+  } else if (subject === 'showroom') {
+    add('Maruti Suzuki showroom India');
+    add('car showroom India');
+  } else if (subject === 'brand') {
+    if (/mahindra/i.test(title)) add('Mahindra XUV700 India');
+    if (/\btata\b/i.test(title)) add('Tata Nexon car India');
+    if (/hyundai/i.test(title)) add('Hyundai Creta India');
+    if (/honda/i.test(title)) add('Honda car India');
+    if (/skoda/i.test(title)) add('Skoda Slavia car');
+  } else if (subject === 'traffic') {
+    if (/petrol|diesel|fuel/i.test(title)) add('Indian oil petrol station');
+    else add('cars on road India');
+  } else if (imageQuery && !BAD_TITLE.test(imageQuery)) {
+    add(imageQuery);
   }
-  add('cars on road India');
-  return queries.slice(0, 4);
+  if (!queries.length) add('cars on road India');
+  return queries.slice(0, 3);
 }
 
-function photoScore(fileTitle: string, articleTitle: string) {
-  if (BAD_TITLE.test(fileTitle) || !CAR_TITLE.test(fileTitle)) return -1;
-  let score = 2;
-  const words = articleTitle.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 3);
-  const haystack = fileTitle.toLowerCase();
-  for (const word of words) {
-    if (haystack.includes(word)) score += 4;
-  }
-  if (/india|mumbai|delhi|pune|thane/.test(haystack) && /india|mumbai|delhi|pune|thane/i.test(articleTitle)) score += 3;
-  return score;
+function photoMatches(fileTitle: string, subject: PhotoSubject) {
+  const title = fileTitle.toLowerCase();
+  if (BAD_TITLE.test(title) || /taxi|geograph\.org\.uk|red bull|rallycross/.test(title)) return false;
+  if (subject === 'supercar') return /lamborghini|ferrari|porsche|mclaren|bugatti|huracan|huracán|aventador/.test(title);
+  if (subject === 'used') return /used car/.test(title);
+  if (subject === 'showroom') return /showroom|dealership|motors/.test(title) && CAR_TITLE.test(title);
+  if (subject === 'brand') return CAR_TITLE.test(title);
+  return CAR_TITLE.test(title);
 }
 
 async function searchCommons(query: string): Promise<CommonsPhoto[]> {
@@ -249,7 +267,7 @@ async function searchCommons(query: string): Promise<CommonsPhoto[]> {
     if (!/^image\/(jpeg|png|webp)/.test(mime)) continue;
     if (width && width < 700) continue;
     if (!licenseAllowed(license)) continue;
-    if (photoScore(title, query) < 0) continue;
+    if (BAD_TITLE.test(title) || /taxi|geograph\.org\.uk/i.test(title)) continue;
     photos.push({
       url: String(info.thumburl || info.url),
       artist: plainText(String(meta?.Artist?.value || 'Wikimedia Commons')).slice(0, 180),
@@ -261,19 +279,17 @@ async function searchCommons(query: string): Promise<CommonsPhoto[]> {
 }
 
 async function pickNewsPhoto(articleTitle: string, imageQuery: string, usedTitles: Set<string>): Promise<CommonsPhoto | null> {
-  let best: { photo: CommonsPhoto; score: number } | null = null;
+  const subject = photoSubject(articleTitle);
   for (const query of photoQueries(articleTitle, imageQuery)) {
     const photos = await searchCommons(query);
     for (const photo of photos) {
       const key = photo.title.toLowerCase();
       if (usedTitles.has(key)) continue;
-      const score = photoScore(photo.title, articleTitle);
-      if (score < 0) continue;
-      if (!best || score > best.score) best = { photo, score };
+      if (!photoMatches(photo.title, subject)) continue;
+      return photo;
     }
-    if (best && best.score >= 6) break;
   }
-  return best?.photo || null;
+  return null;
 }
 
 async function uploadPhoto(supabaseAdmin: any, slug: string, photo: CommonsPhoto) {
