@@ -55,10 +55,9 @@ export async function runBatchBlogPost(opts: { index: number }): Promise<DailyBl
   const { data: existingRows } = await supabaseAdmin
     .from('blogs')
     .select('id, slug, title, seo_data')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .limit(250);
-  const existing = (existingRows || []).find((row: any) => row?.seo_data?.ai_batch_key === batchKey);
+    .filter('seo_data->>ai_batch_key', 'eq', batchKey)
+    .limit(1);
+  const existing = existingRows?.[0];
 
   if (existing?.id) {
     return {
@@ -91,6 +90,19 @@ export async function runBatchBlogPost(opts: { index: number }): Promise<DailyBl
         ai_news_car: Boolean(picked.news),
       },
     });
+    if (published.blog_id && picked.topic) {
+      const { data: row } = await supabaseAdmin
+        .from('blogs')
+        .select('seo_data')
+        .eq('id', published.blog_id)
+        .maybeSingle();
+      const seo = { ...(row?.seo_data || {}), meta_title: picked.topic, og_title: picked.topic };
+      await supabaseAdmin
+        .from('blogs')
+        .update({ title: picked.topic, seo_data: seo, updated_at: new Date().toISOString() })
+        .eq('id', published.blog_id);
+      published.title = picked.topic;
+    }
     return { ...published, index, news: Boolean(picked.news) };
   } catch (error: any) {
     return {

@@ -134,6 +134,9 @@ const nextConfig = {
       // Canonical marketing URLs (requested mappings)
       { source: '/services', destination: '/car-services', permanent: true },
       { source: '/car-service-in/:city', destination: '/car-service-in-:city', permanent: true },
+      { source: '/car-service-in-naupada', destination: '/car-service-in-thane', permanent: true },
+      { source: '/car-service-in-kalwa', destination: '/car-service-in-thane', permanent: true },
+      { source: '/car-service-in-kopri', destination: '/car-service-in-thane', permanent: true },
       { source: '/car-services/car-battery', destination: '/car-services/car-battery-service', permanent: true },
       { source: '/about', destination: '/about-us', permanent: true },
       { source: '/contact', destination: '/contact-us', permanent: true },

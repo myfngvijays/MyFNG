@@ -24,6 +24,14 @@ import { isMyFngServiceFaq } from '@/lib/blog/newsCarBlog';
 import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 import { slotIsoForRunDate } from '@/lib/blog/dailyBlogSlots';
 
+/** 11 exact Thane phrases need their own sentences, so those posts run longer than the 600-word default. */
+export function thaneKeywordWordCount(keywords: string[] | undefined, settingsWordCount: number | null | undefined) {
+  const base = Number(settingsWordCount) === 900 ? 600 : Number(settingsWordCount) || 600;
+  const count = (keywords || []).map((k) => String(k || '').trim()).filter(Boolean).length;
+  if (count >= 8) return Math.max(base, 1100);
+  return base;
+}
+
 export type DailyBlogSettings = {
   id: number;
   enabled: boolean;
@@ -313,7 +321,7 @@ export async function publishAiServiceBlog(opts: {
     localKeywords: cityTarget.keywords,
     intent: picked.intent,
     tone: settings.tone || 'Professional',
-    wordCount: settings.word_count === 900 ? 600 : settings.word_count || 600,
+    wordCount: thaneKeywordWordCount(cityTarget.keywords, settings.word_count),
     postKind: newsCar ? 'news' : usp ? 'usp' : rsaPost ? 'rsa' : packagePost ? 'package' : 'service',
     uspFacts: usp ? USP_BLOG_FACTS : undefined,
     aioFacts: newsCar

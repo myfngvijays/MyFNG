@@ -607,27 +607,21 @@ export function ensureLocalSeoHtml(
   if (/data-local-seo/i.test(source)) return source;
 
   const usedAreas = areas.filter((a) => source.toLowerCase().includes(a.toLowerCase()));
-  const usedKeywords = keywords.filter((k) => source.toLowerCase().includes(k.toLowerCase()));
+  const usedKeywords = keywords.filter((k) => source.includes(k));
   if (usedAreas.length >= 4 && keywords.length > 0 && usedKeywords.length >= keywords.length) return source;
 
   const missingAreas = areas.filter((a) => !usedAreas.some((u) => u.toLowerCase() === a.toLowerCase())).slice(0, 6);
-  const missingKeywords = keywords.filter((k) => !usedKeywords.some((u) => u.toLowerCase() === k.toLowerCase()));
+  const missingKeywords = keywords.filter((k) => !usedKeywords.includes(k));
   const areaText = (missingAreas.length ? missingAreas : areas).slice(0, 6).join(', ');
-  const allKeywords = (missingKeywords.length ? missingKeywords : keywords).join(', ');
-  const kwLead = missingKeywords[0] || keywords[0] || (city ? `car service in ${city}` : 'car service');
-  const kwPickup = missingKeywords.find((k) => /pickup/i.test(k)) || keywords.find((k) => /pickup/i.test(k));
-  const extraKeywords = (missingKeywords.length ? missingKeywords : keywords).filter(
-    (k) => k !== kwLead && k !== kwPickup,
-  );
+  const keywordSentences = missingKeywords
+    .map((keyword) => `Owners who type ${escapeHtml(keyword)} can book the same job on the MyFNG app.`)
+    .join(' ');
   const para = [
     `<p data-local-seo="1">`,
     city ? `${escapeHtml(city)} drivers` : 'Local drivers',
     areaText ? ` in ${escapeHtml(areaText)}` : '',
-    ` often search for ${escapeHtml(kwLead)}`,
-    kwPickup ? ` and ${escapeHtml(kwPickup)}` : '',
-    extraKeywords.length ? `, plus ${escapeHtml(extraKeywords.join(', '))}` : '',
-    `. Book on the MyFNG app — we collect the car, service it at a nearby workshop, and drop it back. We do not send a mechanic to your house.`,
-    allKeywords && extraKeywords.length < 2 ? ` People also look for ${escapeHtml(allKeywords)}.` : '',
+    ` can book pickup on the MyFNG app. We collect the car, service it at the workshop, and drop it back. We do not send a mechanic to your house. `,
+    keywordSentences,
     `</p>`,
   ].join('');
 

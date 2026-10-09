@@ -81,14 +81,26 @@ export const THANE_AREAS: string[] = [
   'Vartak Nagar',
   'Majiwada',
   'Wagle Estate',
-  'Naupada',
   'Hiranandani Estate',
   'Kasarvadavali',
   'Owale',
-  'Kalwa',
-  'Kopri',
   'Kolshet',
 ];
+
+/** Exact Thane phrases. Copy character-for-character inside each Thane blog. */
+export const THANE_BLOG_KEYWORDS = [
+  'car service in Ghodbunder Road',
+  'car service in Manpada',
+  'car service in Vartak Nagar',
+  'car service in Majiwada',
+  'car service in Wagle Estate',
+  'car service in Hiranandani Estate',
+  'car service in Kasarvadavali',
+  'car service in Owale',
+  'car service in Kolshet',
+  'car service in thane west',
+  'car service near me',
+] as const;
 
 export const NAVI_MUMBAI_AREAS: string[] = [
   'Vashi',

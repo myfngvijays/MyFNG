@@ -1,4 +1,5 @@
 import { getCityPageBySlug } from '@/lib/city-pages';
+import { THANE_BLOG_KEYWORDS } from '@/lib/blog/localSeo';
 
 export type DailyTargetCity = {
   name: string;
@@ -19,14 +20,7 @@ function cityTarget(slug: string, keywords: string[], fallbackName: string): Dai
   };
 }
 
-export const DAILY_CITY_THANE: DailyTargetCity = cityTarget('thane', [
-  'car service in Thane',
-  'car garage Thane',
-  'car workshop Ghodbunder Road',
-  'car pickup and drop Thane',
-  'periodic car service Thane',
-  'car mechanic near me Thane',
-], 'Thane');
+export const DAILY_CITY_THANE: DailyTargetCity = cityTarget('thane', [...THANE_BLOG_KEYWORDS], 'Thane');
 
 export const DAILY_CITY_KALYAN: DailyTargetCity = cityTarget('kalyan', [
   'car service in Kalyan',

@@ -30,7 +30,7 @@ function city(
 
 export const THANE_LOCALITIES = [
   'Ghodbunder Road', 'Manpada', 'Vartak Nagar', 'Majiwada', 'Wagle Estate',
-  'Naupada', 'Hiranandani Estate', 'Kasarvadavali', 'Owale', 'Kalwa', 'Kopri',
+  'Hiranandani Estate', 'Kasarvadavali', 'Owale',
   'Kolshet', 'Thane West', 'Thane East', 'Pokhran Road', 'Kapurbawdi', 'Balkum',
   'Louiswadi', 'Cadbury Junction', 'Teen Hath Naka', 'Panch Pakhadi', 'Anand Nagar',
   'Brahmand', 'Waghbil', 'Kavesar', 'Dhokali', 'Patlipada', 'Hiranandani Meadows', 'Yeoor',

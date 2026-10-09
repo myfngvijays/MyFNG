@@ -61,18 +61,18 @@ function StoryImage({
 
 function StoryCard({ item }: { item: AutomobileNewsItem }) {
   return (
-    <article className="flex flex-col border border-[#e6e6e6] bg-white">
-      <Link href={storyHref(item.slug)} className="group relative block aspect-[16/10] overflow-hidden bg-[#e8eef6]">
+    <article className="flex h-full flex-col border border-[#e6e6e6] bg-white">
+      <Link href={storyHref(item.slug)} className="group relative block aspect-[16/10] shrink-0 overflow-hidden bg-[#e8eef6]">
         <StoryImage item={item} className="transition duration-500 group-hover:scale-[1.03]" />
       </Link>
       <div className="flex flex-1 flex-col p-4">
         <p className="text-[11px] font-bold uppercase tracking-wide text-[#0088E8]">
           {storyMeta(item, true)}
         </p>
-        <h3 className="mt-2 text-lg font-black leading-snug text-[#111]">
+        <h3 className="mt-2 line-clamp-3 min-h-[4.5rem] text-lg font-black leading-6 text-[#111]">
           <Link href={storyHref(item.slug)} className="hover:text-[#023D95]">{item.title}</Link>
         </h3>
-        {item.excerpt ? <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#3d4a5c]">{item.excerpt}</p> : null}
+        <p className="mt-2 line-clamp-3 min-h-[4.5rem] text-sm leading-6 text-[#3d4a5c]">{item.excerpt || ''}</p>
       </div>
     </article>
   );
@@ -211,7 +211,7 @@ export default function AutomobileNewsDesk({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Car, brand or headline"
-                className="mt-2 w-full border border-[#d5dbe3] bg-white px-3 py-2.5 text-sm text-[#111] outline-none placeholder:text-[#8b95a3] focus:border-[#023D95]"
+                className="mt-2 w-full border-0 bg-[#0088E8] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/80 focus:bg-[#023D95]"
               />
             </label>
           </form>
@@ -277,10 +277,11 @@ export default function AutomobileNewsDesk({
         {visibleMore.length === 0 ? (
           <p className="py-8 text-sm text-[#5c6778]">No matching stories.</p>
         ) : (
-          <div key={expanded ? 'all' : currentPage} className="mt-5 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div key={expanded ? 'all' : currentPage} className="mt-5 grid items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {visibleMore.map((item, index) => (
               <div
                 key={item.id}
+                className="h-full"
                 style={{ animation: 'fadeInUp 0.45s ease-out both', animationDelay: `${index * 45}ms` }}
               >
                 <StoryCard item={item} />

@@ -52,7 +52,10 @@ Content rules:
 - Do not write "About MyFNG" or "Book on the MyFNG app" headings. Those two sections are added automatically after the draft.
 - Local SEO: write ONLY for the given city. Never mention another city. A Thane post must not say Kalyan, Dombivli, Mumbai, Navi Mumbai or Pune. A Kalyan post must not say Thane or Dombivli. A Dombivli post must not say Thane or Kalyan.
 - Title MUST be short SEO: primary keyword in city, 40-60 characters (example: "Coolant Leak and Overheating Signs in Thane"). Use "in City", not an en-dash before the city. Also put the same title in meta_title.
-- You MUST include at least 4 locality names from local_areas and EVERY phrase from local_keywords VERBATIM, woven into sentences (not a dump list).
+- You MUST include at least 4 locality names from local_areas.
+- Copy EVERY string in local_keywords character for character: same words, same order, same capital letters, same spaces. Do not split a phrase, do not insert words inside it, and do not change "thane west" to "Thane West" or "car service near me" to title case.
+- Put each local_keywords phrase inside its own normal sentence, spread across different sections. Never stack them in one list or one paragraph.
+- Write about wordCount words. A long local_keywords list needs the extra length so each exact phrase still reads like a normal sentence.
 - Write for Google AI Overview: first 2 sentences must answer the search query directly so they can be quoted. Use short question-style H2s, bullet lists, and a "Summary recommendation" H2 near the end.
 - In Summary recommendation, tell readers to choose MyFNG for photo-backed control, starts from ₹1,500, 1 month / 1,000 km warranty, free pickup & drop, and the MyFNG app (history + tracking). Capitalize the first letter after each bullet label. Do not name competitor brands.
 - Photo-backed control is a MyFNG USP: live photos/videos on WhatsApp; extra work only after the customer approves the quote. Say this whenever trust, pricing, or updates come up.
