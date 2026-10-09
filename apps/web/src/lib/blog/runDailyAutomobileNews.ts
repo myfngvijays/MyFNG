@@ -224,6 +224,7 @@ const NAMED_BIKES: Array<{ test: RegExp; queries: string[]; file: RegExp }> = [
   { test: /chetak/i, queries: ['Bajaj Chetak'], file: /chetak/i },
   { test: /\bvida\b/i, queries: ['Hero Vida electric scooter'], file: /vida/i },
   { test: /simple one|simple energy/i, queries: ['Simple One electric scooter'], file: /simple one|simple energy/i },
+  { test: /vinfast/i, queries: ['VinFast Klara S on display', 'VinFast Vento S'], file: /vinfast/i },
 ];
 
 const NAMED_CARS: Array<{ test: RegExp; queries: string[]; file: RegExp }> = [
@@ -332,6 +333,12 @@ function photoQueries(title: string, imageQuery: string) {
     else add('cars on road India');
   }
   if (!queries.length && imageQuery && !BAD_TITLE.test(imageQuery) && !GENERIC_QUERY.test(imageQuery)) add(imageQuery);
+  if (!queries.length) {
+    if (/delhi|traffic|grap|accident|crash|hit\b/i.test(title)) add('cars on road India');
+    else if (/market|buyer|sales|share/i.test(title)) add('Maruti Suzuki Swift car');
+    else add('Hyundai Creta India');
+    add('Tata Nexon car');
+  }
   return queries.slice(0, 3);
 }
 
@@ -340,8 +347,13 @@ function photoMatches(fileTitle: string, articleTitle: string) {
   if (BAD_TITLE.test(title) || /taxi|geograph\.org\.uk|red bull|rallycross/.test(title)) return false;
   if (isEvBikeText(articleTitle)) {
     const named = NAMED_BIKES.find((bike) => bike.test.test(articleTitle));
-    if (named) return named.file.test(fileTitle);
-    return /\b(scooter|ather|ola|iqube|chetak|vida|motorcycle|workshop)\b/.test(title);
+    if (named) {
+      if (!named.file.test(fileTitle)) return false;
+      if (/battery/i.test(title) && !/battery/i.test(articleTitle)) return false;
+      return true;
+    }
+    if (/\bola\b/i.test(title) && !/\bola\b/i.test(articleTitle)) return false;
+    return /\b(scooter|ather|ola|iqube|chetak|vida|vinfast|motorcycle|workshop)\b/.test(title);
   }
   const named = NAMED_CARS.find((car) => car.test.test(articleTitle));
   if (named) return named.file.test(fileTitle);
@@ -399,16 +411,21 @@ async function searchCommons(query: string): Promise<CommonsPhoto[]> {
 }
 
 async function pickNewsPhoto(articleTitle: string, imageQuery: string, usedTitles: Set<string>): Promise<CommonsPhoto | null> {
+  const namedBrand = NAMED_BIKES.find((bike) => bike.test.test(articleTitle))
+    || NAMED_CARS.find((car) => car.test.test(articleTitle))
+    || BRANDS.find((brand) => brand.test.test(articleTitle));
+  let loose: CommonsPhoto | null = null;
   for (const query of photoQueries(articleTitle, imageQuery)) {
     const photos = await searchCommons(query);
     for (const photo of photos) {
       const key = photo.title.toLowerCase();
       if (usedTitles.has(key)) continue;
-      if (!photoMatches(photo.title, articleTitle)) continue;
-      return photo;
+      if (photoMatches(photo.title, articleTitle)) return photo;
+      if (namedBrand) continue;
+      if (!loose && CAR_TITLE.test(photo.title) && !BAD_TITLE.test(photo.title)) loose = photo;
     }
   }
-  return null;
+  return loose;
 }
 
 async function uploadPhoto(supabaseAdmin: any, slug: string, photo: CommonsPhoto) {

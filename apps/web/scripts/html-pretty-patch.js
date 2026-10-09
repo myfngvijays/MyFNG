@@ -2,7 +2,8 @@
  * Patches Node HTTP responses to emit indented HTML for page routes.
  * Loaded via NODE_OPTIONS=-r ./scripts/html-pretty-patch.js
  *
- * Disable with PRETTY_HTML=0
+ * Off unless PRETTY_HTML=1. Indenting every page made the homepage ~1.8 MB
+ * (about 88% whitespace) and delayed the first byte.
  */
 const http = require('http');
 const https = require('https');
@@ -10,10 +11,7 @@ const zlib = require('zlib');
 const { formatHtml } = require('./format-html');
 
 function isPrettyHtmlEnabled() {
-  if (process.env.PRETTY_HTML === '0') return false;
-  // `--require` runs before standalone sets NODE_ENV=production, so never
-  // gate on production here — only skip explicit development.
-  return process.env.NODE_ENV !== 'development';
+  return process.env.PRETTY_HTML === '1';
 }
 
 function isPageRoute(pathname) {

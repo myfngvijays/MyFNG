@@ -11,7 +11,6 @@ import {
   getSiteTechnicalSeo,
 } from '@/lib/site-technical-seo';
 import '@fontsource/poppins/400.css';
-import '@fontsource/poppins/600.css';
 import '@fontsource/poppins/700.css';
 import './globals.css';
 

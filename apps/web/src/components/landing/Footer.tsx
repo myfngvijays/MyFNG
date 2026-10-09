@@ -102,7 +102,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
   const isOpen = (id: string) => openSections.has(id);
 
   const AccordionTitle = ({ id, children, size }: { id: string; children: React.ReactNode; size?: string }) => (
-    <h4
+    <h2
       onClick={() => toggleSection(id)}
       className={`text-white ${size || 'text-[14px]'} uppercase tracking-[1px] mb-5 font-semibold ${
         isMobile ? 'cursor-pointer relative pr-5' : ''
@@ -115,7 +115,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
           {isOpen(id) ? '−' : '+'}
         </span>
       )}
-    </h4>
+    </h2>
   );
 
   const listClass = (id: string) =>
@@ -323,6 +323,10 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                   <img
                     src="/logo.png"
                     alt="MyFNG - Multi Brand Car Service"
+                    width={150}
+                    height={52}
+                    loading="lazy"
+                    decoding="async"
                     className="w-[150px] h-auto block mb-3 mx-auto md:mx-0"
                   />
                   <p className="text-[11px] leading-[1.7] font-semibold text-gray-700">
@@ -342,11 +346,11 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
 
                 {/* Contact Info */}
                 <div className="text-center md:text-left">
-                  <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Contact Us</h4>
+                  <p className="text-gray-900 text-[11px] font-semibold mb-3">Contact Us</p>
                   <div className="text-[11px] leading-[2] font-semibold text-gray-700">
                     <div><span className="text-blue-800 font-bold">Email:</span> <a className={footerLinkClass} href={SUPPORT_EMAIL}>support@myfng.in</a></div>
-                    <div><span className="text-blue-800 font-bold">Car Service:</span> <a className={footerLinkClass} href={SUPPORT_PHONE}>+91-9152307030</a></div>
-                    <div><span className="text-blue-800 font-bold">Roadside Assistance:</span> <a className={footerLinkClass} href={SUPPORT_PHONE}>+91-9152307030</a></div>
+                    <div><span className="text-blue-800 font-bold">Car Service:</span> <a className={footerLinkClass} href={SUPPORT_PHONE} aria-label="Call car service on +91-9152307030">+91-9152307030</a></div>
+                    <div><span className="text-blue-800 font-bold">Roadside Assistance:</span> <a className={footerLinkClass} href={SUPPORT_PHONE} aria-label="Call roadside assistance on +91-9152307030">+91-9152307030</a></div>
                     <div><span className="text-blue-800 font-bold">Working Days:</span> Monday – Saturday</div>
                     <div><span className="text-blue-800 font-bold">Hours:</span> 09:30 AM - 06:30 PM</div>
                   </div>
@@ -354,12 +358,16 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
 
                 {/* App Download */}
                 <div className="text-center md:text-left">
-                  <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Download MyFNG App</h4>
+                  <p className="text-gray-900 text-[11px] font-semibold mb-3">Download MyFNG App</p>
                   <div className="flex flex-row md:flex-col gap-2.5 justify-center md:justify-start items-center md:items-start flex-wrap">
                     <a href={DEFAULT_PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">
                       <img
                         src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
                         alt="Download on Play Store"
+                        width={160}
+                        height={48}
+                        loading="lazy"
+                        decoding="async"
                         className="w-[145px] sm:w-[160px] block"
                       />
                     </a>
@@ -367,6 +375,10 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                       <img
                         src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
                         alt="Download on App Store"
+                        width={160}
+                        height={48}
+                        loading="lazy"
+                        decoding="async"
                         className="w-[145px] sm:w-[160px] block"
                       />
                     </a>
@@ -375,7 +387,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
 
                 {/* Book Service + Social */}
                 <div className="text-center md:text-left">
-                  <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Book Service</h4>
+                  <p className="text-gray-900 text-[11px] font-semibold mb-3">Book Service</p>
                   <div className="flex flex-col gap-3 mt-2.5">
                     <input
                       id="footer-mobile"
@@ -383,6 +395,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                       type="tel"
                       autoComplete="tel"
                       placeholder="Enter your mobile number"
+                      aria-label="Mobile number"
                       value={footerPhone}
                       onChange={(e) => setFooterPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                       onKeyDown={(e) => {
@@ -413,7 +426,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                       href="https://www.facebook.com/myfngcarservices"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      className="w-11 h-11 rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
                       style={{ background: '#1877F2' }}
                       aria-label="Facebook"
                     >
@@ -423,7 +436,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                       href="https://www.instagram.com/myfngcarservices/"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      className="w-11 h-11 rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
                       style={{ background: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' }}
                       aria-label="Instagram"
                     >
@@ -433,7 +446,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                       href="https://linkedin.com/company/myfngcarservices"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      className="w-11 h-11 rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
                       style={{ background: '#0077B5' }}
                       aria-label="LinkedIn"
                     >
@@ -443,7 +456,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                       href="https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      className="w-11 h-11 rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
                       style={{ background: '#FF0000' }}
                       aria-label="YouTube"
                     >
@@ -453,7 +466,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                       href="https://x.com/myfngcarservice"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-[30px] h-[30px] rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      className="w-11 h-11 rounded-[30%] flex items-center justify-center text-white text-[16px] hover:-translate-y-1 hover:scale-110 hover:shadow-[0_6px_18px_rgba(0,0,0,0.3)] transition-all duration-300"
                       style={{ background: '#000000' }}
                       aria-label="X (Twitter)"
                     >
@@ -478,13 +491,13 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                 +91-9152307030
               </a>
             </p>
-            <p className="text-white/75">
+            <p className="text-white/90">
               <a className="hover:text-white hover:underline" href={OFFICE_MAPS_URL} target="_blank" rel="noopener noreferrer">
                 A/309, Centrum Business Square, Road No. 16, Wagle Industrial Estate, Thane (West), Maharashtra 400604
               </a>
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-5 border-t border-white/[0.08] text-[11px] text-[#aaa]">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-5 border-t border-white/[0.08] text-[11px] text-white/90">
             <span>© {new Date().getFullYear()} My FNG Autocare Private Limited. All Rights Reserved.</span>
             <a
               href="/login"

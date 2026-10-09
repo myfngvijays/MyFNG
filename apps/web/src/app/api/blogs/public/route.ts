@@ -69,6 +69,19 @@ export async function GET(request: NextRequest) {
       query = query.or(`title.ilike.%${search}%,excerpt.ilike.%${search}%,content.ilike.%${search}%`);
     }
 
+    // Automobile news has its own page. Keep it out of the blog list so the
+    // homepage still gets the latest service articles.
+    const { data: newsCategories } = await supabase
+      .from('blog_categories')
+      .select('id')
+      .or('slug.eq.automobile-news,slug.eq.car-news,name.ilike.%Automobile News%');
+    const newsCategoryIds = (newsCategories || [])
+      .map((row: { id?: string }) => row.id)
+      .filter(Boolean) as string[];
+    if (newsCategoryIds.length) {
+      query = query.not('category_id', 'in', `(${newsCategoryIds.join(',')})`);
+    }
+
     // Ordering
     query = query.order('published_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })

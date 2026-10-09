@@ -25,7 +25,7 @@ export default async function OpenAiAdsHeadScript() {
   if (!enabled) return null;
 
   return (
-    <Script id="openai-ads-pixel" strategy="beforeInteractive">
+    <Script id="openai-ads-pixel" strategy="lazyOnload">
       {openaiAdsInitJs(pixelId, process.env.NODE_ENV !== 'production')}
     </Script>
   );

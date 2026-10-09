@@ -2,7 +2,7 @@ export const NEWS_TOPICS = ['New Launch', 'EV News', 'Sales', 'Market', 'Industr
 
 export type NewsTopic = (typeof NEWS_TOPICS)[number];
 
-const EV_BIKE_BRAND = /\b(ather|ola electric|iqube|chetak|vida|simple one|simple energy|okinawa|ampere|revolt|ultraviolette|oben)\b/i;
+const EV_BIKE_BRAND = /\b(ather|ola electric|iqube|chetak|vida|simple one|simple energy|okinawa|ampere|revolt|ultraviolette|oben|vinfast)\b/i;
 const TWO_WHEELER = /\b(scooters?|e-scooters?|escooters?|motorbikes?|motorcycles?|e-bikes?|ebikes?|bikes?|two[- ]wheelers?)\b/i;
 const EV_SIGNAL = /\belectric\b|\bev\b|\be-scooter\b|\bescooter\b|\bbattery\b/i;
 const SERVICE_SIGNAL = /\b(service|servicing|maintenance|repairs?|workshop|warranty|battery swap|spare|first service|periodic service)\b/i;

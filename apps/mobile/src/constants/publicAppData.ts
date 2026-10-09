@@ -26,7 +26,7 @@ export const POPULAR_PACKAGES: PublicPackage[] = [
     price: 4999,
     desc: 'Scheduled maintenance by A-Grade verified multi-brand workshops.',
     image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Periodic_Service.png',
+      'https://myfng.in/media/Service_image_public/MyFNG_Car_Periodic_Service.webp',
   },
   {
     id: 'premium',
@@ -34,7 +34,7 @@ export const POPULAR_PACKAGES: PublicPackage[] = [
     price: 6800,
     desc: 'Advanced diagnostics and complete preventive engine care.',
     image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Engine_Service.png',
+      'https://myfng.in/media/Service_image_public/MyFNG_Car_Engine_Service.webp',
   },
   {
     id: 'platinum',
@@ -42,7 +42,7 @@ export const POPULAR_PACKAGES: PublicPackage[] = [
     price: 11300,
     desc: 'Complete detailing package with premium finish and protection.',
     image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Detailing_Service.png',
+      'https://myfng.in/media/Service_image_public/MyFNG_Car_Detailing_Service.webp',
   },
 ];
 

@@ -385,11 +385,11 @@ export default function Navbar({
         <div className="flex items-center justify-between gap-2 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             {/* Mobile hamburger (left side, only on small screens) */}
-            <div className="lg:hidden relative flex-shrink-0 w-9 sm:w-10" ref={hamburgerRef}>
+            <div className="lg:hidden relative flex-shrink-0 w-11" ref={hamburgerRef}>
               <button
                 onClick={() => setShowHamburgerMenu((v) => !v)}
-                className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all text-gray-700"
-                aria-label="Open navigation menu"
+                className="flex items-center justify-center w-11 h-11 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all text-gray-700"
+                aria-label={showHamburgerMenu ? 'Close navigation menu' : 'Open navigation menu'}
               >
                 {showHamburgerMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
@@ -411,14 +411,14 @@ export default function Navbar({
             </div>
 
             <TrackedLink href="/" className="hidden lg:flex items-center min-w-0 flex-shrink-0">
-              <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
+              <img src="/logo.png" alt="MyFNG Logo" width={160} height={56} className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
             </TrackedLink>
           </div>
 
           {/* Mobile logo (right on other pages, centered on home — see absolute logo below) */}
           {!isHomePage && (
             <TrackedLink href="/" className="lg:hidden flex items-center min-w-0 flex-shrink-0">
-              <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 w-auto flex-shrink-0" />
+              <img src="/logo.png" alt="MyFNG Logo" width={140} height={48} className="h-10 sm:h-12 w-auto flex-shrink-0" />
             </TrackedLink>
           )}
 
@@ -545,7 +545,7 @@ export default function Navbar({
             href="/"
             className="lg:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-auto"
           >
-            <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 w-auto flex-shrink-0" />
+            <img src="/logo.png" alt="MyFNG Logo" width={140} height={48} className="h-10 sm:h-12 w-auto flex-shrink-0" />
           </TrackedLink>
         )}
       </nav>

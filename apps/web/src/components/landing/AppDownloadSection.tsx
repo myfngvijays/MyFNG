@@ -126,6 +126,10 @@ export default function AppDownloadSection({
                 <img
                   src="/myfng-app-ui.webp"
                   alt="MyFNG App"
+                  width={224}
+                  height={448}
+                  loading="lazy"
+                  decoding="async"
                   className="absolute inset-0 w-full h-full object-cover object-top"
                 />
               </div>

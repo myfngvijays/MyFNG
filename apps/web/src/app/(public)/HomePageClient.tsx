@@ -257,28 +257,20 @@ export default function HomePage() {
     };
   }, []);
 
-  // Auto-rotate hero service creatives on homepage.
+  // Rotate after the first slide is ready. Later slides load one at a time.
   useEffect(() => {
     if (heroServiceSlides.length === 0) {
       setHeroSlidesReady(true);
       return;
     }
     let cancelled = false;
-    const preloadImages = async () => {
-      await Promise.all(
-        heroServiceSlides.map(
-          (slide) =>
-            new Promise<void>((resolve) => {
-              const img = new window.Image();
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-              img.src = slide.image;
-            })
-        )
-      );
+    const img = new window.Image();
+    const done = () => {
       if (!cancelled) setHeroSlidesReady(true);
     };
-    void preloadImages();
+    img.onload = done;
+    img.onerror = done;
+    img.src = heroServiceSlides[0].image;
     return () => {
       cancelled = true;
     };
@@ -896,12 +888,11 @@ export default function HomePage() {
       {/* 1. Hero Section: AI-Powered & Futuristic - Updated Clean Look */}
       <section className="relative pt-32 pb-8 sm:pt-36 sm:pb-10 md:pt-40 lg:pt-44 lg:pb-12 lg:min-h-[calc(100vh-84px)] overflow-x-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
         {/* Background Elements */}
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
         <div className="absolute top-0 right-0 w-full lg:w-1/2 h-full bg-gradient-to-l from-blue-100/40 to-transparent transform skew-x-12 translate-x-1/4"></div>
         
-        {/* Floating background blobs */}
-        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl animate-float"></div>
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
+        {/* Floating background blobs — desktop only; blur animation is expensive on phones */}
+        <div className="hidden sm:block absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl animate-float"></div>
+        <div className="hidden sm:block absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
 
         <div className="container mx-auto px-4 sm:px-6 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 items-start gap-6 sm:gap-8 lg:gap-10">
@@ -975,13 +966,17 @@ export default function HomePage() {
                      <img
                       src={
                         activeHeroServiceSlide?.image ||
-                        'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000'
+                        '/media/Service_image_public/MyFNG_Car_Periodic_Service.webp'
                       }
                       alt={activeHeroServiceSlide?.title || 'Featured service image'}
+                      width={960}
+                      height={640}
+                      fetchPriority="high"
+                      decoding="async"
                       className={
                         activeHeroServiceSlide?.festive
                           ? 'absolute inset-0 h-full w-full object-cover object-center'
-                          : 'absolute inset-0 h-full w-full object-cover object-center mix-blend-multiply opacity-90 hover:opacity-100 transition-opacity duration-500'
+                          : 'absolute inset-0 h-full w-full object-cover object-center sm:mix-blend-multiply sm:opacity-90 hover:opacity-100 transition-opacity duration-500'
                       }
                     />
                     {/* Gradient Overlay for better text visibility if needed */}
@@ -1140,9 +1135,12 @@ export default function HomePage() {
                   <div key={`brand-1-${idx}`} className="flex items-center justify-center min-w-[120px] sm:min-w-[130px] md:min-w-[140px] h-20 sm:h-24 md:h-28 bg-white rounded-lg sm:rounded-xl shadow-md hover:shadow-xl transition-all p-3 sm:p-4 md:p-5 border border-gray-100 flex-shrink-0 group relative">
                     <img 
                       src={brand.logo} 
-                      alt={brand.name} 
+                      alt={brand.name}
+                      width={120}
+                      height={70}
                       className="object-contain w-full h-full max-w-[120px] max-h-[70px] group-hover:scale-110 transition-transform"
-                      loading="eager"
+                      loading="lazy"
+                      decoding="async"
                       onError={(e) => {
                         // Fallback: show brand name if image fails
                         const target = e.target as HTMLImageElement;
@@ -1167,9 +1165,12 @@ export default function HomePage() {
                   <div key={`brand-2-${idx}`} className="flex items-center justify-center min-w-[140px] h-28 bg-white rounded-xl shadow-md hover:shadow-xl transition-all p-5 border border-gray-100 flex-shrink-0 group relative">
                     <img 
                       src={brand.logo} 
-                      alt={brand.name} 
+                      alt={brand.name}
+                      width={120}
+                      height={70}
                       className="object-contain w-full h-full max-w-[120px] max-h-[70px] group-hover:scale-110 transition-transform"
-                      loading="eager"
+                      loading="lazy"
+                      decoding="async"
                       onError={(e) => {
                         // Fallback: show brand name if image fails
                         const target = e.target as HTMLImageElement;
@@ -1610,7 +1611,6 @@ export default function HomePage() {
       <section className="relative py-10 sm:py-16 md:py-20 lg:py-24 overflow-hidden">
         {/* Dramatic Background */}
         <div className="absolute inset-0 bg-gradient-to-br from-red-950 via-orange-950 to-red-900"></div>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
         
         {/* Animated Elements */}
         <div className="hidden md:block absolute top-0 left-0 w-64 md:w-80 lg:w-96 h-64 md:h-80 lg:h-96 bg-orange-500/20 rounded-full blur-3xl animate-pulse"></div>
@@ -2072,8 +2072,8 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-white font-bold text-sm">MISA</p>
-                <p className="text-white/80 text-[10px]">MyFNG Instant Service Assistant</p>
-                <p className="text-white/70 text-xs">Your Car Care Assistant</p>
+                <p className="text-white text-[10px]">MyFNG Instant Service Assistant</p>
+                <p className="text-white text-xs">Your Car Care Assistant</p>
               </div>
             </div>
             <button
@@ -2084,7 +2084,8 @@ export default function HomePage() {
                 setShowOtherServices(false);
                 setChatMessages([{ id: 'm0', role: 'assistant', text: `Hi! I'm MISA — MyFNG Instant Service Assistant. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikha dunga.\n\nAapko kis type ka issue aa raha hai?` }]);
               }}
-              className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all"
+              className="w-11 h-11 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all"
+              aria-label="Close chat"
             >
               <X className="w-4 h-4 text-white" />
             </button>
@@ -2400,6 +2401,7 @@ export default function HomePage() {
                 value={chatDraft}
                 onChange={(e) => setChatDraft(e.target.value)}
                 placeholder="Type here..."
+                aria-label="Message"
                 className="flex-1 bg-gray-100 border-0 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -2414,7 +2416,8 @@ export default function HomePage() {
                   sendChatMessage(chatDraft);
                 }}
                 disabled={chatLoading}
-                className="w-9 h-9 bg-blue-600 text-white rounded-full hover:bg-blue-700 flex items-center justify-center flex-shrink-0 disabled:opacity-60 transition-all"
+                className="w-11 h-11 bg-blue-600 text-white rounded-full hover:bg-blue-700 flex items-center justify-center flex-shrink-0 disabled:opacity-60 transition-all"
+                aria-label="Send message"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>

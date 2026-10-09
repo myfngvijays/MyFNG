@@ -97,7 +97,7 @@ function BottomSheet({
           <div className="mx-auto h-1.5 w-12 rounded-full bg-gray-200" />
           <div className="mt-2 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Preview</div>
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-600">Preview</div>
               <div className="text-sm sm:text-base font-bold text-gray-900 leading-tight line-clamp-2 break-words">{title}</div>
             </div>
             <button
@@ -173,7 +173,6 @@ export default function ServiceExplorer({
 
   return (
     <section className={cx('relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50', className)}>
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20" />
       <div className="absolute -top-40 -right-40 h-[520px] w-[520px] rounded-full bg-blue-400/10 blur-3xl" />
       <div className="absolute -bottom-40 -left-40 h-[520px] w-[520px] rounded-full bg-purple-400/10 blur-3xl" />
 
@@ -235,11 +234,11 @@ export default function ServiceExplorer({
                                 )}
                               >
                                 {active?.iconImage ? (
-                                  <img src={active.iconImage} alt={active.title} className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                                  <img src={active.iconImage} alt="" width={48} height={48} loading="lazy" decoding="async" className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
                                 ) : ActiveIcon ? <ActiveIcon className="w-6 h-6" /> : null}
                               </div>
                               <div className="min-w-0">
-                                <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Featured</div>
+                                <div className="text-xs font-bold uppercase tracking-wider text-gray-600">Featured</div>
                                 <div className="text-lg sm:text-2xl font-extrabold text-gray-900 leading-tight line-clamp-2 break-words">
                                   {active.title}
                                 </div>
@@ -259,22 +258,22 @@ export default function ServiceExplorer({
 
                           <div className="mt-5 grid grid-cols-3 gap-2">
                             <div className="rounded-2xl bg-white/70 border border-gray-100 p-3">
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">From</div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600">From</div>
                               <div className="mt-1 text-sm font-bold text-gray-900">{active.priceFrom}</div>
                             </div>
                             <div className="rounded-2xl bg-white/70 border border-gray-100 p-3">
                               <div className="flex items-center justify-between">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">ETA</div>
-                                <Clock className="w-4 h-4 text-gray-400" />
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600">ETA</div>
+                                <Clock className="w-4 h-4 text-gray-600" />
                               </div>
                               <div className="mt-1 text-sm font-bold text-gray-900">{active.eta}</div>
                             </div>
                             <div className="rounded-2xl bg-white/70 border border-gray-100 p-3">
                               <div className="flex items-center justify-between">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600">
                                   Warranty
                                 </div>
-                                <Shield className="w-4 h-4 text-gray-400" />
+                                <Shield className="w-4 h-4 text-gray-600" />
                               </div>
                               <div className="mt-1 text-sm font-bold text-gray-900">
                                 {active.warranty}
@@ -349,7 +348,7 @@ export default function ServiceExplorer({
                               )}
                             >
                               {s.iconImage ? (
-                                <img src={s.iconImage} alt={s.title} className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                                <img src={s.iconImage} alt="" width={48} height={48} loading="lazy" decoding="async" className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
                               ) : (
                                 <Icon className="w-6 h-6" />
                               )}
@@ -402,7 +401,7 @@ export default function ServiceExplorer({
                 )}
               >
                 {sheetService?.iconImage ? (
-                  <img src={sheetService.iconImage} alt={sheetService.title} className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                  <img src={sheetService.iconImage} alt="" width={48} height={48} loading="lazy" decoding="async" className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
                 ) : SheetIcon ? <SheetIcon className="w-7 h-7" /> : null}
               </div>
               <div className="min-w-0">
@@ -413,15 +412,15 @@ export default function ServiceExplorer({
 
             <div className="mt-5 grid grid-cols-3 gap-2">
               <div className="rounded-2xl bg-gray-50 border border-gray-100 p-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">From</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600">From</div>
                 <div className="mt-1 text-sm font-bold text-gray-900">{sheetService.priceFrom}</div>
               </div>
               <div className="rounded-2xl bg-gray-50 border border-gray-100 p-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Time</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600">Time</div>
                 <div className="mt-1 text-sm font-bold text-gray-900">{sheetService.eta}</div>
               </div>
               <div className="rounded-2xl bg-gray-50 border border-gray-100 p-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Warranty</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600">Warranty</div>
                 <div className="mt-1 text-sm font-bold text-gray-900">{sheetService.warranty}</div>
               </div>
             </div>

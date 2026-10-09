@@ -120,6 +120,15 @@ const nextConfig = {
       { source: '/icons-sm/:file.png', destination: '/icons-sm/:file.webp', permanent: true },
       { source: '/myfng-app-screenshot.png', destination: '/myfng-app-screenshot.webp', permanent: true },
       { source: '/MyFNG_Car_Electrical_Battery_Service.png', destination: '/MyFNG_Car_Electrical_Battery_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Periodic_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Periodic_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Engine_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Engine_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_AC_Service.png', destination: '/media/Service_image_public/MyFNG_Car_AC_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Battery_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Battery_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Brake_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Brake_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Clutch_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Clutch_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Wheel_Care_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Wheel_Care_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Detailing_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Detailing_Service.webp', permanent: true },
+      { source: '/media/Service_image_public/MyFNG_Car_Denting-Painting_Service.png', destination: '/media/Service_image_public/MyFNG_Car_Denting-Painting_Service.webp', permanent: true },
       { source: '/MyFNG_Car_Suspension_Steering_Service.png', destination: '/MyFNG_Car_Suspension_Steering_Service.webp', permanent: true },
 
       // Canonical marketing URLs (requested mappings)
