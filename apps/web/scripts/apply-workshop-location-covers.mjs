@@ -1,7 +1,12 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import sharp from 'sharp';
 import { renderWorkshopLocationCover, workshopCoverFileSlug, workshopLocationCoverTitle } from './locationCoverRuntime.mjs';
+
+async function toCoverWebp(png) {
+  return sharp(png).webp({ quality: 80, effort: 4, alphaQuality: 90 }).toBuffer();
+}
 
 function loadEnv(file) {
   if (!existsSync(file)) return;
@@ -30,7 +35,7 @@ const outDir = path.join(process.cwd(), 'public', 'media', 'workshop-covers');
 if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
 const defaultPng = await renderWorkshopLocationCover('My FNG');
-writeFileSync(path.join(outDir, 'default.png'), defaultPng);
+writeFileSync(path.join(outDir, 'default.webp'), await toCoverWebp(defaultPng));
 
 const { data: pages, error } = await db
   .from('workshop_public_pages')
@@ -53,9 +58,9 @@ for (const page of pages || []) {
   try {
     const png = await renderWorkshopLocationCover(title);
     const slug = workshopCoverFileSlug(title, page.slug);
-    writeFileSync(path.join(outDir, `${slug}.png`), png);
+    writeFileSync(path.join(outDir, `${slug}.webp`), await toCoverWebp(png));
     const filePath = `workshop-public-pages/location-covers/${slug}.png`;
-    let cover_image = `/media/workshop-covers/${slug}.png?v=${Date.now()}`;
+    let cover_image = `/media/workshop-covers/${slug}.webp?v=${Date.now()}`;
     const up = await db.storage.from('workshop-assets').upload(filePath, png, {
       contentType: 'image/png',
       upsert: true,

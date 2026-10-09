@@ -9,7 +9,7 @@ const TARGET_W = 1920;
 const TARGET_H = 1080;
 const MAX_BYTES = 200 * 1024;
 const SLUG = process.argv[2] || 'coolant-leak-and-engine-overheating-early-signs-and-safe-next-steps';
-const COVER_FILE = process.argv[3] || 'sample-blue-periodic-checklist.png';
+const COVER_FILE = process.argv[3] || 'sample-blue-periodic-checklist.webp';
 
 function loadEnv() {
   const raw = readFileSync(path.join(ROOT, '.env.local'), 'utf8');

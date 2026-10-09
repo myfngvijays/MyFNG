@@ -54,7 +54,7 @@ export function localBusinessSchema(city = 'Mumbai') {
     '@type': 'AutoRepair',
     name: `MYFNG - Car Service & Repairs in ${city}`,
     url: SITE_URL,
-    image: `${SITE_URL}/app-download-popup.png`,
+    image: `${SITE_URL}/myfng-app-ui.webp`,
     telephone: '+91-8657575757',
     priceRange: '₹₹',
     address: {

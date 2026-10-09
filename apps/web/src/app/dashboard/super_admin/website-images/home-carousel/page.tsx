@@ -41,7 +41,7 @@ const DEFAULT_BANNERS: BannerRow[] = [
   {
     id: 'default-prime',
     title: 'Navratri Prime',
-    image_url: '/media/banners/myfng-prime-navratri-banner.png',
+    image_url: '/media/banners/myfng-prime-navratri-banner.webp',
     route_name: 'Settings__Membership',
     route_params: { membershipType: 'SERVICE' },
     display_order: 1,
@@ -51,7 +51,7 @@ const DEFAULT_BANNERS: BannerRow[] = [
   {
     id: 'default-service',
     title: 'Car Service',
-    image_url: '/media/banners/myfng-car-service-light-banner.png',
+    image_url: '/media/banners/myfng-car-service-light-banner.webp',
     route_name: 'PublicBookServiceNow',
     route_params: { city: '__CITY__' },
     display_order: 2,
@@ -61,7 +61,7 @@ const DEFAULT_BANNERS: BannerRow[] = [
   {
     id: 'default-ai',
     title: 'MyFNG AI',
-    image_url: '/media/banners/myfng-misa-ai-light-banner.png',
+    image_url: '/media/banners/myfng-misa-ai-light-banner.webp',
     route_name: 'AIBooking',
     route_params: { city: '__CITY__' },
     display_order: 3,

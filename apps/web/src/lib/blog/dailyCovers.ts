@@ -4,12 +4,12 @@ import sharp from 'sharp';
 import { mediaPathFromStorage } from '@/lib/media/public-url';
 
 export const DAILY_BLOG_COVERS = [
-  { key: 'light-mechanic', file: 'sample-light-skip-service.png' },
-  { key: 'blue-mechanic', file: 'sample-blue-periodic-checklist.png' },
-  { key: 'light-car', file: 'sample-light-skip-service-car.png' },
-  { key: 'blue-car', file: 'sample-blue-periodic-checklist-car.png' },
-  { key: 'light-closeup', file: 'sample-light-mechanic-closeup.png' },
-  { key: 'blue-closeup', file: 'sample-blue-mechanic-closeup.png' },
+  { key: 'light-mechanic', file: 'sample-light-skip-service.webp' },
+  { key: 'blue-mechanic', file: 'sample-blue-periodic-checklist.webp' },
+  { key: 'light-car', file: 'sample-light-skip-service-car.webp' },
+  { key: 'blue-car', file: 'sample-blue-periodic-checklist-car.webp' },
+  { key: 'light-closeup', file: 'sample-light-mechanic-closeup.webp' },
+  { key: 'blue-closeup', file: 'sample-blue-mechanic-closeup.webp' },
 ] as const;
 
 export type DailyCoverKey = (typeof DAILY_BLOG_COVERS)[number]['key'];

@@ -96,36 +96,36 @@ const ICON_SM = '/icons-sm';
 function categoryIcon(label: string): { src: string; bg: string } {
   const cat = label.toLowerCase();
   if (cat.includes('periodic'))
-    return { src: `${ICON_SM}/icon-periodic-service.png`, bg: 'bg-blue-50' };
-  if (cat.includes('ac')) return { src: `${ICON_SM}/icon-ac-service.png`, bg: 'bg-cyan-50' };
+    return { src: `${ICON_SM}/icon-periodic-service.webp`, bg: 'bg-blue-50' };
+  if (cat.includes('ac')) return { src: `${ICON_SM}/icon-ac-service.webp`, bg: 'bg-cyan-50' };
   if (cat.includes('battery') || cat.includes('electrical'))
-    return { src: `${ICON_SM}/icon-electrical-service.png`, bg: 'bg-amber-50' };
-  if (cat.includes('brake')) return { src: `${ICON_SM}/icon-brake-service.png`, bg: 'bg-red-50' };
-  if (cat.includes('clutch')) return { src: `${ICON_SM}/icon-clutch-service.png`, bg: 'bg-purple-50' };
+    return { src: `${ICON_SM}/icon-electrical-service.webp`, bg: 'bg-amber-50' };
+  if (cat.includes('brake')) return { src: `${ICON_SM}/icon-brake-service.webp`, bg: 'bg-red-50' };
+  if (cat.includes('clutch')) return { src: `${ICON_SM}/icon-clutch-service.webp`, bg: 'bg-purple-50' };
   if (cat.includes('tyre') || cat.includes('wheel'))
-    return { src: `${ICON_SM}/icon-tyre-service.png`, bg: 'bg-gray-100' };
+    return { src: `${ICON_SM}/icon-tyre-service.webp`, bg: 'bg-gray-100' };
   if (cat.includes('detailing'))
-    return { src: `${ICON_SM}/icon-detailing-service.png`, bg: 'bg-pink-50' };
+    return { src: `${ICON_SM}/icon-detailing-service.webp`, bg: 'bg-pink-50' };
   if (cat.includes('denting') || cat.includes('painting'))
-    return { src: `${ICON_SM}/icon-denting-service.png`, bg: 'bg-green-50' };
+    return { src: `${ICON_SM}/icon-denting-service.webp`, bg: 'bg-green-50' };
   if (cat.includes('engine'))
-    return { src: `${ICON_SM}/icon-engine-service.png`, bg: 'bg-orange-50' };
+    return { src: `${ICON_SM}/icon-engine-service.webp`, bg: 'bg-orange-50' };
   if (cat.includes('suspension') || cat.includes('steering'))
-    return { src: `${ICON_SM}/icon-suspension-service.png`, bg: 'bg-indigo-50' };
-  return { src: `${ICON_SM}/icon-periodic-service.png`, bg: 'bg-gray-50' };
+    return { src: `${ICON_SM}/icon-suspension-service.webp`, bg: 'bg-indigo-50' };
+  return { src: `${ICON_SM}/icon-periodic-service.webp`, bg: 'bg-gray-50' };
 }
 
 const PRELOAD_ICONS = [
-  `${ICON_SM}/icon-periodic-service.png`,
-  `${ICON_SM}/icon-engine-service.png`,
-  `${ICON_SM}/icon-ac-service.png`,
-  `${ICON_SM}/icon-electrical-service.png`,
-  `${ICON_SM}/icon-brake-service.png`,
-  `${ICON_SM}/icon-clutch-service.png`,
-  `${ICON_SM}/icon-denting-service.png`,
-  `${ICON_SM}/icon-detailing-service.png`,
-  `${ICON_SM}/icon-tyre-service.png`,
-  `${ICON_SM}/icon-suspension-service.png`,
+  `${ICON_SM}/icon-periodic-service.webp`,
+  `${ICON_SM}/icon-engine-service.webp`,
+  `${ICON_SM}/icon-ac-service.webp`,
+  `${ICON_SM}/icon-electrical-service.webp`,
+  `${ICON_SM}/icon-brake-service.webp`,
+  `${ICON_SM}/icon-clutch-service.webp`,
+  `${ICON_SM}/icon-denting-service.webp`,
+  `${ICON_SM}/icon-detailing-service.webp`,
+  `${ICON_SM}/icon-tyre-service.webp`,
+  `${ICON_SM}/icon-suspension-service.webp`,
 ];
 
 function normalizeChecklist(items?: Array<string | ChecklistItem>): ChecklistItem[] {

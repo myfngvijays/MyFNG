@@ -93,6 +93,15 @@ export default function AppDownloadPopup() {
   }, []);
 
   useEffect(() => {
+    if (!show) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [show]);
+
+  useEffect(() => {
     openedRef.current = false;
     setShow(false);
 
@@ -125,63 +134,63 @@ export default function AppDownloadPopup() {
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4" onClick={close}>
+    <div className="fixed inset-0 z-[100] overflow-y-auto overscroll-contain" onClick={close}>
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
-
+      <div className="relative flex min-h-full items-center justify-center p-6 sm:p-4">
       <div
-        className="relative w-full max-w-3xl animate-in fade-in zoom-in-95 duration-300"
+        className="relative w-full max-w-[320px] animate-in fade-in zoom-in-95 duration-300 sm:max-w-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={close}
-          className="absolute -top-3 -right-3 z-10 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white shadow-lg flex items-center justify-center text-gray-600 hover:text-gray-900 hover:scale-110 transition-all"
+          className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-gray-600 shadow-lg transition-all hover:scale-110 hover:text-gray-900 sm:-right-3 sm:-top-3 sm:h-9 sm:w-9"
           aria-label="Close popup"
         >
-          <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          <X className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
         </button>
 
-        <div className="overflow-hidden rounded-[28px] bg-[#fff8ef] shadow-2xl ring-1 ring-[#e7c27a]">
+        <div className="overflow-hidden rounded-2xl bg-[#fff8ef] shadow-2xl ring-1 ring-[#e7c27a] sm:rounded-[28px]">
           <div className="grid sm:grid-cols-[210px_1fr] lg:grid-cols-[248px_1fr]">
-            <div className="relative flex flex-col items-center overflow-hidden bg-gradient-to-b from-[#6b1224] via-[#9a3412] to-[#c2410c] px-3 pb-2 pt-5 sm:min-h-[460px] sm:px-4 sm:pb-4">
+            <div className="relative flex flex-col items-center overflow-hidden bg-gradient-to-b from-[#6b1224] via-[#9a3412] to-[#c2410c] px-3 pb-1 pt-2.5 sm:min-h-[460px] sm:px-4 sm:pb-4 sm:pt-5">
               <div className="pointer-events-none absolute -left-8 top-10 h-24 w-24 rounded-full border border-[#f6d48a]/30" />
               <div className="pointer-events-none absolute -right-6 bottom-16 h-20 w-20 rounded-full bg-[#fbbf24]/20 blur-2xl" />
               <p className="text-[10px] font-semibold uppercase tracking-[0.38em] text-[#fde68a] sm:text-[11px]">
                 Navratri
               </p>
               <p
-                className="mt-1 text-4xl font-black italic leading-none text-[#fff7d6] sm:text-5xl"
+                className="mt-0.5 text-2xl font-black italic leading-none text-[#fff7d6] sm:mt-1 sm:text-5xl"
                 style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
               >
                 Offer
               </p>
-              <div className="mt-3 h-px w-14 bg-gradient-to-r from-transparent via-[#f6d48a] to-transparent" />
+              <div className="mt-1.5 h-px w-12 bg-gradient-to-r from-transparent via-[#f6d48a] to-transparent sm:mt-3 sm:w-14" />
               <Image
-                src="/media/navratri-durga-popup.png"
+                src="/media/navratri-durga-popup.webp"
                 alt="Navratri"
                 width={864}
                 height={1152}
-                className="relative mt-2 h-44 w-full object-contain object-bottom drop-shadow-2xl sm:mt-3 sm:h-auto sm:flex-1"
+                className="relative mt-0.5 h-16 w-auto max-w-full object-contain object-bottom drop-shadow-2xl sm:mt-3 sm:h-auto sm:w-full sm:flex-1"
                 priority
               />
             </div>
 
-            <div className="relative px-5 py-5 sm:px-7 sm:py-6">
-              <h2 className="text-[1.7rem] font-extrabold leading-none tracking-tight text-[#3f0d18] sm:text-[2rem]">
+            <div className="relative px-3.5 py-3 sm:px-7 sm:py-6">
+              <h2 className="text-lg font-extrabold leading-none tracking-tight text-[#3f0d18] sm:text-[2rem]">
                 Download MyFNG App
               </h2>
-              <p className="mt-3 text-sm font-semibold text-[#b45309] sm:text-lg">
+              <p className="mt-1.5 text-xs font-semibold text-[#b45309] sm:mt-3 sm:text-lg">
                 Get 10% OFF on Your First Service!
               </p>
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#f0c36a] bg-[#fff4d8] px-3 py-1.5 text-[11px] font-extrabold text-[#9a3412]">
-                <Clock className="h-3.5 w-3.5" />
+              <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#f0c36a] bg-[#fff4d8] px-2.5 py-1 text-[10px] font-extrabold text-[#9a3412] sm:mt-3 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[11px]">
+                <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 LIMITED TIME OFFER
               </div>
 
-              <div className="mt-4 flex items-center gap-4">
-                <div className="grid min-w-0 flex-1 grid-cols-1 gap-2">
+              <div className="mt-2.5 flex items-center gap-4 sm:mt-4">
+                <div className="grid min-w-0 flex-1 grid-cols-1 gap-1.5 sm:gap-2">
                   {BENEFITS.map((text) => (
-                    <div key={text} className="flex items-center gap-2 rounded-xl bg-white px-2.5 py-2 text-sm text-[#3f0d18] ring-1 ring-[#f3d7a1]">
-                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#9a3412] text-[11px] font-extrabold text-white">
+                    <div key={text} className="flex items-center gap-1.5 rounded-lg bg-white px-2 py-1 text-xs text-[#3f0d18] ring-1 ring-[#f3d7a1] sm:gap-2 sm:rounded-xl sm:px-2.5 sm:py-2 sm:text-sm">
+                      <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[#9a3412] text-[10px] font-extrabold text-white sm:h-5 sm:w-5 sm:text-[11px]">
                         ✓
                       </span>
                       {text}
@@ -192,7 +201,7 @@ export default function AppDownloadPopup() {
                   <div className="relative h-[210px] overflow-hidden rounded-[1.5rem] border-[4px] border-[#2a211c] bg-black shadow-xl">
                     <div className="absolute left-1/2 top-1.5 z-10 h-3 w-12 -translate-x-1/2 rounded-full bg-black" />
                     <Image
-                      src="/myfng-app-screenshot.png"
+                      src="/myfng-app-screenshot.webp"
                       alt="MyFNG App"
                       width={400}
                       height={800}
@@ -204,7 +213,7 @@ export default function AppDownloadPopup() {
 
               <a
                 href={goHref}
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#9a3412] px-6 py-3.5 text-base font-extrabold text-white shadow-lg transition-all hover:bg-[#7c2d12] sm:w-auto"
+                className="mt-2.5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#9a3412] px-4 py-2.5 text-sm font-extrabold text-white shadow-lg transition-all hover:bg-[#7c2d12] sm:mt-5 sm:w-auto sm:rounded-2xl sm:px-6 sm:py-3.5 sm:text-base"
               >
                 <Download className="h-5 w-5" />
                 Download App
@@ -212,8 +221,8 @@ export default function AppDownloadPopup() {
             </div>
           </div>
 
-          <div className="border-t border-[#f3d7a1] bg-white px-4 py-3 sm:px-6">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="border-t border-[#f3d7a1] bg-white px-3 py-2 sm:px-6 sm:py-3">
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 sm:grid-cols-4 sm:gap-3">
               {TRUST.map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center justify-center gap-1.5">
                   <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#9a3412] ring-1 ring-[#f0c36a] sm:h-7 sm:w-7">
@@ -225,6 +234,7 @@ export default function AppDownloadPopup() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

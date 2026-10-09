@@ -21,7 +21,7 @@ export default function CarServiceAndRepairsLayout({ children }: { children: Rea
             description:
               'Book car service and repairs near you at verified MYFNG workshops in Mumbai, Pune, Thane and Navi Mumbai. Periodic servicing, AC repair, engine repair, brakes and more.',
             url: pageUrl,
-            image: `${SITE_URL}/myfng-app-ui.png`,
+            image: `${SITE_URL}/myfng-app-ui.webp`,
           }),
           faqPageSchema(ADS_LP_FAQS),
           breadcrumbSchema([

@@ -2492,17 +2492,17 @@ export default function BookServicePage() {
                                 let iconBg = 'bg-white';
                                 const getIcon = () => {
                                   const catLower = catName;
-                                  if (catLower.includes('periodic')) { iconBg = 'bg-blue-50'; return '/icon-periodic-service.png'; }
-                                  if (catLower.includes('ac')) { iconBg = 'bg-cyan-50'; return '/icon-ac-service.png'; }
-                                  if (catLower.includes('battery') || catLower.includes('electrical')) { iconBg = 'bg-amber-50'; return '/icon-electrical-service.png'; }
-                                  if (catLower.includes('brake')) { iconBg = 'bg-red-50'; return '/icon-brake-service.png'; }
-                                  if (catLower.includes('clutch')) { iconBg = 'bg-purple-50'; return '/icon-clutch-service.png'; }
-                                  if (catLower.includes('tyre') || catLower.includes('wheel')) { iconBg = 'bg-gray-100'; return '/icon-tyre-service.png'; }
-                                  if (catLower.includes('detailing')) { iconBg = 'bg-pink-50'; return '/icon-detailing-service.png'; }
-                                  if (catLower.includes('denting') || catLower.includes('painting')) { iconBg = 'bg-green-50'; return '/icon-denting-service.png'; }
-                                  if (catLower.includes('engine')) { iconBg = 'bg-orange-50'; return '/icon-engine-service.png'; }
-                                  if (catLower.includes('suspension') || catLower.includes('steering')) { iconBg = 'bg-indigo-50'; return '/icon-suspension-service.png'; }
-                                  iconBg = 'bg-gray-50'; return '/icon-periodic-service.png';
+                                  if (catLower.includes('periodic')) { iconBg = 'bg-blue-50'; return '/icon-periodic-service.webp'; }
+                                  if (catLower.includes('ac')) { iconBg = 'bg-cyan-50'; return '/icon-ac-service.webp'; }
+                                  if (catLower.includes('battery') || catLower.includes('electrical')) { iconBg = 'bg-amber-50'; return '/icon-electrical-service.webp'; }
+                                  if (catLower.includes('brake')) { iconBg = 'bg-red-50'; return '/icon-brake-service.webp'; }
+                                  if (catLower.includes('clutch')) { iconBg = 'bg-purple-50'; return '/icon-clutch-service.webp'; }
+                                  if (catLower.includes('tyre') || catLower.includes('wheel')) { iconBg = 'bg-gray-100'; return '/icon-tyre-service.webp'; }
+                                  if (catLower.includes('detailing')) { iconBg = 'bg-pink-50'; return '/icon-detailing-service.webp'; }
+                                  if (catLower.includes('denting') || catLower.includes('painting')) { iconBg = 'bg-green-50'; return '/icon-denting-service.webp'; }
+                                  if (catLower.includes('engine')) { iconBg = 'bg-orange-50'; return '/icon-engine-service.webp'; }
+                                  if (catLower.includes('suspension') || catLower.includes('steering')) { iconBg = 'bg-indigo-50'; return '/icon-suspension-service.webp'; }
+                                  iconBg = 'bg-gray-50'; return '/icon-periodic-service.webp';
                                 };
                                 const iconSrc = getIcon();
 

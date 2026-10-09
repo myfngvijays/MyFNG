@@ -58,6 +58,8 @@ function resolvePoppinsBoldPath() {
 
 function resolveWorkshopPhotoPath() {
   const candidates = [
+    path.join(process.cwd(), 'public', 'media', 'workshop-covers', 'workshop-photo-base.webp'),
+    path.join(process.cwd(), 'apps', 'web', 'public', 'media', 'workshop-covers', 'workshop-photo-base.webp'),
     path.join(process.cwd(), 'public', 'media', 'workshop-covers', 'workshop-photo-base.png'),
     path.join(process.cwd(), 'apps', 'web', 'public', 'media', 'workshop-covers', 'workshop-photo-base.png'),
   ];

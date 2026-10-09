@@ -124,7 +124,7 @@ export default function AppDownloadSection({
               <div className="relative w-52 sm:w-56 h-[26rem] sm:h-[28rem] bg-white rounded-[2.5rem] border-[5px] border-gray-800 shadow-2xl shadow-black/40 overflow-hidden">
                 <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-full z-10" />
                 <img
-                  src="/myfng-app-ui.png"
+                  src="/myfng-app-ui.webp"
                   alt="MyFNG App"
                   className="absolute inset-0 w-full h-full object-cover object-top"
                 />

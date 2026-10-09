@@ -37,7 +37,8 @@ async function render(title) {
       <text x="600" y="${logoTop + logoH + 78}" text-anchor="middle" fill="#023D95" font-size="${fontSize}" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(title)}</text>
     </svg>`,
   );
-  return sharp(textSvg).composite([{ input: logo, top: logoTop, left: logoLeft }]).png().toBuffer();
+  const png = await sharp(textSvg).composite([{ input: logo, top: logoTop, left: logoLeft }]).png().toBuffer();
+  return sharp(png).webp({ quality: 80, effort: 4 }).toBuffer();
 }
 
 const outDir = path.join(process.cwd(), 'public', 'media', 'workshop-covers');
@@ -46,7 +47,7 @@ if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 const titles = ['My FNG', 'My FNG Vartak Nagar', 'My FNG Majiwada', 'My FNG Virar West', 'My FNG Wakad'];
 for (const title of titles) {
   const buf = await render(title);
-  const name = title === 'My FNG' ? 'default.png' : `${slugify(title)}.png`;
+  const name = title === 'My FNG' ? 'default.webp' : `${slugify(title)}.webp`;
   writeFileSync(path.join(outDir, name), buf);
   console.log(name, buf.length);
 }

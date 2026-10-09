@@ -5,16 +5,16 @@ import { Car, ChevronLeft, Clock, Crown, Wrench } from 'lucide-react';
 import { DEFAULT_APP_STORE_URL, DEFAULT_PLAY_STORE_URL } from '@/lib/mobile-app-version-config';
 
 export const OTHER_SERVICES = [
-  { name: 'AC Service', category: 'Car AC Service', message: 'Car AC Service chahiye', icon: '/icon-ac-service.png' },
-  { name: 'Battery', category: 'Car Battery Service', message: 'Car Battery Service chahiye', icon: '/icon-battery-service.png' },
-  { name: 'Brake', category: 'Car Brake Service', message: 'Car Brake Service chahiye', icon: '/icon-brake-service.png' },
-  { name: 'Engine', category: 'Car Engine Service', message: 'Car Engine Service chahiye', icon: '/icon-engine-service.png' },
-  { name: 'Clutch', category: 'Car Clutch Service', message: 'Car Clutch Service chahiye', icon: '/icon-clutch-service.png' },
-  { name: 'Tyre & Wheel', category: 'Car Tyre & Wheel Care', message: 'Car Tyre & Wheel Care chahiye', icon: '/icon-tyre-service.png' },
-  { name: 'Detailing', category: 'Car Detailing Service', message: 'Car Detailing Service chahiye', icon: '/icon-detailing-service.png' },
-  { name: 'Denting', category: 'Car Denting & Painting', message: 'Car Denting & Painting chahiye', icon: '/icon-denting-service.png' },
-  { name: 'Electrical', category: 'Electrical & Battery Service', message: 'Electrical & Battery Service chahiye', icon: '/icon-electrical-service.png' },
-  { name: 'Suspension', category: 'Suspension & Steering Service', message: 'Suspension & Steering Service chahiye', icon: '/icon-suspension-service.png' },
+  { name: 'AC Service', category: 'Car AC Service', message: 'Car AC Service chahiye', icon: '/icon-ac-service.webp' },
+  { name: 'Battery', category: 'Car Battery Service', message: 'Car Battery Service chahiye', icon: '/icon-battery-service.webp' },
+  { name: 'Brake', category: 'Car Brake Service', message: 'Car Brake Service chahiye', icon: '/icon-brake-service.webp' },
+  { name: 'Engine', category: 'Car Engine Service', message: 'Car Engine Service chahiye', icon: '/icon-engine-service.webp' },
+  { name: 'Clutch', category: 'Car Clutch Service', message: 'Car Clutch Service chahiye', icon: '/icon-clutch-service.webp' },
+  { name: 'Tyre & Wheel', category: 'Car Tyre & Wheel Care', message: 'Car Tyre & Wheel Care chahiye', icon: '/icon-tyre-service.webp' },
+  { name: 'Detailing', category: 'Car Detailing Service', message: 'Car Detailing Service chahiye', icon: '/icon-detailing-service.webp' },
+  { name: 'Denting', category: 'Car Denting & Painting', message: 'Car Denting & Painting chahiye', icon: '/icon-denting-service.webp' },
+  { name: 'Electrical', category: 'Electrical & Battery Service', message: 'Electrical & Battery Service chahiye', icon: '/icon-electrical-service.webp' },
+  { name: 'Suspension', category: 'Suspension & Steering Service', message: 'Suspension & Steering Service chahiye', icon: '/icon-suspension-service.webp' },
 ] as const;
 
 export function assistantMessageShowsServiceList(text: string): boolean {

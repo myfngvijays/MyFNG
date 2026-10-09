@@ -107,6 +107,21 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // Old PNG/JPG URLs after the public image WebP conversion.
+      // Root service-icon PNGs stay in place for already-shipped app builds.
+      { source: '/media/workshop-covers/:file.png', destination: '/media/workshop-covers/:file.webp', permanent: true },
+      { source: '/media/banners/:file.png', destination: '/media/banners/:file.webp', permanent: true },
+      { source: '/media/banners/:file.jpg', destination: '/media/banners/:file.webp', permanent: true },
+      { source: '/media/blog-covers/:file.png', destination: '/media/blog-covers/:file.webp', permanent: true },
+      { source: '/media/ganesh-chaturthi-decor.png', destination: '/media/ganesh-chaturthi-decor.webp', permanent: true },
+      { source: '/media/ganesh-chaturthi-festive-decor.png', destination: '/media/ganesh-chaturthi-festive-decor.webp', permanent: true },
+      { source: '/media/ganpati-popup.png', destination: '/media/ganpati-popup.webp', permanent: true },
+      { source: '/media/navratri-durga-popup.png', destination: '/media/navratri-durga-popup.webp', permanent: true },
+      { source: '/icons-sm/:file.png', destination: '/icons-sm/:file.webp', permanent: true },
+      { source: '/myfng-app-screenshot.png', destination: '/myfng-app-screenshot.webp', permanent: true },
+      { source: '/MyFNG_Car_Electrical_Battery_Service.png', destination: '/MyFNG_Car_Electrical_Battery_Service.webp', permanent: true },
+      { source: '/MyFNG_Car_Suspension_Steering_Service.png', destination: '/MyFNG_Car_Suspension_Steering_Service.webp', permanent: true },
+
       // Canonical marketing URLs (requested mappings)
       { source: '/services', destination: '/car-services', permanent: true },
       { source: '/car-service-in/:city', destination: '/car-service-in-:city', permanent: true },

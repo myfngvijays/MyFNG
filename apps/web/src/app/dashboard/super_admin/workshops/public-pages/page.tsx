@@ -37,7 +37,7 @@ export default function WorkshopPublicPagesPage() {
     workshop_id: '',
     slug: '',
     profile_image: '',
-    cover_image: '/media/workshop-covers/default.png',
+    cover_image: '/media/workshop-covers/default.webp',
     short_description: '',
     full_description: '',
     services_offered: [] as string[],
@@ -343,7 +343,7 @@ export default function WorkshopPublicPagesPage() {
     return allMatches[0];
   };
 
-  const DEFAULT_COVER_IMAGE = '/media/workshop-covers/default.png';
+  const DEFAULT_COVER_IMAGE = '/media/workshop-covers/default.webp';
   const DEFAULT_GALLERY_IMAGES = [
     'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=800&h=600&fit=crop',
     'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=600&fit=crop',

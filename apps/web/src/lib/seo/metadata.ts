@@ -3,7 +3,7 @@ import { toSiteMediaUrl } from '@/lib/media/public-url';
 
 export const SITE_URL = 'https://myfng.in';
 export const SITE_NAME = 'MYFNG - Car Service & Repairs in India';
-export const DEFAULT_OG_IMAGE = `${SITE_URL}/app-download-popup.png`;
+export const DEFAULT_OG_IMAGE = `${SITE_URL}/myfng-app-ui.webp`;
 
 export type PageSeoConfig = {
   title: string;

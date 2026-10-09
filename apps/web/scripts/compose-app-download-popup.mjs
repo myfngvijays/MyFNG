@@ -5,14 +5,14 @@ import puppeteer from 'puppeteer';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '../public');
-const phoneSrc = path.join(publicDir, 'myfng-app-screenshot.png');
-const ganeshSrc = path.join(publicDir, 'media/ganpati-popup.png');
+const phoneSrc = path.join(publicDir, 'myfng-app-screenshot.webp');
+const ganeshSrc = path.join(publicDir, 'media/ganpati-popup.webp');
 const outPath = path.join(publicDir, 'app-download-popup.png');
 
 const toDataUri = (filePath) => {
   const buf = fs.readFileSync(filePath);
   const ext = path.extname(filePath).slice(1).toLowerCase();
-  const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+  const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
   return `data:${mime};base64,${buf.toString('base64')}`;
 };
 
