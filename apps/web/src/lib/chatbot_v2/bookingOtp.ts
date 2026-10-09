@@ -1,14 +1,12 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendWhatsAppOtpMessage } from '@/lib/services/whatsappOtpSend';
 import {
   ensureWebsiteOtpVerifiedLead,
   resolveOtpLeadOptionsFromSource,
 } from '@/lib/service-lead-reopen';
+import { issueSmsOtp, SMS_OTP_EXPIRY_MINUTES } from '@/lib/sms/issueSmsOtp';
 import type { SessionData } from './session';
 
-const WINDOW_MINUTES = 15;
-const MAX_ATTEMPTS = 5;
-const OTP_EXPIRY_MINUTES = 10;
+const OTP_EXPIRY_MINUTES = SMS_OTP_EXPIRY_MINUTES;
 export const BOOKING_OTP_DRY_RUN_CODE = '000000';
 
 export function normalizeBookingPhone(input: unknown): string {
@@ -19,26 +17,11 @@ export function normalizeBookingOtp(input: unknown): string {
   return String(input || '').replace(/\D/g, '').slice(0, 6);
 }
 
-function generateOtp(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
 function isNotExpired(expiresAt: unknown): boolean {
   if (!expiresAt || typeof expiresAt !== 'string') return false;
   const expiryMs = Date.parse(expiresAt);
   if (!Number.isFinite(expiryMs)) return false;
   return expiryMs > Date.now();
-}
-
-async function checkRateLimit(supabaseAdmin: any, phone: string) {
-  const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
-  const { data } = await supabaseAdmin
-    .from('otp_requests')
-    .select('id')
-    .eq('phone', phone)
-    .eq('channel', 'WHATSAPP')
-    .gte('created_at', windowStart);
-  return (data || []).length < MAX_ATTEMPTS;
 }
 
 export function isPhoneVerifiedInSession(session: SessionData | undefined, phone: string): boolean {
@@ -78,57 +61,16 @@ export async function sendBookingOtpForPhone(
     return { success: false, error: 'Server configuration error' };
   }
 
-  const allowed = await checkRateLimit(supabaseAdmin, normalized);
-  if (!allowed) {
-    return { success: false, error: 'Too many OTP requests. Try later.' };
-  }
-
-  const otpCode = generateOtp();
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString();
   const baseMetadata = metadata && typeof metadata === 'object' ? metadata : {};
-  const rowMetadata = {
-    ...baseMetadata,
-    otp_code: otpCode,
-    expires_at: expiresAt,
-  };
-
-  const { data: inserted, error: insertError } = await supabaseAdmin
-    .from('otp_requests')
-    .insert({
-      phone: normalized,
-      provider: 'WHATSAPP',
-      status: 'SENT',
-      channel: 'WHATSAPP',
-      metadata: rowMetadata,
-    })
-    .select('id')
-    .single();
-
-  if (insertError) {
-    return { success: false, error: 'Failed to create OTP request' };
-  }
-
-  const waResult = await sendWhatsAppOtpMessage(normalized, otpCode);
-
-  if (!waResult.success) {
-    await supabaseAdmin
-      .from('otp_requests')
-      .update({
-        status: 'FAILED',
-        metadata: {
-          ...rowMetadata,
-          whatsapp_error: waResult.error || 'Unknown WhatsApp error',
-        },
-      })
-      .eq('id', inserted?.id);
-
-    return { success: false, error: waResult.error || 'Failed to send OTP on WhatsApp' };
+  const result = await issueSmsOtp(supabaseAdmin, normalized, { metadata: baseMetadata });
+  if (!result.ok) {
+    return { success: false, error: result.error };
   }
 
   return {
     success: true,
-    message: 'OTP sent on WhatsApp',
-    expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
+    message: 'OTP sent by SMS',
+    expiresInSeconds: result.expiresInSeconds,
   };
 }
 
@@ -166,7 +108,7 @@ export async function verifyBookingOtpForPhone(
     .from('otp_requests')
     .select('id, metadata, status, created_at')
     .eq('phone', normalizedPhone)
-    .eq('channel', 'WHATSAPP')
+    .in('channel', ['SMS', 'WHATSAPP'])
     .eq('status', 'SENT')
     .order('created_at', { ascending: false })
     .limit(25);

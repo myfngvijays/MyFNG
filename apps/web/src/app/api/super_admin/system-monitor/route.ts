@@ -3625,8 +3625,8 @@ async function checkDltSms(): Promise<HealthCheck> {
     const [entityRes, headersRes, templatesRes, tmRes] = await Promise.all([
       client.from('dlt_sms_entity').select('pe_id, entity_status').eq('config_key', 'default').maybeSingle(),
       client.from('dlt_sms_headers').select('id, status', { count: 'exact' }),
-      client.from('dlt_sms_templates').select('id, kind, status, dlt_template_id, provider_template_id'),
-      client.from('dlt_sms_telemarketers').select('id, is_primary, is_active, api_key'),
+      client.from('dlt_sms_templates').select('id, kind, status, event_key, dlt_template_id, provider_template_id'),
+      client.from('dlt_sms_telemarketers').select('id, is_primary, is_active, api_url, api_key'),
     ]);
     const responseTime = Date.now() - start;
     const err = entityRes.error || headersRes.error || templatesRes.error || tmRes.error;
@@ -3664,22 +3664,30 @@ async function checkDltSms(): Promise<HealthCheck> {
     const primaryTm = tms.some(
       (t: any) => t.is_primary && t.is_active && String(t.api_url || t.api_key || '').trim(),
     );
+    const otpTemplateReady = templates.some(
+      (t: any) =>
+        t.kind === 'CONTENT' &&
+        t.status === 'APPROVED' &&
+        t.event_key === 'OTP_VERIFICATION' &&
+        String(t.dlt_template_id || '').trim(),
+    );
     const peOk = Boolean(entity?.pe_id) && entity?.entity_status === 'APPROVED';
 
     let status: ServiceStatus = 'healthy';
     let message = 'DLT registry ready to send';
-    let reason = 'PE, approved header, content template, and primary gateway are configured.';
-    if (!peOk || approvedHeaders === 0 || approvedContent === 0 || !primaryTm) {
+    let reason = 'PE, approved header, OTP template, and WhySMS gateway are configured.';
+    if (!peOk || approvedHeaders === 0 || approvedContent === 0 || !primaryTm || !otpTemplateReady) {
       status = 'degraded';
       const missingBits = [
         !peOk ? 'approved PE ID' : '',
         approvedHeaders === 0 ? 'approved header' : '',
         approvedContent === 0 ? 'approved content template + DLT ID' : '',
-        !primaryTm ? 'own operator HTTP pipe' : '',
+        !otpTemplateReady ? 'approved OTP_VERIFICATION template' : '',
+        !primaryTm ? 'WhySMS HTTP pipe' : '',
       ].filter(Boolean);
       message = `Setup incomplete: ${missingBits.join(', ')}`;
       reason =
-        'Finish Jio TrueConnect header/template approval, paste DLT IDs, and connect your own operator HTTP URL (no MSG91).';
+        'Approve the OTP_VERIFICATION template, paste its DLT ID, and keep the WhySMS gateway URL and key on the primary telemarketer.';
     }
 
     return {
@@ -3700,6 +3708,7 @@ async function checkDltSms(): Promise<HealthCheck> {
         entityStatus: entity?.entity_status || 'NOT_REGISTERED',
         approvedHeaders,
         approvedContent,
+        otpTemplateReady,
         telemarketers: tms.length,
         hasPrimaryGateway: primaryTm,
       },

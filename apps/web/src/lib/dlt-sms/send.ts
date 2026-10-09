@@ -57,6 +57,7 @@ async function sendOwnOperatorHttp(opts: {
   phone: string;
   message: string;
   vars: Record<string, string>;
+  skipDlr?: boolean;
 }): Promise<{ ok: boolean; id: string; error: string }> {
   const urlTpl = opts.apiUrl.trim();
   if (!urlTpl) {
@@ -129,9 +130,75 @@ async function sendOwnOperatorHttp(opts: {
   const id = String(
     json?.id || json?.messageId || json?.message_id || json?.txn_id || json?.request_id || json?.job_id || plain.slice(0, 80),
   );
-  const dlrError = await whysmsDeliveryError(urlTpl, opts.apiKey, plain);
-  if (dlrError) return { ok: false, id, error: dlrError };
+  if (!opts.skipDlr) {
+    const dlrError = await whysmsDeliveryError(urlTpl, opts.apiKey, plain);
+    if (dlrError) return { ok: false, id, error: dlrError };
+  }
   return { ok: true, id, error: '' };
+}
+
+const OTP_MESSAGE =
+  '{otp} is the One Time Password (OTP) to log in to your MYFNG account. Your OTP will expire in 5 minutes. Do not share this OTP with anyone. - My FNG Autocare Private Limited';
+
+const CUSTOMER_OTP_SEND_ERROR = 'Unable to send OTP right now. Please try again in a few minutes.';
+
+function logOtpSendFailure(phone: string, raw: string) {
+  console.error('[sms-otp] send failed', {
+    phone: String(phone || '').slice(-4),
+    error: String(raw || '').slice(0, 400),
+  });
+}
+
+/** Login / booking OTP over the WhySMS DLT template. Contacts stay 10-digit. */
+export async function sendWhySmsOtp(
+  phone: string,
+  otp: string,
+): Promise<{ ok: boolean; error?: string; detail?: string; id?: string }> {
+  if (!isValidInPhone(phone)) return { ok: false, error: 'Please enter a valid 10-digit mobile number' };
+  if (!/^\d{6}$/.test(otp)) return { ok: false, error: CUSTOMER_OTP_SEND_ERROR };
+
+  const tm = await getPrimaryTelemarketerRaw();
+  if (!tm?.api_url || !tm?.api_key) {
+    logOtpSendFailure(phone, 'SMS gateway is not configured');
+    return { ok: false, error: CUSTOMER_OTP_SEND_ERROR };
+  }
+
+  const template = await getApprovedTemplateByEvent('OTP_VERIFICATION');
+  const message = template?.template_text
+    ? renderTemplate(template.template_text, { number: otp, otp })
+    : renderTemplate(OTP_MESSAGE, { otp, number: otp });
+  const dltTemplateId = String(template?.dlt_template_id || '1277179032166435884').trim();
+  const header = String(tm.default_header || 'MMYFNG').trim().toUpperCase();
+  const peId = String(process.env.WHYSMS_PE_ID || '1201178781090892680').trim();
+  const apiUrl = String(tm.api_url).replace(/contacts=\{\{mobile\}\}/g, 'contacts={{phone}}');
+  const extra =
+    tm.extra_config && typeof tm.extra_config === 'object'
+      ? { ...tm.extra_config, auth_type: 'query', http_method: 'GET' }
+      : { auth_type: 'query', http_method: 'GET' };
+
+  try {
+    const result = await sendOwnOperatorHttp({
+      apiUrl,
+      apiKey: String(tm.api_key),
+      extra,
+      peId,
+      header,
+      dltTemplateId,
+      phone,
+      message,
+      vars: { otp, number: otp },
+      skipDlr: true,
+    });
+    if (!result.ok) {
+      logOtpSendFailure(phone, result.error);
+      return { ok: false, error: CUSTOMER_OTP_SEND_ERROR, detail: result.error };
+    }
+    return { ok: true, id: result.id };
+  } catch (e: any) {
+    const detail = e?.message || 'Failed to send SMS OTP';
+    logOtpSendFailure(phone, detail);
+    return { ok: false, error: CUSTOMER_OTP_SEND_ERROR, detail };
+  }
 }
 
 async function whysmsDeliveryError(apiUrl: string, apiKey: string, shootText: string): Promise<string> {

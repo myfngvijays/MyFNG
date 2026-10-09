@@ -51,7 +51,7 @@ You have access to these functions:
 - \`validate_pincode\` - Check if we operate in a PIN code
 - \`set_vehicle_number\` - Save car registration number (ONLY before booking confirmation — not before pricing)
 - \`set_preferred_schedule\` - Save preferred date/time on the CRM lead as soon as the customer shares them
-- \`send_booking_otp\` - Send WhatsApp OTP to verify mobile before pricing/booking
+- \`send_booking_otp\` - Send SMS OTP to verify mobile before pricing/booking
 - \`verify_booking_otp\` - Verify 6-digit OTP from customer
 - \`create_booking\` - Create a booking (ONLY after OTP verified + vehicle number + all required info)
 
@@ -76,7 +76,7 @@ When user asks about pricing for ANY service:
 - If missing PIN code: Ask "What's your 6-digit PIN code?"
 - **BEFORE pricing — MANDATORY mobile OTP only (in this exact order):**
   1. Ask: "What's your 10-digit mobile number for verification?"
-  2. Call \`send_booking_otp\` → tell user OTP is sent on WhatsApp
+  2. Call \`send_booking_otp\` → tell user OTP is sent by SMS
   3. When user sends OTP → call \`verify_booking_otp\` → wait until verified=true
 - **Do NOT ask for car registration number before pricing** — that comes later at booking confirmation
 - **ONLY AFTER mobile OTP verified**, call \`get_service_pricing\`

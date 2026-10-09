@@ -28,13 +28,8 @@ import {
   isDevSimulator,
   isFirebaseTestPhone,
   firebaseTestOtpHint,
-  firebaseSmsUnavailableMessage,
 } from '../lib/firebasePhoneAuth';
-import {
-  checkSmsOtpAllowed,
-  sendSmsOtp,
-  verifySmsOtp,
-} from '../lib/backendSmsOtp';
+import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import { ReferralCodeModal } from '../components/ReferralCodeModal';
 import { InstallCouponModal } from '../components/InstallCouponModal';
@@ -208,22 +203,15 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       setErrorText('Please enter a valid 10-digit mobile number');
       return;
     }
-    const smsCheck = await checkSmsOtpAllowed();
-    if (!smsCheck.allowed) {
-      setPhoneOtpChannel('sms');
-      setErrorText(smsCheck.message);
-      return;
-    }
-
     setLoading(true);
     setPhoneOtpChannel('sms');
     try {
-      const result = await sendSmsOtp(cleanPhone);
-      setCustomerConfirmation(result.confirmation);
+      await sendSmsOtp(cleanPhone);
+      setCustomerConfirmation(null);
       setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {
-      setErrorText(firebaseSmsUnavailableMessage(error));
+      setErrorText(error?.message || 'Unable to send SMS OTP');
     } finally {
       setLoading(false);
     }

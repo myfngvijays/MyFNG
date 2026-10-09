@@ -1002,7 +1002,7 @@ export default function BookServicePage() {
       setOtpAnim('idle');
       otpVerifyLock.current = false;
       setOtpTimer(30);
-      toast.success('OTP sent on WhatsApp');
+      toast.success('OTP sent by SMS');
       setTimeout(() => otpInputRefs.current[0]?.focus(), 60);
     } catch (error: any) {
       const message = error?.message || 'Unable to send OTP';
@@ -1138,7 +1138,7 @@ export default function BookServicePage() {
         return;
       }
       if (!otpVerified) {
-        toast.error('Please verify your mobile number with WhatsApp OTP');
+        toast.error('Please verify your mobile number with the SMS OTP');
         return;
       }
     }
@@ -2272,7 +2272,7 @@ export default function BookServicePage() {
                   </div>
                 )}
 
-                {/* Step 2: Phone + WhatsApp OTP */}
+                {/* Step 2: Phone + SMS OTP */}
                 {currentStep === 1 && (
                   <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
                     {/* Phone - Required */}
@@ -2344,10 +2344,10 @@ export default function BookServicePage() {
                         type="button"
                         onClick={() => void sendOtpToWhatsApp()}
                         disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading || !requiredConsentsGranted(bookingConsent, ['service'])}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-primary text-white font-semibold hover:bg-brand-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {otpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                        Send OTP via WhatsApp
+                        Send OTP via SMS
                       </button>
                     ) : (
                       <div className="space-y-3 rounded-2xl border-2 border-green-200 bg-green-50/50 p-4 sm:p-5">

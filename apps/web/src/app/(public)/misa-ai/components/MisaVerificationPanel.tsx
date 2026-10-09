@@ -141,7 +141,7 @@ export function MisaVerificationPanel({ chatContext, onContextPatch, onVerified 
         {!phoneVerified ? (
           <div className="space-y-3">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-600">Mobile number (WhatsApp OTP)</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">Mobile number (SMS OTP)</label>
               <div className="flex gap-2">
                 <input
                   type="tel"
@@ -180,7 +180,7 @@ export function MisaVerificationPanel({ chatContext, onContextPatch, onVerified 
 
             {otpSent && (
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-600">Enter 6-digit OTP from WhatsApp</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-600">Enter 6-digit OTP from SMS</label>
                 <div className="flex gap-2">
                   {Array.from({ length: 6 }).map((_, idx) => (
                     <input

@@ -14,13 +14,8 @@ import {
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
-import {
-  shouldSkipFirebaseSmsOnSimulator,
-  isDevSimulator,
-  isFirebaseIosClientError,
-  firebaseTestOtpHint,
-} from '../lib/firebasePhoneAuth';
-import { checkSmsOtpAllowed, sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { isDevSimulator } from '../lib/firebasePhoneAuth';
+import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { trackEvent } from '../lib/trackEvent';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import {
@@ -109,49 +104,17 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
     }
-    const smsCheck = await checkSmsOtpAllowed();
-    if (!smsCheck.allowed) {
-      Alert.alert('SMS OTP Unavailable', smsCheck.message);
-      return;
-    }
-
-    if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {
-      Alert.alert(
-        'Simulator SMS unavailable',
-        'iOS Simulator par real SMS nahi aata. WhatsApp OTP bhej rahe hain.',
-        [{ text: 'OK', onPress: () => handleSendWhatsAppOtp() }],
-      );
-      return;
-    }
-
     setLoading(true);
     setOtpChannel('sms');
     try {
-      const result = await sendSmsOtp(cleanPhone);
-      setConfirmation(result.confirmation);
+      await sendSmsOtp(cleanPhone);
+      setConfirmation(null);
       setStep('otp');
       trackEvent('otp_sent', { method: 'sms' });
-      const testHint = firebaseTestOtpHint(cleanPhone);
-      Alert.alert('OTP Sent', testHint || `OTP sent to +91${cleanPhone}`);
+      Alert.alert('OTP Sent', `OTP sent by SMS to +91${cleanPhone}`);
     } catch (error: any) {
-      if (__DEV__ && isDevSimulator() && isFirebaseIosClientError(error)) {
-        await handleSendWhatsAppOtp();
-        return;
-      }
       trackEvent('otp_send_failed');
-      const code = error?.code as string | undefined;
-      if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
-        Alert.alert(
-          'SMS Unavailable',
-          'SMS verification is unavailable on this device. Use WhatsApp OTP instead.',
-          [
-            { text: 'Use WhatsApp', onPress: () => handleSendWhatsAppOtp() },
-            { text: 'Cancel', style: 'cancel' },
-          ],
-        );
-      } else {
-        Alert.alert('Send OTP Failed', error?.message || 'Unable to send OTP. Please try again.');
-      }
+      Alert.alert('Send OTP Failed', error?.message || 'Unable to send OTP. Please try again.');
     } finally {
       setLoading(false);
     }

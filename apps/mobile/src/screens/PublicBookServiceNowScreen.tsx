@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { reverseGeocodeCoords } from '../lib/reverseGeocode';
@@ -92,13 +92,7 @@ import {
   markWelcomeCreditedPopupQueued,
   markWelcomeCreditedPopupShown,
 } from '../lib/welcomeBonus';
-import {
-  shouldSkipFirebaseSmsOnSimulator,
-  isDevSimulator,
-  isFirebaseIosClientError,
-  firebaseTestOtpHint,
-} from '../lib/firebasePhoneAuth';
-import { checkSmsOtpAllowed, sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { countLiveBookingCart, notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import { completeBookingDraftOnServer, syncBookingDraftToServer } from '../lib/bookingDraftSync';
@@ -2464,53 +2458,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
     }
-    const smsCheck = await checkSmsOtpAllowed();
-    if (!smsCheck.allowed) {
-      Alert.alert('SMS OTP Unavailable', smsCheck.message);
-      return;
-    }
-    if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {
-      Alert.alert(
-        'Simulator SMS unavailable',
-        'iOS Simulator par real SMS nahi aata. WhatsApp OTP bhej rahe hain.',
-        [{ text: 'OK', onPress: () => handleSendWhatsAppOtp() }],
-      );
-      return;
-    }
     setOtpLoading(true);
     setOtpChannel('sms');
     try {
-      const result = await sendSmsOtp(cleanPhone);
-      setOtpConfirmation(result.confirmation);
+      await sendSmsOtp(cleanPhone);
+      setOtpConfirmation(null);
       setOtpSent(true);
-      const testHint = firebaseTestOtpHint(cleanPhone);
-      if (testHint) {
-        Alert.alert('Test OTP', testHint);
-      }
     } catch (error: any) {
-      if (__DEV__ && isDevSimulator() && isFirebaseIosClientError(error)) {
-        Alert.alert(
-          'Simulator SMS unavailable',
-          'iOS Simulator par real SMS nahi aata. WhatsApp OTP bhej rahe hain.',
-          [{ text: 'OK', onPress: () => handleSendWhatsAppOtp() }],
-        );
-        return;
-      }
-      const code = error?.code as string | undefined;
-      if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
-        Alert.alert(
-          'SMS Unavailable',
-          'SMS verification is not available on this device. Please use WhatsApp OTP instead.',
-          [
-            { text: 'Use WhatsApp', onPress: () => handleSendWhatsAppOtp() },
-            { text: 'Cancel', style: 'cancel' },
-          ],
-        );
-      } else if (code === 'auth/network-request-failed') {
-        Alert.alert('Network Error', 'Please check your internet connection and try again.');
-      } else {
-        Alert.alert('OTP Failed', error?.message || 'Unable to send SMS OTP.');
-      }
+      Alert.alert('OTP Failed', error?.message || 'Unable to send SMS OTP.');
     } finally {
       setOtpLoading(false);
     }

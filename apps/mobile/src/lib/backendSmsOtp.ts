@@ -1,15 +1,12 @@
-import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 import { ENV } from '../config/environment';
-import { checkSmsOtpAllowed } from './mobileAuthConfig';
-import { sendFirebaseSmsOtp } from './firebasePhoneAuth';
 import type { AuthVerifyResponse } from './welcomeBonus';
 
 export { checkSmsOtpAllowed } from './mobileAuthConfig';
 
 export type SmsOtpSendResult = {
-  mode: 'firebase';
-  confirmation: FirebaseAuthTypes.ConfirmationResult;
+  mode: 'whysms';
+  confirmation: null;
 };
 
 const mobileHeaders = {
@@ -44,38 +41,38 @@ async function parseJsonResponse(res: Response): Promise<Record<string, unknown>
   return (await res.json().catch(() => ({}))) as Record<string, unknown>;
 }
 
-/** Firebase Phone Auth only — same as original app login (no server SMS / MSG91). */
+/** Server SMS OTP via WhySMS. Login no longer uses Firebase phone auth. */
 export async function sendSmsOtp(cleanPhone: string): Promise<SmsOtpSendResult> {
-  const smsCheck = await checkSmsOtpAllowed();
-  if (!smsCheck.allowed) {
-    throw new Error(smsCheck.message);
+  const res = await fetch(`${ENV.API_URL}/api/customer/auth/send-otp`, {
+    method: 'POST',
+    headers: mobileHeaders,
+    body: JSON.stringify({ phone: cleanPhone, metadata: { source: 'app_login' } }),
+  });
+  const json = await parseJsonResponse(res);
+  if (!res.ok) {
+    throw new Error(String(json?.error || `Unable to send SMS OTP (HTTP ${res.status})`));
   }
-  const confirmation = await sendFirebaseSmsOtp(cleanPhone);
-  return { mode: 'firebase', confirmation };
+  return { mode: 'whysms', confirmation: null };
 }
 
 export async function verifySmsOtp(
   cleanPhone: string,
   otp: string,
-  confirmation: FirebaseAuthTypes.ConfirmationResult | null,
+  _confirmation?: unknown,
 ): Promise<AuthVerifyResponse> {
-  if (!confirmation) {
-    throw new Error('Session expired. Please request OTP again.');
-  }
-
-  const userCredential = await confirmation.confirm(otp.trim());
-  if (!userCredential?.user) throw new Error('OTP verification failed');
-  const idToken = await userCredential.user.getIdToken();
-
-  const res = await fetch(`${ENV.API_URL}/api/customer/auth/verify-otp`, {
+  const res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
     method: 'POST',
     headers: mobileHeaders,
-    body: JSON.stringify({ idToken }),
+    body: JSON.stringify({
+      phone: cleanPhone,
+      otp,
+      channel: 'SMS',
+      platform: Platform.OS,
+    }),
   });
   const json = await parseJsonResponse(res);
   if (!res.ok) {
     throw new Error(String(json?.error || `Verification failed (HTTP ${res.status})`));
   }
-
   return parseAuthVerifyResponse(json);
 }

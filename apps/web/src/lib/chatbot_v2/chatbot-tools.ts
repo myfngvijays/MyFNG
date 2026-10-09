@@ -675,7 +675,7 @@ export async function executeToolCall(
 
         return {
           success: true,
-          message: result.message || 'OTP sent on WhatsApp. Ask customer for the 6-digit code.',
+          message: result.message || 'OTP sent by SMS. Ask customer for the 6-digit code.',
           expires_in_seconds: result.expiresInSeconds || 600,
           dry_run: Boolean(result.dryRun),
         };
