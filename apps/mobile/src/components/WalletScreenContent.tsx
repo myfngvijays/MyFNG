@@ -56,6 +56,17 @@ function getTxMeta(tx: TxItem): TxMeta {
   const src = String(tx.source || '').toUpperCase();
   const metaLabel = String(tx.metadata?.label || '');
 
+  if (
+    src === 'BOOKING_CANCEL_REFUND' ||
+    metaLabel.toLowerCase().includes('cancelled refund')
+  ) {
+    return {
+      icon: 'arrow-down-circle',
+      color: '#059669',
+      bg: '#ECFDF5',
+      label: metaLabel || 'Booking cancelled refunded',
+    };
+  }
   if (src.includes('WELCOME') || metaLabel.toLowerCase().includes('welcome')) {
     return { icon: 'gift', color: '#2563EB', bg: '#EFF6FF', label: 'Welcome Bonus Credited' };
   }

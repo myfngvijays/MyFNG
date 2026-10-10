@@ -43,7 +43,7 @@ export default function CustomerWalletPage() {
             {(data.transactions || []).map((tx: any) => (
               <div key={tx.id} className="flex items-center justify-between border-b pb-2">
                 <div>
-                  <div className="font-medium">{tx.source}</div>
+                  <div className="font-medium">{tx.metadata?.label || tx.source}</div>
                   <div className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleString()}</div>
                 </div>
                 <div className={tx.transaction_type === 'CREDIT' ? 'text-green-600' : 'text-red-600'}>

@@ -7,6 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { refundWalletOnBookingCancel } from '@/lib/booking-wallet-refund';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,10 +105,18 @@ export async function POST(
       metadata: { cancellation_reason },
     });
 
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const walletRefund = supabaseAdmin
+      ? await refundWalletOnBookingCancel(supabaseAdmin, leadId, { actorUserId: user.id })
+      : null;
+
     return NextResponse.json({
       success: true,
       lead: updatedLead,
-      message: 'Lead cancelled successfully',
+      wallet_refund: walletRefund,
+      message: walletRefund?.refunded
+        ? 'Lead cancelled. Wallet amount refunded.'
+        : 'Lead cancelled successfully',
     }, { status: 200 });
 
   } catch (error: any) {

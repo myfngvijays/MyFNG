@@ -2577,7 +2577,7 @@ function SuperAdminBookingsPage() {
     e?: React.SyntheticEvent,
   ) => {
     e?.stopPropagation();
-    if (!lead?.id || String(lead.status || 'NEW') === newStatus) return;
+    if (!lead?.id || (String(lead.status || 'NEW') === newStatus && newStatus !== 'CANCELLED')) return;
 
     setStatusUpdatingId(String(lead.id));
     try {
@@ -2603,7 +2603,28 @@ function SuperAdminBookingsPage() {
         setDetailItem(updatedLead);
       }
 
-      toast.success(`Status updated to ${newStatus}`);
+      const refund = json?.wallet_refund;
+      if (newStatus === 'CANCELLED' && refund?.refunded && !refund.duplicate) {
+        const amount = Number(refund.amount || 0);
+        toast.success(
+          amount > 0
+            ? `Booking cancelled. ₹${Math.round(amount).toLocaleString('en-IN')} refunded to wallet`
+            : 'Booking cancelled. Wallet refunded',
+        );
+      } else if (newStatus === 'CANCELLED' && refund?.duplicate) {
+        toast.success('Status updated to CANCELLED. Wallet was already refunded');
+      } else if (
+        newStatus === 'CANCELLED' &&
+        refund &&
+        refund.refunded === false &&
+        refund.reason &&
+        refund.reason !== 'no_wallet_used'
+      ) {
+        toast.success('Status updated to CANCELLED');
+        toast.error(refund.reason || 'Wallet refund failed');
+      } else {
+        toast.success(`Status updated to ${newStatus}`);
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Status update failed');
     } finally {

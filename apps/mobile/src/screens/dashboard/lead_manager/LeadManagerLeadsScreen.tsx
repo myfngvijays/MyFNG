@@ -207,20 +207,22 @@ export default function LeadManagerLeadsScreen({ navigation, route }: any) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase
-                .from('service_leads')
-                .update({
-                  status: 'CANCELLED',
-                  deleted_at: new Date().toISOString()
-                })
-                .eq('id', lead.id);
-
-              if (!error) {
-                Alert.alert('Cancelled', 'Lead has been cancelled');
-                fetchLeads();
-              }
-            } catch (error) {
-              Alert.alert('Error', 'Failed to cancel lead');
+              const json = await apiFetch<any>(`/api/super_admin/leads/${lead.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'CANCELLED' }),
+              });
+              const refund = json?.wallet_refund;
+              const amount = Number(refund?.amount || 0);
+              Alert.alert(
+                'Cancelled',
+                refund?.refunded && amount > 0
+                  ? `Booking cancelled. ₹${Math.round(amount).toLocaleString('en-IN')} refunded to wallet.`
+                  : 'Lead has been cancelled',
+              );
+              fetchLeads();
+            } catch (error: any) {
+              Alert.alert('Error', error?.message || 'Failed to cancel lead');
             }
           }
         }

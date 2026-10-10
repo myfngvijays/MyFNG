@@ -431,6 +431,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [otpVerified, setOtpVerified] = useState(false);
   const [otpAnim, setOtpAnim] = useState<OtpAnimStatus>('idle');
   const otpVerifyLock = useRef(false);
+  const autoOtpPhoneRef = useRef('');
   const [otpLoading, setOtpLoading] = useState(false);
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
@@ -2452,11 +2453,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
   };
 
-  const handleSendSmsOtp = async () => {
+  const handleSendSmsOtp = async (opts?: { silent?: boolean }) => {
     const cleanPhone = form.customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
-      return;
+      if (!opts?.silent) Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return false;
     }
     setOtpLoading(true);
     setOtpChannel('sms');
@@ -2464,12 +2465,27 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       await sendSmsOtp(cleanPhone);
       setOtpConfirmation(null);
       setOtpSent(true);
+      return true;
     } catch (error: any) {
-      Alert.alert('OTP Failed', error?.message || 'Unable to send SMS OTP.');
+      if (!opts?.silent) Alert.alert('OTP Failed', error?.message || 'Unable to send SMS OTP.');
+      return false;
     } finally {
       setOtpLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isLoggedIn || otpSent || otpVerified || otpLoading || step !== 1) return;
+    const cleanPhone = form.customerPhone.replace(/\D/g, '');
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) return;
+    if (autoOtpPhoneRef.current === cleanPhone) return;
+    autoOtpPhoneRef.current = cleanPhone;
+    void (async () => {
+      const smsSent = await handleSendSmsOtp({ silent: true });
+      if (smsSent) return;
+      await handleSendWhatsAppOtp();
+    })();
+  }, [form.customerPhone, isLoggedIn, otpSent, otpVerified, otpLoading, step]);
 
   const handleSendOtp = handleSendWhatsAppOtp;
 

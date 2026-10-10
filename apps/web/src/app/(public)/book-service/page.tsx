@@ -24,6 +24,18 @@ import ConsentCheckboxes, {
 import ChecklistPointLabel from '@/components/booking/ChecklistPointLabel';
 import AnimatedOtpBoxes, { type OtpAnimStatus } from '@/components/auth/AnimatedOtpBoxes';
 
+/** Fires even when WhatsApp/SMS autofill verifies OTP without a button click. */
+function pushBookingOtpVerified() {
+  if (typeof window === 'undefined') return;
+  const w = window as Window & { dataLayer?: Array<Record<string, unknown>> };
+  w.dataLayer = w.dataLayer || [];
+  w.dataLayer.push({
+    event: 'booking_otp_verified',
+    booking_step: 'otp',
+    page_path: window.location.pathname,
+  });
+}
+
 interface BookingFormData {
   city: any | null;
   carModel: any | null;
@@ -138,7 +150,10 @@ export default function BookServicePage() {
   const [otpTimer, setOtpTimer] = useState(0);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpAnim, setOtpAnim] = useState<OtpAnimStatus>('idle');
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms'>('whatsapp');
   const otpVerifyLock = useRef(false);
+  const autoOtpPhoneRef = useRef('');
+  const latestPhoneRef = useRef('');
   const [bookingConsent, setBookingConsent] = useState<ConsentMap>({ service: true, marketing: false });
   const [consentError, setConsentError] = useState('');
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -962,13 +977,17 @@ export default function BookServicePage() {
 
   const handlePhoneInputChange = (rawValue: string) => {
     const phone = rawValue.replace(/\D/g, '').slice(0, 10);
+    latestPhoneRef.current = phone;
     if (phone !== formData.customerPhone) {
       resetOtpState();
     }
     handleInputChange('customerPhone', phone);
   };
 
-  const sendOtpToWhatsApp = async () => {
+  const sendBookingOtp = async (
+    channel: 'whatsapp' | 'sms',
+    opts?: { fallbackWhatsapp?: boolean },
+  ) => {
     if (!requiredConsentsGranted(bookingConsent, ['service'])) {
       setConsentError('Please tick service delivery consent to continue.');
       toast.error('Please accept service consent to send OTP');
@@ -979,30 +998,39 @@ export default function BookServicePage() {
       toast.error('Please enter a valid Indian mobile number');
       return;
     }
+    if (otpLoading) return;
 
+    const phoneAtSend = formData.customerPhone;
+    latestPhoneRef.current = phoneAtSend;
     setOtpLoading(true);
     setOtpError(null);
+    setOtpChannel(channel);
     try {
       const res = await fetch('/api/booking/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: formData.customerPhone,
+          phone: phoneAtSend,
+          channel: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS',
+          fallbackWhatsapp: channel === 'sms' && opts?.fallbackWhatsapp === true,
           metadata: { source: 'book-service-step2' },
         }),
       });
       const json = await res.json().catch(() => ({}));
+      if (latestPhoneRef.current !== phoneAtSend) return;
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || 'Failed to send OTP');
       }
 
+      const delivered = String(json.channel || '').toUpperCase() === 'WHATSAPP' ? 'whatsapp' : channel;
+      setOtpChannel(delivered);
       setOtpSent(true);
       setOtpVerified(false);
       setOtpCode('');
       setOtpAnim('idle');
       otpVerifyLock.current = false;
       setOtpTimer(30);
-      toast.success('OTP sent by SMS');
+      toast.success(delivered === 'whatsapp' ? 'OTP sent on WhatsApp' : 'OTP sent by SMS');
       setTimeout(() => otpInputRefs.current[0]?.focus(), 60);
     } catch (error: any) {
       const message = error?.message || 'Unable to send OTP';
@@ -1040,6 +1068,7 @@ export default function BookServicePage() {
       setOtpAnim('success');
       setOtpVerified(true);
       setOtpError(null);
+      pushBookingOtpVerified();
       toast.success('Mobile number verified');
       setTimeout(() => {
         setIsAnimating(true);
@@ -1106,6 +1135,16 @@ export default function BookServicePage() {
     return true;
   };
 
+  useEffect(() => {
+    if (currentStep !== 1 || otpSent || otpVerified || otpLoading) return;
+    const phone = formData.customerPhone;
+    if (!isValidIndianMobile(phone)) return;
+    if (!requiredConsentsGranted(bookingConsent, ['service'])) return;
+    if (autoOtpPhoneRef.current === phone) return;
+    autoOtpPhoneRef.current = phone;
+    void sendBookingOtp('sms', { fallbackWhatsapp: true });
+  }, [currentStep, formData.customerPhone, bookingConsent, otpSent, otpVerified, otpLoading]);
+
   const scrollToStepTop = () => {
     if (typeof window === 'undefined') return;
     const top = (formCardRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 84;
@@ -1138,7 +1177,7 @@ export default function BookServicePage() {
         return;
       }
       if (!otpVerified) {
-        toast.error('Please verify your mobile number with the SMS OTP');
+        toast.error('Please verify your mobile number with the OTP');
         return;
       }
     }
@@ -2272,7 +2311,7 @@ export default function BookServicePage() {
                   </div>
                 )}
 
-                {/* Step 2: Phone + SMS OTP */}
+                {/* Step 2: Phone + WhatsApp / SMS OTP */}
                 {currentStep === 1 && (
                   <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
                     {/* Phone - Required */}
@@ -2299,7 +2338,7 @@ export default function BookServicePage() {
                           if (e.key !== 'Enter') return;
                           e.preventDefault();
                           if (!otpSent && isValidIndianMobile(formData.customerPhone)) {
-                            void sendOtpToWhatsApp();
+                            void sendBookingOtp('sms', { fallbackWhatsapp: true });
                             return;
                           }
                           if (otpSent && !otpVerified && otpCode.length === 6) {
@@ -2340,20 +2379,31 @@ export default function BookServicePage() {
                     />
 
                     {!otpSent ? (
-                      <button
-                        type="button"
-                        onClick={() => void sendOtpToWhatsApp()}
-                        disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading || !requiredConsentsGranted(bookingConsent, ['service'])}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-primary text-white font-semibold hover:bg-brand-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {otpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                        Send OTP via SMS
-                      </button>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void sendBookingOtp('whatsapp')}
+                          disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading || !requiredConsentsGranted(bookingConsent, ['service'])}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#25D366] text-white font-semibold hover:bg-[#1ebe5d] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {otpLoading && otpChannel === 'whatsapp' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          WhatsApp OTP
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void sendBookingOtp('sms', { fallbackWhatsapp: true })}
+                          disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading || !requiredConsentsGranted(bookingConsent, ['service'])}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 border-brand-primary text-brand-primary font-semibold hover:bg-brand-primary/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {otpLoading && otpChannel === 'sms' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          SMS OTP
+                        </button>
+                      </div>
                     ) : (
                       <div className="space-y-3 rounded-2xl border-2 border-green-200 bg-green-50/50 p-4 sm:p-5">
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                           <p className="text-sm font-semibold text-green-800">
-                            OTP sent to +91 {formData.customerPhone}
+                            OTP sent via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 {formData.customerPhone}
                           </p>
                           <button
                             type="button"
@@ -2402,12 +2452,25 @@ export default function BookServicePage() {
                           )}
                           <button
                             type="button"
-                            onClick={() => void sendOtpToWhatsApp()}
+                            onClick={() => void sendBookingOtp(otpChannel)}
                             disabled={otpLoading || otpTimer > 0}
                             className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Resend OTP
                             {otpTimer > 0 ? `(${otpTimer}s)` : ''}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void sendBookingOtp(
+                                otpChannel === 'whatsapp' ? 'sms' : 'whatsapp',
+                                otpChannel === 'whatsapp' ? { fallbackWhatsapp: true } : undefined,
+                              )
+                            }
+                            disabled={otpLoading}
+                            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Try {otpChannel === 'whatsapp' ? 'SMS' : 'WhatsApp'} instead
                           </button>
                         </div>
                       </div>

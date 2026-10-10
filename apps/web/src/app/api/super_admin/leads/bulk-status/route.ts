@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { refundWalletsForCancelledLeads } from '@/lib/booking-wallet-refund';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -85,11 +86,25 @@ export async function POST(request: NextRequest) {
     }
 
     const updated = Array.isArray(data) ? data.length : 0;
+    let walletRefunded = 0;
+    if (status === 'CANCELLED' && updated > 0) {
+      const refund = await refundWalletsForCancelledLeads(
+        supabaseAdmin,
+        (data || []).map((row: { id?: string }) => String(row.id || '')),
+        { actorUserId: gate.userId },
+      );
+      walletRefunded = refund.refunded_count;
+    }
+    const refundNote =
+      walletRefunded > 0
+        ? ` Wallet refunded on ${walletRefunded} booking${walletRefunded === 1 ? '' : 's'}.`
+        : '';
     return NextResponse.json({
       success: true,
       updated,
       status,
-      message: `Updated status to ${status} for ${updated} lead${updated === 1 ? '' : 's'}`,
+      wallet_refunded: walletRefunded,
+      message: `Updated status to ${status} for ${updated} lead${updated === 1 ? '' : 's'}.${refundNote}`,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });

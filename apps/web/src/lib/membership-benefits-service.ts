@@ -4,6 +4,7 @@ import {
   normalizeCustomerPhone,
 } from '@/lib/customer-service-leads';
 import { pushServiceLeadToTeleCRM } from '@/lib/booking-telecrm-sync';
+import { refundWalletOnBookingCancel } from '@/lib/booking-wallet-refund';
 
 export const COMPLETED_SERVICE_LEAD_STATUSES = [
   'COMPLETED',
@@ -715,6 +716,14 @@ export async function revokeMembershipBenefitClaim(
           return { success: false, error: leadError.message || 'Could not cancel linked booking.' };
         }
         leadCancelled = true;
+        const walletRefund = await refundWalletOnBookingCancel(supabaseAdmin, String(lead.id), {
+          actorUserId: opts?.adminUserId || null,
+        });
+        if (!walletRefund.refunded && walletRefund.reason && walletRefund.reason !== 'no_wallet_used') {
+          warning = warning
+            ? `${warning} Wallet refund failed: ${walletRefund.reason}`
+            : `Booking cancelled, but wallet refund failed: ${walletRefund.reason}`;
+        }
       } else if (!['CANCELLED', 'CLOSED'].includes(leadStatus)) {
         warning =
           'Claim revoked and benefit restored, but the linked booking was already in progress and was not cancelled.';

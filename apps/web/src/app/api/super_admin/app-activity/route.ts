@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
       const wallet = await safe(() =>
         supabaseAdmin
           .from('wallet_transactions')
-          .select('id, transaction_type, amount, source, created_at')
+          .select('id, transaction_type, amount, source, metadata, created_at')
           .eq('customer_id', customerId)
           .order('created_at', { ascending: false })
           .limit(40),
@@ -139,12 +139,22 @@ export async function GET(request: NextRequest) {
       for (const tx of wallet) {
         const amt = Math.abs(Number(tx.amount || 0));
         const type = String(tx.transaction_type || 'txn').replace(/_/g, ' ');
+        const meta =
+          tx.metadata && typeof tx.metadata === 'object' && !Array.isArray(tx.metadata)
+            ? (tx.metadata as Record<string, unknown>)
+            : {};
+        const label = String(meta.label || '').trim();
+        const amountLabel = amt ? `₹${Math.round(amt).toLocaleString('en-IN')}` : '';
         items.push({
           id: `wal-${tx.id}`,
           kind: 'wallet',
           at: String(tx.created_at || ''),
-          title: `Wallet ${type}${amt ? ` · ₹${Math.round(amt).toLocaleString('en-IN')}` : ''}`,
-          body: tx.source ? String(tx.source) : null,
+          title: label || `Wallet ${type}${amountLabel ? ` · ${amountLabel}` : ''}`,
+          body: label
+            ? [type, amountLabel, meta.lead_number ? String(meta.lead_number) : null].filter(Boolean).join(' · ')
+            : tx.source
+              ? String(tx.source)
+              : null,
           group: 'wallet',
         });
       }

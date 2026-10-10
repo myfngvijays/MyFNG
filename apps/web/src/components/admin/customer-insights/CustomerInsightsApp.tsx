@@ -2032,11 +2032,15 @@ export default function CustomerInsightsApp() {
                           <div key={tx.id} className="rounded-xl border p-3 text-sm flex justify-between gap-3">
                             <div>
                               <div className="font-bold">
-                                {tx.transaction_type} · {tx.source}
+                                {tx.metadata?.label
+                                  ? String(tx.metadata.label)
+                                  : `${tx.transaction_type} · ${tx.source}`}
                               </div>
                               <div className="text-xs text-gray-500">{fmtDate(tx.created_at)}</div>
                               {tx.metadata?.label ? (
-                                <div className="text-xs text-gray-600 mt-1">{String(tx.metadata.label)}</div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {tx.transaction_type} · {tx.source}
+                                </div>
                               ) : null}
                             </div>
                             <div className="text-right">

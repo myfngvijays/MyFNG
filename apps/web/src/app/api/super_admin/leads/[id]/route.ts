@@ -6,6 +6,7 @@ import { PANEL_ACCESS_ROLES } from '@/lib/super-admin-auth';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { buildAdminCrmStatusCouponMeta, adminCrmMappedWorkshopStatus } from '@/lib/telecaller/leadDisplayStatus';
 import { buildPreferredSlot } from '@/lib/preferred-slot';
+import { refundWalletOnBookingCancel } from '@/lib/booking-wallet-refund';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -354,11 +355,18 @@ export async function PATCH(
       }
     }
 
+    const requestedStatus = String(body.status ?? update.status ?? '').trim().toUpperCase();
+    let walletRefund = null;
+    if (requestedStatus === 'CANCELLED' && String(data?.status || '').toUpperCase() === 'CANCELLED') {
+      walletRefund = await refundWalletOnBookingCancel(supabaseAdmin, id, { actorUserId: auth.userId });
+    }
+
     return NextResponse.json({
       lead: {
         ...data,
         assigned_telecaller_name: assignedName,
       },
+      wallet_refund: walletRefund,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
