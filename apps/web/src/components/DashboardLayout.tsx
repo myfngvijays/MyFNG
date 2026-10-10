@@ -834,6 +834,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             { href: '/dashboard/super_admin/website-images', icon: <Globe className="w-5 h-5" />, label: 'All Images' },
             { href: '/dashboard/super_admin/website-images/home-carousel', icon: <Globe className="w-5 h-5" />, label: 'Home Carousel' },
             { href: '/dashboard/super_admin/website-images/promo-banners', icon: <Megaphone className="w-5 h-5" />, label: 'Service Page Images' },
+            { href: '/dashboard/super_admin/top-offer-banner', icon: <Megaphone className="w-5 h-5" />, label: 'Top Offer Banner' },
             { href: '/dashboard/super_admin/website-images/customer-reviews', icon: <Star className="w-5 h-5" />, label: 'Customer Reviews' },
             { href: '/dashboard/super_admin/website-images/rsa-hero', icon: <AlertTriangle className="w-5 h-5" />, label: 'RSA Hero' },
             { href: '/dashboard/super_admin/membership-plans', icon: <Star className="w-5 h-5" />, label: 'Membership Plans' },
@@ -864,7 +865,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           label: 'Daily Blogs',
           children: [
             { href: '/dashboard/super_admin/daily-blogs', icon: <FileText className="w-5 h-5" />, label: 'Schedule' },
-            { href: '/dashboard/super_admin/daily-blogs', icon: <ClipboardList className="w-5 h-5" />, label: 'Auto-post logs' },
+            { href: '/dashboard/digital_marketing/blogs/auto-post-logs', icon: <ClipboardList className="w-5 h-5" />, label: 'Auto-post logs' },
           ],
         },
         {
@@ -1271,7 +1272,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                     <div className={`${sidebarCollapsed ? 'lg:hidden' : ''} ml-4 sm:ml-5 space-y-1`}>
                       {item.children.map((child) => (
                         <NavLink
-                          key={child.href}
+                          key={`${child.label}-${child.href}`}
                           href={child.href}
                           icon={child.icon}
                           active={pathname === child.href}

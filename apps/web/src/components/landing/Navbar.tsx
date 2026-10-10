@@ -7,6 +7,7 @@ import { MapPin, Loader2, ChevronDown, Search, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 import { buildGoAppDownloadHref } from '@/lib/utm';
+import { DEFAULT_TOP_OFFER_BANNER, type TopOfferBannerConfig } from '@/lib/top-offer-banner';
 
 function useCountdown() {
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
@@ -38,15 +39,19 @@ function useCountdown() {
 
 function AppDownloadBanner({
   onClose,
-  downloadHref = '/go/myfngapp',
+  config,
   roomy = false,
 }: {
   onClose: () => void;
-  downloadHref?: string;
+  config: TopOfferBannerConfig;
   roomy?: boolean;
 }) {
   const { hours, minutes, seconds } = useCountdown();
   const pad = (n: number) => String(n).padStart(2, '0');
+  const barStyle = {
+    background: `linear-gradient(to right, ${config.background_from}, ${config.background_via}, ${config.background_to})`,
+    color: config.text_color,
+  };
 
   const timerDigits = (compact = false) => (
     <div className={`flex items-center ${compact ? 'gap-0.5' : 'gap-1'}`}>
@@ -85,8 +90,9 @@ function AppDownloadBanner({
   const storeButtons = (compact = false) => (
     <div className={`flex items-center ${compact ? 'gap-1' : 'gap-2'}`}>
       <a
-        href={downloadHref}
-        className={`inline-flex items-center justify-center bg-[#fff7d6] text-[#6b1224] hover:bg-white rounded-md font-bold transition-all shadow-sm whitespace-nowrap ${
+        href={config.button_href}
+        style={{ background: config.button_background, color: config.button_text }}
+        className={`inline-flex items-center justify-center hover:brightness-110 rounded-md font-bold transition-all shadow-sm whitespace-nowrap ${
           roomy
             ? compact
               ? 'gap-1.5 px-3 py-1.5 h-8 text-[11px]'
@@ -96,7 +102,7 @@ function AppDownloadBanner({
               : 'gap-1.5 px-4 py-1.5 h-8 text-xs sm:text-sm'
         }`}
       >
-        Download App
+        {config.button_label}
       </a>
     </div>
   );
@@ -104,47 +110,42 @@ function AppDownloadBanner({
   return (
     <div className="text-white relative">
       {/* Mobile only: compact festive strip with offer + timer */}
-      <div className="lg:hidden bg-[#6b1224]">
-        <div className="container mx-auto px-3 py-1 pr-8 flex items-center justify-center gap-2">
-          <span className="text-[10px] font-bold text-[#fde68a] whitespace-nowrap">
-            Navratri Offer →
+      <div className="lg:hidden" style={barStyle}>
+        <div className="container mx-auto px-3 py-1 flex items-center justify-center gap-2">
+          <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: config.offer_color }}>
+            {config.offer_label}
           </span>
-          {timerDigits(true)}
+          {config.show_countdown ? timerDigits(true) : null}
         </div>
       </div>
 
-      {/* Festive download strip */}
-      <div className={`bg-gradient-to-r from-[#6b1224] via-[#9a3412] to-[#c2410c] ${roomy ? 'py-0.5' : ''}`}>
-        <div className={`container mx-auto px-3 lg:px-6 pr-8 lg:pr-10 flex items-center gap-2 lg:gap-4 lg:justify-center ${roomy ? 'py-2.5 lg:py-3' : 'py-1.5 lg:py-2'}`}>
+      <div style={barStyle} className={roomy ? 'py-0.5' : ''}>
+        <div className={`container mx-auto px-3 lg:px-6 flex items-center gap-2 lg:gap-4 lg:justify-center ${roomy ? 'py-2.5 lg:py-3' : 'py-1.5 lg:py-2'}`}>
           <p className="text-[11px] lg:text-sm font-bold leading-snug min-w-0 flex-1 break-words lg:flex-none lg:whitespace-nowrap">
-            Download MyFNG App &amp;
-            <br className="lg:hidden" />
-            <span className="hidden lg:inline"> </span>
-            Get 10% OFF
+            {config.headline}
           </p>
 
-          {/* Desktop only: offer + timer inside the festive banner */}
           <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
-            <span className="text-sm font-bold text-[#fde68a] whitespace-nowrap">
-              Navratri Offer →
+            <span className="text-sm font-bold whitespace-nowrap" style={{ color: config.offer_color }}>
+              {config.offer_label}
             </span>
-            {timerDigits(false)}
+            {config.show_countdown ? timerDigits(false) : null}
           </div>
 
           <div className="flex-shrink-0 lg:flex-shrink-0">
             <div className="lg:hidden">{storeButtons(true)}</div>
             <div className="hidden lg:block">{storeButtons(false)}</div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full hover:bg-white/20 transition-all"
+            aria-label="Close banner"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
-
-      <button
-        onClick={onClose}
-        className="absolute right-1.5 lg:right-3 top-1 lg:top-1.5 p-0.5 rounded-full hover:bg-white/20 transition-all z-10"
-        aria-label="Close banner"
-      >
-        <X className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-      </button>
     </div>
   );
 }
@@ -160,6 +161,7 @@ export default function Navbar({
   const isAdsLanding = pathname === '/car-service-and-repairs';
   const [appGoHref, setAppGoHref] = useState('/go/myfngapp');
   const [showAppBanner, setShowAppBanner] = useState(!hideAppBanner);
+  const [offerBanner, setOfferBanner] = useState<TopOfferBannerConfig>(DEFAULT_TOP_OFFER_BANNER);
   const [cityName, setCityName] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(true);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
@@ -173,6 +175,20 @@ export default function Navbar({
   useEffect(() => {
     if (isAdsLanding) setAppGoHref(buildGoAppDownloadHref('ads-lp-nav'));
   }, [isAdsLanding]);
+
+  useEffect(() => {
+    if (hideAppBanner) return;
+    let cancelled = false;
+    fetch('/api/public/top-offer-banner', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.config) setOfferBanner({ ...DEFAULT_TOP_OFFER_BANNER, ...json.config });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [hideAppBanner]);
 
   useEffect(() => {
     // Check if location is already stored in localStorage
@@ -373,10 +389,13 @@ export default function Navbar({
 
   return (
     <header className="fixed top-0 w-full z-50">
-      {showAppBanner && !hideAppBanner && (
+      {showAppBanner && !hideAppBanner && offerBanner.enabled && (
         <AppDownloadBanner
           onClose={() => setShowAppBanner(false)}
-          downloadHref={isAdsLanding ? appGoHref : '/go/myfngapp'}
+          config={{
+            ...offerBanner,
+            button_href: isAdsLanding ? appGoHref : offerBanner.button_href,
+          }}
           roomy={isAdsLanding}
         />
       )}

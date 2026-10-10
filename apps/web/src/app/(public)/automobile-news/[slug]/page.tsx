@@ -169,7 +169,7 @@ export default async function AutomobileNewsArticlePage({
         </p>
         {article.image ? (
           <figure className="mt-6">
-            <div className="relative aspect-[16/9] overflow-hidden bg-[#e8eef6]">
+            <div className="relative aspect-[16/10] overflow-hidden bg-[#e8eef6]">
               <Image src={article.image} alt={article.title} fill className="object-cover" priority sizes="768px" />
             </div>
             {photoCaption ? <figcaption className="mt-2 text-xs leading-5 text-[#5c6778]">{photoCaption}</figcaption> : null}

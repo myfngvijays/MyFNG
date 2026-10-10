@@ -343,6 +343,12 @@ const navigationItems: NavItem[] = [
         description: 'RSA landing / hero image',
       },
       {
+        name: 'Top Offer Banner',
+        href: '/dashboard/super_admin/top-offer-banner',
+        icon: Megaphone,
+        description: 'Website header offer text and colors',
+      },
+      {
         name: 'App Footer Content',
         href: '/dashboard/super_admin/app-footer',
         icon: PanelBottom,
@@ -588,7 +594,7 @@ const navigationItems: NavItem[] = [
       },
       {
         name: 'Auto-post logs',
-        href: '/dashboard/super_admin/daily-blogs',
+        href: '/dashboard/digital_marketing/blogs/auto-post-logs',
         icon: ClipboardList,
         description: 'Every cron tick, skip, fail, and Post now',
       },
@@ -959,7 +965,8 @@ function SuperAdminLayoutInner({
       pathname?.startsWith('/dashboard/super_admin/website-images/promo-banners') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/customer-reviews') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/rsa-hero') ||
-      pathname?.startsWith('/dashboard/super_admin/app-footer')
+      pathname?.startsWith('/dashboard/super_admin/app-footer') ||
+      pathname?.startsWith('/dashboard/super_admin/top-offer-banner')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'App Content & Display': true }));
     }
@@ -1321,7 +1328,7 @@ function SuperAdminLayoutInner({
                           const childActive = isActive(c.href);
                           return (
                             <button
-                              key={c.href}
+                              key={`${c.name}-${c.href}`}
                               onClick={() => router.push(c.href)}
                               className={`
                                 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg
@@ -1551,7 +1558,7 @@ function SuperAdminLayoutInner({
                           const childActive = isActive(c.href);
                           return (
                             <button
-                              key={c.href}
+                              key={`${c.name}-${c.href}`}
                               onClick={() => {
                                 router.push(c.href);
                                 setMobileMenuOpen(false);

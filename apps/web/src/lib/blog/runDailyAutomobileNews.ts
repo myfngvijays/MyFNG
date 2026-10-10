@@ -9,6 +9,8 @@ import { stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
 import { revalidateBlogSeo } from '@/lib/seo/revalidate';
 import { currentAutomobileNewsSlot } from '@/lib/blog/automobileNewsSlots';
 import { isEvBikeServiceText, isEvBikeText, resolveNewsTopic } from '@/lib/blog/newsTopic';
+import { buildNewsPhotoCover, findNewsWebPhoto } from '@/lib/blog/newsFallbackCover';
+import { isAutomobileIndustryHeadline, isSameAutomobileStory } from '@/lib/blog/automobileHeadline';
 
 export const AUTOMOBILE_NEWS_PER_DAY = 10;
 
@@ -125,6 +127,7 @@ async function fetchHeadlines(): Promise<RssItem[]> {
   for (const item of batches.flat()) {
     const key = headlineKey(item.title);
     if (!key || seen.has(key)) continue;
+    if (!isAutomobileIndustryHeadline(item.title)) continue;
     seen.add(key);
     items.push(item);
   }
@@ -160,7 +163,8 @@ Rules:
 - Include exactly one external link to source_url using source_name as the anchor.
 - Include one internal link to https://myfng.in/automobile-news.
 - image_query is 2-5 words naming a visible car, electric scooter, brand, showroom, workshop, traffic, or petrol pump from the headline. Example: "Mahindra XUV700", "Ather 450X", or "Ola electric scooter". Never a person, bank, keyboard, aircraft, or logo. If the headline has no vehicle, use "cars on road India" for cars and "electric scooter India" for scooters or bikes.
-- topic is exactly one of New Launch, EV News, Sales, Market, Industry. New Launch = a new car, price reveal, unveil, or facelift. EV News = an electric or hybrid car, an electric scooter or bike, or service, battery, warranty, and workshop news for an electric scooter or bike. Sales = monthly sales, volumes, or market share. Market = loans, rates, used cars, or resale. Industry = brands, policy, people, culture, and everything else.
+- The story must be about cars, SUVs, bikes, electric vehicles, fuel prices, FASTag, RTO, or the automobile industry. If the headline is politics, protest, crime, police, or any other topic, return {"skip":true}.
+- topic is exactly one of New Launch, EV News, Sales, Market, Industry. New Launch = a new car, price reveal, unveil, or facelift. EV News = an electric or hybrid car, an electric scooter or bike, or service, battery, warranty, and workshop news for an electric scooter or bike. Sales = monthly sales, volumes, or market share. Market = loans, rates, used cars, or resale. Industry = automakers, vehicle policy, and auto-industry news.
 Return JSON: {"title":"","excerpt":"","content_html":"","image_query":"","topic":"New Launch"}`,
         },
         {
@@ -184,12 +188,19 @@ Return JSON: {"title":"","excerpt":"","content_html":"","image_query":"","topic"
   const content = json?.choices?.[0]?.message?.content;
   if (!content || typeof content !== 'string') throw new Error('OpenAI returned empty response');
   const parsed = JSON.parse(content);
+  if (parsed?.skip === true) throw new Error('Headline is not automobile news');
   const title = String(parsed?.title || '').trim();
   const excerpt = String(parsed?.excerpt || '').trim();
   const html = stripMyFngServiceHtml(String(parsed?.content_html || ''));
   const topic = resolveNewsTopic(parsed?.topic, title, excerpt);
   const imageQuery = String(parsed?.image_query || '').replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!title || !excerpt || !html) throw new Error('AI response missing required fields');
+  if (!isAutomobileIndustryHeadline(title) && !isAutomobileIndustryHeadline(item.title)) {
+    throw new Error('Generated story is not automobile news');
+  }
+      if (/\b(protest|activist|police|arrest|murder|cricket|election)\b/i.test(title)) {
+    throw new Error('Generated story is not automobile news');
+  }
   const fallbackQuery = isEvBikeText(`${title} ${excerpt}`) ? 'electric scooter India' : 'indian car';
   return {
     title,
@@ -428,6 +439,17 @@ async function pickNewsPhoto(articleTitle: string, imageQuery: string, usedTitle
   return loose;
 }
 
+async function uploadNewsWebp(supabaseAdmin: any, slug: string, webp: Buffer) {
+  const storagePath = `blog-images/news-${slug}-${Date.now()}.webp`;
+  const { error } = await supabaseAdmin.storage.from('service-media').upload(storagePath, webp, {
+    contentType: 'image/webp',
+    upsert: true,
+    cacheControl: '3600',
+  });
+  if (error) throw new Error(error.message || 'Failed to upload news photo');
+  return mediaPathFromStorage('service-media', storagePath);
+}
+
 async function uploadPhoto(supabaseAdmin: any, slug: string, photo: CommonsPhoto) {
   const response = await fetch(photo.url, { headers: { 'User-Agent': COMMONS_UA } });
   if (!response.ok) throw new Error(`Photo download failed (${response.status})`);
@@ -437,14 +459,7 @@ async function uploadPhoto(supabaseAdmin: any, slug: string, photo: CommonsPhoto
     .resize({ width: 1400, withoutEnlargement: true })
     .webp({ quality: 72 })
     .toBuffer();
-  const storagePath = `blog-images/news-${slug}-${Date.now()}.webp`;
-  const { error } = await supabaseAdmin.storage.from('service-media').upload(storagePath, webp, {
-    contentType: 'image/webp',
-    upsert: true,
-    cacheControl: '3600',
-  });
-  if (error) throw new Error(error.message || 'Failed to upload news photo');
-  return mediaPathFromStorage('service-media', storagePath);
+  return uploadNewsWebp(supabaseAdmin, slug, webp);
 }
 
 function ensureSourceLink(html: string, item: RssItem) {
@@ -563,6 +578,7 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
     .order('published_at', { ascending: false })
     .limit(200);
   const used = new Set<string>();
+  const usedTitles: string[] = [];
   const usedPhotos = new Set<string>();
   const postedEv = { bike: false, service: false };
   for (const row of recent || []) {
@@ -572,11 +588,16 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
       if (isEvBikeServiceText(title)) postedEv.service = true;
       else if (isEvBikeText(title)) postedEv.bike = true;
     }
-    if (seo.news_headline_key) used.add(String(seo.news_headline_key));
+    if (seo.news_headline_key) {
+      used.add(String(seo.news_headline_key));
+      usedTitles.push(String(seo.news_headline_key));
+    }
     const commonsTitle = String(seo.news_commons_title || '').trim()
       || (String((row as any)?.content || '').match(/Reference photo:\s*([^.]{3,180}?\.(?:jpg|jpeg|png|webp))/i)?.[1] || '');
     if (commonsTitle) usedPhotos.add(commonsTitle.toLowerCase());
-    used.add(headlineKey(String((row as any)?.title || '')));
+    const rowTitle = String((row as any)?.title || '');
+    used.add(headlineKey(rowTitle));
+    if (rowTitle) usedTitles.push(rowTitle);
   }
 
   let headlines: RssItem[];
@@ -593,6 +614,7 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
 
   const fresh = headlines
     .filter((item) => !used.has(headlineKey(item.title)))
+    .filter((item) => !usedTitles.some((title) => isSameAutomobileStory(item.title, title)))
     .sort((a, b) => headlineRank(a, postedEv) - headlineRank(b, postedEv));
   if (!fresh.length) {
     return {
@@ -608,6 +630,9 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
   for (const item of fresh.slice(0, 3)) {
     try {
       const draft = await openaiNews(item);
+      if (usedTitles.some((previous) => isSameAutomobileStory(draft.title, previous) || isSameAutomobileStory(item.title, previous))) {
+        throw new Error('Story already posted');
+      }
       const photo = await pickNewsPhoto(draft.title, draft.imageQuery, usedPhotos);
       const slug = await uniqueSlug(supabaseAdmin, draft.title);
       let imageUrl = '';
@@ -617,6 +642,11 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
         imageUrl = await uploadPhoto(supabaseAdmin, slug, photo);
         caption = `Reference photo: ${photo.title}. ${photo.artist}. ${photo.license}. Via Wikimedia Commons.`;
         usedPhotos.add(photo.title.toLowerCase());
+      } else {
+        const webPhoto = await findNewsWebPhoto(draft.imageQuery || draft.title);
+        if (webPhoto) {
+          imageUrl = await uploadNewsWebp(supabaseAdmin, slug, await buildNewsPhotoCover(webPhoto, draft.title));
+        }
       }
 
       const { data: category } = await supabaseAdmin
