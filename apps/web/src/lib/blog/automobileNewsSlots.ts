@@ -15,10 +15,10 @@ export const AUTOMOBILE_NEWS_SLOTS_IST = [
 export const AUTOMOBILE_NEWS_SCHEDULE_LABEL = '10:00–14:30 IST · every 30 min · 10 stories';
 
 /**
- * UTC cron for those IST slots.
- * Also ticks at 09:30 and 15:00 IST; the runner skips those.
+ * UTC cron. Every 10 minutes from 09:30 through 15:20 IST.
+ * The runner skips ticks before 10:00 IST and fills the oldest empty slot.
  */
-export const AUTOMOBILE_NEWS_CRON_UTC = '0,30 4-9 * * *';
+export const AUTOMOBILE_NEWS_CRON_UTC = '*/10 4-9 * * *';
 
 function istMinutes(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -36,18 +36,22 @@ function slotStart(slot: string) {
   return hour * 60 + minute;
 }
 
-/** Slot whose 20-minute window contains now, or null between slots and outside 10:00–14:50. */
-export function currentAutomobileNewsSlot(now = new Date()): string | null {
+/** Catch-up stops at 15:30 IST, after the 14:30 slot has had time to retry. */
+const CATCHUP_END_MINUTES = 15 * 60 + 30;
+
+/** Oldest slot that has started and still has no story. Null before 10:00 and after 15:30 IST. */
+export function earliestUnfilledAutomobileNewsSlot(filled: Iterable<string>, now = new Date()): string | null {
   const mins = istMinutes(now);
+  if (mins < slotStart(AUTOMOBILE_NEWS_SLOTS_IST[0]) || mins >= CATCHUP_END_MINUTES) return null;
+  const taken = new Set(filled);
   for (const slot of AUTOMOBILE_NEWS_SLOTS_IST) {
-    const start = slotStart(slot);
-    if (mins >= start && mins < start + 20) return slot;
+    if (mins >= slotStart(slot) && !taken.has(slot)) return slot;
   }
   return null;
 }
 
-/** Slots whose window has already closed, so a story should already be live. */
+/** Slots that should already have a story. Five minutes of grace after the start. */
 export function automobileNewsSlotsDue(now = new Date()): number {
   const mins = istMinutes(now);
-  return AUTOMOBILE_NEWS_SLOTS_IST.filter((slot) => mins >= slotStart(slot) + 20).length;
+  return AUTOMOBILE_NEWS_SLOTS_IST.filter((slot) => mins >= slotStart(slot) + 5).length;
 }

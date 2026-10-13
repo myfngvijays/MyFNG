@@ -7,7 +7,7 @@ import { mediaPathFromStorage } from '@/lib/media/public-url';
 import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 import { stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
 import { revalidateBlogSeo } from '@/lib/seo/revalidate';
-import { currentAutomobileNewsSlot } from '@/lib/blog/automobileNewsSlots';
+import { earliestUnfilledAutomobileNewsSlot } from '@/lib/blog/automobileNewsSlots';
 import { isEvBikeServiceText, isEvBikeText, resolveNewsTopic } from '@/lib/blog/newsTopic';
 import { buildNewsPhotoCover, findNewsWebPhoto } from '@/lib/blog/newsFallbackCover';
 import { isAutomobileIndustryHeadline, isSameAutomobileStory } from '@/lib/blog/automobileHeadline';
@@ -116,6 +116,7 @@ async function fetchFeed(url: string): Promise<RssItem[]> {
   const response = await fetch(url, {
     headers: { 'User-Agent': COMMONS_UA, Accept: 'application/rss+xml, application/xml, text/xml' },
     cache: 'no-store',
+    signal: AbortSignal.timeout(20000),
   });
   if (!response.ok) return [];
   return parseRss(await response.text());
@@ -165,7 +166,7 @@ Rules:
 - Include exactly one external link to source_url using source_name as the anchor.
 - Include one internal link to https://myfng.in/automobile-news.
 - image_query is 2-5 words naming a visible car, electric scooter, brand, showroom, workshop, traffic, or petrol pump from the headline. Example: "Mahindra XUV700", "Ather 450X", or "Ola electric scooter". Never a person, bank, keyboard, aircraft, or logo. If the headline has no vehicle, use "cars on road India" for cars and "electric scooter India" for scooters or bikes.
-- The story must be about cars, SUVs, bikes, electric vehicles, fuel prices, FASTag, RTO, or the automobile industry. If the headline is politics, protest, crime, police, or any other topic, return {"skip":true}.
+- The supplied headline is already confirmed automobile news. Always write the story. Do not return {"skip":true}.
 - topic is exactly one of New Launch, EV News, Sales, Market, Industry. New Launch = a new car, price reveal, unveil, or facelift. EV News = an electric or hybrid car, an electric scooter or bike, or service, battery, warranty, and workshop news for an electric scooter or bike. Sales = monthly sales, volumes, or market share. Market = loans, rates, used cars, or resale. Industry = automakers, vehicle policy, and auto-industry news.
 Return JSON: {"title":"","excerpt":"","content_html":"","image_query":"","topic":"New Launch"}`,
         },
@@ -190,7 +191,9 @@ Return JSON: {"title":"","excerpt":"","content_html":"","image_query":"","topic"
   const content = json?.choices?.[0]?.message?.content;
   if (!content || typeof content !== 'string') throw new Error('OpenAI returned empty response');
   const parsed = JSON.parse(content);
-  if (parsed?.skip === true) throw new Error('Headline is not automobile news');
+  if (parsed?.skip === true && !isAutomobileIndustryHeadline(item.title)) {
+    throw new Error('Headline is not automobile news');
+  }
   const newsStyle = { replaceVehicle: false as const };
   const title = polishAiProse(String(parsed?.title || '').trim(), newsStyle);
   const excerpt = polishAiProse(String(parsed?.excerpt || '').trim(), newsStyle);
@@ -396,7 +399,11 @@ async function searchCommons(query: string): Promise<CommonsPhoto[]> {
   endpoint.searchParams.set('prop', 'imageinfo');
   endpoint.searchParams.set('iiprop', 'url|extmetadata|mime|size');
   endpoint.searchParams.set('iiurlwidth', '1400');
-  const response = await fetch(endpoint, { headers: { 'User-Agent': COMMONS_UA }, cache: 'no-store' });
+  const response = await fetch(endpoint, {
+    headers: { 'User-Agent': COMMONS_UA },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(20000),
+  });
   if (!response.ok) return [];
   const json = await response.json();
   const pages = Object.values(json?.query?.pages || {}) as Array<any>;
@@ -482,18 +489,24 @@ async function uniqueSlug(supabaseAdmin: any, base: string) {
   return `${root}-${Date.now().toString(36)}`;
 }
 
-export async function countAutomobileNewsPostedToday(supabaseAdmin: any, runDate = istDateString()) {
+async function listTodayAutomobileNews(supabaseAdmin: any, runDate: string) {
   const { data, error } = await supabaseAdmin
     .from('blogs')
     .select('id, seo_data')
     .eq('status', 'published')
+    .filter('seo_data->>ai_daily_news_date', 'eq', runDate)
     .order('published_at', { ascending: false })
-    .limit(80);
+    .limit(20);
   if (error) throw new Error(error.message || 'Could not count today\'s news');
   return (data || []).filter((row: any) => {
     const seo = row?.seo_data || {};
     return seo.ai_daily_news === true && String(seo.ai_daily_news_date || '') === runDate;
-  }).length;
+  });
+}
+
+export async function countAutomobileNewsPostedToday(supabaseAdmin: any, runDate = istDateString()) {
+  const rows = await listTodayAutomobileNews(supabaseAdmin, runDate);
+  return rows.length;
 }
 
 export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePause?: boolean }): Promise<AutomobileNewsRunResult> {
@@ -541,37 +554,21 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
     };
   }
 
-  const slot = currentAutomobileNewsSlot();
-  if (!opts?.force && !opts?.ignorePause && !slot) {
+  const slotRows = await listTodayAutomobileNews(supabaseAdmin, runDate);
+  const filledSlots = slotRows
+    .map((row: any) => row?.seo_data || {})
+    .map((seo: any) => String(seo.ai_daily_news_slot || ''))
+    .filter((slot: string) => /^\d{2}:\d{2}$/.test(slot));
+  const openSlot = earliestUnfilledAutomobileNewsSlot(filledSlots);
+  const slot = openSlot || (opts?.force || opts?.ignorePause ? 'manual' : null);
+  if (!slot) {
     return {
       success: true,
       skipped: true,
-      reason: 'outside_slot',
+      reason: filledSlots.length ? 'slot_filled' : 'outside_slot',
       posted_today: postedToday,
       quota: AUTOMOBILE_NEWS_PER_DAY,
     };
-  }
-
-  if (!opts?.force && !opts?.ignorePause && slot) {
-    const { data: slotRows } = await supabaseAdmin
-      .from('blogs')
-      .select('seo_data')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false })
-      .limit(40);
-    const slotTaken = (slotRows || []).some((row: any) => {
-      const seo = row?.seo_data || {};
-      return seo.ai_daily_news === true && String(seo.ai_daily_news_date || '') === runDate && String(seo.ai_daily_news_slot || '') === slot;
-    });
-    if (slotTaken) {
-      return {
-        success: true,
-        skipped: true,
-        reason: 'slot_filled',
-        posted_today: postedToday,
-        quota: AUTOMOBILE_NEWS_PER_DAY,
-      };
-    }
   }
 
   const { data: recent } = await supabaseAdmin
@@ -615,10 +612,15 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
     };
   }
 
-  const fresh = headlines
+  const ranked = headlines
     .filter((item) => !used.has(headlineKey(item.title)))
     .filter((item) => !usedTitles.some((title) => isSameAutomobileStory(item.title, title)))
     .sort((a, b) => headlineRank(a, postedEv) - headlineRank(b, postedEv));
+  const fresh: RssItem[] = [];
+  for (const item of ranked) {
+    if (fresh.some((previous) => isSameAutomobileStory(item.title, previous.title))) continue;
+    fresh.push(item);
+  }
   if (!fresh.length) {
     return {
       success: true,
@@ -630,7 +632,7 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
   }
 
   let lastError = 'No story could be published';
-  for (const item of fresh.slice(0, 3)) {
+  for (const item of fresh.slice(0, 12)) {
     try {
       const draft = await openaiNews(item);
       if (usedTitles.some((previous) => isSameAutomobileStory(draft.title, previous) || isSameAutomobileStory(item.title, previous))) {
@@ -641,15 +643,20 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
       let imageUrl = '';
       const html = ensureSourceLink(draft.html, item);
       let caption = '';
-      if (photo) {
-        imageUrl = await uploadPhoto(supabaseAdmin, slug, photo);
-        caption = `Reference photo: ${photo.title}. ${photo.artist}. ${photo.license}. Via Wikimedia Commons.`;
-        usedPhotos.add(photo.title.toLowerCase());
-      } else {
-        const webPhoto = await findNewsWebPhoto(draft.imageQuery || draft.title);
-        if (webPhoto) {
-          imageUrl = await uploadNewsWebp(supabaseAdmin, slug, await buildNewsPhotoCover(webPhoto, draft.title));
+      try {
+        if (photo) {
+          imageUrl = await uploadPhoto(supabaseAdmin, slug, photo);
+          caption = `Reference photo: ${photo.title}. ${photo.artist}. ${photo.license}. Via Wikimedia Commons.`;
+          usedPhotos.add(photo.title.toLowerCase());
+        } else {
+          const webPhoto = await findNewsWebPhoto(draft.imageQuery || draft.title);
+          if (webPhoto) {
+            imageUrl = await uploadNewsWebp(supabaseAdmin, slug, await buildNewsPhotoCover(webPhoto, draft.title));
+          }
         }
+      } catch {
+        imageUrl = '';
+        caption = '';
       }
 
       const { data: category } = await supabaseAdmin
@@ -725,7 +732,7 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
         status: 'published',
         is_featured: false,
         is_premium: false,
-        published_at: istWallClock(),
+        published_at: /^\d{2}:\d{2}$/.test(slot) ? `${runDate}T${slot}:00` : istWallClock(),
       };
 
       const { data: blog, error: insertError } = await supabaseAdmin
@@ -741,7 +748,11 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
         is_primary: true,
       }).then(() => undefined, () => undefined);
 
-      revalidateBlogSeo(String(blog.slug || slug));
+      try {
+        revalidateBlogSeo(String(blog.slug || slug));
+      } catch {
+        // Publishing still stands when this runs outside a Next.js request.
+      }
 
       return {
         success: true,
@@ -753,7 +764,8 @@ export async function runDailyAutomobileNews(opts?: { force?: boolean; ignorePau
         headline: item.title,
       };
     } catch (error: any) {
-      lastError = String(error?.message || error || lastError).slice(0, 500);
+      const message = String(error?.message || error || lastError);
+      lastError = `${item.title}: ${message}`.slice(0, 500);
     }
   }
 

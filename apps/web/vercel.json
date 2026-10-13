@@ -78,7 +78,7 @@
     },
     {
       "path": "/api/cron/automobile-news",
-      "schedule": "0,30 4-9 * * *"
+      "schedule": "*/10 4-9 * * *"
     },
     {
       "path": "/api/cron/competitor-seo",

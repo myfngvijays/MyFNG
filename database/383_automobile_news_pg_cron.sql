@@ -1,6 +1,7 @@
   -- Automobile News: 10 original stories per IST day.
   -- 10:00, 10:30, 11:00, 11:30, 12:00, 12:30, 13:00, 13:30, 14:00, 14:30 IST.
-  -- UTC cron 0,30 4-9 also ticks at 09:30 and 15:00 IST; the route skips those.
+  -- UTC cron */10 4-9 ticks every 10 minutes from 09:30 to 15:20 IST.
+  -- The route skips ticks before 10:00 IST and fills the oldest empty slot.
 -- Run in Supabase SQL Editor. Replace YOUR_CRON_SECRET with the real CRON_SECRET before running.
 -- Do not commit the real secret.
 
@@ -29,7 +30,7 @@
 
   SELECT cron.schedule(
     'automobile-news-auto-post',
-    '0,30 4-9 * * *',
+    '*/10 4-9 * * *',
     $$
     SELECT net.http_get(
       url := 'https://myfng.in/api/cron/automobile-news',

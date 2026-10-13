@@ -4148,8 +4148,9 @@ async function checkAutomobileNews(): Promise<HealthCheck> {
       .from('blogs')
       .select('seo_data')
       .eq('status', 'published')
+      .filter('seo_data->>ai_daily_news_date', 'eq', runDate)
       .order('published_at', { ascending: false })
-      .limit(80);
+      .limit(20);
     if (error) throw new Error(error.message);
 
     const posted = (data || []).filter((row: any) => {
@@ -4180,7 +4181,7 @@ async function checkAutomobileNews(): Promise<HealthCheck> {
         ? `Only ${posted} of 10 automobile news stories were posted for ${runDate}. Slots are every 30 minutes from 10:00 to 14:30 IST.`
         : behind
           ? `${posted} automobile news stories posted so far. ${expected} slots have already closed.`
-          : `Automobile news posts one story every 30 minutes from 10:00 to 14:30 IST, then stops at 10. Today: ${posted}/10.`;
+          : `Automobile news posts one story every 30 minutes from 10:00 to 14:30 IST. A missed slot is retried on the next run. Today: ${posted}/10.`;
 
     return {
       name: 'Automobile News Auto-Post',
