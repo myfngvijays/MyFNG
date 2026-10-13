@@ -8,7 +8,7 @@ export default function BlogPostCta({ appHref, bookHref }: BlogPostCtaProps) {
     <div className="blog-post-cta" data-myfng-cta="1">
       <h3>Need trusted car service in your city?</h3>
       <p>
-        Download the MyFNG app to book workshop service with pickup &amp; drop — we collect your car, service it at the workshop, and return it.
+        Download the MyFNG app to book workshop service with pickup &amp; drop. We collect your car, service it at the workshop, and return it.
       </p>
       <div className="blog-post-cta-actions">
         <a href={appHref} className="app-btn" target="_blank" rel="noopener noreferrer">

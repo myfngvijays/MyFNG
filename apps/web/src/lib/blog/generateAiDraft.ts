@@ -4,6 +4,7 @@ import {
   fetchRelatedPublishedBlogs,
   toCampaignSlug,
 } from '@/lib/blog/aiLinks';
+import { MYFNG_SURFACE_STYLE, polishAiHtml, polishAiProse } from '@/lib/blog/aiWritingStyle';
 import { computeReadTimeFromHtml } from '@/lib/blog/text';
 import { PUBLIC_BLOG_AUTHOR } from '@/lib/blog/publicAuthor';
 
@@ -72,6 +73,8 @@ Linking rules (mandatory):
 - If you mention an official standard, OEM manual, or public guideline, add 1-3 EXTERNAL reference links from allowed_examples or a real official URL. Do not invent URLs. Skip external links if you have no real source.
 - Internal and external http(s) links must open in a new tab (target=_blank rel="noopener noreferrer"). Do not put target=_blank on # Table of Contents links.
 - Never link to competitor booking sites.
+
+${MYFNG_SURFACE_STYLE}
 `.trim();
 
 const FAQ_SYSTEM_PROMPT = `
@@ -91,6 +94,8 @@ Rules:
 - Do not mention CNG cars, CNG kits, or EV / electric vehicles.
 - Include at least one FAQ that Google AI Overview can lift (starting price from ₹1,500, photo/video approval, or why the MyFNG app vs WhatsApp-only).
 - Do not include markdown fences. Do not include extra keys.
+
+${MYFNG_SURFACE_STYLE}
 `.trim();
 
 const TAG_SYSTEM_PROMPT = `
@@ -107,6 +112,7 @@ Rules:
 - Each tag must be 1-3 words, title case (e.g., "Car Service", "AC Repair").
 - Avoid duplicates, avoid overly generic tags like "Blog".
 - No markdown fences. No extra keys.
+- Tag words use "Car", never "Vehicle".
 `.trim();
 
 export function ensureSeoBlogTitle(title: string, city?: string, focusKeyword?: string) {
@@ -327,9 +333,14 @@ Extra rules for this periodic-package education post:
     },
   });
 
-  const title = ensureSeoBlogTitle(String(parsed?.title || '').trim(), city, focusKeyword);
-  const excerpt = String(parsed?.excerpt || '').trim();
-  const rawHtml = String(parsed?.content_html || '').trim();
+  const protectPhrases = (opts.localKeywords || []).map((phrase) => String(phrase || '').trim()).filter(Boolean);
+  const proseOpts = { replaceVehicle: true, protectPhrases };
+  const title = polishAiProse(
+    ensureSeoBlogTitle(String(parsed?.title || '').trim(), city, focusKeyword),
+    proseOpts,
+  );
+  const excerpt = polishAiProse(String(parsed?.excerpt || '').trim(), proseOpts);
+  const rawHtml = polishAiHtml(String(parsed?.content_html || '').trim(), proseOpts);
   const seo = parsed?.seo || {};
 
   if (!title || !excerpt || !rawHtml) {
@@ -355,11 +366,17 @@ Extra rules for this periodic-package education post:
     excerpt,
     content_html: enriched.html,
     seo: {
-      meta_title: ensureSeoBlogTitle(String(seo?.meta_title || title).trim(), city, focusKeyword).slice(0, 120),
-      meta_description: String(seo?.meta_description || excerpt).trim().slice(0, 160),
-      keywords: String(seo?.keywords || focusKeyword || '').trim(),
-      og_title: ensureSeoBlogTitle(String(seo?.og_title || title).trim(), city, focusKeyword).slice(0, 120),
-      og_description: String(seo?.og_description || excerpt).trim().slice(0, 200),
+      meta_title: polishAiProse(
+        ensureSeoBlogTitle(String(seo?.meta_title || title).trim(), city, focusKeyword),
+        proseOpts,
+      ).slice(0, 120),
+      meta_description: polishAiProse(String(seo?.meta_description || excerpt).trim(), proseOpts).slice(0, 160),
+      keywords: polishAiProse(String(seo?.keywords || focusKeyword || '').trim(), proseOpts),
+      og_title: polishAiProse(
+        ensureSeoBlogTitle(String(seo?.og_title || title).trim(), city, focusKeyword),
+        proseOpts,
+      ).slice(0, 120),
+      og_description: polishAiProse(String(seo?.og_description || excerpt).trim(), proseOpts).slice(0, 200),
       cta_text: 'Book Service Now',
       cta_url: enriched.links.cta_url.startsWith('http')
         ? enriched.links.cta_url
@@ -397,7 +414,10 @@ export async function generateAiFaqs(opts: {
     const key = question.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ question: question.slice(0, 500), answer: answer.slice(0, 2000) });
+    out.push({
+      question: polishAiProse(question, { replaceVehicle: true }).slice(0, 500),
+      answer: polishAiProse(answer, { replaceVehicle: true }).slice(0, 2000),
+    });
     if (out.length >= 8) break;
   }
   return out;
@@ -422,7 +442,7 @@ export async function generateAiTagNames(opts: {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of tags) {
-    const name = String(raw || '').replace(/\s+/g, ' ').trim();
+    const name = polishAiProse(String(raw || ''), { replaceVehicle: true }).replace(/\s+/g, ' ').trim();
     const words = name.split(' ').filter(Boolean);
     if (words.length < 1 || words.length > 3) continue;
     const key = name.toLowerCase();

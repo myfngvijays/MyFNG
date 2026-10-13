@@ -11,6 +11,7 @@ import { currentAutomobileNewsSlot } from '@/lib/blog/automobileNewsSlots';
 import { isEvBikeServiceText, isEvBikeText, resolveNewsTopic } from '@/lib/blog/newsTopic';
 import { buildNewsPhotoCover, findNewsWebPhoto } from '@/lib/blog/newsFallbackCover';
 import { isAutomobileIndustryHeadline, isSameAutomobileStory } from '@/lib/blog/automobileHeadline';
+import { polishAiHtml, polishAiProse } from '@/lib/blog/aiWritingStyle';
 
 export const AUTOMOBILE_NEWS_PER_DAY = 10;
 
@@ -158,6 +159,7 @@ Rules:
 - Do not copy sentences from any article. Paraphrase.
 - Use only facts that are explicit in the supplied headline and source name. You may explain what that fact means for car and electric-scooter owners in Mumbai, Navi Mumbai, Thane, Palghar and Pune.
 - Do not invent prices, percentages, dates, fines, mileage, or statistics.
+- Do not use em dashes or en dashes. Use a comma, a full stop, or a hyphen in a number range (10-15).
 - Do not mention MyFNG pickup, the MyFNG app, booking a service, fuel delivery, Prime, or "download the app".
 - Write 450-700 words in HTML: one intro paragraph, then h2 sections, then a short "What to check" list.
 - Include exactly one external link to source_url using source_name as the anchor.
@@ -189,9 +191,10 @@ Return JSON: {"title":"","excerpt":"","content_html":"","image_query":"","topic"
   if (!content || typeof content !== 'string') throw new Error('OpenAI returned empty response');
   const parsed = JSON.parse(content);
   if (parsed?.skip === true) throw new Error('Headline is not automobile news');
-  const title = String(parsed?.title || '').trim();
-  const excerpt = String(parsed?.excerpt || '').trim();
-  const html = stripMyFngServiceHtml(String(parsed?.content_html || ''));
+  const newsStyle = { replaceVehicle: false as const };
+  const title = polishAiProse(String(parsed?.title || '').trim(), newsStyle);
+  const excerpt = polishAiProse(String(parsed?.excerpt || '').trim(), newsStyle);
+  const html = polishAiHtml(stripMyFngServiceHtml(String(parsed?.content_html || '')), newsStyle);
   const topic = resolveNewsTopic(parsed?.topic, title, excerpt);
   const imageQuery = String(parsed?.image_query || '').replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!title || !excerpt || !html) throw new Error('AI response missing required fields');

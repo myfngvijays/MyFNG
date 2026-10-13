@@ -360,7 +360,7 @@ export async function refreshBatchCoverAt(opts: { offset: number }) {
         meta_title: ensureSeoBlogTitle(String(seo.meta_title || title), city).slice(0, 120),
         og_title: ensureSeoBlogTitle(String(seo.og_title || title), city).slice(0, 120),
         og_image: uploaded.url,
-        featured_image_alt: `${title} — MyFNG car service`.slice(0, 125),
+        featured_image_alt: `${title}, MyFNG car service`.slice(0, 125),
         ai_cover_key: cover.key,
       },
       updated_at: new Date().toISOString(),

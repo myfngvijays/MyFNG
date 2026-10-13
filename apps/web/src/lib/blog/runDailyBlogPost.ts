@@ -486,7 +486,7 @@ export async function refreshDailyBlogCover(opts?: { slug?: string }) {
       seo_data: {
         ...seo,
         og_image: uploaded.url,
-        featured_image_alt: `${blog.title} — MyFNG car service`.slice(0, 125),
+        featured_image_alt: `${blog.title}, MyFNG car service`.slice(0, 125),
         ai_cover_key: cover.key,
       },
       updated_at: new Date().toISOString(),

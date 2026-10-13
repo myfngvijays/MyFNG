@@ -13,7 +13,7 @@ export const PACKAGE_EDUCATION_FACTS = [
   'Brake oil top-up is Basic. Brake pad check is General. Brake pad cleaning is Premium.',
   'Cabin AC filter clean is Basic. AC performance check is General. AC cooling / gas leak test is Premium.',
   'Tyre pressure top-up is Basic. Tyre condition and wheel alignment check start at General.',
-  'Engine stall / misfire after Basic is often fuel, throttle, EGR or compression — Platinum points 51–54 — not a failed oil change.',
+  'Engine stall / misfire after Basic is often fuel, throttle, EGR or compression. Platinum points 51-54. That is not a failed oil change.',
   'Extra parts or repairs outside the booked package start only after photo/video proof and customer approval.',
   'Do not invent package prices. Service starts from ₹1,500 and varies by car and inspection.',
 ];

@@ -217,7 +217,7 @@ export function buildCtaHtml(opts: {
   return [
     '<div class="blog-post-cta" data-myfng-cta="1">',
     `<h3>Need trusted car service in ${escapeHtml(cityLabel)}?</h3>`,
-    '<p>Download the MyFNG app to book workshop service with pickup &amp; drop — we collect your car, service it at the workshop, and return it.</p>',
+    '<p>Download the MyFNG app to book workshop service with pickup &amp; drop. We collect your car, service it at the workshop, and return it.</p>',
     '<div class="blog-post-cta-actions">',
     `<a href="${encodeHref(appUrl)}" class="app-btn" target="_blank" rel="noopener noreferrer"><span class="cta-full">Download MyFNG App</span><span class="cta-short">Download App</span></a>`,
     `<a href="${bookUrl}" class="book-btn" target="_blank" rel="noopener noreferrer"><span class="cta-full">Book Service Now</span><span class="cta-short">Book Now</span></a>`,

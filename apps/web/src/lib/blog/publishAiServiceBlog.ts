@@ -305,7 +305,7 @@ export async function publishAiServiceBlog(opts: {
   const { supabaseAdmin, settings, picked, cityTarget, cover, runDate } = opts;
   const usp = opts.usp || null;
   const topic = usp
-    ? `${picked.topic} — About MyFNG for car owners in ${cityTarget.name}`
+    ? `${picked.topic}. About MyFNG for car owners in ${cityTarget.name}`
     : `${picked.topic} for car owners in ${cityTarget.name}`;
   const focusKeyword = `${picked.focusKeyword} ${cityTarget.name}`;
 
@@ -388,7 +388,7 @@ export async function publishAiServiceBlog(opts: {
     usp ? 'usp' : rsaPost ? 'rsa' : 'service',
   );
   const { minutes } = computeReadTimeFromHtml(content);
-  const featuredAlt = `${draft.title} — MyFNG ${rsaPost ? 'roadside assistance' : 'car service'}`.slice(0, 125);
+  const featuredAlt = `${draft.title}, MyFNG ${rsaPost ? 'roadside assistance' : 'car service'}`.slice(0, 125);
 
   let seoData = autoFillSeoFromSummary(draft.excerpt, {
     ...draft.seo,
