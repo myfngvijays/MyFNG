@@ -94,6 +94,29 @@ function displayBlogCardTitle(title: string, seo?: Record<string, unknown> | nul
   return rewriteCityDashTitle(title);
 }
 
+const RELATED_STOP = new Set([
+  'car', 'cars', 'service', 'services', 'after', 'before', 'causes', 'solutions', 'your', 'with',
+  'from', 'that', 'this', 'what', 'when', 'how', 'why', 'guide', 'tips', 'signs', 'thane', 'mumbai',
+  'pune', 'kalyan', 'dombivli', 'navi', 'mumbai', 'india', 'indian', 'workshop', 'myfng',
+  'and', 'the', 'for', 'in', 'on', 'to', 'of', 'my', 'is', 'be', 'are', 'our',
+]);
+
+function topicTokens(text: string) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter((word) => word.length >= 2 && !RELATED_STOP.has(word));
+}
+
+function relatedScore(title: string, tokens: string[], city: string) {
+  const words = new Set(topicTokens(title));
+  let score = 0;
+  for (const token of tokens) if (words.has(token)) score += 2;
+  if (city && new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title)) score += 1;
+  return score;
+}
+
 function buildSchemas(blog: Blog) {
   const seo = (blog.seo_data || {}) as any;
   const enableBlogPosting = Boolean(seo?.schema_blogposting);
@@ -467,35 +490,46 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followX = 'https://x.com/myfngcarservice';
   const bookHref = (placement: string) =>
     buildBlogTrackedPath('/book-service', transformed.slug, placement, String(seo?.keywords || '').split(',')[0]);
-  const relatedFromSeo = relatedArticles
-    .map((a, i) => {
-      const slug = blogSlugFromHref(a.url);
-      const row = slug ? relatedBySlug.get(slug) : null;
-      if (/automobile-news/i.test(a.url)) return null;
-      if (row && (isNewsCarBlog(row.seo_data as Record<string, unknown>) || (row.seo_data as { ai_daily_news?: unknown } | null)?.ai_daily_news === true)) return null;
-      if (!row) return null;
-      return {
-        id: row.id || `rel-${i}`,
-        slug,
-        title: displayBlogCardTitle(String(row.title || a.title || ''), row.seo_data),
-        featured_image: row.featured_image || '',
-        href: `/blogs/${slug}`,
-      };
+  const recentSlugs = new Set((recentPosts || []).map((post) => String(post.slug)));
+  const relatedTokens = topicTokens(`${transformed.title} ${seo?.ai_focus_keyword || ''} ${seo?.keywords || ''}`).slice(0, 4);
+  const relatedCity = String(seo?.local_city || seo?.ai_city || '').trim();
+  const relatedOr = [
+    ...relatedTokens.map((token) => `title.ilike.%${token.replace(/[%_,]/g, '')}%`),
+    ...(relatedCity ? [`title.ilike.%${relatedCity.replace(/[%_,]/g, '')}%`] : []),
+  ].filter((part, index, all) => part.length > 14 && all.indexOf(part) === index);
+  const { data: relatedCandidates } = relatedOr.length
+    ? await supabase
+        .from('blogs')
+        .select('id, slug, title, featured_image, seo_data')
+        .ilike('status', 'published')
+        .neq('id', transformed.id)
+        .or(relatedOr.join(','))
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(30)
+    : { data: [] as any[] };
+  const relatedPool = new Map<string, any>();
+  for (const row of relatedRows || []) relatedPool.set(String(row.slug), row);
+  for (const row of relatedCandidates || []) relatedPool.set(String(row.slug), row);
+  const relatedSidebar = [...relatedPool.values()]
+    .filter((row) => {
+      const rowSeo = (row.seo_data || {}) as Record<string, unknown>;
+      if (String(row.slug) === transformed.slug || recentSlugs.has(String(row.slug))) return false;
+      return !isNewsCarBlog(rowSeo) && rowSeo.ai_daily_news !== true;
     })
-    .filter(Boolean) as Array<{ id: string; slug: string; title: string; featured_image: string; href: string }>;
-  const relatedSeen = new Set(relatedFromSeo.map((item) => item.slug));
-  const relatedSidebar = [
-    ...relatedFromSeo,
-    ...(recentPosts || [])
-      .filter((post) => !relatedSeen.has(String(post.slug)))
-      .map((post) => ({
-        id: post.id,
-        slug: post.slug,
-        title: displayBlogCardTitle(String(post.title || ''), post.seo_data),
-        featured_image: post.featured_image || '',
-        href: `/blogs/${post.slug}`,
-      })),
-  ].slice(0, 3);
+    .map((row) => ({
+      row,
+      score: relatedScore(String(row.title || ''), relatedTokens, relatedCity),
+    }))
+    .filter((item) => item.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(({ row }) => ({
+      id: row.id,
+      slug: row.slug,
+      title: displayBlogCardTitle(String(row.title || ''), row.seo_data),
+      featured_image: row.featured_image || '',
+      href: `/blogs/${row.slug}`,
+    }));
   const htmlStyleQuote = highlightQuote;
   const appDownloadHref =
     String(seo?.app_download_url || '').trim() ||
