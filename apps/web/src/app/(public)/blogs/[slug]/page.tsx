@@ -378,14 +378,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     faqs: (faqs || []).map((f: any) => ({ question: f.question, answer: f.answer })),
   };
 
-  const { data: recentPosts } = await supabase
+  const { data: recentCandidates } = await supabase
     .from('blogs')
     .select('id, slug, title, featured_image, published_at, created_at, seo_data')
     .ilike('status', 'published')
     .neq('id', transformed.id)
     .order('published_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
-    .limit(3);
+    .limit(24);
+  const recentPosts = (recentCandidates || [])
+    .filter((post) => {
+      const seo = (post.seo_data || {}) as Record<string, unknown>;
+      return !isNewsCarBlog(seo) && seo.ai_daily_news !== true;
+    })
+    .slice(0, 3);
 
   const { data: categories } = await supabase
     .from('blog_categories')
@@ -461,24 +467,35 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followX = 'https://x.com/myfngcarservice';
   const bookHref = (placement: string) =>
     buildBlogTrackedPath('/book-service', transformed.slug, placement, String(seo?.keywords || '').split(',')[0]);
-  const relatedSidebar = (relatedArticles.length
-    ? relatedArticles.map((a, i) => {
-        const slug = blogSlugFromHref(a.url);
-        const row = slug ? relatedBySlug.get(slug) : null;
-        return {
-          id: row?.id || `rel-${i}`,
-          slug: slug || a.url,
-          title: row ? displayBlogCardTitle(String(row.title || a.title || ''), row.seo_data) : (a.title || a.url),
-          featured_image: row?.featured_image || '',
-          href: slug ? `/blogs/${slug}` : a.url,
-        };
-      })
-    : (recentPosts || []).map((p: any) => ({
-        ...p,
-        title: displayBlogCardTitle(String(p.title || ''), p.seo_data),
-        href: `/blogs/${p.slug}`,
-      }))
-  ).slice(0, 3);
+  const relatedFromSeo = relatedArticles
+    .map((a, i) => {
+      const slug = blogSlugFromHref(a.url);
+      const row = slug ? relatedBySlug.get(slug) : null;
+      if (/automobile-news/i.test(a.url)) return null;
+      if (row && (isNewsCarBlog(row.seo_data as Record<string, unknown>) || (row.seo_data as { ai_daily_news?: unknown } | null)?.ai_daily_news === true)) return null;
+      if (!row) return null;
+      return {
+        id: row.id || `rel-${i}`,
+        slug,
+        title: displayBlogCardTitle(String(row.title || a.title || ''), row.seo_data),
+        featured_image: row.featured_image || '',
+        href: `/blogs/${slug}`,
+      };
+    })
+    .filter(Boolean) as Array<{ id: string; slug: string; title: string; featured_image: string; href: string }>;
+  const relatedSeen = new Set(relatedFromSeo.map((item) => item.slug));
+  const relatedSidebar = [
+    ...relatedFromSeo,
+    ...(recentPosts || [])
+      .filter((post) => !relatedSeen.has(String(post.slug)))
+      .map((post) => ({
+        id: post.id,
+        slug: post.slug,
+        title: displayBlogCardTitle(String(post.title || ''), post.seo_data),
+        featured_image: post.featured_image || '',
+        href: `/blogs/${post.slug}`,
+      })),
+  ].slice(0, 3);
   const htmlStyleQuote = highlightQuote;
   const appDownloadHref =
     String(seo?.app_download_url || '').trim() ||

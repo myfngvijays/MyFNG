@@ -22,10 +22,29 @@ export function storyTokens(title: string) {
     .filter((word) => word.length > 2 && !STORY_STOP.has(word));
 }
 
+const MODEL_STOP = new Set([
+  'hyundai', 'toyota', 'mahindra', 'honda', 'maruti', 'suzuki', 'tata', 'kia', 'audi', 'bmw',
+  'mercedes', 'ather', 'ola', 'tvs', 'bajaj', 'byd', 'jeep', 'volvo', 'skoda', 'volkswagen',
+  'hero', 'royal', 'enfield', 'vinfast', 'jsw', 'mg',
+  'unveiled', 'revealed', 'teased', 'debuts', 'debut', 'reports', 'reduced', 'strong',
+  'demand', 'features', 'design', 'mobility', 'intelligent', 'campaign', 'festive',
+  'quarterly', 'losses', 'family', 'addition', 'cities', 'major', 'pricing', 'details',
+  'consider', 'diwali', 'affordable', 'seater', 'electric', 'scooter', 'scooters',
+  'petrol', 'diesel', 'engine', 'global', 'manufacturing', 'preference', 'sector',
+  'advantages', 'exploring', 'inspired', 'midsize', 'flagship', 'brand', 'range',
+  'battery', 'packs', 'claimed', 'service', 'network', 'officially', 'significant',
+]);
+
+function modelTokens(title: string) {
+  return storyTokens(title).filter((word) => word.length >= 4 && !MODEL_STOP.has(word));
+}
+
 /** Same car event written with a different headline. */
 export function isSameAutomobileStory(left: string, right: string) {
   const a = new Set(storyTokens(left));
   const b = new Set(storyTokens(right));
+  const sharedModel = modelTokens(left).filter((word) => new Set(modelTokens(right)).has(word));
+  if (sharedModel.length >= 1) return true;
   if (a.size < 2 || b.size < 2) return false;
   let shared = 0;
   for (const token of a) if (b.has(token)) shared += 1;

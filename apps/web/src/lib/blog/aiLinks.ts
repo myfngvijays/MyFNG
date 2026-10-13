@@ -424,6 +424,11 @@ function escapeHtml(s: string) {
     .replace(/"/g, '&quot;');
 }
 
+function isAutomobileNewsSeo(seo?: Record<string, unknown> | null) {
+  if (!seo) return false;
+  return Boolean((seo as { ai_news_car?: unknown }).ai_news_car) || (seo as { ai_daily_news?: unknown }).ai_daily_news === true;
+}
+
 function safeIlikeTerm(s: string) {
   return String(s || '')
     .replace(/[%_,.()"'\\]/g, ' ')
@@ -441,8 +446,8 @@ export async function fetchRelatedPublishedBlogs(
     .map((t) => safeIlikeTerm(String(t || '')))
     .filter((t) => t.length >= 3);
 
-  const select = 'title, slug, excerpt';
-  let rows: RelatedBlogLink[] = [];
+  const select = 'title, slug, excerpt, seo_data';
+  let rows: Array<RelatedBlogLink & { seo_data?: Record<string, unknown> | null }> = [];
 
   if (terms[0]) {
     const orParts = terms
@@ -456,7 +461,7 @@ export async function fetchRelatedPublishedBlogs(
       .or(orParts)
       .order('published_at', { ascending: false, nullsFirst: false })
       .limit(limit);
-    rows = (data || []) as RelatedBlogLink[];
+    rows = (data || []) as Array<RelatedBlogLink & { seo_data?: Record<string, unknown> | null }>;
   }
 
   if (rows.length < 2) {
@@ -466,7 +471,7 @@ export async function fetchRelatedPublishedBlogs(
       .ilike('status', 'published')
       .order('published_at', { ascending: false, nullsFirst: false })
       .limit(limit);
-    const extras = (data || []) as RelatedBlogLink[];
+    const extras = (data || []) as Array<RelatedBlogLink & { seo_data?: Record<string, unknown> | null }>;
     const seen = new Set(rows.map((r) => r.slug));
     for (const row of extras) {
       if (!seen.has(row.slug)) {
@@ -476,7 +481,10 @@ export async function fetchRelatedPublishedBlogs(
     }
   }
 
-  return rows.filter((r) => r.slug && r.title).slice(0, limit);
+  return rows
+    .filter((row) => row.slug && row.title && !isAutomobileNewsSeo(row.seo_data))
+    .map(({ title, slug, excerpt }) => ({ title, slug, excerpt }))
+    .slice(0, limit);
 }
 
 function decodeHref(raw: string) {
