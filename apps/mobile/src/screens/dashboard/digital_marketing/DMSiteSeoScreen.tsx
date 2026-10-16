@@ -175,6 +175,7 @@ export default function DMSiteSeoScreen() {
     { id: 'dashboard', label: 'Home', icon: 'home' },
     { id: 'DMContent', label: 'Blogs', icon: 'document' },
     { id: 'DMSiteSeo', label: 'SEO', icon: 'search' },
+    { id: 'DMComments', label: 'Comments', icon: 'comment' },
     { id: 'DMCategories', label: 'Categories', icon: 'tag' },
     { id: 'DMProfile', label: 'Profile', icon: 'account' },
   ];

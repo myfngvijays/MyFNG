@@ -598,6 +598,12 @@ const navigationItems: NavItem[] = [
         icon: ClipboardList,
         description: 'Every cron tick, skip, fail, and Post now',
       },
+      {
+        name: 'Blog Comments',
+        href: '/dashboard/digital_marketing/blogs/comments',
+        icon: MessageSquare,
+        description: 'Approve or delete comments before they go live',
+      },
     ],
   },
   {

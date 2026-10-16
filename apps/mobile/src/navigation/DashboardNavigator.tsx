@@ -1819,6 +1819,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
   if (roleCode === 'DIGITAL_MARKETING') {
     const DMContentScreen = require('../screens/dashboard/digital_marketing/DMContentScreen').default;
     const DMCategoriesScreen = require('../screens/dashboard/digital_marketing/DMCategoriesScreen').default;
+    const DMCommentsScreen = require('../screens/dashboard/digital_marketing/DMCommentsScreen').default;
     const DMSiteSeoScreen = require('../screens/dashboard/digital_marketing/DMSiteSeoScreen').default;
     const SuperAdminCompetitorsScreen = require('../screens/dashboard/superadmin/SuperAdminCompetitorsScreen').default;
     const { SuperAdminMetaAdsMcpScreen } = require('../screens/dashboard/superadmin/SuperAdminMoreScreens');
@@ -1841,6 +1842,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="DMCategories"
           component={DMCategoriesScreen}
           options={{ title: 'Blog Categories' }}
+        />
+        <Stack.Screen
+          name="DMComments"
+          component={DMCommentsScreen}
+          options={{ title: 'Blog Comments' }}
         />
         <Stack.Screen
           name="DMSiteSeo"

@@ -475,6 +475,10 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     title: 'Blogs',
     body: 'Saare blog posts yahan se create, edit, review, aur publish karo.',
   },
+  '/dashboard/digital_marketing/blogs/comments': {
+    title: 'Comments',
+    body: 'Har blog ke comments yahan aate hain. Approve, Hide, Reply, ya Delete. Checkbox se kai comments ek saath approve, hide, ya delete kar sakte ho.',
+  },
   '/dashboard/digital_marketing/blogs/auto-post-logs': {
     title: 'Auto-post logs',
     body: 'Daily AI blogs — last 7 days kitne post hue, cron skip/fail reason, aur Post now history.',

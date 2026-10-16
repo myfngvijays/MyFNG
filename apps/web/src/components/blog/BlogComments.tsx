@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import CommentBody from '@/components/blog/CommentBody';
 
 type CommentRow = {
   id: string;
@@ -37,10 +38,12 @@ export default function BlogComments({
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [text, setText] = useState('');
+  const [replyText, setReplyText] = useState('');
   const [replyToId, setReplyToId] = useState<string | null>(null);
 
   const byParent = useMemo(() => {
@@ -67,7 +70,14 @@ export default function BlogComments({
     }
   }
 
-  async function submit() {
+  function openReply(commentId: string) {
+    setReplyToId((current) => (current === commentId ? null : commentId));
+    setReplyText('');
+    setNotice(null);
+  }
+
+  async function submit(parentId: string | null) {
+    const bodyText = parentId ? replyText : text;
     setPosting(true);
     setError(null);
     try {
@@ -78,15 +88,20 @@ export default function BlogComments({
           blog_id: blogId,
           user_name: name,
           user_email: email,
-          comment: text,
-          parent_comment_id: replyToId,
+          comment: bodyText,
+          parent_comment_id: parentId,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Failed to post comment');
 
-      setText('');
-      setReplyToId(null);
+      if (parentId) {
+        setReplyText('');
+        setReplyToId(null);
+      } else {
+        setText('');
+      }
+      setNotice('Comment submitted. It will appear on this blog after approval.');
       await refresh();
     } catch (e: any) {
       setError(e?.message || 'Failed to post comment');
@@ -131,8 +146,58 @@ export default function BlogComments({
 
   const roots = byParent.get(null) || [];
 
+  function replyParentId(commentId: string) {
+    const row = comments.find((item) => item.id === commentId);
+    return row?.parent_comment_id || commentId;
+  }
+
+  function replyBox(commentId: string) {
+    if (replyToId !== commentId) return null;
+    const draft = replyText;
+    return (
+      <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <div className="text-xs font-semibold text-gray-600 mb-2">Write a reply</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary"
+          />
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email (optional)"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary"
+          />
+        </div>
+        <textarea
+          value={draft}
+          onChange={(e) => setReplyText(e.target.value)}
+          placeholder="Write a reply…"
+          rows={3}
+          className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary"
+        />
+        <p className="mt-2 text-xs text-gray-500">Replies are reviewed before they appear on the blog.</p>
+        <div className="mt-2 flex items-center justify-end gap-3">
+          <button type="button" onClick={() => openReply(commentId)} className="text-xs font-semibold text-gray-600 hover:underline">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void submit(replyParentId(commentId))}
+            disabled={posting || draft.trim().length === 0}
+            className="text-sm px-4 py-2 rounded-lg bg-[#0a4ea3] text-white hover:bg-[#083b7c] transition-colors disabled:opacity-60"
+          >
+            {posting ? 'Posting…' : 'Post reply'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <section className="mt-0">
+    <section id="blog-comments" className="mt-0">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900">Comments</h2>
         <button
@@ -146,6 +211,7 @@ export default function BlogComments({
       </div>
 
       {error ? <div className="mb-4 text-sm text-red-600">{error}</div> : null}
+      {notice ? <div className="mb-4 text-sm text-emerald-700">{notice}</div> : null}
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -163,19 +229,6 @@ export default function BlogComments({
           />
         </div>
 
-        {replyToId ? (
-          <div className="mt-3 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="text-gray-600">Replying to a comment</div>
-            <button
-              type="button"
-              onClick={() => setReplyToId(null)}
-              className="text-brand-primary font-semibold hover:underline"
-            >
-              Cancel reply
-            </button>
-          </div>
-        ) : null}
-
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -184,10 +237,12 @@ export default function BlogComments({
           className="w-full mt-3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />
 
+        <p className="mt-3 text-xs text-gray-500">Comments are reviewed before they appear on the blog.</p>
+
         <div className="mt-3 flex items-center justify-end">
           <button
             type="button"
-            onClick={submit}
+            onClick={() => void submit(null)}
             disabled={posting || text.trim().length === 0}
             className="text-sm px-4 py-2 rounded-lg bg-[#0a4ea3] text-white hover:bg-[#083b7c] transition-colors disabled:opacity-60"
           >
@@ -210,8 +265,8 @@ export default function BlogComments({
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setReplyToId(c.id)}
-                    className="text-xs font-semibold text-brand-primary hover:underline"
+                    onClick={() => openReply(c.id)}
+                    className="text-xs font-semibold text-white bg-[#0a4ea3] hover:bg-[#083b7c] px-3 py-1.5 rounded-lg"
                   >
                     Reply
                   </button>
@@ -226,15 +281,28 @@ export default function BlogComments({
                   ) : null}
                 </div>
               </div>
-              <div className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{c.comment}</div>
+              <CommentBody text={c.comment} className="mt-2 text-sm text-gray-800" />
+              {replyBox(c.id)}
 
               {(byParent.get(c.id) || []).length ? (
                 <div className="mt-4 pl-4 border-l border-gray-200 space-y-3">
                   {(byParent.get(c.id) || []).map((r) => (
                     <div key={r.id} className="bg-gray-50 rounded-lg p-3">
-                      <div className="font-semibold text-gray-900 text-sm">{r.user_name || 'Anonymous'}</div>
-                      <div className="text-xs text-gray-500">{fmt(r.created_at)}</div>
-                      <div className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{r.comment}</div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-gray-900 text-sm">{r.user_name || 'Anonymous'}</div>
+                          <div className="text-xs text-gray-500">{fmt(r.created_at)}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openReply(r.id)}
+                          className="text-xs font-semibold text-white bg-[#0a4ea3] hover:bg-[#083b7c] px-3 py-1.5 rounded-lg"
+                        >
+                          Reply
+                        </button>
+                      </div>
+                      <CommentBody text={r.comment} className="mt-1 text-sm text-gray-800" />
+                      {replyBox(r.id)}
                     </div>
                   ))}
                 </div>

@@ -200,6 +200,7 @@ export default function DigitalMarketingDashboard() {
     { id: 'dashboard', label: 'Home', icon: 'home' },
     { id: 'DMContent', label: 'Blogs', icon: 'document' },
     { id: 'DMSiteSeo', label: 'SEO', icon: 'search' },
+    { id: 'DMComments', label: 'Comments', icon: 'comment' },
     { id: 'DMCategories', label: 'Categories', icon: 'tag' },
     { id: 'DMProfile', label: 'Profile', icon: 'account' },
   ];
@@ -357,6 +358,10 @@ export default function DigitalMarketingDashboard() {
             <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMGoogleAds')}>
               <Text style={styles.actionEmoji}>🎯</Text>
               <Text style={styles.actionText}>Google Ads</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMComments')}>
+              <Text style={styles.actionEmoji}>💬</Text>
+              <Text style={styles.actionText}>Comments</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigation('DMCategories')}>
               <Text style={styles.actionEmoji}>🏷️</Text>

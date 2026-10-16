@@ -402,7 +402,8 @@ export default function DigitalMarketingDashboard() {
           <StatChip title="Archived" value={summary.archived} href="/dashboard/digital_marketing/blogs?status=archived" />
           <StatChip title="Categories" value={inventory.categories} href="/dashboard/digital_marketing/blogs/categories" />
           <StatChip title="Tags" value={inventory.tags} />
-          <StatChip title="Comments" value={inventory.comments} />
+          <StatChip title="Comments" value={inventory.comments} href="/dashboard/digital_marketing/blogs/comments?status=all" />
+          <StatChip title="Pending comments" value={inventory.pendingComments} href="/dashboard/digital_marketing/blogs/comments" />
           <StatChip title="FAQs" value={inventory.faqs.toLocaleString()} />
           <StatChip title="SEO" value={`${data.seoHealth.score}%`} />
           <StatChip title="No city" value={data.seoHealth.missingLocalCity} />

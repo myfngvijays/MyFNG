@@ -427,6 +427,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     .from('blog_comments')
     .select('id, blog_id, user_name, comment, parent_comment_id, status, created_at')
     .eq('blog_id', transformed.id)
+    .eq('status', 1)
     .order('created_at', { ascending: true });
 
   const seo: any = (transformed.seo_data || {}) as any;

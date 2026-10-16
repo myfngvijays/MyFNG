@@ -1119,6 +1119,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       'DIGITAL_MARKETING': [
         { href: '/dashboard/digital_marketing', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
         { href: '/dashboard/digital_marketing/blogs', icon: <FileText className="w-5 h-5" />, label: 'Blogs' },
+        { href: '/dashboard/digital_marketing/blogs/comments', icon: <MessageCircle className="w-5 h-5" />, label: 'Comments' },
         { href: '/dashboard/digital_marketing/blogs/auto-post-logs', icon: <ClipboardList className="w-5 h-5" />, label: 'Auto-post logs' },
         { href: '/dashboard/digital_marketing/blogs/categories', icon: <Tag className="w-5 h-5" />, label: 'Blog Categories' },
         {
