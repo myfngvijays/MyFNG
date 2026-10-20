@@ -641,8 +641,8 @@ export default function AdsLandingClient() {
         </div>
       </header>
 
-      <main className="mx-auto grid min-w-0 max-w-6xl gap-6 overflow-x-hidden px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 lg:py-8">
-        <section className="lg:col-start-1 lg:row-start-1">
+      <main className="mx-auto grid min-w-0 max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 lg:py-8">
+        <section className="min-w-0 overflow-x-hidden lg:col-start-1 lg:row-start-1">
           <p className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-800">
             Mumbai · Thane · Navi Mumbai
           </p>
@@ -683,7 +683,7 @@ export default function AdsLandingClient() {
 
         <aside
           id="book-service"
-          className={`scroll-mt-24 lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto ${
+          className={`scroll-mt-24 lg:sticky lg:top-20 lg:z-30 lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto ${
             highlight ? 'rounded-3xl ring-2 ring-blue-500 ring-offset-2 ring-offset-[#e7f2ff]' : ''
           }`}
         >
@@ -970,7 +970,7 @@ export default function AdsLandingClient() {
           </div>
         </aside>
 
-        <div className="min-w-0 space-y-5 pb-8 lg:col-start-1 lg:row-start-2">
+        <div className="min-w-0 space-y-5 overflow-x-hidden pb-8 lg:col-start-1 lg:row-start-2">
           <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
             <img
               src="/media/workshop-covers/source-actual-workshop.webp"
