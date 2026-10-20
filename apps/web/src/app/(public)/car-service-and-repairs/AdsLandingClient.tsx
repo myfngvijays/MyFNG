@@ -23,7 +23,7 @@ import {
 const PHONE_TEL = '+919152307030';
 const PHONE_LABEL = '91523 07030';
 
-const CITIES = ['Mumbai', 'Thane', 'Navi Mumbai', 'Pune'];
+const CITIES = ['Mumbai', 'Thane', 'Navi Mumbai'];
 
 const VISIT_SLOTS = Array.from({ length: 6 }, (_, i) => {
   const hour = 10 + i;
@@ -44,7 +44,7 @@ function carLabel(car: CarHit) {
 
 function WhatsAppUpdateShot() {
   return (
-    <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.6rem] bg-[#0b141a] shadow-xl ring-1 ring-black/10">
+    <div className="mx-auto flex h-[560px] w-full max-w-[280px] flex-col overflow-hidden rounded-[1.6rem] bg-[#0b141a] shadow-xl ring-1 ring-black/10">
       <div className="flex items-center gap-2 bg-[#075e54] px-3 py-2.5 text-white">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[10px] font-extrabold text-[#075e54]">
           MF
@@ -55,7 +55,7 @@ function WhatsAppUpdateShot() {
         </div>
       </div>
       <div
-        className="space-y-2 bg-[#efeae2] px-2.5 py-3"
+        className="flex min-h-0 flex-1 flex-col space-y-2 bg-[#efeae2] px-2.5 py-3"
         style={{
           backgroundImage:
             'radial-gradient(circle at 20% 20%, rgba(255,255,255,.35) 0 1px, transparent 1px), radial-gradient(circle at 80% 60%, rgba(0,0,0,.04) 0 1px, transparent 1px)',
@@ -70,7 +70,7 @@ function WhatsAppUpdateShot() {
           <img
             src="/media/workshop-covers/source-actual-workshop.webp"
             alt="Workshop photo sent on WhatsApp"
-            className="h-28 w-full object-cover"
+            className="h-[7.25rem] w-full object-cover"
           />
           <div className="px-2 py-1.5">
             <p className="text-[12px] leading-4 text-[#111b21]">Bonnet open. Inspection started.</p>
@@ -82,7 +82,7 @@ function WhatsAppUpdateShot() {
             <img
               src="/media/Service_image_public/MyFNG_Car_Engine_Service.webp"
               alt="Job video thumbnail sent on WhatsApp"
-              className="h-28 w-full object-cover"
+              className="h-[7.25rem] w-full object-cover"
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/25">
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#075e54]">
@@ -109,7 +109,7 @@ function WhatsAppUpdateShot() {
 
 function WhatsAppApprovalShot() {
   return (
-    <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.6rem] bg-[#0b141a] shadow-xl ring-1 ring-black/10">
+    <div className="mx-auto flex h-[560px] w-full max-w-[280px] flex-col overflow-hidden rounded-[1.6rem] bg-[#0b141a] shadow-xl ring-1 ring-black/10">
       <div className="flex items-center gap-2 bg-[#075e54] px-3 py-2.5 text-white">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[10px] font-extrabold text-[#075e54]">
           MF
@@ -120,7 +120,7 @@ function WhatsAppApprovalShot() {
         </div>
       </div>
       <div
-        className="space-y-2 bg-[#efeae2] px-2.5 py-3"
+        className="flex min-h-0 flex-1 flex-col space-y-2 bg-[#efeae2] px-2.5 py-3"
         style={{
           backgroundImage:
             'radial-gradient(circle at 20% 20%, rgba(255,255,255,.35) 0 1px, transparent 1px), radial-gradient(circle at 80% 60%, rgba(0,0,0,.04) 0 1px, transparent 1px)',
@@ -135,7 +135,7 @@ function WhatsAppApprovalShot() {
           <img
             src="/media/ads/brake-pads-photo.jpg"
             alt="Worn brake pads compared with a new pad, sent for customer approval"
-            className="h-auto w-full"
+            className="h-56 w-full object-cover object-[center_42%]"
           />
           <div className="px-2 py-1.5">
             <p className="text-[12px] leading-4 text-[#111b21]">Photo of the worn pads. Extra work starts only if you approve.</p>
@@ -229,11 +229,69 @@ const REVIEWS = [
   },
   {
     name: 'Ketan Deshmukh',
-    location: 'Pune',
+    location: 'Thane',
     vehicle: 'Tata Nexon',
     text: 'Periodic service was straightforward. Warranty card was shared after delivery.',
   },
 ];
+
+function ReviewCarousel() {
+  const scroller = useRef<HTMLDivElement>(null);
+  const paused = useRef(false);
+
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const timer = window.setInterval(() => {
+      if (paused.current) return;
+      const card = el.querySelector<HTMLElement>('[data-review]');
+      const step = (card?.offsetWidth || el.clientWidth) + 8;
+      const max = el.scrollWidth - el.clientWidth - 4;
+      el.scrollTo({ left: el.scrollLeft >= max ? 0 : el.scrollLeft + step, behavior: 'smooth' });
+    }, 2800);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <div
+      ref={scroller}
+      onPointerDown={() => {
+        paused.current = true;
+      }}
+      onPointerUp={() => {
+        paused.current = false;
+      }}
+      onPointerCancel={() => {
+        paused.current = false;
+      }}
+      className="mt-3 flex w-full min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {REVIEWS.map((review) => (
+        <blockquote
+          key={review.name}
+          data-review
+          className="w-[calc(50%-4px)] shrink-0 snap-start rounded-2xl bg-white p-3 shadow-sm ring-1 ring-blue-100"
+        >
+          <div className="flex items-center justify-between">
+            <Quote className="h-4 w-4 text-blue-500" />
+            <div className="flex text-amber-400">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star key={i} className="h-3 w-3 fill-amber-400" />
+              ))}
+            </div>
+          </div>
+          <p className="mt-2 line-clamp-4 text-xs leading-5 text-slate-700">{review.text}</p>
+          <footer className="mt-2 text-sm font-bold text-slate-950">
+            {review.name}
+            <span className="mt-0.5 block text-[11px] font-medium text-slate-500">
+              {review.vehicle} · {review.location}
+            </span>
+          </footer>
+        </blockquote>
+      ))}
+    </div>
+  );
+}
 
 const TRUST = [
   { k: '100+', v: 'Workshops' },
@@ -569,7 +627,7 @@ export default function AdsLandingClient() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f6fb] text-slate-800">
+    <div className="min-h-screen bg-[#e7f2ff] text-slate-800">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <img src="/logo.png" alt="MYFNG" className="h-10 w-auto sm:h-12" />
@@ -583,10 +641,10 @@ export default function AdsLandingClient() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 lg:py-8">
+      <main className="mx-auto grid min-w-0 max-w-6xl gap-6 overflow-x-hidden px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 lg:py-8">
         <section className="lg:col-start-1 lg:row-start-1">
           <p className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-800">
-            Mumbai · Thane · Navi Mumbai · Pune
+            Mumbai · Thane · Navi Mumbai
           </p>
           <h1 className="mt-3 text-3xl font-extrabold leading-tight text-slate-950 sm:text-4xl lg:text-[2.6rem]">
             Car Service and Repairs Near You
@@ -594,9 +652,9 @@ export default function AdsLandingClient() {
           <p className="mt-3 max-w-xl text-base leading-7 text-slate-600">
             Book a verified MYFNG workshop from this page. Transparent estimate, free pickup and drop, photo updates, and warranty on the job.
           </p>
-          <ul className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <ul className="mt-5 grid grid-cols-2 gap-x-3 gap-y-2">
             {['Same Day Service', 'Genuine OEM / OES parts', 'Free doorstep pickup & drop', 'Warranty on Service'].map((item) => (
-              <li key={item} className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <li key={item} className="flex min-w-0 items-start gap-1.5 text-[13px] font-semibold leading-5 text-slate-800">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-600" />
                 {item}
               </li>
@@ -615,7 +673,7 @@ export default function AdsLandingClient() {
         <aside
           id="book-service"
           className={`scroll-mt-24 lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto ${
-            highlight ? 'rounded-3xl ring-2 ring-blue-500 ring-offset-2 ring-offset-[#f3f6fb]' : ''
+            highlight ? 'rounded-3xl ring-2 ring-blue-500 ring-offset-2 ring-offset-[#e7f2ff]' : ''
           }`}
         >
           <div className="overflow-hidden rounded-3xl bg-white shadow-xl ring-2 ring-blue-600">
@@ -901,7 +959,7 @@ export default function AdsLandingClient() {
           </div>
         </aside>
 
-        <div className="space-y-5 pb-8 lg:col-start-1 lg:row-start-2">
+        <div className="min-w-0 space-y-5 pb-8 lg:col-start-1 lg:row-start-2">
           <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
             <img
               src="/media/workshop-covers/source-actual-workshop.webp"
@@ -911,12 +969,12 @@ export default function AdsLandingClient() {
             <div className="p-4 sm:p-5">
               <p className="text-xs font-bold uppercase tracking-wide text-blue-700">How booking works</p>
               <h2 className="mt-1 text-xl font-extrabold text-slate-950">Four steps. One form.</h2>
-              <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+              <ol className="mt-3 grid grid-cols-2 gap-2">
                 {STEPS.map((step) => (
-                  <li key={step.n} className="rounded-2xl bg-slate-50 p-3">
-                    <p className="text-xs font-extrabold text-blue-700">Step {step.n}</p>
-                    <p className="mt-1 text-sm font-bold text-slate-900">{step.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-600">{step.desc}</p>
+                  <li key={step.n} className="rounded-2xl bg-blue-50 p-2.5">
+                    <p className="text-[11px] font-extrabold text-blue-700">Step {step.n}</p>
+                    <p className="mt-1 text-sm font-bold leading-5 text-slate-900">{step.title}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-slate-600">{step.desc}</p>
                   </li>
                 ))}
               </ol>
@@ -925,18 +983,18 @@ export default function AdsLandingClient() {
 
           <section>
             <h2 className="text-2xl font-extrabold text-slate-950">Why car owners book MYFNG</h2>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {USPS.map((usp) => {
                 const Icon = usp.icon;
                 return (
-                  <article key={usp.title} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+                  <article key={usp.title} className="rounded-2xl bg-white p-2.5 shadow-sm ring-1 ring-blue-100">
                     <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
-                        <Icon className="h-4 w-4" />
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+                        <Icon className="h-3.5 w-3.5" />
                       </div>
-                      <h3 className="text-sm font-bold text-slate-950">{usp.title}</h3>
+                      <h3 className="text-[13px] font-bold leading-4 text-slate-950">{usp.title}</h3>
                     </div>
-                    <p className="mt-1.5 text-sm leading-5 text-slate-600">{usp.desc}</p>
+                    <p className="mt-1.5 text-[11px] leading-4 text-slate-600">{usp.desc}</p>
                   </article>
                 );
               })}
@@ -975,7 +1033,7 @@ export default function AdsLandingClient() {
                 <p className="mt-1 text-sm text-slate-600">Tap a job. It fills the booking form on this page.</p>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid grid-cols-3 gap-2">
               {DEFAULT_SERVICES.map((item) => {
                 const active = service === item.title;
                 return (
@@ -983,18 +1041,12 @@ export default function AdsLandingClient() {
                     key={item.slug}
                     type="button"
                     onClick={() => focusBook({ service: item.title })}
-                    className={`overflow-hidden rounded-2xl bg-white text-left shadow-sm ring-1 transition ${
-                      active ? 'ring-2 ring-blue-600' : 'ring-slate-200 hover:ring-blue-300'
+                    className={`flex min-w-0 flex-col items-center gap-1.5 rounded-2xl bg-white px-1.5 py-3 text-center ring-1 transition ${
+                      active ? 'ring-2 ring-blue-600' : 'ring-blue-100'
                     }`}
                   >
-                    {item.image ? (
-                      <img src={item.image} alt="" className="h-20 w-full object-cover" />
-                    ) : null}
-                    <div className="p-3">
-                      <h3 className="text-sm font-bold text-slate-950">{item.title}</h3>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{item.description}</p>
-                      <p className="mt-2 text-xs font-bold text-blue-700">{active ? 'Selected in the form' : 'Book this service'}</p>
-                    </div>
+                    <img src={item.iconImage || item.image} alt="" className="h-10 w-10 object-contain" />
+                    <span className="line-clamp-2 text-[11px] font-bold leading-4 text-slate-900">{item.title}</span>
                   </button>
                 );
               })}
@@ -1003,27 +1055,7 @@ export default function AdsLandingClient() {
 
           <section>
             <h2 className="text-2xl font-extrabold text-slate-950">Customer reviews</h2>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {REVIEWS.map((review) => (
-                <blockquote key={review.name} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                  <div className="flex items-center justify-between">
-                    <Quote className="h-4 w-4 text-blue-500" />
-                    <div className="flex text-amber-400">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />
-                      ))}
-                    </div>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-700">{review.text}</p>
-                  <footer className="mt-3 text-sm font-bold text-slate-950">
-                    {review.name}
-                    <span className="mt-0.5 block text-xs font-medium text-slate-500">
-                      {review.vehicle} · {review.location}
-                    </span>
-                  </footer>
-                </blockquote>
-              ))}
-            </div>
+            <ReviewCarousel />
           </section>
 
           <section>
