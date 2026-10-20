@@ -653,10 +653,21 @@ export default function AdsLandingClient() {
             Book a verified MYFNG workshop from this page. Transparent estimate, free pickup and drop, photo updates, and warranty on the job.
           </p>
           <ul className="mt-5 grid grid-cols-2 gap-x-3 gap-y-2">
-            {['Same Day Service', 'Genuine OEM / OES parts', 'Free doorstep pickup & drop', 'Warranty on Service'].map((item) => (
-              <li key={item} className="flex min-w-0 items-start gap-1.5 text-[13px] font-semibold leading-5 text-slate-800">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-600" />
-                {item}
+            {[
+              ['Same Day Service'],
+              ['Warranty on Service'],
+              ['Free doorstep pickup', '& drop'],
+              ['Genuine OEM / OES parts'],
+            ].map((lines) => (
+              <li key={lines.join(' ')} className="flex min-w-0 items-start gap-1.5 text-[13px] font-semibold leading-5 text-slate-800">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                <span>
+                  {lines.map((line) => (
+                    <span key={line} className={lines.length > 1 ? 'block whitespace-nowrap' : undefined}>
+                      {line}
+                    </span>
+                  ))}
+                </span>
               </li>
             ))}
           </ul>
