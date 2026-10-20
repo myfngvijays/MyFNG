@@ -191,6 +191,7 @@ export const SA_NAV: SaNavRow[] = [
     icon: 'shield-checkmark-outline',
     children: [
       { id: 'sysmon', label: 'System Monitor', icon: 'heart-outline', target: 'SuperAdminSystemMonitor', kind: 'stack' },
+      { id: 'public_status', label: 'Public Status', icon: 'pulse-outline', target: 'SuperAdminStatus', kind: 'stack' },
       { id: 'meta_ads_mcp', label: 'Meta Ads', icon: 'megaphone-outline', target: 'SuperAdminMetaAdsMcp', kind: 'stack' },
       { id: 'google_ads_mcp', label: 'Google Ads', icon: 'logo-google', target: 'SuperAdminGoogleAdsMcp', kind: 'stack' },
       { id: 'api_map', label: 'API Services Map', icon: 'layers-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'API Services Map', path: '/api/super_admin/api-services' } },

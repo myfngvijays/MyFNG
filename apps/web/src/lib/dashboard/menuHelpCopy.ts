@@ -157,6 +157,15 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Erase / withdraw pe legally 30 din ke andar respond karna hai.',
     ],
   },
+  '/dashboard/super_admin/status': {
+    title: 'Public Status',
+    body:
+      'Customer page at /status. Live checks cover website, app, login, payments, WhatsApp, and pickup.\nPost an incident or schedule maintenance when you want customers to see a written update.',
+    tips: [
+      'Leave services unselected to apply the incident to every service.',
+      'Resolve an incident so it moves into Past incidents.',
+    ],
+  },
   '/dashboard/super_admin/system-monitor': {
     title: 'System Monitor',
     body:

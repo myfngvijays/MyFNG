@@ -803,6 +803,12 @@ const navigationItems: NavItem[] = [
     description: 'Health, audit, security & fraud'
   },
   {
+    name: 'Public Status',
+    href: '/dashboard/super_admin/status',
+    icon: Activity,
+    description: 'Customer status page incidents'
+  },
+  {
     name: 'API Services Map',
     href: '/dashboard/super_admin/api-services',
     icon: Layers,

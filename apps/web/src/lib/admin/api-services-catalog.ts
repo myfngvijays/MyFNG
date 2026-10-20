@@ -244,6 +244,7 @@ export const ADMIN_MENU_API_SUMMARY: Array<{
   { menu: 'Customer Reviews', href: '/dashboard/super_admin/website-images/customer-reviews', tier: 'paid', services: ['Google GBP / Places'] },
   { menu: 'Manual Invoice', href: '/dashboard/super_admin/manual-invoices', tier: 'free', services: ['Supabase (Razorpay records)'] },
   { menu: 'System Monitor', href: '/dashboard/super_admin/system-monitor', tier: 'platform', services: ['Probes all configured APIs'] },
+  { menu: 'Public Status', href: '/dashboard/super_admin/status', tier: 'platform', services: ['Customer status page'] },
   { menu: 'Meta Ads MCP', href: '/dashboard/super_admin/meta-ads-mcp', tier: 'paid', services: ['Meta Marketing API'] },
   { menu: 'Google Ads MCP', href: '/dashboard/super_admin/google-ads-mcp', tier: 'paid', services: ['Google Ads API'] },
 ];

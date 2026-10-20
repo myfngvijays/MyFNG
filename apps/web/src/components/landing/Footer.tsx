@@ -186,6 +186,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
                   { href: '/blogs', label: 'Our Blogs' },
                   { href: '/automobile-news', label: 'Automobile News' },
                   { href: '/contact-us', label: 'Contact Us' },
+                  { href: '/status', label: 'System Status' },
                   { href: '/privacy-policy', label: 'Privacy Policy' },
                   { href: '/privacy-notice', label: 'Privacy Notice (DPDP)' },
                   { href: '/data-rights', label: 'Data Rights' },

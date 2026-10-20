@@ -4207,6 +4207,69 @@ async function checkAutomobileNews(): Promise<HealthCheck> {
   }
 }
 
+async function checkPublicStatusPage(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Public Status Page',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Configuration error',
+      reason: configError || 'Admin client is not available, so /status cannot read incidents.',
+      quickFix: { label: 'Open Public Status', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/status' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+  try {
+    const [incidents, updates, maintenance] = await Promise.all([
+      (client as any).from('status_incidents').select('id', { count: 'exact', head: true }).neq('state', 'resolved'),
+      (client as any).from('status_incident_updates').select('id').limit(1),
+      (client as any).from('status_maintenances').select('id').limit(1),
+    ]);
+    const missing = [incidents.error, updates.error, maintenance.error].find((error) => {
+      const code = String(error?.code || '');
+      const message = String(error?.message || '');
+      return code === '42P01' || code === 'PGRST205' || /does not exist|schema cache/i.test(message);
+    });
+    if (missing || incidents.error || updates.error || maintenance.error) {
+      return {
+        name: 'Public Status Page',
+        category: 'Operations',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Incident tables are missing',
+        reason: 'Customers can still see live checks on /status, but incidents cannot be saved until database/385_public_status_page.sql is applied.',
+        quickFix: { label: 'Open Public Status', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/status' } },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    const openCount = Number(incidents.count || 0);
+    return {
+      name: 'Public Status Page',
+      category: 'Operations',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: openCount ? `${openCount} open incident${openCount === 1 ? '' : 's'} on /status` : 'Public status page is ready',
+      reason: 'status_incidents, status_incident_updates, and status_maintenances are available.',
+      quickFix: { label: 'Open Public Status', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/status' } },
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'Public Status Page',
+      category: 'Operations',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Status page check failed',
+      reason: e?.message || 'Could not read public status tables.',
+      quickFix: { label: 'Open Public Status', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/status' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -4258,6 +4321,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkCrmMlDl(),
     checkDpdpCompliance(),
     checkWebsiteTracking(),
+    checkPublicStatusPage(),
   ]);
 }
 
