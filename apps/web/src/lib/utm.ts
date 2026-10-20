@@ -225,6 +225,39 @@ export function getLeadTrackingMeta(search?: string): UtmParams {
   return getCurrentOrStoredUtmParams(search);
 }
 
+/** Ads landing bookings must not inherit an older visit's stored UTMs. */
+export function isLockedUtmBooking(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const record = body as Record<string, unknown>;
+  if (record.ignore_stored_utm === true) return true;
+  const lead = record.lead && typeof record.lead === 'object' ? (record.lead as Record<string, unknown>) : null;
+  const meta = lead?.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : null;
+  return record.page === '/car-service-and-repairs' || meta?.page === '/car-service-and-repairs';
+}
+
+export function resolveBookingUtm(input: {
+  lockToBody?: boolean;
+  requestUtm: UtmParams;
+  leadUtm: UtmParams;
+  bodyUtm: UtmParams;
+}): UtmParams {
+  if (input.lockToBody) return normalizeUtmParams(input.bodyUtm);
+  return mergeUtmParams(input.requestUtm, input.leadUtm, input.bodyUtm);
+}
+
+/** Drop utm_* so a locked payload cannot keep a previous campaign in meta. */
+export function stripUtmFromMeta(existingMeta: unknown): Record<string, any> {
+  const meta: Record<string, any> =
+    existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta)
+      ? { ...(existingMeta as Record<string, any>) }
+      : {};
+  UTM_KEYS.forEach((key) => {
+    delete meta[key];
+  });
+  delete meta.tracking;
+  return meta;
+}
+
 export function hasStoredUtmParams(): boolean {
   return UTM_KEYS.some((key) => isNonEmptyString(getStoredUtmParams()[key]));
 }

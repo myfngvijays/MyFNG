@@ -1,15 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import Navbar from '@/components/landing/Navbar';
-import Footer from '@/components/landing/Footer';
-import AppDownloadSection from '@/components/landing/AppDownloadSection';
-import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
-import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
+import { useEffect, useRef, useState } from 'react';
+import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import { ADS_LP_FAQS } from './faqs';
-import { CITY_PAGES } from '@/lib/city-pages';
-import { buildGoAppDownloadHref } from '@/lib/utm';
+import { getLeadSourceFromUtm, parseUtmParams, type UtmParams } from '@/lib/utm';
 import {
   Shield,
   Clock,
@@ -21,368 +15,1106 @@ import {
   Truck,
   Quote,
   ChevronDown,
-  Smartphone,
-  CalendarCheck,
+  CheckCircle2,
+  Loader2,
+  MapPin,
 } from 'lucide-react';
 
-const BOOK = '/book-service';
-const PHONE = '+919152307030';
+const PHONE_TEL = '+919152307030';
+const PHONE_LABEL = '91523 07030';
 
-function useGoHref(placement: string) {
-  const fallback = `/go/myfngapp?utm_source=myfng&utm_medium=landing&utm_campaign=car-service-and-repairs&utm_content=${placement}`;
-  const [href, setHref] = useState(fallback);
-  useEffect(() => {
-    setHref(buildGoAppDownloadHref(placement));
-  }, [placement]);
-  return href;
+const CITIES = ['Mumbai', 'Thane', 'Navi Mumbai', 'Pune'];
+
+const VISIT_SLOTS = Array.from({ length: 6 }, (_, i) => {
+  const hour = 10 + i;
+  const value = `${String(hour).padStart(2, '0')}:00`;
+  const labelHour = hour > 12 ? hour - 12 : hour;
+  const next = hour + 1;
+  const nextLabel = next > 12 ? next - 12 : next;
+  const startPeriod = hour >= 12 ? 'PM' : 'AM';
+  const endPeriod = next >= 12 ? 'PM' : 'AM';
+  return { value, label: `${labelHour}:00 ${startPeriod} – ${nextLabel}:00 ${endPeriod}` };
+});
+
+type CarHit = { id: string; make: string; model?: string; model_name?: string; variant?: string | null };
+
+function carLabel(car: CarHit) {
+  return `${car.make} ${car.model || car.model_name || ''}`.replace(/\s+/g, ' ').trim();
+}
+
+function WhatsAppUpdateShot() {
+  return (
+    <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.6rem] bg-[#0b141a] shadow-xl ring-1 ring-black/10">
+      <div className="flex items-center gap-2 bg-[#075e54] px-3 py-2.5 text-white">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[10px] font-extrabold text-[#075e54]">
+          MF
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">MY FNG</p>
+          <p className="text-[10px] text-white/80">online</p>
+        </div>
+      </div>
+      <div
+        className="space-y-2 bg-[#efeae2] px-2.5 py-3"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 20% 20%, rgba(255,255,255,.35) 0 1px, transparent 1px), radial-gradient(circle at 80% 60%, rgba(0,0,0,.04) 0 1px, transparent 1px)',
+          backgroundSize: '18px 18px',
+        }}
+      >
+        <div className="ml-auto max-w-[92%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-2 py-1.5 shadow-sm">
+          <p className="text-[12px] leading-4 text-[#111b21]">Car received at the workshop. Sharing live photos of the job.</p>
+          <p className="mt-0.5 text-right text-[10px] text-[#667781]">11:42 am</p>
+        </div>
+        <div className="ml-auto max-w-[92%] overflow-hidden rounded-lg rounded-tr-none bg-[#d9fdd3] shadow-sm">
+          <img
+            src="/media/workshop-covers/source-actual-workshop.webp"
+            alt="Workshop photo sent on WhatsApp"
+            className="h-28 w-full object-cover"
+          />
+          <div className="px-2 py-1.5">
+            <p className="text-[12px] leading-4 text-[#111b21]">Bonnet open. Inspection started.</p>
+            <p className="text-right text-[10px] text-[#667781]">11:43 am</p>
+          </div>
+        </div>
+        <div className="ml-auto max-w-[92%] overflow-hidden rounded-lg rounded-tr-none bg-[#d9fdd3] shadow-sm">
+          <div className="relative">
+            <img
+              src="/media/Service_image_public/MyFNG_Car_Engine_Service.webp"
+              alt="Job video thumbnail sent on WhatsApp"
+              className="h-28 w-full object-cover"
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#075e54]">
+                <span className="ml-0.5 border-y-[7px] border-l-[12px] border-y-transparent border-l-[#075e54]" />
+              </span>
+            </div>
+            <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+              0:18
+            </span>
+          </div>
+          <div className="px-2 py-1.5">
+            <p className="text-[12px] leading-4 text-[#111b21]">Video of the engine bay after the service.</p>
+            <p className="text-right text-[10px] text-[#667781]">11:46 am</p>
+          </div>
+        </div>
+        <div className="max-w-[88%] rounded-lg rounded-tl-none bg-white px-2 py-1.5 shadow-sm">
+          <p className="text-[12px] leading-4 text-[#111b21]">Seen. Go ahead.</p>
+          <p className="mt-0.5 text-right text-[10px] text-[#667781]">11:47 am</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WhatsAppApprovalShot() {
+  return (
+    <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.6rem] bg-[#0b141a] shadow-xl ring-1 ring-black/10">
+      <div className="flex items-center gap-2 bg-[#075e54] px-3 py-2.5 text-white">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[10px] font-extrabold text-[#075e54]">
+          MF
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">MY FNG</p>
+          <p className="text-[10px] text-white/80">online</p>
+        </div>
+      </div>
+      <div
+        className="space-y-2 bg-[#efeae2] px-2.5 py-3"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 20% 20%, rgba(255,255,255,.35) 0 1px, transparent 1px), radial-gradient(circle at 80% 60%, rgba(0,0,0,.04) 0 1px, transparent 1px)',
+          backgroundSize: '18px 18px',
+        }}
+      >
+        <div className="ml-auto max-w-[92%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-2 py-1.5 shadow-sm">
+          <p className="text-[12px] leading-4 text-[#111b21]">Inspection done. Front brake pads need replacement. Need your approval before we start.</p>
+          <p className="mt-0.5 text-right text-[10px] text-[#667781]">12:18 pm</p>
+        </div>
+        <div className="ml-auto max-w-[92%] overflow-hidden rounded-lg rounded-tr-none bg-[#d9fdd3] shadow-sm">
+          <img
+            src="/media/ads/brake-pads-photo.jpg"
+            alt="Worn brake pads compared with a new pad, sent for customer approval"
+            className="h-auto w-full"
+          />
+          <div className="px-2 py-1.5">
+            <p className="text-[12px] leading-4 text-[#111b21]">Photo of the worn pads. Extra work starts only if you approve.</p>
+            <p className="text-right text-[10px] text-[#667781]">12:19 pm</p>
+          </div>
+        </div>
+        <div className="max-w-[88%] rounded-lg rounded-tl-none bg-white px-2 py-1.5 shadow-sm">
+          <p className="text-[12px] font-semibold leading-4 text-[#111b21]">Approved. Go ahead.</p>
+          <p className="mt-0.5 text-right text-[10px] text-[#667781]">12:21 pm</p>
+        </div>
+        <div className="ml-auto max-w-[92%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-2 py-1.5 shadow-sm">
+          <p className="text-[12px] leading-4 text-[#111b21]">Approved. Starting the extra work now.</p>
+          <p className="mt-0.5 text-right text-[10px] text-[#667781]">12:22 pm</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Current URL UTMs win. This page never reuses an older blog/session campaign. */
+function utmForThisPage(): UtmParams {
+  const fromUrl = typeof window === 'undefined' ? {} : parseUtmParams(window.location.search);
+  return {
+    utm_source: 'website',
+    utm_medium: 'landing',
+    utm_campaign: 'car-service-and-repairs',
+    utm_content: 'book-form',
+    utm_term: 'car service and repairs',
+    ...fromUrl,
+  };
 }
 
 const USPS = [
   {
     icon: Shield,
-    title: 'Verified workshops only',
-    desc: 'Every garage is audited so your car service and repairs happen at trusted multi-brand workshops — not random mechanics.',
+    title: 'Verified workshops',
+    desc: 'Audited multi-brand garages. Your car is not handed to a random mechanic.',
   },
   {
     icon: BadgeCheck,
-    title: 'Transparent car repair cost',
-    desc: 'See the estimate before you book. No last-minute extras on periodic car service, AC repair or engine work.',
+    title: 'Prices after OTP',
+    desc: 'We do not quote a random price here. After OTP you get a link for your car and pincode.',
   },
   {
     icon: Truck,
     title: 'Free pickup & drop',
-    desc: 'Doorstep car servicing in Mumbai, Thane, Navi Mumbai and Pune. We pick the car and return it after repairs.',
+    desc: 'We collect the car from your home or office and bring it back.',
   },
   {
     icon: Camera,
-    title: 'Photo & video updates',
-    desc: 'Track car repairs with live photos and videos from the workshop so you know exactly what was done.',
+    title: 'Photo updates',
+    desc: 'Live photos and videos on WhatsApp while the repair is on.',
   },
   {
     icon: Wrench,
-    title: 'Genuine OEM / OES parts',
-    desc: 'Car repairs use genuine, OEM or OES-recommended parts — not cheap duplicates that fail early.',
+    title: 'OEM / OES parts',
+    desc: 'Genuine or OEM-recommended parts, not cheap duplicates.',
   },
   {
     icon: Clock,
-    title: 'Warranty on service',
-    desc: 'Labour and parts warranty on MYFNG car service so you are covered after the job is done.',
+    title: 'Warranty included',
+    desc: 'Labour and parts warranty after periodic service and repairs.',
   },
 ];
 
-const TRUST_CARDS = [
-  { title: '100+ workshops', desc: 'Multi-brand car garages across MMR & Pune' },
-  { title: '10,000+ customers', desc: 'Car owners who booked service & repairs' },
-  { title: '4.8★ rated', desc: 'Trusted car servicing on app & Google' },
-  { title: 'Same-day service', desc: 'Most periodic jobs finished the same day' },
+const STEPS = [
+  { n: '1', title: 'Fill this form', desc: 'Name, phone, car and the job you need. It stays on this page.' },
+  { n: '2', title: 'We call you', desc: 'A MYFNG advisor confirms the slot, estimate and pickup time.' },
+  { n: '3', title: 'Free pickup', desc: 'The car is collected, serviced at a verified workshop, and returned.' },
+  { n: '4', title: 'Updates + warranty', desc: 'Photos of the job, then delivery with labour and parts warranty.' },
 ];
 
 const REVIEWS = [
   {
-    name: 'Rajesh Kumar',
-    location: 'Mumbai',
+    name: 'Nikhil Sawant',
+    location: 'Thane',
     vehicle: 'Honda City',
-    text: 'Best car service near me. Transparent pricing for periodic servicing and the pickup was on time.',
+    text: 'Pickup was on time and the bill matched what they told me on the call. No extra amount at the end.',
   },
   {
-    name: 'Priya Sharma',
+    name: 'Rutuja Patil',
     location: 'Navi Mumbai',
     vehicle: 'Maruti Swift',
-    text: 'Needed car AC repair urgently. MYFNG booked a verified workshop and sent photo updates. Highly recommend.',
+    text: 'AC was not cooling. They booked a workshop the same day and sent photos of the job.',
   },
   {
-    name: 'Amit Patel',
-    location: 'Thane',
+    name: 'Imran Shaikh',
+    location: 'Mumbai',
     vehicle: 'Hyundai Creta',
-    text: 'Car repairs were done with genuine parts. No surprise bill. This is how car servicing should work.',
+    text: 'Brake work was done with the parts they had listed. The car came back the same evening.',
   },
   {
-    name: 'Sandeep Singh',
+    name: 'Ketan Deshmukh',
     location: 'Pune',
     vehicle: 'Tata Nexon',
-    text: 'Booked car service from the MyFNG app. Mechanic quality was excellent and warranty gave me peace of mind.',
+    text: 'Periodic service was straightforward. Warranty card was shared after delivery.',
   },
 ];
 
-const HOW_IT_WORKS = [
-  {
-    icon: Smartphone,
-    title: 'Book on web or MyFNG app',
-    desc: 'Choose periodic car service or a car repair, pick your city and see the estimate before you confirm.',
-  },
-  {
-    icon: Truck,
-    title: 'Free pickup from your door',
-    desc: 'We collect the car for doorstep car servicing in Mumbai, Thane, Navi Mumbai and Pune.',
-  },
-  {
-    icon: Camera,
-    title: 'Live photos of the job',
-    desc: 'Get photo and video updates while the workshop does car repairs — no guessing what was done.',
-  },
-  {
-    icon: CalendarCheck,
-    title: 'Delivery with warranty',
-    desc: 'The car comes back the same day for most periodic jobs, with labour and parts warranty.',
-  },
+const TRUST = [
+  { k: '100+', v: 'Workshops' },
+  { k: '10,000+', v: 'Customers' },
+  { k: '4.8★', v: 'Rated' },
+  { k: 'Same day', v: 'Most services' },
 ];
 
-const AREA_CHIPS = [
-  'Kalyan',
-  'Dombivli',
-  'Vasai',
-  'Virar',
-  'Andheri',
-  'Borivali',
-  'Mulund',
-  'Panvel',
-];
+function digitsOnly(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length >= 12 && digits.startsWith('91')) return digits.slice(-10);
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+  return digits.slice(0, 10);
+}
+
+function scrollToBook() {
+  document.getElementById('book-service')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export default function AdsLandingClient() {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [carQuery, setCarQuery] = useState('');
+  const [carHits, setCarHits] = useState<CarHit[]>([]);
+  const [carModel, setCarModel] = useState('');
+  const [carModelId, setCarModelId] = useState('');
+  const [city, setCity] = useState('');
+  const [service, setService] = useState(DEFAULT_SERVICES[0]?.title || 'Periodic Car Service');
+  const [visitMode, setVisitMode] = useState<'pickup' | 'visit'>('pickup');
+  const [pincode, setPincode] = useState('');
+  const [visitDate, setVisitDate] = useState('');
+  const [visitTime, setVisitTime] = useState('');
+  const [consent, setConsent] = useState(true);
+  const [otpChannelLabel, setOtpChannelLabel] = useState('');
+  const otpSendLock = useRef('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
+  const [pricingUrl, setPricingUrl] = useState('');
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const goHero = useGoHref('ads-lp-hero');
+  const [highlight, setHighlight] = useState(false);
+
+  useEffect(() => {
+    if (otpTimer <= 0) return;
+    const timer = window.setTimeout(() => setOtpTimer((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [otpTimer]);
+
+  useEffect(() => {
+    const q = carQuery.trim();
+    if (q.length < 2 || (carModel && q === carModel)) {
+      setCarHits([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      fetch(`/api/car-models/search?q=${encodeURIComponent(q)}`)
+        .then((res) => res.json())
+        .then((json) => setCarHits(Array.isArray(json?.models) ? json.models : []))
+        .catch(() => setCarHits([]));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [carQuery, carModel]);
+
+  useEffect(() => {
+    if (visitMode !== 'pickup' || !otpVerified || !carModel || !/^\d{6}$/.test(pincode)) {
+      setPricingUrl('');
+      return;
+    }
+    let cancelled = false;
+    setPricingLoading(true);
+    fetch('/api/public/ads-pricing-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone,
+        carModel,
+        pincode,
+        city,
+        customerName: name.trim(),
+      }),
+    })
+      .then((res) => res.json().then((json) => ({ ok: res.ok, json })))
+      .then(({ ok, json }) => {
+        if (cancelled) return;
+        setPricingUrl(ok && json?.url ? String(json.url) : '');
+      })
+      .catch(() => {
+        if (!cancelled) setPricingUrl('');
+      })
+      .finally(() => {
+        if (!cancelled) setPricingLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visitMode, otpVerified, carModel, pincode, phone, city, name]);
+
+  function onPhoneChange(value: string) {
+    const next = digitsOnly(value);
+    if (next !== phone) {
+      setOtpSent(false);
+      setOtpCode('');
+      setOtpVerified(false);
+      setOtpChannelLabel('');
+      setPricingUrl('');
+      if (next.length < 10) otpSendLock.current = '';
+    }
+    setPhone(next);
+  }
+
+  async function sendOtp(targetPhone = phone) {
+    if (!/^[6-9]\d{9}$/.test(targetPhone)) return;
+    setError('');
+    setOtpLoading(true);
+    try {
+      const res = await fetch('/api/booking/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: targetPhone,
+          channel: 'SMS',
+          fallbackWhatsapp: true,
+          metadata: { source: 'car-service-and-repairs' },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) throw new Error(json?.error || 'Could not send OTP.');
+      const onWhatsapp = String(json.channel || '').toUpperCase() === 'WHATSAPP';
+      setOtpChannelLabel(onWhatsapp ? 'OTP sent on WhatsApp' : 'OTP sent by SMS');
+      setOtpSent(true);
+      setOtpVerified(false);
+      setOtpCode('');
+      setOtpTimer(30);
+    } catch (err) {
+      otpSendLock.current = '';
+      setError(err instanceof Error ? err.message : 'Could not send OTP.');
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!/^[6-9]\d{9}$/.test(phone)) return;
+    if (otpSendLock.current === phone) return;
+    otpSendLock.current = phone;
+    void sendOtp(phone);
+    // Auto-send once when a full mobile number is entered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone]);
+
+  async function verifyOtp() {
+    setError('');
+    if (!/^\d{6}$/.test(otpCode)) {
+      setError('Enter the 6-digit OTP.');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      const res = await fetch('/api/booking/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone,
+          otp: otpCode,
+          source: 'car-service-and-repairs',
+          channel: 'WEB',
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.verified) throw new Error(json?.error || 'Invalid or expired OTP.');
+      setOtpVerified(true);
+    } catch (err) {
+      setOtpVerified(false);
+      setError(err instanceof Error ? err.message : 'OTP verification failed.');
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  function focusBook(next?: { service?: string; city?: string }) {
+    if (next?.service) setService(next.service);
+    if (next?.city) setCity(next.city);
+    setHighlight(true);
+    window.setTimeout(() => setHighlight(false), 900);
+    scrollToBook();
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    const customerName = name.trim();
+    const customerPhone = digitsOnly(phone);
+    const vehicleNumber = vehicle.trim().toUpperCase();
+    if (customerName.length < 2) {
+      setError('Enter your name.');
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(customerPhone)) {
+      setError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!otpVerified) {
+      setError('Verify the OTP before you submit.');
+      return;
+    }
+    if (!carModel) {
+      setError('Select your car.');
+      return;
+    }
+    if (vehicleNumber.length < 4) {
+      setError('Enter your vehicle number.');
+      return;
+    }
+    if (!city) {
+      setError('Select your city.');
+      return;
+    }
+    if (!service) {
+      setError('Select a service.');
+      return;
+    }
+    if (visitMode === 'pickup' && !/^\d{6}$/.test(pincode)) {
+      setError('Enter a 6-digit pincode.');
+      return;
+    }
+    if (visitMode === 'visit' && (!visitDate || !visitTime)) {
+      setError('Choose the date and time you will visit.');
+      return;
+    }
+    if (!consent) {
+      setError('Tick the consent box so we can call you about this booking.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const utmParams = utmForThisPage();
+      const leadSource = getLeadSourceFromUtm(utmParams.utm_source, utmParams.utm_medium);
+      const isPickup = visitMode === 'pickup';
+      const [make, ...modelParts] = carModel.split(' ');
+      const pickupLabel = isPickup ? `Pickup · pincode ${pincode}` : `Workshop visit · ${visitDate} ${visitTime}`;
+      const summary = `${service} · ${carModel} · ${city} · ${pickupLabel}`;
+
+      void fetch('/api/public/dpdp/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'car-service-and-repairs',
+          subject_name: customerName,
+          subject_phone: customerPhone,
+          consents: [{ purpose: 'service', granted: true }],
+        }),
+      }).catch(() => undefined);
+
+      const response = await fetch('/api/public/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          ignore_stored_utm: true,
+          page: '/car-service-and-repairs',
+          utm: utmParams,
+          lead: {
+            lead_number: `L-${Date.now().toString().slice(-8)}`,
+            created_from: 'WEB',
+            status: 'NEW',
+            lead_type: 'CAR_SERVICE',
+            lead_source: leadSource,
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            vehicle_number: vehicleNumber,
+            vehicle_make: make || null,
+            vehicle_model: modelParts.join(' ') || carModel,
+            model_id: /^[0-9a-f-]{36}$/i.test(carModelId) ? carModelId : null,
+            address: isPickup ? `Pincode ${pincode}, ${city}` : city,
+            customer_address: isPickup ? `Pincode ${pincode}, ${city}` : city,
+            pincode: isPickup ? pincode : null,
+            city,
+            pickup_required: isPickup,
+            preferred_date: isPickup ? null : visitDate,
+            preferred_time_slot: isPickup ? null : visitTime,
+            preferred_slot_start: isPickup ? null : `${visitDate}T${visitTime}:00`,
+            service_type: service.slice(0, 100),
+            problem_description: summary,
+            lead_priority: 'NORMAL',
+            created_at: new Date().toISOString(),
+            meta: {
+              ...utmParams,
+              page: '/car-service-and-repairs',
+              service,
+              city,
+              car_model: carModel,
+              pincode: isPickup ? pincode : null,
+              pickup_required: isPickup,
+              visit_date: isPickup ? null : visitDate,
+              visit_time: isPickup ? null : visitTime,
+              pricing_url: pricingUrl || null,
+            },
+          },
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || 'Could not book. Please call us.');
+      }
+
+      if (typeof window !== 'undefined') {
+        const w = window as Window & { dataLayer?: Array<Record<string, unknown>> };
+        w.dataLayer = w.dataLayer || [];
+        w.dataLayer.push({
+          event: 'generate_lead',
+          booking_step: 'ads_sidebar',
+          page_path: '/car-service-and-repairs',
+          service,
+          city,
+          lead_source: leadSource,
+        });
+      }
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not book. Please call us.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-800">
-      <Navbar />
+    <div className="min-h-screen bg-[#f3f6fb] text-slate-800">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <img src="/logo.png" alt="MYFNG" className="h-10 w-auto sm:h-12" />
+          <a
+            href={`tel:${PHONE_TEL}`}
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-bold text-white"
+          >
+            <Phone className="h-4 w-4" />
+            <span className="hidden sm:inline">Call</span> {PHONE_LABEL}
+          </a>
+        </div>
+      </header>
 
-      <AppDownloadSection downloadHref={goHero} asHero />
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 lg:py-8">
+        <section className="lg:col-start-1 lg:row-start-1">
+          <p className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-800">
+            Mumbai · Thane · Navi Mumbai · Pune
+          </p>
+          <h1 className="mt-3 text-3xl font-extrabold leading-tight text-slate-950 sm:text-4xl lg:text-[2.6rem]">
+            Car Service and Repairs Near You
+          </h1>
+          <p className="mt-3 max-w-xl text-base leading-7 text-slate-600">
+            Book a verified MYFNG workshop from this page. Transparent estimate, free pickup and drop, photo updates, and warranty on the job.
+          </p>
+          <ul className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {['Same Day Service', 'Genuine OEM / OES parts', 'Free doorstep pickup & drop', 'Warranty on Service'].map((item) => (
+              <li key={item} className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-600" />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {TRUST.map((item) => (
+              <div key={item.v} className="rounded-2xl bg-white px-2 py-3 text-center shadow-sm ring-1 ring-slate-200">
+                <p className="text-sm font-extrabold text-blue-800 sm:text-base">{item.k}</p>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-xs">{item.v}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <section className="border-y border-blue-100 bg-slate-50/80 py-7">
-        <div className="container mx-auto grid grid-cols-2 gap-3 px-4 sm:grid-cols-4 sm:px-6">
-          {TRUST_CARDS.map((card) => (
-            <div key={card.title} className="rounded-2xl border border-white bg-white p-4 text-center shadow-sm">
-              <p className="text-lg font-extrabold text-blue-800 sm:text-xl">{card.title}</p>
-              <p className="mt-1 text-xs font-medium text-gray-600 sm:text-sm">{card.desc}</p>
+        <aside
+          id="book-service"
+          className={`scroll-mt-24 lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto ${
+            highlight ? 'rounded-3xl ring-2 ring-blue-500 ring-offset-2 ring-offset-[#f3f6fb]' : ''
+          }`}
+        >
+          <div className="overflow-hidden rounded-3xl bg-white shadow-xl ring-2 ring-blue-600">
+            <div className="bg-slate-950 px-4 py-3 text-white">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300">Book on this page</p>
+              <h2 className="text-lg font-extrabold leading-tight text-white" style={{ color: '#ffffff' }}>Book car service</h2>
+              <p className="text-xs text-slate-300">We call you to confirm. Nothing opens on another page.</p>
             </div>
-          ))}
-        </div>
-      </section>
 
-      <section className="bg-white py-12 sm:py-16">
-        <div className="container mx-auto max-w-4xl px-4 sm:px-6">
-          <AIFeatureBadge text="About MYFNG" />
-          <h2 className="mt-3 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-            About MYFNG — car service and repairs you can trust
-          </h2>
-          <p className="mt-4 text-[15px] leading-7 text-gray-600">
-            MYFNG (My Friendly Neighbourhood Garage) is India&apos;s AI-powered platform for{' '}
-            <strong>car service and repairs</strong>. We connect you to audited multi-brand car garages, show
-            the price before work starts, and manage pickup, parts, warranty and updates end to end. If you are
-            searching for <strong>car service near me</strong>, <strong>car repair near me</strong> or a{' '}
-            <strong>trusted mechanic in Mumbai, Pune or Thane</strong>, MYFNG is built for that — on the website
-            and on the MyFNG app.
-          </p>
-          <p className="mt-3 text-[15px] leading-7 text-gray-600">
-            Book periodic car service, car AC service, engine repair, brake service, battery replacement, clutch
-            overhaul, denting &amp; painting and tyre care without calling random workshops. One booking. One
-            warranty. Real technicians.
-          </p>
-        </div>
-      </section>
-
-      <section className="bg-slate-50 py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="mx-auto max-w-3xl text-center">
-            <AIFeatureBadge text="Why MYFNG" />
-            <h2 className="mt-3 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-              Why choose MYFNG for car servicing and repairs
-            </h2>
-            <p className="mt-3 text-sm text-gray-600 sm:text-base">
-              Clear estimates, verified garages and live updates — why car owners book MYFNG instead of a random mechanic.
-            </p>
-          </div>
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {USPS.map((usp) => {
-              const Icon = usp.icon;
-              return (
-                <article key={usp.title} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-3 text-base font-bold text-gray-900">{usp.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-gray-600">{usp.desc}</p>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="mx-auto max-w-3xl text-center">
-            <AIFeatureBadge text="How it works" />
-            <h2 className="mt-3 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-              How to book car service and repairs with MYFNG
-            </h2>
-            <p className="mt-3 text-sm text-gray-600 sm:text-base">
-              From booking to delivery — one flow on myfng.in and the MyFNG app.
-            </p>
-          </div>
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {HOW_IT_WORKS.map((step, idx) => {
-              const Icon = step.icon;
-              return (
-                <article key={step.title} className="rounded-2xl border border-gray-100 bg-slate-50 p-5">
-                  <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Step {idx + 1}</p>
-                  <div className="mt-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-3 text-base font-bold text-gray-900">{step.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-gray-600">{step.desc}</p>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-slate-50 py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="mx-auto max-w-3xl text-center">
-            <AIFeatureBadge text="Car services" />
-            <h2 className="mt-3 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-              Car service and repair jobs we book
-            </h2>
-            <p className="mt-3 text-sm text-gray-600 sm:text-base">
-              Periodic car service, AC repair, engine service, brakes, clutch, battery, denting &amp; painting
-              and more at verified garages.
-            </p>
-          </div>
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {DEFAULT_SERVICES.map((service) => {
-              const href = `/car-services/${INTERNAL_SLUG_TO_MARKETING[service.slug] || service.slug}`;
-              return (
-                <Link
-                  key={service.slug}
-                  href={href}
-                  className="rounded-2xl border border-gray-100 bg-white p-5 transition hover:border-blue-200 hover:shadow-md"
+            {done ? (
+              <div className="px-5 py-8 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <CheckCircle2 className="h-8 w-8" />
+                </div>
+                <h3 className="mt-4 text-lg font-extrabold text-slate-950">Booking received</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Our team will call you on <span className="font-bold text-slate-900">{phone}</span> to confirm {service.toLowerCase()} in {city}.
+                </p>
+                <a
+                  href={`tel:${PHONE_TEL}`}
+                  className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white"
                 >
-                  <div className="flex items-center gap-3">
-                    {service.iconImage ? (
-                      <img src={service.iconImage} alt="" className="h-10 w-10 object-contain" />
+                  <Phone className="h-4 w-4" /> Call {PHONE_LABEL}
+                </a>
+              </div>
+            ) : (
+              <form onSubmit={onSubmit} className="pt-3">
+                <div className="space-y-2 px-4 pb-3">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Your name</span>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    autoComplete="name"
+                    placeholder="Rahul Sharma"
+                    className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+                <div>
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Mobile number</span>
+                  <input
+                    value={phone}
+                    onChange={(e) => onPhoneChange(e.target.value)}
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    placeholder="10-digit mobile"
+                    className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <p className="mt-1 text-[11px] font-medium text-slate-500">
+                    {otpLoading
+                      ? 'Sending OTP…'
+                      : otpVerified
+                        ? 'Mobile verified'
+                        : otpChannelLabel
+                          ? `${otpChannelLabel}${otpTimer > 0 ? ` · Resend in ${otpTimer}s` : ''}`
+                          : 'OTP is sent when the number is complete. SMS first, then WhatsApp.'}
+                    {otpSent && !otpVerified && otpTimer === 0 ? (
+                      <button type="button" onClick={() => { otpSendLock.current = ''; void sendOtp(phone); }} className="ml-1 font-bold text-blue-700">
+                        Resend
+                      </button>
                     ) : null}
-                    <h3 className="text-base font-bold text-gray-900">{service.title}</h3>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-gray-600">{service.description}</p>
-                  <p className="mt-3 text-sm font-semibold text-blue-700">Book this car service →</p>
-                </Link>
-              );
-            })}
-          </div>
-          <div className="mt-8 text-center">
-            <Link
-              href={BOOK}
-              className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-8 text-base font-bold text-white hover:bg-blue-700"
-            >
-              Get a car repair estimate
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="mx-auto max-w-3xl text-center">
-            <AIFeatureBadge text="Reviews" />
-            <h2 className="mt-3 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-              Customer reviews for MYFNG car service
-            </h2>
-          </div>
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {REVIEWS.map((review) => (
-              <blockquote key={review.name} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <Quote className="h-5 w-5 text-blue-500" />
-                <div className="mt-2 flex gap-0.5 text-amber-400">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} className="h-4 w-4 fill-amber-400" />
-                  ))}
+                  </p>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-gray-700">{review.text}</p>
-                <footer className="mt-4 text-sm font-bold text-gray-900">
-                  {review.name} · {review.location}
-                  <span className="block text-xs font-medium text-gray-500">{review.vehicle}</span>
-                </footer>
-              </blockquote>
-            ))}
+                {otpSent && !otpVerified ? (
+                  <div>
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">OTP</span>
+                    <div className="flex gap-2">
+                      <input
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="6-digit OTP"
+                        className="h-10 min-w-0 flex-1 rounded-xl border border-blue-200 px-3 text-sm tracking-[0.2em] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={verifyOtp}
+                        disabled={otpLoading}
+                        className="h-10 shrink-0 rounded-xl bg-blue-600 px-3 text-xs font-bold text-white disabled:opacity-60"
+                      >
+                        {otpLoading ? 'Checking…' : 'Verify'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {otpVerified ? (
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Mobile verified. You can submit after the other details.
+                  </p>
+                ) : null}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative min-w-0">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Car</span>
+                    <input
+                      value={carQuery}
+                      onChange={(e) => {
+                        setCarQuery(e.target.value);
+                        setCarModel('');
+                        setCarModelId('');
+                        setPricingUrl('');
+                      }}
+                      placeholder="Swift, Creta"
+                      className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                    {carHits.length > 0 ? (
+                      <ul className="absolute z-20 mt-1 max-h-40 w-64 overflow-y-auto rounded-xl border border-blue-200 bg-white shadow-lg">
+                        {carHits.map((hit) => (
+                          <li key={hit.id}>
+                            <button
+                              type="button"
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-blue-50"
+                              onClick={() => {
+                                const label = carLabel(hit);
+                                setCarModel(label);
+                                setCarModelId(String(hit.id));
+                                setCarQuery(label);
+                                setCarHits([]);
+                              }}
+                            >
+                              {carLabel(hit)}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                  <label className="block min-w-0">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Vehicle number</span>
+                    <input
+                      value={vehicle}
+                      onChange={(e) => setVehicle(e.target.value.toUpperCase())}
+                      autoComplete="off"
+                      placeholder="MH04 AB 1234"
+                      className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm uppercase outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">City</span>
+                    <select
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="h-10 w-full rounded-xl border border-blue-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">Select city</option>
+                      {CITIES.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Service</span>
+                    <select
+                      value={service}
+                      onChange={(e) => setService(e.target.value)}
+                      className="h-10 w-full rounded-xl border border-blue-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      {DEFAULT_SERVICES.map((item) => (
+                        <option key={item.slug} value={item.title}>
+                          {item.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div>
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">How should we take the car?</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVisitMode('pickup')}
+                      className={`h-10 rounded-xl text-xs font-bold ${visitMode === 'pickup' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      Pickup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisitMode('visit')}
+                      className={`h-10 rounded-xl text-xs font-bold ${visitMode === 'visit' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      I will visit
+                    </button>
+                  </div>
+                </div>
+                {visitMode === 'pickup' ? (
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Pincode</span>
+                    <input
+                      value={pincode}
+                      onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      inputMode="numeric"
+                      placeholder="400601"
+                      className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                    <span className="mt-1 block text-[11px] leading-4 text-slate-500">
+                      Pickup needs only the pincode. We will ask the full address on the call.
+                    </span>
+                  </label>
+                ) : null}
+                {visitMode === 'visit' ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Visit date</span>
+                      <input
+                        type="date"
+                        value={visitDate}
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => setVisitDate(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-blue-200 px-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Visit time</span>
+                      <select
+                        value={visitTime}
+                        onChange={(e) => setVisitTime(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-blue-200 bg-white px-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      >
+                        <option value="">Select</option>
+                        {VISIT_SLOTS.map((slot) => (
+                          <option key={slot.value} value={slot.value}>
+                            {slot.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+                {visitMode === 'visit' ? (
+                  <p className="text-center text-[11px] font-medium text-slate-500">
+                    Prices are not shown here. We share the estimate on the call.
+                  </p>
+                ) : otpVerified && carModel && /^\d{6}$/.test(pincode) ? (
+                  pricingUrl ? (
+                    <a
+                      href={pricingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-sm font-bold text-blue-800"
+                    >
+                      Check prices for your car
+                    </a>
+                  ) : (
+                    <p className="text-center text-[11px] font-medium text-slate-500">
+                      {pricingLoading ? 'Opening your price list…' : 'Price list will show here after OTP, car and pincode.'}
+                    </p>
+                  )
+                ) : (
+                  <p className="text-center text-[11px] font-medium text-slate-500">
+                    Prices are not shown here. Verify OTP, then open the price list for your car.
+                  </p>
+                )}
+                <label className="flex items-start gap-2.5 text-xs leading-5 text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-blue-700"
+                  />
+                  <span>
+                    I agree to be called about this booking.{' '}
+                    <a href="/privacy-notice" className="whitespace-nowrap font-semibold text-blue-700 underline">
+                      Privacy Notice
+                    </a>
+                  </span>
+                </label>
+                {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
+                </div>
+                <button
+                  type="submit"
+                  disabled={submitting || !otpVerified}
+                  className="flex h-12 w-full items-center justify-center gap-2 bg-blue-600 text-sm font-extrabold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-600 disabled:text-white disabled:opacity-100"
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {submitting ? 'Booking…' : 'Book service'}
+                </button>
+              </form>
+            )}
           </div>
-        </div>
-      </section>
+        </aside>
 
-      <section className="bg-slate-50 py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">
-              Car service near me — cities we cover
-            </h2>
-            <p className="mt-3 text-sm text-gray-600 sm:text-base">
-              Find a MYFNG car garage for servicing and repairs across Mumbai Metropolitan Region and Pune.
+        <div className="space-y-5 pb-8 lg:col-start-1 lg:row-start-2">
+          <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+            <img
+              src="/media/workshop-covers/source-actual-workshop.webp"
+              alt="MYFNG multi-brand car workshop"
+              className="h-44 w-full object-cover sm:h-52"
+            />
+            <div className="p-4 sm:p-5">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-700">How booking works</p>
+              <h2 className="mt-1 text-xl font-extrabold text-slate-950">Four steps. One form.</h2>
+              <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+                {STEPS.map((step) => (
+                  <li key={step.n} className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-xs font-extrabold text-blue-700">Step {step.n}</p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">{step.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{step.desc}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-extrabold text-slate-950">Why car owners book MYFNG</h2>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {USPS.map((usp) => {
+                const Icon = usp.icon;
+                return (
+                  <article key={usp.title} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-950">{usp.title}</h3>
+                    </div>
+                    <p className="mt-1.5 text-sm leading-5 text-slate-600">{usp.desc}</p>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <div className="grid items-start gap-5 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-[#075e54]">On WhatsApp</p>
+                <h2 className="mt-1 text-xl font-extrabold text-slate-950">Live photos and videos of your car</h2>
+                <p className="mt-1 text-sm leading-5 text-slate-600">
+                  While the job is on, MYFNG sends workshop photos and a short video on WhatsApp. You see the work before anything extra starts.
+                </p>
+                <div className="mt-3">
+                  <WhatsAppUpdateShot />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-[#075e54]">On WhatsApp</p>
+                <h2 className="mt-1 text-xl font-extrabold text-slate-950">Extra work only after you approve</h2>
+                <p className="mt-1 text-sm leading-5 text-slate-600">
+                  If the workshop finds extra work, they send the photo on WhatsApp. Nothing extra starts until you reply Approved.
+                </p>
+                <div className="mt-3">
+                  <WhatsAppApprovalShot />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-extrabold text-slate-950">Pick a service</h2>
+                <p className="mt-1 text-sm text-slate-600">Tap a job. It fills the booking form on this page.</p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {DEFAULT_SERVICES.map((item) => {
+                const active = service === item.title;
+                return (
+                  <button
+                    key={item.slug}
+                    type="button"
+                    onClick={() => focusBook({ service: item.title })}
+                    className={`overflow-hidden rounded-2xl bg-white text-left shadow-sm ring-1 transition ${
+                      active ? 'ring-2 ring-blue-600' : 'ring-slate-200 hover:ring-blue-300'
+                    }`}
+                  >
+                    {item.image ? (
+                      <img src={item.image} alt="" className="h-20 w-full object-cover" />
+                    ) : null}
+                    <div className="p-3">
+                      <h3 className="text-sm font-bold text-slate-950">{item.title}</h3>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{item.description}</p>
+                      <p className="mt-2 text-xs font-bold text-blue-700">{active ? 'Selected in the form' : 'Book this service'}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-extrabold text-slate-950">Customer reviews</h2>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {REVIEWS.map((review) => (
+                <blockquote key={review.name} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                  <div className="flex items-center justify-between">
+                    <Quote className="h-4 w-4 text-blue-500" />
+                    <div className="flex text-amber-400">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />
+                      ))}
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">{review.text}</p>
+                  <footer className="mt-3 text-sm font-bold text-slate-950">
+                    {review.name}
+                    <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                      {review.vehicle} · {review.location}
+                    </span>
+                  </footer>
+                </blockquote>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-extrabold text-slate-950">Car service near you</h2>
+            <p className="mt-1 text-sm text-slate-600">Choose your area. It is added to the booking form.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {CITIES.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => focusBook({ city: item })}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold ${
+                    city === item ? 'bg-blue-600 text-white' : 'bg-white text-blue-800 ring-1 ring-blue-200'
+                  }`}
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  {item}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-extrabold text-slate-950">Car service and repairs FAQs</h2>
+            <div className="mt-3 space-y-2">
+              {ADS_LP_FAQS.map((faq, idx) => {
+                const open = openFaq === idx;
+                return (
+                  <div key={faq.question} className="rounded-2xl bg-white ring-1 ring-slate-200">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      onClick={() => setOpenFaq(open ? null : idx)}
+                    >
+                      <span className="text-sm font-bold text-slate-950">{faq.question}</span>
+                      <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? 'rotate-180' : ''}`} />
+                    </button>
+                    {open ? <p className="px-4 pb-4 text-sm leading-6 text-slate-600">{faq.answer}</p> : null}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-3xl bg-slate-950 px-5 py-6 text-white">
+            <h2 className="text-xl font-extrabold text-white" style={{ color: '#ffffff' }}>Ready to book car service?</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              The form is on this page. Or call {PHONE_LABEL} and we will book it for you.
             </p>
-          </div>
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            {CITY_PAGES.map((city) => (
-              <Link
-                key={city.slug}
-                href={city.pagePath}
-                className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-sm font-semibold text-blue-800 hover:bg-blue-50"
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => focusBook()}
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-bold"
               >
-                Car service in {city.name}
-              </Link>
-            ))}
-            {AREA_CHIPS.map((city) => (
-              <span
-                key={city}
-                className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-800"
+                Go to booking form
+              </button>
+              <a
+                href={`tel:${PHONE_TEL}`}
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-bold text-slate-950"
               >
-                Car service in {city}
-              </span>
-            ))}
-          </div>
-          <p className="mt-6 text-center">
-            <Link href="/workshop-locator" className="font-semibold text-blue-700 underline">
-              Open workshop locator
-            </Link>
+                Call now
+              </a>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p>© {new Date().getFullYear()} MYFNG · Car service and repairs</p>
+          <p>
+            <a href="/privacy-notice" className="font-semibold text-blue-700 underline">
+              Privacy Notice
+            </a>
+            <span className="mx-2">·</span>
+            <a href={`tel:${PHONE_TEL}`} className="font-semibold text-slate-800">
+              {PHONE_LABEL}
+            </a>
           </p>
         </div>
-      </section>
-
-      <section className="bg-white py-12 sm:py-16">
-        <div className="container mx-auto max-w-3xl px-4 sm:px-6">
-          <h2 className="text-center text-2xl font-extrabold text-gray-900 sm:text-3xl">
-            Car service and repairs FAQs
-          </h2>
-          <div className="mt-6 space-y-2">
-            {ADS_LP_FAQS.map((faq, idx) => {
-              const open = openFaq === idx;
-              return (
-                <div key={faq.question} className="rounded-2xl border border-gray-100 bg-white">
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                    onClick={() => setOpenFaq(open ? null : idx)}
-                  >
-                    <span className="text-sm font-bold text-gray-900 sm:text-base">{faq.question}</span>
-                    <ChevronDown className={`h-4 w-4 shrink-0 text-gray-500 ${open ? 'rotate-180' : ''}`} />
-                  </button>
-                  {open ? <p className="px-4 pb-4 text-sm leading-6 text-gray-600">{faq.answer}</p> : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <Footer hideCta />
+      </footer>
 
       <div className="h-16 lg:hidden" />
-      <div className="fixed inset-x-0 bottom-0 z-[70] grid grid-cols-2 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <a href={`tel:${PHONE}`} className="flex min-h-14 items-center justify-center gap-2 bg-slate-900 font-bold text-white">
-          <Phone className="h-4 w-4" /> Call now
+      <div className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-2 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <a href={`tel:${PHONE_TEL}`} className="flex h-14 items-center justify-center gap-2 bg-slate-950 text-sm font-bold text-white">
+          <Phone className="h-4 w-4" /> Call
         </a>
-        <Link href={BOOK} className="flex min-h-14 items-center justify-center bg-blue-600 font-bold text-white">
-          Book car service
-        </Link>
+        <button type="button" onClick={() => focusBook()} className="flex h-14 items-center justify-center bg-blue-600 text-sm font-bold text-white">
+          Book service
+        </button>
       </div>
     </div>
   );

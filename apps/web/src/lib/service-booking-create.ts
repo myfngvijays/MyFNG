@@ -28,7 +28,7 @@ import {
 } from '@/lib/referral-voucher-apply';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { markCustomerBookingAbandonedCleared } from '@/lib/services/bookingAbandonmentGuard';
-import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
+import { extractUtmFromUnknown, isLockedUtmBooking, parseUtmFromRequest, resolveBookingUtm, stripUtmFromMeta } from '@/lib/utm';
 import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
 import { upsertBookingServiceLead } from '@/lib/service-lead-reopen';
 
@@ -70,7 +70,13 @@ export async function createAuthenticatedServiceBooking(
   const requestUtm = parseUtmFromRequest(request);
   const leadUtm = extractUtmFromUnknown(lead);
   const bodyUtm = extractUtmFromUnknown(body);
-  const resolvedUtm = mergeUtmParams(requestUtm, leadUtm, bodyUtm);
+  const lockUtm = isLockedUtmBooking(body);
+  const resolvedUtm = resolveBookingUtm({
+    lockToBody: lockUtm,
+    requestUtm,
+    leadUtm,
+    bodyUtm,
+  });
   const useWallet = Boolean(body.use_wallet);
   const subtotal = Number(body.subtotal || lead.estimated_amount || 0);
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
@@ -253,7 +259,10 @@ export async function createAuthenticatedServiceBooking(
     status: lead.status || 'NEW',
     created_from: lead.created_from || 'MOBILE_APP',
     meta: (() => {
-      const nextMeta = mergeLeadMetaWithUtm(lead.meta, resolvedUtm, requestUtm, leadUtm, bodyUtm);
+      const nextMeta = mergeLeadMetaWithUtm(
+        lockUtm ? stripUtmFromMeta(lead.meta) : lead.meta,
+        ...(lockUtm ? [resolvedUtm] : [resolvedUtm, requestUtm, leadUtm, bodyUtm]),
+      );
       nextMeta.customer_id = customer.id;
       nextMeta.service_subtotal = subtotal;
       if (includeBookingMembership) {
@@ -419,7 +428,10 @@ export async function createAuthenticatedServiceBooking(
   const telecrmLead = {
     ...leadInsert,
     ...serviceLead,
-    meta: mergeLeadMetaWithUtm(leadInsert.meta, resolvedUtm),
+    meta: mergeLeadMetaWithUtm(
+      lockUtm ? stripUtmFromMeta(leadInsert.meta) : leadInsert.meta,
+      resolvedUtm,
+    ),
     ...resolvedUtm,
   };
 
@@ -462,9 +474,9 @@ export async function createAuthenticatedServiceBooking(
 
   try {
     await pushServiceLeadToTeleCRM(telecrmLead, supabaseAdmin, {
-      leadTag: 'APP',
-      leadSource: String(lead.lead_source || 'App Booking'),
-      createdFrom: String(leadInsert.created_from || 'MOBILE_APP'),
+      leadTag: lockUtm ? 'Website' : 'APP',
+      leadSource: lockUtm ? String(lead.lead_source || 'Website') : String(lead.lead_source || 'App Booking'),
+      createdFrom: lockUtm ? 'WEB' : String(leadInsert.created_from || 'MOBILE_APP'),
     });
   } catch (syncErr: any) {
     console.error('[service-booking-create] TeleCRM sync failed:', syncErr?.message || syncErr);

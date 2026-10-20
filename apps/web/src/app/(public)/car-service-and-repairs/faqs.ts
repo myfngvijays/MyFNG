@@ -12,7 +12,7 @@ export const ADS_LP_FAQS = [
   {
     question: 'How much does car repair cost at MYFNG?',
     answer:
-      'Car repair cost is shown upfront before you book. Periodic car service starts from about ₹1,999 depending on your car model. There are no hidden charges — you see the full estimate on the MyFNG app or website.',
+      'MYFNG does not show a flat price on this page. After you verify your mobile number, you get a price-list link for your car and pincode. Parts, if needed, are billed at actual cost.',
   },
   {
     question: 'Do you offer free pickup and drop for car service?',

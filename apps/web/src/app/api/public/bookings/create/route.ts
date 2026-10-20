@@ -19,7 +19,7 @@ import {
 import { buildPostBookingMembershipOffer } from '@/lib/post-booking-membership-offer';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { markCustomerBookingAbandonedCleared } from '@/lib/services/bookingAbandonmentGuard';
-import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
+import { extractUtmFromUnknown, isLockedUtmBooking, parseUtmFromRequest, resolveBookingUtm, stripUtmFromMeta } from '@/lib/utm';
 import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
 import { upsertBookingServiceLead } from '@/lib/service-lead-reopen';
 
@@ -255,7 +255,13 @@ export async function POST(request: NextRequest) {
     const requestUtm = parseUtmFromRequest(request);
     const leadUtm = extractUtmFromUnknown(lead);
     const bodyUtm = extractUtmFromUnknown(body);
-    const resolvedUtm = mergeUtmParams(requestUtm, leadUtm, bodyUtm);
+    const lockUtm = isLockedUtmBooking(body);
+    const resolvedUtm = resolveBookingUtm({
+      lockToBody: lockUtm,
+      requestUtm,
+      leadUtm,
+      bodyUtm,
+    });
 
     const serviceLeadPayload = {
       ...lead,
@@ -274,7 +280,10 @@ export async function POST(request: NextRequest) {
       estimated_amount: finalAmount,
       actual_amount: finalAmount,
       meta: (() => {
-        const nextMeta = mergeLeadMetaWithUtm(lead?.meta, resolvedUtm, requestUtm, leadUtm, bodyUtm);
+        const nextMeta = mergeLeadMetaWithUtm(
+          lockUtm ? stripUtmFromMeta(lead?.meta) : lead?.meta,
+          ...(lockUtm ? [resolvedUtm] : [resolvedUtm, requestUtm, leadUtm, bodyUtm]),
+        );
         if (registeredCustomer?.id) nextMeta.customer_id = registeredCustomer.id;
         nextMeta.service_subtotal = subtotal;
         if (includeBookingMembership) {
@@ -394,7 +403,10 @@ export async function POST(request: NextRequest) {
 
     const telecrmLead = {
       ...(serviceLead as Record<string, any>),
-      meta: mergeLeadMetaWithUtm((serviceLead as Record<string, any>)?.meta, resolvedUtm),
+      meta: mergeLeadMetaWithUtm(
+        lockUtm ? stripUtmFromMeta((serviceLead as Record<string, any>)?.meta) : (serviceLead as Record<string, any>)?.meta,
+        resolvedUtm,
+      ),
       ...resolvedUtm,
     };
 
@@ -415,9 +427,9 @@ export async function POST(request: NextRequest) {
 
     try {
       await pushServiceLeadToTeleCRM(telecrmLead, supabaseAdmin, {
-        leadTag: isMobileClient ? 'APP' : 'WEBSITE',
-        leadSource: isMobileClient ? 'App Booking' : 'delhi_service',
-        createdFrom: isMobileClient ? 'MOBILE_APP' : 'WEB',
+        leadTag: lockUtm ? 'Website' : isMobileClient ? 'APP' : 'WEBSITE',
+        leadSource: lockUtm ? leadSource || 'Website' : isMobileClient ? 'App Booking' : 'delhi_service',
+        createdFrom: lockUtm ? 'WEB' : isMobileClient ? 'MOBILE_APP' : 'WEB',
       });
     } catch (err) {
       console.error('[bookings/create] external sync failed:', err);
