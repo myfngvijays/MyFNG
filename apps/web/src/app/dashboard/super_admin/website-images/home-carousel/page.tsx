@@ -39,22 +39,12 @@ const ROUTES = [
 // "Replace" them with new uploads (which then take precedence in the app).
 const DEFAULT_BANNERS: BannerRow[] = [
   {
-    id: 'default-prime',
-    title: 'Navratri Prime',
-    image_url: '/media/banners/myfng-prime-navratri-banner.webp',
-    route_name: 'Settings__Membership',
-    route_params: { membershipType: 'SERVICE' },
-    display_order: 1,
-    is_active: true,
-    is_default: true,
-  },
-  {
     id: 'default-service',
     title: 'Car Service',
     image_url: '/media/banners/myfng-car-service-light-banner.webp',
     route_name: 'PublicBookServiceNow',
     route_params: { city: '__CITY__' },
-    display_order: 2,
+    display_order: 1,
     is_active: true,
     is_default: true,
   },
@@ -64,7 +54,7 @@ const DEFAULT_BANNERS: BannerRow[] = [
     image_url: '/media/banners/myfng-misa-ai-light-banner.webp',
     route_name: 'AIBooking',
     route_params: { city: '__CITY__' },
-    display_order: 3,
+    display_order: 2,
     is_active: true,
     is_default: true,
   },

@@ -81,19 +81,6 @@ type HeroBanner = {
   overlay: string;
 };
 
-const NAVRATRI_PRIME_BANNER: HeroBanner = {
-  id: 'navratri-prime',
-  title: 'Navratri Prime',
-  desc: 'Prime Membership ₹699/year',
-  route: 'Settings',
-  routeParams: { subPage: 'Membership', membershipType: 'SERVICE' },
-  icon: 'ribbon',
-  colors: ['#023D95', '#2563EB'],
-  image: '',
-  imageSource: require('../../assets/myfng-prime-navratri-banner.png'),
-  overlay: 'rgba(0,0,0,0)',
-};
-
 const LIGHT_SERVICE_BANNER: HeroBanner = {
   id: 'service',
   title: 'Car Service',
@@ -138,8 +125,9 @@ const LIGHT_MISA_BANNER: HeroBanner = {
 };
 
 function buildHomeHeroBanners(remote: HeroBanner[] = []) {
-  if (remote.length > 0) return remote;
-  return [NAVRATRI_PRIME_BANNER, LIGHT_SERVICE_BANNER, LIGHT_MISA_BANNER];
+  const banners = remote.filter((banner) => !/navratri/i.test(`${banner.title} ${banner.image}`));
+  if (banners.length > 0) return banners;
+  return [LIGHT_SERVICE_BANNER, LIGHT_MISA_BANNER];
 }
 
 const FALLBACK_HERO_BANNERS: HeroBanner[] = buildHomeHeroBanners();
@@ -380,17 +368,15 @@ export default function PublicHomeScreen({ navigation }: Props) {
               data.map((row: any) => {
                 const title = String(row.title || '');
                 const imageUrl = String(row.image_url || '');
-                const replaceGanesh = /ganesh/i.test(`${title} ${imageUrl}`);
                 return {
                   id: String(row.id),
-                  title: replaceGanesh ? NAVRATRI_PRIME_BANNER.title : title,
+                  title,
                   desc: '',
                   route: row.route_name || 'PublicHome',
                   routeParams: row.route_params || undefined,
                   icon: 'sparkles' as const,
                   colors: ['#004AAD', '#0A57BF'] as [string, string],
-                  image: replaceGanesh ? '' : imageUrl,
-                  imageSource: replaceGanesh ? NAVRATRI_PRIME_BANNER.imageSource : undefined,
+                  image: imageUrl,
                   overlay: 'rgba(0,0,0,0)',
                 };
               }),

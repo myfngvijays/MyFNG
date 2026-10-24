@@ -20,14 +20,14 @@ const OPEN_DELAY_MS = 4000;
 const SCROLL_TRIGGER = 0.6;
 const EXCLUDED_PATH_PREFIXES = ['/book-service'];
 
-const NAVRATRI_POPUP_UTM = {
+const APP_POPUP_UTM = {
   utm_source: 'myfng',
   utm_medium: 'popup',
-  utm_campaign: 'navratri',
+  utm_campaign: 'app-download',
 } as const;
 
 const DEFAULT_GO_HREF =
-  '/go/myfngapp?utm_source=myfng&utm_medium=popup&utm_campaign=navratri&utm_content=app-download-popup';
+  '/go/myfngapp?utm_source=myfng&utm_medium=popup&utm_campaign=app-download&utm_content=app-download-popup';
 
 const BENEFITS = [
   'Free Pickup & Drop',
@@ -89,7 +89,7 @@ export default function AppDownloadPopup() {
   }, []);
 
   useEffect(() => {
-    setGoHref(buildGoAppDownloadHref('app-download-popup', NAVRATRI_POPUP_UTM));
+    setGoHref(buildGoAppDownloadHref('app-download-popup', APP_POPUP_UTM));
   }, []);
 
   useEffect(() => {
@@ -150,30 +150,7 @@ export default function AppDownloadPopup() {
         </button>
 
         <div className="overflow-hidden rounded-2xl bg-[#fff8ef] shadow-2xl ring-1 ring-[#e7c27a] sm:rounded-[28px]">
-          <div className="grid sm:grid-cols-[210px_1fr] lg:grid-cols-[248px_1fr]">
-            <div className="relative flex flex-col items-center overflow-hidden bg-gradient-to-b from-[#6b1224] via-[#9a3412] to-[#c2410c] px-3 pb-1 pt-2.5 sm:min-h-[460px] sm:px-4 sm:pb-4 sm:pt-5">
-              <div className="pointer-events-none absolute -left-8 top-10 h-24 w-24 rounded-full border border-[#f6d48a]/30" />
-              <div className="pointer-events-none absolute -right-6 bottom-16 h-20 w-20 rounded-full bg-[#fbbf24]/20 blur-2xl" />
-              <p className="text-[10px] font-semibold uppercase tracking-[0.38em] text-[#fde68a] sm:text-[11px]">
-                Navratri
-              </p>
-              <p
-                className="mt-0.5 text-2xl font-black italic leading-none text-[#fff7d6] sm:mt-1 sm:text-5xl"
-                style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-              >
-                Offer
-              </p>
-              <div className="mt-1.5 h-px w-12 bg-gradient-to-r from-transparent via-[#f6d48a] to-transparent sm:mt-3 sm:w-14" />
-              <Image
-                src="/media/navratri-durga-popup.webp"
-                alt="Navratri"
-                width={864}
-                height={1152}
-                className="relative mt-0.5 h-16 w-auto max-w-full object-contain object-bottom drop-shadow-2xl sm:mt-3 sm:h-auto sm:w-full sm:flex-1"
-                priority
-              />
-            </div>
-
+          <div>
             <div className="relative px-3.5 py-3 sm:px-7 sm:py-6">
               <h2 className="text-lg font-extrabold leading-none tracking-tight text-[#3f0d18] sm:text-[2rem]">
                 Download MyFNG App

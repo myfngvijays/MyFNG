@@ -19,7 +19,7 @@ export type TopOfferBannerConfig = {
 export const DEFAULT_TOP_OFFER_BANNER: TopOfferBannerConfig = {
   enabled: true,
   headline: 'Download MyFNG App & Get 10% OFF',
-  offer_label: 'Navratri Offer →',
+  offer_label: 'Book Car Service →',
   show_countdown: true,
   button_label: 'Download App',
   button_href: '/go/myfngapp',
@@ -59,7 +59,9 @@ export function normalizeTopOfferBanner(input?: Partial<TopOfferBannerConfig> | 
   return {
     enabled: input?.enabled !== false,
     headline: text(input?.headline, base.headline, 120),
-    offer_label: text(input?.offer_label, base.offer_label, 60),
+    offer_label: /navratri/i.test(text(input?.offer_label, base.offer_label, 60))
+      ? base.offer_label
+      : text(input?.offer_label, base.offer_label, 60),
     show_countdown: input?.show_countdown !== false,
     button_label: text(input?.button_label, base.button_label, 40),
     button_href: href(input?.button_href, base.button_href),
