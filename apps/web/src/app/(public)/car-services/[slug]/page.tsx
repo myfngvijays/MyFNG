@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -13,6 +14,7 @@ import { breadcrumbSchema, serviceSchema } from '@/lib/seo/schemas';
 import JsonLd from '@/components/seo/JsonLd';
 import { buildManagedServicePageMetadata } from '@/lib/service-page-seo';
 import { toSiteMediaSrc, toSiteMediaUrl } from '@/lib/media/public-url';
+import ServiceBookButton from './ServiceBookButton';
 
 export const revalidate = 300;
 
@@ -133,13 +135,22 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
                 </div>
 
                 {/* CTA Button */}
-                <Link
-                  href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
-                  className="btn btn-primary inline-flex items-center gap-2 text-sm sm:text-base px-6 sm:px-8 py-3 sm:py-4"
+                <Suspense
+                  fallback={
+                    <Link
+                      href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
+                      className="btn btn-primary inline-flex items-center gap-2 px-6 py-3 text-sm sm:px-8 sm:py-4 sm:text-base"
+                    >
+                      Book {service.title}
+                      <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </Link>
+                  }
                 >
-                  Book {service.title}
-                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
-                </Link>
+                  <ServiceBookButton
+                    title={service.title}
+                    href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
+                  />
+                </Suspense>
               </div>
 
               {/* Image */}

@@ -23,7 +23,7 @@ import {
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
 import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent';
-import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLocalSeoHtml, splitBlogHtmlAtMidpoint, stripExistingCta } from '@/lib/blog/aiLinks';
+import { buildBlogTrackedPath, ensureAboutMyFngHtml, ensureIntroAndToc, ensureLocalSeoHtml, splitBlogHtmlAtMidpoint, stripExistingCta, toCampaignSlug } from '@/lib/blog/aiLinks';
 import { ensureAiOverviewHtml, ensureRsaAiOverviewHtml } from '@/lib/blog/dailyAiOverview';
 import { isMyFngServiceFaq, isNewsCarBlog, stripMyFngServiceHtml } from '@/lib/blog/newsCarBlog';
 import { isAutomobileNewsRow } from '@/lib/blog/automobileNews';
@@ -489,8 +489,26 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followYoutube = 'https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/';
   const followLinkedin = 'https://linkedin.com/company/myfngcarservices';
   const followX = 'https://x.com/myfngcarservice';
-  const bookHref = (placement: string) =>
-    buildBlogTrackedPath('/book-service', transformed.slug, placement, String(seo?.keywords || '').split(',')[0]);
+  const bookHref = (placement: string) => {
+    const custom = String(seo?.booking_url || '').trim();
+    if (custom) {
+      try {
+        const url = new URL(custom, 'https://myfng.in');
+        if (!url.searchParams.get('utm_source')) url.searchParams.set('utm_source', 'blog');
+        if (!url.searchParams.get('utm_medium')) url.searchParams.set('utm_medium', 'organic');
+        if (!url.searchParams.get('utm_campaign')) url.searchParams.set('utm_campaign', transformed.slug);
+        url.searchParams.set('utm_content', toCampaignSlug(placement));
+        const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+        if (host === 'myfng.in' || host.endsWith('.myfng.in')) {
+          return `${url.pathname}${url.search}${url.hash}`;
+        }
+        return url.toString();
+      } catch {
+        // use the standard book path
+      }
+    }
+    return buildBlogTrackedPath('/book-service', transformed.slug, placement, String(seo?.keywords || '').split(',')[0]);
+  };
   const recentSlugs = new Set((recentPosts || []).map((post) => String(post.slug)));
   const relatedTokens = topicTokens(`${transformed.title} ${seo?.ai_focus_keyword || ''} ${seo?.keywords || ''}`).slice(0, 4);
   const relatedCity = String(seo?.local_city || seo?.ai_city || '').trim();
