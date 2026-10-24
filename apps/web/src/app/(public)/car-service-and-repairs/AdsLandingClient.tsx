@@ -641,6 +641,15 @@ export default function AdsLandingClient() {
         </div>
       </header>
 
+      <a
+        href="#book-service"
+        className="flex flex-nowrap items-center justify-center gap-1.5 bg-gradient-to-r from-[#480114] via-[#7c2d12] to-[#4a0f39] px-2.5 py-2 text-center sm:gap-3 sm:px-4 sm:py-2.5"
+      >
+        <span className="whitespace-nowrap text-[11px] font-extrabold text-[#fef7ec] sm:text-sm">Diwali Offer</span>
+        <span className="whitespace-nowrap text-[11px] font-bold text-[#ffe08a] sm:text-sm">Free Pickup & Drop · 10% OFF</span>
+        <span className="whitespace-nowrap rounded-full bg-[#0f68de] px-2.5 py-1 text-[11px] font-extrabold text-white sm:px-3 sm:text-xs">Book Now</span>
+      </a>
+
       <main className="mx-auto grid min-w-0 max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 lg:py-8">
         <section className="min-w-0 overflow-x-hidden lg:col-start-1 lg:row-start-1">
           <p className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-800">
@@ -971,6 +980,15 @@ export default function AdsLandingClient() {
         </aside>
 
         <div className="min-w-0 space-y-5 overflow-x-hidden pb-8 lg:col-start-1 lg:row-start-2">
+          <a href="#book-service" className="block overflow-hidden rounded-3xl shadow-sm ring-1 ring-[#e7c27a]">
+            <img
+              src="/media/banners/myfng-diwali-car-service-offer-1600x800.webp"
+              alt="Diwali Offer. Book car service. Free pickup and drop. 10% off."
+              width={1600}
+              height={800}
+              className="h-auto w-full"
+            />
+          </a>
           <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
             <img
               src="/media/workshop-covers/source-actual-workshop.webp"
