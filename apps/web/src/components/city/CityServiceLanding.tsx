@@ -98,7 +98,7 @@ function CityServiceLandingView({ city }: { city: CityPageConfig }) {
             </ul>
             <a
               href={`tel:${PHONE_TEL}`}
-              className="mt-5 inline-flex h-11 w-fit items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#003890]"
+              className="mt-5 inline-flex h-11 w-fit items-center gap-2 self-center rounded-full bg-[#ffc20a] px-5 text-sm font-bold text-[#003890] lg:self-start"
             >
               <Phone className="h-4 w-4" />
               Call {PHONE_LABEL}

@@ -455,14 +455,14 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   placeholder="10-digit mobile"
                   className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
-                <p className="mt-1 text-[11px] font-medium text-slate-500">
+                <div className="mt-1 text-[10px] font-medium leading-4 text-slate-500">
                   {otpLoading
                     ? 'Sending OTP…'
                     : otpVerified
                       ? 'Mobile verified'
                       : otpChannelLabel
                         ? `${otpChannelLabel}${otpTimer > 0 ? ` · Resend in ${otpTimer}s` : ''}`
-                        : 'OTP is sent when the number is complete. SMS first, then WhatsApp.'}
+                        : 'OTP on this number.'}
                   {otpSent && !otpVerified && otpTimer === 0 ? (
                     <button
                       type="button"
@@ -475,7 +475,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                       Resend
                     </button>
                   ) : null}
-                </p>
+                </div>
               </div>
               {otpSent && !otpVerified ? (
                 <div>
@@ -670,16 +670,16 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   Prices are not shown here. Verify OTP, then open the price list for your car.
                 </p>
               )}
-              <label className="flex items-start gap-2.5 text-xs leading-5 text-slate-600">
+              <label className="flex items-center gap-2 text-[11px] leading-4 text-slate-600">
                 <input
                   type="checkbox"
                   checked={consent}
                   onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-blue-700"
+                  className="h-3.5 w-3.5 shrink-0 accent-blue-700"
                 />
-                <span>
+                <span className="whitespace-nowrap">
                   I agree to be called about this booking.{' '}
-                  <a href="/privacy-notice" className="whitespace-nowrap font-semibold text-blue-700 underline">
+                  <a href="/privacy-notice" className="font-semibold text-blue-700 underline">
                     Privacy Notice
                   </a>
                 </span>

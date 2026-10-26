@@ -339,6 +339,76 @@ export async function getFolderAnalytics(
   };
 }
 
+export async function listBlogClicks(
+  client: SupabaseClient,
+  opts: { page?: number; pageSize?: number; q?: string },
+) {
+  const page = Math.max(1, Number(opts.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(opts.pageSize) || 25));
+  const fromIdx = (page - 1) * pageSize;
+  const q = String(opts.q || '').trim();
+
+  let query = client
+    .from('managed_short_links')
+    .select(
+      'id,short_code,title,utm_campaign,utm_term,clicks,unique_clicks,qr_scans,created_at',
+      { count: 'exact' },
+    )
+    .eq('folder', 'Blog')
+    .order('clicks', { ascending: false });
+
+  if (q) {
+    query = query.or(`title.ilike.%${q}%,utm_campaign.ilike.%${q}%,short_code.ilike.%${q}%`);
+  }
+
+  const totalsQuery = client
+    .from('managed_short_links')
+    .select('clicks,unique_clicks')
+    .eq('folder', 'Blog');
+
+  const [{ data, error, count }, totalsRes] = await Promise.all([
+    query.range(fromIdx, fromIdx + pageSize - 1),
+    totalsQuery,
+  ]);
+  if (error) throw new Error(error.message);
+
+  const rows = data || [];
+  const campaigns = [...new Set(rows.map((row) => String(row.utm_campaign || '').trim()).filter(Boolean))];
+  const viewBySlug = new Map<string, { title: string; views: number }>();
+  if (campaigns.length) {
+    const { data: blogs } = await client.from('blogs').select('slug,title,views').in('slug', campaigns);
+    for (const blog of blogs || []) {
+      viewBySlug.set(String(blog.slug), {
+        title: String(blog.title || ''),
+        views: Number(blog.views || 0),
+      });
+    }
+  }
+
+  const totalClicks = (totalsRes.data || []).reduce((sum, row) => sum + Number(row.clicks || 0), 0);
+  const totalUnique = (totalsRes.data || []).reduce((sum, row) => sum + Number(row.unique_clicks || 0), 0);
+
+  return {
+    links: rows.map((row) => {
+      const blog = viewBySlug.get(String(row.utm_campaign || ''));
+      return {
+        ...row,
+        blog_title: blog?.title || null,
+        views: blog ? blog.views : null,
+      };
+    }),
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil((count || 0) / pageSize)),
+    totals: {
+      clicks: totalClicks,
+      unique_clicks: totalUnique,
+      blogs: (totalsRes.data || []).length,
+    },
+  };
+}
+
 export async function listUtmConfiguredLinks(
   client: SupabaseClient,
   opts: {

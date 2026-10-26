@@ -74,6 +74,7 @@ export default function MobileBottomNav() {
   if (pathname === '/book-service' || pathname.startsWith('/book-service/')) return null;
   if (pathname === '/car-service-and-repairs' || pathname.startsWith('/car-service-and-repairs/')) return null;
   if (pathname.startsWith('/car-service-in-') || pathname.startsWith('/car-service-in/')) return null;
+  if (pathname.startsWith('/workshop/')) return null;
   if (pathname === '/misa-ai' || pathname.startsWith('/misa-ai/')) return null;
   // Pricing share links: hamburger already covers nav
   if (pathname.startsWith('/pricing/') || pathname.startsWith('/p/')) return null;

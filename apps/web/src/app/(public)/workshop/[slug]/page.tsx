@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
+import OnPageBookingForm from '@/components/landing/OnPageBookingForm';
 import WorkshopBrandsRow from '@/components/workshop/WorkshopBrandsRow';
 import WorkshopFaqs from '@/components/workshop/WorkshopFaqs';
 import PeriodicServicePackages from '@/components/workshop/PeriodicServicePackages';
@@ -16,6 +17,17 @@ import type {
   GmbReview,
 } from '@/components/workshop/types';
 
+
+const PHONE_TEL = '+919152307030';
+const PHONE_LABEL = '91523 07030';
+
+function bookingCityName(raw?: string | null) {
+  const name = (raw || '').toLowerCase();
+  if (name.includes('navi')) return 'Navi Mumbai';
+  if (name.includes('pune')) return 'Pune';
+  if (name.includes('mumbai')) return 'Mumbai';
+  return 'Thane';
+}
 
 const defaultFaqs = [
   {
@@ -77,7 +89,6 @@ export default function WorkshopPublicPage() {
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [loading, setLoading] = useState(true);
   const [qrValue, setQrValue] = useState('');
-  const [heroSlide, setHeroSlide] = useState(0);
   const [fallbackBrands, setFallbackBrands] = useState<{ name: string; logo_url: string }[]>([]);
   const [showTimingDropdown, setShowTimingDropdown] = useState(false);
   const timingRef = useRef<HTMLDivElement>(null);
@@ -112,21 +123,22 @@ export default function WorkshopPublicPage() {
   };
 
   useEffect(() => {
-    if (!page || (Array.isArray(page.brands) && page.brands.length > 0)) return;
     async function fetchFallbackBrands() {
       try {
-        const response = await fetch('/api/super_admin/car-brands?active_only=true');
+        const response = await fetch('/api/public/car-brands');
         if (!response.ok) return;
         const result = await response.json();
         setFallbackBrands(
-          (result.data || []).map((b: any) => ({ name: b.name, logo_url: b.logo_url }))
+          (result.data || [])
+            .filter((b: any) => b?.logo_url)
+            .map((b: any) => ({ name: b.name, logo_url: b.logo_url }))
         );
       } catch {
         setFallbackBrands([]);
       }
     }
     fetchFallbackBrands();
-  }, [page]);
+  }, []);
 
 
   const handleOutsideClick = useCallback((e: MouseEvent) => {
@@ -139,13 +151,6 @@ export default function WorkshopPublicPage() {
     document.addEventListener('click', handleOutsideClick);
     return () => document.removeEventListener('click', handleOutsideClick);
   }, [handleOutsideClick]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setHeroSlide((prev) => (prev + 1) % 3);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
 
   const fetchWorkshopPage = async () => {
     try {
@@ -190,7 +195,9 @@ export default function WorkshopPublicPage() {
 
   const services: string[] = Array.isArray(page.services_offered) ? page.services_offered : [];
   const businessHours = page.business_hours || {};
-  const brands = Array.isArray(page.brands) && page.brands.length ? page.brands : fallbackBrands;
+  const brands = fallbackBrands.length
+    ? fallbackBrands
+    : (Array.isArray(page.brands) ? page.brands : []);
   const packages = Array.isArray(page.packages) ? page.packages : [];
   const faqs = Array.isArray(page.faqs) && page.faqs.length ? page.faqs : defaultFaqs;
 
@@ -251,209 +258,78 @@ export default function WorkshopPublicPage() {
 
       {/* HERO SECTION */}
       <section className="relative bg-gradient-to-br from-[#0a1628] via-[#0d2847] to-[#0a3d91]">
-        {/* Background decorative elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-[200px] -right-[200px] w-[600px] h-[600px] rounded-full bg-[#ffc107]/5 blur-3xl" />
           <div className="absolute -bottom-[100px] -left-[100px] w-[400px] h-[400px] rounded-full bg-[#0a3d91]/20 blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full border border-white/5" />
         </div>
 
-        <div className="relative w-[90%] max-w-[1200px] mx-auto pt-20 pb-16 lg:pt-24 lg:pb-20">
-          <div className="flex flex-col lg:flex-row items-start gap-12 lg:gap-16">
-            {/* Hero Left Content — Carousel */}
-            <div className="flex-1 text-center lg:text-left min-h-[420px] lg:min-h-[380px] relative">
-              {/* Slide 1: Prime Membership */}
-              <div className={`transition-all duration-700 ${heroSlide === 0 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 absolute inset-0 pointer-events-none'}`}>
-                <div className="inline-flex items-center gap-2 bg-gradient-to-r from-[#ffc107]/20 to-[#ff9800]/20 border border-[#ffc107]/30 px-4 py-2 rounded-full mb-6">
-                  <span className="w-2 h-2 rounded-full bg-[#ffc107] animate-pulse" />
-                  <span className="text-[#ffc107] text-[13px] font-semibold tracking-wide uppercase">MyFNG Prime Membership</span>
-                </div>
-                <h1 className="text-[32px] sm:text-[42px] lg:text-[50px] font-extrabold leading-[1.15] mb-5 text-white">
-                  {displayName}
-                </h1>
-                <p className="text-white/80 text-[16px] lg:text-[18px] leading-relaxed mb-6 max-w-[520px] mx-auto lg:mx-0">
-                  Get exclusive benefits with <strong className="text-white">MyFNG Prime</strong> — priority booking, flat 20% off on all services, free roadside assistance & more.
-                </p>
-                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 mb-8">
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-[#ffc107] text-[16px] font-bold">{displayRating || 4.8}★</span>
-                    <span className="text-white/80 text-[13px]">Rated</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white text-[13px] font-medium">10,000+</span>
-                    <span className="text-white/70 text-[13px]">Cars Serviced</span>
-                  </div>
-                </div>
+        <div className="relative mx-auto grid w-[90%] max-w-[1200px] items-start gap-8 pb-12 pt-24 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-stretch lg:pb-16 lg:pt-28">
+          <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
+            <p className="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-[12px] font-bold uppercase tracking-wide text-[#ffc20a]">
+              Book on this page
+            </p>
+            <h1 className="mt-4 text-[32px] font-extrabold leading-[1.15] text-white sm:text-[40px]">
+              {displayName}
+            </h1>
+            <p className="mt-4 max-w-[520px] text-[16px] leading-relaxed text-white/80">
+              Book this workshop. We call you, pick the car up, and drop it back. No mechanic at your house.
+            </p>
+            <ul className="mt-5 grid grid-cols-2 gap-x-3 gap-y-2 text-left">
+              {['Same day service', 'Warranty on the job', 'Free pickup and drop', 'Photo updates on WhatsApp'].map((item) => (
+                <li key={item} className="flex items-start gap-1.5 text-[13px] font-semibold text-white">
+                  <svg className="mt-0.5 h-4 w-4 shrink-0 text-[#4ade80]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                  {item}
+                </li>
+              ))}
+            </ul>
+            <a
+              href={`tel:${PHONE_TEL}`}
+              className="mt-5 inline-flex h-11 items-center gap-2 rounded-full bg-[#ffc20a] px-5 text-sm font-bold text-[#003890]"
+            >
+              Call {PHONE_LABEL}
+            </a>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+              <div className="rounded-full bg-white/10 px-4 py-2 text-[13px] text-white">
+                <span className="font-bold text-[#ffc20a]">{displayRating || 4.8}★</span> Rated
               </div>
-
-              {/* Slide 2: Book Service */}
-              <div className={`transition-all duration-700 ${heroSlide === 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 absolute inset-0 pointer-events-none'}`}>
-                <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 px-4 py-2 rounded-full mb-6">
-                  <span className="w-2 h-2 rounded-full bg-[#4ade80] animate-pulse" />
-                  <span className="text-[#4ade80] text-[13px] font-semibold tracking-wide uppercase">Same Day Service Available</span>
-                </div>
-                <h1 className="text-[32px] sm:text-[42px] lg:text-[50px] font-extrabold leading-[1.15] mb-5 text-white">
-                  Expert Car Service
-                  <span className="block text-[#4ade80] mt-1">Doorstep Free Pickup & Drop</span>
-                </h1>
-                <p className="text-white/80 text-[16px] lg:text-[18px] leading-relaxed mb-6 max-w-[520px] mx-auto lg:mx-0">
-                  Free pickup & drop, live service updates on WhatsApp, genuine parts with warranty. Book now and get your car serviced today!
-                </p>
-                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 mb-8">
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white text-[13px] font-medium">Free Pickup & Drop</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white text-[13px] font-medium">1000 KM Warranty</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white text-[13px] font-medium">Genuine Parts</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Slide 3: Download App */}
-              <div className={`transition-all duration-700 ${heroSlide === 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 absolute inset-0 pointer-events-none'}`}>
-                <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 px-4 py-2 rounded-full mb-6">
-                  <span className="w-2 h-2 rounded-full bg-[#f97316] animate-pulse" />
-                  <span className="text-[#f97316] text-[13px] font-semibold tracking-wide uppercase">Download & Save 10%</span>
-                </div>
-                <h1 className="text-[32px] sm:text-[42px] lg:text-[50px] font-extrabold leading-[1.15] mb-5 text-white">
-                  MyFNG App
-                  <span className="block text-[#f97316] mt-1">Book in 60 Seconds</span>
-                </h1>
-                <p className="text-white/80 text-[16px] lg:text-[18px] leading-relaxed mb-6 max-w-[520px] mx-auto lg:mx-0">
-                  Download the MyFNG app for instant booking, real-time tracking, exclusive offers, and the fastest way to get your car serviced.
-                </p>
-                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 mb-8">
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white text-[13px] font-medium">Instant Booking</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white text-[13px] font-medium">Live Tracking</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full">
-                    <span className="text-white text-[13px] font-medium">Exclusive Deals</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Common: App Download + USPs (always visible) */}
-              <div className="mt-auto">
-                <div className="mb-6">
-                  <p className="text-white/60 text-[12px] uppercase tracking-widest font-medium mb-3">Download the app & get 10% off</p>
-                  <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3">
-                    <a href="https://play.google.com/store/apps/details?id=com.myfng" target="_blank" rel="noopener noreferrer" className="inline-block hover:opacity-80 transition-opacity">
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="Get it on Google Play" className="h-[44px]" />
-                    </a>
-                    <a href="https://apps.apple.com/app/myfng" target="_blank" rel="noopener noreferrer" className="inline-block hover:opacity-80 transition-opacity">
-                      <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" className="h-[44px]" />
-                    </a>
-                  </div>
-                </div>
-
-                {/* USP Tags */}
-                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 mb-4">
-                  <div className="flex items-center gap-2 text-white/70 text-[13px]">
-                    <svg className="w-4 h-4 text-[#4ade80]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                    Same Day Service
-                  </div>
-                  <div className="flex items-center gap-2 text-white/70 text-[13px]">
-                    <svg className="w-4 h-4 text-[#4ade80]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                    WhatsApp Updates
-                  </div>
-                  <div className="flex items-center gap-2 text-white/70 text-[13px]">
-                    <svg className="w-4 h-4 text-[#4ade80]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                    Transparent Pricing
-                  </div>
-                </div>
-
-                {/* Slide Indicators */}
-                <div className="flex items-center justify-center lg:justify-start gap-2">
-                  {[0, 1, 2].map((idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setHeroSlide(idx)}
-                      className={`transition-all duration-300 rounded-full ${heroSlide === idx ? 'w-8 h-2 bg-[#ffc107]' : 'w-2 h-2 bg-white/30 hover:bg-white/50'}`}
-                    />
-                  ))}
-                </div>
-              </div>
+              <div className="rounded-full bg-white/10 px-4 py-2 text-[13px] text-white">10,000+ Cars serviced</div>
             </div>
-
-            {/* Hero Right — Prime Membership Card */}
-            <div className="w-full max-w-[460px] lg:max-w-[480px] flex-shrink-0 lg:mt-4">
-              <div className="relative rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.3)]">
-                <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-[#0a3d91] via-[#ffc107] via-[#f97316] via-[#1aa260] to-[#0a3d91] animate-[gradient-shift_4s_linear_infinite] bg-[length:300%_100%]" />
-                <div className="relative bg-white rounded-2xl overflow-hidden">
-                <div className="px-7 py-6 animate-[header-shift_6s_ease_infinite] bg-[length:200%_100%]" style={{ backgroundImage: 'linear-gradient(90deg, #0a3d91, #1a5fc9, #2563eb, #0a3d91)' }}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-white font-bold text-[22px] m-0">MyFNG Prime</h3>
-                      <p className="text-white/70 text-[14px] mt-1 mb-0">Exclusive Membership Benefits</p>
-                    </div>
-                    <div className="w-12 h-12 bg-[#ffc107] rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
-                      <svg className="w-6 h-6 text-[#0a3d91]" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="px-7 py-6">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">10% Off Periodic Packages</span></div>
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">5% Cashback to Wallet</span></div>
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Free Top-Up & Inspection</span></div>
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Free Car Scanning</span></div>
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Free Insurance Claim Help</span></div>
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Prime WhatsApp Group</span></div>
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Priority Slot Booking</span></div>
-                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Get Extended Warranty</span></div>
-                  </div>
-
-                  <div className="mt-6 pt-5 border-t border-[#f1f1f1]">
-                    <div className="flex items-baseline gap-3 mb-4">
-                      <span className="text-[18px] text-[#999] line-through">₹999</span>
-                      <span className="text-[40px] font-extrabold text-[#0a3d91]">₹699</span>
-                      <span className="text-[13px] font-semibold text-white bg-[#1aa260] px-3 py-1 rounded-full">/year</span>
-                    </div>
-                    <p className="text-[15px] font-medium text-[#333] mb-4">Join MyFNG Prime — Download the app now</p>
-                    <div className="flex items-center gap-3">
-                      <a
-                        href="https://play.google.com/store/apps/details?id=com.myfng"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block hover:opacity-80 transition-opacity"
-                      >
-                        <img
-                          src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
-                          alt="Get it on Google Play"
-                          className="h-[46px]"
-                        />
-                      </a>
-                      <a
-                        href="https://apps.apple.com/app/myfng"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block hover:opacity-80 transition-opacity"
-                      >
-                        <img
-                          src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
-                          alt="Download on the App Store"
-                          className="h-[46px]"
-                        />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              </div>
+            <div className="mt-5 flex w-full flex-1 flex-col rounded-3xl bg-white/10 p-4 text-left ring-1 ring-white/15">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#ffc20a]">How booking works</p>
+              <p className="mt-1 text-lg font-extrabold text-white">Four steps. One form.</p>
+              <ol className="mt-3 grid flex-1 grid-cols-2 grid-rows-2 gap-2">
+                {[
+                  ['1', 'Fill this form'],
+                  ['2', 'We call you'],
+                  ['3', 'Free pickup'],
+                  ['4', 'Updates + warranty'],
+                ].map(([n, label]) => (
+                  <li key={n} className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ffc20a] text-xs font-extrabold text-[#003890]">{n}</span>
+                    <span className="text-[13px] font-semibold text-white">{label}</span>
+                  </li>
+                ))}
+              </ol>
             </div>
+          </div>
+
+          <div id="book-service" className="scroll-mt-24 w-full lg:sticky lg:top-24 lg:self-start">
+            <OnPageBookingForm
+              page={`/workshop/${slug}`}
+              source={`gmb-${slug}`}
+              campaign={`gmb-${slug}`}
+              term={`car service ${workshop.city || displayName}`}
+              cities={['Mumbai', 'Thane', 'Navi Mumbai', 'Pune']}
+              defaultCity={bookingCityName(workshop.city)}
+              areaName={[workshop.address?.split(',')[0], workshop.city].filter(Boolean).join(', ') || displayName}
+              stickyClassName=""
+            />
           </div>
         </div>
       </section>
 
       {/* TWO-COLUMN CONTENT */}
-      <section className="py-10">
+      <section className="pb-2 pt-10 sm:py-10">
         <div className="w-[90%] max-w-[1100px] mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-[62%_38%] gap-7">
             {/* LEFT COLUMN */}
@@ -483,12 +359,12 @@ export default function WorkshopPublicPage() {
                   </div>
                 </div>
 
-                {/* Service Tags */}
-                <div className="flex flex-wrap gap-2 mb-5">
+                {/* Service Tags — phone: one row, swipe. Desktop wrap stays. */}
+                <div className="mb-5 flex flex-nowrap gap-2 overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
                   {serviceTags.slice(0, 10).map((tag, idx) => {
                     const colors = ['bg-blue-50 text-blue-700', 'bg-orange-50 text-orange-700', 'bg-green-50 text-green-700', 'bg-purple-50 text-purple-700', 'bg-rose-50 text-rose-700', 'bg-teal-50 text-teal-700', 'bg-amber-50 text-amber-700', 'bg-indigo-50 text-indigo-700', 'bg-cyan-50 text-cyan-700', 'bg-pink-50 text-pink-700'];
                     return (
-                      <span key={tag} className={`${colors[idx % colors.length]} px-3 py-1.5 rounded-full text-[12px] font-medium`}>
+                      <span key={tag} className={`${colors[idx % colors.length]} shrink-0 snap-start px-3 py-1.5 rounded-full text-[12px] font-medium sm:shrink`}>
                         {tag}
                       </span>
                     );
@@ -496,24 +372,25 @@ export default function WorkshopPublicPage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex flex-wrap gap-3">
-                  <a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-medium bg-[#0a3d91] no-underline hover:bg-[#083070] transition-colors">
+                <div className="flex flex-nowrap gap-2 sm:flex-wrap sm:gap-3">
+                  <a href={directionsUrl} target="_blank" rel="noopener noreferrer" aria-label="Directions" className="flex items-center justify-center gap-2 rounded-lg bg-[#0a3d91] px-3 py-2.5 text-[13px] font-medium text-white no-underline hover:bg-[#083070] transition-colors sm:px-4">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                    Directions
+                    <span className="hidden sm:inline">Directions</span>
                   </a>
                   {whatsappNumber && (
-                    <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-medium bg-[#25d366] no-underline hover:bg-[#1da851] transition-colors">
+                    <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="flex items-center justify-center gap-2 rounded-lg bg-[#25d366] px-3 py-2.5 text-[13px] font-medium text-white no-underline hover:bg-[#1da851] transition-colors sm:px-4">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/></svg>
-                      WhatsApp
+                      <span className="hidden sm:inline">WhatsApp</span>
                     </a>
                   )}
                   {callNumber && (
-                    <a href={`tel:${callNumber}`} className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-medium bg-[#2563eb] no-underline hover:bg-[#1d4ed8] transition-colors">
+                    <a href={`tel:${callNumber}`} className="flex items-center gap-2 rounded-lg bg-[#2563eb] px-3 py-2.5 text-[13px] font-medium text-white no-underline hover:bg-[#1d4ed8] transition-colors sm:px-4">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
-                      Call Store
+                      <span className="sm:hidden">Call</span>
+                      <span className="hidden sm:inline">Call Store</span>
                     </a>
                   )}
-                  <a href="/book-service" className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-[13px] font-medium bg-[#f97316] no-underline hover:bg-[#ea580c] transition-colors">
+                  <a href="#book-service" className="flex items-center gap-2 rounded-lg bg-[#f97316] px-3 py-2.5 text-[13px] font-medium text-white no-underline hover:bg-[#ea580c] transition-colors sm:px-4">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                     Book Now
                   </a>
@@ -548,7 +425,7 @@ export default function WorkshopPublicPage() {
                     <svg className="w-5 h-5 text-[#ef4444]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                   </div>
                   <h3 className="text-[#0a3d91] text-[18px] font-bold">{companyStats.touch_points}</h3>
-                  <p className="text-[12px] text-[#666]">Touch Points</p>
+                  <p className="text-[12px] text-[#666]"><span className="sm:hidden">Workshop</span><span className="hidden sm:inline">Touch Points</span></p>
                 </div>
               </div>
 
@@ -675,23 +552,46 @@ export default function WorkshopPublicPage() {
                   </p>
                 )}
 
-                <h4 className="font-bold text-[14px] mb-3 text-[#0a3d91]">We Offer</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {[
-                    '1000 KM/1 Month Warranty',
-                    'Free Pick-Up & Drop',
-                    'Same-Day Car Servicing',
-                    'Transparent Pricing',
-                    'Live Photo/Video Updates',
-                    '24x7 Roadside Assistance',
-                    'Genuine OEM/OES Parts',
-                    'Expert Mechanics',
-                  ].map((item) => (
-                    <div key={item} className="flex items-center gap-2.5 bg-[#f8fafc] p-2.5 rounded-lg">
-                      <span className="w-2 h-2 rounded-full bg-[#0a3d91] flex-shrink-0" />
-                      <span className="text-[13px] text-[#333] font-medium">{item}</span>
-                    </div>
-                  ))}
+                <div className="hidden sm:block">
+                  <h4 className="font-bold text-[14px] mb-3 text-[#0a3d91]">We Offer</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {[
+                      '1000 KM/1 Month Warranty',
+                      'Free Pick-Up & Drop',
+                      'Same-Day Car Servicing',
+                      'Transparent Pricing',
+                      'Live Photo/Video Updates',
+                      '24x7 Roadside Assistance',
+                      'Genuine OEM/OES Parts',
+                      'Expert Mechanics',
+                    ].map((item) => (
+                      <div key={item} className="flex items-center gap-2.5 bg-[#f8fafc] p-2.5 rounded-lg">
+                        <span className="w-2 h-2 rounded-full bg-[#0a3d91] flex-shrink-0" />
+                        <span className="text-[13px] text-[#333] font-medium">{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="sm:hidden">
+                  <h4 className="mb-3 text-center text-[15px] font-bold text-[#0a3d91]">Our Service Guarantee</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { title: '1000 KM Warranty', desc: 'On every service', bg: 'bg-[#e6f0ff]', iconBg: 'bg-[#0a3d91]', titleColor: 'text-[#0a3d91]' },
+                      { title: 'Same Day Delivery', desc: 'Ready within hours', bg: 'bg-[#e8f9f1]', iconBg: 'bg-[#1aa260]', titleColor: 'text-[#1aa260]' },
+                      { title: 'Live Updates', desc: 'Photos on WhatsApp', bg: 'bg-[#fff4e5]', iconBg: 'bg-[#f97316]', titleColor: 'text-[#f97316]' },
+                      { title: 'No Hidden Charges', desc: 'Pay what you see', bg: 'bg-[#fef3f2]', iconBg: 'bg-[#ef4444]', titleColor: 'text-[#ef4444]' },
+                      { title: 'Free Pickup & Drop', desc: 'No extra cost', bg: 'bg-[#f0e6ff]', iconBg: 'bg-[#7c3aed]', titleColor: 'text-[#7c3aed]' },
+                      { title: 'Genuine OEM/OES', desc: 'Parts with warranty', bg: 'bg-[#e8f9f1]', iconBg: 'bg-[#1aa260]', titleColor: 'text-[#1aa260]' },
+                    ].map((item) => (
+                      <div key={item.title} className={`flex items-center gap-2 rounded-xl p-2.5 ${item.bg}`}>
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${item.iconBg}`} />
+                        <span className="min-w-0">
+                          <span className={`block text-[11px] font-semibold leading-tight ${item.titleColor}`}>{item.title}</span>
+                          <span className="block text-[10px] leading-tight text-[#666]">{item.desc}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -699,7 +599,14 @@ export default function WorkshopPublicPage() {
               {Array.isArray((page as any).gallery_images) && (page as any).gallery_images.length > 0 && (
                 <div className="bg-white p-6 rounded-2xl border border-[#e8ecf4] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
                   <h3 className="font-bold text-[16px] mb-4">Workshop Gallery</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:hidden [&::-webkit-scrollbar]:hidden">
+                    {((page as any).gallery_images as string[]).map((img, idx) => (
+                      <div key={`m-${idx}`} className="aspect-[4/3] w-[78%] shrink-0 snap-start overflow-hidden rounded-xl">
+                        <img src={img} alt={`Workshop photo ${idx + 1}`} className="h-full w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden grid-cols-2 gap-3 sm:grid sm:grid-cols-3">
                     {((page as any).gallery_images as string[]).slice(0, 6).map((img, idx) => (
                       <div key={idx} className="aspect-[4/3] rounded-xl overflow-hidden">
                         <img src={img} alt={`Workshop photo ${idx + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
@@ -717,11 +624,17 @@ export default function WorkshopPublicPage() {
                 <h4 className="text-[18px] font-bold mb-2 text-center text-white">Book Your Car Service</h4>
                 <p className="text-[13px] text-white/70 text-center mb-5">Same day service • Transparent pricing • Doorstep pickup</p>
                 <a
-                  href="/book-service"
+                  href="#book-service"
                   className="flex items-center justify-center gap-2 w-full py-3.5 bg-[#f97316] hover:bg-[#ea580c] text-white rounded-xl font-bold text-[15px] no-underline transition-all duration-300 hover:shadow-[0_4px_20px_rgba(249,115,22,0.4)]"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                   Book Now
+                </a>
+                <a
+                  href={`tel:${PHONE_TEL}`}
+                  className="mt-3 flex items-center justify-center gap-2 w-full py-3 bg-white text-[#0a3d91] rounded-xl font-bold text-[15px] no-underline"
+                >
+                  Call {PHONE_LABEL}
                 </a>
                 {whatsappNumber && (
                   <a
@@ -765,8 +678,8 @@ export default function WorkshopPublicPage() {
                 </a>
               </div>
 
-              {/* Service Guarantee Card */}
-              <div className="bg-white p-5 rounded-2xl border border-[#e8ecf4] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+              {/* Service Guarantee Card — desktop sidebar. Phone uses the card under About. */}
+              <div className="hidden bg-white p-5 rounded-2xl border border-[#e8ecf4] shadow-[0_4px_24px_rgba(0,0,0,0.06)] sm:block">
                 <h4 className="text-[15px] font-bold mb-4 text-center">Our Service Guarantee</h4>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 p-3 bg-[#e6f0ff] rounded-xl">
@@ -852,7 +765,7 @@ export default function WorkshopPublicPage() {
       </section>
 
       {/* ABOUT MyFNG */}
-      <section className="py-10" style={{ background: 'linear-gradient(135deg, #f8faff, #eef3fb)' }}>
+      <section className="pb-10 pt-4 sm:py-10" style={{ background: 'linear-gradient(135deg, #f8faff, #eef3fb)' }}>
         <div className="w-[90%] max-w-[1100px] mx-auto">
           <div className="text-center mb-6">
             <h2 className="text-[32px] font-extrabold">
@@ -876,7 +789,7 @@ export default function WorkshopPublicPage() {
             </div>
 
             {/* Right: Key Stats */}
-            <div className="bg-white p-8 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+            <div className="hidden bg-white p-8 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06)] sm:block">
               <h3 className="text-[18px] font-bold text-[#0a3d91] mb-4">By The Numbers</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-[#f8fafc] p-4 rounded-xl text-center">
@@ -900,7 +813,7 @@ export default function WorkshopPublicPage() {
           </div>
 
           {/* What We Offer Grid */}
-          <div className="bg-white p-8 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+          <div className="hidden bg-white p-8 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06)] sm:block">
             <h3 className="text-[18px] font-bold text-center mb-6">What We Offer</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
@@ -942,7 +855,38 @@ export default function WorkshopPublicPage() {
       <section className="py-10 bg-[#f2f4f8]">
         <div className="w-[90%] max-w-[1100px] mx-auto">
           <h2 className="text-center text-[26px] font-bold mb-6">Other Services</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-5">
+          <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-blue-100 bg-white sm:hidden">
+            {otherServices.map((service) => {
+              const Icon = service.icon;
+              const label = service.title.replace(/^Car /, '').replace(/ Service$/, '').replace(/ Car$/, '');
+              return (
+                <div key={service.slug} className="flex flex-col items-center justify-center border-b border-r border-blue-100 px-2 py-4 text-center">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-gray-200 bg-white shadow-sm">
+                    {service.iconImage ? (
+                      <img src={service.iconImage} alt="" className="h-8 w-8 object-contain" />
+                    ) : (
+                      <Icon className="h-6 w-6 text-[#003890]" />
+                    )}
+                  </span>
+                  <span className="mt-2 line-clamp-2 text-[10px] font-bold uppercase leading-3 text-gray-600">{label}</span>
+                </div>
+              );
+            })}
+            <a href="/car-roadside-assistance" className="flex flex-col items-center justify-center border-b border-r border-blue-100 px-2 py-4 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-red-100 bg-[#fef2f2] shadow-sm">
+                <svg className="h-8 w-8 text-[#dc2626]" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                  <rect x="2" y="28" width="26" height="16" rx="3" stroke="currentColor" strokeWidth="3" />
+                  <path d="M28 28h10l8 10v6h-18v-16z" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
+                  <circle cx="12" cy="47" r="5" stroke="currentColor" strokeWidth="3" />
+                  <circle cx="40" cy="47" r="5" stroke="currentColor" strokeWidth="3" />
+                  <line x1="17" y1="47" x2="35" y2="47" stroke="currentColor" strokeWidth="3" />
+                  <path d="M50 38h8a3 3 0 013 3v3h-11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+              </span>
+              <span className="mt-2 line-clamp-2 text-[10px] font-bold uppercase leading-3 text-gray-600">RSA</span>
+            </a>
+          </div>
+          <div className="hidden grid-cols-2 gap-5 sm:grid sm:grid-cols-3 md:grid-cols-5">
             {otherServices.map((service) => (
               <div
                 key={service.slug}
@@ -1008,23 +952,25 @@ export default function WorkshopPublicPage() {
                     </div>
                   ))}
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
                   <a
                     href="/car-roadside-assistance"
-                    className="inline-flex items-center gap-2 px-5 py-3 bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-xl font-semibold text-[14px] no-underline transition-colors shadow-lg shadow-red-200"
+                    className="inline-flex items-center justify-center gap-1.5 px-2 py-3 bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-xl font-semibold text-[12px] no-underline transition-colors shadow-lg shadow-red-200 sm:gap-2 sm:px-5 sm:text-[14px]"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
-                    Request RSA Now
+                    <span className="sm:hidden">Call Now</span>
+                    <span className="hidden sm:inline">Request RSA Now</span>
                   </a>
                   {whatsappNumber && (
                     <a
                       href={`https://wa.me/${whatsappNumber}?text=Hi, I need roadside assistance`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-5 py-3 bg-white border-2 border-[#dc2626] text-[#dc2626] rounded-xl font-semibold text-[14px] no-underline hover:bg-[#fef2f2] transition-colors"
+                      className="inline-flex items-center justify-center gap-1.5 px-2 py-3 bg-white border-2 border-[#dc2626] text-[#dc2626] rounded-xl font-semibold text-[12px] no-underline hover:bg-[#fef2f2] transition-colors sm:gap-2 sm:px-5 sm:text-[14px]"
                     >
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/></svg>
-                      WhatsApp for RSA
+                      <span className="sm:hidden">WhatsApp</span>
+                      <span className="hidden sm:inline">WhatsApp for RSA</span>
                     </a>
                   )}
                 </div>
@@ -1068,6 +1014,15 @@ export default function WorkshopPublicPage() {
       <WorkshopFaqs faqs={faqs} workshopName={displayName} city={workshop.city || ''} />
 
       <Footer />
+      <div className="h-16 lg:hidden" />
+      <div className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-2 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <a href={`tel:${PHONE_TEL}`} className="flex h-14 items-center justify-center gap-2 bg-slate-950 text-sm font-bold text-white">
+          Call
+        </a>
+        <a href="#book-service" className="flex h-14 items-center justify-center bg-blue-600 text-sm font-bold text-white">
+          Book service
+        </a>
+      </div>
     </div>
   );
 }

@@ -19,20 +19,19 @@ export default function WorkshopFaqs({ faqs, workshopName, city }: WorkshopFaqsP
     setActiveIndex((prev) => (prev === index ? -1 : index));
   };
 
-  const visibleFaqs = showAll ? faqs : faqs.slice(0, 5);
-
   return (
     <section className="py-10 bg-[#f2f4f8]">
       <div className="w-[90%] max-w-[1100px] mx-auto">
         <h2 className="text-[32px] font-bold text-[#0a3d91] mb-6">FAQs</h2>
 
         <div className="space-y-3">
-          {visibleFaqs.map((faq, index) => {
+          {faqs.map((faq, index) => {
+            const hiddenOnDesktop = !showAll && index >= 5;
             const isActive = activeIndex === index;
             return (
               <div
                 key={`faq-${index}`}
-                className="bg-[#e9edf3] rounded-[16px] overflow-hidden transition-all duration-300"
+                className={`bg-[#e9edf3] rounded-[16px] overflow-hidden transition-all duration-300 ${hiddenOnDesktop ? 'sm:hidden' : ''}`}
               >
                 <div
                   onClick={() => toggle(index)}
@@ -62,7 +61,7 @@ export default function WorkshopFaqs({ faqs, workshopName, city }: WorkshopFaqsP
         </div>
 
         {faqs.length > 5 && (
-          <div className="text-center mt-5">
+          <div className="mt-5 hidden text-center sm:block">
             <button
               onClick={() => setShowAll((p) => !p)}
               className="inline-flex items-center gap-2 px-6 py-2.5 bg-white border border-[#0a3d91] text-[#0a3d91] rounded-full text-[14px] font-semibold hover:bg-[#0a3d91] hover:text-white transition-colors cursor-pointer"

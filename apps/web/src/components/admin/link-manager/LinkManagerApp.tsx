@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LayoutDashboard, Link2, BookOpen, FolderOpen, MousePointerClick, Tags } from 'lucide-react';
+import { LayoutDashboard, Link2, BookOpen, FolderOpen, MousePointerClick, Tags, Newspaper } from 'lucide-react';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import CreateLinkSection from './sections/CreateLinkSection';
 import LinksListSection from './sections/LinksListSection';
@@ -11,6 +11,7 @@ import DashboardSection from './sections/DashboardSection';
 import ReadmeSection from './sections/ReadmeSection';
 import RecentOpensSection from './sections/RecentOpensSection';
 import UtmLinksSection from './sections/UtmLinksSection';
+import BlogClicksSection from './sections/BlogClicksSection';
 
 type LinkManagerSectionId =
   | 'dashboard'
@@ -19,6 +20,7 @@ type LinkManagerSectionId =
   | 'folders'
   | 'recent-opens'
   | 'utm-links'
+  | 'blog-clicks'
   | 'readme';
 
 type NavItem = { id: LinkManagerSectionId; label: string; icon: any; description: string };
@@ -30,6 +32,7 @@ const NAV: NavItem[] = [
   { id: 'folders', label: 'Folders', icon: FolderOpen, description: 'Created folders and their links' },
   { id: 'recent-opens', label: 'Recent Opens', icon: MousePointerClick, description: 'All clicks & QR scans with filters' },
   { id: 'utm-links', label: 'UTM Links', icon: Tags, description: 'Links with UTM tags — full list' },
+  { id: 'blog-clicks', label: 'Blog clicks', icon: Newspaper, description: 'App-download clicks for each blog' },
   { id: 'readme', label: 'README', icon: BookOpen, description: 'What each option does & how it works' },
 ];
 
@@ -113,6 +116,7 @@ function LinkManagerAppInner() {
         {section === 'folders' ? <FoldersSection /> : null}
         {section === 'recent-opens' ? <RecentOpensSection /> : null}
         {section === 'utm-links' ? <UtmLinksSection /> : null}
+        {section === 'blog-clicks' ? <BlogClicksSection /> : null}
         {section === 'readme' ? <ReadmeSection /> : null}
       </main>
     </div>
