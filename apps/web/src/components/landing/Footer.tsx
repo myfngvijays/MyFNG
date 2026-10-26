@@ -282,12 +282,12 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
           {/* CITY AND LOCAL AREA PAGES */}
           <div className={`${isMobile ? 'mt-[15px] border-b border-white/[0.08] py-0 mb-[15px]' : 'mt-8 border-t border-white/[0.08] pt-6'}`}>
             <AccordionTitle id="service-cities">Car Service Areas</AccordionTitle>
-            <ul className={`m-0 grid list-none grid-cols-1 gap-x-3 p-0 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 ${locationGridClass('service-cities')}`}>
+            <ul className={`m-0 grid list-none grid-cols-2 gap-x-3 p-0 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 ${locationGridClass('service-cities')}`}>
               {FOOTER_AREA_CITIES.map((city) => (
                 <li key={city.slug} className="mb-0 min-w-0">
                   <TrackedLink
                     href={city.pagePath}
-                    className="block whitespace-nowrap text-[11px] font-bold leading-[2.2] text-white no-underline transition-all duration-300 hover:text-white"
+                    className="block text-[11px] font-bold leading-5 text-white no-underline transition-all duration-300 hover:text-white"
                   >
                     {`Car Service in ${city.name}`}
                   </TrackedLink>
