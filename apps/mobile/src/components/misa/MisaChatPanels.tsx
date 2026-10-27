@@ -467,9 +467,10 @@ export function MisaGuestOtpPanel({
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(PIN_LENGTH).fill(''));
   const [otpSent, setOtpSent] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms'>('sms');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const otpRefs = useRef<Array<TextInput | null>>([]);
+  const otpSendLock = useRef('');
 
   const otp = otpDigits.join('');
   const phoneValid = /^[6-9]\d{9}$/.test(phone);
@@ -481,25 +482,17 @@ export function MisaGuestOtpPanel({
     return () => clearTimeout(t);
   }, [otpSent, otpTimer]);
 
-  function updateOtpDigit(index: number, raw: string) {
-    const digit = raw.replace(/\D/g, '').slice(-1);
-    const next = [...otpDigits];
-    next[index] = digit;
-    setOtpDigits(next);
-    setError(null);
-    if (digit && index < PIN_LENGTH - 1) {
-      otpRefs.current[index + 1]?.focus();
-    }
-  }
+  useEffect(() => {
+    if (!phoneValid) return;
+    if (otpSendLock.current === phone) return;
+    otpSendLock.current = phone;
+    void sendOtp(phone);
+    // Auto-send once when the number is complete. SMS first, WhatsApp if SMS is down.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, phoneValid]);
 
-  function handleOtpKeyPress(index: number, key: string) {
-    if (key === 'Backspace' && !otpDigits[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  }
-
-  async function sendOtp() {
-    if (!phoneValid) {
+  async function sendOtp(targetPhone = phone) {
+    if (!/^[6-9]\d{9}$/.test(targetPhone)) {
       setError('Valid 10-digit mobile number daalein');
       return;
     }
@@ -509,15 +502,22 @@ export function MisaGuestOtpPanel({
       const res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, metadata: { source: 'misa-app', session_id: sessionId } }),
+        body: JSON.stringify({
+          phone: targetPhone,
+          channel: 'SMS',
+          fallbackWhatsapp: true,
+          metadata: { source: 'misa-app', session_id: sessionId },
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) throw new Error(json?.error || 'OTP send failed');
+      const delivered = String(json.channel || '').toUpperCase() === 'WHATSAPP' ? 'whatsapp' : 'sms';
+      setOtpChannel(delivered);
       setOtpSent(true);
       setOtpDigits(Array(PIN_LENGTH).fill(''));
       setOtpTimer(30);
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (e: any) {
+      otpSendLock.current = '';
       setError(e?.message || 'OTP send failed');
     } finally {
       setLoading(false);
@@ -538,7 +538,7 @@ export function MisaGuestOtpPanel({
         body: JSON.stringify({
           phone,
           otp,
-          channel: 'WHATSAPP',
+          channel: otpChannel === 'whatsapp' ? 'WHATSAPP' : 'SMS',
           platform: 'mobile',
           source: 'misa-app',
           create_incomplete_lead: true,
@@ -590,77 +590,72 @@ export function MisaGuestOtpPanel({
         <Text style={panelStyles.panelTitle}>Mobile verification for pricing</Text>
       </View>
 
-      <Text style={panelStyles.fieldLabel}>Mobile number (WhatsApp OTP)</Text>
-      <View style={panelStyles.phoneRow}>
-        <TextInput
-          value={phone}
-          onChangeText={(t) => {
-            setPhone(t.replace(/\D/g, '').slice(0, 10));
-            setError(null);
-            if (otpSent) {
-              setOtpSent(false);
-              setOtpDigits(Array(PIN_LENGTH).fill(''));
-            }
-          }}
-          keyboardType="phone-pad"
-          style={panelStyles.phoneInput}
-          placeholder="10-digit mobile"
-          placeholderTextColor="#9CA3AF"
-          editable={!loading}
-        />
-        {!otpSent ? (
-          <TouchableOpacity
-            style={[panelStyles.otpSendBtn, (!phoneValid || loading) && panelStyles.primaryBtnDisabled]}
-            disabled={!phoneValid || loading}
-            onPress={() => void sendOtp()}
-          >
-            {loading && !otpSent ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={panelStyles.otpSendBtnText}>Send OTP</Text>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[panelStyles.otpResendBtn, (loading || otpTimer > 0) && panelStyles.primaryBtnDisabled]}
-            disabled={loading || otpTimer > 0}
-            onPress={() => void sendOtp()}
-          >
-            <Text style={panelStyles.otpResendBtnText}>{otpTimer > 0 ? `Resend (${otpTimer}s)` : 'Resend'}</Text>
-          </TouchableOpacity>
-        )}
+      <View style={panelStyles.otpHalfRow}>
+        <View style={panelStyles.otpHalf}>
+          <Text style={panelStyles.fieldLabel}>Mobile number</Text>
+          <TextInput
+            value={phone}
+            onChangeText={(t) => {
+              const next = t.replace(/\D/g, '').slice(0, 10);
+              if (next !== phone) {
+                setOtpSent(false);
+                setOtpDigits(Array(PIN_LENGTH).fill(''));
+                if (next.length < 10) otpSendLock.current = '';
+              }
+              setPhone(next);
+              setError(null);
+            }}
+            keyboardType="phone-pad"
+            style={panelStyles.phoneInput}
+            placeholder="10-digit mobile"
+            placeholderTextColor="#9CA3AF"
+          />
+        </View>
+        <View style={panelStyles.otpHalf}>
+          <Text style={panelStyles.fieldLabel}>OTP</Text>
+          <TextInput
+            value={otp}
+            onChangeText={(t) => {
+              const digits = t.replace(/\D/g, '').slice(0, PIN_LENGTH).split('');
+              setOtpDigits([...digits, ...Array(PIN_LENGTH).fill('')].slice(0, PIN_LENGTH));
+              setError(null);
+            }}
+            keyboardType="number-pad"
+            style={panelStyles.phoneInput}
+            placeholder="6-digit OTP"
+            placeholderTextColor="#9CA3AF"
+            maxLength={PIN_LENGTH}
+          />
+        </View>
+        <TouchableOpacity
+          style={[panelStyles.otpInlineVerify, (!otpValid || loading || !otpSent) && panelStyles.primaryBtnDisabled]}
+          disabled={!otpValid || loading || !otpSent}
+          onPress={() => void verifyOtp()}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={panelStyles.primaryBtnText}>Verify</Text>
+          )}
+        </TouchableOpacity>
       </View>
-
-      {otpSent ? (
-        <>
-          <Text style={[panelStyles.fieldLabel, { marginTop: 12 }]}>Enter 6-digit OTP from WhatsApp</Text>
-          <View style={panelStyles.pinRow}>
-            {otpDigits.map((digit, index) => (
-              <TextInput
-                key={`otp-${index}`}
-                ref={(el) => void (otpRefs.current[index] = el)}
-                value={digit}
-                onChangeText={(t) => updateOtpDigit(index, t)}
-                onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
-                keyboardType="number-pad"
-                maxLength={1}
-                style={panelStyles.otpBox}
-                selectTextOnFocus
-              />
-            ))}
-          </View>
-          <TouchableOpacity
-            style={[panelStyles.secondaryBtn, (!otpValid || loading) && panelStyles.primaryBtnDisabled]}
-            disabled={!otpValid || loading}
-            onPress={() => void verifyOtp()}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={panelStyles.primaryBtnText}>Verify OTP</Text>
-            )}
-          </TouchableOpacity>
-        </>
+      <Text style={panelStyles.otpHint}>
+        {loading && !otpSent
+          ? 'Sending OTP…'
+          : otpSent
+            ? `OTP sent ${otpChannel === 'whatsapp' ? 'on WhatsApp' : 'by SMS'}${otpTimer > 0 ? ` · Resend in ${otpTimer}s` : ''}`
+            : 'OTP on this number.'}
+      </Text>
+      {otpSent && otpTimer === 0 ? (
+        <TouchableOpacity
+          disabled={loading}
+          onPress={() => {
+            otpSendLock.current = '';
+            void sendOtp(phone);
+          }}
+        >
+          <Text style={panelStyles.otpResendBtnText}>Resend</Text>
+        </TouchableOpacity>
       ) : null}
 
       {error ? <Text style={panelStyles.error}>{error}</Text> : null}
@@ -1299,6 +1294,17 @@ const panelStyles = StyleSheet.create({
     color: '#111827',
     backgroundColor: '#fff',
   },
+  otpHalfRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  otpHalf: { flex: 1, minWidth: 0 },
+  otpInlineVerify: {
+    borderRadius: 12,
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  otpHint: { marginTop: 6, fontSize: 11, fontWeight: '600', color: COLORS.gray[500] },
   otpSendBtn: {
     borderRadius: 12,
     backgroundColor: COLORS.primary,
