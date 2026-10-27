@@ -27,7 +27,7 @@ async function refreshAccessToken(settings: GoogleAdsSettings): Promise<string> 
   if (refreshInflight) return refreshInflight;
 
   refreshInflight = (async () => {
-    const res = await fetch('https://oauth2.googleapis.com/token', {
+    const res = await fetchWithRetry('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -79,6 +79,19 @@ function adsErrorMessage(json: any, status: number): string {
   return String(fromAds || json?.error?.message || json?.error?.status || `Google Ads API ${status}`);
 }
 
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      last = error;
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
+  throw last instanceof Error ? last : new Error('fetch failed');
+}
+
 async function adsFetch(
   settings: GoogleAdsSettings,
   accessToken: string,
@@ -89,7 +102,7 @@ async function adsFetch(
   let lastError = 'Google Ads API request failed';
   for (const version of API_VERSIONS) {
     const url = `https://googleads.googleapis.com/${version}${path}`;
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       ...req,
       headers: {
         ...adsHeaders(settings, accessToken, !skipLoginCustomer),

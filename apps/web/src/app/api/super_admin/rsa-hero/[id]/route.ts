@@ -1,10 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
+import { deleteRsaHeroBanner, updateRsaHeroBanner } from '@/lib/rsa/heroBanner';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-
-const TABLE = 'rsa_screen_hero_banners';
-const MIGRATION_HINT = 'Database table missing. Run `database/155_rsa_screen_hero_banner.sql` in Supabase (SQL editor) and retry.';
 
 async function requireSuperAdmin(supabase: any) {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -48,13 +46,11 @@ export async function PUT(request: NextRequest, { params: paramsPromise }: { par
     if (is_active !== undefined) patch.is_active = !!is_active;
     patch.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().single();
-    if (error) {
-      const code = (error as any).code as string | undefined;
-      const hintIfMissingTable = code === '42P01' || /does not exist/i.test(error.message) ? MIGRATION_HINT : undefined;
+    const { data, error } = await updateRsaHeroBanner(id, patch);
+    if (error || !data) {
       return NextResponse.json(
-        { error: hintIfMissingTable || 'Failed to update RSA hero banner', details: error.message, code },
-        { status: 500 },
+        { error: error === 'Banner not found' ? 'Banner not found' : 'Failed to update RSA hero banner', details: error },
+        { status: error === 'Banner not found' ? 404 : 500 },
       );
     }
     return NextResponse.json({ data, message: 'RSA hero banner updated successfully' });
@@ -71,13 +67,11 @@ export async function DELETE(_request: NextRequest, { params: paramsPromise }: {
     if (!auth.ok) return auth.res;
 
     const id = params.id;
-    const { error } = await supabase.from(TABLE).delete().eq('id', id);
+    const { error } = await deleteRsaHeroBanner(id);
     if (error) {
-      const code = (error as any).code as string | undefined;
-      const hintIfMissingTable = code === '42P01' || /does not exist/i.test(error.message) ? MIGRATION_HINT : undefined;
       return NextResponse.json(
-        { error: hintIfMissingTable || 'Failed to delete RSA hero banner', details: error.message, code },
-        { status: 500 },
+        { error: error === 'Banner not found' ? 'Banner not found' : 'Failed to delete RSA hero banner', details: error },
+        { status: error === 'Banner not found' ? 404 : 500 },
       );
     }
     return NextResponse.json({ message: 'RSA hero banner deleted successfully' });

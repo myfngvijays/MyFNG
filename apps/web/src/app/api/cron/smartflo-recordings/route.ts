@@ -55,10 +55,9 @@ async function handle(req: NextRequest) {
     Number.isFinite(hoursParam) && hoursParam > 0
       ? hoursParam
       : catchUpSmartfloRecordingsHoursBack(settings);
-  const catchUp = hoursBack > settings.hours_back;
-  // force=1 only bypasses the interval gate. Full cutoff backfill is catch-up only
-  // (otherwise every admin/Vercel force run 504s on a 10-day history pull).
-  const fromAug24 = catchUp;
+  // Full history backfill only when asked. An overdue tick used to take that path
+  // and die on the 120s limit, so last_run never moved past the old manual sync.
+  const fromAug24 = searchParams.get('backfill') === '1';
 
   // Stamp last_run immediately so overlapping 5-min ticks skip instead of stacking.
   await markSmartfloRecordingsCronHeartbeat();

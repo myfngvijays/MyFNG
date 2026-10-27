@@ -21,6 +21,7 @@ import MembershipTermsCard from '../components/MembershipTermsCard';
 import ReferAndFooter from '../components/ReferAndFooter';
 import SectionHeading from '../components/SectionHeading';
 import { COLORS } from '../constants/theme';
+import { ENV } from '../config/environment';
 import { openPhoneCall } from '../lib/phone';
 import { supabase } from '../lib/supabase';
 import { RSA_PHONE, RSA_SERVICES, RSA_FAQS_FALLBACK, type RsaServiceDef } from '../constants/rsaServices';
@@ -83,16 +84,11 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
     let active = true;
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from('rsa_screen_hero_banners')
-          .select('image_url, route_name, route_params, title')
-          .eq('is_active', true)
-          .order('display_order', { ascending: true })
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const res = await fetch(`${ENV.API_URL}/api/public/rsa-hero`);
+        const json = await res.json().catch(() => ({}));
+        const data = json?.data;
 
-        if (!active || error || !data?.image_url) return;
+        if (!active || !res.ok || !data?.image_url) return;
         setHeroBanner({
           image_url: String(data.image_url),
           route_name: String(data.route_name || 'RoadsideAssistance'),

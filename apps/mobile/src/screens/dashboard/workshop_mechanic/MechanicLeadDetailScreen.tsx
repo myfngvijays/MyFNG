@@ -308,7 +308,7 @@ export default function MechanicLeadDetailScreen({ route, hideChrome = false }: 
         <DashboardHeader userName="Mechanic" userRole="Workshop Mechanic" onLogout={() => {}} />
       )}
 
-      <ScrollView>
+      <ScrollView
         style={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >

@@ -22,7 +22,6 @@ import {
   setWhatsAppCronJobEnabled,
 } from '@/lib/services/whatsappCronJobFlags';
 import {
-  catchUpSmartfloRecordingsHoursBack,
   getSmartfloRecordingsCronSettings,
   markSmartfloRecordingsCronRun,
   smartfloRecordingsCronAdminPayload,
@@ -277,21 +276,21 @@ export async function POST(request: NextRequest) {
       const hoursBack =
         Number.isFinite(requested) && requested > 0
           ? requested
-          : catchUpSmartfloRecordingsHoursBack(settings);
-      const catchUp = hoursBack > settings.hours_back;
-      const result = catchUp
-        ? await backfillSmartfloRecordingsFromIst(SMARTFLO_RECORDINGS_AFTER_AUG23_IST, {
-            timeBudgetMs: 55_000,
-            skipPostProcess: true,
-            newestFirst: true,
-          })
-        : await syncSmartfloRecordings({
-            hoursBack,
-            maxPages: Number(body?.max_pages ?? 6) || 6,
-            timeBudgetMs: 55_000,
-            concurrency: 6,
-            skipPostProcess: true,
-          });
+          : Math.min(settings.hours_back || 6, 24);
+      const result =
+        body?.backfill === true
+          ? await backfillSmartfloRecordingsFromIst(SMARTFLO_RECORDINGS_AFTER_AUG23_IST, {
+              timeBudgetMs: 55_000,
+              skipPostProcess: true,
+              newestFirst: true,
+            })
+          : await syncSmartfloRecordings({
+              hoursBack,
+              maxPages: Number(body?.max_pages ?? 6) || 6,
+              timeBudgetMs: 55_000,
+              concurrency: 6,
+              skipPostProcess: true,
+            });
       const summary = result.ok
         ? `manual fetched=${result.fetched} with_recording=${result.with_recording}`
         : result.error || 'sync failed';
