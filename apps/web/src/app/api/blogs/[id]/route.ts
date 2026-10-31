@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { validateBlogImageName } from '@/lib/blog/imageNaming';
+import { isSameBlogImage, validateBlogImageName } from '@/lib/blog/imageNaming';
 import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, validateAllImgHaveAlt } from '@/lib/blog/text';
 import { notifyRoleCodesGlobal } from '@/lib/notifications';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
@@ -207,13 +207,24 @@ export async function PUT(
       }
     }
 
-    // SEO requirement: uploaded blog image filename must match slug.
+    // New uploads must be named from the current slug. An image already on this
+    // blog stays valid when only the title or slug changes.
     const effectiveSlug = String(slug ?? existingBlog.slug);
-    if (featured_image !== undefined && featured_image !== null) {
+    const featuredKept =
+      featured_image != null &&
+      isSameBlogImage(String(featured_image), String(existingBlog.featured_image || ''));
+    if (featured_image !== undefined && featured_image !== null && !featuredKept) {
       const err = validateBlogImageName(String(featured_image), effectiveSlug);
       if (err) return NextResponse.json({ error: err }, { status: 400 });
     }
     if (image_urls !== undefined && Array.isArray(image_urls) && image_urls.length) {
+      const { data: existingImages } = await supabase
+        .from('blog_images')
+        .select('image_url')
+        .eq('blog_id', blogId);
+      const keptImageUrls = new Set(
+        (existingImages || []).map((row: { image_url?: string | null }) => String(row.image_url || '')),
+      );
       for (const item of image_urls) {
         const url = typeof item === 'string' ? item : item?.url;
         const alt_text = typeof item === 'object' ? String(item?.alt_text ?? item?.alt ?? '').trim() : '';
@@ -224,6 +235,8 @@ export async function PUT(
         if (alt_text.length > 125) {
           return NextResponse.json({ error: 'ALT tag too long (max 125 chars).' }, { status: 400 });
         }
+        const alreadySaved = [...keptImageUrls].some((saved) => isSameBlogImage(String(url), saved));
+        if (alreadySaved) continue;
         const err = validateBlogImageName(String(url), effectiveSlug);
         if (err) return NextResponse.json({ error: err }, { status: 400 });
       }

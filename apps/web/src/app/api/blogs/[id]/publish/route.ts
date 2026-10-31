@@ -5,7 +5,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { validateBlogImageName } from '@/lib/blog/imageNaming';
 import { validateAllImgHaveAlt } from '@/lib/blog/text';
 import { createNotification } from '@/lib/notifications';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
@@ -77,9 +76,8 @@ export async function POST(
       return NextResponse.json({ error: 'Cannot publish: Featured image ALT too long (max 125 chars)' }, { status: 400 });
     }
 
-    // Enforce image naming for our hosted images
-    const nameErr = validateBlogImageName(String(existingBlog.featured_image), String(existingBlog.slug));
-    if (nameErr) return NextResponse.json({ error: nameErr }, { status: 400 });
+    // Filename vs slug is checked when an image is uploaded or replaced.
+    // Publishing keeps the image already saved on the blog.
 
     // If FAQ schema is enabled, require at least 5 FAQs.
     const seo = (existingBlog.seo_data || {}) as any;

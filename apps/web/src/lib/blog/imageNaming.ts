@@ -30,6 +30,17 @@ function escapeRegExp(s: string) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Same stored file, even if one URL is a full storage link and the other is /media/... */
+export function isSameBlogImage(a: string, b: string): boolean {
+  const fileName = (url: string) => {
+    const clean = String(url || '').split('?')[0]?.split('#')[0] ?? '';
+    return clean.split('/').filter(Boolean).pop() ?? '';
+  };
+  const left = fileName(a);
+  const right = fileName(b);
+  return Boolean(left) && left === right;
+}
+
 /**
  * Enforces: slug.webp OR slug-<n>.webp for our hosted images.
  */
