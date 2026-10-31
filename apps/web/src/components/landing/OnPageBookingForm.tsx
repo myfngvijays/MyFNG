@@ -783,7 +783,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
               </div>
               {visitMode === 'pickup' ? (
                 <div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <label className="block min-w-0">
                       <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Pincode</span>
                       <input
@@ -796,7 +796,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                     </label>
                     {offerCoupons[0] ? (
                       <div className="min-w-0">
-                        <span className="mb-1 block truncate text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        <span className="mb-1.5 block truncate text-[11px] font-bold uppercase tracking-wide text-slate-500">
                           {Number(offerCoupons[0].discount_value) > 0 && String(offerCoupons[0].discount_mode || '').toUpperCase() === 'PERCENT'
                             ? `${Number(offerCoupons[0].discount_value)}% off`
                             : 'Coupon'}
@@ -810,7 +810,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                             if (applied) clearCoupon();
                             else void applyPageCoupon(code);
                           }}
-                          className={`h-11 w-full truncate rounded-xl px-2 text-[11px] font-bold text-white ${
+                          className={`h-11 w-full truncate rounded-xl px-3 text-[12px] font-bold tracking-[0.14em] text-white ${
                             String(couponMeta?.code || '').toUpperCase() === String(offerCoupons[0].code || '').toUpperCase()
                               ? 'bg-emerald-600'
                               : 'bg-blue-600'
@@ -823,7 +823,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                       <div />
                     )}
                   </div>
-                  <span className="mt-1 block text-[11px] leading-4 text-slate-500">
+                  <span className="mt-2.5 block text-[11px] leading-5 text-slate-500">
                     Pickup needs only the pincode. We will ask the full address on the call.
                   </span>
                   {couponError ? <p className="mt-1 text-[11px] font-medium text-red-600">{couponError}</p> : null}
