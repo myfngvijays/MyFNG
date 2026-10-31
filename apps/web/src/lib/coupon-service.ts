@@ -292,6 +292,61 @@ async function classFromCustomerGarage(
   );
 }
 
+function carFromDraftPayload(payload: unknown): { className: string; make: string; model: string; modelId: string } | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const record = payload as Record<string, unknown>;
+  const car = (record.carModel || record.car_model || record.selectedCar) as Record<string, unknown> | null;
+  if (!car || typeof car !== 'object') return null;
+  return {
+    className: String(car.class || car.vehicleClass || car.vehicle_class || '').trim(),
+    make: String(car.make || '').trim(),
+    model: String(car.model_name || car.model || '').trim(),
+    modelId: String(car.id || car.model_id || '').trim(),
+  };
+}
+
+async function classFromCarIdentity(
+  supabaseAdmin: SupabaseClient,
+  car: { className?: string; make?: string; model?: string; modelId?: string },
+): Promise<string | null> {
+  const direct = String(car.className || '').trim();
+  if (direct) return direct;
+  const modelId = String(car.modelId || '').trim();
+  if (modelId) {
+    const { data } = await supabaseAdmin.from('car_models').select('class').eq('id', modelId).maybeSingle();
+    const cls = String(data?.class || '').trim();
+    if (cls) return cls;
+  }
+  return classFromCatalog(supabaseAdmin, String(car.make || ''), String(car.model || ''));
+}
+
+/** The car selected in the current booking, for any make or model. */
+async function classFromActiveBookingDraft(
+  supabaseAdmin: SupabaseClient,
+  customerId: string | null,
+  phone: string | null,
+): Promise<string | null> {
+  let query = supabaseAdmin
+    .from('booking_drafts')
+    .select('draft_payload, car_label, status, last_activity_at')
+    .order('last_activity_at', { ascending: false })
+    .limit(8);
+  if (customerId) query = query.eq('customer_id', customerId);
+  else if (phone) query = query.ilike('customer_phone', `%${phone}%`);
+  else return null;
+
+  const { data } = await query;
+  const rows = (data || []).filter((row) => String(row.status || 'ACTIVE').toUpperCase() !== 'COMPLETED');
+  for (const row of rows) {
+    const car = carFromDraftPayload(row.draft_payload);
+    const fromCar = car ? await classFromCarIdentity(supabaseAdmin, car) : null;
+    if (fromCar) return fromCar;
+    const fromLabel = await classFromCatalog(supabaseAdmin, '', String(row.car_label || ''));
+    if (fromLabel) return fromLabel;
+  }
+  return null;
+}
+
 async function classFromRecentBooking(
   supabaseAdmin: SupabaseClient,
   phone: string | null,
@@ -361,6 +416,10 @@ async function resolveVehicleClass(
     }
   }
   const phone = normalizePhone(leadContext.customer_phone || null);
+  const fromDraft =
+    (customerId ? await classFromActiveBookingDraft(supabaseAdmin, customerId, null) : null) ||
+    (phone ? await classFromActiveBookingDraft(supabaseAdmin, null, phone) : null);
+  if (fromDraft) return fromDraft;
   if (customerId) {
     const fromGarage = await classFromCustomerGarage(supabaseAdmin, customerId, {
       make: leadContext.vehicle_make || '',
