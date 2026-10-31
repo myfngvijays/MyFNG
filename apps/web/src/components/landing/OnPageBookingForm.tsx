@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, Phone } from 'lucide-react';
 import { DEFAULT_SERVICES } from '@/lib/services/catalog';
+import { createClient } from '@/lib/supabase/client';
 import { getLeadSourceFromUtm, parseUtmParams, type UtmParams } from '@/lib/utm';
 
 const PHONE_TEL = '+919152307030';
@@ -19,7 +20,15 @@ const VISIT_SLOTS = Array.from({ length: 6 }, (_, i) => {
   return { value, label: `${labelHour}:00 ${startPeriod} – ${nextLabel}:00 ${endPeriod}` };
 });
 
-type CarHit = { id: string; make: string; model?: string; model_name?: string; variant?: string | null };
+type CarHit = {
+  id: string;
+  make: string;
+  model?: string;
+  model_name?: string;
+  variant?: string | null;
+  vehicleClass?: string | null;
+  class?: string | null;
+};
 
 function carLabel(car: CarHit) {
   return `${car.make} ${car.model || car.model_name || ''}`.replace(/\s+/g, ' ').trim();
@@ -71,6 +80,14 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
   const [carHits, setCarHits] = useState<CarHit[]>([]);
   const [carModel, setCarModel] = useState('');
   const [carModelId, setCarModelId] = useState('');
+  const [selectedCar, setSelectedCar] = useState<CarHit | null>(null);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMeta, setCouponMeta] = useState<any | null>(null);
+  const [couponService, setCouponService] = useState<{ id: string; name: string; price: number } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponBusy, setCouponBusy] = useState(false);
+  const couponResultRef = useRef<{ meta: any; discount: number; service: { id: string; name: string; price: number } } | null>(null);
   const [city, setCity] = useState(defaultCity);
   const [service, setService] = useState(defaultService);
   const [visitMode, setVisitMode] = useState<'pickup' | 'visit'>('pickup');
@@ -245,6 +262,120 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
     }
   }
 
+  function clearCoupon() {
+    couponResultRef.current = null;
+    setCouponMeta(null);
+    setCouponDiscount(0);
+    setCouponService(null);
+    setCouponError('');
+  }
+
+  async function applyPageCoupon(codeInput = couponCode) {
+    const code = String(codeInput || '').trim().toUpperCase();
+    setCouponCode(code);
+    clearCoupon();
+    if (!code) {
+      setCouponError('Enter a coupon code.');
+      return false;
+    }
+    if (!carModelId || !selectedCar) {
+      setCouponError('Select your car, then apply the coupon.');
+      return false;
+    }
+    setCouponBusy(true);
+    try {
+      const catalogService = DEFAULT_SERVICES.find((item) => item.title === service);
+      const categoryNeedle = String(catalogService?.bookPrefill.category || service).toUpperCase();
+      const packageNeedle = String(catalogService?.bookPrefill.query || '').toUpperCase();
+      const supabase = createClient();
+      const [{ data: services }, { data: categories }] = await Promise.all([
+        supabase.from('service_types').select('id, name, category_uuid').eq('is_active', true).limit(400),
+        supabase.from('categories').select('uuid, category'),
+      ]);
+      const categoryName = new Map(
+        (categories || []).map((row: any) => [String(row.uuid), String(row.category || '').toUpperCase()]),
+      );
+      const matches = (services || []).filter((row: any) => {
+        const category = categoryName.get(String(row.category_uuid || '')) || '';
+        const name = String(row.name || '').toUpperCase();
+        return category.includes(categoryNeedle) || name.includes(categoryNeedle) || categoryNeedle.includes(category);
+      });
+      const picked =
+        matches.find((row: any) => packageNeedle && String(row.name || '').toUpperCase().includes(packageNeedle)) ||
+        matches[0];
+      if (!picked?.id) {
+        setCouponError('This service cannot use that coupon yet.');
+        return false;
+      }
+      const vehicleClass = selectedCar.vehicleClass || selectedCar.class || null;
+      let price = 0;
+      if (vehicleClass) {
+        const { data } = await supabase
+          .from('workshop_service_pricing')
+          .select('custom_price')
+          .eq('service_type_id', picked.id)
+          .eq('class', vehicleClass)
+          .eq('is_active', true)
+          .gt('custom_price', 0)
+          .limit(1)
+          .maybeSingle();
+        price = Number(data?.custom_price || 0);
+      }
+      if (!price) {
+        const { data } = await supabase
+          .from('workshop_service_pricing')
+          .select('custom_price')
+          .eq('service_type_id', picked.id)
+          .eq('is_active', true)
+          .gt('custom_price', 0)
+          .order('custom_price', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        price = Number(data?.custom_price || 0);
+      }
+      if (!price) {
+        setCouponError('Price for this car is not available yet.');
+        return false;
+      }
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          lead_context: {
+            subtotal: price,
+            service_type_ids: [picked.id],
+            service_items: [{ service_type_id: picked.id, label: picked.name, price }],
+            customer_phone: digitsOnly(phone),
+            channel: 'WEB',
+            vehicle_class: vehicleClass,
+            vehicle_make: selectedCar.make,
+            vehicle_model: selectedCar.model || selectedCar.model_name || null,
+            model_id: selectedCar.id,
+          },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.valid) {
+        setCouponError(String(json?.error || 'Invalid or inactive coupon.'));
+        return false;
+      }
+      const discount = Number(json.discount_amount || 0);
+      const priced = { id: String(picked.id), name: String(picked.name || service), price };
+      couponResultRef.current = { meta: json.coupon_meta || { code }, discount, service: priced };
+      setCouponMeta(json.coupon_meta || { code });
+      setCouponDiscount(discount);
+      setCouponService(priced);
+      setCouponError('');
+      return true;
+    } catch {
+      setCouponError('Could not apply the coupon.');
+      return false;
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
   function inboundUtm(): UtmParams {
     return typeof window === 'undefined' ? {} : parseUtmParams(window.location.search);
   }
@@ -306,6 +437,10 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
       setError('Tick the consent box so we can call you about this booking.');
       return;
     }
+    if (couponCode.trim() && !couponResultRef.current) {
+      const applied = await applyPageCoupon(couponCode);
+      if (!applied) return;
+    }
 
     setSubmitting(true);
     try {
@@ -357,6 +492,8 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
             preferred_time_slot: isPickup ? null : visitTime,
             preferred_slot_start: isPickup ? null : `${visitDate}T${visitTime}:00`,
             service_type: service.slice(0, 100),
+            service_type_ids: couponResultRef.current ? [couponResultRef.current.service.id] : null,
+            estimated_amount: couponResultRef.current?.service.price || null,
             problem_description: summary,
             lead_priority: 'NORMAL',
             created_at: new Date().toISOString(),
@@ -373,8 +510,30 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
               visit_date: isPickup ? null : visitDate,
               visit_time: isPickup ? null : visitTime,
               pricing_url: pricingUrl || null,
+              coupon_code: couponResultRef.current ? couponCode.trim().toUpperCase() : null,
             },
           },
+          coupon: couponResultRef.current
+            ? {
+                code: couponCode.trim().toUpperCase(),
+                lead_context: {
+                  subtotal: couponResultRef.current.service.price,
+                  service_type_ids: [couponResultRef.current.service.id],
+                  service_items: [{
+                    service_type_id: couponResultRef.current.service.id,
+                    label: couponResultRef.current.service.name,
+                    price: couponResultRef.current.service.price,
+                  }],
+                  customer_phone: customerPhone,
+                  channel: 'WEB',
+                  vehicle_class: selectedCar?.vehicleClass || selectedCar?.class || null,
+                  vehicle_make: make || null,
+                  vehicle_model: modelParts.join(' ') || carModel,
+                  vehicle_number: vehicleNumber,
+                  model_id: /^[0-9a-f-]{36}$/i.test(carModelId) ? carModelId : null,
+                },
+              }
+            : undefined,
         }),
       });
 
@@ -514,7 +673,9 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                       setCarQuery(e.target.value);
                       setCarModel('');
                       setCarModelId('');
+                      setSelectedCar(null);
                       setPricingUrl('');
+                      clearCoupon();
                     }}
                     placeholder="Swift, Creta"
                     className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -530,8 +691,10 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                               const label = carLabel(hit);
                               setCarModel(label);
                               setCarModelId(String(hit.id));
+                              setSelectedCar(hit);
                               setCarQuery(label);
                               setCarHits([]);
+                              clearCoupon();
                             }}
                           >
                             {carLabel(hit)}
@@ -572,7 +735,10 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Service</span>
                   <select
                     value={service}
-                    onChange={(e) => setService(e.target.value)}
+                    onChange={(e) => {
+                      setService(e.target.value);
+                      clearCoupon();
+                    }}
                     className="h-10 w-full rounded-xl border border-blue-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   >
                     {DEFAULT_SERVICES.map((item) => (
@@ -670,6 +836,36 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   Prices are not shown here. Verify OTP, then open the price list for your car.
                 </p>
               )}
+              <div>
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Coupon (optional)</span>
+                <div className="flex gap-2">
+                  <input
+                    value={couponCode}
+                    onChange={(e) => {
+                      setCouponCode(e.target.value.toUpperCase());
+                      clearCoupon();
+                    }}
+                    placeholder="DIWALI20"
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-blue-200 px-3 text-sm uppercase outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { void applyPageCoupon(); }}
+                    disabled={couponBusy || !couponCode.trim()}
+                    className="h-10 shrink-0 rounded-xl bg-blue-600 px-3 text-xs font-bold text-white disabled:opacity-60"
+                  >
+                    {couponBusy ? 'Applying…' : 'Apply'}
+                  </button>
+                </div>
+                {couponError ? <p className="mt-1 text-[11px] font-medium text-red-600">{couponError}</p> : null}
+                {couponMeta && couponService ? (
+                  <p className="mt-1 text-[11px] font-medium leading-4 text-emerald-700">
+                    {couponMeta.code} applied on {couponService.name}. Service ₹{couponService.price.toLocaleString('en-IN')}, discount ₹{couponDiscount.toLocaleString('en-IN')}, you pay ₹{Math.max(couponService.price - couponDiscount, 0).toLocaleString('en-IN')}.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] leading-4 text-slate-500">Select your car, then apply. Discount follows that car&apos;s class.</p>
+                )}
+              </div>
               <label className="flex items-center gap-2 text-[11px] leading-4 text-slate-600">
                 <input
                   type="checkbox"

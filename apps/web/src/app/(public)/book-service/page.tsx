@@ -1257,12 +1257,13 @@ export default function BookServicePage() {
   };
 
   const applyCoupon = async (overrideCode?: string) => {
-    const code = String(overrideCode || couponCode).trim();
+    const raw = typeof overrideCode === 'string' ? overrideCode : couponCode;
+    const code = raw.trim().toUpperCase();
     if (!code) {
       setCouponError('Please enter a coupon code.');
       return;
     }
-    if (overrideCode) setCouponCode(code.toUpperCase());
+    setCouponCode(code);
     setIsValidatingCoupon(true);
     setCouponError(null);
     try {
@@ -1277,8 +1278,11 @@ export default function BookServicePage() {
             service_items: serviceItemsForCoupon,
             customer_phone: formData.customerPhone,
             channel: 'WEB',
-            city_id: formData.city || null,
-            vehicle_class: formData.carModel?.class || null,
+            city_id: formData.city?.id || null,
+            vehicle_class: formData.carModel?.class || formData.carModel?.vehicleClass || null,
+            vehicle_make: formData.carModel?.make || null,
+            vehicle_model: formData.carModel?.model_name || formData.carModel?.model || null,
+            vehicle_number: formData.vehicleNumber || null,
             model_id: formData.carModel?.id || null,
           },
         }),
@@ -1361,7 +1365,12 @@ export default function BookServicePage() {
               service_type_ids: formData.selectedServices,
               service_items: serviceItemsForCoupon,
               customer_phone: formData.customerPhone,
-              vehicle_class: formData.carModel?.class || null,
+              channel: 'WEB',
+              city_id: formData.city?.id || null,
+              vehicle_class: formData.carModel?.class || formData.carModel?.vehicleClass || null,
+              vehicle_make: formData.carModel?.make || null,
+              vehicle_model: formData.carModel?.model_name || formData.carModel?.model || null,
+              vehicle_number: formData.vehicleNumber || null,
               model_id: formData.carModel?.id || null,
             },
           }
@@ -1753,13 +1762,16 @@ export default function BookServicePage() {
 
   const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
 
+  const servicesKey = formData.selectedServices.join('|');
+  const prevServicesKeyRef = useRef(servicesKey);
   useEffect(() => {
-    if (couponMeta && formData.selectedServices.length > 0) {
-      setCouponMeta(null);
-      setCouponDiscount(0);
-      setCouponError('Coupon cleared. Please re-apply after changing services.');
-    }
-  }, [formData.selectedServices, couponMeta]);
+    const previous = prevServicesKeyRef.current;
+    prevServicesKeyRef.current = servicesKey;
+    if (previous === servicesKey || !couponMeta) return;
+    setCouponMeta(null);
+    setCouponDiscount(0);
+    setCouponError('Coupon cleared. Please re-apply after changing services.');
+  }, [servicesKey]);
 
   const activeCategoryId = selectedCategory || serviceCategories[0]?.id || null;
   const isPremiumLuxuryVehicle = isPremiumLuxuryClass(formData.carModel?.class);
@@ -3704,7 +3716,7 @@ export default function BookServicePage() {
                       />
                       <button
                         type="button"
-                        onClick={applyCoupon}
+                        onClick={() => { void applyCoupon(); }}
                         disabled={isValidatingCoupon || !couponCode.trim()}
                         className="px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold disabled:opacity-60"
                       >
@@ -3734,40 +3746,76 @@ export default function BookServicePage() {
                   <div className="mt-4 sm:mt-6 p-4 sm:p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl">
                     <h4 className="font-bold text-sm sm:text-base text-gray-900 mb-3 sm:mb-4">Final Booking Summary</h4>
                     <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm">
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                        <span className="text-gray-600">Total Amount:</span>
-                        <span className="text-xl sm:text-2xl font-bold text-green-700">
-                          ₹{couponAdjustedTotal.toLocaleString('en-IN')}
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-600">Car:</span>
+                        <span className="font-semibold text-right">
+                          {formData.carModel
+                            ? `${formData.carModel.make} ${formData.carModel.model_name || formData.carModel.model || ''}`.trim()
+                            : '—'}
                         </span>
                       </div>
-                      {couponMeta && (
+                      {formData.vehicleNumber?.trim() ? (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-600">Car Number:</span>
+                          <span className="font-semibold text-right">{formData.vehicleNumber.trim().toUpperCase()}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-600">City:</span>
+                        <span className="font-semibold text-right">{formData.city?.name || '—'}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-600">Service:</span>
+                        <span className="font-semibold text-right">
+                          {selectedCategory ? String(selectedCategory).replace(/_/g, ' ') : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-600">Package:</span>
+                        <span className="font-semibold text-right">
+                          {selectedServiceNames.length ? selectedServiceNames.join(', ') : '—'}
+                        </span>
+                      </div>
+                      {formData.pickupRequired ? (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-600">Pickup:</span>
+                          <span className="font-semibold text-right">
+                            {[formatDateDisplay(formData.pickupDate), formData.pickupTime].filter(Boolean).join(' · ') || 'Pickup'}
+                          </span>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between gap-3 border-t border-green-200 pt-2">
+                        <span className="text-gray-600">Service Amount:</span>
+                        <span className="font-semibold">₹{totalPrice.toLocaleString('en-IN')}</span>
+                      </div>
+                      {couponMeta ? (
                         <>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Coupon Applied:</span>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-gray-600">Coupon:</span>
                             <span className="font-semibold">{couponMeta.code}</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between gap-3">
                             <span className="text-gray-600">Discount:</span>
                             <span className="font-semibold text-green-700">
                               -₹{Number(couponDiscount || 0).toLocaleString('en-IN')}
                             </span>
                           </div>
-                          {couponMeta?.free_service?.matched_label && (
-                            <div className="flex justify-between">
+                          {couponMeta?.free_service?.matched_label ? (
+                            <div className="flex justify-between gap-3">
                               <span className="text-gray-600">Free Service:</span>
                               <span className="font-semibold">{couponMeta.free_service.matched_label}</span>
                             </div>
-                          )}
+                          ) : null}
                         </>
-                      )}
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Payment Flow:</span>
-                        <span className="font-semibold">
-                          {formData.paymentStatus === 'PAY_NOW' ? 'Razorpay Checkout' : 'Pay After Service'}
+                      ) : null}
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <span className="text-gray-600">Amount to Pay:</span>
+                        <span className="text-xl sm:text-2xl font-bold text-green-700">
+                          ₹{couponAdjustedTotal.toLocaleString('en-IN')}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Payment Timing:</span>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-600">Payment:</span>
                         <span className="font-semibold">
                           {formData.paymentStatus === 'PAY_NOW' ? 'Pay Now' : 'Pay Later'}
                         </span>

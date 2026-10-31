@@ -557,7 +557,10 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
             service_type_ids: formData.selectedServices,
             service_items: serviceItemsForCoupon,
             customer_phone: formData.customerPhone,
+            channel: 'WEB',
             vehicle_class: formData.carModel?.class || null,
+            vehicle_make: formData.carModel?.make || null,
+            vehicle_model: formData.carModel?.model_name || formData.carModel?.model || null,
             model_id: formData.carModel?.id || null,
           },
         }),
@@ -634,7 +637,10 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
                   service_type_ids: formData.selectedServices,
                   service_items: serviceItemsForCoupon,
                   customer_phone: formData.customerPhone,
+                  channel: 'WEB',
                   vehicle_class: formData.carModel?.class || null,
+                  vehicle_make: formData.carModel?.make || null,
+                  vehicle_model: formData.carModel?.model_name || formData.carModel?.model || null,
                   model_id: formData.carModel?.id || null,
                 },
               }
@@ -687,13 +693,16 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
 
   const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
 
+  const servicesKey = formData.selectedServices.join('|');
+  const prevServicesKeyRef = useRef(servicesKey);
   useEffect(() => {
-    if (couponMeta && formData.selectedServices.length > 0) {
-      setCouponMeta(null);
-      setCouponDiscount(0);
-      setCouponError('Coupon cleared. Please re-apply after changing services.');
-    }
-  }, [formData.selectedServices, couponMeta]);
+    const previous = prevServicesKeyRef.current;
+    prevServicesKeyRef.current = servicesKey;
+    if (previous === servicesKey || !couponMeta) return;
+    setCouponMeta(null);
+    setCouponDiscount(0);
+    setCouponError('Coupon cleared. Please re-apply after changing services.');
+  }, [servicesKey]);
 
   const handleServiceToggle = (serviceId: string) => {
     setFormData(prev => {
@@ -1118,7 +1127,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
                           <div className="flex items-center gap-3">
                             <DollarSign className="w-6 h-6 text-green-600" />
                             <div>
-                              <p className="text-sm text-gray-600">Total Price</p>
+                              <p className="text-sm text-gray-600">Amount to Pay</p>
                               <p className="text-3xl font-bold text-green-700">
                                 ₹{couponAdjustedTotal.toLocaleString('en-IN')}
                               </p>
@@ -1133,11 +1142,27 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
                             </p>
                           </div>
                         </div>
-                        {couponMeta && (
-                          <div className="mt-3 text-xs text-green-700">
-                            Coupon {couponMeta.code} applied — discount ₹{Number(couponDiscount || 0).toLocaleString('en-IN')}
+                        <div className="mt-3 space-y-1 text-xs text-gray-700">
+                          <div className="flex justify-between gap-3">
+                            <span>Package</span>
+                            <span className="font-semibold text-right">
+                              {formData.selectedServices
+                                .map((id) => serviceTypes.find((service: any) => String(service.id) === String(id))?.name)
+                                .filter(Boolean)
+                                .join(', ') || '—'}
+                            </span>
                           </div>
-                        )}
+                          <div className="flex justify-between gap-3">
+                            <span>Service Amount</span>
+                            <span className="font-semibold">₹{totalPrice.toLocaleString('en-IN')}</span>
+                          </div>
+                          {couponMeta ? (
+                            <div className="flex justify-between gap-3 text-green-700">
+                              <span>Discount ({couponMeta.code})</span>
+                              <span className="font-semibold">-₹{Number(couponDiscount || 0).toLocaleString('en-IN')}</span>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     )}
 
