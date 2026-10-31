@@ -3720,7 +3720,7 @@ export default function BookServicePage() {
                                 <span className="block text-[11px] text-gray-500">{hint}</span>
                               </span>
                               <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold text-white ${applied ? 'bg-green-600' : 'bg-brand-primary'}`}>
-                                {isValidatingCoupon && couponCode === code ? 'Applying…' : applied ? 'Applied' : 'Click to apply'}
+                                {isValidatingCoupon && couponCode === code ? 'Applying…' : code}
                               </span>
                             </button>
                           );

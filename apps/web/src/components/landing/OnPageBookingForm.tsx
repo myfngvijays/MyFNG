@@ -797,10 +797,9 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                     {offerCoupons[0] ? (
                       <div className="min-w-0">
                         <span className="mb-1 block truncate text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                          {String(offerCoupons[0].code || '').toUpperCase()}
                           {Number(offerCoupons[0].discount_value) > 0 && String(offerCoupons[0].discount_mode || '').toUpperCase() === 'PERCENT'
-                            ? ` · ${Number(offerCoupons[0].discount_value)}%`
-                            : ''}
+                            ? `${Number(offerCoupons[0].discount_value)}% off`
+                            : 'Coupon'}
                         </span>
                         <button
                           type="button"
@@ -811,17 +810,13 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                             if (applied) clearCoupon();
                             else void applyPageCoupon(code);
                           }}
-                          className={`h-11 w-full rounded-xl text-[11px] font-bold text-white ${
+                          className={`h-11 w-full truncate rounded-xl px-2 text-[11px] font-bold text-white ${
                             String(couponMeta?.code || '').toUpperCase() === String(offerCoupons[0].code || '').toUpperCase()
                               ? 'bg-emerald-600'
                               : 'bg-blue-600'
                           }`}
                         >
-                          {couponBusy
-                            ? 'Applying…'
-                            : String(couponMeta?.code || '').toUpperCase() === String(offerCoupons[0].code || '').toUpperCase()
-                              ? 'Applied'
-                              : 'Click to apply'}
+                          {couponBusy ? 'Applying…' : String(offerCoupons[0].code || '').toUpperCase()}
                         </button>
                       </div>
                     ) : (
@@ -903,7 +898,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                             applied ? 'bg-emerald-600' : 'bg-blue-600'
                           }`}
                         >
-                          {couponBusy && couponCode === code ? 'Applying…' : applied ? 'Applied' : 'Click to apply'}
+                          {couponBusy && couponCode === code ? 'Applying…' : code}
                         </span>
                       </button>
                     );
