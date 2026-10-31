@@ -222,28 +222,37 @@ async function resolveReferralCouponAssignment(
   return { assignment, claim, notes };
 }
 
+function catalogSearchTokens(make: string, model: string): string[] {
+  const tokens = new Set<string>();
+  const add = (value: string) => {
+    const clean = value.trim();
+    if (clean.length >= 3) tokens.add(clean);
+  };
+  add(model);
+  add(make);
+  for (const part of `${make} ${model}`.split(/[^a-zA-Z0-9]+/)) add(part);
+  const skip = new Set(['CAR', 'THE', 'NEW', 'AUTO']);
+  return [...tokens].filter((token) => !skip.has(token.toUpperCase()));
+}
+
 async function classFromCatalog(
   supabaseAdmin: SupabaseClient,
   make: string,
   model: string,
 ): Promise<string | null> {
-  const makeName = make.trim();
-  const modelName = model.trim();
-  const names = [modelName];
-  const parts = modelName.split(/\s+/).filter(Boolean);
-  if (parts.length > 1) names.push(parts[parts.length - 1]);
-  for (const name of names) {
-    if (!name) continue;
+  const makeName = make.trim().toUpperCase();
+  for (const name of catalogSearchTokens(make, model)) {
     const { data } = await supabaseAdmin
       .from('car_models')
-      .select('class, make')
-      .ilike('model_name', name)
-      .limit(30);
+      .select('class, make, model_name')
+      .ilike('model_name', `%${name}%`)
+      .limit(40);
     const rows = data || [];
-    const matchedMake = makeName
-      ? rows.filter((row) => String(row.make || '').trim().toUpperCase() === makeName.toUpperCase())
-      : rows;
-    const classes = [...new Set(matchedMake.map((row) => String(row.class || '').trim()).filter(Boolean))];
+    const sameMake = makeName
+      ? rows.filter((row) => String(row.make || '').trim().toUpperCase() === makeName)
+      : [];
+    const pool = sameMake.length ? sameMake : rows;
+    const classes = [...new Set(pool.map((row) => String(row.class || '').trim()).filter(Boolean))];
     if (classes.length === 1) return classes[0];
   }
   return null;
@@ -274,9 +283,46 @@ async function classFromCustomerGarage(
     }) || null;
   }
   if (!chosen && vehicles.length === 1) chosen = vehicles[0];
-  if (!chosen) chosen = vehicles.find((vehicle) => vehicle.is_default) || null;
+  if (!chosen) chosen = vehicles.find((vehicle) => vehicle.is_default) || vehicles[0] || null;
   if (!chosen) return null;
-  return classFromCatalog(supabaseAdmin, String(chosen.make || ''), String(chosen.model || ''));
+  return classFromCatalog(
+    supabaseAdmin,
+    String(chosen.make || ''),
+    String(chosen.model || chosen.vehicle_model || ''),
+  );
+}
+
+async function classFromRecentBooking(
+  supabaseAdmin: SupabaseClient,
+  phone: string | null,
+): Promise<string | null> {
+  const digits = normalizePhone(phone);
+  if (!digits) return null;
+  const { data } = await supabaseAdmin
+    .from('service_leads')
+    .select('vehicle_make, vehicle_model, model_id')
+    .or(`customer_phone.ilike.%${digits}%,phone.ilike.%${digits}%`)
+    .order('created_at', { ascending: false })
+    .limit(15);
+  for (const lead of data || []) {
+    const modelId = String(lead.model_id || '').trim();
+    if (modelId) {
+      const { data: row } = await supabaseAdmin
+        .from('car_models')
+        .select('class')
+        .eq('id', modelId)
+        .maybeSingle();
+      const cls = String(row?.class || '').trim();
+      if (cls) return cls;
+    }
+    const fromNames = await classFromCatalog(
+      supabaseAdmin,
+      String(lead.vehicle_make || ''),
+      String(lead.vehicle_model || ''),
+    );
+    if (fromNames) return fromNames;
+  }
+  return null;
 }
 
 async function resolveVehicleClass(
@@ -314,12 +360,16 @@ async function resolveVehicleClass(
       customerId = String(data?.id || '').trim();
     }
   }
-  if (!customerId) return null;
-  return classFromCustomerGarage(supabaseAdmin, customerId, {
-    make: leadContext.vehicle_make || '',
-    model: leadContext.vehicle_model || '',
-    number: leadContext.vehicle_number || '',
-  });
+  const phone = normalizePhone(leadContext.customer_phone || null);
+  if (customerId) {
+    const fromGarage = await classFromCustomerGarage(supabaseAdmin, customerId, {
+      make: leadContext.vehicle_make || '',
+      model: leadContext.vehicle_model || '',
+      number: leadContext.vehicle_number || '',
+    });
+    if (fromGarage) return fromGarage;
+  }
+  return classFromRecentBooking(supabaseAdmin, phone);
 }
 
 export async function validateCouponForCheckout(
