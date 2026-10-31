@@ -782,19 +782,62 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                 </div>
               </div>
               {visitMode === 'pickup' ? (
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Pincode</span>
-                  <input
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    inputMode="numeric"
-                    placeholder="400601"
-                    className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
+                <div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block min-w-0">
+                      <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Pincode</span>
+                      <input
+                        value={pincode}
+                        onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        inputMode="numeric"
+                        placeholder="400601"
+                        className="h-11 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                    {offerCoupons[0] ? (
+                      <div className="min-w-0">
+                        <span className="mb-1 block truncate text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                          {String(offerCoupons[0].code || '').toUpperCase()}
+                          {Number(offerCoupons[0].discount_value) > 0 && String(offerCoupons[0].discount_mode || '').toUpperCase() === 'PERCENT'
+                            ? ` · ${Number(offerCoupons[0].discount_value)}%`
+                            : ''}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={couponBusy}
+                          onClick={() => {
+                            const code = String(offerCoupons[0].code || '').toUpperCase();
+                            const applied = String(couponMeta?.code || '').toUpperCase() === code;
+                            if (applied) clearCoupon();
+                            else void applyPageCoupon(code);
+                          }}
+                          className={`h-11 w-full rounded-xl text-[11px] font-bold text-white ${
+                            String(couponMeta?.code || '').toUpperCase() === String(offerCoupons[0].code || '').toUpperCase()
+                              ? 'bg-emerald-600'
+                              : 'bg-blue-600'
+                          }`}
+                        >
+                          {couponBusy
+                            ? 'Applying…'
+                            : String(couponMeta?.code || '').toUpperCase() === String(offerCoupons[0].code || '').toUpperCase()
+                              ? 'Applied'
+                              : 'Click to apply'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+                  </div>
                   <span className="mt-1 block text-[11px] leading-4 text-slate-500">
                     Pickup needs only the pincode. We will ask the full address on the call.
                   </span>
-                </label>
+                  {couponError ? <p className="mt-1 text-[11px] font-medium text-red-600">{couponError}</p> : null}
+                  {couponMeta && couponService ? (
+                    <p className="mt-1 text-[11px] font-medium leading-4 text-emerald-700">
+                      {couponService.name}: ₹{couponService.price.toLocaleString('en-IN')} − ₹{couponDiscount.toLocaleString('en-IN')} = ₹{Math.max(couponService.price - couponDiscount, 0).toLocaleString('en-IN')}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
               {visitMode === 'visit' ? (
                 <div className="grid grid-cols-2 gap-2">
@@ -825,7 +868,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   </label>
                 </div>
               ) : null}
-              {offerCoupons.length > 0 ? (
+              {visitMode !== 'pickup' && offerCoupons.length > 0 ? (
                 <div className="space-y-2">
                   {offerCoupons.map((offer) => {
                     const code = String(offer.code || '').toUpperCase();
