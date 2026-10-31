@@ -44,7 +44,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
 
-const AppDownloadPopup = dynamic(() => import('@/components/landing/AppDownloadPopup'), { ssr: false });
 const AppDownloadSection = dynamic(() => import('@/components/landing/AppDownloadSection'));
 const BookingForm = dynamic(() => import('@/components/landing/BookingForm'), { ssr: false });
 
@@ -836,7 +835,6 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-white font-poppins text-text-body selection:bg-brand-primary/20">
       <Navbar />
-      <AppDownloadPopup />
 
       {/* Header AI Search Bar (full-width, under navbar) */}
       <div className="hidden w-full mt-16 sm:mt-20 md:mt-24 bg-white/70 backdrop-blur border-b border-gray-200/70">

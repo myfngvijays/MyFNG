@@ -4210,23 +4210,23 @@ async function checkAutomobileNews(): Promise<HealthCheck> {
 async function checkWebsiteOfferPopup(): Promise<HealthCheck> {
   const start = Date.now();
   try {
-    const { getWebsiteOfferPopup, isWebsiteOfferPopupLive } = await import('@/lib/website-offer-popup');
-    const config = await getWebsiteOfferPopup();
-    const live = isWebsiteOfferPopupLive(config);
-    const expired = Boolean(config.enabled && config.ends_at && new Date(config.ends_at).getTime() < Date.now());
+    const { getWebsiteOfferPopups, isWebsiteOfferPopupLive } = await import('@/lib/website-offer-popup');
+    const popups = await getWebsiteOfferPopups();
+    const enabled = popups.filter((popup) => popup.enabled);
+    const live = enabled.filter((popup) => isWebsiteOfferPopupLive(popup));
+    const expired = enabled.filter((popup) => popup.ends_at && new Date(popup.ends_at).getTime() < Date.now());
+    const stalled = enabled.length > 0 && live.length === 0 && expired.length > 0;
     return {
       name: 'Website Offer Popup',
       category: 'Operations',
-      status: expired ? 'degraded' : 'healthy',
+      status: stalled ? 'degraded' : 'healthy',
       responseTime: Date.now() - start,
-      message: !config.enabled
-        ? 'Website popup is turned off'
-        : expired
-          ? 'Website popup end date has passed'
-          : live
-            ? `Website popup is live until ${config.ends_at || 'no expiry'}`
-            : 'Website popup is scheduled and not live yet',
-      reason: expired ? 'Turn it off or move the expiry date in Website Popup.' : undefined,
+      message: live.length
+        ? `${live.length} website popup${live.length === 1 ? '' : 's'} live`
+        : enabled.length
+          ? 'Website popups are on, but outside their start and expiry dates'
+          : 'Website popups are turned off',
+      reason: stalled ? 'Turn them off or move the expiry date in Website Popup.' : undefined,
       quickFix: { label: 'Open Website Popup', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/website-popup' } },
       lastChecked: new Date().toISOString(),
     };

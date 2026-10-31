@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { ArrowRight, CheckCircle, Clock, IndianRupee, Shield, ShieldCheck, Sparkles } from 'lucide-react';
@@ -9,8 +8,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { DEFAULT_SERVICES, Service, canonicalCategoryName, makeShortDescription, normalizeSpaces, INTERNAL_SLUG_TO_MARKETING as INTERNAL_SLUG_TO_CAR_SERVICES } from '@/lib/services/catalog';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
-
-const AppDownloadPopup = dynamic(() => import('@/components/landing/AppDownloadPopup'), { ssr: false });
 
 type CategoryRow = { uuid: string; category: string; description: string | null; sequence: number };
 
@@ -100,7 +97,6 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
-      <AppDownloadPopup />
 
       {/* Full-Bleed Service Explorer Section */}
       <section className="relative mt-16 overflow-hidden bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">

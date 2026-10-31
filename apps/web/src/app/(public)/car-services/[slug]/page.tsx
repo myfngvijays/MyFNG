@@ -8,7 +8,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { findServiceBySlug, makeShortDescription, MARKETING_SLUG_TO_INTERNAL } from '@/lib/services/catalog';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
-import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import { SITE_URL } from '@/lib/seo/metadata';
 import { breadcrumbSchema, serviceSchema } from '@/lib/seo/schemas';
 import JsonLd from '@/components/seo/JsonLd';
@@ -57,7 +56,6 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
         ]}
       />
       <Navbar />
-      <AppDownloadPopup />
 
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 text-white py-12 sm:py-16 md:py-20 mt-16 sm:mt-18 md:mt-20">
