@@ -104,9 +104,15 @@ STANDALONE_DIR="${VPS_PROJECT_PATH}/apps/web/.next/standalone/apps/web"
 [ -f "${STANDALONE_DIR}/server.js" ] || die "Standalone server.js missing — Next config 'output: standalone' check karo"
 
 say "Copying static + public into standalone tree"
-mkdir -p "${STANDALONE_DIR}/.next"
-cp -r .next/static "${STANDALONE_DIR}/.next/" 2>/dev/null || true
-cp -r public        "${STANDALONE_DIR}/"        2>/dev/null || true
+# Standalone serves files from the distDir baked at build time (.next-build),
+# not from a folder literally named .next.
+STANDALONE_DIST=".next"
+if [ -f "${STANDALONE_DIR}/.next-build/BUILD_ID" ]; then
+  STANDALONE_DIST=".next-build"
+fi
+mkdir -p "${STANDALONE_DIR}/${STANDALONE_DIST}"
+cp -a .next/static "${STANDALONE_DIR}/${STANDALONE_DIST}/"
+cp -a public "${STANDALONE_DIR}/" 2>/dev/null || true
 
 # Standalone server.js reads .env from its OWN directory (__dirname), not from
 # apps/web. So copy env files into the standalone tree, else process.env.*

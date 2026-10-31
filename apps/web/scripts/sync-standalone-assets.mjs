@@ -25,7 +25,7 @@ function copyDirSafe(from, to, label) {
   try {
     if (!existsSync(from)) return false;
     mkdirSync(dirname(to), { recursive: true });
-    cpSync(from, to, { recursive: true, dereference: true });
+    cpSync(from, to, { recursive: true, dereference: true, force: true });
     if (label) console.log(`[sync-standalone-assets] copied ${label}`);
     return true;
   } catch (err) {
@@ -62,10 +62,13 @@ injectPrettyHtml(destRoot);
 
 const staticSrc = join(webRoot, distDir, 'static');
 if (existsSync(staticSrc)) {
-  mkdirSync(join(destRoot, '.next'), { recursive: true });
-  copyDirSafe(staticSrc, join(destRoot, '.next/static'), '.next/static');
+  // The standalone server reads <distDir>/static. A staging build sets
+  // distDir to .next-build, so copying into .next/static leaves CSS 404.
+  const staticDest = join(destRoot, distDir, 'static');
+  mkdirSync(join(destRoot, distDir), { recursive: true });
+  copyDirSafe(staticSrc, staticDest, `${distDir}/static`);
 } else {
-  console.warn('[sync-standalone-assets] .next/static missing — skip');
+  console.warn('[sync-standalone-assets] static folder missing — skip');
 }
 
 copyDirSafe(join(webRoot, 'public'), join(destRoot, 'public'), 'public');
