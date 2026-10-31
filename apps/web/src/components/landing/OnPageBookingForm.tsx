@@ -810,10 +810,10 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                             if (applied) clearCoupon();
                             else void applyPageCoupon(code);
                           }}
-                          className={`h-11 w-full truncate rounded-xl px-3 text-[12px] font-bold tracking-[0.14em] text-white ${
+                          className={`h-11 w-full truncate rounded-xl px-3 text-[12px] font-bold tracking-[0.14em] ${
                             String(couponMeta?.code || '').toUpperCase() === String(offerCoupons[0].code || '').toUpperCase()
-                              ? 'bg-emerald-600'
-                              : 'bg-blue-600'
+                              ? 'bg-[#FFD000] text-[#7A1020]'
+                              : 'bg-[#9B1530] text-[#FFE14A]'
                           }`}
                         >
                           {couponBusy ? 'Applying…' : String(offerCoupons[0].code || '').toUpperCase()}
@@ -894,8 +894,8 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                           <span className="block text-[11px] text-slate-500">{hint}</span>
                         </span>
                         <span
-                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold text-white ${
-                            applied ? 'bg-emerald-600' : 'bg-blue-600'
+                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${
+                            applied ? 'bg-[#FFD000] text-[#7A1020]' : 'bg-[#9B1530] text-[#FFE14A]'
                           }`}
                         >
                           {couponBusy && couponCode === code ? 'Applying…' : code}

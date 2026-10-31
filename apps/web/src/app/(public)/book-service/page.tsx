@@ -3719,7 +3719,7 @@ export default function BookServicePage() {
                                 <span className="block text-sm font-extrabold text-gray-900">{code}</span>
                                 <span className="block text-[11px] text-gray-500">{hint}</span>
                               </span>
-                              <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold text-white ${applied ? 'bg-green-600' : 'bg-brand-primary'}`}>
+                              <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${applied ? 'bg-[#FFD000] text-[#7A1020]' : 'bg-[#9B1530] text-[#FFE14A]'}`}>
                                 {isValidatingCoupon && couponCode === code ? 'Applying…' : code}
                               </span>
                             </button>

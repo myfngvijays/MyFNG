@@ -12,7 +12,7 @@ const VARIANTS: Record<
   care: { bg: '#FFF1F2', border: '#FDA4AF', accent: '#E11D48', icon: 'shield-checkmark-outline' },
   elite: { bg: '#FFF7ED', border: '#FDBA74', accent: '#EA580C', icon: 'diamond-outline' },
   express: { bg: '#ECFEFF', border: '#67E8F9', accent: '#0891B2', icon: 'flash-outline' },
-  promo: { bg: '#EFF6FF', border: '#93C5FD', accent: '#2563EB', icon: 'pricetag-outline' },
+  promo: { bg: '#FFF6D8', border: '#E0A000', accent: '#9B1530', icon: 'pricetag-outline' },
 };
 
 type Props = {
