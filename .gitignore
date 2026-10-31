@@ -10,6 +10,8 @@ node_modules/
 
 # Build outputs
 .next/
+.next-build/
+.next-previous/
 out/
 build/
 dist/

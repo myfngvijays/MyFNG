@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Production builds write here first, then replace `.next` after success.
+  // Building straight into the live folder makes standalone rmdir fail with ENOTEMPTY.
+  distDir: process.env.MYFNG_DIST_DIR || '.next',
 
   // xlsx is CJS; keep it external so Turbopack resolves from node_modules reliably
   serverExternalPackages: ['xlsx', '@modelcontextprotocol/sdk'],

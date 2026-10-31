@@ -7,8 +7,9 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const standalone = join(webRoot, '.next/standalone/apps/web');
-const fallback = join(webRoot, '.next/standalone');
+const distDir = process.env.MYFNG_DIST_DIR || '.next';
+const standalone = join(webRoot, distDir, 'standalone/apps/web');
+const fallback = join(webRoot, distDir, 'standalone');
 const destRoot = existsSync(join(standalone, 'server.js'))
   ? standalone
   : existsSync(join(fallback, 'server.js'))
@@ -59,7 +60,7 @@ function injectPrettyHtml(dest) {
 // Pretty HTML first so later optional copies cannot block view-source.
 injectPrettyHtml(destRoot);
 
-const staticSrc = join(webRoot, '.next/static');
+const staticSrc = join(webRoot, distDir, 'static');
 if (existsSync(staticSrc)) {
   mkdirSync(join(destRoot, '.next'), { recursive: true });
   copyDirSafe(staticSrc, join(destRoot, '.next/static'), '.next/static');
