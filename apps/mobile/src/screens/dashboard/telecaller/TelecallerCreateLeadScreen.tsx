@@ -342,6 +342,7 @@ export default function TelecallerCreateLeadScreen({ navigation, route }: any) {
               service_type_ids: formData.service_type_ids,
               subservice_ids: formData.subservice_ids,
               city_id: formData.city_id || null,
+              model_id: formData.model_id || null,
               subtotal: 0,
               reserve_only: true,
             },

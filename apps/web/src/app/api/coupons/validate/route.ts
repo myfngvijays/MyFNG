@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { validateCouponForCheckout } from '@/lib/coupon-service';
+import { publicCouponLabel } from '@/lib/coupon-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
         min_order_value: result.coupon.min_order_value,
         target_service_type_id: result.coupon.target_service_type_id,
         target_subservice_id: result.coupon.target_subservice_id,
-        target_custom_label: result.coupon.target_custom_label,
+        target_custom_label: publicCouponLabel(result.coupon.target_custom_label),
         description: result.coupon.description,
         campaign_name: result.coupon.campaign_name,
       },

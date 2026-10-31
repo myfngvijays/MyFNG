@@ -1278,6 +1278,8 @@ export default function BookServicePage() {
             customer_phone: formData.customerPhone,
             channel: 'WEB',
             city_id: formData.city || null,
+            vehicle_class: formData.carModel?.class || null,
+            model_id: formData.carModel?.id || null,
           },
         }),
       });
@@ -1359,6 +1361,8 @@ export default function BookServicePage() {
               service_type_ids: formData.selectedServices,
               service_items: serviceItemsForCoupon,
               customer_phone: formData.customerPhone,
+              vehicle_class: formData.carModel?.class || null,
+              model_id: formData.carModel?.id || null,
             },
           }
         : undefined,

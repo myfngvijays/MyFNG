@@ -232,6 +232,8 @@ export default function CustomerInvoicePage() {
       custom_labels: serviceItems.map((x: any) => String(x?.label || '')).filter(Boolean),
       service_items: serviceItems,
       customer_phone: inv?.lead?.customer_phone ?? null,
+      vehicle_class: inv?.lead?.vehicle_class || inv?.lead?.meta?.vehicle_class || null,
+      model_id: inv?.lead?.model_id || null,
     };
 
     (async () => {

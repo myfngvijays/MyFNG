@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { logCouponAudit } from '@/lib/coupon-rules';
+import { applyClassCapFields, logCouponAudit, normalizeClassDiscountCaps } from '@/lib/coupon-rules';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -58,18 +58,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       coupon_type_slug: body?.coupon_type_slug != null ? (body.coupon_type_slug ? String(body.coupon_type_slug).trim() : null) : undefined,
       applicable_channels: body?.applicable_channels ?? undefined,
       max_discount_amount: body?.max_discount_amount != null ? Number(body.max_discount_amount) : null,
+      class_discount_caps: body?.class_discount_caps !== undefined
+        ? normalizeClassDiscountCaps(body?.class_discount_caps)
+        : undefined,
       first_order_only: body?.first_order_only ?? undefined,
       is_public: body?.is_public ?? undefined,
     };
 
     Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
+    applyClassCapFields(payload);
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('coupons')
       .update(payload)
       .eq('id', id)
       .select()
       .single();
+
+    if (error && /class_discount_caps/i.test(String(error.message || ''))) {
+      const { class_discount_caps: _caps, ...withoutColumn } = payload;
+      ({ data, error } = await supabaseAdmin.from('coupons').update(withoutColumn).eq('id', id).select().single());
+    }
 
     if (error) throw error;
     await logCouponAudit(supabaseAdmin, {

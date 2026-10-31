@@ -557,6 +557,8 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
             service_type_ids: formData.selectedServices,
             service_items: serviceItemsForCoupon,
             customer_phone: formData.customerPhone,
+            vehicle_class: formData.carModel?.class || null,
+            model_id: formData.carModel?.id || null,
           },
         }),
       });
@@ -632,6 +634,8 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
                   service_type_ids: formData.selectedServices,
                   service_items: serviceItemsForCoupon,
                   customer_phone: formData.customerPhone,
+                  vehicle_class: formData.carModel?.class || null,
+                  model_id: formData.carModel?.id || null,
                 },
               }
             : undefined,

@@ -31,6 +31,7 @@ import {
   splitServiceSelectionKeys,
   type BookableServiceOption,
 } from '@/lib/coupon-service-options';
+import { classCapRowsFromStored, FALLBACK_VEHICLE_CLASSES } from '@/lib/coupon-rules';
 
 type ChannelId = 'WEB' | 'ANDROID' | 'IOS' | 'MEMBERSHIP' | 'TELECALLER';
 
@@ -43,6 +44,7 @@ type CouponForm = {
   discount_value: string;
   min_order_value: string;
   max_discount_amount: string;
+  class_cap_rows: Array<{ classes: string[]; cap: string }>;
   target_custom_label: string;
   start_at: string;
   end_at: string;
@@ -88,6 +90,7 @@ const emptyForm: CouponForm = {
   discount_value: '',
   min_order_value: '',
   max_discount_amount: '',
+  class_cap_rows: [{ classes: [], cap: '' }],
   target_custom_label: '',
   start_at: '',
   end_at: '',
@@ -148,6 +151,58 @@ function downloadCsv(filename: string, rows: string[][]) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function ClassMultiDropdown({
+  options,
+  selected,
+  taken,
+  onChange,
+}: {
+  options: string[];
+  selected: string[];
+  taken: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const summary = selected.length ? selected.join(', ') : 'Select car classes';
+  return (
+    <div className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        className={`input !h-11 !py-0 flex w-full items-center justify-between gap-2 text-left ${open ? 'ring-2 ring-brand-primary border-transparent' : ''}`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className={`truncate ${selected.length ? 'text-gray-900' : 'text-gray-400'}`}>{summary}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-500 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+          {options.map((cls) => {
+            const usedElsewhere = taken.includes(cls);
+            const checked = selected.includes(cls);
+            return (
+              <label
+                key={cls}
+                className={`flex items-center gap-2 rounded px-1 py-1.5 text-sm ${usedElsewhere ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-gray-50'}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={usedElsewhere}
+                  onChange={() => {
+                    if (usedElsewhere) return;
+                    onChange(checked ? selected.filter((item) => item !== cls) : [...selected, cls]);
+                  }}
+                />
+                <span>{cls}</span>
+              </label>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export default function CouponAdminPanel({
@@ -368,6 +423,7 @@ export default function CouponAdminPanel({
   const openEdit = (coupon: any) => {
     setEditingCoupon(coupon);
     const typeSlug = coupon.coupon_type_slug || inferCouponTypeSlug(coupon);
+    const classCapRows = classCapRowsFromStored(coupon.class_discount_caps, coupon.target_custom_label);
     const serviceKeys = serviceSelectionKeysFromCoupon(coupon, options.service_types || []);
     const { applicable_category_ids } = splitServiceSelectionKeys(serviceKeys);
     setForm({
@@ -379,7 +435,8 @@ export default function CouponAdminPanel({
       discount_value: coupon.discount_value != null ? String(coupon.discount_value) : '',
       min_order_value: coupon.min_order_value != null ? String(coupon.min_order_value) : '',
       max_discount_amount: coupon.max_discount_amount != null ? String(coupon.max_discount_amount) : '',
-      target_custom_label: coupon.target_custom_label || '',
+      class_cap_rows: classCapRows,
+      target_custom_label: String(coupon.target_custom_label || '').startsWith('__class_caps__:') ? '' : (coupon.target_custom_label || ''),
       start_at: isoToLocalDatetime(coupon.start_at),
       end_at: isoToLocalDatetime(coupon.end_at),
       usage_limit_total: coupon.usage_limit_total != null ? String(coupon.usage_limit_total) : '',
@@ -424,6 +481,14 @@ export default function CouponAdminPanel({
       base.applicable_workshop_ids = (source as CouponForm).applicable_workshop_ids;
       base.applicable_category_ids = (source as CouponForm).applicable_category_ids;
       base.applicable_service_type_ids = (source as CouponForm).applicable_service_type_ids;
+      const couponForm = source as CouponForm;
+      const rules = couponForm.class_cap_rows
+        .map((row) => ({
+          classes: row.classes.map((cls) => cls.trim()).filter(Boolean),
+          cap: Number(row.cap),
+        }))
+        .filter((row) => row.classes.length > 0 && Number.isFinite(row.cap) && row.cap > 0);
+      base.class_discount_caps = rules.length ? { rules } : null;
     }
     return base;
   };
@@ -1547,9 +1612,74 @@ export default function CouponAdminPanel({
                   <input className="input" placeholder="Min Order Value" value={form.min_order_value} onChange={(e) => setForm({ ...form, min_order_value: e.target.value })} />
                   <input className="input" placeholder="Max Discount Cap (for %)" value={form.max_discount_amount} onChange={(e) => setForm({ ...form, max_discount_amount: e.target.value })} />
                 </div>
-              ) : (
+              ) : null}
+              {form.coupon_kind === 'TOTAL_DISCOUNT' ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-gray-600">Class discount caps</div>
+                  {form.class_cap_rows.map((row, index) => {
+                    const taken = form.class_cap_rows.flatMap((other, otherIndex) => (otherIndex === index ? [] : other.classes));
+                    const listed = (options.vehicle_classes?.length ? options.vehicle_classes : FALLBACK_VEHICLE_CLASSES) as string[];
+                    const classOptions = [...new Set([...listed, ...form.class_cap_rows.flatMap((item) => item.classes)])];
+                    const isLast = index === form.class_cap_rows.length - 1;
+                    return (
+                      <div key={index} className="flex items-center gap-2">
+                        <ClassMultiDropdown
+                          options={classOptions}
+                          selected={row.classes}
+                          taken={taken}
+                          onChange={(classes) => {
+                            const class_cap_rows = form.class_cap_rows.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, classes } : item,
+                            );
+                            setForm({ ...form, class_cap_rows });
+                          }}
+                        />
+                        <input
+                          className="input !h-11 !py-0 w-32 shrink-0"
+                          inputMode="decimal"
+                          placeholder="Cap ₹"
+                          value={row.cap}
+                          onChange={(e) => {
+                            const class_cap_rows = form.class_cap_rows.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, cap: e.target.value } : item,
+                            );
+                            setForm({ ...form, class_cap_rows });
+                          }}
+                        />
+                        {isLast ? (
+                          <button
+                            type="button"
+                            className="!h-11 shrink-0 whitespace-nowrap rounded-lg border border-gray-300 px-3 text-sm font-semibold text-blue-600"
+                            onClick={() => setForm({ ...form, class_cap_rows: [...form.class_cap_rows, { classes: [], cap: '' }] })}
+                          >
+                            + Add more
+                          </button>
+                        ) : null}
+                        {form.class_cap_rows.length > 1 ? (
+                          <button
+                            type="button"
+                            className="!h-11 shrink-0 whitespace-nowrap rounded-lg border border-gray-300 px-3 text-sm text-red-600"
+                            onClick={() => {
+                              setForm({
+                                ...form,
+                                class_cap_rows: form.class_cap_rows.filter((_, itemIndex) => itemIndex !== index),
+                              });
+                            }}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-gray-500">
+                    Select one or more classes, set their cap, then add another row for a different cap. A class can be in only one row. Percentage coupons use these caps. If the car class is not listed, the single cap above is used.
+                  </p>
+                </div>
+              ) : null}
+              {form.coupon_kind !== 'TOTAL_DISCOUNT' ? (
                 <input className="input" placeholder="Free service label" value={form.target_custom_label} onChange={(e) => setForm({ ...form, target_custom_label: e.target.value })} />
-              )}
+              ) : null}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input className="input" type="datetime-local" value={form.start_at} onChange={(e) => setForm({ ...form, start_at: e.target.value })} />
                 <input className="input" type="datetime-local" value={form.end_at} onChange={(e) => setForm({ ...form, end_at: e.target.value })} />

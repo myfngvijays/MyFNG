@@ -182,6 +182,8 @@ export async function POST(request: NextRequest) {
           subtotal,
           customer_phone: body?.coupon?.lead_context?.customer_phone || customerPhone,
           channel,
+          vehicle_class: body?.coupon?.lead_context?.vehicle_class || lead?.vehicle_class || null,
+          model_id: body?.coupon?.lead_context?.model_id || lead?.model_id || null,
         },
         { serviceBooking: true },
       );

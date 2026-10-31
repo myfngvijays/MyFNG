@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   applyMaxDiscountCap,
   couponAppliesToChannel,
+  publicCouponLabel,
   normalizePhone,
   validateCouponScope,
   type CouponScopeContext,
@@ -22,6 +23,8 @@ export type CouponLeadContext = CouponScopeContext & {
     price?: number | null;
   }>;
   customer_id?: string | null;
+  vehicle_class?: string | null;
+  model_id?: string | number | null;
 };
 
 export type CouponValidationResult =
@@ -216,6 +219,23 @@ async function resolveReferralCouponAssignment(
   return { assignment, claim, notes };
 }
 
+async function resolveVehicleClass(
+  supabaseAdmin: SupabaseClient,
+  leadContext: CouponLeadContext,
+): Promise<string | null> {
+  const direct = String(leadContext.vehicle_class || '').trim();
+  if (direct) return direct;
+  const modelId = String(leadContext.model_id || '').trim();
+  if (!modelId) return null;
+  const { data } = await supabaseAdmin
+    .from('car_models')
+    .select('class')
+    .eq('id', modelId)
+    .maybeSingle();
+  const cls = String(data?.class || '').trim();
+  return cls || null;
+}
+
 export async function validateCouponForCheckout(
   supabaseAdmin: SupabaseClient,
   code: string,
@@ -396,6 +416,7 @@ export async function validateCouponForCheckout(
 
   let discountAmount = 0;
   let freeServiceMeta: Record<string, unknown> | null = null;
+  let vehicleClass: string | null = null;
 
   if (reserveOnly) {
     const couponMeta = {
@@ -434,17 +455,18 @@ export async function validateCouponForCheckout(
     if (!discountMode || !Number.isFinite(discountValue) || discountValue <= 0 || subtotal <= 0) {
       return { valid: false, error: 'Invalid discount configuration.' };
     }
+    vehicleClass = await resolveVehicleClass(supabaseAdmin, leadContext);
     if (discountMode === 'AMOUNT') {
       discountAmount = Math.min(discountValue, subtotal);
     } else {
       discountAmount = (subtotal * discountValue) / 100;
-      discountAmount = applyMaxDiscountCap(discountAmount, coupon);
+      discountAmount = applyMaxDiscountCap(discountAmount, coupon, vehicleClass);
     }
   } else if (coupon.coupon_kind === 'FREE_SERVICE') {
     if (options?.membershipOnly) {
       return { valid: false, error: 'This coupon is not applicable to membership checkout.' };
     }
-    const hasTarget = coupon.target_service_type_id || coupon.target_subservice_id || coupon.target_custom_label;
+    const hasTarget = coupon.target_service_type_id || coupon.target_subservice_id || publicCouponLabel(coupon.target_custom_label);
     if (hasTarget) {
       const freeService = findFreeServicePrice(coupon, leadContext);
       if (!freeService.matched) {
@@ -484,6 +506,7 @@ export async function validateCouponForCheckout(
     computed_on_subtotal: subtotal,
     free_service: freeServiceMeta,
     channel,
+    vehicle_class: vehicleClass,
     validated_at: nowIso,
   };
 

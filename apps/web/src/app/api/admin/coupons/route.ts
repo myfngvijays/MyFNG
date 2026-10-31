@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { logCouponAudit } from '@/lib/coupon-rules';
+import { applyClassCapFields, logCouponAudit, normalizeClassDiscountCaps } from '@/lib/coupon-rules';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -154,10 +154,12 @@ export async function POST(request: NextRequest) {
       coupon_type_slug: body?.coupon_type_slug ? String(body.coupon_type_slug).trim() : null,
       applicable_channels: body?.applicable_channels?.length ? body.applicable_channels : null,
       max_discount_amount: body?.max_discount_amount != null ? Number(body.max_discount_amount) : null,
+      class_discount_caps: normalizeClassDiscountCaps(body?.class_discount_caps),
       first_order_only: body?.first_order_only ?? false,
       is_public: body?.is_public ?? true,
       created_by: gate.userId,
     };
+    applyClassCapFields(payload);
 
     if (!payload.code) {
       return NextResponse.json({ error: 'Coupon code is required' }, { status: 400 });
@@ -166,11 +168,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Coupon type is required' }, { status: 400 });
     }
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('coupons')
       .insert(payload)
       .select()
       .single();
+
+    if (error && /class_discount_caps/i.test(String(error.message || ''))) {
+      const { class_discount_caps: _caps, ...withoutColumn } = payload;
+      ({ data, error } = await supabaseAdmin.from('coupons').insert(withoutColumn).select().single());
+    }
 
     if (error) throw error;
     await logCouponAudit(supabaseAdmin, {

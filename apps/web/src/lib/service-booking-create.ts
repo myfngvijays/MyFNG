@@ -106,6 +106,8 @@ export async function createAuthenticatedServiceBooking(
         customer_id: customer.id,
         customer_phone: body?.coupon?.lead_context?.customer_phone || customer.phone,
         channel,
+        vehicle_class: body?.coupon?.lead_context?.vehicle_class || lead?.vehicle_class || null,
+        model_id: body?.coupon?.lead_context?.model_id || lead?.model_id || null,
       },
       { serviceBooking: true },
     );

@@ -118,9 +118,134 @@ export async function customerHasPriorOrders(
   return (redemptionCount || 0) > 0;
 }
 
-export function applyMaxDiscountCap(amount: number, coupon: any): number {
-  const cap = Number(coupon?.max_discount_amount || 0);
-  if (!Number.isFinite(cap) || cap <= 0) return amount;
+export const CLASS_CAPS_LABEL_PREFIX = '__class_caps__:';
+
+export const FALLBACK_VEHICLE_CLASSES = [
+  'HATCHBACK',
+  'COMPACT SUV',
+  'SEDANS',
+  'PREMIUM HATCHBACK',
+  'SUV/MUVs',
+  'PREMIUM SUV/MUVs',
+  'PREMIUM LUXURY',
+];
+
+export type ClassCapRule = { classes: string[]; cap: number };
+
+export function normalizeVehicleClassKey(value: string | null | undefined): string {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[_/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function encodeClassCapsLabel(caps: { rules: ClassCapRule[] }): string {
+  return `${CLASS_CAPS_LABEL_PREFIX}${JSON.stringify(caps)}`;
+}
+
+export function parseClassCapsLabel(label: unknown): { rules: ClassCapRule[] } | null {
+  const text = String(label || '').trim();
+  if (!text.startsWith(CLASS_CAPS_LABEL_PREFIX)) return null;
+  try {
+    return normalizeClassDiscountCaps(JSON.parse(text.slice(CLASS_CAPS_LABEL_PREFIX.length)));
+  } catch {
+    return null;
+  }
+}
+
+export function publicCouponLabel(label: unknown): string | null {
+  const text = String(label || '').trim();
+  if (!text || parseClassCapsLabel(text)) return null;
+  return text;
+}
+
+/** Keeps caps on target_custom_label so they save even before the JSON column exists. */
+export function applyClassCapFields(payload: Record<string, any>) {
+  if (payload.class_discount_caps !== undefined) {
+    payload.class_discount_caps = normalizeClassDiscountCaps(payload.class_discount_caps);
+  }
+  const caps = normalizeClassDiscountCaps(payload.class_discount_caps);
+  const kind = String(payload.coupon_kind || '');
+  const label = String(payload.target_custom_label || '');
+  if (kind === 'TOTAL_DISCOUNT' && caps) {
+    if (!label || label.startsWith(CLASS_CAPS_LABEL_PREFIX)) {
+      payload.target_custom_label = encodeClassCapsLabel(caps);
+    }
+  } else if (label.startsWith(CLASS_CAPS_LABEL_PREFIX) && !caps) {
+    payload.target_custom_label = null;
+  }
+  return payload;
+}
+
+function rulesFromLegacyCaps(raw: { standard?: unknown; suv?: unknown }): ClassCapRule[] {
+  const standard = Number(raw.standard);
+  const suv = Number(raw.suv);
+  const rules: ClassCapRule[] = [];
+  if (Number.isFinite(standard) && standard > 0) {
+    rules.push({
+      classes: ['HATCHBACK', 'COMPACT SUV', 'SEDANS', 'PREMIUM HATCHBACK'],
+      cap: standard,
+    });
+  }
+  if (Number.isFinite(suv) && suv > 0) {
+    rules.push({
+      classes: ['SUV/MUVs', 'PREMIUM SUV/MUVs'],
+      cap: suv,
+    });
+  }
+  return rules;
+}
+
+export function normalizeClassDiscountCaps(raw: unknown): { rules: ClassCapRule[] } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw as { rules?: unknown; standard?: unknown; suv?: unknown };
+  const incoming = Array.isArray(source.rules) ? source.rules : rulesFromLegacyCaps(source);
+  const rules: ClassCapRule[] = [];
+  for (const row of incoming) {
+    if (!row || typeof row !== 'object') continue;
+    const classes = Array.isArray((row as { classes?: unknown }).classes)
+      ? (row as { classes: unknown[] }).classes.map((c) => String(c || '').trim()).filter(Boolean)
+      : [];
+    const cap = Number((row as { cap?: unknown }).cap);
+    if (!classes.length || !Number.isFinite(cap) || cap <= 0) continue;
+    rules.push({ classes, cap });
+  }
+  return rules.length ? { rules } : null;
+}
+
+export function classCapRowsFromStored(
+  column: unknown,
+  label?: unknown,
+): Array<{ classes: string[]; cap: string }> {
+  const caps = normalizeClassDiscountCaps(column) || parseClassCapsLabel(label);
+  if (!caps) return [{ classes: [], cap: '' }];
+  return caps.rules.map((rule) => ({ classes: rule.classes, cap: String(rule.cap) }));
+}
+
+/** A matching class group wins. An unknown car uses the lowest group cap, then the single max. */
+export function resolveCouponDiscountCap(coupon: any, vehicleClass?: string | null): number {
+  const caps =
+    normalizeClassDiscountCaps(coupon?.class_discount_caps) ||
+    parseClassCapsLabel(coupon?.target_custom_label);
+  if (caps) {
+    const knownClass = normalizeVehicleClassKey(vehicleClass);
+    if (knownClass) {
+      const match = caps.rules.find((rule) =>
+        rule.classes.some((cls) => normalizeVehicleClassKey(cls) === knownClass),
+      );
+      if (match) return match.cap;
+    } else {
+      return Math.min(...caps.rules.map((rule) => rule.cap));
+    }
+  }
+  const fallback = Number(coupon?.max_discount_amount || coupon?.max_discount || 0);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
+
+export function applyMaxDiscountCap(amount: number, coupon: any, vehicleClass?: string | null): number {
+  const cap = resolveCouponDiscountCap(coupon, vehicleClass);
+  if (!cap) return amount;
   return Math.min(amount, cap);
 }
 

@@ -1190,6 +1190,8 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
           custom_labels: serviceItems.map((x: any) => String(x?.label || '')).filter(Boolean),
           service_items: serviceItems,
           customer_phone: (lead as any)?.customer_phone ?? null,
+          vehicle_class: (lead as any)?.vehicle_class || (lead as any)?.meta?.vehicle_class || null,
+          model_id: (lead as any)?.model_id || null,
         };
 
         const results = await Promise.all(

@@ -1,4 +1,5 @@
 import { getServicePrice } from '@/lib/pricing';
+import { applyMaxDiscountCap } from '@/lib/coupon-rules';
 
 export type CrmQuoteLineItem = {
   kind: 'service' | 'addon';
@@ -212,8 +213,9 @@ export async function buildTelecallerCrmQuote(
         } else {
           discount = value;
         }
-        const maxDisc = Number(couponRow.max_discount_amount || couponRow.max_discount || 0);
-        if (maxDisc > 0) discount = Math.min(discount, maxDisc);
+        if (mode.includes('PERCENT') || mode === 'PERCENTAGE') {
+          discount = applyMaxDiscountCap(discount, couponRow, vehicleClass);
+        }
         discount = Math.min(discount, subtotal);
       }
     } catch {

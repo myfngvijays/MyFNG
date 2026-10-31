@@ -581,6 +581,8 @@ export default function AIBookingScreen({ navigation, route }: Props) {
             customer_phone: customerCtx.phone,
             customer_id: customerCtx.customerId,
             channel: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
+            vehicle_class: chatContext?.vehicle_class || chatContext?.vehicleClass || null,
+            model_id: chatContext?.model_id || chatContext?.modelId || null,
           },
         }),
       });

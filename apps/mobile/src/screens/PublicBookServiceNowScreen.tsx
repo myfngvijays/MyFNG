@@ -1525,6 +1525,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             customer_phone: form.customerPhone,
             channel: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
             city_id: form.city?.id || null,
+            vehicle_class: form.carModel?.class || null,
+            model_id: form.carModel?.id || null,
           },
         }),
       });
@@ -1820,6 +1822,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
               customer_phone: form.customerPhone,
               channel: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
               city_id: form.city?.id || null,
+              vehicle_class: form.carModel?.class || null,
+              model_id: form.carModel?.id || null,
             },
           }
         : undefined;

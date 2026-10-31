@@ -34,6 +34,7 @@ type Coupon = {
   usage_limit_per_customer: number | null;
   is_active: boolean;
   description: string | null;
+  class_discount_caps?: { rules?: Array<{ classes?: string[]; cap?: number }>; standard?: number | null; suv?: number | null } | null;
   campaign_name?: string | null;
   is_public?: boolean | null;
 };
@@ -44,6 +45,7 @@ const emptyForm = {
   discount_mode: 'AMOUNT',
   discount_value: '',
   min_order_value: '',
+  class_cap_rows: [{ classes: [] as string[], cap: '' }] as Array<{ classes: string[]; cap: string }>,
   target_service_type_id: '',
   target_subservice_id: '',
   target_custom_label: '',
@@ -54,6 +56,38 @@ const emptyForm = {
   is_active: true,
   description: '',
 };
+
+const FALLBACK_VEHICLE_CLASSES = [
+  'HATCHBACK',
+  'COMPACT SUV',
+  'SEDANS',
+  'PREMIUM HATCHBACK',
+  'SUV/MUVs',
+  'PREMIUM SUV/MUVs',
+  'PREMIUM LUXURY',
+];
+
+function classCapRowsFromCoupon(item: Coupon): Array<{ classes: string[]; cap: string }> {
+  let raw: any = item.class_discount_caps;
+  const label = String(item.target_custom_label || '');
+  if (!raw && label.startsWith('__class_caps__:')) {
+    try {
+      raw = JSON.parse(label.slice('__class_caps__:'.length));
+    } catch {
+      raw = null;
+    }
+  }
+  if (Array.isArray(raw?.rules) && raw.rules.length) {
+    return raw.rules.map((rule: any) => ({
+      classes: Array.isArray(rule?.classes) ? rule.classes.map(String) : [],
+      cap: rule?.cap != null ? String(rule.cap) : '',
+    }));
+  }
+  const rows: Array<{ classes: string[]; cap: string }> = [];
+  if (raw?.standard) rows.push({ classes: ['HATCHBACK', 'COMPACT SUV', 'SEDANS', 'PREMIUM HATCHBACK'], cap: String(raw.standard) });
+  if (raw?.suv) rows.push({ classes: ['SUV/MUVs', 'PREMIUM SUV/MUVs'], cap: String(raw.suv) });
+  return rows.length ? rows : [{ classes: [], cap: '' }];
+}
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'coupons', label: 'Coupons' },
@@ -77,6 +111,7 @@ export default function CouponsScreen({ navigation }: any) {
   const [assignResult, setAssignResult] = useState<{ assigned_count: number; not_found_phones: string[] } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [vehicleClasses, setVehicleClasses] = useState<string[]>(FALLBACK_VEHICLE_CLASSES);
 
   const fetchCoupons = useCallback(async () => {
     setLoading(true);
@@ -111,6 +146,15 @@ export default function CouponsScreen({ navigation }: any) {
     if (tab === 'audit') fetchAuditLogs();
   }, [tab, fetchAuditLogs]);
 
+  useEffect(() => {
+    if (!showModal) return;
+    apiFetch<{ vehicle_classes?: string[] }>('/api/admin/coupons/options')
+      .then((data) => {
+        if (data?.vehicle_classes?.length) setVehicleClasses(data.vehicle_classes);
+      })
+      .catch(() => {});
+  }, [showModal]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
@@ -135,9 +179,10 @@ export default function CouponsScreen({ navigation }: any) {
       discount_mode: item.discount_mode || '',
       discount_value: item.discount_value != null ? String(item.discount_value) : '',
       min_order_value: item.min_order_value != null ? String(item.min_order_value) : '',
+      class_cap_rows: classCapRowsFromCoupon(item),
       target_service_type_id: item.target_service_type_id || '',
       target_subservice_id: item.target_subservice_id || '',
-      target_custom_label: item.target_custom_label || '',
+      target_custom_label: String(item.target_custom_label || '').startsWith('__class_caps__:') ? '' : (item.target_custom_label || ''),
       start_at: item.start_at ? String(item.start_at).slice(0, 16) : '',
       end_at: item.end_at ? String(item.end_at).slice(0, 16) : '',
       usage_limit_total: item.usage_limit_total != null ? String(item.usage_limit_total) : '',
@@ -157,6 +202,15 @@ export default function CouponsScreen({ navigation }: any) {
         discount_mode: form.discount_mode || null,
         discount_value: form.discount_value ? Number(form.discount_value) : null,
         min_order_value: form.min_order_value ? Number(form.min_order_value) : null,
+        class_discount_caps: (() => {
+          const rules = form.class_cap_rows
+            .map((row) => ({
+              classes: row.classes.filter(Boolean),
+              cap: Number(row.cap),
+            }))
+            .filter((row) => row.classes.length > 0 && Number.isFinite(row.cap) && row.cap > 0);
+          return rules.length ? { rules } : null;
+        })(),
         target_service_type_id: form.target_service_type_id || null,
         target_subservice_id: form.target_subservice_id || null,
         target_custom_label: form.target_custom_label || null,
@@ -535,6 +589,72 @@ export default function CouponsScreen({ navigation }: any) {
               <TextInput style={styles.input} keyboardType="numeric" value={form.discount_value} onChangeText={(v) => setForm((p) => ({ ...p, discount_value: v }))} />
               <Text style={styles.label}>Min Order</Text>
               <TextInput style={styles.input} keyboardType="numeric" value={form.min_order_value} onChangeText={(v) => setForm((p) => ({ ...p, min_order_value: v }))} />
+              <Text style={styles.label}>Class discount caps</Text>
+              {form.class_cap_rows.map((row, index) => {
+                const taken = form.class_cap_rows.flatMap((other, otherIndex) => (otherIndex === index ? [] : other.classes));
+                const choices = [...new Set([...vehicleClasses, ...form.class_cap_rows.flatMap((item) => item.classes)])];
+                return (
+                  <View key={index} style={{ marginTop: 8 }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                      {choices.map((cls) => {
+                        const active = row.classes.includes(cls);
+                        const usedElsewhere = taken.includes(cls);
+                        return (
+                          <TouchableOpacity
+                            key={cls}
+                            disabled={usedElsewhere}
+                            style={[styles.chip, active ? styles.chipActive : null, usedElsewhere ? { opacity: 0.35 } : null]}
+                            onPress={() => {
+                              const classes = active ? row.classes.filter((item) => item !== cls) : [...row.classes, cls];
+                              setForm((prev) => ({
+                                ...prev,
+                                class_cap_rows: prev.class_cap_rows.map((item, itemIndex) =>
+                                  itemIndex === index ? { ...item, classes } : item,
+                                ),
+                              }));
+                            }}
+                          >
+                            <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{cls}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      placeholder="Cap ₹"
+                      value={row.cap}
+                      onChangeText={(value) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          class_cap_rows: prev.class_cap_rows.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, cap: value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    {form.class_cap_rows.length > 1 ? (
+                      <TouchableOpacity
+                        onPress={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            class_cap_rows: prev.class_cap_rows.filter((_, itemIndex) => itemIndex !== index),
+                          }))
+                        }
+                      >
+                        <Text style={{ color: '#DC2626', marginTop: 6 }}>Remove</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                );
+              })}
+              <TouchableOpacity
+                onPress={() =>
+                  setForm((prev) => ({ ...prev, class_cap_rows: [...prev.class_cap_rows, { classes: [], cap: '' }] }))
+                }
+              >
+                <Text style={{ color: COLORS.primary, fontWeight: '700', marginTop: 8 }}>+ Add more</Text>
+              </TouchableOpacity>
               <Text style={styles.label}>Custom Label</Text>
               <TextInput style={styles.input} value={form.target_custom_label} onChangeText={(v) => setForm((p) => ({ ...p, target_custom_label: v }))} />
               <Text style={styles.label}>Start At (YYYY-MM-DDTHH:mm)</Text>

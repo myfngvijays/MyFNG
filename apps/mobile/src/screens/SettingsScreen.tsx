@@ -577,6 +577,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           customer_id: customerId || null,
           service_items: serviceItems,
           channel: isMembershipOnlyCart ? 'MEMBERSHIP' : 'MOBILE',
+          vehicle_class: selectedCar?.class || null,
+          model_id: selectedCar?.id || null,
         },
       };
       const res = await fetch(`${ENV.API_URL}/api/coupons/validate`, {
@@ -598,7 +600,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     } finally {
       setCartCouponLoading(false);
     }
-  }, [coupon, subtotal, profileForm.phone, customerId, cartItems, cartSelectedService, isMembershipOnlyCart]);
+  }, [coupon, subtotal, profileForm.phone, customerId, cartItems, cartSelectedService, isMembershipOnlyCart, selectedCar]);
 
   const fetchCartCoupons = useCallback(async () => {
     try {

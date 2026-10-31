@@ -51,7 +51,7 @@ export async function POST(
     if (serviceLeadId) {
       const { data } = await supabaseAdmin
         .from('service_leads')
-        .select('id, service_type_ids, estimated_amount, customer_phone, customer_name, lead_number, city_id')
+        .select('id, service_type_ids, estimated_amount, customer_phone, customer_name, lead_number, city_id, model_id')
         .eq('id', serviceLeadId)
         .maybeSingle();
       serviceLead = data || null;
@@ -78,6 +78,8 @@ export async function POST(
         customer_phone: serviceLead?.customer_phone || body?.customer_phone || null,
         service_type_ids: Array.isArray(serviceLead?.service_type_ids) ? serviceLead.service_type_ids : [],
         city_id: serviceLead?.city_id || body?.city_id || null,
+        model_id: serviceLead?.model_id || body?.model_id || null,
+        vehicle_class: body?.vehicle_class || null,
         channel: 'TELECALLER',
       },
       { serviceBooking: true },

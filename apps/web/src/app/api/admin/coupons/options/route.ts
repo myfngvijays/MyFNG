@@ -3,6 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { COUPON_PLATFORM_CHANNELS, DEFAULT_COUPON_TYPES } from '@/lib/coupon-types';
 import { buildBookableServices } from '@/lib/coupon-service-options';
+import { FALLBACK_VEHICLE_CLASSES } from '@/lib/coupon-rules';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -50,6 +51,22 @@ async function fetchCategories(supabaseAdmin: any) {
   return [];
 }
 
+async function fetchVehicleClasses(supabaseAdmin: any): Promise<string[]> {
+  const attempts = [
+    () => supabaseAdmin.from('car_models').select('class').eq('is_active', true).limit(8000),
+    () => supabaseAdmin.from('car_models').select('class').limit(8000),
+  ];
+  for (const run of attempts) {
+    const { data, error } = await run();
+    if (error || !data?.length) continue;
+    const unique = [...new Set(
+      data.map((row: { class?: string | null }) => String(row.class || '').trim()).filter(Boolean),
+    )].sort((a, b) => a.localeCompare(b));
+    if (unique.length) return unique;
+  }
+  return [...FALLBACK_VEHICLE_CLASSES];
+}
+
 export async function GET(request: NextRequest) {
   try {
     const gate = await requireSuperAdmin(request);
@@ -58,13 +75,14 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
 
-    const [citiesRes, workshopsRes, categories, serviceTypes, batchesRes, typesRes] = await Promise.all([
+    const [citiesRes, workshopsRes, categories, serviceTypes, batchesRes, typesRes, vehicleClasses] = await Promise.all([
       supabaseAdmin.from('cities').select('id, name, state').eq('is_active', true).order('name').limit(200),
       supabaseAdmin.from('workshops').select('id, name, city').order('name').limit(300),
       fetchCategories(supabaseAdmin),
       fetchServiceTypes(supabaseAdmin),
       supabaseAdmin.from('coupon_batches').select('id, campaign_name, code_prefix, code_count, created_at').order('created_at', { ascending: false }).limit(50),
       supabaseAdmin.from('coupon_types').select('slug, label, is_system, display_order').order('display_order').order('label'),
+      fetchVehicleClasses(supabaseAdmin),
     ]);
 
     const bookable_services = buildBookableServices(
@@ -80,6 +98,7 @@ export async function GET(request: NextRequest) {
       batches: batchesRes.data || [],
       coupon_types: typesRes.error ? DEFAULT_COUPON_TYPES : (typesRes.data?.length ? typesRes.data : DEFAULT_COUPON_TYPES),
       channels: COUPON_PLATFORM_CHANNELS,
+      vehicle_classes: vehicleClasses,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
