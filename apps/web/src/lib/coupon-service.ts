@@ -24,6 +24,9 @@ export type CouponLeadContext = CouponScopeContext & {
   }>;
   customer_id?: string | null;
   vehicle_class?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_number?: string | null;
   model_id?: string | number | null;
 };
 
@@ -219,6 +222,63 @@ async function resolveReferralCouponAssignment(
   return { assignment, claim, notes };
 }
 
+async function classFromCatalog(
+  supabaseAdmin: SupabaseClient,
+  make: string,
+  model: string,
+): Promise<string | null> {
+  const makeName = make.trim();
+  const modelName = model.trim();
+  const names = [modelName];
+  const parts = modelName.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) names.push(parts[parts.length - 1]);
+  for (const name of names) {
+    if (!name) continue;
+    const { data } = await supabaseAdmin
+      .from('car_models')
+      .select('class, make')
+      .ilike('model_name', name)
+      .limit(30);
+    const rows = data || [];
+    const matchedMake = makeName
+      ? rows.filter((row) => String(row.make || '').trim().toUpperCase() === makeName.toUpperCase())
+      : rows;
+    const classes = [...new Set(matchedMake.map((row) => String(row.class || '').trim()).filter(Boolean))];
+    if (classes.length === 1) return classes[0];
+  }
+  return null;
+}
+
+async function classFromCustomerGarage(
+  supabaseAdmin: SupabaseClient,
+  customerId: string,
+  hint: { make?: string; model?: string; number?: string },
+): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from('customer_vehicles')
+    .select('make, model, vehicle_number, is_default, updated_at')
+    .eq('customer_id', customerId)
+    .order('updated_at', { ascending: false });
+  const vehicles = data || [];
+  if (!vehicles.length) return null;
+  const plate = String(hint.number || '').replace(/\s/g, '').toUpperCase();
+  const modelHint = String(hint.model || '').trim().toUpperCase();
+  let chosen =
+    (plate
+      ? vehicles.find((vehicle) => String(vehicle.vehicle_number || '').replace(/\s/g, '').toUpperCase() === plate)
+      : null) || null;
+  if (!chosen && modelHint) {
+    chosen = vehicles.find((vehicle) => {
+      const model = String(vehicle.model || '').trim().toUpperCase();
+      return Boolean(model) && (model === modelHint || modelHint.includes(model) || model.includes(modelHint));
+    }) || null;
+  }
+  if (!chosen && vehicles.length === 1) chosen = vehicles[0];
+  if (!chosen) chosen = vehicles.find((vehicle) => vehicle.is_default) || null;
+  if (!chosen) return null;
+  return classFromCatalog(supabaseAdmin, String(chosen.make || ''), String(chosen.model || ''));
+}
+
 async function resolveVehicleClass(
   supabaseAdmin: SupabaseClient,
   leadContext: CouponLeadContext,
@@ -226,14 +286,40 @@ async function resolveVehicleClass(
   const direct = String(leadContext.vehicle_class || '').trim();
   if (direct) return direct;
   const modelId = String(leadContext.model_id || '').trim();
-  if (!modelId) return null;
-  const { data } = await supabaseAdmin
-    .from('car_models')
-    .select('class')
-    .eq('id', modelId)
-    .maybeSingle();
-  const cls = String(data?.class || '').trim();
-  return cls || null;
+  if (modelId) {
+    const { data } = await supabaseAdmin
+      .from('car_models')
+      .select('class')
+      .eq('id', modelId)
+      .maybeSingle();
+    const cls = String(data?.class || '').trim();
+    if (cls) return cls;
+  }
+  const fromNames = await classFromCatalog(
+    supabaseAdmin,
+    String(leadContext.vehicle_make || ''),
+    String(leadContext.vehicle_model || ''),
+  );
+  if (fromNames) return fromNames;
+  let customerId = String(leadContext.customer_id || '').trim();
+  if (!customerId) {
+    const phone = normalizePhone(leadContext.customer_phone || null);
+    if (phone) {
+      const { data } = await supabaseAdmin
+        .from('customers')
+        .select('id')
+        .or(`phone.eq.${phone},phone.eq.91${phone},phone.eq.+91${phone},phone.ilike.%${phone}`)
+        .limit(1)
+        .maybeSingle();
+      customerId = String(data?.id || '').trim();
+    }
+  }
+  if (!customerId) return null;
+  return classFromCustomerGarage(supabaseAdmin, customerId, {
+    make: leadContext.vehicle_make || '',
+    model: leadContext.vehicle_model || '',
+    number: leadContext.vehicle_number || '',
+  });
 }
 
 export async function validateCouponForCheckout(

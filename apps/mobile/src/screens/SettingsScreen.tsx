@@ -292,6 +292,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   const [selectedReferralVoucherId, setSelectedReferralVoucherId] = useState<string | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
+  const cartVehicleRef = useRef<any>(null);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [carSearch, setCarSearch] = useState('');
   const [carSuggestions, setCarSuggestions] = useState<any[]>([]);
@@ -577,8 +578,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           customer_id: customerId || null,
           service_items: serviceItems,
           channel: isMembershipOnlyCart ? 'MEMBERSHIP' : 'MOBILE',
-          vehicle_class: selectedCar?.class || null,
-          model_id: selectedCar?.id || null,
+          vehicle_class: cartVehicleRef.current?.class || selectedCar?.class || null,
+          vehicle_make: cartVehicleRef.current?.make || selectedCar?.make || null,
+          vehicle_model: cartVehicleRef.current?.model || cartVehicleRef.current?.model_name || selectedCar?.model_name || selectedCar?.model || null,
+          vehicle_number: cartVehicleRef.current?.vehicle_number || null,
+          model_id: cartVehicleRef.current?.model_id || selectedCar?.id || null,
         },
       };
       const res = await fetch(`${ENV.API_URL}/api/coupons/validate`, {
@@ -1326,6 +1330,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     const found = allAssociatedVehicles.find((v, idx) => getVehicleKey(v, idx) === selectedVehicleKey);
     return found || allAssociatedVehicles[0];
   }, [allAssociatedVehicles, selectedVehicleKey, vehicleEntryOnly]);
+  cartVehicleRef.current = selectedVehicle;
 
   const vehicleCarouselData = useMemo(() => {
     const seen = new Set<string>();
