@@ -4207,6 +4207,43 @@ async function checkAutomobileNews(): Promise<HealthCheck> {
   }
 }
 
+async function checkWebsiteOfferPopup(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const { getWebsiteOfferPopup, isWebsiteOfferPopupLive } = await import('@/lib/website-offer-popup');
+    const config = await getWebsiteOfferPopup();
+    const live = isWebsiteOfferPopupLive(config);
+    const expired = Boolean(config.enabled && config.ends_at && new Date(config.ends_at).getTime() < Date.now());
+    return {
+      name: 'Website Offer Popup',
+      category: 'Operations',
+      status: expired ? 'degraded' : 'healthy',
+      responseTime: Date.now() - start,
+      message: !config.enabled
+        ? 'Website popup is turned off'
+        : expired
+          ? 'Website popup end date has passed'
+          : live
+            ? `Website popup is live until ${config.ends_at || 'no expiry'}`
+            : 'Website popup is scheduled and not live yet',
+      reason: expired ? 'Turn it off or move the expiry date in Website Popup.' : undefined,
+      quickFix: { label: 'Open Website Popup', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/website-popup' } },
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'Website Offer Popup',
+      category: 'Operations',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Website popup settings could not be read',
+      reason: e?.message || 'system_settings read failed',
+      quickFix: { label: 'Open Website Popup', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/website-popup' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkPublicStatusPage(): Promise<HealthCheck> {
   const start = Date.now();
   const { client, configError } = getAdminClient();
@@ -4321,6 +4358,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkCrmMlDl(),
     checkDpdpCompliance(),
     checkWebsiteTracking(),
+    checkWebsiteOfferPopup(),
     checkPublicStatusPage(),
   ]);
 }

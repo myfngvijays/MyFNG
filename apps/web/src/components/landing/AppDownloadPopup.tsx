@@ -1,62 +1,35 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  X,
-  CheckCircle2,
-  Clock,
-  Shield,
-  HeadphonesIcon,
-  Award,
-  Download,
-} from 'lucide-react';
+import { X, Clock } from 'lucide-react';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { buildGoAppDownloadHref } from '@/lib/utm';
+import { DEFAULT_WEBSITE_OFFER_POPUP, type WebsiteOfferPopupConfig } from '@/lib/website-offer-popup';
 
-const POPUP_VIEWS_KEY = 'myfng_app_download_popup_views_diwali_v1';
-const MAX_VIEWS = 2;
 const OPEN_DELAY_MS = 4000;
 const SCROLL_TRIGGER = 0.6;
 const EXCLUDED_PATH_PREFIXES = ['/book-service'];
 
-const DIWALI_POPUP_UTM = {
-  utm_source: 'myfng',
-  utm_medium: 'popup',
-  utm_campaign: 'diwali',
-} as const;
+type LivePopup = WebsiteOfferPopupConfig & { href: string };
 
-const DEFAULT_GO_HREF =
-  '/go/myfngapp?utm_source=myfng&utm_medium=popup&utm_campaign=diwali&utm_content=app-download-popup';
+function storageKey(popup: LivePopup) {
+  return `myfng_website_popup_${popup.coupon_code}_${popup.starts_at}_${popup.ends_at}`;
+}
 
-const BENEFITS = [
-  'Free Pickup & Drop',
-  'Live Service Updates',
-  'Transparent Pricing',
-  '24/7 Roadside Assistance',
-];
-
-const TRUST = [
-  { icon: Shield, label: 'Trusted Professionals' },
-  { icon: Award, label: 'Quality Assured' },
-  { icon: CheckCircle2, label: 'Secure Payments' },
-  { icon: HeadphonesIcon, label: 'Customer Support' },
-];
-
-function getViewCount(): number {
-  if (typeof window === 'undefined') return MAX_VIEWS;
+function getViewCount(popup: LivePopup): number {
+  if (typeof window === 'undefined') return popup.max_views;
   try {
-    const raw = localStorage.getItem(POPUP_VIEWS_KEY);
+    const raw = localStorage.getItem(storageKey(popup));
     const count = raw ? parseInt(raw, 10) : 0;
     return Number.isFinite(count) && count >= 0 ? count : 0;
   } catch {
-    return MAX_VIEWS;
+    return popup.max_views;
   }
 }
 
-function recordView() {
+function recordView(popup: LivePopup) {
   try {
-    localStorage.setItem(POPUP_VIEWS_KEY, String(getViewCount() + 1));
+    localStorage.setItem(storageKey(popup), String(getViewCount(popup) + 1));
   } catch {
     // ignore storage errors
   }
@@ -67,29 +40,43 @@ function isExcludedPath(pathname: string | null): boolean {
   return EXCLUDED_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-function canShowPopup(pathname: string | null): boolean {
-  return !isExcludedPath(pathname) && getViewCount() < MAX_VIEWS;
-}
-
 export default function AppDownloadPopup() {
   const pathname = usePathname();
+  const [popup, setPopup] = useState<LivePopup | null>(null);
   const [show, setShow] = useState(false);
-  const [goHref, setGoHref] = useState(DEFAULT_GO_HREF);
   const openedRef = useRef(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/public/website-popup')
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const next = json?.popup;
+        if (!next?.headline) {
+          setPopup(null);
+          return;
+        }
+        setPopup({ ...DEFAULT_WEBSITE_OFFER_POPUP, ...next });
+      })
+      .catch(() => {
+        if (!cancelled) setPopup(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const open = useCallback(() => {
-    if (openedRef.current || !canShowPopup(pathname)) return;
+    if (!popup || openedRef.current || isExcludedPath(pathname)) return;
+    if (getViewCount(popup) >= popup.max_views) return;
     openedRef.current = true;
-    recordView();
+    recordView(popup);
     setShow(true);
-  }, [pathname]);
+  }, [pathname, popup]);
 
   const close = useCallback(() => {
     setShow(false);
-  }, []);
-
-  useEffect(() => {
-    setGoHref(buildGoAppDownloadHref('app-download-popup', DIWALI_POPUP_UTM));
   }, []);
 
   useEffect(() => {
@@ -104,8 +91,7 @@ export default function AppDownloadPopup() {
   useEffect(() => {
     openedRef.current = false;
     setShow(false);
-
-    if (!canShowPopup(pathname)) return;
+    if (!popup || isExcludedPath(pathname) || getViewCount(popup) >= popup.max_views) return;
 
     const timer = window.setTimeout(() => {
       open();
@@ -113,12 +99,9 @@ export default function AppDownloadPopup() {
 
     function onScroll() {
       if (openedRef.current) return;
-
       const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
       if (scrollHeight <= 0) return;
-
-      const scrollPercent = window.scrollY / scrollHeight;
-      if (scrollPercent >= SCROLL_TRIGGER) {
+      if (window.scrollY / scrollHeight >= SCROLL_TRIGGER) {
         window.clearTimeout(timer);
         open();
       }
@@ -129,111 +112,68 @@ export default function AppDownloadPopup() {
       window.clearTimeout(timer);
       window.removeEventListener('scroll', onScroll);
     };
-  }, [pathname, open]);
+  }, [pathname, popup, open]);
 
-  if (!show) return null;
+  if (!show || !popup) return null;
 
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto overscroll-contain" onClick={close}>
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
-      <div className="relative flex min-h-full items-center justify-center p-6 sm:p-4">
-      <div
-        className="relative w-full max-w-[300px] animate-in fade-in zoom-in-95 duration-300 sm:max-w-[520px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={close}
-          className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-gray-600 shadow-lg transition-all hover:scale-110 hover:text-gray-900 sm:-right-3 sm:-top-3 sm:h-9 sm:w-9"
-          aria-label="Close popup"
+      <div className="relative flex min-h-full items-center justify-center p-4 sm:p-6">
+        <div
+          className="relative w-full max-w-[340px] animate-in fade-in zoom-in-95 duration-300 sm:max-w-[460px]"
+          onClick={(e) => e.stopPropagation()}
         >
-          <X className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
-        </button>
+          <button
+            onClick={close}
+            className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-600 shadow-lg transition-all hover:scale-110 hover:text-gray-900"
+            aria-label="Close popup"
+          >
+            <X className="h-4 w-4" />
+          </button>
 
-        <div className="overflow-hidden rounded-2xl bg-[#fff8ef] shadow-2xl ring-1 ring-[#e7c27a] sm:rounded-[28px]">
-          <Image
-            src="/media/banners/myfng-diwali-car-service-offer-1600x800.webp"
-            alt="Diwali Offer"
-            width={1600}
-            height={800}
-            className="h-auto w-full"
-            priority
-          />
-          <div>
-            <div className="relative px-3.5 py-2.5 sm:px-5 sm:py-4">
-              <h2 className="text-lg font-extrabold leading-none tracking-tight text-[#3f0d18] sm:text-2xl">
-                Download MyFNG App
-              </h2>
-              <p className="mt-1.5 text-xs font-semibold text-[#b45309] sm:mt-2 sm:text-base">
-                Get 10% OFF on Your First Service!
-              </p>
-              <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#f0c36a] bg-[#fff4d8] px-2.5 py-1 text-[10px] font-extrabold text-[#9a3412] sm:mt-3 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[11px]">
-                <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                LIMITED TIME OFFER
-              </div>
+          <div className="overflow-hidden rounded-[28px] bg-[#fff8ef] shadow-2xl ring-1 ring-[#e7c27a]">
+            {popup.image_url ? (
+              <Image
+                src={popup.image_url}
+                alt={popup.headline}
+                width={1600}
+                height={800}
+                className="h-auto w-full"
+                priority
+              />
+            ) : null}
+            <div className="px-5 py-5 text-center sm:px-8 sm:py-6">
+              <h2 className="text-3xl font-extrabold tracking-tight text-[#5c1020] sm:text-4xl">{popup.headline}</h2>
+              <p className="mt-2 text-sm font-semibold text-[#c2410c] sm:text-base">{popup.subtitle}</p>
 
-              <div className="mt-2 flex items-center gap-3 sm:mt-3">
-                <div className="grid min-w-0 flex-1 grid-cols-1 gap-1.5 sm:gap-2">
-                  {BENEFITS.map((text) => (
-                    <div key={text} className="flex items-center gap-1.5 rounded-lg bg-white px-2 py-1 text-xs text-[#3f0d18] ring-1 ring-[#f3d7a1] sm:gap-2 sm:rounded-xl sm:px-2.5 sm:py-2 sm:text-sm">
-                      <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[#9a3412] text-[10px] font-extrabold text-white sm:h-5 sm:w-5 sm:text-[11px]">
-                        ✓
-                      </span>
-                      {text}
-                    </div>
-                  ))}
-                </div>
-                <div className="hidden w-[84px] flex-shrink-0 sm:block">
-                  <div className="relative h-[168px] overflow-hidden rounded-[1.25rem] border-[3px] border-[#2a211c] bg-black shadow-xl">
-                    <div className="absolute left-1/2 top-1.5 z-10 h-3 w-12 -translate-x-1/2 rounded-full bg-black" />
-                    <Image
-                      src="/myfng-app-screenshot.webp"
-                      alt="MyFNG App"
-                      width={400}
-                      height={800}
-                      className="h-full w-full object-cover object-top"
-                    />
+              {popup.coupon_code ? (
+                <div className="mx-auto mt-4 flex max-w-[320px] overflow-hidden rounded-2xl shadow-md">
+                  <div className="flex flex-1 items-center justify-center bg-[#6b1224] px-3 py-4 text-xl font-extrabold tracking-[0.12em] text-[#ffe14a] sm:text-2xl">
+                    {popup.coupon_code}
+                  </div>
+                  <div className="flex w-[42%] items-center justify-center bg-[#ffd000] px-3 py-4 text-center text-xl font-extrabold leading-tight text-[#7a1020] sm:text-2xl">
+                    {popup.offer_label}
                   </div>
                 </div>
-              </div>
+              ) : null}
+
+              {popup.badge_text ? (
+                <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#ffe7a3] px-3 py-1 text-[11px] font-extrabold tracking-wide text-[#9a3412]">
+                  <Clock className="h-3.5 w-3.5" />
+                  {popup.badge_text}
+                </div>
+              ) : null}
 
               <a
-                href={goHref}
-                className="mt-2.5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#9a3412] px-4 py-2.5 text-sm font-extrabold text-white shadow-lg transition-all hover:bg-[#7c2d12] sm:mt-3 sm:w-auto sm:rounded-xl sm:px-5 sm:py-2.5 sm:text-sm"
+                href={popup.href}
+                className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[#6b1224] px-4 py-3 text-base font-extrabold text-[#ffe14a] shadow-lg transition-all hover:bg-[#54101c]"
               >
-                <Download className="h-5 w-5" />
-                Download App
+                {popup.button_text}
               </a>
             </div>
           </div>
-
-          <div className="border-t border-[#f3d7a1] bg-white px-3 py-2.5 sm:px-6 sm:py-3">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-4 sm:gap-3">
-              {TRUST.map(({ icon: Icon, label }) => {
-                const [first, ...rest] = label.split(' ');
-                return (
-                  <div key={label} className="flex items-center gap-2 sm:justify-center sm:gap-1.5">
-                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#9a3412] ring-1 ring-[#f0c36a] sm:h-7 sm:w-7">
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <span className="text-[11px] font-medium leading-tight text-[#3f0d18] sm:text-xs">
-                      <span className="sm:hidden">
-                        {first}
-                        {rest.length > 0 ? (
-                          <>
-                            <br />
-                            {rest.join(' ')}
-                          </>
-                        ) : null}
-                      </span>
-                      <span className="hidden sm:inline">{label}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
-      </div>
       </div>
     </div>
   );

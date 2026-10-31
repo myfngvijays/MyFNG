@@ -96,6 +96,7 @@ export const SA_NAV: SaNavRow[] = [
       { id: 'home_carousel', label: 'Home Carousel', icon: 'images-outline', target: 'HomeCarousel', kind: 'stack' },
       { id: 'service_images', label: 'Service Page Images', icon: 'images-outline', target: 'HomeCarousel', kind: 'stack', params: { kind: 'promo' } },
       { id: 'app_popups', label: 'App Popups', icon: 'megaphone-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'App Popups', path: '/api/super_admin/app-popups' } },
+      { id: 'website_popup', label: 'Website Popup', icon: 'megaphone-outline', target: 'WebsitePopup', kind: 'stack' },
       { id: 'public_pages', label: 'Workshop Public Pages', icon: 'globe-outline', target: 'WorkshopPublicPages', kind: 'stack' },
       { id: 'coupons', label: 'Coupons', icon: 'pricetags-outline', target: 'Coupons', kind: 'stack' },
     ],

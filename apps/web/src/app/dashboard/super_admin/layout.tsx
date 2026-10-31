@@ -319,6 +319,12 @@ const navigationItems: NavItem[] = [
         description: 'Create & manage app popups',
       },
       {
+        name: 'Website Popup',
+        href: '/dashboard/super_admin/website-popup',
+        icon: Megaphone,
+        description: 'Diwali offer popup — on/off, dates, coupon',
+      },
+      {
         name: 'Home Carousel Images',
         href: '/dashboard/super_admin/website-images/home-carousel',
         icon: ImageIcon,
@@ -973,6 +979,7 @@ function SuperAdminLayoutInner({
     }
     if (
       pathname?.startsWith('/dashboard/super_admin/app-popups') ||
+      pathname?.startsWith('/dashboard/super_admin/website-popup') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/home-carousel') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/promo-banners') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/customer-reviews') ||

@@ -45,6 +45,7 @@ import TelecallerDistributionScreen from './superadmin/TelecallerDistributionScr
 import LeadHistoryScreen from './superadmin/LeadHistoryScreen';
 import WebsiteImagesHubScreen from './superadmin/WebsiteImagesHubScreen';
 import HomeCarouselScreen from './superadmin/HomeCarouselScreen';
+import WebsitePopupScreen from './superadmin/WebsitePopupScreen';
 import WorkshopPublicPagesScreen from './superadmin/WorkshopPublicPagesScreen';
 import KbManagerScreen from './superadmin/KbManagerScreen';
 import KbQuestionsScreen from './superadmin/KbQuestionsScreen';
@@ -429,6 +430,7 @@ export default function SuperAdminDashboard() {
       'lead-history': 'LeadHistory',
       'website-images': 'WebsiteImages',
       'home-carousel': 'HomeCarousel',
+      'website-popup': 'WebsitePopup',
       'workshop-public-pages': 'WorkshopPublicPages',
       'kb-manager': 'KBManager',
       'kb-questions': 'KBQuestions',
@@ -533,6 +535,10 @@ export default function SuperAdminDashboard() {
 
   if (currentScreen === 'HomeCarousel') {
     return <HomeCarouselScreen navigation={navigationObj} route={{ params: {} }} />;
+  }
+
+  if (currentScreen === 'WebsitePopup') {
+    return <WebsitePopupScreen navigation={navigationObj} />;
   }
 
   if (currentScreen === 'WorkshopPublicPages') {

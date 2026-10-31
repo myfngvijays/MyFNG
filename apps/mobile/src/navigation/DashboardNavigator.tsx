@@ -43,6 +43,7 @@ import {
 } from '../screens/dashboard/superadmin/SuperAdminWalletScreens';
 import WebsiteImagesHubScreen from '../screens/dashboard/superadmin/WebsiteImagesHubScreen';
 import HomeCarouselScreen from '../screens/dashboard/superadmin/HomeCarouselScreen';
+import WebsitePopupScreen from '../screens/dashboard/superadmin/WebsitePopupScreen';
 import WorkshopPublicPagesScreen from '../screens/dashboard/superadmin/WorkshopPublicPagesScreen';
 import KbManagerScreen from '../screens/dashboard/superadmin/KbManagerScreen';
 import KbQuestionsScreen from '../screens/dashboard/superadmin/KbQuestionsScreen';
@@ -1409,6 +1410,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="HomeCarousel"
           component={HomeCarouselScreen}
           options={{ title: 'Home Carousel' }}
+        />
+        <Stack.Screen
+          name="WebsitePopup"
+          component={WebsitePopupScreen}
+          options={{ title: 'Website Popup' }}
         />
         <Stack.Screen
           name="ManualInvoices"
