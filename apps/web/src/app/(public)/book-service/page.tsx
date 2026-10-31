@@ -3690,48 +3690,43 @@ export default function BookServicePage() {
                       Apply Coupon <span className="text-xs font-semibold text-gray-500">(Optional)</span>
                     </h4>
                     {availableCoupons.length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {availableCoupons.map((c) => (
-                          <button
-                            key={c.id || c.code}
-                            type="button"
-                            onClick={() => {
-                              setCouponCode(String(c.code || '').toUpperCase());
-                              void applyCoupon(String(c.code || '').toUpperCase());
-                            }}
-                            className="px-3 py-2 rounded-lg border border-brand-primary/30 bg-brand-primary/5 text-xs font-bold text-brand-primary"
-                          >
-                            {c.code}
-                          </button>
-                        ))}
+                      <div className="space-y-2">
+                        {availableCoupons.map((c) => {
+                          const code = String(c.code || '').toUpperCase();
+                          const applied = String(couponMeta?.code || '').toUpperCase() === code;
+                          const mode = String(c.discount_mode || '').toUpperCase();
+                          const value = Number(c.discount_value || 0);
+                          const hint =
+                            mode === 'PERCENT' && value > 0
+                              ? `${value}% off`
+                              : (mode === 'AMOUNT' || mode === 'FLAT') && value > 0
+                                ? `₹${value} off`
+                                : 'Offer';
+                          return (
+                            <button
+                              key={c.id || code}
+                              type="button"
+                              disabled={isValidatingCoupon}
+                              onClick={() => {
+                                if (applied) clearCoupon();
+                                else void applyCoupon(code);
+                              }}
+                              className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left ${
+                                applied ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'
+                              }`}
+                            >
+                              <span>
+                                <span className="block text-sm font-extrabold text-gray-900">{code}</span>
+                                <span className="block text-[11px] text-gray-500">{hint}</span>
+                              </span>
+                              <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold text-white ${applied ? 'bg-green-600' : 'bg-brand-primary'}`}>
+                                {isValidatingCoupon && couponCode === code ? 'Applying…' : applied ? 'Applied' : 'Click to apply'}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                     ) : null}
-                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                      <input
-                        type="text"
-                        value={couponCode}
-                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                        placeholder="Enter coupon code"
-                        className="flex-1 px-3 py-2 border rounded-lg text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => { void applyCoupon(); }}
-                        disabled={isValidatingCoupon || !couponCode.trim()}
-                        className="px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold disabled:opacity-60"
-                      >
-                        {isValidatingCoupon ? 'Applying...' : 'Apply'}
-                      </button>
-                      {couponMeta && (
-                        <button
-                          type="button"
-                          onClick={clearCoupon}
-                          className="px-3 py-2 rounded-lg border text-sm font-semibold"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
                     {couponError && (
                       <div className="text-xs text-red-600 mt-2">{couponError}</div>
                     )}

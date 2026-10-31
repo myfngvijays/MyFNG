@@ -104,7 +104,7 @@ export function ReferralVoucherTicket({
         <View style={styles.rightCol}>
           <Text style={styles.rightLabel}>{rightLabel || formatVoucherRightLabel(subtitle)}</Text>
           <Text style={[styles.action, { color: appliedPalette.accent }]}>
-            {applied ? '✓ APPLIED' : 'TAP TO APPLY'}
+            {applied ? 'Applied' : 'Click to apply'}
           </Text>
         </View>
       </View>

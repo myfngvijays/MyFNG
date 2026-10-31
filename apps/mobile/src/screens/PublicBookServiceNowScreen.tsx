@@ -4100,35 +4100,6 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     <Text style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 8 }}>No promo coupons available</Text>
                   )}
 
-                  <View style={styles.couponRow}>
-                    <TextInput
-                      value={couponCode}
-                      onChangeText={(t) => setCouponCode(t.toUpperCase())}
-                      style={[styles.input, styles.couponInput]}
-                      placeholder="Or enter coupon code"
-                      placeholderTextColor={COLORS.gray[500]}
-                      autoCapitalize="characters"
-                      onFocus={(e) => scrollToInput(e.target)}
-                    />
-                    <TouchableOpacity
-                      style={[
-                        styles.couponBtn,
-                        couponApplying || !couponCode.trim() ? styles.couponBtnDisabled : null,
-                      ]}
-                      onPress={() => applyCoupon()}
-                      disabled={couponApplying || !couponCode.trim()}
-                    >
-                      <Text style={styles.couponBtnText}>
-                        {couponApplying ? 'Applying…' : 'Apply'}
-                      </Text>
-                    </TouchableOpacity>
-                    {couponMeta ? (
-                      <TouchableOpacity style={styles.couponRemoveBtn} onPress={clearCoupon}>
-                        <Text style={styles.couponRemoveText}>Remove</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-
                   {couponError ? <Text style={styles.errorText}>{couponError}</Text> : null}
                   {couponMeta ? (
                     <View style={styles.couponAppliedBanner}>

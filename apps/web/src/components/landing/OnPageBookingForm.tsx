@@ -81,6 +81,7 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
   const [carModel, setCarModel] = useState('');
   const [carModelId, setCarModelId] = useState('');
   const [selectedCar, setSelectedCar] = useState<CarHit | null>(null);
+  const [offerCoupons, setOfferCoupons] = useState<any[]>([]);
   const [couponCode, setCouponCode] = useState('');
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponMeta, setCouponMeta] = useState<any | null>(null);
@@ -262,7 +263,14 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
     }
   }
 
-  function clearCoupon() {
+  useEffect(() => {
+    fetch('/api/coupons/active?channel=WEB')
+      .then((res) => res.json())
+      .then((json) => setOfferCoupons(Array.isArray(json?.coupons) ? json.coupons : []))
+      .catch(() => setOfferCoupons([]));
+  }, []);
+
+  function resetCouponResult() {
     couponResultRef.current = null;
     setCouponMeta(null);
     setCouponDiscount(0);
@@ -270,10 +278,15 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
     setCouponError('');
   }
 
+  function clearCoupon() {
+    resetCouponResult();
+    setCouponCode('');
+  }
+
   async function applyPageCoupon(codeInput = couponCode) {
     const code = String(codeInput || '').trim().toUpperCase();
     setCouponCode(code);
-    clearCoupon();
+    resetCouponResult();
     if (!code) {
       setCouponError('Enter a coupon code.');
       return false;
@@ -812,6 +825,54 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   </label>
                 </div>
               ) : null}
+              {offerCoupons.length > 0 ? (
+                <div className="space-y-2">
+                  {offerCoupons.map((offer) => {
+                    const code = String(offer.code || '').toUpperCase();
+                    const applied = String(couponMeta?.code || '').toUpperCase() === code;
+                    const mode = String(offer.discount_mode || '').toUpperCase();
+                    const value = Number(offer.discount_value || 0);
+                    const hint =
+                      mode === 'PERCENT' && value > 0
+                        ? `${value}% off`
+                        : (mode === 'AMOUNT' || mode === 'FLAT') && value > 0
+                          ? `₹${value} off`
+                          : 'Offer';
+                    return (
+                      <button
+                        key={offer.id || code}
+                        type="button"
+                        disabled={couponBusy}
+                        onClick={() => {
+                          if (applied) clearCoupon();
+                          else void applyPageCoupon(code);
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left ${
+                          applied ? 'border-emerald-300 bg-emerald-50' : 'border-blue-200 bg-white'
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-extrabold text-slate-900">{code}</span>
+                          <span className="block text-[11px] text-slate-500">{hint}</span>
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold text-white ${
+                            applied ? 'bg-emerald-600' : 'bg-blue-600'
+                          }`}
+                        >
+                          {couponBusy && couponCode === code ? 'Applying…' : applied ? 'Applied' : 'Click to apply'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {couponError ? <p className="text-[11px] font-medium text-red-600">{couponError}</p> : null}
+                  {couponMeta && couponService ? (
+                    <p className="text-[11px] font-medium leading-4 text-emerald-700">
+                      {couponService.name}: ₹{couponService.price.toLocaleString('en-IN')} − ₹{couponDiscount.toLocaleString('en-IN')} = ₹{Math.max(couponService.price - couponDiscount, 0).toLocaleString('en-IN')}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {visitMode === 'visit' ? (
                 <p className="text-center text-[11px] font-medium text-slate-500">
                   Prices are not shown here. We share the estimate on the call.
@@ -836,36 +897,6 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   Prices are not shown here. Verify OTP, then open the price list for your car.
                 </p>
               )}
-              <div>
-                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Coupon (optional)</span>
-                <div className="flex gap-2">
-                  <input
-                    value={couponCode}
-                    onChange={(e) => {
-                      setCouponCode(e.target.value.toUpperCase());
-                      clearCoupon();
-                    }}
-                    placeholder="DIWALI20"
-                    className="h-10 min-w-0 flex-1 rounded-xl border border-blue-200 px-3 text-sm uppercase outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { void applyPageCoupon(); }}
-                    disabled={couponBusy || !couponCode.trim()}
-                    className="h-10 shrink-0 rounded-xl bg-blue-600 px-3 text-xs font-bold text-white disabled:opacity-60"
-                  >
-                    {couponBusy ? 'Applying…' : 'Apply'}
-                  </button>
-                </div>
-                {couponError ? <p className="mt-1 text-[11px] font-medium text-red-600">{couponError}</p> : null}
-                {couponMeta && couponService ? (
-                  <p className="mt-1 text-[11px] font-medium leading-4 text-emerald-700">
-                    {couponMeta.code} applied on {couponService.name}. Service ₹{couponService.price.toLocaleString('en-IN')}, discount ₹{couponDiscount.toLocaleString('en-IN')}, you pay ₹{Math.max(couponService.price - couponDiscount, 0).toLocaleString('en-IN')}.
-                  </p>
-                ) : (
-                  <p className="mt-1 text-[11px] leading-4 text-slate-500">Select your car, then apply. Discount follows that car&apos;s class.</p>
-                )}
-              </div>
               <label className="flex items-center gap-2 text-[11px] leading-4 text-slate-600">
                 <input
                   type="checkbox"
