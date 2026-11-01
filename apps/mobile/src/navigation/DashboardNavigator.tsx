@@ -1271,6 +1271,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     const InventoryZonesScreen = require('../screens/dashboard/superadmin/InventoryZonesScreen').default;
     const InventoryPricingScreen = require('../screens/dashboard/superadmin/InventoryPricingScreen').default;
     const InventoryServicePricingScreen = require('../screens/dashboard/superadmin/InventoryServicePricingScreen').default;
+    const ZoneServicePricesScreen = require('../screens/dashboard/superadmin/ZoneServicePricesScreen').default;
     const WorkshopRatesScreen = require('../screens/dashboard/superadmin/WorkshopRatesScreen').default;
     
     return (
@@ -1374,6 +1375,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           name="InventoryServicePricing" 
           component={InventoryServicePricingScreen}
           options={{ title: 'Service Pricing' }}
+        />
+        <Stack.Screen
+          name="ZoneServicePrices"
+          component={ZoneServicePricesScreen}
+          options={{ title: 'Zone Prices' }}
         />
         <Stack.Screen 
           name="WorkshopRates" 

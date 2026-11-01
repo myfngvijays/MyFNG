@@ -267,6 +267,12 @@ const navigationItems: NavItem[] = [
     description: 'Manage Service Type Prices'
   },
   {
+    name: 'Zone Prices',
+    href: '/dashboard/super_admin/inventory/zone-prices',
+    icon: Tags,
+    description: 'Prime & Urban overall service prices'
+  },
+  {
     name: 'Zones',
     href: '/dashboard/super_admin/inventory/zones',
     icon: MapPin,

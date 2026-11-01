@@ -69,6 +69,7 @@ export const SA_NAV: SaNavRow[] = [
       { id: 'additional_jobs', label: 'Additional Jobs Master', icon: 'briefcase-outline', target: 'AdditionalJobsMaster', kind: 'stack' },
       { id: 'workshop_pricing', label: 'Workshop Pricing', icon: 'pricetag-outline', target: 'InventoryPricing', kind: 'stack' },
       { id: 'service_pricing', label: 'Service Pricing', icon: 'construct-outline', target: 'InventoryServicePricing', kind: 'stack' },
+      { id: 'zone_prices', label: 'Zone Prices', icon: 'pricetag-outline', target: 'ZoneServicePrices', kind: 'stack' },
       { id: 'zones', label: 'Zones', icon: 'map-outline', target: 'InventoryZones', kind: 'stack' },
       { id: 'workshop_rates', label: 'Workshop Rates', icon: 'cash-outline', target: 'WorkshopRates', kind: 'stack' },
     ],

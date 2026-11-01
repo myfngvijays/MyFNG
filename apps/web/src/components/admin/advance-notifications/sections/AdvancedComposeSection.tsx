@@ -29,6 +29,7 @@ import {
   Ticket,
   Wallet,
   ClipboardList,
+  Calendar,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NotificationLivePreview, { TYPE_DOT } from '../components/NotificationLivePreview';
@@ -41,6 +42,18 @@ type NotificationType = 'promotional' | 'transactional' | 'reminder' | 'system';
 
 const TITLE_MAX = 60;
 const MESSAGE_MAX = 200;
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function localDateValue(date: Date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function localTimeValue(date: Date) {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
 
 function FieldCounter({ current, max }: { current: number; max: number }) {
   return (
@@ -142,6 +155,10 @@ export default function AdvancedComposeSection() {
   const [platform, setPlatform] = useState<PlatformChoice>('both');
   const [audience, setAudience] = useState<AudienceChoice>('all');
   const [sending, setSending] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduling, setScheduling] = useState(false);
 
   const [targetCities, setTargetCities] = useState<string[]>([]);
   const [targetMembership, setTargetMembership] = useState<'all' | 'members' | 'non_members'>('all');
@@ -423,6 +440,71 @@ export default function AdvancedComposeSection() {
   };
 
   const phoneCount = targetPhoneList.trim() ? targetPhoneList.split(/[\n,;]+/).filter((p) => p.replace(/\D/g, '').length >= 10).length : 0;
+
+  const confirmSchedule = async () => {
+    if (!scheduleDate || !scheduleTime) {
+      toast.error('Pick a date and time');
+      return;
+    }
+    const when = new Date(`${scheduleDate}T${scheduleTime}`);
+    if (Number.isNaN(when.getTime())) {
+      toast.error('Pick a valid date and time');
+      return;
+    }
+    if (when.getTime() <= Date.now()) {
+      toast.error('Pick a future date and time');
+      return;
+    }
+    const phoneList = targetPhoneList.trim()
+      ? targetPhoneList.split(/[\n,;]+/).map((p) => p.replace(/\D/g, '').slice(-10)).filter((p) => p.length === 10)
+      : undefined;
+    setScheduling(true);
+    try {
+      const res = await fetch('/api/super_admin/notifications/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: title.trim(),
+          scheduled_at: when.toISOString(),
+          payload: {
+            title: title.trim(),
+            message: message.trim(),
+            target_role: 'CUSTOMER',
+            priority,
+            notification_type: notificationType,
+            image_url: imageUrl.trim() || undefined,
+            icon_url: iconUrl.trim() || undefined,
+            deep_link: deepLink.trim() || undefined,
+            cta_url: ctaUrl.trim() || undefined,
+            platform,
+            audience,
+            target_cities: targetCities.length > 0 ? targetCities : undefined,
+            target_membership: targetMembership !== 'all' ? targetMembership : undefined,
+            target_membership_plans: targetMembership === 'members' && targetMembershipPlans.length > 0 ? targetMembershipPlans : undefined,
+            target_service_centers: targetServiceCenters.length > 0 ? targetServiceCenters : undefined,
+            target_car_brands: targetCarBrands.length > 0 ? targetCarBrands : undefined,
+            target_customer_type: targetCustomerType !== 'all' ? targetCustomerType : undefined,
+            target_coupon_users: targetCouponUsers !== 'all' ? targetCouponUsers : undefined,
+            target_coupon_codes: (targetCouponUsers === 'used' || targetCouponUsers === 'assigned') && targetCouponCodes.length > 0 ? targetCouponCodes : undefined,
+            target_wallet: targetWallet !== 'all' ? targetWallet : undefined,
+            target_booking: targetBooking !== 'all' ? targetBooking : undefined,
+            target_phone_list: phoneList?.length ? phoneList : undefined,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Schedule failed');
+        return;
+      }
+      setScheduleOpen(false);
+      toast.success(`Scheduled for ${when.toLocaleString('en-IN')}`);
+    } catch {
+      toast.error('Network error. Try again.');
+    } finally {
+      setScheduling(false);
+    }
+  };
 
   return (
     <div className="push-compose-layout w-full">
@@ -785,53 +867,11 @@ export default function AdvancedComposeSection() {
             </button>
             <button
               type="button"
-              onClick={async () => {
-                const whenLocal = prompt('Schedule ISO or leave blank for +2 minutes (YYYY-MM-DDTHH:mm)');
-                let when: Date;
-                if (!whenLocal?.trim()) when = new Date(Date.now() + 2 * 60_000);
-                else when = new Date(whenLocal);
-                if (Number.isNaN(when.getTime())) {
-                  toast.error('Invalid date');
-                  return;
-                }
-                const phoneList = targetPhoneList.trim()
-                  ? targetPhoneList.split(/[\n,;]+/).map((p) => p.replace(/\D/g, '').slice(-10)).filter((p) => p.length === 10)
-                  : undefined;
-                const res = await fetch('/api/super_admin/notifications/campaigns', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    name: title.trim(),
-                    scheduled_at: when.toISOString(),
-                    payload: {
-                      title: title.trim(),
-                      message: message.trim(),
-                      target_role: 'CUSTOMER',
-                      priority,
-                      notification_type: notificationType,
-                      image_url: imageUrl.trim() || undefined,
-                      icon_url: iconUrl.trim() || undefined,
-                      deep_link: deepLink.trim() || undefined,
-                      cta_url: ctaUrl.trim() || undefined,
-                      platform,
-                      audience,
-                      target_cities: targetCities.length > 0 ? targetCities : undefined,
-                      target_membership: targetMembership !== 'all' ? targetMembership : undefined,
-                      target_membership_plans: targetMembership === 'members' && targetMembershipPlans.length > 0 ? targetMembershipPlans : undefined,
-                      target_service_centers: targetServiceCenters.length > 0 ? targetServiceCenters : undefined,
-                      target_car_brands: targetCarBrands.length > 0 ? targetCarBrands : undefined,
-                      target_customer_type: targetCustomerType !== 'all' ? targetCustomerType : undefined,
-                      target_coupon_users: targetCouponUsers !== 'all' ? targetCouponUsers : undefined,
-                      target_coupon_codes: (targetCouponUsers === 'used' || targetCouponUsers === 'assigned') && targetCouponCodes.length > 0 ? targetCouponCodes : undefined,
-                      target_wallet: targetWallet !== 'all' ? targetWallet : undefined,
-                      target_booking: targetBooking !== 'all' ? targetBooking : undefined,
-                      target_phone_list: phoneList?.length ? phoneList : undefined,
-                    },
-                  }),
-                });
-                const data = await res.json();
-                if (!res.ok) toast.error(data.error || 'Schedule failed');
-                else toast.success(`Scheduled for ${when.toLocaleString('en-IN')}`);
+              onClick={() => {
+                const next = new Date(Date.now() + 2 * 60_000);
+                setScheduleDate(localDateValue(next));
+                setScheduleTime(localTimeValue(next));
+                setScheduleOpen(true);
               }}
               disabled={!title.trim() || !message.trim()}
               className="push-btn-ghost disabled:opacity-50"
@@ -851,6 +891,53 @@ export default function AdvancedComposeSection() {
 
         <NotificationLivePreview title={title} message={message} notificationType={notificationType} priority={priority} imageUrl={imageUrl} iconUrl={iconUrl} />
       </div>
+
+      {scheduleOpen ? (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!scheduling) setScheduleOpen(false); }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 text-base font-bold text-gray-900">
+              <Calendar className="h-4 w-4" />
+              Schedule notification
+            </div>
+            <p className="mt-1 text-sm text-gray-500">Choose when this notification should go out.</p>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label>
+                <span className="push-label">Date</span>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  min={localDateValue(new Date())}
+                  onChange={(event) => setScheduleDate(event.target.value)}
+                  className="push-input w-full"
+                />
+              </label>
+              <label>
+                <span className="push-label">Time</span>
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(event) => setScheduleTime(event.target.value)}
+                  className="push-input w-full"
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="push-btn-ghost" onClick={() => setScheduleOpen(false)} disabled={scheduling}>
+                Cancel
+              </button>
+              <button type="button" className="push-btn-primary disabled:opacity-50" onClick={() => void confirmSchedule()} disabled={scheduling}>
+                {scheduling ? 'Scheduling…' : 'Schedule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

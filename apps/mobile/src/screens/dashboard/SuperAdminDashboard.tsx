@@ -38,6 +38,7 @@ import InventoryPackageDetailScreen from './superadmin/InventoryPackageDetailScr
 import InventoryZonesScreen from './superadmin/InventoryZonesScreen';
 import InventoryPricingScreen from './superadmin/InventoryPricingScreen';
 import InventoryServicePricingScreen from './superadmin/InventoryServicePricingScreen';
+import ZoneServicePricesScreen from './superadmin/ZoneServicePricesScreen';
 import AdditionalJobsMasterScreen from './additional_jobs/AdditionalJobsMasterScreen';
 import CouponsScreen from './superadmin/CouponsScreen';
 import ManualInvoicesScreen from './superadmin/ManualInvoicesScreen';
@@ -423,6 +424,7 @@ export default function SuperAdminDashboard() {
       'inventory-zones': 'InventoryZones',
       'inventory-pricing': 'InventoryPricing',
       'inventory-service-pricing': 'InventoryServicePricing',
+      'zone-prices': 'ZoneServicePrices',
       'additional-jobs-master': 'AdditionalJobsMaster',
       coupons: 'Coupons',
       'manual-invoices': 'ManualInvoices',
@@ -575,6 +577,10 @@ export default function SuperAdminDashboard() {
 
   if (currentScreen === 'InventoryServicePricing') {
     return <InventoryServicePricingScreen navigation={navigationObj} />;
+  }
+
+  if (currentScreen === 'ZoneServicePrices') {
+    return <ZoneServicePricesScreen navigation={navigationObj} />;
   }
 
   if (loading) {
