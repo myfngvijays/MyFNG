@@ -390,6 +390,11 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
           component={require('../screens/dashboard/telecaller_crm/CrmDialerScreen').default}
           options={{ title: 'Dialer', headerShown: false }}
         />
+        <Stack.Screen
+          name="ZoneServicePrices"
+          component={require('../screens/dashboard/superadmin/ZoneServicePricesScreen').default}
+          options={{ title: 'Zone Prices' }}
+        />
       </Stack.Navigator>
       <IncomingCallLeadOverlay
         leadScreen="TelecallerLeadDetail"

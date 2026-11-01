@@ -33,7 +33,7 @@ const ROLE_MENU_ITEMS: Record<string, string[]> = {
   LEAD_MANAGER: ['Dashboard', 'Manage Leads', 'Bookings & Leads', 'App Customers', 'Workshop Proximity', 'Membership Customers', 'Refer & Rise', 'Workshops', 'Reports'],
   RSA_MANAGER: ['Dashboard', 'View All Complaints', 'Create Complaint', 'Car Service Enquiry', 'View Registered', 'Active Aansh Sessions', 'Payment', 'Manage Mechanics', 'Service Partners', 'Membership Customer', 'Reports', 'Settings'],
   HOME_SERVICE_MANAGER: ['Dashboard', 'Leads', 'Service Vans', 'Technicians', 'Reports'],
-  TELECALLER: ['Dashboard', 'Enquiry', 'My Leads', 'Create Lead', 'RSA', 'My Profile'],
+  TELECALLER: ['Dashboard', 'Enquiry', 'My Leads', 'Create Lead', 'RSA', 'Zone Prices', 'My Profile'],
   CUSTOMER_SERVICE_EXECUTIVE: ['Dashboard', 'Call Panel', 'Tickets', 'Callbacks', 'Ratings', 'Profile'],
   AUDITOR: ['Dashboard', 'My Audits', 'Workshops', 'Escalations', 'Performance', 'Profile'],
   ACCOUNTS_TEAM: ['Dashboard', 'Profile'],

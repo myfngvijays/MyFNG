@@ -1060,6 +1060,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/telecaller/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
         { href: '/dashboard/telecaller/dialer', icon: <PhoneCall className="w-5 h-5" />, label: 'Dialer' },
         { href: '/dashboard/telecaller/workshops', icon: <MapPin className="w-5 h-5" />, label: 'Workshops' },
+        { href: '/dashboard/telecaller/zone-prices', icon: <Tag className="w-5 h-5" />, label: 'Zone Prices' },
         {
           href: '/dashboard/telecaller/templates',
           icon: <MessageSquare className="w-5 h-5" />,

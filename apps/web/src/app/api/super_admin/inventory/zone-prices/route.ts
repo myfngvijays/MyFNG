@@ -74,7 +74,7 @@ async function assertSuperAdmin() {
     .eq('id', user.id)
     .single();
   const roleCode = (userData as { roles?: { role_code?: string } } | null)?.roles?.role_code;
-  if (roleError || !userData || !['SUPER_ADMIN', 'SUB_ADMIN'].includes(String(roleCode || ''))) {
+  if (roleError || !userData || !['SUPER_ADMIN', 'SUB_ADMIN', 'TELECALLER'].includes(String(roleCode || ''))) {
     return { ok: false as const, status: 403, error: 'Forbidden', supabase: null };
   }
   return { ok: true as const, status: 200, error: null, supabase };

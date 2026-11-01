@@ -28,6 +28,7 @@ import {
   Loader2,
   CalendarDays,
   MapPin,
+  Tag,
   TrendingUp,
   LogIn,
   LogOut,
@@ -690,6 +691,16 @@ export default function TelecallerCrmHomePage() {
                     icon: MapPin,
                     color: '#0EA5E9',
                   },
+                  ...(!isLeadManager
+                    ? [
+                        {
+                          href: `${base}/zone-prices`,
+                          label: 'Zone Prices',
+                          icon: Tag,
+                          color: '#2563EB',
+                        },
+                      ]
+                    : []),
                   ...(isLeadManager
                     ? [
                         {

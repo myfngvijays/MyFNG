@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -14,6 +14,7 @@ type ServiceRow = {
   prices: Record<string, Record<string, ZonePrice>>;
 };
 type PlanRow = { label: string; semi?: ZonePrice; full?: ZonePrice; other?: ZonePrice };
+type CarHit = { id: string; make: string; model: string; variant: string | null; vehicleClass: string | null };
 
 function shortCategory(name: string) {
   return name.replace(/^car\s+/i, '').replace(/\s+service$/i, '').trim() || name;
@@ -25,6 +26,15 @@ function zoneLabel(zone: ZoneInfo) {
 
 function money(value: number) {
   return `₹${Math.round(value).toLocaleString('en-IN')}`;
+}
+
+function matchClassName(value: string | null, choices: string[]) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  const exact = choices.find((name) => name.toLowerCase() === raw);
+  if (exact) return exact;
+  if (raw === 'sedan' || raw === 'sedans') return choices.find((name) => name.toUpperCase() === 'SEDANS') || '';
+  return choices.find((name) => name.toLowerCase().includes(raw) || raw.includes(name.toLowerCase())) || '';
 }
 
 function classMeta(name: string): { label: string; image: string } {
@@ -80,6 +90,11 @@ export default function ZonePricesPage() {
   const [carClass, setCarClass] = useState('');
   const [category, setCategory] = useState('');
   const [zoneId, setZoneId] = useState('');
+  const [modelQuery, setModelQuery] = useState('');
+  const [pickedModel, setPickedModel] = useState('');
+  const [modelHits, setModelHits] = useState<CarHit[]>([]);
+  const [modelOpen, setModelOpen] = useState(false);
+  const modelRef = useRef<HTMLDivElement | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -110,6 +125,58 @@ export default function ZonePricesPage() {
   }, []);
 
   const classChoices = classes.filter((name) => name !== 'DEFAULT');
+
+  useEffect(() => {
+    const q = modelQuery.trim();
+    if (q.length < 2 || q === pickedModel) {
+      if (q.length < 2) setModelHits([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/car-models/search?q=${encodeURIComponent(q)}`);
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const models = Array.isArray(json?.models) ? json.models : [];
+        setModelHits(models.map((car: any) => ({
+          id: String(car.id),
+          make: String(car.make || ''),
+          model: String(car.model || car.model_name || ''),
+          variant: car.variant ? String(car.variant) : null,
+          vehicleClass: car.vehicleClass ?? car.class ?? null,
+        })));
+        setModelOpen(true);
+      } catch {
+        if (!cancelled) setModelHits([]);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [modelQuery, pickedModel]);
+
+  useEffect(() => {
+    const onDoc = (event: MouseEvent) => {
+      if (modelRef.current && !modelRef.current.contains(event.target as Node)) setModelOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const pickModel = (car: CarHit) => {
+    const label = [car.make, car.model].filter(Boolean).join(' ');
+    setModelQuery(label);
+    setPickedModel(label);
+    setModelOpen(false);
+    const matched = matchClassName(car.vehicleClass, classChoices);
+    if (!matched) {
+      toast.error(car.vehicleClass ? `No price class for ${car.vehicleClass}` : 'This car has no class');
+      return;
+    }
+    setCarClass(matched);
+  };
 
   useEffect(() => {
     const choices = classes.filter((name) => name !== 'DEFAULT');
@@ -184,26 +251,61 @@ export default function ZonePricesPage() {
           </div>
         ) : (
           <>
-            <section className="mb-5">
+            <section className="mb-3">
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Zone</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {zones.map((zone) => {
-                  const selected = activeZone?.id === zone.id;
-                  return (
-                    <button
-                      key={zone.id}
-                      type="button"
-                      onClick={() => setZoneId(zone.id)}
-                      className={`rounded-2xl border px-4 py-3 text-left text-base font-extrabold ${selected ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-gray-200 bg-white text-gray-900'}`}
-                    >
-                      {zoneLabel(zone)}
-                    </button>
-                  );
-                })}
+              <div className="flex items-center gap-3">
+                <div className="grid min-w-0 flex-1 grid-cols-2 gap-3">
+                  {zones.map((zone) => {
+                    const selected = activeZone?.id === zone.id;
+                    return (
+                      <button
+                        key={zone.id}
+                        type="button"
+                        onClick={() => setZoneId(zone.id)}
+                        className={`rounded-xl border px-3 py-2 text-left text-sm font-extrabold ${selected ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-gray-200 bg-white text-gray-900'}`}
+                      >
+                        {zoneLabel(zone)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div ref={modelRef} className="relative w-52 shrink-0 sm:w-60">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={modelQuery}
+                    onChange={(event) => {
+                      setModelQuery(event.target.value);
+                      setPickedModel('');
+                      setModelOpen(true);
+                    }}
+                    onFocus={() => {
+                      if (modelHits.length) setModelOpen(true);
+                    }}
+                    placeholder="Car model, e.g. Rapid"
+                    className="w-full rounded-xl border bg-white py-2 pl-9 pr-3 text-sm"
+                  />
+                  {modelOpen && modelHits.length > 0 ? (
+                    <div className="absolute right-0 z-30 mt-1 max-h-72 w-72 overflow-auto rounded-xl border bg-white py-1 shadow-lg">
+                      {modelHits.map((car) => (
+                        <button
+                          key={`${car.id}-${car.variant || ''}`}
+                          type="button"
+                          onClick={() => pickModel(car)}
+                          className="block w-full px-3 py-2 text-left hover:bg-blue-50"
+                        >
+                          <div className="text-sm font-semibold text-gray-900">
+                            {car.make} {car.model}{car.variant ? ` (${car.variant})` : ''}
+                          </div>
+                          <div className="text-xs text-gray-500">{car.vehicleClass || 'Class not set'}</div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </section>
 
-            <section className="mb-5">
+            <section className="mb-3">
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Car class</h2>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
                 {classChoices.map((name) => {
@@ -224,9 +326,9 @@ export default function ZonePricesPage() {
               </div>
             </section>
 
-            <section className="mb-5">
+            <section>
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Service</h2>
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
                 {visibleCategories.map((item) => {
                   const selected = category === item.name;
                   return (
@@ -248,10 +350,9 @@ export default function ZonePricesPage() {
                   );
                 })}
               </div>
-            </section>
 
-            <section className="overflow-hidden rounded-2xl border bg-white">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+            <div className="mt-4 overflow-hidden rounded-2xl border bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
                 <div>
                   <div className="text-sm font-extrabold text-gray-900">
                     {shortCategory(category || 'Service')} · {selectedClass.label}
@@ -273,36 +374,35 @@ export default function ZonePricesPage() {
                   No price for {selectedClass.label} in {shortCategory(category || 'this service')}.
                 </p>
               ) : periodic ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
+                <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
                       <tr>
-                        <th className="px-4 py-3">Service</th>
-                        <th className="px-4 py-3">Semi Synthetic</th>
-                        <th className="px-4 py-3">Fully Synthetic</th>
+                        <th className="px-4 py-2.5">Service</th>
+                        <th className="w-40 px-4 py-2.5">Semi Synthetic</th>
+                        <th className="w-40 px-4 py-2.5">Fully Synthetic</th>
                       </tr>
                     </thead>
                     <tbody>
                       {plans.map((row) => (
                         <tr key={row.label} className="border-t">
-                          <td className="px-4 py-3 font-semibold text-gray-900">{row.label}</td>
-                          <td className="px-4 py-3 font-semibold text-gray-900"><PriceCell cell={row.semi} /></td>
-                          <td className="px-4 py-3 font-semibold text-gray-900"><PriceCell cell={row.full} /></td>
+                          <td className="px-4 py-2.5 font-semibold text-gray-900">{row.label}</td>
+                          <td className="px-4 py-2.5 font-semibold text-gray-900"><PriceCell cell={row.semi} /></td>
+                          <td className="px-4 py-2.5 font-semibold text-gray-900"><PriceCell cell={row.full} /></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
               ) : (
                 <div className="divide-y">
                   {plans.map((row) => (
-                    <div key={row.label} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div key={row.label} className="flex items-baseline justify-between gap-10 px-4 py-2.5">
                       <div className="font-semibold text-gray-900">{row.label}</div>
                       <div className="font-semibold text-gray-900"><PriceCell cell={row.semi || row.full || row.other} /></div>
                     </div>
                   ))}
                 </div>
               )}
+            </div>
             </section>
           </>
         )}

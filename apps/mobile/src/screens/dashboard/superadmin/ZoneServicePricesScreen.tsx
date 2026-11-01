@@ -10,6 +10,7 @@ type CategoryInfo = { name: string; icon: string };
 type ZonePrice = { price: number; varies: boolean };
 type ServiceRow = { id: string; name: string; category?: string; prices: Record<string, Record<string, ZonePrice>> };
 type PlanRow = { label: string; semi?: ZonePrice; full?: ZonePrice; other?: ZonePrice };
+type CarHit = { id: string; make: string; model: string; variant: string | null; vehicleClass: string | null };
 
 function shortCategory(name: string) {
   return name.replace(/^car\s+/i, '').replace(/\s+service$/i, '').trim() || name;
@@ -28,6 +29,15 @@ function iconUrl(path: string) {
 
 function money(value: number) {
   return `₹${Math.round(value).toLocaleString('en-IN')}`;
+}
+
+function matchClassName(value: string | null, choices: string[]) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  const exact = choices.find((name) => name.toLowerCase() === raw);
+  if (exact) return exact;
+  if (raw === 'sedan' || raw === 'sedans') return choices.find((name) => name.toUpperCase() === 'SEDANS') || '';
+  return choices.find((name) => name.toLowerCase().includes(raw) || raw.includes(name.toLowerCase())) || '';
 }
 
 function classMeta(name: string): { label: string; image: string } {
@@ -78,6 +88,8 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
   const [carClass, setCarClass] = useState('');
   const [category, setCategory] = useState('');
   const [zoneId, setZoneId] = useState('');
+  const [modelQuery, setModelQuery] = useState('');
+  const [modelHits, setModelHits] = useState<CarHit[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,6 +118,44 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
   }, [load]);
 
   const classChoices = useMemo(() => classes.filter((name) => name !== 'DEFAULT'), [classes]);
+
+  useEffect(() => {
+    const q = modelQuery.trim();
+    if (q.length < 2) {
+      setModelHits([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${String(ENV.API_URL || '').replace(/\/$/, '')}/api/car-models/search?q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+        if (cancelled) return;
+        const models = Array.isArray(json?.models) ? json.models : [];
+        setModelHits(models.map((car: any) => ({
+          id: String(car.id),
+          make: String(car.make || ''),
+          model: String(car.model || ''),
+          variant: car.variant ? String(car.variant) : null,
+          vehicleClass: car.vehicleClass ?? car.class ?? null,
+        })));
+      } catch {
+        if (!cancelled) setModelHits([]);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [modelQuery]);
+
+  const pickModel = (car: CarHit) => {
+    setModelQuery([car.make, car.model].filter(Boolean).join(' '));
+    setModelHits([]);
+    const matched = matchClassName(car.vehicleClass, classChoices);
+    if (matched) setCarClass(matched);
+    else setNote(car.vehicleClass ? `No price class for ${car.vehicleClass}` : 'This car has no class');
+  };
 
   useEffect(() => {
     if (!classChoices.length) return;
@@ -173,7 +223,19 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
                 </TouchableOpacity>
               );
             })}
+            <TextInput
+              value={modelQuery}
+              onChangeText={setModelQuery}
+              placeholder="Rapid, Swift..."
+              style={styles.modelInput}
+            />
           </View>
+          {modelHits.map((car) => (
+            <TouchableOpacity key={`${car.id}-${car.variant || ''}`} onPress={() => pickModel(car)} style={styles.modelHit}>
+              <Text style={styles.modelHitTitle}>{car.make} {car.model}{car.variant ? ` (${car.variant})` : ''}</Text>
+              <Text style={styles.modelHitClass}>{car.vehicleClass || 'Class not set'}</Text>
+            </TouchableOpacity>
+          ))}
 
           <Text style={styles.step}>Car class</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tiles}>
@@ -220,7 +282,7 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
               ))}
             </View>
           ) : plans.map((row) => (
-            <View key={row.label} style={styles.card}>
+            <View key={row.label} style={styles.priceRow}>
               <Text style={styles.service}>{row.label}</Text>
               <Text style={styles.price}>{priceText(row.semi || row.full || row.other)}</Text>
             </View>
@@ -242,7 +304,11 @@ const styles = StyleSheet.create({
   zoneBtnOn: { backgroundColor: '#1D4ED8', borderColor: '#1D4ED8' },
   zoneName: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
   zoneNameOn: { color: '#fff' },
-  tiles: { gap: 8, paddingBottom: 16 },
+  modelInput: { width: 130, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingHorizontal: 10, paddingVertical: 10, fontSize: 13 },
+  modelHit: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 6 },
+  modelHitTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  modelHitClass: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  tiles: { gap: 8, paddingBottom: 8 },
   classTile: { width: 120, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 6, alignItems: 'center' },
   classTileOn: { borderColor: '#1D4ED8', borderWidth: 2 },
   classPhoto: { width: 108, height: 64, resizeMode: 'contain' },
@@ -256,8 +322,9 @@ const styles = StyleSheet.create({
   resultTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 },
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  service: { fontWeight: '800', color: '#0F172A', fontSize: 15 },
-  price: { color: '#0F172A', fontSize: 14, fontWeight: '700', marginTop: 4 },
+  priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 24, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6, borderWidth: 1, borderColor: '#E2E8F0' },
+  service: { fontWeight: '800', color: '#0F172A', fontSize: 15, flexShrink: 1 },
+  price: { color: '#0F172A', fontSize: 14, fontWeight: '700' },
   oilHead: { flexDirection: 'row', marginBottom: 8 },
   oilRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   oilCol: { flex: 1, fontSize: 11, fontWeight: '800', color: '#64748B', textTransform: 'uppercase' },

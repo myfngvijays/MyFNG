@@ -413,6 +413,14 @@ const TC_NAV: NavRow[] = [
   },
   {
     type: 'item',
+    id: 'zone_prices',
+    label: 'Zone Prices',
+    icon: 'pricetag-outline',
+    kind: 'stack',
+    screen: 'ZoneServicePrices',
+  },
+  {
+    type: 'item',
     id: 'scripts',
     label: 'Call scripts',
     icon: 'document-text-outline',
