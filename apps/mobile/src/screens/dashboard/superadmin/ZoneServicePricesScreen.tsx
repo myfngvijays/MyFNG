@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Image, Alert, Share, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
@@ -10,6 +11,8 @@ type CategoryInfo = { name: string; icon: string };
 type ZonePrice = { price: number; varies: boolean };
 type ServiceRow = { id: string; name: string; category?: string; prices: Record<string, Record<string, ZonePrice>> };
 type PlanRow = { label: string; semi?: ZonePrice; full?: ZonePrice; other?: ZonePrice };
+type PriceSection = { name: string; periodic: boolean; plans: PlanRow[] };
+const SHOW_ALL = '__all__';
 type CarHit = { id: string; make: string; model: string; variant: string | null; vehicleClass: string | null };
 
 function shortCategory(name: string) {
@@ -72,9 +75,130 @@ function splitPlan(name: string) {
   return { group: semi ? 'semi' as const : full ? 'full' as const : 'other' as const, label };
 }
 
-function priceText(cell?: ZonePrice) {
-  if (!cell) return '—';
-  return `${money(cell.price)}${cell.varies ? '  (workshops differ)' : ''}`;
+function PriceText({ cell, style }: { cell?: ZonePrice; style: any }) {
+  if (!cell) return <Text style={style}>—</Text>;
+  return <Text style={[style, cell.varies && styles.priceVaries]} numberOfLines={1}>{money(cell.price)}</Text>;
+}
+
+type ExportLine = {
+  zone: string;
+  zoneKey: string;
+  carClass: string;
+  category: string;
+  service: string;
+  semi?: ZonePrice;
+  full?: ZonePrice;
+  other?: ZonePrice;
+};
+
+const EXPORT_HEADERS = ['Zone', 'Car class', 'Category', 'Service', 'Semi Synthetic (INR)', 'Fully Synthetic (INR)', 'Price (INR)', 'Note'];
+
+function exportAmount(cell?: ZonePrice) {
+  return cell ? Math.round(cell.price) : '';
+}
+
+function exportNote(line: ExportLine) {
+  const parts: string[] = [];
+  if (line.semi?.varies) parts.push('Semi: workshops differ');
+  if (line.full?.varies) parts.push('Fully: workshops differ');
+  if (line.other?.varies) parts.push('workshops differ');
+  return parts.join('; ');
+}
+
+function exportCells(line: ExportLine): Array<string | number> {
+  return [line.zone, line.carClass, line.category, line.service, exportAmount(line.semi), exportAmount(line.full), exportAmount(line.other), exportNote(line)];
+}
+
+function csvEscape(value: string | number) {
+  const text = String(value ?? '');
+  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function xmlEscape(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function excelXml(rows: Array<Array<string | number>>) {
+  const cells = rows.map((row) => `<Row>${row.map((value) => (
+    typeof value === 'number'
+      ? `<Cell><Data ss:Type="Number">${value}</Data></Cell>`
+      : `<Cell><Data ss:Type="String">${xmlEscape(String(value))}</Data></Cell>`
+  )).join('')}</Row>`).join('');
+  return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Worksheet ss:Name="Zone prices"><Table>${cells}</Table></Worksheet>
+</Workbook>`;
+}
+
+function asciiBase64(text: string) {
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i += 1) bytes[i] = text.charCodeAt(i) & 0xff;
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return globalThis.btoa(binary);
+}
+
+function buildPdf(title: string, lines: string[]) {
+  const pageWidth = 842;
+  const pageHeight = 595;
+  const fontSize = 8;
+  const leading = 11;
+  const margin = 28;
+  const capacity = Math.max(8, Math.floor((pageHeight - margin * 2) / leading));
+  const pages: string[][] = [];
+  const all = [title, ''].concat(lines);
+  for (let i = 0; i < all.length; i += capacity) pages.push(all.slice(i, i + capacity));
+  if (!pages.length) pages.push(['No rows']);
+  const escape = (value: string) => value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').replace(/[^\x20-\x7E]/g, ' ');
+  const streams = pages.map((pageLines) => pageLines.map((line, index) => {
+    const y = pageHeight - margin - index * leading;
+    return `BT /F1 ${fontSize} Tf ${margin} ${y} Td (${escape(line)}) Tj ET`;
+  }).join('\n'));
+  const fontId = 3 + pages.length * 2;
+  const objects: string[] = [];
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[2] = `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>`;
+  streams.forEach((stream, index) => {
+    const pageId = 3 + index * 2;
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Contents ${pageId + 1} 0 R /Resources << /Font << /F1 ${fontId} 0 R >> >> >>`;
+    objects[pageId + 1] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+  });
+  objects[fontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  let body = '%PDF-1.4\n';
+  const offsets = [0];
+  for (let id = 1; id <= fontId; id += 1) {
+    offsets[id] = body.length;
+    body += `${id} 0 obj\n${objects[id]}\nendobj\n`;
+  }
+  const xref = body.length;
+  body += `xref\n0 ${fontId + 1}\n0000000000 65535 f \n`;
+  for (let id = 1; id <= fontId; id += 1) body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+  body += `trailer\n<< /Size ${fontId + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return body;
+}
+
+async function shareExportFile(filename: string, contents: string, encoding: 'utf8' | 'base64') {
+  const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (!dir) {
+    await Share.share({ message: contents.slice(0, 90000), title: filename });
+    return;
+  }
+  const path = `${dir}${filename}`;
+  if (encoding === 'base64') {
+    await FileSystem.writeAsStringAsync(path, contents, { encoding: FileSystem.EncodingType.Base64 });
+  } else {
+    await FileSystem.writeAsStringAsync(path, contents);
+  }
+  let url = path;
+  if (Platform.OS === 'android' && typeof (FileSystem as any).getContentUriAsync === 'function') {
+    url = await (FileSystem as any).getContentUriAsync(path);
+  }
+  await Share.share({ url, title: filename, message: filename });
 }
 
 export default function ZoneServicePricesScreen({ navigation }: any) {
@@ -90,6 +214,7 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
   const [zoneId, setZoneId] = useState('');
   const [modelQuery, setModelQuery] = useState('');
   const [modelHits, setModelHits] = useState<CarHit[]>([]);
+  const [exporting, setExporting] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,32 +303,123 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
   useEffect(() => {
     if (!visibleCategories.length) return;
     setCategory((current) => (
-      current && visibleCategories.some((item) => item.name === current)
+      current === SHOW_ALL || (current && visibleCategories.some((item) => item.name === current))
         ? current
         : visibleCategories.find((item) => /periodic/i.test(item.name))?.name || visibleCategories[0].name
     ));
   }, [visibleCategories]);
 
-  const plans = useMemo(() => {
+  const sections = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const map = new Map<string, PlanRow>();
-    if (!activeZone || !carClass || !category) return [];
+    if (!activeZone || !carClass) return [] as PriceSection[];
+    const names = category === SHOW_ALL
+      ? visibleCategories.map((item) => item.name)
+      : category ? [category] : [];
+    const next: PriceSection[] = [];
+    for (const name of names) {
+      const map = new Map<string, PlanRow>();
+      for (const service of services) {
+        if ((service.category || 'Other') !== name) continue;
+        if (needle && !service.name.toLowerCase().includes(needle) && !(service.category || '').toLowerCase().includes(needle)) continue;
+        const cell = service.prices?.[activeZone.id]?.[carClass];
+        if (!cell) continue;
+        const split = splitPlan(service.name);
+        const row = map.get(split.label) || { label: split.label };
+        row[split.group] = cell;
+        map.set(split.label, row);
+      }
+      const plans = [...map.values()].sort((a, b) => planRank(a.label) - planRank(b.label) || a.label.localeCompare(b.label));
+      if (!plans.length) continue;
+      next.push({
+        name,
+        periodic: /periodic/i.test(name) && plans.some((row) => row.semi || row.full),
+        plans,
+      });
+    }
+    return next;
+  }, [services, activeZone, carClass, category, query, visibleCategories]);
+
+  const showAll = category === SHOW_ALL;
+  const categoryLabel = showAll ? 'All services' : shortCategory(category || 'Service');
+  const selectedClass = classMeta(carClass || 'HATCHBACK');
+
+  const buildExportLines = (scope: 'selection' | 'all') => {
+    const zoneList = scope === 'all' ? zones : activeZone ? [activeZone] : [];
+    const classList = (scope === 'all' ? classChoices : carClass ? [carClass] : []).filter((name) => name !== 'DEFAULT');
+    const categoryName = scope === 'selection' && category && category !== SHOW_ALL ? category : '';
+    const needle = scope === 'selection' ? query.trim().toLowerCase() : '';
+    const map = new Map<string, ExportLine>();
     for (const service of services) {
       const serviceCategory = service.category || 'Other';
-      if (serviceCategory !== category) continue;
-      if (needle && !service.name.toLowerCase().includes(needle)) continue;
-      const cell = service.prices?.[activeZone.id]?.[carClass];
-      if (!cell) continue;
+      if (categoryName && serviceCategory !== categoryName) continue;
+      if (needle && !service.name.toLowerCase().includes(needle) && !serviceCategory.toLowerCase().includes(needle)) continue;
       const split = splitPlan(service.name);
-      const row = map.get(split.label) || { label: split.label };
-      row[split.group] = cell;
-      map.set(split.label, row);
+      for (const zone of zoneList) {
+        for (const cls of classList) {
+          const cell = service.prices?.[zone.id]?.[cls];
+          if (!cell) continue;
+          const key = `${zone.id}|${cls}|${serviceCategory}|${split.label}`;
+          const row = map.get(key) || {
+            zone: zoneLabel(zone),
+            zoneKey: zone.key,
+            carClass: classMeta(cls).label,
+            category: shortCategory(serviceCategory),
+            service: split.label,
+          };
+          row[split.group] = cell;
+          map.set(key, row);
+        }
+      }
     }
-    return [...map.values()].sort((a, b) => planRank(a.label) - planRank(b.label) || a.label.localeCompare(b.label));
-  }, [services, activeZone, carClass, category, query]);
+    const categoryRank = (name: string) => {
+      const index = categories.findIndex((item) => shortCategory(item.name) === name);
+      return index < 0 ? 99 : index;
+    };
+    const classRank = (label: string) => classChoices.findIndex((name) => classMeta(name).label === label);
+    return [...map.values()].sort((a, b) =>
+      (a.zoneKey === 'prime' ? 0 : 1) - (b.zoneKey === 'prime' ? 0 : 1)
+      || (classRank(a.carClass) < 0 ? 99 : classRank(a.carClass)) - (classRank(b.carClass) < 0 ? 99 : classRank(b.carClass))
+      || categoryRank(a.category) - categoryRank(b.category)
+      || planRank(a.service) - planRank(b.service)
+      || a.service.localeCompare(b.service),
+    );
+  };
 
-  const periodic = /periodic/i.test(category) && plans.some((row) => row.semi || row.full);
-  const selectedClass = classMeta(carClass || 'HATCHBACK');
+  const runExport = async (scope: 'selection' | 'all', format: 'csv' | 'xlsx' | 'pdf') => {
+    const lines = buildExportLines(scope);
+    if (!lines.length) {
+      Alert.alert('Export', scope === 'selection' ? 'Nothing to export for this selection.' : 'No zone prices to export.');
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    const selectionName = [activeZone ? zoneLabel(activeZone) : 'zone', selectedClass.label, categoryLabel].join(' ');
+    const filenameBase = `zone-prices-${scope === 'all' ? 'all' : selectionName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${stamp}`;
+    const rows = lines.map(exportCells);
+    setExporting(`${scope}-${format}`);
+    try {
+      if (format === 'csv') {
+        const body = [EXPORT_HEADERS, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
+        await shareExportFile(`${filenameBase}.csv`, `\uFEFF${body}\n`, 'utf8');
+      } else if (format === 'xlsx') {
+        await shareExportFile(`${filenameBase}.xls`, excelXml([EXPORT_HEADERS, ...rows]), 'utf8');
+      } else {
+        const pad = (value: string | number, width: number) => {
+          const text = String(value ?? '');
+          return (text.length > width ? text.slice(0, width - 1) : text).padEnd(width, ' ');
+        };
+        const textLines = [
+          EXPORT_HEADERS.map((header, index) => pad(header, [16, 18, 16, 24, 12, 12, 10, 18][index])).join(' '),
+          ...rows.map((row) => [16, 18, 16, 24, 12, 12, 10, 18].map((width, index) => pad(row[index], width)).join(' ')),
+        ];
+        const title = scope === 'all' ? 'Zone prices - all zones, classes and services' : `Zone prices - ${selectionName}`;
+        await shareExportFile(`${filenameBase}.pdf`, asciiBase64(buildPdf(title, textLines)), 'base64');
+      }
+    } catch (error: any) {
+      Alert.alert('Export', error?.message || 'Could not export');
+    } finally {
+      setExporting('');
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -253,6 +469,12 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
 
           <Text style={styles.step}>Service</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tiles}>
+            <TouchableOpacity onPress={() => setCategory(SHOW_ALL)} style={[styles.tile, showAll && styles.tileOn]}>
+              <View style={styles.iconBox}>
+                <Text style={styles.allMark}>All</Text>
+              </View>
+              <Text style={styles.tileText}>Show all</Text>
+            </TouchableOpacity>
             {visibleCategories.map((item) => (
               <TouchableOpacity key={item.name} onPress={() => setCategory(item.name)} style={[styles.tile, category === item.name && styles.tileOn]}>
                 <View style={styles.iconBox}>
@@ -263,31 +485,53 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
             ))}
           </ScrollView>
 
-          <Text style={styles.resultTitle}>{shortCategory(category || 'Service')} · {selectedClass.label}</Text>
+          <Text style={styles.resultTitle}>{categoryLabel} · {selectedClass.label}</Text>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search service" style={styles.input} />
+          <View style={styles.exportBox}>
+            <Text style={styles.exportLabel}>Export this selection</Text>
+            <View style={styles.exportRow}>
+              {(['csv', 'xlsx', 'pdf'] as const).map((format) => (
+                <TouchableOpacity key={`selection-${format}`} disabled={!!exporting} onPress={() => void runExport('selection', format)} style={styles.exportBtn}>
+                  <Text style={styles.exportBtnText}>{exporting === `selection-${format}` ? '...' : format === 'xlsx' ? 'Excel' : format.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.exportLabel}>Export everything</Text>
+            <View style={styles.exportRow}>
+              {(['csv', 'xlsx', 'pdf'] as const).map((format) => (
+                <TouchableOpacity key={`all-${format}`} disabled={!!exporting} onPress={() => void runExport('all', format)} style={[styles.exportBtn, styles.exportBtnLight]}>
+                  <Text style={[styles.exportBtnText, styles.exportBtnTextDark]}>{exporting === `all-${format}` ? '...' : format === 'xlsx' ? 'Excel' : format.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
 
-          {periodic ? (
-            <View style={styles.card}>
-              <View style={styles.oilHead}>
-                <Text style={[styles.oilCol, styles.oilName]}>Service</Text>
-                <Text style={styles.oilCol}>Semi</Text>
-                <Text style={styles.oilCol}>Fully</Text>
-              </View>
-              {plans.map((row) => (
-                <View key={row.label} style={styles.oilRow}>
-                  <Text style={[styles.oilName, styles.planName]}>{row.label}</Text>
-                  <Text style={styles.oilPrice}>{priceText(row.semi)}</Text>
-                  <Text style={styles.oilPrice}>{priceText(row.full)}</Text>
+          {sections.length === 0 ? <Text style={styles.note}>No price for {selectedClass.label} in {categoryLabel}.</Text> : sections.map((section) => (
+            <View key={section.name} style={styles.section}>
+              {showAll && !section.periodic ? <Text style={styles.sectionTitle}>{shortCategory(section.name)}</Text> : null}
+              {section.periodic ? (
+                <View style={styles.card}>
+                  <View style={styles.oilHead}>
+                    <Text style={[styles.oilCol, styles.oilName]}>{showAll ? shortCategory(section.name) : 'Service'}</Text>
+                    <Text style={styles.oilCol}>Semi</Text>
+                    <Text style={styles.oilCol}>Fully</Text>
+                  </View>
+                  {section.plans.map((row) => (
+                    <View key={row.label} style={styles.oilRow}>
+                      <Text style={[styles.oilName, styles.planName]} numberOfLines={1}>{row.label}</Text>
+                      <PriceText cell={row.semi} style={styles.oilPrice} />
+                      <PriceText cell={row.full} style={styles.oilPrice} />
+                    </View>
+                  ))}
+                </View>
+              ) : section.plans.map((row) => (
+                <View key={row.label} style={styles.priceRow}>
+                  <Text style={styles.service} numberOfLines={1}>{row.label}</Text>
+                  <PriceText cell={row.semi || row.full || row.other} style={styles.price} />
                 </View>
               ))}
             </View>
-          ) : plans.map((row) => (
-            <View key={row.label} style={styles.priceRow}>
-              <Text style={styles.service}>{row.label}</Text>
-              <Text style={styles.price}>{priceText(row.semi || row.full || row.other)}</Text>
-            </View>
           ))}
-          {!plans.length ? <Text style={styles.note}>No price for {selectedClass.label} in {shortCategory(category || 'this service')}.</Text> : null}
         </ScrollView>
       )}
     </View>
@@ -320,15 +564,25 @@ const styles = StyleSheet.create({
   allMark: { fontSize: 12, fontWeight: '800', color: '#1D4ED8' },
   tileText: { marginTop: 6, fontSize: 11, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
   resultTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+  section: { marginBottom: 12 },
+  sectionTitle: { color: '#64748B', fontSize: 12, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4 },
+  exportBox: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 12, marginBottom: 10 },
+  exportLabel: { color: '#64748B', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 6 },
+  exportRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  exportBtn: { backgroundColor: '#0F172A', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  exportBtnLight: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#CBD5E1' },
+  exportBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  exportBtnTextDark: { color: '#0F172A' },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 },
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
   priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 24, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6, borderWidth: 1, borderColor: '#E2E8F0' },
-  service: { fontWeight: '800', color: '#0F172A', fontSize: 15, flexShrink: 1 },
-  price: { color: '#0F172A', fontSize: 14, fontWeight: '700' },
+  service: { fontWeight: '700', color: '#0F172A', fontSize: 12, flexShrink: 1 },
+  price: { color: '#0F172A', fontSize: 12, fontWeight: '700' },
+  priceVaries: { color: '#EA580C' },
   oilHead: { flexDirection: 'row', marginBottom: 8 },
   oilRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  oilCol: { flex: 1, fontSize: 11, fontWeight: '800', color: '#64748B', textTransform: 'uppercase' },
+  oilCol: { flex: 1, fontSize: 12, fontWeight: '800', color: '#64748B', textTransform: 'uppercase' },
   oilName: { flex: 1.2 },
-  planName: { fontSize: 13, fontWeight: '800', color: '#0F172A', textTransform: 'none' },
+  planName: { fontSize: 12, fontWeight: '700', color: '#0F172A', textTransform: 'none' },
   oilPrice: { flex: 1, fontSize: 12, fontWeight: '700', color: '#0F172A' },
 });
