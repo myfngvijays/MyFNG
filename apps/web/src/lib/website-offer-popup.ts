@@ -49,7 +49,7 @@ export const WEBSITE_POPUP_PAGE_OPTIONS: Array<{ id: string; label: string; hint
   { id: 'home', label: 'Home', hint: '/' },
   { id: 'services', label: 'Services', hint: '/services' },
   { id: 'car-services', label: 'Car service pages', hint: '/car-services' },
-  { id: 'cities', label: 'City pages', hint: '/car-service-in' },
+  { id: 'cities', label: 'City pages', hint: '/car-service-in-mumbai' },
   { id: 'workshops', label: 'Workshop pages', hint: '/workshop' },
   { id: 'blogs', label: 'Blogs & news', hint: '/blogs' },
   { id: 'about', label: 'About', hint: '/about' },
@@ -86,7 +86,7 @@ const PAGE_RULES: Array<{ id: string; test: (path: string) => boolean }> = [
   { id: 'home', test: (path) => path === '/' },
   { id: 'services', test: (path) => path === '/services' || path.startsWith('/services/') },
   { id: 'car-services', test: (path) => path === '/car-services' || path.startsWith('/car-services/') },
-  { id: 'cities', test: (path) => path.startsWith('/car-service-in/') },
+  { id: 'cities', test: (path) => path.startsWith('/car-service-in/') || path.startsWith('/car-service-in-') },
   { id: 'workshops', test: (path) => path.startsWith('/workshop/') || path === '/workshop-locator' },
   {
     id: 'blogs',
