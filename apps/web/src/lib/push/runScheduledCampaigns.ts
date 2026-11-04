@@ -2,22 +2,42 @@ import 'server-only';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { executeAdminPushBroadcast } from '@/lib/push/executeAdminBroadcast';
 
-export async function runScheduledPushCampaigns(opts?: { limit?: number; dryRun?: boolean }) {
+/** Auto-send window. Older queued rows stay scheduled for Edit / Send now. */
+export const SCHEDULED_PUSH_MAX_LATENESS_MS = 6 * 60 * 60 * 1000;
+
+export async function runScheduledPushCampaigns(opts?: {
+  limit?: number;
+  dryRun?: boolean;
+  campaignId?: string;
+  force?: boolean;
+}) {
   const limit = opts?.limit ?? 20;
   const dryRun = Boolean(opts?.dryRun);
+  const force = Boolean(opts?.force);
+  const campaignId = String(opts?.campaignId || '').trim();
   const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
   if (!supabaseAdmin) {
-    return { success: false, error: adminError || 'Admin client missing', processed: 0 };
+    return { success: false, error: adminError || 'Admin client missing', processed: 0, results: [] as Array<{ id: string; status: string; sent?: number; error?: string }> };
   }
 
   const nowIso = new Date().toISOString();
-  const { data: due, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('push_scheduled_campaigns')
     .select('id, name, payload, ab_enabled, variant_b, scheduled_at, created_by')
     .eq('status', 'scheduled')
-    .lte('scheduled_at', nowIso)
     .order('scheduled_at', { ascending: true })
     .limit(limit);
+
+  if (campaignId) {
+    query = query.eq('id', campaignId);
+  } else if (!force) {
+    const earliestIso = new Date(Date.now() - SCHEDULED_PUSH_MAX_LATENESS_MS).toISOString();
+    query = query.lte('scheduled_at', nowIso).gte('scheduled_at', earliestIso);
+  } else {
+    query = query.lte('scheduled_at', nowIso);
+  }
+
+  const { data: due, error } = await query;
 
   if (error) {
     if (String(error.message || '').includes('push_scheduled_campaigns')) {

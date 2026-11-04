@@ -35,6 +35,7 @@ import toast from 'react-hot-toast';
 import NotificationLivePreview, { TYPE_DOT } from '../components/NotificationLivePreview';
 import PushMediaUploadField from '../components/PushMediaUploadField';
 import TemplatePicker from '../components/TemplatePicker';
+import { campaignCategory, type CampaignCategory } from '@/lib/push/campaignCategory';
 
 type PlatformChoice = 'both' | 'android' | 'ios';
 type AudienceChoice = 'all' | 'android' | 'ios';
@@ -49,10 +50,6 @@ function pad2(n: number) {
 
 function localDateValue(date: Date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-}
-
-function localTimeValue(date: Date) {
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
 function FieldCounter({ current, max }: { current: number; max: number }) {
@@ -155,10 +152,10 @@ export default function AdvancedComposeSection() {
   const [platform, setPlatform] = useState<PlatformChoice>('both');
   const [audience, setAudience] = useState<AudienceChoice>('all');
   const [sending, setSending] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduling, setScheduling] = useState(false);
+  const [categoryPick, setCategoryPick] = useState<CampaignCategory | null>(null);
 
   const [targetCities, setTargetCities] = useState<string[]>([]);
   const [targetMembership, setTargetMembership] = useState<'all' | 'members' | 'non_members'>('all');
@@ -469,6 +466,9 @@ export default function AdvancedComposeSection() {
           payload: {
             title: title.trim(),
             message: message.trim(),
+            category:
+              categoryPick ||
+              campaignCategory({ name: title.trim(), payload: { title: title.trim(), message: message.trim() } }),
             target_role: 'CUSTOMER',
             priority,
             notification_type: notificationType,
@@ -497,7 +497,6 @@ export default function AdvancedComposeSection() {
         toast.error(data.error || 'Schedule failed');
         return;
       }
-      setScheduleOpen(false);
       toast.success(`Scheduled for ${when.toLocaleString('en-IN')}`);
     } catch {
       toast.error('Network error. Try again.');
@@ -830,6 +829,53 @@ export default function AdvancedComposeSection() {
             </div>
           ) : null}
 
+          <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/50 p-3 space-y-3">
+            <p className="text-sm font-semibold text-gray-800 inline-flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-blue-600" />
+              Schedule for later
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(['festival', 'normal'] as CampaignCategory[]).map((key) => {
+                const selected =
+                  (categoryPick ||
+                    campaignCategory({ name: title, payload: { title, message } })) === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setCategoryPick(key)}
+                    className={`rounded-full px-3 py-1.5 text-sm font-semibold border ${
+                      selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200'
+                    }`}
+                  >
+                    {key === 'festival' ? 'Festival' : 'Normal'}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label>
+                <span className="push-label">Date</span>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  min={localDateValue(new Date())}
+                  onChange={(event) => setScheduleDate(event.target.value)}
+                  className="push-input w-full bg-white"
+                />
+              </label>
+              <label>
+                <span className="push-label">Time</span>
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(event) => setScheduleTime(event.target.value)}
+                  className="push-input w-full bg-white"
+                />
+              </label>
+            </div>
+          </div>
+
           {/* ── Actions ── */}
           <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
             <button type="button" onClick={resetForm} className="push-btn-ghost">Cancel</button>
@@ -867,16 +913,11 @@ export default function AdvancedComposeSection() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                const next = new Date(Date.now() + 2 * 60_000);
-                setScheduleDate(localDateValue(next));
-                setScheduleTime(localTimeValue(next));
-                setScheduleOpen(true);
-              }}
-              disabled={!title.trim() || !message.trim()}
+              onClick={() => void confirmSchedule()}
+              disabled={scheduling || !title.trim() || !message.trim()}
               className="push-btn-ghost disabled:opacity-50"
             >
-              Schedule later
+              {scheduling ? 'Scheduling…' : 'Schedule later'}
             </button>
             <button
               type="button"
@@ -891,53 +932,6 @@ export default function AdvancedComposeSection() {
 
         <NotificationLivePreview title={title} message={message} notificationType={notificationType} priority={priority} imageUrl={imageUrl} iconUrl={iconUrl} />
       </div>
-
-      {scheduleOpen ? (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => { if (!scheduling) setScheduleOpen(false); }}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 text-base font-bold text-gray-900">
-              <Calendar className="h-4 w-4" />
-              Schedule notification
-            </div>
-            <p className="mt-1 text-sm text-gray-500">Choose when this notification should go out.</p>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label>
-                <span className="push-label">Date</span>
-                <input
-                  type="date"
-                  value={scheduleDate}
-                  min={localDateValue(new Date())}
-                  onChange={(event) => setScheduleDate(event.target.value)}
-                  className="push-input w-full"
-                />
-              </label>
-              <label>
-                <span className="push-label">Time</span>
-                <input
-                  type="time"
-                  value={scheduleTime}
-                  onChange={(event) => setScheduleTime(event.target.value)}
-                  className="push-input w-full"
-                />
-              </label>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="push-btn-ghost" onClick={() => setScheduleOpen(false)} disabled={scheduling}>
-                Cancel
-              </button>
-              <button type="button" className="push-btn-primary disabled:opacity-50" onClick={() => void confirmSchedule()} disabled={scheduling}>
-                {scheduling ? 'Scheduling…' : 'Schedule'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

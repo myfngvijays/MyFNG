@@ -13,6 +13,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: authError }, { status: 401 });
   }
 
+  // scheduled-push has its own Vercel cron, but that job has not been firing.
+  // This every-5-minute route is the one Supabase Cronon already calls.
+  let scheduledPush: unknown = null;
+  try {
+    const { runScheduledPushCampaigns } = await import('@/lib/push/runScheduledCampaigns');
+    scheduledPush = await runScheduledPushCampaigns();
+  } catch (error) {
+    scheduledPush = {
+      success: false,
+      error: error instanceof Error ? error.message : 'scheduled_push_failed',
+    };
+  }
+
   let dailyBlog: unknown = null;
   try {
     const { maybeCatchUpDailyBlog } = await import('@/lib/blog/runDailyBlogPost');
@@ -28,6 +41,7 @@ export async function GET(request: NextRequest) {
       reason: 'job_disabled_in_admin',
       timestamp: new Date().toISOString(),
       daily_blog: dailyBlog,
+      scheduled_push: scheduledPush,
     });
   }
 
@@ -37,5 +51,6 @@ export async function GET(request: NextRequest) {
     timestamp: new Date().toISOString(),
     result,
     daily_blog: dailyBlog,
+    scheduled_push: scheduledPush,
   });
 }

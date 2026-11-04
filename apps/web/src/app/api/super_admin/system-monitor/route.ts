@@ -515,7 +515,7 @@ async function checkPushCampaigns(): Promise<HealthCheck> {
           : `${campaigns.count || 0} campaigns · ${segments.count || 0} segments`,
       reason:
         stuck > 0
-          ? `${stuck} campaign(s) are still "scheduled" more than 30 minutes past due. Check /api/cron/scheduled-push and CRON_SECRET.`
+          ? `${stuck} campaign(s) are still "scheduled" more than 30 minutes past due. /api/cron/scheduled-push is not being called, so nothing leaves the queue. Use Send now on Campaigns. Auto-send only covers campaigns due within the last 6 hours.`
           : 'Push campaign + segment tables are available.',
       quickFix:
         stuck > 0

@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Clock, Loader2, RefreshCw, Search } from 'lucide-react';
+import { Clock, Eye, Loader2, RefreshCw, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PUSH_ROLE_OPTIONS, type PushLogEntry } from '@/lib/push/push-admin-constants';
 
@@ -43,6 +43,9 @@ export default function PushHistorySection({ initialSearch = '' }: { initialSear
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [search, setSearch] = useState(initialSearch);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [opensForId, setOpensForId] = useState<string | null>(null);
+  const [opensLoading, setOpensLoading] = useState(false);
+  const [opens, setOpens] = useState<Array<{ id: string; created_at?: string; name?: string | null; phone?: string | null; variant?: string | null }>>([]);
   const [offset, setOffset] = useState(0);
   const limit = 25;
 
@@ -81,12 +84,34 @@ export default function PushHistorySection({ initialSearch = '' }: { initialSear
     void fetchLogs();
   }, [fetchLogs]);
 
+  const loadOpens = async (log: PushLogEntry) => {
+    if (opensForId === log.id) {
+      setOpensForId(null);
+      return;
+    }
+    setOpensForId(log.id);
+    setOpens([]);
+    setOpensLoading(true);
+    try {
+      const res = await fetch(`/api/super_admin/notifications/history?view=opens&id=${encodeURIComponent(log.id)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Could not load opens');
+        setOpens([]);
+        return;
+      }
+      setOpens(Array.isArray(data.opens) ? data.opens : []);
+    } finally {
+      setOpensLoading(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Notification History</h2>
-          <p className="text-sm text-gray-500 mt-1">Audit log of all admin push broadcasts with delivery status</p>
+          <p className="text-sm text-gray-500 mt-1">Delivery status and who opened each push</p>
         </div>
         <button
           type="button"
@@ -162,6 +187,7 @@ export default function PushHistorySection({ initialSearch = '' }: { initialSear
                 <th className="text-left px-4 py-3 font-semibold">Notification</th>
                 <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">Audience</th>
                 <th className="text-left px-4 py-3 font-semibold hidden lg:table-cell">Sent</th>
+                <th className="text-left px-4 py-3 font-semibold">Opens</th>
                 <th className="text-left px-4 py-3 font-semibold">Status</th>
               </tr>
             </thead>
@@ -195,6 +221,17 @@ export default function PushHistorySection({ initialSearch = '' }: { initialSear
                           <span className="block text-xs mt-0.5">by {log.meta.sent_by}</span>
                         ) : null}
                       </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+                          onClick={() => void loadOpens(log)}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          {log.meta?.opens ?? 0} opens
+                        </button>
+                        <span className="block text-[11px] text-[#72665e] mt-0.5">{log.meta?.clicks ?? 0} clicks</span>
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${
@@ -211,9 +248,38 @@ export default function PushHistorySection({ initialSearch = '' }: { initialSear
                         </span>
                       </td>
                     </tr>
+                    {opensForId === log.id ? (
+                      <tr className="border-t border-[#e6e0da] bg-blue-50/40">
+                        <td colSpan={5} className="px-4 py-3 text-xs text-[#443c36]">
+                          <p className="font-semibold mb-2">Opens · {log.meta?.title || 'Notification'}</p>
+                          {opensLoading ? (
+                            <span className="inline-flex items-center gap-2 text-gray-500">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading opens…
+                            </span>
+                          ) : opens.length === 0 ? (
+                            <span className="text-gray-500">No opens recorded for this push yet.</span>
+                          ) : (
+                            <ul className="space-y-1">
+                              {opens.map((row, index) => (
+                                <li key={row.id || index}>
+                                  {row.name || row.phone ? (
+                                    <span className="font-medium">{row.name || 'Customer'}</span>
+                                  ) : (
+                                    <span className="font-medium">Open {index + 1}</span>
+                                  )}
+                                  {row.phone ? <span> · {row.phone}</span> : null}
+                                  {row.created_at ? <span className="text-[#72665e]"> · {formatDate(row.created_at)}</span> : null}
+                                  {row.variant ? <span> · Variant {row.variant}</span> : null}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                      </tr>
+                    ) : null}
                     {expanded ? (
                       <tr className="border-t border-[#e6e0da] bg-[#faf9f7]">
-                        <td colSpan={4} className="px-4 py-3 text-xs text-[#72665e] space-y-1">
+                        <td colSpan={5} className="px-4 py-3 text-xs text-[#72665e] space-y-1">
                           <p>
                             <strong>Priority:</strong> {log.meta?.priority || 'default'}
                           </p>

@@ -41,6 +41,8 @@ import {
   SuperAdminWalletLogicScreen,
   SuperAdminWalletHistoryScreen,
 } from '../screens/dashboard/superadmin/SuperAdminWalletScreens';
+import { SuperAdminPushCampaignsScreen } from '../screens/dashboard/superadmin/SuperAdminPushCampaignsScreen';
+import { SuperAdminPushHistoryScreen } from '../screens/dashboard/superadmin/SuperAdminPushHistoryScreen';
 import WebsiteImagesHubScreen from '../screens/dashboard/superadmin/WebsiteImagesHubScreen';
 import HomeCarouselScreen from '../screens/dashboard/superadmin/HomeCarouselScreen';
 import WebsitePopupScreen from '../screens/dashboard/superadmin/WebsitePopupScreen';
@@ -1481,6 +1483,8 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         <Stack.Screen name="SuperAdminDltSms" component={SuperAdminDltSmsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminTrackingScripts" component={SuperAdminTrackingScriptsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminWalletLogic" component={SuperAdminWalletLogicScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminPushCampaigns" component={SuperAdminPushCampaignsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SuperAdminPushHistory" component={SuperAdminPushHistoryScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminWalletHistory" component={SuperAdminWalletHistoryScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SuperAdminApiModule" component={SuperAdminApiModuleScreen} options={{ headerShown: false }} />
       </Stack.Navigator>

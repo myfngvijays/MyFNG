@@ -19,6 +19,47 @@ export async function GET(request: NextRequest) {
     }
 
     const params = request.nextUrl.searchParams;
+    const view = params.get('view')?.trim().toLowerCase();
+    const detailId = params.get('id')?.trim();
+    if (view === 'opens' && detailId) {
+      const { data: events, error: eventsError } = await supabaseAdmin
+        .from('push_engagement_events')
+        .select('id, event_type, customer_id, created_at, variant')
+        .eq('notification_log_id', detailId)
+        .eq('event_type', 'open')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (eventsError) {
+        return NextResponse.json({ error: eventsError.message, opens: [] }, { status: 500 });
+      }
+      const customerIds = Array.from(
+        new Set((events || []).map((row: { customer_id?: string | null }) => row.customer_id).filter(Boolean)),
+      ) as string[];
+      let customers: Record<string, { full_name?: string | null; phone?: string | null }> = {};
+      if (customerIds.length > 0) {
+        const { data: people } = await supabaseAdmin
+          .from('customers')
+          .select('id, full_name, phone')
+          .in('id', customerIds);
+        for (const person of people || []) {
+          customers[String((person as { id: string }).id)] = person as { full_name?: string | null; phone?: string | null };
+        }
+      }
+      return NextResponse.json({
+        opens: (events || []).map((row: { id: string; customer_id?: string | null; created_at?: string; variant?: string | null }) => {
+          const person = row.customer_id ? customers[row.customer_id] : undefined;
+          return {
+            id: row.id,
+            created_at: row.created_at,
+            variant: row.variant || null,
+            customer_id: row.customer_id || null,
+            name: person?.full_name || null,
+            phone: person?.phone || null,
+          };
+        }),
+      });
+    }
+
     const status = params.get('status')?.trim().toUpperCase();
     const role = params.get('role')?.trim().toUpperCase();
     const q = params.get('q')?.trim();

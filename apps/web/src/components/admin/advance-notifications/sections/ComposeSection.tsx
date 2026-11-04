@@ -24,6 +24,7 @@ import NotificationLivePreview, { TYPE_DOT } from '../components/NotificationLiv
 import PushMediaUploadField from '../components/PushMediaUploadField';
 import TemplatePicker from '../components/TemplatePicker';
 import { PUSH_ROLE_OPTIONS, PUSH_TEST_PHONE_PRESETS } from '@/lib/push/push-admin-constants';
+import { campaignCategory, type CampaignCategory } from '@/lib/push/campaignCategory';
 
 type PlatformChoice = 'both' | 'android' | 'ios';
 type AudienceChoice = 'all' | 'android' | 'ios';
@@ -86,6 +87,7 @@ export default function PushComposeSection() {
   const [abEnabled, setAbEnabled] = useState(false);
   const [titleB, setTitleB] = useState('');
   const [messageB, setMessageB] = useState('');
+  const [categoryPick, setCategoryPick] = useState<CampaignCategory | null>(null);
   const [result, setResult] = useState<{
     success: boolean;
     sent?: number;
@@ -145,7 +147,12 @@ export default function PushComposeSection() {
           body: JSON.stringify({
             name: title.trim(),
             scheduled_at: when.toISOString(),
-            payload: buildPayload(),
+            payload: {
+              ...buildPayload(),
+              category:
+                categoryPick ||
+                campaignCategory({ name: title.trim(), payload: { title: title.trim(), message: message.trim() } }),
+            },
             ab_enabled: abEnabled,
             variant_b: abEnabled
               ? { title: titleB.trim(), message: messageB.trim() }
@@ -365,6 +372,25 @@ export default function PushComposeSection() {
             <CalendarClock className="w-4 h-4 text-blue-600" />
             Schedule for later
           </label>
+          <div className="flex flex-wrap gap-2">
+            {(['festival', 'normal'] as CampaignCategory[]).map((key) => {
+              const selected =
+                (categoryPick ||
+                  campaignCategory({ name: title, payload: { title, message } })) === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCategoryPick(key)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold border ${
+                    selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200'
+                  }`}
+                >
+                  {key === 'festival' ? 'Festival' : 'Normal'}
+                </button>
+              );
+            })}
+          </div>
           {scheduleEnabled ? (
             <input
               type="datetime-local"

@@ -131,8 +131,8 @@ export const SA_NAV: SaNavRow[] = [
     children: [
       { id: 'push_dash', label: 'Push Dashboard', icon: 'stats-chart-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Push Dashboard', path: '/api/super_admin/notifications/dashboard' } },
       { id: 'push_templates', label: 'Templates', icon: 'document-text-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Notification Templates', path: '/api/super_admin/notifications/templates' } },
-      { id: 'push_campaigns', label: 'Campaigns', icon: 'timer-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Push Campaigns', path: '/api/super_admin/notifications/campaigns' } },
-      { id: 'push_history', label: 'Notification History', icon: 'time-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'Notification History', path: '/api/super_admin/notifications/history' } },
+      { id: 'push_campaigns', label: 'Campaigns', icon: 'timer-outline', target: 'SuperAdminPushCampaigns', kind: 'stack' },
+      { id: 'push_history', label: 'Notification History', icon: 'time-outline', target: 'SuperAdminPushHistory', kind: 'stack' },
     ],
   },
   {
