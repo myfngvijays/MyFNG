@@ -507,10 +507,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     () => Math.max(0, subtotal - couponDiscount),
     [subtotal, couponDiscount],
   );
+  const cartCouponApplied = Boolean(cartCouponResult?.coupon?.code) || couponDiscount > 0;
   const walletUsed = useMemo(() => {
-    if (selectedReferralVoucherId || !useWalletForCart || !isLoggedIn || walletVehicleBlocked) return 0;
+    if (cartCouponApplied || selectedReferralVoucherId || !useWalletForCart || !isLoggedIn || walletVehicleBlocked) return 0;
     return calculateWalletUsage(payableBeforeWallet, Number(walletBalance || 0), walletChannel, walletVehicleBlocked);
-  }, [selectedReferralVoucherId, useWalletForCart, isLoggedIn, payableBeforeWallet, walletBalance, walletChannel, walletVehicleBlocked]);
+  }, [cartCouponApplied, selectedReferralVoucherId, useWalletForCart, isLoggedIn, payableBeforeWallet, walletBalance, walletChannel, walletVehicleBlocked]);
   const walletMaxUsable = useMemo(() => {
     if (!isLoggedIn || walletVehicleBlocked || payableBeforeWallet <= 0) return 0;
     return calculateWalletUsage(payableBeforeWallet, Number(walletBalance || 0), walletChannel, walletVehicleBlocked);
@@ -593,7 +594,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       const data = await res.json();
       if (data?.valid) {
         setCartCouponResult(data);
-        Alert.alert('Coupon Applied', `You saved ₹${Math.round(Number(data.discount_amount || 0)).toLocaleString('en-IN')}.`);
+        setUseWalletForCart(false);
+        Alert.alert('Coupon Applied', `You saved ₹${Math.round(Number(data.discount_amount || 0)).toLocaleString('en-IN')}. Wallet is turned off for this order.`);
       } else {
         setCartCouponResult(null);
         Alert.alert('Coupon', String(data?.error || 'Coupon is not applicable.'));
@@ -3005,10 +3007,34 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       const bookingAmount = finalAmount > 0
         ? finalAmount
         : Number(cartServerCart?.grand_total || subtotal || 0);
+      const appliedCouponCode = String(cartCouponResult?.coupon?.code || '').trim();
+      const appliedCouponDiscount = Number(cartCouponResult?.discount_amount || 0);
+      const couponOnCart = Boolean(appliedCouponCode);
+      const serviceItems = (cartItems || []).length > 0
+        ? cartItems.map((it: any) => ({ label: String(it?.service_type || 'Service'), price: Number(it?.total_price || 0) }))
+        : cartSelectedService
+          ? [{ label: cartSelectedService.name, price: cartSelectedService.price }]
+          : [];
       const payload = {
         subtotal: Number(subtotal || bookingAmount),
-        discount_amount: Number(cartCouponResult?.discount_amount || 0),
-        use_wallet: useWalletForCart && !walletVehicleBlocked && !selectedReferralVoucherId,
+        discount_amount: appliedCouponDiscount,
+        use_wallet: useWalletForCart && !walletVehicleBlocked && !selectedReferralVoucherId && !couponOnCart,
+        coupon: couponOnCart
+          ? {
+              code: appliedCouponCode,
+              lead_context: {
+                subtotal: Number(subtotal || 0),
+                customer_phone: profileForm.phone.trim(),
+                service_items: serviceItems,
+                channel: 'MOBILE',
+                vehicle_class: selectedCar?.class || null,
+                vehicle_make: selectedVehicle?.make || selectedCar?.make || null,
+                vehicle_model: selectedVehicle?.model || selectedCar?.model_name || selectedCar?.model || null,
+                vehicle_number: String(selectedVehicle?.vehicle_number || '').trim() || null,
+                model_id: selectedCar?.id || null,
+              },
+            }
+          : undefined,
         referral_voucher_applied: Boolean(selectedReferralVoucherId),
         referral_reward_claim_id: selectedReferralVoucherId,
         lead: {
@@ -3037,8 +3063,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           estimated_amount: bookingAmount,
           payment_mode: cartPaymentMode,
           payment_status: cartPaymentMode === 'pay_now' ? 'PENDING' : 'PENDING_AT_SERVICE',
-          coupon_code: cartCouponResult?.coupon?.code || null,
-          discount_amount: Number(cartCouponResult?.discount_amount || 0),
+          coupon_code: appliedCouponCode || null,
+          discount_amount: appliedCouponDiscount,
         },
       };
       const created = await submitServiceBooking(payload);
@@ -3079,6 +3105,10 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     cartCouponResult,
     cartItems,
     cartServerCart,
+    useWalletForCart,
+    walletVehicleBlocked,
+    selectedReferralVoucherId,
+    selectedCar,
     hydrateCustomerData,
     loadCart,
   ]);
@@ -5535,7 +5565,9 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                   <View style={cstyles.walletHeaderText}>
                     <Text style={cstyles.walletTitle}>Wallet Balance</Text>
                     <Text style={cstyles.walletHint}>
-                      {selectedReferralVoucherId
+                      {cartCouponApplied
+                        ? 'Remove the coupon to use wallet'
+                        : selectedReferralVoucherId
                         ? 'Turn off referral voucher to use wallet'
                         : isMembershipOnlyCart
                           ? `Up to ${formatWalletUsageLimit('MEMBERSHIP')} on membership`
@@ -5545,10 +5577,14 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                   <View style={cstyles.walletToggleWrap}>
                     <Switch
                       style={Platform.OS === 'ios' ? cstyles.walletSwitch : undefined}
-                      value={useWalletForCart && !walletVehicleBlocked && !selectedReferralVoucherId}
+                      value={useWalletForCart && !walletVehicleBlocked && !selectedReferralVoucherId && !cartCouponApplied}
                       onValueChange={(val) => {
                         setUseWalletForCart(val);
-                        if (val) setSelectedReferralVoucherId(null);
+                        if (val) {
+                          setSelectedReferralVoucherId(null);
+                          setCartCouponResult(null);
+                          setCoupon('');
+                        }
                       }}
                       disabled={walletVehicleBlocked || Boolean(selectedReferralVoucherId)}
                       trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}

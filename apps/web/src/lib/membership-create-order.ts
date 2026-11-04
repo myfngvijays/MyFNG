@@ -36,7 +36,7 @@ export async function createMembershipPaymentOrder(input: MembershipCreateOrderI
   const leadId = String(body.lead_id || '').trim();
   const serviceSubtotal = Number(body.service_subtotal || 0);
   const couponCode = String(body.coupon_code || '').trim().toUpperCase();
-  const useWallet = body.use_wallet !== false;
+  const useWallet = body.use_wallet !== false && !couponCode;
   const vehicleNumber = body.vehicle_number ? String(body.vehicle_number) : null;
   const secondVehicleNumber = body.second_vehicle_number ? String(body.second_vehicle_number) : null;
 

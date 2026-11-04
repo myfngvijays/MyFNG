@@ -52,6 +52,17 @@ export async function resolveServiceBookingWallet(
     };
   }
 
+  // Promo coupon and wallet are mutually exclusive. Coupon stays; wallet is not deducted.
+  if (couponDiscount > 0 && opts.useWallet) {
+    return {
+      walletDeduction: 0,
+      payableBeforeWallet,
+      finalAmount: payableBeforeWallet,
+      spendableBalance: 0,
+      blocked: false,
+    };
+  }
+
   if (!opts.useWallet || payableBeforeWallet <= 0) {
     return {
       walletDeduction: 0,

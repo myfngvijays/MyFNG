@@ -198,6 +198,32 @@ export async function POST(request: NextRequest) {
       couponCode = String(couponResult.coupon.code || '');
       discountAmount = couponResult.discountAmount;
       couponMeta = couponResult.couponMeta;
+    } else {
+      const leadCouponCode = String(lead?.coupon_code || '').trim();
+      if (leadCouponCode) {
+        const channel = String(request.headers.get('x-mobile-client') ? 'MOBILE' : 'WEB').toUpperCase();
+        const couponSubtotal = Number(body?.subtotal || lead?.estimated_amount || 0);
+        const couponResult = await validateCouponForCheckout(
+          supabaseAdmin,
+          leadCouponCode,
+          {
+            subtotal: couponSubtotal,
+            customer_phone: customerPhone,
+            channel,
+            vehicle_class: lead?.vehicle_class || null,
+            vehicle_make: lead?.vehicle_make || null,
+            vehicle_model: lead?.vehicle_model || null,
+            vehicle_number: lead?.vehicle_number || null,
+            model_id: lead?.model_id || null,
+          },
+          { serviceBooking: true },
+        );
+        if (couponResult.valid) {
+          couponCode = String(couponResult.coupon.code || '');
+          discountAmount = couponResult.discountAmount;
+          couponMeta = couponResult.couponMeta;
+        }
+      }
     }
 
     let membershipBundleDiscount = 0;
