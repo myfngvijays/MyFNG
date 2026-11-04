@@ -1003,6 +1003,81 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
       ...(couponCodeForDisplay ? [couponCodeForDisplay] : []),
     ])
   ).filter(Boolean);
+  const getIncludedItems = (it: any) => {
+    const cat = String(it?.category || '').toUpperCase();
+    if (cat === 'EXTRA') {
+      return Array.isArray(it?.included_items) ? it.included_items : [];
+    }
+    if (cat !== 'SERVICE') return [];
+    if (Array.isArray(it?.included_items) && it.included_items.length > 0) {
+      return it.included_items;
+    }
+    return (it?.service_type_id && includedByServiceTypeId[String(it.service_type_id)])
+      ? includedByServiceTypeId[String(it.service_type_id)]
+      : includedByServiceNameKey[normalizeName(String(it?.description || ''))] || [];
+  };
+
+  const computeIncludedTotal = (serviceRow: any, includedItems: any[], isEditingThis: boolean) => {
+    return (includedItems || []).reduce((s: number, p: any) => {
+      const pid = String(p?.product_id || '').trim();
+      const qtyBase = Number(p?.quantity || 1) || 1;
+      const unitPriceBase = Number(p?.unit_price || 0) || 0;
+      const qtyDraftRaw = isEditingThis ? includedQtyDraft[pid] : null;
+      const rateDraftRaw = isEditingThis ? includedRateDraft[pid] : null;
+      const qty =
+        isEditingThis && qtyDraftRaw != null && qtyDraftRaw !== ''
+          ? Number(qtyDraftRaw)
+          : qtyBase;
+      const unitPrice =
+        isEditingThis && rateDraftRaw != null && rateDraftRaw !== ''
+          ? Number(rateDraftRaw)
+          : unitPriceBase;
+      const amountDraft = Number(p?.amount);
+      const amt =
+        Number.isFinite(amountDraft) && !isEditingThis
+          ? amountDraft
+          : (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unitPrice) ? unitPrice : 0);
+      return s + amt;
+    }, 0);
+  };
+
+  function getServicePrice(it: any) {
+    const qty = Number(it?.qty ?? 1) || 1;
+    const rate = Number(it?.rate ?? 0) || 0;
+    const amount = Number(it?.amount ?? 0) || 0;
+    const fromLine = amount > 0 ? amount : qty * rate;
+
+    // Custom Service is editable (do not override from master service pricing maps)
+    if (isCustomServiceName(String(it?.description || ''))) {
+      return Number.isFinite(fromLine) ? fromLine : 0;
+    }
+    // Advisor-edited OS lines stay as stored.
+    if (it?.os_edited) {
+      return Number.isFinite(fromLine) ? fromLine : 0;
+    }
+
+    // Transparent pricing: bill = sum of included workshop parts (not package sticker).
+    const includedItems = getIncludedItems(it);
+    if (Array.isArray(includedItems) && includedItems.length > 0) {
+      const isEditingThis = editingIncludedFor === String(it?.description || '');
+      const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
+      if (includedTotal > 0.5) return includedTotal;
+    }
+
+    if (String(it?.pricing_mode || '') === 'TRANSPARENT_INCLUDED_SUM' && fromLine > 0) {
+      return fromLine;
+    }
+
+    const byType = it?.service_type_id ? servicePriceByTypeId[String(it.service_type_id)] : undefined;
+    const byName = servicePriceByNameKey[normalizeName(String(it?.description || ''))];
+    if (Number.isFinite(fromLine) && fromLine > 0) return fromLine;
+    return Number.isFinite(byType) && (byType as number) > 0
+      ? (byType as number)
+      : Number.isFinite(byName) && (byName as number) > 0
+        ? (byName as number)
+        : (Number.isFinite(fromLine) ? fromLine : 0);
+  }
+
   const discountAmount = Number((invoice as any)?.discount_amount ?? 0) || 0;
   const storedSubtotal = Number((invoice as any)?.subtotal ?? (invoice as any)?.sub_total ?? 0) || 0;
   const lineItemsSubtotal = lineItems.reduce((sum, it: any) => {
@@ -1290,81 +1365,6 @@ export default function InvoiceSection({ lead, onUpdate }: InvoiceSectionProps) 
     });
     return keys.map((k) => ({ key: k, items: map[k] }));
   })();
-
-  const getIncludedItems = (it: any) => {
-    const cat = String(it?.category || '').toUpperCase();
-    if (cat === 'EXTRA') {
-      return Array.isArray(it?.included_items) ? it.included_items : [];
-    }
-    if (cat !== 'SERVICE') return [];
-    if (Array.isArray(it?.included_items) && it.included_items.length > 0) {
-      return it.included_items;
-    }
-    return (it?.service_type_id && includedByServiceTypeId[String(it.service_type_id)])
-      ? includedByServiceTypeId[String(it.service_type_id)]
-      : includedByServiceNameKey[normalizeName(String(it?.description || ''))] || [];
-  };
-
-  const computeIncludedTotal = (serviceRow: any, includedItems: any[], isEditingThis: boolean) => {
-    return (includedItems || []).reduce((s: number, p: any) => {
-      const pid = String(p?.product_id || '').trim();
-      const qtyBase = Number(p?.quantity || 1) || 1;
-      const unitPriceBase = Number(p?.unit_price || 0) || 0;
-      const qtyDraftRaw = isEditingThis ? includedQtyDraft[pid] : null;
-      const rateDraftRaw = isEditingThis ? includedRateDraft[pid] : null;
-      const qty =
-        isEditingThis && qtyDraftRaw != null && qtyDraftRaw !== ''
-          ? Number(qtyDraftRaw)
-          : qtyBase;
-      const unitPrice =
-        isEditingThis && rateDraftRaw != null && rateDraftRaw !== ''
-          ? Number(rateDraftRaw)
-          : unitPriceBase;
-      const amountDraft = Number(p?.amount);
-      const amt =
-        Number.isFinite(amountDraft) && !isEditingThis
-          ? amountDraft
-          : (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unitPrice) ? unitPrice : 0);
-      return s + amt;
-    }, 0);
-  };
-
-  function getServicePrice(it: any) {
-    const qty = Number(it?.qty ?? 1) || 1;
-    const rate = Number(it?.rate ?? 0) || 0;
-    const amount = Number(it?.amount ?? 0) || 0;
-    const fromLine = amount > 0 ? amount : qty * rate;
-
-    // Custom Service is editable (do not override from master service pricing maps)
-    if (isCustomServiceName(String(it?.description || ''))) {
-      return Number.isFinite(fromLine) ? fromLine : 0;
-    }
-    // Advisor-edited OS lines stay as stored.
-    if (it?.os_edited) {
-      return Number.isFinite(fromLine) ? fromLine : 0;
-    }
-
-    // Transparent pricing: bill = sum of included workshop parts (not package sticker).
-    const includedItems = getIncludedItems(it);
-    if (Array.isArray(includedItems) && includedItems.length > 0) {
-      const isEditingThis = editingIncludedFor === String(it?.description || '');
-      const includedTotal = computeIncludedTotal(it, includedItems, isEditingThis);
-      if (includedTotal > 0.5) return includedTotal;
-    }
-
-    if (String(it?.pricing_mode || '') === 'TRANSPARENT_INCLUDED_SUM' && fromLine > 0) {
-      return fromLine;
-    }
-
-    const byType = it?.service_type_id ? servicePriceByTypeId[String(it.service_type_id)] : undefined;
-    const byName = servicePriceByNameKey[normalizeName(String(it?.description || ''))];
-    if (Number.isFinite(fromLine) && fromLine > 0) return fromLine;
-    return Number.isFinite(byType) && (byType as number) > 0
-      ? (byType as number)
-      : Number.isFinite(byName) && (byName as number) > 0
-        ? (byName as number)
-        : (Number.isFinite(fromLine) ? fromLine : 0);
-  }
 
   const applyProRata = (serviceRow: any, includedItems: any[]) => {
     // Pro-rata still targets package sticker when available; else current service amount.

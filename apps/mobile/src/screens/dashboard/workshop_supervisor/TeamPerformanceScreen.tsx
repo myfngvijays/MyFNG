@@ -3,7 +3,7 @@
  * Detailed performance metrics and analytics
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
+import WorkshopDateFilter from '../../../components/workshop/WorkshopDateFilter';
+import { resolveCrmDateRange } from '../../../lib/crmDateRange';
+import { useWorkshopDateFilter } from '../../../lib/workshopDateFilterPrefs';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +38,12 @@ export default function TeamPerformanceScreen() {
 
     return () => backHandler.remove();
   }, [navigation]);
+  const { datePreset, customStart, customEnd, setDatePreset, setCustomStart, setCustomEnd } =
+    useWorkshopDateFilter();
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,6 +60,10 @@ export default function TeamPerformanceScreen() {
   useEffect(() => {
     initializeScreen();
   }, []);
+
+  useEffect(() => {
+    if (workshopId) void fetchPerformanceData(workshopId);
+  }, [datePreset, customStart, customEnd, workshopId]);
 
   const initializeScreen = async () => {
     try {
@@ -141,22 +154,22 @@ export default function TeamPerformanceScreen() {
         }) || [];
       console.log('👨‍🔧 Found', mechanics.length, 'mechanics');
 
-      // Get jobs data for last 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      const { data: jobs, error: jobsError } = await supabase
+      const range = resolveCrmDateRange(datePreset, customStart, customEnd);
+      let jobsQuery = supabase
         .from('mechanic_jobs')
         .select('*')
-        .in('mechanic_id', mechanics?.map(m => m.id) || [])
-        .gte('assigned_at', thirtyDaysAgo.toISOString());
+        .in('mechanic_id', mechanics?.map(m => m.id) || []);
+      if (!range.allTime) {
+        jobsQuery = jobsQuery.gte('assigned_at', range.start).lte('assigned_at', range.end);
+      }
+      const { data: jobs, error: jobsError } = await jobsQuery;
 
       if (jobsError) {
         console.error('❌ Error fetching jobs:', jobsError);
         throw jobsError;
       }
 
-      console.log('📊 Found', jobs?.length || 0, 'jobs in last 30 days');
+      console.log('📊 Found', jobs?.length || 0, 'jobs in', range.label);
 
       // ✅ FIX: Calculate performance metrics with correct column (mechanic_status not status)
       const mechanicPerformance = mechanics?.map(mechanic => {
@@ -231,7 +244,15 @@ export default function TeamPerformanceScreen() {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.headerSubtitle}>Last 30 days analytics</Text>
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onPreset={setDatePreset}
+          onCustomStart={setCustomStart}
+          onCustomEnd={setCustomEnd}
+        />
+        <Text style={styles.headerSubtitle}>{dateRange.label}</Text>
       </View>
 
       {/* Overall Stats */}

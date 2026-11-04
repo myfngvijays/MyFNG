@@ -6,7 +6,8 @@ import { FLOOR_DONE_STATUSES, isQcPassed } from '@/lib/workshop/jobFlow';
 
 export const dynamic = 'force-dynamic';
 
-function inRange(iso: string | null | undefined, startMs: number, endMs: number) {
+function inRange(iso: string | null | undefined, startMs: number, endMs: number, allTime = false) {
+  if (allTime) return true;
   if (!iso) return false;
   const t = new Date(iso).getTime();
   return Number.isFinite(t) && t >= startMs && t <= endMs;
@@ -52,11 +53,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workshop assigned' }, { status: 400 });
     }
 
-    const date = String(request.nextUrl.searchParams.get('date') || istYmd()).slice(0, 10);
-    const { start, end } = istDayBounds(date);
+    const preset = String(request.nextUrl.searchParams.get('preset') || '').toLowerCase();
+    const fromParam = String(request.nextUrl.searchParams.get('from') || '').slice(0, 10);
+    const toParam = String(request.nextUrl.searchParams.get('to') || '').slice(0, 10);
+    const dateParam = String(request.nextUrl.searchParams.get('date') || '').slice(0, 10);
+    const allTime = preset === 'all_time';
+    let startYmd = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : istYmd();
+    let endYmd = startYmd;
+    if (allTime) {
+      startYmd = '2020-01-01';
+      endYmd = istYmd();
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(fromParam) && /^\d{4}-\d{2}-\d{2}$/.test(toParam)) {
+      startYmd = fromParam <= toParam ? fromParam : toParam;
+      endYmd = fromParam <= toParam ? toParam : fromParam;
+    }
+    const { start } = istDayBounds(startYmd);
+    const { end } = istDayBounds(endYmd);
     const startMs = new Date(start).getTime();
     const endMs = new Date(end).getTime();
     const startIso = new Date(start).toISOString();
+    const singleDay = startYmd === endYmd;
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const reader = supabaseAdmin || supabase;
@@ -74,9 +90,7 @@ export async function GET(request: NextRequest) {
       'ACCEPTED',
       'ASSIGNED',
       'IN_PROGRESS',
-      'WORK_IN_PROGRESS',
       'QC_PENDING',
-      'PENDING_QC',
       'QC_APPROVED',
       'READY_FOR_BILLING',
       'INVOICE_GENERATED',
@@ -93,16 +107,18 @@ export async function GET(request: NextRequest) {
         { select: LEAD_SELECT_MIN, deleted: false, minActivity: true },
       ];
       for (const t of tries) {
-        let q = reader.from('service_leads').select(t.select).limit(800);
+        let q = reader.from('service_leads').select(t.select).limit(allTime ? 2000 : 800);
         if (workshopId) q = q.eq('workshop_id', workshopId);
         if (t.deleted) q = q.is('deleted_at', null);
         if (mode === 'activity') {
-          if (t.minActivity) {
-            q = q.gte('updated_at', startIso);
-          } else {
-            q = q.or(
-              `created_at.gte.${startIso},updated_at.gte.${startIso},qc_performed_at.gte.${startIso},mechanic_completed_at.gte.${startIso}`,
-            );
+          if (!allTime) {
+            if (t.minActivity) {
+              q = q.gte('updated_at', startIso);
+            } else {
+              q = q.or(
+                `created_at.gte.${startIso},updated_at.gte.${startIso},qc_performed_at.gte.${startIso},mechanic_completed_at.gte.${startIso}`,
+              );
+            }
           }
         } else {
           q = q.in('status', OPEN_STATUSES);
@@ -133,8 +149,9 @@ export async function GET(request: NextRequest) {
     ]);
 
     let allLeads = activityLeads;
-    // Today: also include open floor/billing jobs so dummy / in-progress work is visible.
-    if (date === istYmd()) {
+    // Today and All Time: also include open floor/billing jobs so in-progress work is visible.
+    const isToday = singleDay && startYmd === istYmd();
+    if (isToday || allTime) {
       const openLeads = await loadLeads('open');
       const byId = new Map<string, any>();
       for (const row of [...allLeads, ...openLeads]) {
@@ -143,14 +160,13 @@ export async function GET(request: NextRequest) {
       }
       allLeads = [...byId.values()];
     }
-    const isToday = date === istYmd();
     const todayLeads = allLeads.filter((lead) => {
       if (isToday && OPEN_STATUSES.includes(String(lead.status || '').toUpperCase())) return true;
       return (
-        inRange(lead.created_at, startMs, endMs) ||
-        inRange(lead.updated_at, startMs, endMs) ||
-        inRange(lead.qc_performed_at, startMs, endMs) ||
-        inRange(lead.mechanic_completed_at, startMs, endMs)
+        inRange(lead.created_at, startMs, endMs, allTime) ||
+        inRange(lead.updated_at, startMs, endMs, allTime) ||
+        inRange(lead.qc_performed_at, startMs, endMs, allTime) ||
+        inRange(lead.mechanic_completed_at, startMs, endMs, allTime)
       );
     });
 
@@ -159,16 +175,16 @@ export async function GET(request: NextRequest) {
         return false;
       }
       return (
-        inRange(lead.qc_performed_at, startMs, endMs) ||
-        inRange(lead.mechanic_completed_at, startMs, endMs) ||
-        inRange(lead.updated_at, startMs, endMs)
+        inRange(lead.qc_performed_at, startMs, endMs, allTime) ||
+        inRange(lead.mechanic_completed_at, startMs, endMs, allTime) ||
+        inRange(lead.updated_at, startMs, endMs, allTime)
       );
     });
 
     const qcPassedLeads = todayLeads.filter((lead) => {
       const qc = String(lead.qc_status || '').toUpperCase();
       if (qc !== 'PASSED' && qc !== 'APPROVED') return false;
-      return inRange(lead.qc_performed_at, startMs, endMs) || inRange(lead.updated_at, startMs, endMs);
+      return inRange(lead.qc_performed_at, startMs, endMs, allTime) || inRange(lead.updated_at, startMs, endMs, allTime);
     });
 
     const pendingLeads = todayLeads.filter((lead) => {
@@ -224,14 +240,25 @@ export async function GET(request: NextRequest) {
         vehicle_number: lead.vehicle_number,
         status: lead.status,
         qc_status: lead.qc_status,
+        created_at: lead.created_at || null,
+        updated_at: lead.updated_at || null,
+        qc_performed_at: lead.qc_performed_at || null,
+        mechanic_completed_at: lead.mechanic_completed_at || null,
         qc_passed_today: qcPassedLeads.some((row) => row.id === lead.id),
         completed_today: completedLeads.some((row) => row.id === lead.id),
       }))
-      .sort((a, b) => Number(b.qc_passed_today) - Number(a.qc_passed_today));
+      .sort((a, b) => {
+        const qc = Number(b.qc_passed_today) - Number(a.qc_passed_today);
+        if (qc) return qc;
+        const at = new Date(b.created_at || b.updated_at || 0).getTime();
+        const bt = new Date(a.created_at || a.updated_at || 0).getTime();
+        return (Number.isFinite(at) ? at : 0) - (Number.isFinite(bt) ? bt : 0);
+      });
 
     return NextResponse.json({
       success: true,
-      date,
+      date: allTime ? 'all_time' : singleDay ? startYmd : `${startYmd}:${endYmd}`,
+      range: { from: startYmd, to: endYmd, all_time: allTime },
       report: {
         total: todayLeads.length,
         completed: completedLeads.length,

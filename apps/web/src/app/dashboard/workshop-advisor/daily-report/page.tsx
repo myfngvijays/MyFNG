@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
@@ -8,7 +8,10 @@ import {
   Wrench, Award, ThumbsUp, ThumbsDown
 } from 'lucide-react';
 import { AdvisorPageHeader } from '@/components/advisor/AdvisorPageHeader';
-import { istYmd } from '@/lib/telecaller/crmDateRange';
+import { formatDateDMY } from '@/lib/utils';
+import WorkshopDateFilter from '@/components/workshop/WorkshopDateFilter';
+import { resolveCrmDateRange } from '@/lib/telecaller/crmDateRange';
+import { useWorkshopDateFilter } from '@/lib/workshop/dateFilterPrefs';
 
 interface DailyMetrics {
   date: string;
@@ -30,6 +33,10 @@ interface DailyMetrics {
     vehicle_number?: string;
     status?: string;
     qc_status?: string;
+    created_at?: string | null;
+    updated_at?: string | null;
+    qc_performed_at?: string | null;
+    mechanic_completed_at?: string | null;
     qc_passed_today?: boolean;
     completed_today?: boolean;
   }>;
@@ -54,20 +61,30 @@ interface IssueLog {
 
 export default function DailyReportPage() {
   const router = useRouter();
-  const [selectedDate, setSelectedDate] = useState(istYmd());
+  const { datePreset, customStart, customEnd, ready: dateReady, setDateFilter } = useWorkshopDateFilter();
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
   const [metrics, setMetrics] = useState<DailyMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
+    if (!dateReady) return;
     fetchDailyReport();
-  }, [selectedDate]);
+  }, [dateReady, dateRange.startYmd, dateRange.endYmd, dateRange.allTime]);
 
   async function fetchDailyReport() {
     try {
       setLoading(true);
-      const res = await fetch(`/api/supervisor/daily-report?date=${selectedDate}`);
+      const params = new URLSearchParams({
+        preset: dateRange.preset,
+        from: dateRange.startYmd,
+        to: dateRange.endYmd,
+      });
+      const res = await fetch(`/api/supervisor/daily-report?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Failed to load daily report');
 
@@ -102,10 +119,10 @@ export default function DailyReportPage() {
         recommendations.push(`${report.overdue} job(s) are overdue. Review mechanic workload distribution.`);
       }
       if ((report.qcPassed || 0) > 0) {
-        recommendations.push(`${report.qcPassed} QC pass today — billing / payment next.`);
+        recommendations.push(`${report.qcPassed} QC pass in ${dateRange.label} — billing / payment next.`);
       }
       if ((report.total || 0) > 0 && (report.completed || 0) < (report.total || 0) * 0.5) {
-        recommendations.push('Completion rate is low for today. Review hold / unassigned work.');
+        recommendations.push(`Completion rate is low for ${dateRange.label}. Review hold / unassigned work.`);
       }
       if (recommendations.length === 0) {
         recommendations.push('Great performance! All metrics are within acceptable ranges.');
@@ -113,7 +130,7 @@ export default function DailyReportPage() {
 
       setLoadError(null);
       setMetrics({
-        date: selectedDate,
+        date: dateRange.allTime ? 'All Time' : dateRange.label,
         totalJobs: report.total || 0,
         completedJobs: report.completed || 0,
         pendingJobs: report.pending || 0,
@@ -202,14 +219,15 @@ export default function DailyReportPage() {
           subtitle="End of day summary and insights"
           href="/dashboard/workshop-advisor/daily-report"
           right={
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                max={istYmd()}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800"
-              />
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center">
+              <div className="w-full sm:w-56">
+                <WorkshopDateFilter
+                  preset={datePreset}
+                  customStart={customStart}
+                  customEnd={customEnd}
+                  onChange={setDateFilter}
+                />
+              </div>
               <button
                 onClick={exportReport}
                 disabled={generating || !metrics}
@@ -267,12 +285,17 @@ export default function DailyReportPage() {
             </div>
 
             <div className="card p-3 sm:p-4 md:p-5">
-              <h3 className="text-base sm:text-lg font-semibold mb-3">Today's leads</h3>
+              <h3 className="text-base sm:text-lg font-semibold mb-3">
+                {dateRange.allTime ? 'All leads' : `${dateRange.label} leads`}
+              </h3>
               {metrics.leads.length === 0 ? (
-                <p className="text-sm text-slate-500">Is date pe koi lead nahi mili.</p>
+                <p className="text-sm text-slate-500">Is range mein koi lead nahi mili.</p>
               ) : (
                 <div className="space-y-2">
-                  {metrics.leads.map((lead) => (
+                  {metrics.leads.map((lead) => {
+                    const leadWhen = lead.created_at || lead.updated_at || lead.qc_performed_at || lead.mechanic_completed_at;
+                    const leadDate = formatDateDMY(leadWhen);
+                    return (
                     <button
                       key={lead.id}
                       type="button"
@@ -283,9 +306,14 @@ export default function DailyReportPage() {
                         lead.qc_passed_today ? 'border-green-200 bg-green-50' : 'border-slate-200 bg-white'
                       }`}
                     >
-                      <p className="text-sm font-semibold text-slate-900">
-                        {lead.customer_name || lead.lead_number}
-                      </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {lead.customer_name || lead.lead_number}
+                        </p>
+                        <p className="shrink-0 text-xs font-bold text-[#004AAD]">
+                          {leadDate || '—'}
+                        </p>
+                      </div>
                       <p className="text-xs text-slate-500 mt-0.5">
                         {lead.lead_number}
                         {lead.vehicle_number ? ` · ${lead.vehicle_number}` : ''}
@@ -298,7 +326,8 @@ export default function DailyReportPage() {
                         ) : null}
                       </p>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -307,7 +336,7 @@ export default function DailyReportPage() {
             <div className="card p-3 sm:p-4 md:p-5">
               <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
                 <Wrench className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                Mechanic Performance Today
+                Mechanic performance · {dateRange.label}
               </h3>
               <div className="space-y-2 sm:space-y-3">
                 {metrics.mechanicPerformance.map((mechanic) => (

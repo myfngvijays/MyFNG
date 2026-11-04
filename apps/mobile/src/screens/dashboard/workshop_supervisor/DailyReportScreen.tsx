@@ -1,17 +1,19 @@
-import { formatDateDMY } from "@/lib/dateFormat";
 /**
  * Daily Report Screen - Workshop Supervisor
  * End of day summary and reports
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, BackHandler, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SPACING, SHADOWS } from '../../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { AC } from '../../../components/workshop/advisorCrmUi';
+import WorkshopDateFilter from '../../../components/workshop/WorkshopDateFilter';
+import { formatDateDMY } from '@/lib/dateFormat';
 import { apiFetch } from '../../../lib/api';
-import { istYmd, shiftIstYmd } from '../../../lib/crmDateRange';
+import { resolveCrmDateRange } from '../../../lib/crmDateRange';
+import { useWorkshopDateFilter } from '../../../lib/workshopDateFilterPrefs';
 
 type MechanicRow = {
   id: string;
@@ -36,14 +38,20 @@ type LeadRow = {
   vehicle_number?: string;
   status?: string;
   qc_status?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   qc_passed_today?: boolean;
   completed_today?: boolean;
 };
 
 export default function DailyReportScreen() {
   const navigation = useNavigation<any>();
-  const todayYmd = istYmd();
-  const [selectedDate, setSelectedDate] = useState(todayYmd);
+  const { datePreset, customStart, customEnd, setDatePreset, setCustomStart, setCustomEnd } =
+    useWorkshopDateFilter();
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [report, setReport] = useState({
     total: 0,
@@ -72,8 +80,13 @@ export default function DailyReportScreen() {
     return () => backHandler.remove();
   }, [navigation]);
 
-  const fetchDailyReport = useCallback(async (ymd: string) => {
+  const fetchDailyReport = useCallback(async () => {
     try {
+      const params = new URLSearchParams({
+        preset: dateRange.preset,
+        from: dateRange.startYmd,
+        to: dateRange.endYmd,
+      });
       const json = await apiFetch<{
         report?: {
           total: number;
@@ -86,7 +99,7 @@ export default function DailyReportScreen() {
         mechanics?: MechanicRow[];
         pickupBoys?: PickupRow[];
         leads?: LeadRow[];
-      }>(`/api/supervisor/daily-report?date=${ymd}`);
+      }>(`/api/supervisor/daily-report?${params.toString()}`);
 
       const next = json.report || {
         total: 0,
@@ -111,9 +124,9 @@ export default function DailyReportScreen() {
       const nextInsights: string[] = [];
       if ((next.overdue || 0) > 0) nextInsights.push(`${next.overdue} job(s) overdue — check mechanic workload.`);
       if ((next.extraPending || 0) > 0) nextInsights.push(`${next.extraPending} extra job request(s) still pending.`);
-      if ((next.qcPassed || 0) > 0) nextInsights.push(`${next.qcPassed} QC pass — billing / payment next.`);
+      if ((next.qcPassed || 0) > 0) nextInsights.push(`${next.qcPassed} QC pass in ${dateRange.label} — billing / payment next.`);
       if ((next.total || 0) > 0 && (next.completed || 0) < (next.total || 0) * 0.5) {
-        nextInsights.push('Completion rate is low for this day. Review hold / unassigned work.');
+        nextInsights.push(`Completion rate is low for ${dateRange.label}. Review hold / unassigned work.`);
       }
       if (nextInsights.length === 0) nextInsights.push('All clear for now. Keep the floor moving.');
       setInsights(nextInsights);
@@ -124,21 +137,11 @@ export default function DailyReportScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [dateRange.preset, dateRange.startYmd, dateRange.endYmd, dateRange.label]);
 
   useEffect(() => {
-    fetchDailyReport(selectedDate);
-  }, [selectedDate, fetchDailyReport]);
-
-  const isToday = selectedDate === todayYmd;
-  const dateLabel = formatDateDMY(`${selectedDate}T12:00:00+05:30`);
-
-  const shiftDate = (delta: number) => {
-    const next = shiftIstYmd(selectedDate, delta);
-    if (next > todayYmd) return;
-    setListFilter('all');
-    setSelectedDate(next);
-  };
+    fetchDailyReport();
+  }, [fetchDailyReport]);
 
   const visibleLeads = leads.filter((lead) => {
     if (listFilter === 'completed') return Boolean(lead.completed_today);
@@ -163,40 +166,22 @@ export default function DailyReportScreen() {
           refreshing={refreshing}
           onRefresh={() => {
             setRefreshing(true);
-            fetchDailyReport(selectedDate);
+            fetchDailyReport();
           }}
         />
       }
     >
-      <View style={styles.dateRow}>
-        <TouchableOpacity
-          style={styles.dateNavBtn}
-          onPress={() => shiftDate(-1)}
-          accessibilityLabel="Previous day"
-        >
-          <Ionicons name="chevron-back" size={22} color={COLORS.primary} />
-        </TouchableOpacity>
-        <View style={styles.dateCenter}>
-          <Text style={styles.dateTitle}>{dateLabel}</Text>
-          <Text style={AC.meta}>
-            {isToday ? 'Today · end of day snapshot' : 'Past day · end of day snapshot'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.dateNavBtn, isToday && styles.dateNavDisabled]}
-          onPress={() => shiftDate(1)}
-          disabled={isToday}
-          accessibilityLabel="Next day"
-        >
-          <Ionicons name="chevron-forward" size={22} color={isToday ? '#94A3B8' : COLORS.primary} />
-        </TouchableOpacity>
+      <View style={styles.filterPad}>
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onPreset={setDatePreset}
+          onCustomStart={setCustomStart}
+          onCustomEnd={setCustomEnd}
+        />
+        <Text style={AC.meta}>{dateRange.label} · same range as dashboard</Text>
       </View>
-
-      {!isToday ? (
-        <TouchableOpacity style={styles.todayChip} onPress={() => setSelectedDate(todayYmd)}>
-          <Text style={styles.todayChipTxt}>Jump to today</Text>
-        </TouchableOpacity>
-      ) : null}
 
       {loadError ? (
         <View style={styles.errorCard}>
@@ -225,12 +210,12 @@ export default function DailyReportScreen() {
 
       <Text style={AC.section}>
         {listFilter === 'completed'
-          ? 'Completed that day'
+          ? `Completed · ${dateRange.label}`
           : listFilter === 'qc'
-            ? 'QC passed that day'
-            : isToday
-              ? "Today's leads"
-              : 'Leads that day'}
+            ? `QC passed · ${dateRange.label}`
+            : dateRange.allTime
+              ? 'All leads'
+              : `${dateRange.label} leads`}
       </Text>
       {visibleLeads.length === 0 ? (
         <View style={AC.whiteCard}>
@@ -249,6 +234,9 @@ export default function DailyReportScreen() {
             activeOpacity={0.85}
           >
             <Text style={AC.name}>{lead.customer_name || lead.lead_number || 'Lead'}</Text>
+            <Text style={[AC.meta, { color: '#004AAD', fontWeight: '700' }]}>
+              {formatDateDMY(lead.created_at || lead.updated_at) || 'Date missing'}
+            </Text>
             <Text style={AC.meta}>
               {lead.lead_number}
               {lead.vehicle_number ? ` · ${lead.vehicle_number}` : ''}
@@ -262,7 +250,7 @@ export default function DailyReportScreen() {
         ))
       )}
 
-      <Text style={AC.section}>Mechanic performance</Text>
+      <Text style={AC.section}>Mechanic performance · {dateRange.label}</Text>
       {mechanics.length === 0 ? (
         <View style={AC.whiteCard}>
           <Text style={AC.meta}>No mechanics on this workshop yet.</Text>
@@ -310,6 +298,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { paddingHorizontal: SPACING.md, paddingTop: 8, paddingBottom: 4 },
   title: { fontSize: SIZES.xxl, fontWeight: 'bold' },
+  filterPad: { paddingHorizontal: 16, paddingTop: 12, gap: 6 },
   date: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
   dateRow: {
     flexDirection: 'row',

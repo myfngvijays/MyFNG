@@ -1,23 +1,36 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { TrendingUp, CheckCircle, Clock, AlertTriangle, BarChart3, Download } from 'lucide-react';
 import { AdvisorPageHeader } from '@/components/advisor/AdvisorPageHeader';
+import WorkshopDateFilter from '@/components/workshop/WorkshopDateFilter';
+import { resolveCrmDateRange } from '@/lib/telecaller/crmDateRange';
+import { useWorkshopDateFilter } from '@/lib/workshop/dateFilterPrefs';
 
 export default function SupervisorAnalyticsPage() {
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [days, setDays] = useState(7);
+  const { datePreset, customStart, customEnd, ready: dateReady, setDateFilter } = useWorkshopDateFilter();
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
 
   useEffect(() => {
+    if (!dateReady) return;
     fetchAnalytics();
-  }, [days]);
+  }, [dateReady, dateRange.preset, dateRange.startYmd, dateRange.endYmd, dateRange.allTime]);
 
   async function fetchAnalytics() {
     try {
       setLoading(true);
-      const response = await fetch(`/api/supervisor/analytics?days=${days}`);
+      const params = new URLSearchParams({
+        preset: dateRange.preset,
+        from: dateRange.startYmd,
+        to: dateRange.endYmd,
+      });
+      const response = await fetch(`/api/supervisor/analytics?${params.toString()}`);
       const result = await response.json();
       if (result.success) {
         setAnalytics(result.data);
@@ -44,19 +57,18 @@ export default function SupervisorAnalyticsPage() {
       <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Analytics"
-          subtitle="KPIs and team performance"
+          subtitle={`KPIs and team performance · ${dateRange.label}`}
           href="/dashboard/workshop-advisor/analytics"
           right={
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <select
-                value={days}
-                onChange={(e) => setDays(parseInt(e.target.value))}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800"
-              >
-                <option value={7} className="text-slate-900">Last 7 days</option>
-                <option value={30} className="text-slate-900">Last 30 days</option>
-                <option value={90} className="text-slate-900">Last 90 days</option>
-              </select>
+              <div className="w-full sm:w-56">
+                <WorkshopDateFilter
+                  preset={datePreset}
+                  customStart={customStart}
+                  customEnd={customEnd}
+                  onChange={setDateFilter}
+                />
+              </div>
               <button
                 type="button"
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"

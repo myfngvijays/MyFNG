@@ -1,13 +1,16 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import JobFilters, { FilterState } from '@/components/supervisor/JobFilters';
 import { RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { AdvisorPageHeader } from '@/components/advisor/AdvisorPageHeader';
+import WorkshopDateFilter from '@/components/workshop/WorkshopDateFilter';
+import { resolveCrmDateRange } from '@/lib/telecaller/crmDateRange';
+import { useWorkshopDateFilter } from '@/lib/workshop/dateFilterPrefs';
 
 interface Job {
   id: string;
@@ -64,6 +67,11 @@ function SupervisorJobsContent() {
   const limit = 20;
 
   // Filters
+  const { datePreset, customStart, customEnd, ready: dateReady, setDateFilter } = useWorkshopDateFilter();
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
   const [filters, setFilters] = useState<FilterState>({
     status: searchParams.get('status') || '',
     mechanicId: searchParams.get('mechanic_id') || '',
@@ -73,6 +81,7 @@ function SupervisorJobsContent() {
   });
 
   useEffect(() => {
+    if (!dateReady) return;
     fetchMechanics();
     fetchJobs();
 
@@ -148,7 +157,7 @@ function SupervisorJobsContent() {
     return () => {
       channel.unsubscribe();
     };
-  }, [page, filters]);
+  }, [page, filters, dateReady, dateRange.preset, dateRange.startYmd, dateRange.endYmd]);
 
   async function fetchMechanics() {
     try {
@@ -200,7 +209,10 @@ function SupervisorJobsContent() {
         ...(filters.mechanicId && { mechanic_id: filters.mechanicId }),
         ...(filters.serviceType && { service_type: filters.serviceType }),
         ...(filters.slaStatus && { sla_status: filters.slaStatus }),
-        ...(filters.search && { search: filters.search })
+        ...(filters.search && { search: filters.search }),
+        preset: dateRange.preset,
+        from: dateRange.startYmd,
+        to: dateRange.endYmd,
       });
 
       const response = await fetch(`/api/supervisor/jobs?${params}`);
@@ -286,7 +298,7 @@ function SupervisorJobsContent() {
       <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 overflow-x-hidden pb-8 sm:space-y-4">
         <AdvisorPageHeader
           title="Jobs"
-          subtitle="Monitor progress, assign mechanics, and run QC"
+          subtitle={`Monitor progress, assign mechanics, and run QC · ${dateRange.label}`}
           href="/dashboard/workshop-advisor/jobs"
           right={
             <button
@@ -298,6 +310,16 @@ function SupervisorJobsContent() {
               Refresh
             </button>
           }
+        />
+
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onChange={(next) => {
+            setDateFilter(next);
+            setPage(1);
+          }}
         />
 
         {/* Stats Bar */}

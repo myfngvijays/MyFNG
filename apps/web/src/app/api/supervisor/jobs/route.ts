@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { istDayBounds } from '@/lib/telecaller/crmDateRange';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,6 +79,9 @@ export async function GET(request: Request) {
     const serviceType = searchParams.get('service_type');
     const slaStatus = searchParams.get('sla_status');
     const search = searchParams.get('search');
+    const preset = String(searchParams.get('preset') || '').toLowerCase();
+    const fromParam = String(searchParams.get('from') || '').slice(0, 10);
+    const toParam = String(searchParams.get('to') || '').slice(0, 10);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const offset = (page - 1) * limit;
@@ -133,6 +137,16 @@ export async function GET(request: Request) {
 
     if (search) {
       query = query.or(`lead_number.ilike.%${search}%,customer_name.ilike.%${search}%,vehicle_number.ilike.%${search}%`);
+    }
+
+    if (preset && preset !== 'all_time' && /^\d{4}-\d{2}-\d{2}$/.test(fromParam) && /^\d{4}-\d{2}-\d{2}$/.test(toParam)) {
+      const from = fromParam <= toParam ? fromParam : toParam;
+      const to = fromParam <= toParam ? toParam : fromParam;
+      const startIso = new Date(istDayBounds(from).start).toISOString();
+      const endIso = new Date(istDayBounds(to).end).toISOString();
+      query = query.or(
+        `and(created_at.gte."${startIso}",created_at.lte."${endIso}"),and(updated_at.gte."${startIso}",updated_at.lte."${endIso}")`,
+      );
     }
 
     // Sort and paginate

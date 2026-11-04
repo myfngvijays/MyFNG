@@ -26,19 +26,21 @@ export default function AdvisorFilterBar({ subtitle, kpis, chips, activeChip, on
           </View>
         ))}
       </View>
-      <View style={AC.chipWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
-          {chips.map((chip) => (
-            <TouchableOpacity
-              key={chip.key}
-              style={[AC.chip, activeChip === chip.key && AC.chipOn]}
-              onPress={() => onChip(chip.key)}
-            >
-              <Text style={[AC.chipTxt, activeChip === chip.key && AC.chipTxtOn]}>{chip.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+      {chips.length ? (
+        <View style={AC.chipWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
+            {chips.map((chip) => (
+              <TouchableOpacity
+                key={chip.key}
+                style={[AC.chip, activeChip === chip.key && AC.chipOn]}
+                onPress={() => onChip(chip.key)}
+              >
+                <Text style={[AC.chipTxt, activeChip === chip.key && AC.chipTxtOn]}>{chip.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
     </>
   );
 }

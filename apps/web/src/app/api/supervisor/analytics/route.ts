@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { istDayBounds } from '@/lib/telecaller/crmDateRange';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,10 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
+    const preset = String(searchParams.get('preset') || '').toLowerCase();
+    const fromParam = String(searchParams.get('from') || '').slice(0, 10);
+    const toParam = String(searchParams.get('to') || '').slice(0, 10);
+    const allTime = preset === 'all_time';
     const days = parseInt(searchParams.get('days') || '7');
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -32,42 +37,66 @@ export async function GET(request: Request) {
     const workshopId = userProfile.workshop_id;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+    let startIso = startDate.toISOString();
+    let endIso = new Date().toISOString();
+    if (allTime) {
+      startIso = '';
+      endIso = '';
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(fromParam) && /^\d{4}-\d{2}-\d{2}$/.test(toParam)) {
+      const from = fromParam <= toParam ? fromParam : toParam;
+      const to = fromParam <= toParam ? toParam : fromParam;
+      startIso = new Date(istDayBounds(from).start).toISOString();
+      endIso = new Date(istDayBounds(to).end).toISOString();
+    }
+
+    const bound = (query: any, column: string) => {
+      if (!startIso) return query;
+      return query.gte(column, startIso).lte(column, endIso);
+    };
 
     // KPI Metrics
-    const { data: leads } = await supabase
-      .from('service_leads')
-      .select('*')
-      .eq('workshop_id', workshopId)
-      .is('deleted_at', null)
-      .gte('created_at', startDate.toISOString());
+    const { data: leads } = await bound(
+      supabase
+        .from('service_leads')
+        .select('*')
+        .eq('workshop_id', workshopId)
+        .is('deleted_at', null),
+      'created_at',
+    );
 
-    const { count: totalJobs } = await supabase
-      .from('service_leads')
-      .select('*', { count: 'exact', head: true })
-      .eq('workshop_id', workshopId)
-      .is('deleted_at', null)
-      .gte('created_at', startDate.toISOString());
+    const { count: totalJobs } = await bound(
+      supabase
+        .from('service_leads')
+        .select('*', { count: 'exact', head: true })
+        .eq('workshop_id', workshopId)
+        .is('deleted_at', null),
+      'created_at',
+    );
 
-    const { count: completedJobs } = await supabase
-      .from('service_leads')
-      .select('*', { count: 'exact', head: true })
-      .eq('workshop_id', workshopId)
-      .is('deleted_at', null)
-      .eq('status', 'COMPLETED')
-      .gte('updated_at', startDate.toISOString());
+    const { count: completedJobs } = await bound(
+      supabase
+        .from('service_leads')
+        .select('*', { count: 'exact', head: true })
+        .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
+        .eq('status', 'COMPLETED'),
+      'updated_at',
+    );
 
-    const { count: slaBreaches } = await supabase
-      .from('service_leads')
-      .select('*', { count: 'exact', head: true })
-      .eq('workshop_id', workshopId)
-      .is('deleted_at', null)
-      .eq('sla_status', 'BREACHED')
-      .gte('created_at', startDate.toISOString());
+    const { count: slaBreaches } = await bound(
+      supabase
+        .from('service_leads')
+        .select('*', { count: 'exact', head: true })
+        .eq('workshop_id', workshopId)
+        .is('deleted_at', null)
+        .eq('sla_status', 'BREACHED'),
+      'created_at',
+    );
 
-    const { data: qcData } = await supabase
-      .from('qc_checks')
-      .select('qc_status')
-      .gte('created_at', startDate.toISOString());
+    const { data: qcData } = await bound(
+      supabase.from('qc_checks').select('qc_status'),
+      'created_at',
+    );
 
     const qcPassed = qcData?.filter(q => q.qc_status === 'PASSED').length || 0;
     const qcFailed = qcData?.filter(q => q.qc_status === 'FAILED').length || 0;

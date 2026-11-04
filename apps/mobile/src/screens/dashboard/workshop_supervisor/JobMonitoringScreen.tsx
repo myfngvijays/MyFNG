@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { formatDateTime } from "@/lib/dateFormat";
 import {
   View,
@@ -17,6 +17,9 @@ import { useNavigation } from '@react-navigation/native';
 import { computeSlaRemainingMinutes, isWorkshopJobOverdue } from '../../../lib/workshop/slaUtils';
 import { AC } from '../../../components/workshop/advisorCrmUi';
 import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
+import WorkshopDateFilter, { isoInRange } from '../../../components/workshop/WorkshopDateFilter';
+import { resolveCrmDateRange } from '../../../lib/crmDateRange';
+import { useWorkshopDateFilter } from '../../../lib/workshopDateFilterPrefs';
 
 interface JobMonitor {
   id: string;
@@ -39,6 +42,12 @@ interface JobMonitor {
 
 export default function JobMonitoringScreen() {
   const navigation = useNavigation<any>();
+  const { datePreset, customStart, customEnd, setDatePreset, setCustomStart, setCustomEnd } =
+    useWorkshopDateFilter();
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
   const [jobs, setJobs] = useState<JobMonitor[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<JobMonitor[]>([]);
   const [filter, setFilter] = useState('ALL');
@@ -81,7 +90,7 @@ export default function JobMonitoringScreen() {
 
   useEffect(() => {
     filterJobs();
-  }, [jobs, filter]);
+  }, [jobs, filter, dateRange.start, dateRange.end, dateRange.allTime]);
 
   async function fetchJobs() {
     try {
@@ -251,15 +260,21 @@ export default function JobMonitoringScreen() {
   }
 
   function filterJobs() {
+    const dated = jobs.filter(
+      (j) =>
+        dateRange.allTime ||
+        isoInRange(j.assigned_at, dateRange.start, dateRange.end) ||
+        isoInRange(j.started_at, dateRange.start, dateRange.end),
+    );
     if (filter === 'ACTIVE') {
-      setFilteredJobs(jobs.filter((j) => j.mechanic_status === 'IN_PROGRESS'));
+      setFilteredJobs(dated.filter((j) => j.mechanic_status === 'IN_PROGRESS'));
     } else if (filter === 'ASSIGNED') {
-      setFilteredJobs(jobs.filter((j) => j.mechanic_status === 'ASSIGNED'));
+      setFilteredJobs(dated.filter((j) => j.mechanic_status === 'ASSIGNED'));
     } else if (filter === 'HOLD') {
-      setFilteredJobs(jobs.filter((j) => j.mechanic_status === 'HOLD'));
+      setFilteredJobs(dated.filter((j) => j.mechanic_status === 'HOLD'));
     } else if (filter === 'AT_RISK') {
       setFilteredJobs(
-        jobs.filter(
+        dated.filter(
           (j) =>
             j.sla_remaining_minutes < 120 &&
             j.sla_remaining_minutes >= 0 &&
@@ -267,9 +282,9 @@ export default function JobMonitoringScreen() {
         ),
       );
     } else if (filter === 'OVERDUE') {
-      setFilteredJobs(jobs.filter((j) => j.has_issues));
+      setFilteredJobs(dated.filter((j) => j.has_issues));
     } else {
-      setFilteredJobs(jobs);
+      setFilteredJobs(dated);
     }
   }
 
@@ -374,24 +389,40 @@ export default function JobMonitoringScreen() {
     );
   }
 
+  const datedJobs = jobs.filter(
+    (j) =>
+      dateRange.allTime ||
+      isoInRange(j.assigned_at, dateRange.start, dateRange.end) ||
+      isoInRange(j.started_at, dateRange.start, dateRange.end),
+  );
   const stats = {
-    total: jobs.length,
-    active: jobs.filter((j) => j.mechanic_status === 'IN_PROGRESS').length,
-    assigned: jobs.filter((j) => j.mechanic_status === 'ASSIGNED').length,
-    hold: jobs.filter((j) => j.mechanic_status === 'HOLD').length,
-    atRisk: jobs.filter(
+    total: datedJobs.length,
+    active: datedJobs.filter((j) => j.mechanic_status === 'IN_PROGRESS').length,
+    assigned: datedJobs.filter((j) => j.mechanic_status === 'ASSIGNED').length,
+    hold: datedJobs.filter((j) => j.mechanic_status === 'HOLD').length,
+    atRisk: datedJobs.filter(
       (j) =>
         j.sla_remaining_minutes < 120 &&
         j.sla_remaining_minutes >= 0 &&
         j.mechanic_status !== 'UNASSIGNED',
     ).length,
-    overdue: jobs.filter((j) => j.has_issues).length,
+    overdue: datedJobs.filter((j) => j.has_issues).length,
   };
 
   return (
     <View style={AC.page}>
+      <View style={styles.datePad}>
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onPreset={setDatePreset}
+          onCustomStart={setCustomStart}
+          onCustomEnd={setCustomEnd}
+        />
+      </View>
       <AdvisorFilterBar
-        subtitle={`${stats.active} active · ${stats.atRisk + stats.overdue} need attention`}
+        subtitle={`${dateRange.label} · ${stats.active} active · ${stats.atRisk + stats.overdue} need attention`}
         kpis={[
           { label: 'Active', value: stats.active, color: '#004AAD' },
           { label: 'Assigned', value: stats.assigned, color: '#023D95' },
@@ -429,6 +460,7 @@ export default function JobMonitoringScreen() {
 }
 
 const styles = StyleSheet.create({
+  datePad: { paddingHorizontal: 16, paddingTop: 8 },
   container: {
     flex: 1,
     backgroundColor: '#F0F7FF',

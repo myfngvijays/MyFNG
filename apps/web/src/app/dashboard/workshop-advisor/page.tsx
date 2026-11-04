@@ -18,7 +18,8 @@ import {
   UserPlus,
 } from 'lucide-react';
 import WorkshopDateFilter, { isoInRange } from '@/components/workshop/WorkshopDateFilter';
-import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
+import { resolveCrmDateRange } from '@/lib/telecaller/crmDateRange';
+import { useWorkshopDateFilter } from '@/lib/workshop/dateFilterPrefs';
 import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isWaitingDeliveryAssign, isDeliveryInProgress, isPendingQc, isQcPassed, FLOOR_DONE_STATUSES } from '@/lib/workshop/jobFlow';
 
 type JobRow = {
@@ -48,15 +49,14 @@ export default function WorkshopAdvisorDashboard() {
   >([]);
   const [recentJobs, setRecentJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  const { datePreset, customStart, customEnd, ready: dateReady, setDateFilter } = useWorkshopDateFilter();
   const dateRange = useMemo(
     () => resolveCrmDateRange(datePreset, customStart, customEnd),
     [datePreset, customStart, customEnd],
   );
 
   useEffect(() => {
+    if (!dateReady) return;
     if (!workshopId) {
       if (ready) setLoading(false);
       return;
@@ -75,7 +75,7 @@ export default function WorkshopAdvisorDashboard() {
         supabase
           .from('mechanic_jobs')
           .select(
-            'id, mechanic_status, completed_at, sla_remaining_minutes, service_leads:lead_id(lead_number, customer_name, workshop_id, deleted_at), mechanic:mechanic_id(full_name, workshop_id)',
+            'id, mechanic_status, assigned_at, completed_at, sla_remaining_minutes, service_leads:lead_id(lead_number, customer_name, workshop_id, deleted_at, created_at, updated_at), mechanic:mechanic_id(full_name, workshop_id)',
           )
           .in('mechanic_status', ['ASSIGNED', 'IN_PROGRESS', 'HOLD'])
           .order('assigned_at', { ascending: false })
@@ -116,7 +116,13 @@ export default function WorkshopAdvisorDashboard() {
         (u: any) => u.role?.role_code === 'WORKSHOP_MECHANIC',
       );
       const workshopJobs = (jobsRes.data || []).filter(
-        (job: any) => job.mechanic?.workshop_id === workshopId && !job.service_leads?.deleted_at,
+        (job: any) =>
+          job.mechanic?.workshop_id === workshopId &&
+          !job.service_leads?.deleted_at &&
+          (dateRange.allTime ||
+            isoInRange(job.assigned_at, dateRange.start, dateRange.end) ||
+            isoInRange(job.service_leads?.created_at, dateRange.start, dateRange.end) ||
+            isoInRange(job.service_leads?.updated_at, dateRange.start, dateRange.end)),
       ) as JobRow[];
 
       const openLeadsRaw = ((unassignedRes.data || []) as any[]).filter(
@@ -143,7 +149,18 @@ export default function WorkshopAdvisorDashboard() {
           dropByLead[String((row as any).lead_id)] = row;
         }
       }
-      const openLeads = openLeadsRaw.map((lead) => ({ ...lead, ...(dropByLead[String(lead.id)] || {}) }));
+      const touchInRange = (row: any) =>
+        dateRange.allTime ||
+        isoInRange(row?.created_at, dateRange.start, dateRange.end) ||
+        isoInRange(row?.updated_at, dateRange.start, dateRange.end) ||
+        isoInRange(row?.assigned_at, dateRange.start, dateRange.end) ||
+        isoInRange(row?.qc_performed_at, dateRange.start, dateRange.end) ||
+        isoInRange(row?.mechanic_completed_at, dateRange.start, dateRange.end) ||
+        isoInRange(row?.service_leads?.created_at, dateRange.start, dateRange.end) ||
+        isoInRange(row?.service_leads?.updated_at, dateRange.start, dateRange.end);
+      const openLeads = openLeadsRaw
+        .map((lead) => ({ ...lead, ...(dropByLead[String(lead.id)] || {}) }))
+        .filter(touchInRange);
       const pickupWaiting = openLeads.filter((lead) => isWaitingPickupAssign(lead));
       const pickupInProgress = openLeads.filter((lead) => isPickupInProgress(lead));
       const deliveryWaiting = openLeads.filter((lead) => isWaitingDeliveryAssign(lead));
@@ -233,7 +250,9 @@ export default function WorkshopAdvisorDashboard() {
         overdue_jobs: workshopJobs.filter(
           (job) => job.sla_remaining_minutes != null && job.sla_remaining_minutes < 0,
         ).length,
-        pending_leads: pendingRes.count || 0,
+        pending_leads: openLeads.filter((lead) =>
+          ['ASSIGNED_TO_WORKSHOP', 'ASSIGNED'].includes(String(lead.status || '')),
+        ).length,
         unassigned: pickupWaiting.length + mechanicWaiting.length + deliveryWaiting.length,
         pickup_active: openLeads.filter((lead) => {
           const status = String(lead.status || '').toUpperCase();
@@ -250,7 +269,7 @@ export default function WorkshopAdvisorDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [workshopId, ready, dateRange.start, dateRange.end, dateRange.allTime]);
+  }, [workshopId, ready, dateReady, dateRange.start, dateRange.end, dateRange.allTime]);
 
   return (
     <DashboardLayout role="workshop_supervisor">
@@ -265,11 +284,7 @@ export default function WorkshopAdvisorDashboard() {
           preset={datePreset}
           customStart={customStart}
           customEnd={customEnd}
-          onChange={({ datePreset: next, customStart: s, customEnd: e }) => {
-            setDatePreset(next);
-            setCustomStart(s);
-            setCustomEnd(e);
-          }}
+          onChange={(next) => setDateFilter(next)}
         />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">

@@ -22,7 +22,8 @@ import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { formatDateTime } from '@/lib/dateFormat';
 import { useAuth } from '../../context/AuthContext';
 import WorkshopDateFilter, { isoInRange } from '../../components/workshop/WorkshopDateFilter';
-import { istYmd, resolveCrmDateRange, type CrmDatePreset } from '../../lib/crmDateRange';
+import { resolveCrmDateRange } from '../../lib/crmDateRange';
+import { useWorkshopDateFilter } from '../../lib/workshopDateFilterPrefs';
 import { isReadyForMechanicAssign, isWaitingPickupAssign, isPickupInProgress, isWaitingDeliveryAssign, isDeliveryInProgress, isPendingQc, isQcPassed, FLOOR_DONE_STATUSES } from '../../lib/workshopJobFlow';
 import { fetchWorkshopPickupBoys, type PickupBoyOption } from '../../lib/fetchWorkshopPickupBoys';
 import PickupAssignModal from '../../components/workshop/PickupAssignModal';
@@ -59,9 +60,8 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const workshopIdRef = useRef<string | null>(null);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  const { datePreset, customStart, customEnd, setDatePreset, setCustomStart, setCustomEnd } =
+    useWorkshopDateFilter();
   const [assignPickupJob, setAssignPickupJob] = useState<any | null>(null);
   const [pickupBoys, setPickupBoys] = useState<PickupBoyOption[]>([]);
   const [pickupBoysLoading, setPickupBoysLoading] = useState(false);
@@ -133,13 +133,27 @@ function WorkshopAdvisorHomeScreen({ navigation }: any) {
           dropByLead[String((row as any).lead_id)] = row;
         }
       }
-      const leadsData = leadsDataRaw.map((lead: any) => ({
-        ...lead,
-        ...(dropByLead[String(lead.id)] || {}),
-      }));
+      const leadsData = leadsDataRaw
+        .map((lead: any) => ({
+          ...lead,
+          ...(dropByLead[String(lead.id)] || {}),
+        }))
+        .filter(
+          (lead: any) =>
+            range.allTime ||
+            isoInRange(lead.created_at, range.start, range.end) ||
+            isoInRange(lead.updated_at, range.start, range.end) ||
+            isoInRange(lead.qc_performed_at, range.start, range.end) ||
+            isoInRange(lead.mechanic_completed_at, range.start, range.end),
+        );
       const workshopJobs =
         jobsRes.data?.filter(
-          (job: any) => job.service_leads?.workshop_id === workshopId && !job.service_leads?.deleted_at,
+          (job: any) =>
+            job.service_leads?.workshop_id === workshopId &&
+            !job.service_leads?.deleted_at &&
+            (range.allTime ||
+              isoInRange(job.assigned_at, range.start, range.end) ||
+              isoInRange(job.service_leads?.created_at, range.start, range.end)),
         ) || [];
 
       const activeFromLeads = leadsData.filter((lead: any) => {

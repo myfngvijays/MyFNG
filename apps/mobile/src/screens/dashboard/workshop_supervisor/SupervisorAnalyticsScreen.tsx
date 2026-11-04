@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,9 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { useNavigation } from '@react-navigation/native';
 import AdvisorFilterBar from '../../../components/workshop/AdvisorFilterBar';
+import WorkshopDateFilter from '../../../components/workshop/WorkshopDateFilter';
+import { resolveCrmDateRange } from '../../../lib/crmDateRange';
+import { useWorkshopDateFilter } from '../../../lib/workshopDateFilterPrefs';
 
 interface Analytics {
   totalJobs: number;
@@ -57,7 +60,12 @@ export default function SupervisorAnalyticsScreen() {
   });
   const [mechanicPerformance, setMechanicPerformance] = useState<MechanicPerformance[]>([]);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
-  const [period, setPeriod] = useState<'TODAY' | 'WEEK' | 'MONTH'>('WEEK');
+  const { datePreset, customStart, customEnd, setDatePreset, setCustomStart, setCustomEnd } =
+    useWorkshopDateFilter();
+  const dateRange = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd),
+    [datePreset, customStart, customEnd],
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -95,7 +103,7 @@ export default function SupervisorAnalyticsScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [period]);
+  }, [datePreset, customStart, customEnd]);
 
   async function fetchAnalytics() {
     try {
@@ -112,31 +120,19 @@ export default function SupervisorAnalyticsScreen() {
       if (!workshopId) return;
 
       console.log('🔍 Analytics - Workshop ID:', workshopId);
-      console.log('📅 Period:', period);
+      const range = resolveCrmDateRange(datePreset, customStart, customEnd);
 
-      // Calculate date range based on period
-      const now = new Date();
-      let startDate = new Date();
-      
-      if (period === 'TODAY') {
-        startDate.setHours(0, 0, 0, 0);
-      } else if (period === 'WEEK') {
-        startDate.setDate(now.getDate() - 7);
-      } else if (period === 'MONTH') {
-        startDate.setDate(now.getDate() - 30);
-      }
-
-      console.log('📆 Date range:', startDate.toISOString(), 'to', now.toISOString());
-
-      // ✅ FIX: Fetch mechanic jobs - remove qc_checks join (no direct relationship)
-      const { data: jobs, error: jobsError } = await supabase
+      let jobsQuery = supabase
         .from('mechanic_jobs')
         .select(`
           *,
           service_leads!inner (workshop_id)
         `)
-        .eq('service_leads.workshop_id', workshopId)
-        .gte('assigned_at', startDate.toISOString());
+        .eq('service_leads.workshop_id', workshopId);
+      if (!range.allTime) {
+        jobsQuery = jobsQuery.gte('assigned_at', range.start).lte('assigned_at', range.end);
+      }
+      const { data: jobs, error: jobsError } = await jobsQuery;
 
       if (jobsError) {
         console.error('❌ Error fetching jobs:', jobsError);
@@ -151,12 +147,15 @@ export default function SupervisorAnalyticsScreen() {
 
       // Fallback: workshop activity from service_leads when mechanic_jobs RLS/rows missing
       if (!jobsToUse.length) {
-        const { data: leadRows } = await supabase
+        let leadQuery = supabase
           .from('service_leads')
           .select('id, status, assigned_mechanic_id, created_at, updated_at, sla_expires_at, sla_deadline')
           .eq('workshop_id', workshopId)
-          .is('deleted_at', null)
-          .gte('created_at', startDate.toISOString());
+          .is('deleted_at', null);
+        if (!range.allTime) {
+          leadQuery = leadQuery.gte('created_at', range.start).lte('created_at', range.end);
+        }
+        const { data: leadRows } = await leadQuery;
 
         const openLeads = (leadRows || []).filter((l) =>
           !['REJECTED', 'CANCELLED', 'CLOSED'].includes(String(l.status || '').toUpperCase()),
@@ -238,14 +237,17 @@ export default function SupervisorAnalyticsScreen() {
         : 0;
 
       // Fetch additional job requests
-      const { data: extraWork } = await supabase
+      let extraQuery = supabase
         .from('lead_extra_charges')
         .select(`
           *,
           service_leads!inner (workshop_id)
         `)
-        .eq('service_leads.workshop_id', workshopId)
-        .gte('created_at', startDate.toISOString());
+        .eq('service_leads.workshop_id', workshopId);
+      if (!range.allTime) {
+        extraQuery = extraQuery.gte('created_at', range.start).lte('created_at', range.end);
+      }
+      const { data: extraWork } = await extraQuery;
 
       const extraWorkApprovalRate = extraWork && extraWork.length > 0
         ? (extraWork.filter((e) => e.status === 'APPROVED').length / extraWork.length) * 100
@@ -270,7 +272,7 @@ export default function SupervisorAnalyticsScreen() {
       });
 
       // Calculate mechanic performance
-      const mechanics = await fetchMechanicPerformance(workshopId, startDate);
+      const mechanics = await fetchMechanicPerformance(workshopId, range);
       setMechanicPerformance(mechanics);
 
       // Calculate daily stats for the last 7 days
@@ -286,7 +288,10 @@ export default function SupervisorAnalyticsScreen() {
     }
   }
 
-  async function fetchMechanicPerformance(workshopId: string, startDate: Date) {
+  async function fetchMechanicPerformance(
+    workshopId: string,
+    range: { start: string; end: string; allTime: boolean },
+  ) {
     const { data: mechanics } = await supabase
       .from('users_login')
       .select(`
@@ -305,11 +310,11 @@ export default function SupervisorAnalyticsScreen() {
 
     const performance = await Promise.all(
       filteredMechanics.map(async (mech) => {
-        const { data: jobs } = await supabase
-          .from('mechanic_jobs')
-          .select('*')
-          .eq('mechanic_id', mech.id)
-          .gte('assigned_at', startDate.toISOString());
+        let mechJobs = supabase.from('mechanic_jobs').select('*').eq('mechanic_id', mech.id);
+        if (!range.allTime) {
+          mechJobs = mechJobs.gte('assigned_at', range.start).lte('assigned_at', range.end);
+        }
+        const { data: jobs } = await mechJobs;
 
         const activeJobs = jobs?.filter((j) =>
           ['ASSIGNED', 'IN_PROGRESS'].includes(j.mechanic_status)
@@ -412,21 +417,28 @@ export default function SupervisorAnalyticsScreen() {
         <Text style={styles.heroSub}>Team performance · quality · SLA</Text>
       </View>
 
+      <View style={styles.datePad}>
+        <WorkshopDateFilter
+          preset={datePreset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onPreset={setDatePreset}
+          onCustomStart={setCustomStart}
+          onCustomEnd={setCustomEnd}
+        />
+      </View>
+
       <AdvisorFilterBar
-        subtitle={`${analytics.totalJobs} jobs in ${period.toLowerCase()}`}
+        subtitle={`${analytics.totalJobs} jobs · ${dateRange.label}`}
         kpis={[
           { label: 'Total', value: analytics.totalJobs, color: '#004AAD' },
           { label: 'Completed', value: analytics.completedJobs, color: '#10B981' },
           { label: 'Active', value: analytics.activeJobs, color: '#F59E0B' },
           { label: 'Overdue', value: analytics.overdueJobs, color: '#EF4444' },
         ]}
-        chips={[
-          { key: 'TODAY', label: 'TODAY' },
-          { key: 'WEEK', label: 'WEEK' },
-          { key: 'MONTH', label: 'MONTH' },
-        ]}
-        activeChip={period}
-        onChip={(p) => setPeriod(p as 'TODAY' | 'WEEK' | 'MONTH')}
+        chips={[]}
+        activeChip=""
+        onChip={() => {}}
       />
 
       <ScrollView
@@ -628,6 +640,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
     textAlign: 'center',
   },
+  datePad: { paddingHorizontal: 16, paddingTop: 8 },
   periodContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
