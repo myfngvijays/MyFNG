@@ -464,7 +464,11 @@ export function getLeadPricingBreakdown(
     opts?.payableOverride ??
     Number(lead.amount_display ?? lead.payment_amount ?? getLeadDisplayAmount(lead) ?? 0);
 
-  if (walletUsed <= 0 && original > payable + totalDiscount + 0.01) {
+  if (
+    walletUsed <= 0 &&
+    (Boolean(meta.wallet_applied) || Number(opts?.walletTxAmount || 0) > 0) &&
+    original > payable + totalDiscount + 0.01
+  ) {
     walletUsed = Math.round((original - payable - totalDiscount) * 100) / 100;
   }
 

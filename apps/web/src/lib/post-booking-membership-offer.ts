@@ -14,6 +14,34 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+async function loadBookingWalletDebitAmount(
+  supabaseAdmin: any,
+  customerId: string | null,
+  leadId: string,
+): Promise<number> {
+  if (!customerId || !leadId) return 0;
+  const { data: tx } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('amount')
+    .eq('customer_id', customerId)
+    .eq('idempotency_key', `booking:${leadId}`)
+    .maybeSingle();
+  return roundMoney(Number(tx?.amount || 0));
+}
+
+function applyExpiredWalletFieldsToMeta(
+  meta: Record<string, unknown>,
+  walletDeduction: number,
+): void {
+  if (walletDeduction > 0) {
+    meta.wallet_deduction = walletDeduction;
+    meta.wallet_applied = true;
+    return;
+  }
+  meta.wallet_deduction = 0;
+  meta.wallet_applied = false;
+}
+
 export const POST_BOOKING_MEMBERSHIP_OFFER_MINUTES = DEFAULT_POST_BOOKING_MEMBERSHIP_CONFIG.offer_window_minutes;
 export const POST_BOOKING_MEMBERSHIP_OFFER_HOURS = Math.floor(
   DEFAULT_POST_BOOKING_MEMBERSHIP_CONFIG.offer_window_minutes / 60,
@@ -360,15 +388,23 @@ async function computeExpiredMembershipBookingPricing(
   const serviceSubtotal = await loadPureServiceSubtotalFromLead(supabaseAdmin, lead, config);
   const couponDiscount = resolveServiceLeadCouponDiscount(lead, config);
 
-  let newWalletDeduction = walletDeduction;
-  if (serviceSubtotal > 0) {
-    const customerId =
-      String(meta.customer_id || '').trim() ||
-      (await resolveCustomerIdFromLead(
-        supabaseAdmin,
-        lead as { customer_id?: string | null; customer_phone?: string | null },
-      )) ||
-      '';
+  const customerId =
+    String(meta.customer_id || '').trim() ||
+    (await resolveCustomerIdFromLead(
+      supabaseAdmin,
+      lead as { customer_id?: string | null; customer_phone?: string | null },
+    )) ||
+    null;
+  const actualWalletDebit = await loadBookingWalletDebitAmount(
+    supabaseAdmin,
+    customerId,
+    String(lead.id || ''),
+  );
+
+  // Prime expiry may retune a real wallet debit. It must never invent wallet
+  // usage when checkout never deducted the wallet.
+  let newWalletDeduction = 0;
+  if (actualWalletDebit > 0 && serviceSubtotal > 0) {
     const flatWallet = resolveExpiredBookingWalletOnServiceSubtotal(serviceSubtotal);
     if (customerId) {
       try {
@@ -393,14 +429,6 @@ async function computeExpiredMembershipBookingPricing(
       newWalletDeduction = flatWallet;
     }
   }
-
-  const customerId =
-    String(meta.customer_id || '').trim() ||
-    (await resolveCustomerIdFromLead(
-      supabaseAdmin,
-      lead as { customer_id?: string | null; customer_phone?: string | null },
-    )) ||
-    null;
 
   return {
     serviceSubtotal,
@@ -517,10 +545,7 @@ export async function expireUnpaidBookingMembershipBundleIfNeeded(
         }
       : meta.post_booking_membership_offer,
   };
-  if (pricing.newWalletDeduction > 0) {
-    newMeta.wallet_deduction = pricing.newWalletDeduction;
-    newMeta.wallet_applied = true;
-  }
+  applyExpiredWalletFieldsToMeta(newMeta, pricing.newWalletDeduction);
   newMeta.service_subtotal = pricing.serviceSubtotal;
   newMeta.unpaid_membership_line_price = null;
 
@@ -876,10 +901,7 @@ export async function revokePostBookingMembershipOfferByAdmin(
       revoked_by_admin_at: revokedAt,
     },
   };
-  if (pricing.newWalletDeduction > 0) {
-    newMeta.wallet_deduction = pricing.newWalletDeduction;
-    newMeta.wallet_applied = true;
-  }
+  applyExpiredWalletFieldsToMeta(newMeta, pricing.newWalletDeduction);
   newMeta.service_subtotal = pricing.serviceSubtotal;
   newMeta.unpaid_membership_line_price = null;
 
