@@ -160,8 +160,19 @@ function fillParams(params: string[], name: string, fields: Record<string, strin
   );
 }
 
-function headerImageFrom(meta: { header_image_url?: string } | null | undefined) {
+function headerImageFrom(meta: { header_image_url?: string; raw?: { components?: Array<{ type?: string; format?: string }> } } | null | undefined) {
   return String(meta?.header_image_url || '').trim();
+}
+
+function templateNeedsImage(meta: { header_image_url?: string; raw?: { components?: Array<{ type?: string; format?: string }> } } | null | undefined) {
+  const header = meta?.raw?.components?.find((item) => String(item?.type || '').toUpperCase() === 'HEADER');
+  return String(header?.format || '').toUpperCase() === 'IMAGE' || Boolean(headerImageFrom(meta));
+}
+
+function chosenHeaderImage(body: { header_image_url?: string } | null | undefined, meta: { header_image_url?: string } | null | undefined) {
+  const requested = String(body?.header_image_url || '').trim();
+  if (/^https?:\/\//i.test(requested)) return requested;
+  return headerImageFrom(meta);
 }
 
 async function assertAdmin() {
@@ -575,10 +586,44 @@ export async function GET(request: NextRequest) {
   });
 }
 
+async function uploadCampaignImage(db: any, file: File, templateName: string) {
+  if (!file || file.size <= 0) return NextResponse.json({ error: 'Choose an image first' }, { status: 400 });
+  if (file.size > 5 * 1024 * 1024) return NextResponse.json({ error: 'Image must be under 5 MB' }, { status: 400 });
+  const mime = String(file.type || '').toLowerCase();
+  const allowed = mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/webp' || /\.(jpe?g|png|webp)$/i.test(file.name || '');
+  if (!allowed) return NextResponse.json({ error: 'Use a JPG, PNG, or WEBP image' }, { status: 400 });
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return NextResponse.json({ error: 'Storage is not configured' }, { status: 500 });
+  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+  const filePath = `templates/campaign-${Date.now()}.${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const uploaded = await supabaseAdmin.storage.from('whatsapp-media').upload(filePath, buffer, {
+    contentType: mime.startsWith('image/') ? mime : `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    upsert: false,
+  });
+  if (uploaded.error) return NextResponse.json({ error: uploaded.error.message }, { status: 500 });
+  const publicUrl = supabaseAdmin.storage.from('whatsapp-media').getPublicUrl(filePath).data.publicUrl;
+  if (templateName) {
+    const existing = await db.from('whatsapp_templates').select('meta').ilike('template_name', templateName).maybeSingle();
+    const meta = existing.data?.meta && typeof existing.data.meta === 'object' ? existing.data.meta : {};
+    await db.from('whatsapp_templates').update({
+      meta: { ...meta, header_image_url: publicUrl },
+      updated_at: new Date().toISOString(),
+    }).ilike('template_name', templateName);
+  }
+  return NextResponse.json({ success: true, url: publicUrl });
+}
+
 export async function POST(request: NextRequest) {
   const auth = await assertAdmin();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const db = auth.db;
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    const form = await request.formData();
+    const file = form.get('file');
+    return uploadCampaignImage(db, file instanceof File ? file : new File([], ''), String(form.get('template_name') || ''));
+  }
   const body = await request.json().catch(() => ({}));
   const action = String(body?.action || '');
 
@@ -874,13 +919,17 @@ async function testSend(db: any, userId: string, actorName: string, role: string
 
   const savedContact = await db.from('wa_bulk_contacts').select('name, fields').eq('phone', phone).maybeSingle();
   const savedFields = savedContact.data?.fields && typeof savedContact.data.fields === 'object' ? savedContact.data.fields : {};
+  const headerImageUrl = chosenHeaderImage(body, row.meta);
+  if (templateNeedsImage(row.meta) && !headerImageUrl) {
+    return NextResponse.json({ error: 'This template needs a header image. Upload one before sending.' }, { status: 400 });
+  }
   const filled = fillParams(params, String(body?.name || savedContact.data?.name || 'Test'), savedFields);
   const result = await sendTemplateMessage({
     phoneNumber: phone,
     templateName: row.template_name,
     templateParams: filled,
     languageCode: row.language_code || 'en',
-    headerImageUrl: headerImageFrom(row.meta),
+    headerImageUrl,
   });
   const now = new Date().toISOString();
   await db.from('whatsapp_messages').insert({
@@ -1043,7 +1092,10 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
     .select('meta')
     .ilike('template_name', campaign.data.template_name)
     .maybeSingle();
-  const headerImageUrl = headerImageFrom(templateRow.data?.meta);
+  const headerImageUrl = chosenHeaderImage(body, templateRow.data?.meta);
+  if (templateNeedsImage(templateRow.data?.meta) && !headerImageUrl) {
+    return NextResponse.json({ error: 'This template needs a header image. Upload one before sending.' }, { status: 400 });
+  }
 
   const pending = await db
     .from('wa_bulk_recipients')

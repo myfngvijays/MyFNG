@@ -14,7 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { apiFetch } from '../../../lib/api';
+import * as ImagePicker from 'expo-image-picker';
+import { apiFetch, apiUpload } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 type Contact = { id: string; phone: string; name: string | null };
@@ -29,8 +30,13 @@ type Template = {
   body_text?: string | null;
   example_values?: string[] | null;
   is_active?: boolean;
-  meta?: { status?: string; header_image_url?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; text?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
+  meta?: { status?: string; header_image_url?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
 };
+
+function needsHeaderImage(template: Template | null) {
+  const header = template?.meta?.raw?.components?.find((item) => String(item.type || '').toUpperCase() === 'HEADER');
+  return String(header?.format || '').toUpperCase() === 'IMAGE' || Boolean(String(template?.meta?.header_image_url || '').trim());
+}
 
 function hasReplyButtons(template: Template) {
   const buttons = template.meta?.raw?.components?.find((item) => String(item.type || '').toUpperCase() === 'BUTTONS')?.buttons || [];
@@ -105,6 +111,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
   const [params, setParams] = useState<string[]>([]);
   const [buttonMap, setButtonMap] = useState<Array<{ text: string; action: 'create_lead' | 'ignore'; tag: string }>>([]);
   const [testPhone, setTestPhone] = useState('');
+  const [headerImageUrl, setHeaderImageUrl] = useState('');
   const [progress, setProgress] = useState('');
 
   const load = useCallback(async () => {
@@ -153,6 +160,32 @@ export default function SuperAdminWhatsAppBulkScreen() {
     })));
   }, [templateName, chosen]);
 
+  useEffect(() => {
+    setHeaderImageUrl(String(chosen?.meta?.header_image_url || ''));
+  }, [templateName]);
+
+  async function uploadHeader() {
+    if (!templateName) return;
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (picked.canceled || !picked.assets?.[0]) return;
+    const asset = picked.assets[0];
+    setBusy(true);
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('template_name', templateName);
+      form.append('file', { uri: asset.uri, name: 'header.jpg', type: asset.mimeType || 'image/jpeg' } as any);
+      const result = await apiUpload<any>('/api/super_admin/whatsapp-bulk', form);
+      const url = String(result.url || '');
+      setHeaderImageUrl(url);
+      setNotice('Header image saved.');
+    } catch (err: any) {
+      setError(err?.message || 'Could not upload image');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function post(payload: Record<string, unknown>) {
     return apiFetch<any>('/api/super_admin/whatsapp-bulk', {
       method: 'POST',
@@ -195,6 +228,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
     setError('');
     setProgress('Starting…');
     try {
+      if (needsHeaderImage(chosen) && !headerImageUrl) throw new Error('Upload the header image first.');
       let campaignId = existingId || '';
       if (!campaignId) {
         const started = await post({
@@ -214,7 +248,8 @@ export default function SuperAdminWhatsAppBulkScreen() {
       let guard = 0;
       while (guard < 400) {
         guard += 1;
-        const batch = await post({ action: 'send_batch', campaign_id: campaignId });
+        if (needsHeaderImage(chosen) && !headerImageUrl) throw new Error('Upload the header image first.');
+        const batch = await post({ action: 'send_batch', campaign_id: campaignId, header_image_url: headerImageUrl });
         setProgress(`Sent ${batch.sent} · failed ${batch.failed} · left ${batch.pending}`);
         if (batch.rate_limited) {
           setNotice('Rate limit hit. Use Continue in a minute.');
@@ -381,6 +416,15 @@ export default function SuperAdminWhatsAppBulkScreen() {
                   <Text style={styles.rowTitle}>{index + 1}. {template.display_name || template.template_name}</Text>
                 </TouchableOpacity>
               ))}
+              {needsHeaderImage(chosen) ? (
+                <>
+                  <Text style={styles.hint}>Header image</Text>
+                  <TouchableOpacity style={styles.choice} onPress={() => void uploadHeader()}>
+                    <Text style={styles.rowTitle}>{headerImageUrl ? 'Change header image' : 'Upload header image'}</Text>
+                  </TouchableOpacity>
+                  {headerImageUrl ? <Image source={{ uri: headerImageUrl }} style={{ width: '100%', aspectRatio: 1, borderRadius: 8 }} resizeMode="contain" /> : null}
+                </>
+              ) : null}
               {chosen?.body_text ? <Text style={styles.hint}>{chosen.body_text}</Text> : null}
               {buttonMap.map((item, index) => (
                 <TouchableOpacity
@@ -396,7 +440,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
               <TouchableOpacity
                 style={styles.primary}
                 disabled={busy || !templateName || !testPhone.trim()}
-                onPress={() => void post({ action: 'test_send', phone: testPhone, template_name: templateName, params, name: 'Test' }).then(() => setNotice(`Test sent to ${testPhone}`)).catch((err) => setError(err?.message || 'Test failed'))}
+                onPress={() => void post({ action: 'test_send', phone: testPhone, template_name: templateName, params, name: 'Test', header_image_url: headerImageUrl }).then(() => setNotice(`Test sent to ${testPhone}`)).catch((err) => setError(err?.message || 'Test failed'))}
               >
                 <Text style={styles.primaryText}>Send test</Text>
               </TouchableOpacity>
@@ -474,7 +518,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
                 <Text style={styles.rowTitle}>{preview.display_name || preview.template_name}</Text>
                 <View style={styles.bubble}>
                   {preview.meta?.header_image_url ? (
-                    <Image source={{ uri: preview.meta.header_image_url }} style={{ width: '100%', height: 140, borderRadius: 8, marginBottom: 8 }} resizeMode="cover" />
+                    <Image source={{ uri: preview.meta.header_image_url }} style={{ width: '100%', aspectRatio: 1, borderRadius: 8, marginBottom: 8 }} resizeMode="contain" />
                   ) : null}
                   <Text style={styles.bubbleText}>{previewBody(preview).output || 'No body'}</Text>
                   {previewBody(preview).buttons.map((label) => (

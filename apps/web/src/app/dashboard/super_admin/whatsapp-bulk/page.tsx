@@ -129,6 +129,11 @@ function hasReplyButtons(template: Template) {
   return buttons.some((button) => button.text && !/URL|PHONE|OTP|COPY/.test(String(button.type || 'QUICK_REPLY').toUpperCase()));
 }
 
+function templateNeedsImage(template: Template | null) {
+  const header = template?.meta?.raw?.components?.find((item) => String(item.type || '').toUpperCase() === 'HEADER');
+  return String(header?.format || '').toUpperCase() === 'IMAGE' || Boolean(String(template?.meta?.header_image_url || '').trim());
+}
+
 function partsOf(template: Template | null) {
   const components = template?.meta?.raw?.components || [];
   const header = components.find((item) => String(item.type || '').toUpperCase() === 'HEADER');
@@ -217,11 +222,14 @@ function ResultCharts({ report }: { report: { sent: number; delivered: number; r
 function PhonePreview({
   template,
   params,
+  headerImage,
 }: {
   template: Template;
   params: string[];
+  headerImage?: string;
 }) {
   const parts = partsOf(template);
+  const image = headerImage || parts.headerImage;
   const body = fillBody(template.body_text || '', params);
   return (
     <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.6rem] border-[8px] border-[#111b21] bg-[#efeae2] shadow-lg">
@@ -231,7 +239,7 @@ function PhonePreview({
       </div>
       <div className="min-h-[220px] px-3 py-3">
         <div className="rounded-lg rounded-tl-none bg-white px-3 py-2 shadow-sm">
-          {parts.headerImage ? <img src={parts.headerImage} alt="" className="-mx-3 -mt-2 mb-2 w-[calc(100%+1.5rem)] max-h-40 object-cover" /> : null}
+          {image ? <img src={image} alt="" className="-mx-3 -mt-2 mb-2 aspect-square w-[calc(100%+1.5rem)] object-contain" /> : null}
           {parts.header ? <p className="mb-1 text-sm font-semibold text-[#111b21]">{parts.header}</p> : null}
           <p className="whitespace-pre-wrap text-[13px] leading-5 text-[#111b21]">{body || 'No body'}</p>
           {parts.footer ? <p className="mt-2 text-[11px] text-[#667781]">{parts.footer}</p> : null}
@@ -306,6 +314,7 @@ export default function BulkWhatsAppPage() {
   const [params, setParams] = useState<string[]>([]);
   const [buttonMap, setButtonMap] = useState<ButtonAction[]>([]);
   const [testPhone, setTestPhone] = useState('');
+  const [headerImageUrl, setHeaderImageUrl] = useState('');
   const [progress, setProgress] = useState('');
 
   const loadHome = useCallback(async () => {
@@ -362,6 +371,7 @@ export default function BulkWhatsAppPage() {
   }, [tab, loadContacts, page]);
 
   const chosen = templates.find((row) => row.template_name === templateName) || null;
+  const needsImage = templateNeedsImage(chosen);
   const chosenParts = partsOf(chosen);
   const slots = variableCount(chosen?.body_text || '');
   const quickReplies = chosenParts.buttons.filter((button) => button.type === 'QUICK_REPLY' || button.type === 'QUICKREPLY');
@@ -380,6 +390,10 @@ export default function BulkWhatsAppPage() {
     );
     // Only reset when the chosen template's buttons change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateName]);
+
+  useEffect(() => {
+    setHeaderImageUrl(String(chosen?.meta?.header_image_url || ''));
   }, [templateName]);
 
   const fieldColumns = useMemo(() => {
@@ -539,11 +553,42 @@ export default function BulkWhatsAppPage() {
     }
   }
 
+  async function uploadHeader(file: File | null) {
+    if (!file || !templateName) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5 MB');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const form = new FormData();
+      form.set('file', file);
+      form.set('template_name', templateName);
+      const response = await fetch('/api/super_admin/whatsapp-bulk', { method: 'POST', body: form });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Could not upload image');
+      const url = String(json.url || '');
+      setHeaderImageUrl(url);
+      setTemplates((current) => current.map((template) => (
+        template.template_name === templateName
+          ? { ...template, meta: { ...(template.meta || {}), header_image_url: url } }
+          : template
+      )));
+      setNotice('Header image saved. Test send and the campaign will use this photo.');
+    } catch (err: any) {
+      setError(err?.message || 'Could not upload image');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function testSend() {
     setBusy(true);
     setError('');
     try {
-      await post({ action: 'test_send', phone: testPhone, template_name: templateName, params, name: 'Test' });
+      if (needsImage && !headerImageUrl) throw new Error('Upload the header image first.');
+      await post({ action: 'test_send', phone: testPhone, template_name: templateName, params, name: 'Test', header_image_url: headerImageUrl });
       setNotice(`Test sent to ${testPhone}.`);
     } catch (err: any) {
       setError(err?.message || 'Test failed');
@@ -557,6 +602,7 @@ export default function BulkWhatsAppPage() {
     setError('');
     setProgress('Preparing campaign…');
     try {
+      if (needsImage && !headerImageUrl) throw new Error('Upload the header image first.');
       let campaignId = existingId || '';
       if (!campaignId) {
         const started = await post({
@@ -577,7 +623,8 @@ export default function BulkWhatsAppPage() {
       let guard = 0;
       while (guard < 500) {
         guard += 1;
-        const batch = await post({ action: 'send_batch', campaign_id: campaignId });
+        if (needsImage && !headerImageUrl) throw new Error('Upload the header image first.');
+        const batch = await post({ action: 'send_batch', campaign_id: campaignId, header_image_url: headerImageUrl });
         setProgress(`Sent ${batch.sent} · failed ${batch.failed} · left ${batch.pending}`);
         if (batch.rate_limited) {
           setNotice('WhatsApp slowed the send. Use Continue in a minute.');
@@ -1214,6 +1261,24 @@ export default function BulkWhatsAppPage() {
                   ))}
                 </select>
               </label>
+              {needsImage ? (
+                <label className="block text-xs font-semibold text-gray-500">
+                  Header image
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={busy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+                      event.target.value = '';
+                      void uploadHeader(file);
+                    }}
+                    className="mt-1 block w-full text-sm font-normal text-gray-900 file:mr-3 file:rounded-lg file:border-0 file:bg-[#004AAD] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+                  />
+                  <span className="mt-1 block font-normal text-gray-500">JPG, PNG, or WEBP under 5 MB. This photo goes above the message.</span>
+                  {headerImageUrl ? <img src={headerImageUrl} alt="" className="mt-2 aspect-square w-full max-w-[240px] rounded-lg object-contain" /> : <span className="mt-2 block font-normal text-amber-700">Upload a photo before test send or launch.</span>}
+                </label>
+              ) : null}
               {slots > 0 ? (
                 <div className="space-y-2">
                   <p className="text-xs text-gray-500">Use {'{{name}}'}, {'{{car_number}}'}, {'{{address}}'}, or any extra column from the file.</p>
@@ -1265,7 +1330,7 @@ export default function BulkWhatsAppPage() {
               {progress ? <p className="text-sm text-gray-600">{progress}</p> : null}
             </section>
             <aside className="space-y-4">
-              {chosen ? <PhonePreview template={chosen} params={params} /> : <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">Pick a template to see the WhatsApp preview, including buttons.</div>}
+              {chosen ? <PhonePreview template={chosen} params={params} headerImage={headerImageUrl} /> : <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">Pick a template to see the WhatsApp preview, including buttons.</div>}
               <button type="button" onClick={() => setTab('results')} className="w-full rounded-2xl border bg-white p-4 text-left shadow-sm">
                 <h3 className="font-semibold text-gray-900">Campaign results</h3>
                 <p className="mt-1 text-sm text-gray-500">Open sent, delivered, read, failed, and button replies.</p>
