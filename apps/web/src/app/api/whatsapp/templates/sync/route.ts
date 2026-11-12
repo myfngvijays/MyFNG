@@ -269,6 +269,7 @@ export async function POST() {
           'footer',
           'meta_components',
           'deprecated',
+          'header_image_url',
         ] as const;
         const preserved: Record<string, unknown> = {};
         for (const key of preserveKeys) {

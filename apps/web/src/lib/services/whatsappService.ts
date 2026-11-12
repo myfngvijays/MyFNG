@@ -30,6 +30,7 @@ type TemplateMessageInput = {
   templateParams?: string[];
   buttonUrlParams?: string[];
   languageCode?: string;
+  headerImageUrl?: string;
 };
 
 function assertWhatsAppConfig(creds: {
@@ -293,6 +294,13 @@ export async function sendTemplateMessage(input: TemplateMessageInput): Promise<
     .map((text): TemplateBodyParam => ({ type: 'text', text }));
 
   const components: Array<Record<string, unknown>> = [];
+  const headerImageUrl = String(input.headerImageUrl || '').trim();
+  if (headerImageUrl) {
+    components.push({
+      type: 'header',
+      parameters: [{ type: 'image', image: { link: headerImageUrl } }],
+    });
+  }
   if (bodyParams.length > 0) {
     components.push({
       type: 'body',

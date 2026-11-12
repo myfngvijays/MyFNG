@@ -5,7 +5,7 @@ import { sendTemplateMessage } from '@/lib/services/whatsappService';
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const BATCH_SIZE = 20;
-const MAX_PASTE = 25000;
+const MAX_PASTE = 200000;
 
 function tablesMissing(error: { message?: string; code?: string } | null | undefined) {
   const msg = `${error?.code || ''} ${error?.message || ''}`;
@@ -160,6 +160,10 @@ function fillParams(params: string[], name: string, fields: Record<string, strin
   );
 }
 
+function headerImageFrom(meta: { header_image_url?: string } | null | undefined) {
+  return String(meta?.header_image_url || '').trim();
+}
+
 async function assertAdmin() {
   const supabase = await createClient();
   const {
@@ -222,7 +226,7 @@ function applyContactFilters(query: any, filters: { q?: string; from?: string; t
 
 async function listFilteredContactIds(db: any, filters: { q?: string; from?: string; to?: string; uploadId?: string }) {
   const ids: string[] = [];
-  for (let offset = 0; offset < 30000; offset += 1000) {
+  for (let offset = 0; offset < 200000; offset += 1000) {
     const result = await applyContactFilters(
       db.from('wa_bulk_contacts').select('id').order('created_at', { ascending: false }),
       filters,
@@ -237,7 +241,7 @@ async function listFilteredContactIds(db: any, filters: { q?: string; from?: str
 
 async function loadSegmentContactIds(db: any, segmentId: string) {
   const ids: string[] = [];
-  for (let offset = 0; offset < 30000; offset += 1000) {
+  for (let offset = 0; offset < 200000; offset += 1000) {
     const result = await db
       .from('wa_bulk_segment_contacts')
       .select('contact_id')
@@ -263,7 +267,7 @@ async function campaignReport(db: any, campaignId: string) {
   const buckets = { sent: 0, failed: 0, skipped: 0, pending: 0, replied: 0, delivered: 0, read: 0, auto: 0 };
   const replies: Record<string, number> = {};
   const messageIds: string[] = [];
-  for (let offset = 0; offset < 30000; offset += 1000) {
+  for (let offset = 0; offset < 200000; offset += 1000) {
     let page = await db
       .from('wa_bulk_recipients')
       .select('status, reply_button, message_id, delivery_status, reply_kind')
@@ -544,13 +548,27 @@ export async function GET(request: NextRequest) {
     }),
   );
 
+  const uploads = await Promise.all(
+    ((uploadsRes.data || []) as Array<{ id: string; label: string; added: number; created_at: string }>).map(async (upload) => {
+      const count = await db
+        .from('wa_bulk_contacts')
+        .select('id', { count: 'exact', head: true })
+        .eq('upload_id', upload.id);
+      const contacts = count.count || 0;
+      if (!count.error && contacts !== Number(upload.added || 0)) {
+        await db.from('wa_bulk_uploads').update({ added: contacts }).eq('id', upload.id);
+      }
+      return { ...upload, added: count.error ? upload.added : contacts };
+    }),
+  );
+
   return NextResponse.json({
     success: true,
     sending_number: '+91 95949 96161',
     contact_total: totalRes.count || 0,
     segments,
     campaigns: (campaignsRes.data || []).map((row: any) => ({ ...row, button_map: row.button_map || [] })),
-    uploads: uploadsRes.error ? [] : uploadsRes.data || [],
+    uploads: uploadsRes.error ? [] : uploads,
     uploads_ready: !uploadsRes.error,
     custom_fields: fieldsRes.error ? [] : fieldsRes.data || [],
     custom_fields_ready: !fieldsRes.error,
@@ -569,10 +587,21 @@ export async function POST(request: NextRequest) {
       const parsed = parseContactLines(String(body?.text || ''));
       const rows = parsed.rows;
       if (!rows.length) return NextResponse.json({ error: 'No valid mobile numbers found' }, { status: 400 });
-      const label = String(body?.upload_label || '').trim().slice(0, 80) || `Upload ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
-      let uploadId = '';
-      const upload = await db.from('wa_bulk_uploads').insert({ label, added: rows.length }).select('id, label').maybeSingle();
-      if (!upload.error && upload.data?.id) uploadId = upload.data.id;
+      let label = String(body?.upload_label || '').trim().slice(0, 80) || `Upload ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+      let uploadId = String(body?.upload_id || '').trim();
+      if (uploadId) {
+        const current = await db.from('wa_bulk_uploads').select('id, label, added').eq('id', uploadId).maybeSingle();
+        if (current.data?.id) {
+          label = String(current.data.label || label);
+          await db.from('wa_bulk_uploads').update({ added: Number(current.data.added || 0) + rows.length }).eq('id', uploadId);
+        } else {
+          uploadId = '';
+        }
+      }
+      if (!uploadId) {
+        const upload = await db.from('wa_bulk_uploads').insert({ label, added: rows.length }).select('id, label').maybeSingle();
+        if (!upload.error && upload.data?.id) uploadId = upload.data.id;
+      }
 
       let fieldsSaved = true;
       for (let index = 0; index < rows.length; index += 400) {
@@ -771,6 +800,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, segment: saved.data });
     }
 
+    if (action === 'delete_upload') {
+      const id = String(body?.id || '').trim();
+      if (!id) return NextResponse.json({ error: 'Upload id is required' }, { status: 400 });
+      for (;;) {
+        const page = await db.from('wa_bulk_contacts').select('id').eq('upload_id', id).limit(500);
+        if (page.error) return NextResponse.json({ error: page.error.message }, { status: 500 });
+        const ids = (page.data || []).map((row: { id: string }) => row.id);
+        if (!ids.length) break;
+        const removed = await db.from('wa_bulk_contacts').delete().in('id', ids);
+        if (removed.error) return NextResponse.json({ error: removed.error.message }, { status: 500 });
+      }
+      const deleted = await db.from('wa_bulk_uploads').delete().eq('id', id);
+      if (deleted.error) return NextResponse.json({ error: deleted.error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
     if (action === 'delete_segment') {
       const id = String(body?.id || '').trim();
       if (!id) return NextResponse.json({ error: 'Segment id is required' }, { status: 400 });
@@ -835,6 +880,7 @@ async function testSend(db: any, userId: string, actorName: string, role: string
     templateName: row.template_name,
     templateParams: filled,
     languageCode: row.language_code || 'en',
+    headerImageUrl: headerImageFrom(row.meta),
   });
   const now = new Date().toISOString();
   await db.from('whatsapp_messages').insert({
@@ -992,6 +1038,13 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
     return NextResponse.json({ success: true, done: true, sent_now: 0, failed_now: 0, pending: 0 });
   }
 
+  const templateRow = await db
+    .from('whatsapp_templates')
+    .select('meta')
+    .ilike('template_name', campaign.data.template_name)
+    .maybeSingle();
+  const headerImageUrl = headerImageFrom(templateRow.data?.meta);
+
   const pending = await db
     .from('wa_bulk_recipients')
     .select('id, phone, name')
@@ -1020,6 +1073,7 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
           templateName: campaign.data.template_name,
           templateParams: filled,
           languageCode: campaign.data.language_code || 'en',
+          headerImageUrl,
         });
         const rateHit = /rate limit|130429|80007/i.test(String(result.error || ''));
         if (rateHit) {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -28,7 +29,7 @@ type Template = {
   body_text?: string | null;
   example_values?: string[] | null;
   is_active?: boolean;
-  meta?: { status?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; text?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
+  meta?: { status?: string; header_image_url?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; text?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
 };
 
 function hasReplyButtons(template: Template) {
@@ -73,7 +74,6 @@ function variableCount(body: string) {
 export default function SuperAdminWhatsAppBulkScreen() {
   const navigation = useNavigation<any>();
   const [tab, setTab] = useState<'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'send' | 'results'>('dashboard');
-  const [demo, setDemo] = useState(false);
   const [fields, setFields] = useState<Array<{ id: string; title: string; field_key: string; field_type: string }>>([]);
   const [fieldTitle, setFieldTitle] = useState('');
   const [report, setReport] = useState<any>(null);
@@ -159,9 +159,22 @@ export default function SuperAdminWhatsAppBulkScreen() {
     setBusy(true);
     setError('');
     try {
-      const result = await post({ action: 'add_contacts', text: paste, upload_label: uploadLabel });
+      const lines = paste.split(/\r?\n/).filter((line) => line.trim());
+      const header = lines[0] || '';
+      const hasHeader = /phone|mobile|whatsapp|name/i.test(header);
+      const bodyLines = hasHeader ? lines.slice(1) : lines;
+      if (!bodyLines.length) throw new Error('No rows found');
+      let uploadId = '';
+      let added = 0;
+      for (let index = 0; index < bodyLines.length; index += 2000) {
+        const piece = bodyLines.slice(index, index + 2000);
+        const text = hasHeader ? [header, ...piece].join('\n') : piece.join('\n');
+        const result = await post({ action: 'add_contacts', text, upload_label: uploadLabel, ...(uploadId ? { upload_id: uploadId } : {}) });
+        uploadId = result.upload_id || uploadId;
+        added += Number(result.added || 0);
+      }
       setPaste('');
-      setNotice(`${result.added} numbers saved`);
+      setNotice(`${added} numbers saved`);
       await load();
     } catch (err: any) {
       setError(err?.message || 'Could not add contacts');
@@ -237,33 +250,14 @@ export default function SuperAdminWhatsAppBulkScreen() {
         <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: 12 }}>
           {tab === 'dashboard' ? (
             <>
-              <TouchableOpacity style={styles.primary} onPress={() => setDemo((on) => !on)}>
-                <Text style={styles.primaryText}>{demo ? 'Remove demo' : 'Load demo data'}</Text>
-              </TouchableOpacity>
               <View style={styles.row}>
                 <Text style={styles.rowTitle}>Contacts</Text>
-                <Text style={styles.hint}>{demo && !contacts.length ? '10,000 demo' : `${contacts.length} on this page`}</Text>
+                <Text style={styles.hint}>{`${contacts.length} on this page`}</Text>
               </View>
               <View style={styles.row}>
                 <Text style={styles.rowTitle}>Campaigns</Text>
-                <Text style={styles.hint}>{demo && !campaigns.length ? '1 demo · 10,000 receivers' : `${campaigns.length} campaigns`}</Text>
+                <Text style={styles.hint}>{`${campaigns.length} campaigns`}</Text>
               </View>
-              {demo ? <Text style={styles.hint}>10k demo delivery</Text> : <Text style={styles.hint}>Load demo data to preview delivery.</Text>}
-              {demo ? [
-                ['Sent', 862, '#2563eb'],
-                ['Delivered', 806, '#0891b2'],
-                ['Read', 444, '#059669'],
-                ['Replied', 30, '#4f46e5'],
-                ['Auto replied', 86, '#7c3aed'],
-                ['Failed', 9138, '#d97706'],
-              ].map(([label, value, color]) => (
-                <View key={String(label)} style={styles.row}>
-                  <Text style={styles.rowTitle}>{label}</Text>
-                  <View style={{ height: 8, borderRadius: 99, backgroundColor: '#e2e8f0', marginTop: 6 }}>
-                    <View style={{ height: 8, borderRadius: 99, backgroundColor: String(color), width: `${Math.max(4, Math.round((Number(value) / 10000) * 100))}%` }} />
-                  </View>
-                </View>
-              )) : null}
             </>
           ) : null}
           {tab === 'contacts' ? (
@@ -433,31 +427,6 @@ export default function SuperAdminWhatsAppBulkScreen() {
           ) : null}
           {tab === 'results' ? (
             <>
-              {demo && !report ? (
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => setReport({
-                    sample: true,
-                    campaign: { name: '10k WhatsApp blast (sample)', template_name: 'service_button_test', status: 'COMPLETED' },
-                    audience: 10000,
-                    sent: 862,
-                    delivered: 806,
-                    read: 444,
-                    replied: 30,
-                    auto: 86,
-                    failed: 9138,
-                    rates: { sent: 8.6, delivered: 8.1, read: 4.4, replied: 0.3, auto: 0.9, failed: 91.4 },
-                    replies: [
-                      { button: 'Book service', count: 17, percent: 56.7 },
-                      { button: 'Not interested', count: 10, percent: 33.3 },
-                      { button: 'Interested', count: 3, percent: 10 },
-                    ],
-                  })}
-                >
-                  <Text style={styles.rowTitle}>10k WhatsApp blast (sample)</Text>
-                  <Text style={styles.hint}>SAMPLE · sent 862 / 10000 · no messages sent</Text>
-                </TouchableOpacity>
-              ) : null}
               {!report ? campaigns.map((campaign) => (
                 <TouchableOpacity
                   key={campaign.id}
@@ -497,6 +466,9 @@ export default function SuperAdminWhatsAppBulkScreen() {
                 <Text style={styles.hint}>{statusOf(preview)} · {String(preview.category || 'UTILITY').toUpperCase()} · {languageLabel(preview.language_code)}</Text>
                 <Text style={styles.rowTitle}>{preview.display_name || preview.template_name}</Text>
                 <View style={styles.bubble}>
+                  {preview.meta?.header_image_url ? (
+                    <Image source={{ uri: preview.meta.header_image_url }} style={{ width: '100%', height: 140, borderRadius: 8, marginBottom: 8 }} resizeMode="cover" />
+                  ) : null}
                   <Text style={styles.bubbleText}>{previewBody(preview).output || 'No body'}</Text>
                   {previewBody(preview).buttons.map((label) => (
                     <Text key={label} style={styles.bubbleButton}>{label}</Text>

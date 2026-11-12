@@ -28,7 +28,7 @@ type Template = {
   example_values?: string[] | null;
   is_active?: boolean;
   variable_keys?: string[] | null;
-  meta?: { status?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; text?: string; buttons?: WaButton[] }> } } | null;
+  meta?: { status?: string; header_image_url?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: WaButton[] }> } } | null;
 };
 type ButtonAction = { text: string; action: 'create_lead' | 'ignore'; tag: string };
 type Tab = 'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'campaign' | 'results';
@@ -136,6 +136,7 @@ function partsOf(template: Template | null) {
   const buttons = components.find((item) => String(item.type || '').toUpperCase() === 'BUTTONS');
   return {
     header: String(header?.text || ''),
+    headerImage: String(template?.meta?.header_image_url || ''),
     footer: String(footer?.text || ''),
     buttons: (buttons?.buttons || []).map((button) => ({
       type: String(button.type || 'QUICK_REPLY').toUpperCase(),
@@ -230,6 +231,7 @@ function PhonePreview({
       </div>
       <div className="min-h-[220px] px-3 py-3">
         <div className="rounded-lg rounded-tl-none bg-white px-3 py-2 shadow-sm">
+          {parts.headerImage ? <img src={parts.headerImage} alt="" className="-mx-3 -mt-2 mb-2 w-[calc(100%+1.5rem)] max-h-40 object-cover" /> : null}
           {parts.header ? <p className="mb-1 text-sm font-semibold text-[#111b21]">{parts.header}</p> : null}
           <p className="whitespace-pre-wrap text-[13px] leading-5 text-[#111b21]">{body || 'No body'}</p>
           {parts.footer ? <p className="mt-2 text-[11px] text-[#667781]">{parts.footer}</p> : null}
@@ -251,7 +253,6 @@ function PhonePreview({
 
 export default function BulkWhatsAppPage() {
   const [tab, setTab] = useState<Tab>('dashboard');
-  const [demo, setDemo] = useState(false);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -381,11 +382,14 @@ export default function BulkWhatsAppPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateName]);
 
-  const fieldKeys = useMemo(() => {
+  const fieldColumns = useMemo(() => {
+    if (customFields.length) {
+      return customFields.map((field) => ({ key: field.field_key, label: field.title }));
+    }
     const keys = new Set<string>();
     contacts.forEach((contact) => Object.keys(contact.fields || {}).forEach((key) => keys.add(key)));
-    return Array.from(keys).slice(0, 4);
-  }, [contacts]);
+    return Array.from(keys).map((key) => ({ key, label: key.replace(/_/g, ' ') }));
+  }, [contacts, customFields]);
 
   const visibleTemplates = useMemo(() => {
     const q = templateQuery.trim().toLowerCase();
@@ -463,13 +467,40 @@ export default function BulkWhatsAppPage() {
     setError('');
     setNotice('');
     try {
-      const result = await post({ action: 'add_contacts', text: paste, upload_label: uploadLabel });
+      const lines = paste.split(/\r?\n/).filter((line) => line.trim());
+      const header = lines[0] || '';
+      const hasHeader = /phone|mobile|whatsapp|name/i.test(header);
+      const bodyLines = hasHeader ? lines.slice(1) : lines;
+      if (!bodyLines.length) throw new Error('No rows found in this file');
+      const chunkSize = 2000;
+      let uploadId = '';
+      let added = 0;
+      let label = uploadLabel;
+      let last: any = null;
+      const chunks = Math.max(1, Math.ceil(bodyLines.length / chunkSize));
+      for (let index = 0; index < bodyLines.length; index += chunkSize) {
+        const piece = bodyLines.slice(index, index + chunkSize);
+        const text = hasHeader ? [header, ...piece].join('\n') : piece.join('\n');
+        setProgress(`Saving ${Math.min(index + piece.length, bodyLines.length).toLocaleString('en-IN')} of ${bodyLines.length.toLocaleString('en-IN')}`);
+        last = await post({
+          action: 'add_contacts',
+          text,
+          upload_label: label,
+          ...(uploadId ? { upload_id: uploadId } : {}),
+        });
+        uploadId = last.upload_id || uploadId;
+        label = last.upload_label || label;
+        added += Number(last.added || 0);
+        if (chunks > 1) setNotice(`${added.toLocaleString('en-IN')} saved so far…`);
+      }
+      const result = last || { added: 0, upload_label: label, field_titles: [] };
+      result.added = added;
       setNotice(
         result.fields_saved === false
-          ? `${result.added} numbers saved in “${result.upload_label}”. Car number and address were not stored yet. Run database/391_whatsapp_bulk_fields_and_button_flows.sql, then upload again.`
+          ? `${added.toLocaleString('en-IN')} numbers saved in “${result.upload_label}”. Extra columns were not stored yet. Run database/391_whatsapp_bulk_fields_and_button_flows.sql, then upload again.`
           : result.custom_fields_ready === false
-            ? `${result.added} numbers saved. Run database/392_whatsapp_bulk_custom_fields.sql so the columns become custom fields.`
-            : `${result.added} numbers saved in “${result.upload_label}”.${result.field_titles?.length ? ` Fields: ${result.field_titles.join(', ')}.` : ''}`,
+            ? `${added.toLocaleString('en-IN')} numbers saved. Run database/392_whatsapp_bulk_custom_fields.sql so the columns become custom fields.`
+            : `${added.toLocaleString('en-IN')} numbers saved in “${result.upload_label}”.${result.field_titles?.length ? ` Fields: ${result.field_titles.join(', ')}.` : ''}`,
       );
       setPaste('');
       setFileName('');
@@ -481,6 +512,7 @@ export default function BulkWhatsAppPage() {
       setError(err?.message || 'Import failed');
     } finally {
       setBusy(false);
+      setProgress('');
     }
   }
 
@@ -569,32 +601,14 @@ export default function BulkWhatsAppPage() {
   const approved = chosen ? statusOf(chosen) === 'APPROVED' : false;
   const pages = Math.max(1, Math.ceil(filteredTotal / 40));
   const contactSeries = useMemo(() => {
-    if (demo && !uploads.length) {
-      return [
-        { day: '18 Oct', contacts: 120 },
-        { day: '21 Oct', contacts: 80 },
-        { day: '25 Oct', contacts: 40 },
-        { day: '29 Oct', contacts: 10000 },
-        { day: '31 Oct', contacts: 260 },
-        { day: '03 Nov', contacts: 90 },
-        { day: '10 Nov', contacts: 40 },
-      ];
-    }
     const byDay = new Map<string, number>();
     uploads.forEach((upload) => {
       const day = dayLabel(upload.created_at);
       byDay.set(day, (byDay.get(day) || 0) + Number(upload.added || 0));
     });
     return Array.from(byDay.entries()).map(([day, contacts]) => ({ day, contacts }));
-  }, [demo, uploads]);
+  }, [uploads]);
   const campaignSeries = useMemo(() => {
-    if (demo && !campaigns.length) {
-      return [
-        { day: '18 Oct', campaigns: 0, receivers: 0 },
-        { day: '29 Oct', campaigns: 1, receivers: 10000 },
-        { day: '10 Nov', campaigns: 1, receivers: 10000 },
-      ];
-    }
     const byDay = new Map<string, { campaigns: number; receivers: number }>();
     campaigns.forEach((campaign) => {
       const day = dayLabel(campaign.created_at);
@@ -604,10 +618,10 @@ export default function BulkWhatsAppPage() {
       byDay.set(day, current);
     });
     return Array.from(byDay.entries()).map(([day, row]) => ({ day, ...row }));
-  }, [campaigns, demo]);
-  const dashboardContacts = contactTotal + (demo && !contactTotal ? 10000 : 0);
-  const dashboardReceivers = campaigns.reduce((sum, campaign) => sum + Number(campaign.total || 0), 0) + (demo && !campaigns.length ? 10000 : 0);
-  const dashboardCampaigns = campaigns.length + (demo && !campaigns.length ? 1 : 0);
+  }, [campaigns]);
+  const dashboardContacts = contactTotal;
+  const dashboardReceivers = campaigns.reduce((sum, campaign) => sum + Number(campaign.total || 0), 0);
+  const dashboardCampaigns = campaigns.length;
 
   return (
     <div className="min-h-screen bg-[#f4f7fb]">
@@ -633,21 +647,6 @@ export default function BulkWhatsAppPage() {
                 </div>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setDemo((on) => {
-                  if (on) {
-                    setReport(null);
-                    setAudienceOpen(false);
-                  }
-                  return !on;
-                });
-              }}
-              className={`rounded-lg px-3 py-2 text-xs font-semibold ${demo ? 'border border-slate-300 text-slate-700' : 'bg-[#004AAD] text-white'}`}
-            >
-              {demo ? 'Remove demo' : 'Load demo data'}
-            </button>
           </div>
         </div>
         <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
@@ -694,7 +693,6 @@ export default function BulkWhatsAppPage() {
                     <p className="mt-3 text-xs uppercase tracking-wide text-slate-400">Total contacts</p>
                     <p className="text-xl font-semibold tracking-tight text-slate-950">{loading ? '–' : dashboardContacts.toLocaleString('en-IN')}</p>
                   </div>
-                  {demo && !uploads.length ? <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">Demo</span> : null}
                 </div>
                 <div className="mt-4 h-56">
                   <ResponsiveContainer width="100%" height="100%">
@@ -738,40 +736,27 @@ export default function BulkWhatsAppPage() {
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <p className="text-sm font-semibold text-slate-800">Last send</p>
                   <div className="mt-3 space-y-2">
-                    {(demo && !campaigns.length ? [
-                      ['Sent', 862, 8.6],
-                      ['Delivered', 806, 8.1],
-                      ['Read', 444, 4.4],
-                      ['Replied', 30, 0.3],
-                      ['Auto replied', 86, 0.9],
-                      ['Failed', 9138, 91.4],
-                    ] : [
-                      ['Sent', campaigns[0]?.sent || 0, 0],
-                      ['Failed', campaigns[0]?.failed || 0, 0],
-                    ]).map(([label, value]) => (
+                    {[
+                      ['Sent', campaigns[0]?.sent || 0],
+                      ['Failed', campaigns[0]?.failed || 0],
+                    ].map(([label, value]) => (
                       <div key={String(label)}>
                         <div className="flex justify-between text-xs text-slate-500">
                           <span>{label}</span>
                           <span>{Number(value).toLocaleString('en-IN')}</span>
                         </div>
                         <div className="mt-1 h-1.5 rounded-full bg-slate-100">
-                          <div className="h-1.5 rounded-full bg-[#004AAD]" style={{ width: `${Math.min(100, Math.max(2, (Number(value) / (demo && !campaigns.length ? 10000 : Math.max(campaigns[0]?.total || 1, 1))) * 100))}%` }} />
+                          <div className="h-1.5 rounded-full bg-[#004AAD]" style={{ width: `${Math.min(100, Math.max(campaigns[0] ? 2 : 0, (Number(value) / Math.max(campaigns[0]?.total || 1, 1)) * 100))}%` }} />
                         </div>
                       </div>
                     ))}
                   </div>
-                  {!demo && !campaigns.length ? <p className="mt-3 text-xs text-slate-400">Load demo data, or launch a campaign.</p> : null}
+                  {!campaigns.length ? <p className="mt-3 text-xs text-slate-400">Launch a campaign to see sent and failed here.</p> : null}
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <p className="text-sm font-semibold text-slate-800">Button replies</p>
                   <div className="mt-3 space-y-2">
-                    {(demo ? SAMPLE_REPORT.replies : []).map((row) => (
-                      <div key={row.button} className="flex items-center justify-between text-xs text-slate-600">
-                        <span>{row.button}</span>
-                        <span className="font-medium text-slate-800">{row.count} · {row.percent}%</span>
-                      </div>
-                    ))}
-                    {!demo ? <p className="text-xs text-slate-400">Replies show after a campaign, or when demo data is loaded.</p> : null}
+                    <p className="text-xs text-slate-400">Open a campaign in Campaign results to see button replies.</p>
                   </div>
                   <p className="mt-4 text-sm font-semibold text-slate-800">Recent uploads</p>
                   <div className="mt-2 space-y-1">
@@ -816,23 +801,25 @@ export default function BulkWhatsAppPage() {
 
         {tab === 'contacts' ? (
           <div className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
-            <section className="rounded-2xl border bg-white p-4 shadow-sm">
-              <h2 className="font-semibold text-gray-900">Upload contacts</h2>
-              <p className="mt-1 text-sm text-gray-500">CSV or one number per line. Extra columns such as car number and address are saved and can be used as {'{{car_number}}'} and {'{{address}}'}.</p>
-              <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[#004AAD]/40 bg-[#f8fbff] px-4 py-8 text-center">
-                <span className="text-sm font-semibold text-[#004AAD]">{fileName || 'Choose CSV or TXT'}</span>
-                <span className="mt-1 text-xs text-gray-500">{parsedCount ? `${parsedCount} lines read` : 'Up to 25,000 numbers'}</span>
-                <input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={(event) => onFile(event.target.files?.[0] || null)} />
-              </label>
-              <input value={uploadLabel} onChange={(event) => setUploadLabel(event.target.value)} placeholder="Batch name, e.g. 12 Nov Delhi" className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" />
-              <textarea value={paste} onChange={(event) => { setPaste(event.target.value); setParsedCount(event.target.value.split(/\r?\n/).filter((line) => line.trim()).length); }} rows={8} placeholder={'Name,Phone,Car number,Address\nRahul,9876543210,DL01AB1234,Saket'} className="mt-3 w-full rounded-lg border px-3 py-2 font-mono text-xs" />
-              <button type="button" disabled={busy || !paste.trim()} onClick={() => void importContacts()} className="mt-3 w-full rounded-lg bg-[#004AAD] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-                {busy ? 'Importing…' : 'Import this batch'}
-              </button>
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <label className="flex min-w-[220px] cursor-pointer flex-col justify-center rounded-xl border border-dashed border-[#004AAD]/40 bg-[#f8fbff] px-4 py-3">
+                  <span className="text-sm font-semibold text-[#004AAD]">{fileName || 'Choose CSV or TXT'}</span>
+                  <span className="text-xs text-slate-500">{parsedCount ? `${parsedCount.toLocaleString('en-IN')} rows in this file` : 'The whole file is imported. No 25,000 cap.'}</span>
+                  <input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={(event) => onFile(event.target.files?.[0] || null)} />
+                </label>
+                <label className="min-w-[200px] flex-1 text-xs font-semibold text-slate-500">
+                  Batch name
+                  <input value={uploadLabel} onChange={(event) => setUploadLabel(event.target.value)} placeholder="MH04-COMBINED-AUG26" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-slate-900" />
+                </label>
+                <button type="button" disabled={busy || !paste.trim()} onClick={() => void importContacts()} className="rounded-lg bg-[#004AAD] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                  {busy ? (progress || 'Importing…') : 'Import this batch'}
+                </button>
+              </div>
+              <textarea value={paste} onChange={(event) => { setPaste(event.target.value); setParsedCount(event.target.value.split(/\r?\n/).filter((line) => line.trim()).length); }} rows={2} placeholder={'Name,Phone,Car number,Address'} className="mt-3 w-full rounded-lg border px-3 py-2 font-mono text-xs text-slate-600" />
             </section>
 
-            <section className="rounded-2xl border bg-white p-4 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div>
                 <h2 className="font-semibold text-gray-900">Uploads on the same day</h2>
                 <p className="mt-1 text-sm text-gray-500">Each import is its own batch. Pick one, or set the clock times above, to separate the morning 5,000 from the later upload.</p>
@@ -851,27 +838,41 @@ export default function BulkWhatsAppPage() {
                       <span className="ml-2 text-xs text-gray-500">
                         {new Date(upload.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {upload.added}
                       </span>
+                      <span
+                        className="ml-2 text-xs font-semibold text-red-600"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (!window.confirm(`Delete “${upload.label}” and its ${upload.added} contacts?`)) return;
+                          void post({ action: 'delete_upload', id: upload.id }).then(async () => {
+                            if (uploadId === upload.id) setUploadId('');
+                            await loadHome();
+                            await loadContacts(1);
+                          }).catch((err) => setError(err?.message || 'Could not delete upload'));
+                        }}
+                      >
+                        Delete
+                      </span>
                     </button>
                   ))}
                   {!uploads.length ? <span className="text-sm text-gray-500">No named batches yet. The next import will appear here with its time.</span> : null}
                 </div>
               </div>
-              <div className="mt-4 flex flex-col gap-3 border-t pt-4 lg:flex-row lg:items-end">
-                <label className="flex-1 text-xs font-semibold text-gray-500">
+              <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2 xl:grid-cols-4">
+                <label className="block text-xs font-semibold text-slate-500">
                   Search
-                  <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Name or number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
+                  <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Name or number" className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
                 </label>
-                <label className="text-xs font-semibold text-gray-500">
+                <label className="block text-xs font-semibold text-slate-500">
                   Added from
-                  <input type="datetime-local" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} className="mt-1 rounded-lg border px-3 py-2 text-sm font-normal" />
+                  <input type="datetime-local" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm font-normal" />
                 </label>
-                <label className="text-xs font-semibold text-gray-500">
+                <label className="block text-xs font-semibold text-slate-500">
                   Added until
-                  <input type="datetime-local" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} className="mt-1 rounded-lg border px-3 py-2 text-sm font-normal" />
+                  <input type="datetime-local" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm font-normal" />
                 </label>
-                <label className="min-w-[180px] text-xs font-semibold text-gray-500">
+                <label className="block text-xs font-semibold text-slate-500">
                   Batch
-                  <select value={uploadId} onChange={(event) => { setUploadId(event.target.value); setPage(1); }} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
+                  <select value={uploadId} onChange={(event) => { setUploadId(event.target.value); setPage(1); }} className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
                     <option value="">All uploads</option>
                     {uploads.map((upload) => (
                       <option key={upload.id} value={upload.id}>{upload.label} ({upload.added})</option>
@@ -889,24 +890,24 @@ export default function BulkWhatsAppPage() {
                 </div>
               </div>
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-xs uppercase text-gray-500">
-                    <tr>
-                  <th className="py-2">Name</th>
-                  <th>Phone</th>
-                  {fieldKeys.map((key) => <th key={key}>{key}</th>)}
-                  <th>Added</th>
-                      <th />
+                <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+                  <thead>
+                    <tr className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      <th className="whitespace-nowrap border-b border-slate-100 px-3 py-2">Name</th>
+                      <th className="whitespace-nowrap border-b border-slate-100 px-3 py-2">Phone</th>
+                      {fieldColumns.map((column) => <th key={column.key} className="whitespace-nowrap border-b border-slate-100 px-3 py-2">{column.label}</th>)}
+                      <th className="whitespace-nowrap border-b border-slate-100 px-3 py-2">Added</th>
+                      <th className="border-b border-slate-100 px-3 py-2" />
                     </tr>
                   </thead>
                   <tbody>
                     {contacts.map((contact) => (
-                      <tr key={contact.id} className="border-t">
-                        <td className="py-2 font-medium text-gray-900">{contact.name || '—'}</td>
-                        <td className="font-mono text-xs text-gray-700">{contact.phone}</td>
-                        {fieldKeys.map((key) => <td key={key} className="text-xs text-gray-700">{contact.fields?.[key] || '—'}</td>)}
-                        <td className="text-gray-500">{new Date(contact.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="text-right">
+                      <tr key={contact.id} className="hover:bg-slate-50">
+                        <td className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 font-medium text-slate-800">{contact.name || '—'}</td>
+                        <td className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 font-mono text-xs text-slate-600">{contact.phone}</td>
+                        {fieldColumns.map((column) => <td key={column.key} className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 text-slate-700">{contact.fields?.[column.key] || '—'}</td>)}
+                        <td className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 text-xs text-slate-500">{new Date(contact.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="border-b border-slate-50 px-3 py-2.5 text-right">
                           <button type="button" className="text-xs font-semibold text-red-600" onClick={() => void post({ action: 'delete_contact', id: contact.id }).then(() => { void loadContacts(page); void loadHome(); })}>
                             Remove
                           </button>
@@ -915,7 +916,7 @@ export default function BulkWhatsAppPage() {
                     ))}
                   </tbody>
                 </table>
-                {!contacts.length ? <p className="py-8 text-center text-sm text-gray-500">No contacts in this filter. Upload a CSV on the left.</p> : null}
+                {!contacts.length ? <p className="py-8 text-center text-sm text-gray-500">No contacts in this filter. Upload a CSV above.</p> : null}
               </div>
               <div className="mt-3 flex items-center justify-between text-sm">
                 <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Previous</button>
@@ -923,7 +924,6 @@ export default function BulkWhatsAppPage() {
                 <button type="button" disabled={page >= pages} onClick={() => setPage((value) => value + 1)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Next</button>
               </div>
             </section>
-          </div>
 
           <section className="rounded-2xl border bg-white p-4 shadow-sm">
             <h2 className="font-semibold text-gray-900">Segment from admin leads</h2>
@@ -1277,15 +1277,6 @@ export default function BulkWhatsAppPage() {
                   <p className="text-sm text-gray-500">Open a campaign to see sent, delivered, read, replies, and failed numbers.</p>
                 </div>
                 <div className="divide-y">
-                  {demo ? (
-                    <button type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50" onClick={openSampleReport}>
-                      <span>
-                        <span className="block text-sm font-medium text-gray-900">10k WhatsApp blast (demo)</span>
-                        <span className="block text-xs text-gray-500">service_button_test · 10,000 people</span>
-                      </span>
-                      <span className="text-xs text-gray-600">sent 862 / 10000</span>
-                    </button>
-                  ) : null}
                   {campaigns.map((campaign) => (
                     <button key={campaign.id} type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50" onClick={() => void openReport(campaign.id).catch((err) => setError(err?.message || 'Could not load campaign'))}>
                       <span>
@@ -1295,7 +1286,7 @@ export default function BulkWhatsAppPage() {
                       <span className="text-sm text-gray-600">sent {campaign.sent} / {campaign.total}</span>
                     </button>
                   ))}
-                  {!campaigns.length && !demo ? <p className="px-4 py-6 text-sm text-gray-500">No campaigns yet. Load demo data from the top, or launch one.</p> : null}
+                  {!campaigns.length ? <p className="px-4 py-6 text-sm text-gray-500">No campaigns yet. Launch one from Create campaign.</p> : null}
                 </div>
               </div>
             ) : (
