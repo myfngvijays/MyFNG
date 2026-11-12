@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Calendar, ChevronDown, Eye, Grid3X3, List, Plus, RefreshCcw, Search, Trash2 } from 'lucide-react';
 import ToggleSwitch from '@/components/shared/ToggleSwitch';
@@ -81,6 +81,90 @@ function parseRowDate(value: string) {
   return toYmd(date);
 }
 
+function timeValue(value: string | null | undefined) {
+  const time = new Date(value || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function templateTitle(row: { display_name?: string | null; template_name: string }) {
+  const display = String(row.display_name || '').trim();
+  const name = String(row.template_name || '').trim();
+  if (display && display.toLowerCase() !== name.toLowerCase()) {
+    return { title: display, subtitle: name };
+  }
+  return { title: display || name, subtitle: '' };
+}
+
+function categoryTone(category: string) {
+  const value = String(category || '').toUpperCase();
+  if (value === 'UTILITY') return 'bg-purple-100 text-purple-700';
+  if (value === 'MARKETING') return 'bg-orange-100 text-orange-700';
+  if (value === 'AUTHENTICATION') return 'bg-sky-100 text-sky-700';
+  return 'bg-gray-100 text-gray-600';
+}
+
+function metaStatusText(row: { meta?: { status?: string } | null }) {
+  const status = String(row.meta?.status || 'NOT_SYNCED').toUpperCase();
+  if (status === 'APPROVED') return 'Approved';
+  if (status === 'PENDING') return 'Pending';
+  if (status === 'NOT_ON_WABA') return 'Missing';
+  return status.replaceAll('_', ' ');
+}
+
+function metaStatusTone(row: { meta?: { status?: string } | null }) {
+  const status = String(row.meta?.status || '').toUpperCase();
+  if (status === 'APPROVED') return 'bg-emerald-50 text-emerald-700';
+  if (status === 'PENDING') return 'bg-amber-50 text-amber-800';
+  if (status === 'REJECTED') return 'bg-red-50 text-red-700';
+  return 'bg-gray-100 text-gray-600';
+}
+
+type TemplateAudience = 'bulk' | 'customer' | 'admin';
+
+const AUDIENCE_ORDER: TemplateAudience[] = ['bulk', 'customer', 'admin'];
+
+const AUDIENCE_LABEL: Record<TemplateAudience, { title: string; hint: string; badge: string; chipOn: string }> = {
+  bulk: {
+    title: 'Bulk WhatsApp promotion',
+    hint: 'Campaign send, including today’s test template',
+    badge: 'bg-blue-100 text-blue-800',
+    chipOn: 'border-blue-300 bg-blue-50 text-blue-800',
+  },
+  customer: {
+    title: 'Customers',
+    hint: 'Sent to customers',
+    badge: 'bg-emerald-100 text-emerald-800',
+    chipOn: 'border-emerald-300 bg-emerald-50 text-emerald-800',
+  },
+  admin: {
+    title: 'Admin',
+    hint: 'Alerts that come to the team',
+    badge: 'bg-slate-200 text-slate-800',
+    chipOn: 'border-slate-400 bg-slate-100 text-slate-800',
+  },
+};
+
+function templateAudience(templateName: string): TemplateAudience {
+  const name = String(templateName || '').trim().toLowerCase();
+  if (
+    name === 'service_button_test' ||
+    name.startsWith('myfng_service_enquiry') ||
+    name.startsWith('myfng_previous_enquiry')
+  ) {
+    return 'bulk';
+  }
+  if (/google_ads|openai_balance|system_health|admin_daily|telecaller_lead|shift_report|funds_alert/.test(name)) {
+    return 'admin';
+  }
+  return 'customer';
+}
+
+function audienceShort(audience: TemplateAudience) {
+  if (audience === 'bulk') return 'Promotion';
+  if (audience === 'admin') return 'Admin';
+  return 'Customer';
+}
+
 type TemplateLanguage = {
   code: string;
   label: string;
@@ -121,6 +205,7 @@ export default function WhatsAppTemplateManager() {
   const [createStep, setCreateStep] = useState<1 | 2 | 3>(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [audienceFilter, setAudienceFilter] = useState<'ALL' | TemplateAudience>('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [languageFilter, setLanguageFilter] = useState('ALL');
   const [dateField, setDateField] = useState<DateField>('updated');
@@ -214,9 +299,38 @@ export default function WhatsAppTemplateManager() {
       const matchesLanguage = languageFilter === 'ALL' || row.language_code === languageFilter;
       const rowDate = parseRowDate(dateField === 'created' ? row.created_at : row.updated_at);
       const matchesDate = !filterDate || rowDate === filterDate;
-      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage && matchesDate;
+      const audience = templateAudience(row.template_name);
+      const matchesAudience = audienceFilter === 'ALL' || audience === audienceFilter;
+      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage && matchesDate && matchesAudience;
+    }).sort((a, b) => {
+      const audienceDiff = AUDIENCE_ORDER.indexOf(templateAudience(a.template_name)) - AUDIENCE_ORDER.indexOf(templateAudience(b.template_name));
+      if (audienceDiff !== 0) return audienceDiff;
+      const createdDiff = timeValue(b.created_at) - timeValue(a.created_at);
+      if (createdDiff !== 0) return createdDiff;
+      return timeValue(b.updated_at) - timeValue(a.updated_at);
     });
-  }, [templates, search, statusFilter, categoryFilter, languageFilter, dateField, filterDate]);
+  }, [templates, search, statusFilter, categoryFilter, languageFilter, dateField, filterDate, audienceFilter]);
+
+  const audienceCounts = useMemo(() => {
+    const counts: Record<TemplateAudience, number> = { bulk: 0, customer: 0, admin: 0 };
+    templates.forEach((row) => {
+      counts[templateAudience(row.template_name)] += 1;
+    });
+    return counts;
+  }, [templates]);
+
+  const groupedRows = useMemo(() => {
+    let serial = 0;
+    let last: TemplateAudience | '' = '';
+    return filteredTemplates.map((row) => {
+      const audience = templateAudience(row.template_name);
+      const header = audience !== last;
+      if (header) serial = 0;
+      last = audience;
+      serial += 1;
+      return { row, audience, header, serial };
+    });
+  }, [filteredTemplates]);
 
   const categories = useMemo(() => {
     const values = Array.from(new Set(templates.map((row) => row.category).filter(Boolean)));
@@ -479,7 +593,7 @@ export default function WhatsAppTemplateManager() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Templates</h2>
             <p className="text-xs text-gray-500">
-              Active = usable in CRM. Telecaller ON/OFF = which templates telecallers see in chat.
+              Promotion, customer messages, and admin alerts are listed separately. Active = usable in CRM. TC = telecaller chat.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -887,6 +1001,26 @@ export default function WhatsAppTemplateManager() {
           </div>
         </div>
 
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setAudienceFilter('ALL')}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${audienceFilter === 'ALL' ? 'border-gray-800 bg-gray-900 text-white' : 'border-gray-200 text-gray-600'}`}
+          >
+            All · {templates.length}
+          </button>
+          {AUDIENCE_ORDER.map((audience) => (
+            <button
+              key={audience}
+              type="button"
+              onClick={() => setAudienceFilter(audience)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${audienceFilter === audience ? AUDIENCE_LABEL[audience].chipOn : 'border-gray-200 text-gray-600'}`}
+            >
+              {AUDIENCE_LABEL[audience].title} · {audienceCounts[audience]}
+            </button>
+          ))}
+        </div>
+
         {viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {loading && templates.length === 0 ? (
@@ -898,24 +1032,26 @@ export default function WhatsAppTemplateManager() {
                 No templates found for current filters.
               </div>
             ) : (
-              filteredTemplates.map((row) => (
+              groupedRows.map(({ row, audience, header, serial }) => {
+                const label = templateTitle(row);
+                return (
+                <div key={row.id} className="contents">
+                {header ? (
+                  <div className="col-span-full rounded-lg bg-slate-50 px-3 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">{AUDIENCE_LABEL[audience].title}</p>
+                    <p className="text-xs text-gray-500">{AUDIENCE_LABEL[audience].hint}</p>
+                  </div>
+                ) : null}
                 <div
-                  key={row.id}
                   className="rounded-xl border bg-white p-4 shadow-sm"
                 >
                   <div className="mb-3 flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-gray-900">{row.display_name || row.template_name}</p>
-                      <p className="text-xs text-gray-500">{row.template_name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-gray-900" title={label.title}><span className="mr-2 text-gray-400">{serial}.</span>{label.title}</p>
+                      {label.subtitle ? <p className="truncate text-xs text-gray-500" title={label.subtitle}>{label.subtitle}</p> : null}
                     </div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        row.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {String(row.meta?.status || 'NOT_SYNCED').toUpperCase() === 'APPROVED'
-                        ? 'Approved'
-                        : String(row.meta?.status || 'NOT_SYNCED')}
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${metaStatusTone(row)}`}>
+                      {metaStatusText(row)}
                     </span>
                   </div>
                   <button
@@ -927,8 +1063,8 @@ export default function WhatsAppTemplateManager() {
                     Preview
                   </button>
                   <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                    <span>
-                      {row.category} · {row.language_code.toUpperCase()}
+                    <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${categoryTone(row.category)}`}>
+                      {String(row.category || 'UTILITY').toUpperCase()}
                     </span>
                     <span>{new Date(row.updated_at).toLocaleDateString()}</span>
                   </div>
@@ -952,49 +1088,73 @@ export default function WhatsAppTemplateManager() {
                     </span>
                   </div>
                 </div>
-              ))
+                </div>
+                );
+              })
             )}
           </div>
         ) : (
         <div className="overflow-x-auto rounded-lg border">
-          <table className="min-w-[980px] w-full text-sm">
+          <table className="min-w-[860px] w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
+                <th className="px-3 py-2">Sr</th>
                 <th className="px-3 py-2">Template Name</th>
+                <th className="px-3 py-2">For</th>
+                <th className="px-3 py-2">Category</th>
                 {columns.preview ? <th className="px-3 py-2">Preview</th> : null}
                 {columns.waba ? <th className="px-3 py-2">WABA</th> : null}
-                <th className="px-3 py-2">Status</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-3 py-2">Meta</th>
                 {columns.createdBy ? <th className="px-3 py-2">Created by</th> : null}
                 {columns.createdOn ? <th className="px-3 py-2">Created on</th> : null}
                 {columns.lastUpdated ? <th className="px-3 py-2">Last updated</th> : null}
-                <th className="px-3 py-2 text-right">Actions</th>
+                <th className="px-3 py-2 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && templates.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                  <td colSpan={12} className="px-3 py-8 text-center text-gray-500">
                     Loading templates...
                   </td>
                 </tr>
               ) : filteredTemplates.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                  <td colSpan={12} className="px-3 py-8 text-center text-gray-500">
                     No templates found for current filters.
                   </td>
                 </tr>
               ) : (
-                filteredTemplates.map((row) => (
-                  <tr key={row.id} className="border-t align-top hover:bg-gray-50/60">
-                    <td className="px-3 py-3">
-                      <p className="font-semibold text-gray-900">{row.display_name || row.template_name}</p>
-                      <p className="mt-1 text-xs text-gray-500">{row.template_name}</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
-                          {row.category}
-                        </span>
-                        <span className="text-xs text-gray-500">{row.language_code.toUpperCase()}</span>
+                groupedRows.map(({ row, audience, header, serial }) => {
+                  const label = templateTitle(row);
+                  return (
+                  <Fragment key={row.id}>
+                  {header ? (
+                    <tr className="bg-slate-50">
+                      <td colSpan={12} className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">{AUDIENCE_LABEL[audience].title}</p>
+                        <p className="text-[11px] text-gray-500">{AUDIENCE_LABEL[audience].hint}</p>
+                      </td>
+                    </tr>
+                  ) : null}
+                  <tr className="border-t align-middle hover:bg-gray-50/60">
+                    <td className="px-3 py-2 text-gray-500">{serial}</td>
+                    <td className="px-3 py-2">
+                      <div className="w-52 max-w-[13rem]">
+                        <p className="truncate font-semibold text-gray-900" title={label.title}>{label.title}</p>
+                        {label.subtitle ? <p className="truncate text-xs text-gray-500" title={label.subtitle}>{label.subtitle}</p> : null}
                       </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${AUDIENCE_LABEL[audience].badge}`}>
+                        {audienceShort(audience)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${categoryTone(row.category)}`}>
+                        {String(row.category || '').toUpperCase()}
+                      </span>
                     </td>
                     {columns.preview ? (
                       <td className="px-3 py-3">
@@ -1014,9 +1174,9 @@ export default function WhatsAppTemplateManager() {
                         <p className="mt-1 text-xs text-gray-500">1 Number</p>
                       </td>
                     ) : null}
-                    <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
-                      <div className="flex flex-col items-start gap-2">
-                        <div className="flex items-center gap-2">
+                    <td className="px-2 py-2" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1">
                           <ToggleSwitch
                             enabled={row.is_active}
                             busy={togglingId === row.id}
@@ -1024,44 +1184,25 @@ export default function WhatsAppTemplateManager() {
                             onChange={(next) => handleToggleActive(row, next)}
                             label={`Toggle ${row.template_name}`}
                           />
-                          <span className={`text-xs font-semibold ${row.is_active ? 'text-emerald-600' : 'text-gray-400'}`}>
-                            {togglingId === row.id ? 'Saving...' : row.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-gray-400">{row.is_active ? 'On' : 'Off'}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1">
                           <ToggleSwitch
                             enabled={isShownToTelecaller(row)}
                             busy={togglingTelecallerId === row.id}
                             size="sm"
                             onChange={(next) => handleToggleTelecaller(row, next)}
                             label={`Show ${row.template_name} to telecallers`}
+                            title={isShownToTelecaller(row) ? 'Telecaller on — click to hide' : 'Telecaller off — click to show'}
                           />
-                          <span
-                            className={`text-xs font-semibold ${
-                              isShownToTelecaller(row) ? 'text-blue-700' : 'text-gray-400'
-                            }`}
-                          >
-                            {togglingTelecallerId === row.id
-                              ? 'Saving...'
-                              : isShownToTelecaller(row)
-                                ? 'Telecaller ON'
-                                : 'Telecaller OFF'}
-                          </span>
-                        </div>
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                            row.is_active
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                              : 'border-gray-300 bg-gray-50 text-gray-600'
-                          }`}
-                        >
-                          {String(row.meta?.status || 'NOT_SYNCED').toUpperCase() === 'APPROVED'
-                            ? 'Meta Approved'
-                            : String(row.meta?.status || 'NOT_SYNCED').toUpperCase() === 'NOT_ON_WABA'
-                              ? 'Missing on Meta WABA'
-                            : `Meta: ${String(row.meta?.status || 'NOT_SYNCED').toUpperCase()}`}
+                          <span className="text-[10px] text-gray-400">TC</span>
                         </span>
                       </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${metaStatusTone(row)}`}>
+                        {metaStatusText(row)}
+                      </span>
                     </td>
                     {columns.createdBy ? <td className="px-3 py-3 text-gray-600">Admin</td> : null}
                     {columns.createdOn ? (
@@ -1070,8 +1211,8 @@ export default function WhatsAppTemplateManager() {
                     {columns.lastUpdated ? (
                       <td className="px-3 py-3 text-gray-600">{new Date(row.updated_at).toLocaleDateString()}</td>
                     ) : null}
-                    <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}>
-                      <div className="inline-flex items-center gap-2">
+                    <td className="px-3 py-2 text-center align-middle" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-2">
                         {canPushTemplateToMeta(row) ? (
                           <button
                             type="button"
@@ -1097,7 +1238,9 @@ export default function WhatsAppTemplateManager() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>

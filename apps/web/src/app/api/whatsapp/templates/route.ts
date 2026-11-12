@@ -174,6 +174,7 @@ export async function GET() {
       .select(
         'id, template_name, display_name, language_code, category, body_text, variable_keys, example_values, is_active, meta, created_at, updated_at'
       )
+      .order('created_at', { ascending: false })
       .order('updated_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

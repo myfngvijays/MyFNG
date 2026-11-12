@@ -6,6 +6,7 @@ type ToggleSwitchProps = {
   busy?: boolean;
   onChange: (next: boolean) => void;
   label: string;
+  title?: string;
   size?: 'sm' | 'md';
 };
 
@@ -15,6 +16,7 @@ export default function ToggleSwitch({
   busy,
   onChange,
   label,
+  title,
   size = 'md',
 }: ToggleSwitchProps) {
   const track = size === 'sm' ? 'h-6 w-10' : 'h-7 w-12';
@@ -35,7 +37,7 @@ export default function ToggleSwitch({
       className={`relative inline-flex ${track} shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
         enabled ? 'bg-emerald-500' : 'bg-gray-300'
       }`}
-      title={enabled ? 'Active — click to disable' : 'Inactive — click to enable'}
+      title={title || (enabled ? 'Active — click to disable' : 'Inactive — click to enable')}
     >
       <span
         className={`inline-block ${knob} transform rounded-full bg-white shadow transition-transform ${

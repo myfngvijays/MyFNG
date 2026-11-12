@@ -37,6 +37,13 @@ function hasReplyButtons(template: Template) {
   return buttons.some((button) => button.text && !/URL|PHONE|OTP|COPY/.test(String(button.type || 'QUICK_REPLY').toUpperCase()));
 }
 
+function audienceOf(name: string) {
+  const value = String(name || '').trim().toLowerCase();
+  if (value === 'service_button_test' || value.startsWith('myfng_service_enquiry') || value.startsWith('myfng_previous_enquiry')) return 'Promotion';
+  if (/google_ads|openai_balance|system_health|admin_daily|telecaller_lead|shift_report|funds_alert/.test(value)) return 'Admin';
+  return 'Customer';
+}
+
 function statusOf(template: Template) {
   return String(template.meta?.status || (template.is_active === false ? 'DISABLED' : 'APPROVED')).toUpperCase();
 }
@@ -297,9 +304,9 @@ export default function SuperAdminWhatsAppBulkScreen() {
               >
                 <Text style={styles.primaryText}>Create segment from filter</Text>
               </TouchableOpacity>
-              {contacts.map((contact) => (
+              {contacts.map((contact, index) => (
                 <View key={contact.id} style={styles.row}>
-                  <Text style={styles.rowTitle}>{contact.name || contact.phone}</Text>
+                  <Text style={styles.rowTitle}>{index + 1}. {contact.name || contact.phone}</Text>
                   <Text style={styles.hint}>{contact.phone}</Text>
                 </View>
               ))}
@@ -350,11 +357,11 @@ export default function SuperAdminWhatsAppBulkScreen() {
           ) : null}
           {tab === 'templates' ? (
             <>
-              {templates.filter(hasReplyButtons).map((template) => (
+              {templates.filter(hasReplyButtons).map((template, index) => (
                 <TouchableOpacity key={`${template.template_name}-${template.language_code}`} style={styles.row} onPress={() => setPreview(template)}>
                   <Text style={styles.badge}>{statusOf(template)}</Text>
-                  <Text style={styles.rowTitle}>{template.display_name || template.template_name}</Text>
-                  <Text style={styles.hint}>{variableFormat(template)} · {String(template.category || 'UTILITY').toUpperCase()} · {languageLabel(template.language_code)}</Text>
+                  <Text style={styles.rowTitle}>{index + 1}. {template.display_name || template.template_name}</Text>
+                  <Text style={styles.hint}>{audienceOf(template.template_name)} · {String(template.category || 'UTILITY').toUpperCase()}</Text>
                 </TouchableOpacity>
               ))}
               {!templates.filter(hasReplyButtons).length ? <Text style={styles.hint}>No button templates yet. Bulk send uses only templates with reply buttons.</Text> : null}
@@ -369,9 +376,9 @@ export default function SuperAdminWhatsAppBulkScreen() {
                 </TouchableOpacity>
               ))}
               <Text style={styles.hint}>Template</Text>
-              {templates.filter(hasReplyButtons).slice(0, 40).map((template) => (
+              {templates.filter(hasReplyButtons).slice(0, 40).map((template, index) => (
                 <TouchableOpacity key={template.template_name} style={[styles.choice, templateName === template.template_name && styles.choiceOn]} onPress={() => setTemplateName(template.template_name)}>
-                  <Text style={styles.rowTitle}>{template.display_name || template.template_name}</Text>
+                  <Text style={styles.rowTitle}>{index + 1}. {template.display_name || template.template_name}</Text>
                 </TouchableOpacity>
               ))}
               {chosen?.body_text ? <Text style={styles.hint}>{chosen.body_text}</Text> : null}

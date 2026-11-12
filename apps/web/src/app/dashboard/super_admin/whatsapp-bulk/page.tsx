@@ -769,6 +769,11 @@ export default function BulkWhatsAppPage() {
               </section>
             </div>
             <aside className="space-y-3">
+              <section className="rounded-2xl bg-[#0b3f91] p-4 text-white shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-blue-100">Connected number</p>
+                <p className="mt-1 text-lg font-semibold">+91 95949 96161</p>
+                <p className="mt-2 text-sm text-blue-100">{segments.length} segments · {customFields.length} fields · {templates.filter(hasReplyButtons).length} button templates</p>
+              </section>
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-semibold text-slate-800">Quick links</p>
                 <div className="mt-3 space-y-2">
@@ -789,11 +794,6 @@ export default function BulkWhatsAppPage() {
                     </button>
                   ))}
                 </div>
-              </section>
-              <section className="rounded-2xl bg-[#0b3f91] p-4 text-white shadow-sm">
-                <p className="text-xs uppercase tracking-wide text-blue-100">Connected number</p>
-                <p className="mt-1 text-lg font-semibold">+91 95949 96161</p>
-                <p className="mt-2 text-sm text-blue-100">{segments.length} segments · {customFields.length} fields · {templates.filter(hasReplyButtons).length} button templates</p>
               </section>
             </aside>
           </div>
@@ -874,8 +874,8 @@ export default function BulkWhatsAppPage() {
                   Batch
                   <select value={uploadId} onChange={(event) => { setUploadId(event.target.value); setPage(1); }} className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
                     <option value="">All uploads</option>
-                    {uploads.map((upload) => (
-                      <option key={upload.id} value={upload.id}>{upload.label} ({upload.added})</option>
+                    {uploads.map((upload, index) => (
+                      <option key={upload.id} value={upload.id}>{index + 1}. {upload.label} ({upload.added})</option>
                     ))}
                   </select>
                 </label>
@@ -893,6 +893,7 @@ export default function BulkWhatsAppPage() {
                 <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
                   <thead>
                     <tr className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                      <th className="whitespace-nowrap border-b border-slate-100 px-3 py-2">Sr</th>
                       <th className="whitespace-nowrap border-b border-slate-100 px-3 py-2">Name</th>
                       <th className="whitespace-nowrap border-b border-slate-100 px-3 py-2">Phone</th>
                       {fieldColumns.map((column) => <th key={column.key} className="whitespace-nowrap border-b border-slate-100 px-3 py-2">{column.label}</th>)}
@@ -901,8 +902,9 @@ export default function BulkWhatsAppPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {contacts.map((contact) => (
+                    {contacts.map((contact, index) => (
                       <tr key={contact.id} className="hover:bg-slate-50">
+                        <td className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 text-slate-400">{(page - 1) * 40 + index + 1}</td>
                         <td className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 font-medium text-slate-800">{contact.name || '—'}</td>
                         <td className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 font-mono text-xs text-slate-600">{contact.phone}</td>
                         {fieldColumns.map((column) => <td key={column.key} className="whitespace-nowrap border-b border-slate-50 px-3 py-2.5 text-slate-700">{contact.fields?.[column.key] || '—'}</td>)}
@@ -1130,16 +1132,16 @@ export default function BulkWhatsAppPage() {
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                   <tr>
-                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Sr</th>
+                    <th className="py-3">Status</th>
                     <th className="py-3">Name</th>
                     <th className="py-3">Variable format</th>
                     <th className="py-3">Category</th>
-                    <th className="py-3">Language</th>
                     <th className="py-3 pr-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleTemplates.map((template) => {
+                  {visibleTemplates.map((template, index) => {
                     const status = statusOf(template);
                     return (
                       <tr
@@ -1147,13 +1149,17 @@ export default function BulkWhatsAppPage() {
                         className="cursor-pointer border-t hover:bg-slate-50"
                         onClick={() => setPreviewTemplate(template)}
                       >
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-gray-400">{index + 1}</td>
+                        <td className="py-3">
                           <span className={`rounded px-2 py-1 text-[11px] font-bold ${statusTone(status)}`}>{status}</span>
                         </td>
                         <td className="py-3 font-medium text-gray-900">{template.display_name || template.template_name}</td>
                         <td className="py-3 text-gray-600">{variableFormat(template)}</td>
-                        <td className="py-3 text-gray-600">{String(template.category || 'UTILITY').toUpperCase()}</td>
-                        <td className="py-3 text-gray-600">{languageLabel(template.language_code)}</td>
+                        <td className="py-3">
+                          <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${String(template.category || '').toUpperCase() === 'MARKETING' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
+                            {String(template.category || 'UTILITY').toUpperCase()}
+                          </span>
+                        </td>
                         <td className="py-3 pr-4 text-right">
                           <button type="button" className="rounded-lg border px-2 py-1 text-xs font-semibold text-gray-700" onClick={(event) => { event.stopPropagation(); setPreviewTemplate(template); }}>
                             Preview
@@ -1201,9 +1207,9 @@ export default function BulkWhatsAppPage() {
                 Template
                 <select value={templateName} onChange={(event) => setTemplateName(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
                   <option value="">Choose an approved template</option>
-                  {templates.filter(hasReplyButtons).map((template) => (
+                  {templates.filter(hasReplyButtons).map((template, index) => (
                     <option key={template.template_name} value={template.template_name} disabled={statusOf(template) !== 'APPROVED'}>
-                      {template.display_name || template.template_name} · {statusOf(template)}
+                      {index + 1}. {template.display_name || template.template_name} · {statusOf(template)}
                     </option>
                   ))}
                 </select>
