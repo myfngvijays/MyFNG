@@ -3196,6 +3196,89 @@ async function checkCrmManagerOpsTables(): Promise<HealthCheck> {
   }
 }
 
+async function checkWhatsAppBulk(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'WhatsApp Bulk Send',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify bulk WhatsApp tables: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const contacts = await client.from('wa_bulk_contacts').select('id', { count: 'exact', head: true });
+    if (contacts.error) {
+      const msg = contacts.error.message || 'Missing tables';
+      const missing = /does not exist|relation|42P01|PGRST205/i.test(msg);
+      return {
+        name: 'WhatsApp Bulk Send',
+        category: 'Notifications',
+        status: missing ? 'down' : 'degraded',
+        responseTime: Date.now() - start,
+        message: missing ? 'Bulk WhatsApp tables missing' : 'Bulk WhatsApp check failed',
+        reason: missing
+          ? 'Run database/388_whatsapp_bulk_send.sql so contacts, segments, and campaigns can be stored.'
+          : msg,
+        quickFix: {
+          label: 'Open Bulk WhatsApp',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/whatsapp-bulk' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const buttons = await client.from('wa_bulk_button_flows').select('template_name', { count: 'exact', head: true });
+    if (buttons.error && /does not exist|relation|42P01|PGRST205/i.test(buttons.error.message || '')) {
+      return {
+        name: 'WhatsApp Bulk Send',
+        category: 'Notifications',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Campaign button bots are not ready',
+        reason: 'Run database/391_whatsapp_bulk_fields_and_button_flows.sql so extra CSV columns and template button bots can be saved.',
+        quickFix: {
+          label: 'Open Bot Flow',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/bot-flow' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    return {
+      name: 'WhatsApp Bulk Send',
+      category: 'Notifications',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: `${contacts.count || 0} bulk contact${contacts.count === 1 ? '' : 's'} saved`,
+      reason: 'wa_bulk_contacts is available. Sends use the connected WhatsApp number.',
+      quickFix: {
+        label: 'Open Bulk WhatsApp',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/whatsapp-bulk' },
+      },
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'WhatsApp Bulk Send',
+      category: 'Notifications',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Bulk WhatsApp check failed',
+      reason: e?.message || 'Could not read wa_bulk_contacts.',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 function calculateHealthScore(checks: HealthCheck[]): number {
   if (checks.length === 0) return 100;
   const weights: Record<string, number> = {
@@ -4317,6 +4400,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkRazorpay(),
     checkFirebase(),
     checkPushCampaigns(),
+    checkWhatsAppBulk(),
     checkPushDevices(),
     checkDltSms(),
     checkMcpRemote(),

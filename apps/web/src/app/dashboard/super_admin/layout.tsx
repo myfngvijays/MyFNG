@@ -718,6 +718,12 @@ const navigationItems: NavItem[] = [
         description: 'Create/manage WhatsApp templates',
       },
       {
+        name: 'Bulk WhatsApp',
+        href: '/dashboard/super_admin/whatsapp-bulk',
+        icon: Send,
+        description: 'Contacts, segments, and template blasts',
+      },
+      {
         name: 'WhatsApp Automation',
         href: '/dashboard/super_admin/whatsapp-automation',
         icon: Send,

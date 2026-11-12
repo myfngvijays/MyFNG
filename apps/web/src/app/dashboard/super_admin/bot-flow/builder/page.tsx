@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addEdge,
   Background,
@@ -33,6 +33,8 @@ import {
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import FlowCardNode from '@/components/shared/bot-flow/FlowCardNode';
+import RemovableEdge from '@/components/shared/bot-flow/RemovableEdge';
 import PropertiesPanel from '@/components/shared/bot-flow/PropertiesPanel';
 import ValidationPanel from '@/components/shared/bot-flow/ValidationPanel';
 import { createDefaultBotFlowGraph, validateBotFlowGraph } from '@/lib/whatsappBotFlow/validation';
@@ -56,42 +58,75 @@ type TemplateOption = {
   display_name: string | null;
   language_code: string;
   variable_keys: string[];
+  body_text?: string | null;
   is_active: boolean;
+  meta?: { status?: string; raw?: { components?: Array<{ type?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
 };
+
+const flowNodeTypes = { flowCard: FlowCardNode };
+const flowEdgeTypes = { removable: RemovableEdge };
+const CARD_NODE_TYPES = new Set([
+  'template',
+  'buttons',
+  'message',
+  'ask',
+  'update_lead',
+  'apply_tags',
+  'api_request',
+  'end',
+  'delay',
+  'condition',
+  'handoff',
+  'assign_telecaller',
+  'media',
+]);
 
 type PaletteItem = {
   type: string;
   label: string;
   icon: any;
   bucket: 'triggers' | 'actions';
+  preset?: Record<string, unknown>;
 };
 
 const PALETTE_ITEMS: PaletteItem[] = [
-  { type: 'trigger', label: 'Incoming WhatsApp', icon: Flag, bucket: 'triggers' },
-  { type: 'trigger', label: 'Template Replied', icon: Flag, bucket: 'triggers' },
-  { type: 'message', label: 'Send Message', icon: MessageSquare, bucket: 'actions' },
-  { type: 'template', label: 'Send Template', icon: Bot, bucket: 'actions' },
+  { type: 'trigger', label: 'New message', icon: Flag, bucket: 'triggers', preset: { triggerEvent: 'whatsapp_incoming' } },
+  { type: 'trigger', label: 'Hot keyword', icon: Flag, bucket: 'triggers', preset: { triggerEvent: 'hot_keyword', keyword: 'INTERESTED' } },
+  { type: 'trigger', label: 'Template button', icon: Flag, bucket: 'triggers', preset: { triggerEvent: 'template_replied', buttonText: 'Interested' } },
+  { type: 'trigger', label: 'Missed call', icon: Flag, bucket: 'triggers', preset: { triggerEvent: 'missed_call' } },
+  { type: 'trigger', label: 'Payment received', icon: Flag, bucket: 'triggers', preset: { triggerEvent: 'payment_completed' } },
+  { type: 'message', label: 'Send text', icon: MessageSquare, bucket: 'actions' },
+  { type: 'buttons', label: 'Text with buttons', icon: MessageSquare, bucket: 'actions', preset: { messageBody: 'Please choose one option.', buttons: ['Yes', 'No'] } },
+  { type: 'ask', label: 'Ask question', icon: HelpCircle, bucket: 'actions', preset: { messageBody: 'Please reply with your answer.' } },
+  { type: 'template', label: 'Template message', icon: Bot, bucket: 'actions' },
+  { type: 'media', label: 'Image message', icon: Bot, bucket: 'actions', preset: { mediaType: 'image' } },
+  { type: 'media', label: 'Video message', icon: Bot, bucket: 'actions', preset: { mediaType: 'video' } },
+  { type: 'media', label: 'Document message', icon: Bot, bucket: 'actions', preset: { mediaType: 'document' } },
+  { type: 'media', label: 'Audio message', icon: Bot, bucket: 'actions', preset: { mediaType: 'audio' } },
   { type: 'condition', label: 'If / Else', icon: GitBranch, bucket: 'actions' },
-  { type: 'delay', label: 'Time Delay', icon: Timer, bucket: 'actions' },
-  { type: 'update_lead', label: 'Update Lead / Fresh', icon: Edit3, bucket: 'actions' },
-  { type: 'apply_tags', label: 'Apply Lead Tags', icon: Tag, bucket: 'actions' },
-  { type: 'assign_telecaller', label: 'Assign Telecaller', icon: UserRoundCheck, bucket: 'actions' },
-  { type: 'api_request', label: 'Call API', icon: PlugZap, bucket: 'actions' },
-  { type: 'handoff', label: 'Assign Agent', icon: UserRoundCheck, bucket: 'actions' },
-  { type: 'end', label: 'End Flow', icon: Target, bucket: 'actions' },
+  { type: 'delay', label: 'Smart wait', icon: Timer, bucket: 'actions' },
+  { type: 'handoff', label: 'Assign to agent', icon: UserRoundCheck, bucket: 'actions' },
+  { type: 'assign_telecaller', label: 'Assign telecaller', icon: UserRoundCheck, bucket: 'actions' },
+  { type: 'update_lead', label: 'Update lead status', icon: Edit3, bucket: 'actions', preset: { crmDisposition: 'FRESH', label: 'Update lead status' } },
+  { type: 'apply_tags', label: 'Lead tag', icon: Tag, bucket: 'actions', preset: { label: 'Lead tag', tagNames: [], tagMode: 'add' } },
+  { type: 'api_request', label: 'Call API', icon: PlugZap, bucket: 'actions', preset: { apiPreset: 'telecrm', label: 'External API', apiMethod: 'POST', apiAuthType: 'bearer', apiBodyType: 'json' } },
+  { type: 'end', label: 'End', icon: Target, bucket: 'actions' },
 ];
 
 function toCanvasNodes(rawNodes: Node[] | undefined) {
   return (Array.isArray(rawNodes) ? rawNodes : []).map((node) => {
-    const nodeType = String((node as any).type || (node.data as any)?.nodeType || 'message');
+    const nodeType = String((node as any).data?.nodeType || (node as any).type || 'message');
     const label = String((node.data as any)?.label || nodeType);
+    const isCard = CARD_NODE_TYPES.has(nodeType);
     const isTrigger = nodeType === 'trigger';
     const isEnd = nodeType === 'end' || nodeType === 'handoff';
     const isLogic = nodeType === 'condition' || nodeType === 'delay';
     return {
       ...node,
-      type: 'default',
-      style: {
+      type: isCard ? 'flowCard' : 'default',
+      style: isCard
+        ? { width: 260, padding: 0, border: 'none', background: 'transparent', boxShadow: 'none' }
+        : {
         width: 220,
         minWidth: 220,
         maxWidth: 220,
@@ -134,6 +169,7 @@ function BotFlowBuilderPage() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -172,6 +208,67 @@ function BotFlowBuilderPage() {
     });
   }, [activeTab, searchText]);
 
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+
+  useEffect(() => {
+    const onRemoveEdge = (event: Event) => {
+      const id = String((event as CustomEvent).detail?.id || '');
+      if (!id || lockedRef.current) return;
+      setEdges((prev) => prev.filter((edge) => edge.id !== id));
+      setSelectedEdgeId('');
+      setDirty(true);
+    };
+    const onDeleteNode = (event: Event) => {
+      const id = String((event as CustomEvent).detail?.id || '');
+      if (!id || lockedRef.current) return;
+      const node = nodesRef.current.find((item) => item.id === id);
+      const nodeType = String((node?.data as { nodeType?: string })?.nodeType || '');
+      if (nodeType === 'trigger') {
+        toast.error('Trigger node delete mat karo — flow start ke liye zaroori hai.');
+        return;
+      }
+      setNodes((prev) => prev.filter((item) => item.id !== id));
+      setEdges((prev) => prev.filter((edge) => edge.source !== id && edge.target !== id));
+      setSelectedNodeId('');
+      setDirty(true);
+    };
+    const onCloneNode = (event: Event) => {
+      const id = String((event as CustomEvent).detail?.id || '');
+      if (!id || lockedRef.current) return;
+      const node = nodesRef.current.find((item) => item.id === id);
+      if (!node) return;
+      const nodeType = String((node.data as { nodeType?: string })?.nodeType || 'message');
+      if (nodeType === 'trigger') {
+        toast.error('Trigger ek hi rehna chahiye.');
+        return;
+      }
+      const copyId = `${nodeType}_${Date.now()}`;
+      const copy = toCanvasNodes([
+        {
+          ...node,
+          id: copyId,
+          position: { x: node.position.x + 40, y: node.position.y + 40 },
+          selected: false,
+          data: { ...(node.data || {}) },
+        },
+      ])[0];
+      setNodes((prev) => [...prev, copy]);
+      setSelectedNodeId(copyId);
+      setDirty(true);
+    };
+    window.addEventListener('bot-flow-remove-edge', onRemoveEdge);
+    window.addEventListener('bot-flow-delete-node', onDeleteNode);
+    window.addEventListener('bot-flow-clone-node', onCloneNode);
+    return () => {
+      window.removeEventListener('bot-flow-remove-edge', onRemoveEdge);
+      window.removeEventListener('bot-flow-delete-node', onDeleteNode);
+      window.removeEventListener('bot-flow-clone-node', onCloneNode);
+    };
+  }, []);
+
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!dirty) return;
@@ -189,6 +286,13 @@ function BotFlowBuilderPage() {
       const tag = String(target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) return;
       if (event.key !== 'Backspace' && event.key !== 'Delete') return;
+      if (selectedEdgeId) {
+        event.preventDefault();
+        setEdges((prev) => prev.filter((edge) => edge.id !== selectedEdgeId));
+        setSelectedEdgeId('');
+        setDirty(true);
+        return;
+      }
       if (!selectedNodeId) return;
       event.preventDefault();
       const node = nodes.find((n) => n.id === selectedNodeId);
@@ -206,7 +310,20 @@ function BotFlowBuilderPage() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [locked, selectedNodeId, nodes]);
+  }, [locked, selectedNodeId, selectedEdgeId, nodes]);
+
+  useEffect(() => {
+    setNodes((prev) => {
+      let changed = false;
+      const next = prev.map((node) => {
+        const nodeType = String((node.data as any)?.nodeType || node.type || '');
+        if (!CARD_NODE_TYPES.has(nodeType) || node.type === 'flowCard') return node;
+        changed = true;
+        return toCanvasNodes([node])[0];
+      });
+      return changed ? next : prev;
+    });
+  }, [nodes]);
 
   useEffect(() => {
     loadFlowList();
@@ -259,9 +376,7 @@ function BotFlowBuilderPage() {
       const res = await fetch('/api/whatsapp/templates');
       const json = await res.json();
       if (!res.ok || !json?.success) throw new Error(json?.error || 'Failed to load templates');
-      setTemplateOptions(
-        (Array.isArray(json.templates) ? json.templates : []).filter((item: any) => Boolean(item?.is_active))
-      );
+      setTemplateOptions(Array.isArray(json.templates) ? json.templates : []);
     } catch {
       setTemplateOptions([]);
     }
@@ -289,7 +404,12 @@ function BotFlowBuilderPage() {
       setSelectedVersionId(preferred.id);
       const graph = preferred.graph_json || createDefaultBotFlowGraph();
       setNodes(toCanvasNodes(graph.nodes as Node[]));
-      setEdges(Array.isArray(graph.edges) ? graph.edges : []);
+      setEdges(
+        (Array.isArray(graph.edges) ? graph.edges : []).map((edge) => ({
+          ...edge,
+          sourceHandle: (edge as Edge).sourceHandle || (edge as Edge).label || undefined,
+        })),
+      );
       setDirty(false);
       setSelectedNodeId('');
       setTimeout(() => reactFlow?.fitView({ padding: 0.2 }), 50);
@@ -304,15 +424,15 @@ function BotFlowBuilderPage() {
     if (locked) return;
     const sourceNode = nodes.find((node) => node.id === connection.source);
     const sourceType = String((sourceNode?.data as any)?.nodeType || sourceNode?.type || '');
-    const edgeLabel =
-      sourceType === 'condition'
-        ? window.prompt('Enter branch label for condition (e.g. yes / no):', '') || ''
-        : '';
+    const fromButton = String(connection.sourceHandle || '').trim();
+    const edgeLabel = fromButton
+      || (sourceType === 'condition' ? window.prompt('Enter branch label (yes / no):', '') || '' : '');
     setEdges((eds) =>
       addEdge(
         {
           ...connection,
           label: edgeLabel || undefined,
+          sourceHandle: fromButton || connection.sourceHandle,
         },
         eds
       )
@@ -320,17 +440,18 @@ function BotFlowBuilderPage() {
     setDirty(true);
   };
 
-  const addNode = (type: string, label?: string) => {
+  const addNode = (type: string, label?: string, preset?: Record<string, unknown>) => {
     if (locked) return;
     const id = `${type}_${Date.now()}`;
     const center = reactFlow?.screenToFlowPosition({ x: 420, y: 260 }) || { x: 260, y: 220 };
     const defaults: Record<string, unknown> = {
       label: label || `${type.replace(/_/g, ' ')} node`,
       nodeType: type,
+      ...(preset || {}),
     };
-    if (type === 'trigger') defaults.triggerEvent = 'whatsapp_incoming';
+    if (type === 'trigger' && !defaults.triggerEvent) defaults.triggerEvent = 'whatsapp_incoming';
     if (type === 'delay') defaults.delaySeconds = 60;
-    if (type === 'message') defaults.messageBody = 'Hi {{profile_name}}, ';
+    if (type === 'message') defaults.messageBody = 'Hi {{name}}, ';
     const styled = toCanvasNodes([
       {
         id,
@@ -587,7 +708,7 @@ function BotFlowBuilderPage() {
                 <button
                   key={`${item.bucket}-${item.type}-${item.label}`}
                   type="button"
-                  onClick={() => addNode(item.type, item.label)}
+                  onClick={() => addNode(item.type, item.label, item.preset)}
                   disabled={locked}
                   className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-medium text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -627,7 +748,7 @@ function BotFlowBuilderPage() {
                       <strong>Send Message</strong> pe click karo → right panel me{' '}
                       <strong>Message Body</strong> me text likho
                     </li>
-                    <li>Delete node: select + Delete key, ya right panel Delete button</li>
+                    <li>Wire hatane ke liye beech ka × dabao, ya wire select karke Delete</li>
                     <li>Save draft → Publish (tabhi WhatsApp pe live)</li>
                   </ol>
                 </div>
@@ -653,7 +774,7 @@ function BotFlowBuilderPage() {
           )}
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={edges.map((edge) => ({ ...edge, type: 'removable', selected: edge.id === selectedEdgeId }))}
             onNodesChange={(changes) => {
               setNodes((prev) => {
                 const next = [...prev];
@@ -689,7 +810,20 @@ function BotFlowBuilderPage() {
             }}
             onConnect={onConnect}
             onInit={setReactFlow}
-            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+            nodeTypes={flowNodeTypes}
+            edgeTypes={flowEdgeTypes}
+            onNodeClick={(_, node) => {
+              setSelectedNodeId(node.id);
+              setSelectedEdgeId('');
+            }}
+            onEdgeClick={(_, edge) => {
+              setSelectedEdgeId(edge.id);
+              setSelectedNodeId('');
+            }}
+            onPaneClick={() => {
+              setSelectedNodeId('');
+              setSelectedEdgeId('');
+            }}
             nodesConnectable={!locked}
             nodesDraggable={!locked}
             elementsSelectable={!locked}
@@ -697,7 +831,7 @@ function BotFlowBuilderPage() {
             fitView
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={{
-              type: 'smoothstep',
+              type: 'removable',
               style: { stroke: '#94a3b8', strokeWidth: 1.5 },
             }}
           >
@@ -718,6 +852,19 @@ function BotFlowBuilderPage() {
             </p>
           </div>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+            {selectedEdgeId && !selectedNode ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEdges((prev) => prev.filter((edge) => edge.id !== selectedEdgeId));
+                  setSelectedEdgeId('');
+                  setDirty(true);
+                }}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+              >
+                Remove this wire
+              </button>
+            ) : null}
             <PropertiesPanel
               selectedNode={selectedNode}
               templateOptions={templateOptions}

@@ -9,6 +9,9 @@ export type BotFlowNodeType =
   | 'update_lead'
   | 'apply_tags'
   | 'assign_telecaller'
+  | 'buttons'
+  | 'ask'
+  | 'media'
   | 'end';
 
 export type BotFlowNode = {
@@ -116,6 +119,12 @@ export function validateBotFlowGraph(input: unknown): FlowValidationResult {
       errors.push(`Node "${node.data?.label || node.id}" has no outgoing path.`);
     }
 
+    if (['message', 'update_lead', 'apply_tags', 'api_request'].includes(node.type) && outgoing.length > 1) {
+      warnings.push(
+        `"${node.data?.label || node.id}" has more than one wire. Only the first one runs. Keep one chain: message, then lead fresh, then tag, then end.`,
+      );
+    }
+
     if (node.type === 'condition') {
       if (outgoing.length < 2) {
         errors.push(`Condition node "${node.data?.label || node.id}" must have at least two branches.`);
@@ -123,6 +132,36 @@ export function validateBotFlowGraph(input: unknown): FlowValidationResult {
       const unlabeled = outgoing.filter((edge) => !String(edge.label || '').trim());
       if (unlabeled.length > 0) {
         errors.push(`Condition node "${node.data?.label || node.id}" has unlabeled branches.`);
+      }
+    }
+
+    if (node.type === 'buttons') {
+      const titles = Array.isArray(node.data?.buttons)
+        ? (node.data?.buttons as unknown[]).map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
+      if (!titles.length) {
+        errors.push(`Button message "${node.data?.label || node.id}" needs at least one button.`);
+      }
+      if (titles.length > 3) {
+        errors.push(`Button message "${node.data?.label || node.id}" can have only 3 buttons.`);
+      }
+      const labels = outgoing.map((edge) => String(edge.label || '').trim().toLowerCase());
+      for (const title of titles) {
+        if (!labels.includes(title.toLowerCase())) {
+          errors.push(`Button "${title}" on "${node.data?.label || node.id}" has no next step.`);
+        }
+      }
+    }
+
+    if (node.type === 'template') {
+      const titles = Array.isArray(node.data?.buttons)
+        ? (node.data?.buttons as unknown[]).map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
+      const labels = outgoing.map((edge) => String(edge.label || '').trim().toLowerCase());
+      for (const title of titles) {
+        if (!labels.includes(title.toLowerCase())) {
+          errors.push(`Template button "${title}" on "${node.data?.label || node.id}" has no next step.`);
+        }
       }
     }
 

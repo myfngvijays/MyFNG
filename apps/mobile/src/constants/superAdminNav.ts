@@ -171,6 +171,7 @@ export const SA_NAV: SaNavRow[] = [
     icon: 'logo-whatsapp',
     children: [
       { id: 'wa_team', label: 'Team WhatsApp', icon: 'chatbubbles-outline', target: 'LeadManagerTeamWhatsApp', kind: 'stack' },
+      { id: 'wa_bulk', label: 'Bulk WhatsApp', icon: 'paper-plane-outline', target: 'SuperAdminWhatsAppBulk', kind: 'stack' },
       { id: 'wa_dnd', label: 'WhatsApp DND', icon: 'notifications-off-outline', target: 'LeadManagerWhatsAppDnd', kind: 'stack' },
       { id: 'wa_auto', label: 'WhatsApp Automation', icon: 'flash-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'WhatsApp Automation', path: '/api/super_admin/whatsapp-automation' } },
       { id: 'wa_cron', label: 'WhatsApp Cron', icon: 'time-outline', target: 'SuperAdminApiModule', kind: 'stack', params: { title: 'WhatsApp Cron', path: '/api/super_admin/whatsapp-cron' } },

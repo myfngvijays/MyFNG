@@ -11,6 +11,34 @@ const EXTERNAL_AUTOUPDATE_BEARER =
 
 const TELECRM_TIMEOUT_MS = 8_000;
 
+export async function postTelecrmCustomBody(body: unknown) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELECRM_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(EXTERNAL_AUTOUPDATE_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${EXTERNAL_AUTOUPDATE_BEARER}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`TeleCRM push timed out after ${TELECRM_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+  const responseBody = await res.text().catch(() => '');
+  if (!res.ok) {
+    throw new Error(`External API failed: ${res.status} ${responseBody || ''}`.trim());
+  }
+}
+
 async function postTelecrmPayload(fields: Record<string, string | number | boolean>) {
   const summary = buildTelecrmFieldSummaryNote(fields);
   const controller = new AbortController();

@@ -33,6 +33,7 @@ import {
   AlertTriangle,
   Star,
   Megaphone,
+  Send,
   BarChart3,
   ClipboardCheck,
   Globe,
@@ -818,6 +819,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           label: 'WhatsApp',
           children: [
             { href: '/dashboard/super_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
+            { href: '/dashboard/super_admin/whatsapp-bulk', icon: <Send className="w-5 h-5" />, label: 'Bulk WhatsApp' },
             { href: '/dashboard/super_admin/whatsapp-dashboard', icon: <BarChart3 className="w-5 h-5" />, label: 'WhatsApp Dashboard' },
             { href: '/dashboard/super_admin/whatsapp-workflows', icon: <Activity className="w-5 h-5" />, label: 'Workflow Builder' },
             { href: '/dashboard/super_admin/whatsapp-messages', icon: <ClipboardList className="w-5 h-5" />, label: 'Message Logs' },

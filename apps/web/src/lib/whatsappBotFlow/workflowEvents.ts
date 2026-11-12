@@ -11,9 +11,16 @@ export type WorkflowEventDef = {
 export const WORKFLOW_TRIGGER_EVENTS: WorkflowEventDef[] = [
   {
     key: 'whatsapp_incoming',
-    label: 'Incoming WhatsApp',
+    label: 'New message received',
     group: 'WhatsApp',
-    description: 'Customer sends a WhatsApp message to 6161',
+    description: 'Customer sends any WhatsApp message',
+    published: true,
+  },
+  {
+    key: 'hot_keyword',
+    label: 'Hot keyword',
+    group: 'WhatsApp',
+    description: 'Incoming message exactly matches a keyword, such as INTERESTED',
     published: true,
   },
   {
@@ -77,12 +84,15 @@ export const WORKFLOW_TRIGGER_EVENTS: WorkflowEventDef[] = [
 ];
 
 export const WORKFLOW_ACTION_NODES = [
-  { type: 'message', label: 'Send Message', group: 'Communication' },
-  { type: 'template', label: 'Send Template', group: 'Communication' },
+  { type: 'message', label: 'Send text', group: 'Communication' },
+  { type: 'buttons', label: 'Send message with buttons', group: 'Communication' },
+  { type: 'ask', label: 'Ask question', group: 'Communication' },
+  { type: 'media', label: 'Send image / file', group: 'Communication' },
+  { type: 'template', label: 'Send template', group: 'Communication' },
   { type: 'condition', label: 'If / Else', group: 'Logic' },
   { type: 'delay', label: 'Time Delay', group: 'Logic' },
-  { type: 'update_lead', label: 'Update Lead / Fresh', group: 'Lead' },
-  { type: 'apply_tags', label: 'Apply Lead Tags', group: 'Lead' },
+  { type: 'update_lead', label: 'Update lead status', group: 'Lead' },
+  { type: 'apply_tags', label: 'Lead tag', group: 'Lead' },
   { type: 'assign_telecaller', label: 'Assign Telecaller', group: 'Lead' },
   { type: 'handoff', label: 'Assign Agent / Handoff', group: 'Lead' },
   { type: 'api_request', label: 'Call API', group: 'Integrations' },

@@ -26,6 +26,7 @@ import AgentMonitoringPanel from './components/AgentMonitoringPanel';
 import AgentEnvSettingsPanel from './components/AgentEnvSettingsPanel';
 import BookingAgentTestModal from './components/BookingAgentTestModal';
 import AgentDryRunTestModal from './components/AgentDryRunTestModal';
+import CampaignButtonBots from './components/CampaignButtonBots';
 
 type TestModalId = null | 'brain' | 'misa' | 'followup' | 'chase';
 
@@ -443,6 +444,7 @@ export default function SuperAdminBotFlowPage() {
           </div>
         </div>
       </div>
+      <CampaignButtonBots />
 
       <AgentTabs activeTab={activeTab} onChange={setActiveTab} />
 

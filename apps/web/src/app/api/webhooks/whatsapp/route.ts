@@ -16,6 +16,8 @@ import {
   ensureWhatsAppInboundServiceLead,
   extractWhatsAppReferral,
 } from '@/lib/whatsappAgents/inboundServiceLead';
+import { applyBulkWhatsAppButtonReply, extractTemplateButtonLabel } from '@/lib/whatsapp/bulkButtonLead';
+import { continueWaitingBotFlow } from '@/lib/whatsappBotFlow/executor';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 
 type WhatsAppStatus = {
@@ -393,6 +395,7 @@ export async function POST(request: NextRequest) {
 
         inboundCount += 1;
 
+        let campaignBotHandled = false;
         // Create / enrich telecaller booking lead for WhatsApp (+ Meta CTWA ads)
         if (senderPhone) {
           const referral = extractWhatsAppReferral(inbound);
@@ -421,13 +424,35 @@ export async function POST(request: NextRequest) {
               error: leadErr?.message || leadErr,
             });
           }
+          try {
+            const continued = await continueWaitingBotFlow({
+              phone: senderPhone,
+              message: extractTemplateButtonLabel(inbound) || brainText || textBody || '',
+              profileName,
+              inboundReceivedAt: statusAt || now,
+            });
+            if (continued.handled) campaignBotHandled = true;
+          } catch (continueError: any) {
+            console.error('[whatsapp-webhook] waiting flow failed:', continueError?.message || continueError);
+          }
+          if (!campaignBotHandled) try {
+            const bulkButton = await applyBulkWhatsAppButtonReply({
+              phone: senderPhone,
+              inbound,
+              profileName,
+            });
+            campaignBotHandled = Boolean(bulkButton?.flowStarted || bulkButton?.flowId);
+          } catch (bulkButtonError: any) {
+            console.error('[whatsapp-webhook] bulk button lead failed:', bulkButtonError?.message || bulkButtonError);
+          }
         }
 
         if (
           senderPhone &&
           brainText &&
           isBrainEligibleInboundType(messageType) &&
-          !pricingPlanPointsHandled
+          !pricingPlanPointsHandled &&
+          !campaignBotHandled
         ) {
           brainTasks.push(
             processInboundWhatsAppMessage({
@@ -463,6 +488,11 @@ export async function POST(request: NextRequest) {
         const mappedStatus = mapStatus(statusItem?.status);
         const statusAt = parseIsoTimestamp(statusItem?.timestamp);
         const errorMessage = statusItem?.errors?.[0]?.details || statusItem?.errors?.[0]?.title || null;
+
+        await db
+          .from('wa_bulk_recipients')
+          .update({ delivery_status: mappedStatus })
+          .eq('message_id', providerMessageId);
 
         // Update existing outbound/inbound archive row with latest delivery status.
         const { data: existingMsgRaw } = await db

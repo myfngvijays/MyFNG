@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { normalizePhoneNumber } from '@/lib/services/whatsappService';
 
-export type FlowSessionStatus = 'ACTIVE' | 'COMPLETED' | 'HANDOFF';
+export type FlowSessionStatus = 'ACTIVE' | 'WAITING' | 'COMPLETED' | 'HANDOFF';
 
 export type FlowSessionRecord = {
   id: string;

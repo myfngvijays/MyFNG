@@ -91,6 +91,23 @@ export async function ensureTagIdsByNames(
   return Array.from(new Set(ids));
 }
 
+/** Remove every tag on a lead, then keep only the given tags. */
+export async function replaceLeadTags(
+  leadId: string,
+  tagIds: string[],
+  taggedBy?: string | null,
+): Promise<{ ok: boolean; tag_ids: string[]; error?: string }> {
+  const lead = String(leadId || '').trim();
+  if (!lead) return { ok: false, tag_ids: [], error: 'Lead missing' };
+
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { ok: false, tag_ids: [], error: 'Admin unavailable' };
+
+  const removed = await supabaseAdmin.from('crm_lead_tag_map').delete().eq('lead_id', lead);
+  if (removed.error) return { ok: false, tag_ids: [], error: removed.error.message };
+  return addLeadTags(lead, tagIds, taggedBy);
+}
+
 /** Merge-add tags onto a lead (does not remove existing). Also adds parent tags. */
 export async function addLeadTags(
   leadId: string,

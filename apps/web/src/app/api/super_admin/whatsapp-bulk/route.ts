@@ -1,0 +1,956 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { sendTemplateMessage } from '@/lib/services/whatsappService';
+
+const ALLOWED_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
+const BATCH_SIZE = 20;
+const MAX_PASTE = 25000;
+
+function tablesMissing(error: { message?: string; code?: string } | null | undefined) {
+  const msg = `${error?.code || ''} ${error?.message || ''}`;
+  return /does not exist|42P01|PGRST205/i.test(msg);
+}
+
+function toPhone(raw: string) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+  if (last10.length !== 10 || !/^[6-9]/.test(last10)) return '';
+  return `91${last10}`;
+}
+
+function splitCsv(line: string) {
+  const out: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (const char of line) {
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if ((char === ',' || char === ';' || char === '\t') && !quoted) {
+      out.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  out.push(current.trim());
+  return out;
+}
+
+function headerKind(cell: string) {
+  const value = cell.toLowerCase().trim();
+  if (/phone|mobile|whatsapp/.test(value) || /^contact( no| number)?$/.test(value)) return 'phone';
+  if ((/^name$|customer.?name|full.?name|^customer$/).test(value) && !/car|vehicle/.test(value)) return 'name';
+  return 'field';
+}
+
+function fieldKey(header: string) {
+  return header
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+}
+
+function parseContactLines(text: string) {
+  const lines = String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const rows: Array<{ name: string; phone: string; fields: Record<string, string> }> = [];
+  const seen = new Set<string>();
+  let nameIndex = -1;
+  let phoneIndex = -1;
+  let headers: string[] = [];
+  let start = 0;
+  if (lines.length) {
+    headers = splitCsv(lines[0]);
+    const kinds = headers.map((cell) => headerKind(cell));
+    phoneIndex = kinds.findIndex((kind) => kind === 'phone');
+    nameIndex = kinds.findIndex((kind) => kind === 'name');
+    if (phoneIndex >= 0) start = 1;
+  }
+  for (const line of lines.slice(start)) {
+    const parts = splitCsv(line);
+    let name = '';
+    let phoneRaw = line;
+    const fields: Record<string, string> = {};
+    if (phoneIndex >= 0) {
+      phoneRaw = parts[phoneIndex] || '';
+      name = nameIndex >= 0 ? parts[nameIndex] || '' : '';
+      headers.forEach((header, index) => {
+        if (index === phoneIndex || index === nameIndex) return;
+        const key = fieldKey(header);
+        const value = String(parts[index] || '').trim();
+        if (key && value) fields[key] = value.slice(0, 180);
+      });
+    } else if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      if (toPhone(last)) {
+        phoneRaw = last;
+        name = parts.slice(0, -1).join(' ');
+      }
+    }
+    const phone = toPhone(phoneRaw);
+    if (!phone) continue;
+    if (seen.has(phone)) {
+      if (name) {
+        const existing = rows.find((row) => row.phone === phone);
+        if (existing && !existing.name) existing.name = name.slice(0, 80);
+      }
+      continue;
+    }
+    seen.add(phone);
+    rows.push({ name: name.slice(0, 80), phone, fields });
+    if (rows.length >= MAX_PASTE) break;
+  }
+  return rows;
+}
+
+async function selectIn(db: any, table: string, columns: string, column: string, values: string[]) {
+  const rows: any[] = [];
+  for (let index = 0; index < values.length; index += 200) {
+    const slice = values.slice(index, index + 200);
+    const result = await db.from(table).select(columns).in(column, slice);
+    if (result.error) return { data: null as any[] | null, error: result.error };
+    rows.push(...(result.data || []));
+  }
+  return { data: rows, error: null };
+}
+
+function fillParams(params: string[], name: string, fields: Record<string, string> = {}) {
+  const bag: Record<string, string> = { name: name.trim() || 'there', ...fields };
+  return params.map((value) =>
+    String(value ?? '').replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, key) => bag[String(key).toLowerCase()] || ''),
+  );
+}
+
+async function assertAdmin() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, status: 401, error: 'Unauthorized' };
+
+  const { data: profile } = await supabase
+    .from('users_login')
+    .select('id, full_name, roles!inner(role_code)')
+    .eq('id', user.id)
+    .maybeSingle();
+  const role = String((profile as any)?.roles?.role_code || '').toUpperCase();
+  if (!profile || !ALLOWED_ROLES.includes(role)) {
+    return { ok: false as const, status: 403, error: 'Forbidden' };
+  }
+
+  const { supabaseAdmin, error } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { ok: false as const, status: 500, error: error || 'Database admin unavailable' };
+  return {
+    ok: true as const,
+    db: supabaseAdmin as any,
+    userId: (profile as any).id as string,
+    actorName: String((profile as any).full_name || ''),
+    role,
+  };
+}
+
+function missingResponse() {
+  return NextResponse.json(
+    {
+      error: 'Bulk WhatsApp tables are missing. Run database/388_whatsapp_bulk_send.sql in Supabase.',
+      tables_missing: true,
+    },
+    { status: 503 },
+  );
+}
+
+function istInstant(value: string, end: boolean) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(`${raw}T${end ? '23:59:59.999' : '00:00:00'}+05:30`).toISOString();
+  }
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?/);
+  if (!match) return '';
+  return new Date(`${match[1]}T${match[2]}:${match[3] || '00'}+05:30`).toISOString();
+}
+
+function applyContactFilters(query: any, filters: { q?: string; from?: string; to?: string; uploadId?: string }) {
+  let next = query;
+  if (filters.uploadId) next = next.eq('upload_id', filters.uploadId);
+  const from = istInstant(filters.from || '', false);
+  const to = istInstant(filters.to || '', true);
+  if (from) next = next.gte('created_at', from);
+  if (to) next = next.lte('created_at', to);
+  const q = String(filters.q || '').replace(/[%_,]/g, '').trim();
+  if (q) next = next.or(`phone.ilike.%${q}%,name.ilike.%${q}%`);
+  return next;
+}
+
+async function listFilteredContactIds(db: any, filters: { q?: string; from?: string; to?: string; uploadId?: string }) {
+  const ids: string[] = [];
+  for (let offset = 0; offset < 30000; offset += 1000) {
+    const result = await applyContactFilters(
+      db.from('wa_bulk_contacts').select('id').order('created_at', { ascending: false }),
+      filters,
+    ).range(offset, offset + 999);
+    if (result.error) return { ids, error: result.error };
+    const rows = result.data || [];
+    ids.push(...rows.map((row: { id: string }) => row.id));
+    if (rows.length < 1000) break;
+  }
+  return { ids, error: null };
+}
+
+async function loadSegmentContactIds(db: any, segmentId: string) {
+  const ids: string[] = [];
+  for (let offset = 0; offset < 30000; offset += 1000) {
+    const result = await db
+      .from('wa_bulk_segment_contacts')
+      .select('contact_id')
+      .eq('segment_id', segmentId)
+      .range(offset, offset + 999);
+    if (result.error) return { ids, error: result.error };
+    const rows = result.data || [];
+    ids.push(...rows.map((row: { contact_id: string }) => row.contact_id));
+    if (rows.length < 1000) break;
+  }
+  return { ids, error: null };
+}
+
+async function campaignReport(db: any, campaignId: string) {
+  const campaign = await db
+    .from('wa_bulk_campaigns')
+    .select('id, name, template_name, status, total, sent, failed, skipped, created_at, finished_at')
+    .eq('id', campaignId)
+    .maybeSingle();
+  if (campaign.error) return { error: campaign.error };
+  if (!campaign.data) return { error: { message: 'Campaign not found' } };
+
+  const buckets = { sent: 0, failed: 0, skipped: 0, pending: 0, replied: 0, delivered: 0, read: 0 };
+  const replies: Record<string, number> = {};
+  const messageIds: string[] = [];
+  for (let offset = 0; offset < 30000; offset += 1000) {
+    const page = await db
+      .from('wa_bulk_recipients')
+      .select('status, reply_button, message_id, delivery_status')
+      .eq('campaign_id', campaignId)
+      .range(offset, offset + 999);
+    if (page.error && /delivery_status/i.test(page.error.message || '')) {
+      const fallback = await db
+        .from('wa_bulk_recipients')
+        .select('status, reply_button, message_id')
+        .eq('campaign_id', campaignId)
+        .range(offset, offset + 999);
+      if (fallback.error) return { error: fallback.error };
+      for (const row of fallback.data || []) {
+        const status = String(row.status || 'pending');
+        if (status === 'sent' || status === 'failed' || status === 'skipped' || status === 'pending') buckets[status] += 1;
+        const reply = String(row.reply_button || '').trim();
+        if (reply) {
+          buckets.replied += 1;
+          replies[reply] = (replies[reply] || 0) + 1;
+        }
+        if (row.message_id) messageIds.push(String(row.message_id));
+      }
+      if ((fallback.data || []).length < 1000) break;
+      continue;
+    }
+    if (page.error) return { error: page.error };
+    for (const row of page.data || []) {
+      const status = String(row.status || 'pending');
+      if (status === 'sent' || status === 'failed' || status === 'skipped' || status === 'pending') buckets[status] += 1;
+      const reply = String(row.reply_button || '').trim();
+      if (reply) {
+        buckets.replied += 1;
+        replies[reply] = (replies[reply] || 0) + 1;
+      }
+      const delivery = String(row.delivery_status || '').toUpperCase();
+      if (delivery === 'DELIVERED' || delivery === 'VIEWED' || delivery === 'READ') buckets.delivered += 1;
+      if (delivery === 'VIEWED' || delivery === 'READ') buckets.read += 1;
+      if (!delivery && row.message_id) messageIds.push(String(row.message_id));
+    }
+    if ((page.data || []).length < 1000) break;
+  }
+
+  if (messageIds.length) {
+    for (let index = 0; index < messageIds.length; index += 200) {
+      const slice = messageIds.slice(index, index + 200);
+      const messages = await db.from('whatsapp_messages').select('status').in('provider_message_id', slice);
+      if (messages.error) break;
+      for (const row of messages.data || []) {
+        const status = String(row.status || '').toUpperCase();
+        if (status === 'DELIVERED' || status === 'VIEWED' || status === 'READ') buckets.delivered += 1;
+        if (status === 'VIEWED' || status === 'READ') buckets.read += 1;
+      }
+    }
+  }
+
+  const audience = buckets.sent + buckets.failed + buckets.skipped + buckets.pending || Number(campaign.data.total || 0);
+  const pct = (value: number) => (audience ? Math.round((value / audience) * 1000) / 10 : 0);
+  return {
+    campaign: campaign.data,
+    audience,
+    ...buckets,
+    replies: Object.entries(replies)
+      .map(([button, count]) => ({ button, count, percent: pct(count) }))
+      .sort((a, b) => b.count - a.count),
+    rates: {
+      sent: pct(buckets.sent),
+      delivered: pct(buckets.delivered),
+      read: pct(buckets.read),
+      replied: pct(buckets.replied),
+      failed: pct(buckets.failed),
+      skipped: pct(buckets.skipped),
+    },
+  };
+}
+
+function applyLeadFilters(
+  query: any,
+  filters: { q?: string; from?: string; to?: string; status?: string; city?: string; source?: string; crm?: string },
+  includeDeleted = false,
+) {
+  let next = includeDeleted ? query : query.is('deleted_at', null);
+  const from = istInstant(filters.from || '', false);
+  const to = istInstant(filters.to || '', true);
+  if (from) next = next.gte('created_at', from);
+  if (to) next = next.lte('created_at', to);
+  const status = String(filters.status || '').trim().toUpperCase();
+  if (status && status !== 'ALL') next = next.eq('status', status);
+  const city = String(filters.city || '').replace(/[%_,]/g, '').trim();
+  if (city) next = next.ilike('city', `%${city}%`);
+  const source = String(filters.source || '').replace(/[%_,]/g, '').trim();
+  if (source) next = next.ilike('lead_source', `%${source}%`);
+  const crm = String(filters.crm || '').trim().toUpperCase();
+  if (crm && crm !== 'ALL' && crm !== 'FRESH') next = next.eq('coupon_meta->>last_call_result', crm);
+  const q = String(filters.q || '').replace(/[%_,]/g, '').trim();
+  if (q) next = next.or(`customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,lead_number.ilike.%${q}%`);
+  return next;
+}
+
+async function collectLeadContacts(db: any, filters: { q?: string; from?: string; to?: string; status?: string; city?: string; source?: string; crm?: string }) {
+  const people: Array<{ phone: string; name: string }> = [];
+  const seen = new Set<string>();
+  let includeDeleted = false;
+  for (let offset = 0; offset < 20000; offset += 1000) {
+    const run = (withDeleted: boolean) =>
+      applyLeadFilters(
+        db.from('service_leads').select('customer_name, customer_phone, coupon_meta').order('created_at', { ascending: false }),
+        filters,
+        withDeleted,
+      ).range(offset, offset + 999);
+    let result = await run(includeDeleted);
+    if (result.error && /deleted_at/i.test(result.error.message || '')) {
+      includeDeleted = true;
+      result = await run(true);
+    }
+    if (result.error) return { people, error: result.error };
+    for (const row of result.data || []) {
+      if (String(filters.crm || '').toUpperCase() === 'FRESH') {
+        const resultCode = String(row.coupon_meta?.last_call_result || 'FRESH').toUpperCase();
+        if (resultCode !== 'FRESH') continue;
+      }
+      const phone = toPhone(String(row.customer_phone || ''));
+      if (!phone || seen.has(phone)) continue;
+      seen.add(phone);
+      people.push({ phone, name: String(row.customer_name || '').slice(0, 80) });
+    }
+    if ((result.data || []).length < 1000) break;
+  }
+  return { people, error: null };
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await assertAdmin();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const db = auth.db;
+  const params = request.nextUrl.searchParams;
+  const section = params.get('section') || 'home';
+
+  if (section === 'campaign') {
+    const id = String(params.get('id') || '').trim();
+    if (!id) return NextResponse.json({ error: 'Campaign id is required' }, { status: 400 });
+    const report = await campaignReport(db, id);
+    if (report.error) {
+      if (tablesMissing(report.error)) return missingResponse();
+      const status = /not found/i.test(report.error.message || '') ? 404 : 500;
+      return NextResponse.json({ error: report.error.message }, { status });
+    }
+    return NextResponse.json({ success: true, report });
+  }
+
+  if (section === 'leads') {
+    const filters = {
+      q: params.get('q') || '',
+      from: params.get('from') || '',
+      to: params.get('to') || '',
+      status: params.get('status') || '',
+      city: params.get('city') || '',
+      source: params.get('source') || '',
+      crm: params.get('crm') || '',
+    };
+    const found = await collectLeadContacts(db, filters);
+    if (found.error) return NextResponse.json({ error: found.error.message }, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      total: found.people.length,
+      sample: found.people.slice(0, 8).map((person) => ({ name: person.name, phone: person.phone })),
+    });
+  }
+
+  if (section === 'contacts') {
+    const page = Math.max(1, Number(params.get('page') || 1));
+    const limit = Math.min(100, Math.max(10, Number(params.get('limit') || 40)));
+    const filters = {
+      q: params.get('q') || '',
+      from: params.get('from') || '',
+      to: params.get('to') || '',
+      uploadId: params.get('upload_id') || '',
+    };
+    const countQuery = applyContactFilters(db.from('wa_bulk_contacts').select('id', { count: 'exact', head: true }), filters);
+    let list = await applyContactFilters(
+      db.from('wa_bulk_contacts').select('id, phone, name, fields, created_at, upload_id').order('created_at', { ascending: false }),
+      filters,
+    ).range((page - 1) * limit, page * limit - 1);
+    if (list.error && /fields/i.test(list.error.message || '')) {
+      list = await applyContactFilters(
+        db.from('wa_bulk_contacts').select('id, phone, name, created_at, upload_id').order('created_at', { ascending: false }),
+        filters,
+      ).range((page - 1) * limit, page * limit - 1);
+    }
+    const count = await countQuery;
+    const error = list.error || count.error;
+    if (error) {
+      if (tablesMissing(error)) return missingResponse();
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({
+      success: true,
+      contacts: list.data || [],
+      total: count.count || 0,
+      page,
+      limit,
+    });
+  }
+
+  let campaignsQuery = db
+    .from('wa_bulk_campaigns')
+    .select('id, name, template_name, status, total, sent, failed, skipped, button_map, created_at, finished_at')
+    .order('created_at', { ascending: false })
+    .limit(30);
+  const [totalRes, segmentsRes, uploadsRes] = await Promise.all([
+    db.from('wa_bulk_contacts').select('id', { count: 'exact', head: true }),
+    db.from('wa_bulk_segments').select('id, name, created_at').order('created_at', { ascending: false }),
+    db.from('wa_bulk_uploads').select('id, label, added, created_at').order('created_at', { ascending: false }).limit(40),
+  ]);
+  let campaignsRes = await campaignsQuery;
+  if (campaignsRes.error && /button_map/i.test(campaignsRes.error.message || '')) {
+    campaignsRes = await db
+      .from('wa_bulk_campaigns')
+      .select('id, name, template_name, status, total, sent, failed, skipped, created_at, finished_at')
+      .order('created_at', { ascending: false })
+      .limit(30);
+  }
+  const firstError = totalRes.error || segmentsRes.error || campaignsRes.error;
+  if (firstError) {
+    if (tablesMissing(firstError)) return missingResponse();
+    return NextResponse.json({ error: firstError.message }, { status: 500 });
+  }
+
+  const segments = await Promise.all(
+    ((segmentsRes.data || []) as Array<{ id: string; name: string; created_at: string }>).map(async (segment) => {
+      const count = await db
+        .from('wa_bulk_segment_contacts')
+        .select('contact_id', { count: 'exact', head: true })
+        .eq('segment_id', segment.id);
+      return { ...segment, contact_count: count.count || 0 };
+    }),
+  );
+
+  return NextResponse.json({
+    success: true,
+    sending_number: '+91 95949 96161',
+    contact_total: totalRes.count || 0,
+    segments,
+    campaigns: (campaignsRes.data || []).map((row: any) => ({ ...row, button_map: row.button_map || [] })),
+    uploads: uploadsRes.error ? [] : uploadsRes.data || [],
+    uploads_ready: !uploadsRes.error,
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await assertAdmin();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const db = auth.db;
+  const body = await request.json().catch(() => ({}));
+  const action = String(body?.action || '');
+
+  try {
+    if (action === 'add_contacts') {
+      const rows = parseContactLines(String(body?.text || ''));
+      if (!rows.length) return NextResponse.json({ error: 'No valid mobile numbers found' }, { status: 400 });
+      const label = String(body?.upload_label || '').trim().slice(0, 80) || `Upload ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+      let uploadId = '';
+      const upload = await db.from('wa_bulk_uploads').insert({ label, added: rows.length }).select('id, label').maybeSingle();
+      if (!upload.error && upload.data?.id) uploadId = upload.data.id;
+
+      let fieldsSaved = true;
+      for (let index = 0; index < rows.length; index += 400) {
+        const slice = rows.slice(index, index + 400).map((row) => ({
+          phone: row.phone,
+          name: row.name || null,
+          fields: row.fields || {},
+          ...(uploadId ? { upload_id: uploadId } : {}),
+        }));
+        let payload = slice.map((row) => ({ ...row }));
+        let saved = await db.from('wa_bulk_contacts').upsert(payload, { onConflict: 'phone' });
+        if (saved.error && /fields/i.test(saved.error.message || '')) {
+          fieldsSaved = false;
+          payload = payload.map(({ phone, name, upload_id }) => ({ phone, name, ...(upload_id ? { upload_id } : {}) }));
+          saved = await db.from('wa_bulk_contacts').upsert(payload, { onConflict: 'phone' });
+        }
+        if (saved.error && /upload_id/i.test(saved.error.message || '')) {
+          saved = await db.from('wa_bulk_contacts').upsert(
+            payload.map(({ phone, name, fields }) => ({ phone, name, ...(fields ? { fields } : {}) })),
+            { onConflict: 'phone' },
+          );
+        }
+        if (saved.error) {
+          if (tablesMissing(saved.error)) return missingResponse();
+          return NextResponse.json({ error: saved.error.message }, { status: 500 });
+        }
+      }
+
+      const segmentId = String(body?.segment_id || '').trim();
+      if (segmentId) {
+        const found = await selectIn(db, 'wa_bulk_contacts', 'id, phone', 'phone', rows.map((row) => row.phone));
+        if (found.error) return NextResponse.json({ error: found.error.message }, { status: 500 });
+        const links = (found.data || []).map((row: { id: string }) => ({ segment_id: segmentId, contact_id: row.id }));
+        for (let index = 0; index < links.length; index += 400) {
+          const linked = await db
+            .from('wa_bulk_segment_contacts')
+            .upsert(links.slice(index, index + 400), { onConflict: 'segment_id,contact_id', ignoreDuplicates: true });
+          if (linked.error) return NextResponse.json({ error: linked.error.message }, { status: 500 });
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        added: rows.length,
+        upload_id: uploadId || null,
+        upload_label: label,
+        fields_saved: fieldsSaved,
+      });
+    }
+
+    if (action === 'segment_from_filter') {
+      const name = String(body?.name || '').trim().slice(0, 80);
+      if (!name) return NextResponse.json({ error: 'Segment name is required' }, { status: 400 });
+      const filtered = await listFilteredContactIds(db, {
+        q: String(body?.q || ''),
+        from: String(body?.from || ''),
+        to: String(body?.to || ''),
+        uploadId: String(body?.upload_id || ''),
+      });
+      if (filtered.error) {
+        if (tablesMissing(filtered.error)) return missingResponse();
+        return NextResponse.json({ error: filtered.error.message }, { status: 500 });
+      }
+      if (!filtered.ids.length) return NextResponse.json({ error: 'No contacts match this filter' }, { status: 400 });
+      const saved = await db.from('wa_bulk_segments').insert({ name }).select('id, name').maybeSingle();
+      if (saved.error || !saved.data) return NextResponse.json({ error: saved.error?.message || 'Could not create segment' }, { status: 500 });
+      for (let index = 0; index < filtered.ids.length; index += 400) {
+        const links = filtered.ids.slice(index, index + 400).map((contactId) => ({
+          segment_id: saved.data.id,
+          contact_id: contactId,
+        }));
+        const linked = await db.from('wa_bulk_segment_contacts').upsert(links, { onConflict: 'segment_id,contact_id', ignoreDuplicates: true });
+        if (linked.error) return NextResponse.json({ error: linked.error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, segment: saved.data, contact_count: filtered.ids.length });
+    }
+
+    if (action === 'segment_from_leads') {
+      const name = String(body?.name || '').trim().slice(0, 80);
+      if (!name) return NextResponse.json({ error: 'Segment name is required' }, { status: 400 });
+      const filters = {
+        q: String(body?.q || ''),
+        from: String(body?.from || ''),
+        to: String(body?.to || ''),
+        status: String(body?.status || ''),
+        city: String(body?.city || ''),
+        source: String(body?.source || ''),
+        crm: String(body?.crm || ''),
+      };
+      const found = await collectLeadContacts(db, filters);
+      if (found.error) return NextResponse.json({ error: found.error.message }, { status: 500 });
+      if (!found.people.length) return NextResponse.json({ error: 'No leads with a valid mobile match this filter' }, { status: 400 });
+
+      for (let index = 0; index < found.people.length; index += 400) {
+        const slice = found.people.slice(index, index + 400).map((person) => ({
+          phone: person.phone,
+          name: person.name || null,
+        }));
+        const saved = await db.from('wa_bulk_contacts').upsert(slice, { onConflict: 'phone', ignoreDuplicates: true });
+        if (saved.error) return NextResponse.json({ error: saved.error.message }, { status: 500 });
+      }
+      const ids = await selectIn(db, 'wa_bulk_contacts', 'id', 'phone', found.people.map((person) => person.phone));
+      if (ids.error) return NextResponse.json({ error: ids.error.message }, { status: 500 });
+      const segment = await db.from('wa_bulk_segments').insert({ name }).select('id, name').maybeSingle();
+      if (segment.error || !segment.data) return NextResponse.json({ error: segment.error?.message || 'Could not create segment' }, { status: 500 });
+      const contactIds = (ids.data || []).map((row: { id: string }) => row.id);
+      for (let index = 0; index < contactIds.length; index += 400) {
+        const links = contactIds.slice(index, index + 400).map((contactId: string) => ({ segment_id: segment.data.id, contact_id: contactId }));
+        const linked = await db.from('wa_bulk_segment_contacts').upsert(links, { onConflict: 'segment_id,contact_id', ignoreDuplicates: true });
+        if (linked.error) return NextResponse.json({ error: linked.error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, segment: segment.data, contact_count: contactIds.length });
+    }
+
+    if (action === 'test_send') {
+      return testSend(db, auth.userId, auth.actorName, auth.role, body);
+    }
+
+    if (action === 'delete_contact') {
+      const id = String(body?.id || '').trim();
+      if (!id) return NextResponse.json({ error: 'Contact id is required' }, { status: 400 });
+      const deleted = await db.from('wa_bulk_contacts').delete().eq('id', id);
+      if (deleted.error) {
+        if (tablesMissing(deleted.error)) return missingResponse();
+        return NextResponse.json({ error: deleted.error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'save_segment') {
+      const name = String(body?.name || '').trim().slice(0, 80);
+      if (!name) return NextResponse.json({ error: 'Segment name is required' }, { status: 400 });
+      const id = String(body?.id || '').trim();
+      const saved = id
+        ? await db.from('wa_bulk_segments').update({ name }).eq('id', id).select('id, name').maybeSingle()
+        : await db.from('wa_bulk_segments').insert({ name }).select('id, name').maybeSingle();
+      if (saved.error) {
+        if (tablesMissing(saved.error)) return missingResponse();
+        return NextResponse.json({ error: saved.error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, segment: saved.data });
+    }
+
+    if (action === 'delete_segment') {
+      const id = String(body?.id || '').trim();
+      if (!id) return NextResponse.json({ error: 'Segment id is required' }, { status: 400 });
+      const deleted = await db.from('wa_bulk_segments').delete().eq('id', id);
+      if (deleted.error) return NextResponse.json({ error: deleted.error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'add_members' || action === 'remove_members') {
+      const segmentId = String(body?.segment_id || '').trim();
+      const contactIds = Array.isArray(body?.contact_ids)
+        ? body.contact_ids.map((id: unknown) => String(id || '').trim()).filter(Boolean).slice(0, 2000)
+        : [];
+      if (!segmentId || !contactIds.length) {
+        return NextResponse.json({ error: 'Segment and contacts are required' }, { status: 400 });
+      }
+      if (action === 'add_members') {
+        const links = contactIds.map((contactId: string) => ({ segment_id: segmentId, contact_id: contactId }));
+        const saved = await db.from('wa_bulk_segment_contacts').upsert(links, { onConflict: 'segment_id,contact_id', ignoreDuplicates: true });
+        if (saved.error) return NextResponse.json({ error: saved.error.message }, { status: 500 });
+      } else {
+        const removed = await db.from('wa_bulk_segment_contacts').delete().eq('segment_id', segmentId).in('contact_id', contactIds);
+        if (removed.error) return NextResponse.json({ error: removed.error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'send_start') return startCampaign(db, auth.userId, body);
+    if (action === 'send_batch') return sendBatch(db, auth.userId, auth.actorName, auth.role, body);
+
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Bulk WhatsApp request failed' }, { status: 500 });
+  }
+}
+
+async function testSend(db: any, userId: string, actorName: string, role: string, body: any) {
+  const phone = toPhone(String(body?.phone || ''));
+  if (!phone) return NextResponse.json({ error: 'Enter a valid 10-digit test number' }, { status: 400 });
+  const templateName = String(body?.template_name || '').trim();
+  const params = Array.isArray(body?.params) ? body.params.map((value: unknown) => String(value ?? '')) : [];
+  if (!templateName) return NextResponse.json({ error: 'Choose a template first' }, { status: 400 });
+
+  const template = await db
+    .from('whatsapp_templates')
+    .select('template_name, language_code, category, is_active, meta')
+    .ilike('template_name', templateName)
+    .maybeSingle();
+  if (template.error) return NextResponse.json({ error: template.error.message }, { status: 500 });
+  const row = template.data;
+  if (!row) return NextResponse.json({ error: 'Template not found' }, { status: 400 });
+  const metaStatus = String(row.meta?.status || '').toUpperCase();
+  if (metaStatus && metaStatus !== 'APPROVED') {
+    return NextResponse.json({ error: `Template is ${metaStatus}. Test send needs an approved template.` }, { status: 400 });
+  }
+
+  const savedContact = await db.from('wa_bulk_contacts').select('name, fields').eq('phone', phone).maybeSingle();
+  const savedFields = savedContact.data?.fields && typeof savedContact.data.fields === 'object' ? savedContact.data.fields : {};
+  const filled = fillParams(params, String(body?.name || savedContact.data?.name || 'Test'), savedFields);
+  const result = await sendTemplateMessage({
+    phoneNumber: phone,
+    templateName: row.template_name,
+    templateParams: filled,
+    languageCode: row.language_code || 'en',
+  });
+  const now = new Date().toISOString();
+  await db.from('whatsapp_messages').insert({
+    provider_message_id: result.messageId || null,
+    direction: 'OUTBOUND',
+    message_type: 'TEMPLATE',
+    recipient_phone: phone,
+    template_name: row.template_name,
+    template_language: row.language_code || 'en',
+    text_body: `Test: ${row.template_name}`,
+    status: result.success ? 'SENT' : 'FAILED',
+    status_at: now,
+    error_message: result.success ? null : result.error || 'Send failed',
+    payload: { source: 'bulk_test', response: result.raw || null },
+    meta: { source: 'bulk_test', actor_id: userId, actor_name: actorName, role_code: role },
+    created_by: userId,
+    updated_at: now,
+  });
+  if (!result.success) return NextResponse.json({ error: result.error || 'Test send failed' }, { status: 502 });
+  return NextResponse.json({ success: true, message_id: result.messageId || null });
+}
+
+async function startCampaign(db: any, userId: string, body: any) {
+  const segmentId = String(body?.segment_id || '').trim();
+  const templateName = String(body?.template_name || '').trim();
+  const params = Array.isArray(body?.params) ? body.params.map((value: unknown) => String(value ?? '')) : [];
+  if (!segmentId || !templateName) {
+    return NextResponse.json({ error: 'Segment and template are required' }, { status: 400 });
+  }
+
+  const template = await db
+    .from('whatsapp_templates')
+    .select('template_name, language_code, category, is_active, meta')
+    .ilike('template_name', templateName)
+    .maybeSingle();
+  if (template.error) return NextResponse.json({ error: template.error.message }, { status: 500 });
+  const row = template.data;
+  if (!row) return NextResponse.json({ error: 'Template not found. Sync templates first.' }, { status: 400 });
+
+  const category = String(row.category || '').toUpperCase();
+  const name = String(row.template_name || '').toLowerCase();
+  if (category.includes('AUTH') || name.includes('otp') || name.startsWith('auth_')) {
+    return NextResponse.json({ error: 'OTP / authentication templates cannot be sent in bulk' }, { status: 400 });
+  }
+  const metaStatus = String(row.meta?.status || '').toUpperCase();
+  if (metaStatus && metaStatus !== 'APPROVED') {
+    return NextResponse.json({ error: `Template is ${metaStatus}. Only approved templates can be sent.` }, { status: 400 });
+  }
+  if (!metaStatus && row.is_active === false) {
+    return NextResponse.json({ error: 'Template is not active' }, { status: 400 });
+  }
+
+  const members = await loadSegmentContactIds(db, segmentId);
+  if (members.error) {
+    if (tablesMissing(members.error)) return missingResponse();
+    return NextResponse.json({ error: members.error.message }, { status: 500 });
+  }
+  const contactIds = members.ids;
+  if (!contactIds.length) return NextResponse.json({ error: 'This segment has no contacts' }, { status: 400 });
+
+  const contacts = await selectIn(db, 'wa_bulk_contacts', 'id, phone, name', 'id', contactIds);
+  if (contacts.error) return NextResponse.json({ error: contacts.error.message }, { status: 500 });
+  const people = (contacts.data || []) as Array<{ id: string; phone: string; name: string | null }>;
+
+  const last10s = Array.from(new Set(people.map((person) => person.phone.slice(-10))));
+  const dnd = await selectIn(db, 'whatsapp_dnd_numbers', 'phone_last10', 'phone_last10', last10s);
+  const blocked = new Set<string>(
+    dnd.error ? [] : (dnd.data || []).map((item: { phone_last10: string }) => String(item.phone_last10)),
+  );
+
+  const campaignName = String(body?.name || '').trim().slice(0, 80) || templateName;
+  const buttonMap = Array.isArray(body?.button_map)
+    ? body.button_map
+        .map((item: any) => ({
+          text: String(item?.text || '').trim().slice(0, 40),
+          action: item?.action === 'create_lead' ? 'create_lead' : 'ignore',
+          tag: String(item?.tag || item?.text || '').trim().slice(0, 40),
+        }))
+        .filter((item: { text: string }) => item.text)
+    : [];
+  let created = await db
+    .from('wa_bulk_campaigns')
+    .insert({
+      name: campaignName,
+      segment_id: segmentId,
+      template_name: row.template_name,
+      language_code: row.language_code || 'en',
+      body_params: params,
+      button_map: buttonMap,
+      status: 'sending',
+      total: people.length,
+      skipped: people.filter((person) => blocked.has(person.phone.slice(-10))).length,
+      created_by: userId,
+    })
+    .select('id, template_name, language_code, body_params, total, skipped')
+    .maybeSingle();
+  if (created.error && /button_map/i.test(created.error.message || '')) {
+    const { button_map: _ignored, ...withoutMap } = {
+      name: campaignName,
+      segment_id: segmentId,
+      template_name: row.template_name,
+      language_code: row.language_code || 'en',
+      body_params: params,
+      button_map: buttonMap,
+      status: 'sending',
+      total: people.length,
+      skipped: people.filter((person) => blocked.has(person.phone.slice(-10))).length,
+      created_by: userId,
+    };
+    created = await db
+      .from('wa_bulk_campaigns')
+      .insert(withoutMap)
+      .select('id, template_name, language_code, body_params, total, skipped')
+      .maybeSingle();
+  }
+  if (created.error || !created.data) {
+    return NextResponse.json({ error: created.error?.message || 'Could not start campaign' }, { status: 500 });
+  }
+
+  const recipients = people.map((person) => {
+    const skip = blocked.has(person.phone.slice(-10));
+    return {
+      campaign_id: created.data.id,
+      phone: person.phone,
+      name: person.name,
+      status: skip ? 'skipped' : 'pending',
+      error: skip ? 'Do not disturb' : null,
+    };
+  });
+
+  for (let index = 0; index < recipients.length; index += 500) {
+    const inserted = await db.from('wa_bulk_recipients').insert(recipients.slice(index, index + 500));
+    if (inserted.error) return NextResponse.json({ error: inserted.error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    success: true,
+    campaign: created.data,
+    pending: recipients.filter((row) => row.status === 'pending').length,
+  });
+}
+
+async function sendBatch(db: any, userId: string, actorName: string, role: string, body: any) {
+  const campaignId = String(body?.campaign_id || '').trim();
+  if (!campaignId) return NextResponse.json({ error: 'Campaign id is required' }, { status: 400 });
+
+  const campaign = await db
+    .from('wa_bulk_campaigns')
+    .select('id, template_name, language_code, body_params, status')
+    .eq('id', campaignId)
+    .maybeSingle();
+  if (campaign.error) return NextResponse.json({ error: campaign.error.message }, { status: 500 });
+  if (!campaign.data) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+  if (campaign.data.status === 'completed') {
+    return NextResponse.json({ success: true, done: true, sent_now: 0, failed_now: 0, pending: 0 });
+  }
+
+  const pending = await db
+    .from('wa_bulk_recipients')
+    .select('id, phone, name')
+    .eq('campaign_id', campaignId)
+    .eq('status', 'pending')
+    .limit(BATCH_SIZE);
+  if (pending.error) return NextResponse.json({ error: pending.error.message }, { status: 500 });
+
+  const rows = (pending.data || []) as Array<{ id: string; phone: string; name: string | null }>;
+  const params = Array.isArray(campaign.data.body_params) ? campaign.data.body_params.map((value: unknown) => String(value ?? '')) : [];
+  const fieldLookup = await db.from('wa_bulk_contacts').select('phone, fields').in('phone', rows.map((row) => row.phone));
+  const fieldsByPhone = new Map<string, Record<string, string>>(
+    (fieldLookup.data || []).map((row: { phone: string; fields?: Record<string, string> }) => [row.phone, row.fields || {}]),
+  );
+  let rateLimited = false;
+
+  for (let index = 0; index < rows.length; index += 5) {
+    if (rateLimited) break;
+    const slice = rows.slice(index, index + 5);
+    await Promise.all(
+      slice.map(async (row) => {
+        if (rateLimited) return;
+        const filled = fillParams(params, row.name || '', fieldsByPhone.get(row.phone) || {});
+        const result = await sendTemplateMessage({
+          phoneNumber: row.phone,
+          templateName: campaign.data.template_name,
+          templateParams: filled,
+          languageCode: campaign.data.language_code || 'en',
+        });
+        const rateHit = /rate limit|130429|80007/i.test(String(result.error || ''));
+        if (rateHit) {
+          rateLimited = true;
+          return;
+        }
+        const now = new Date().toISOString();
+        await db
+          .from('wa_bulk_recipients')
+          .update({
+            status: result.success ? 'sent' : 'failed',
+            error: result.success ? null : result.error || 'Send failed',
+            message_id: result.messageId || null,
+            sent_at: now,
+          })
+          .eq('id', row.id);
+
+        const preview = filled.filter(Boolean).join(', ');
+        await db.from('whatsapp_messages').insert({
+          provider_message_id: result.messageId || null,
+          direction: 'OUTBOUND',
+          message_type: 'TEMPLATE',
+          recipient_phone: row.phone,
+          template_name: campaign.data.template_name,
+          template_language: campaign.data.language_code || 'en',
+          text_body: preview ? `Template: ${campaign.data.template_name} (${preview})` : `Template: ${campaign.data.template_name}`,
+          status: result.success ? 'SENT' : 'FAILED',
+          status_at: now,
+          error_message: result.success ? null : result.error || 'Send failed',
+          payload: { source: 'bulk', response: result.raw || null },
+          meta: { source: 'bulk', campaign_id: campaignId, actor_id: userId, actor_name: actorName, role_code: role },
+          created_by: userId,
+          updated_at: now,
+        });
+      }),
+    );
+  }
+
+  const [sentCount, failedCount, skippedCount, pendingCount] = await Promise.all([
+    db.from('wa_bulk_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'sent'),
+    db.from('wa_bulk_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'failed'),
+    db.from('wa_bulk_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'skipped'),
+    db.from('wa_bulk_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'pending'),
+  ]);
+
+  const pendingLeft = pendingCount.count || 0;
+  const done = pendingLeft === 0 && !rateLimited;
+  await db
+    .from('wa_bulk_campaigns')
+    .update({
+      sent: sentCount.count || 0,
+      failed: failedCount.count || 0,
+      skipped: skippedCount.count || 0,
+      status: done ? 'completed' : 'sending',
+      finished_at: done ? new Date().toISOString() : null,
+    })
+    .eq('id', campaignId);
+
+  return NextResponse.json({
+    success: true,
+    done,
+    rate_limited: rateLimited,
+    sent: sentCount.count || 0,
+    failed: failedCount.count || 0,
+    skipped: skippedCount.count || 0,
+    pending: pendingLeft,
+  });
+}
