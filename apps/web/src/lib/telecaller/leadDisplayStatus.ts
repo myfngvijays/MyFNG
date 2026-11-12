@@ -148,6 +148,7 @@ export function leadDisplayStatus(lead: any): string {
   }
 
   const resultEarly = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+  if (resultEarly === 'FRESH') return 'Fresh';
   if (ringingStuck && (!resultEarly || resultEarly === 'FRESH' || resultEarly === 'RINGING')) {
     return 'Ringing';
   }
@@ -296,6 +297,7 @@ export function adminCrmMappedWorkshopStatus(
 
 export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
   const result = String(lead?.coupon_meta?.last_call_result || '').trim().toUpperCase();
+  if (result === 'FRESH') return 'FRESH';
   if (result === 'COMPLETED') return 'SERVICE_DONE';
   if (
     (!result || result === 'FRESH' || result === 'RINGING') &&
@@ -303,6 +305,7 @@ export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
   ) {
     return 'RINGING';
   }
+  if (result === 'FRESH') return 'FRESH';
   if (result === 'RINGING') return 'RINGING';
   if (result && result !== 'FRESH' && ADMIN_CRM_STATUS_OPTIONS.some((o) => o.id === result)) {
     return result as AdminCrmStatusId;

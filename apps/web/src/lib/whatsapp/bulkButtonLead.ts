@@ -9,6 +9,42 @@ function phone91(raw: string) {
   return `91${last10}`;
 }
 
+export function looksLikeAutoReply(text: string) {
+  return /auto[\s-]?reply|automatic reply|currently unavailable|out of office|will get back|i'?m driving|away from (my )?phone|thank you for (your|the) message|can'?t talk right now|not available right now/i.test(text);
+}
+
+export async function markBulkAutoReply(rawPhone: string, text: string) {
+  const phone = phone91(rawPhone);
+  const body = String(text || '').trim();
+  if (!phone || !looksLikeAutoReply(body)) return { matched: false };
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { matched: false };
+  const db = supabaseAdmin as any;
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const last10 = phone.slice(-10);
+  const recipients = await db
+    .from('wa_bulk_recipients')
+    .select('id, phone, sent_at')
+    .eq('status', 'sent')
+    .gte('sent_at', since)
+    .order('sent_at', { ascending: false })
+    .limit(40);
+  const recipient = (recipients.data || []).find((row: { phone?: string }) => String(row.phone || '').replace(/\D/g, '').endsWith(last10));
+  if (!recipient?.id) return { matched: false };
+  const updated = await db.from('wa_bulk_recipients').update({
+    reply_kind: 'auto',
+    reply_button: body.slice(0, 80),
+    replied_at: new Date().toISOString(),
+  }).eq('id', recipient.id);
+  if (updated.error && /reply_kind/i.test(updated.error.message || '')) {
+    await db.from('wa_bulk_recipients').update({
+      reply_button: `Auto replied: ${body}`.slice(0, 80),
+      replied_at: new Date().toISOString(),
+    }).eq('id', recipient.id);
+  }
+  return { matched: true };
+}
+
 export function extractTemplateButtonLabel(inbound: any): string {
   const button = inbound?.button;
   if (button && typeof button === 'object') {
@@ -159,6 +195,19 @@ export async function applyBulkWhatsAppButtonReply(input: {
       // Tagging is extra. The lead row is the part TeleCRM needs.
     }
   }
+  }
+
+  if (!/not\s*interested/i.test(label)) {
+    try {
+      const { markWhatsAppLeadFresh } = await import('@/lib/whatsappBotFlow/executor');
+      await markWhatsAppLeadFresh(phone, {
+        name: String(input.profileName || recipient?.name || ''),
+        button: label,
+        template: templateName,
+      });
+    } catch (error) {
+      console.error('[bulk-button-fresh]', error);
+    }
   }
 
   let flowId: string | null = null;

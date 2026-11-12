@@ -3252,6 +3252,24 @@ async function checkWhatsAppBulk(): Promise<HealthCheck> {
       };
     }
 
+    const customFields = await client.from('wa_bulk_custom_fields').select('id', { count: 'exact', head: true });
+    if (customFields.error && /does not exist|relation|42P01|PGRST205/i.test(customFields.error.message || '')) {
+      return {
+        name: 'WhatsApp Bulk Send',
+        category: 'Notifications',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Upload columns are not saved as custom fields yet',
+        reason: 'Run database/392_whatsapp_bulk_custom_fields.sql so CSV columns and hand-added fields can be stored.',
+        quickFix: {
+          label: 'Open Bulk WhatsApp',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/whatsapp-bulk' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
     return {
       name: 'WhatsApp Bulk Send',
       category: 'Notifications',

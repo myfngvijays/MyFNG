@@ -16,7 +16,7 @@ import {
   ensureWhatsAppInboundServiceLead,
   extractWhatsAppReferral,
 } from '@/lib/whatsappAgents/inboundServiceLead';
-import { applyBulkWhatsAppButtonReply, extractTemplateButtonLabel } from '@/lib/whatsapp/bulkButtonLead';
+import { applyBulkWhatsAppButtonReply, extractTemplateButtonLabel, markBulkAutoReply } from '@/lib/whatsapp/bulkButtonLead';
 import { continueWaitingBotFlow } from '@/lib/whatsappBotFlow/executor';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 
@@ -442,6 +442,9 @@ export async function POST(request: NextRequest) {
               profileName,
             });
             campaignBotHandled = Boolean(bulkButton?.flowStarted || bulkButton?.flowId);
+            if (!extractTemplateButtonLabel(inbound) && textBody) {
+              await markBulkAutoReply(senderPhone, textBody);
+            }
           } catch (bulkButtonError: any) {
             console.error('[whatsapp-webhook] bulk button lead failed:', bulkButtonError?.message || bulkButtonError);
           }

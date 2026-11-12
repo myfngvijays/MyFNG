@@ -50,18 +50,6 @@ function getAdminDb() {
   return supabaseAdmin;
 }
 
-async function latestLeadByPhone(db: any, phone10: string) {
-  const { data } = await db
-    .from('service_leads')
-    .select('id, lead_number, coupon_meta, status, customer_name, customer_phone, vehicle_number, lead_source, created_from, service_type')
-    .or(`customer_phone.ilike.%${phone10}%`)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data || null;
-}
-
 async function pushLeadToTelecrm(db: any, lead: Record<string, any>, tag?: string) {
   const { pushServiceLeadToTeleCRM } = await import('@/lib/booking-telecrm-sync');
   await pushServiceLeadToTeleCRM(
@@ -103,8 +91,21 @@ async function freshOrCreateLead(
     };
   };
 
-  const existing = await latestLeadByPhone(db, phone10);
-  if (!existing?.id) {
+  const historyNote = {
+    status: wanted,
+    label: wanted === 'FRESH' ? 'Fresh' : wanted.replace(/_/g, ' '),
+    at: now,
+    summary: `WhatsApp ${button || 'reply'}`,
+  };
+  const { data: matches } = await db
+    .from('service_leads')
+    .select('id, lead_number, coupon_meta, status, customer_name, customer_phone, vehicle_number, lead_source, created_from, service_type')
+    .or(`customer_phone.ilike.%${phone10}%`)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const existingRows = matches || [];
+  if (!existingRows.length) {
     const inserted = await db
       .from('service_leads')
       .insert({
@@ -129,20 +130,33 @@ async function freshOrCreateLead(
     return { lead: inserted.data, created: true };
   }
 
-  const prev =
-    existing.coupon_meta && typeof existing.coupon_meta === 'object' && !Array.isArray(existing.coupon_meta)
-      ? (existing.coupon_meta as Record<string, unknown>)
-      : {};
-  const patch: Record<string, unknown> = {
-    coupon_meta: metaFor(prev),
-    updated_at: now,
-  };
-  if (pipelineStatus) patch.status = pipelineStatus;
-  if (carNumber && (!existing.vehicle_number || existing.vehicle_number === 'NA')) {
-    patch.vehicle_number = carNumber.slice(0, 20);
+  let first: Record<string, unknown> | null = null;
+  for (const existing of existingRows) {
+    const prev =
+      existing.coupon_meta && typeof existing.coupon_meta === 'object' && !Array.isArray(existing.coupon_meta)
+        ? (existing.coupon_meta as Record<string, unknown>)
+        : {};
+    const history = Array.isArray(prev.profile_history) ? prev.profile_history : [];
+    const nextMeta = metaFor(prev);
+    nextMeta.profile_history = [historyNote, ...history].slice(0, 30);
+    const patch: Record<string, unknown> = {
+      coupon_meta: nextMeta,
+      updated_at: now,
+    };
+    if (pipelineStatus) patch.status = pipelineStatus;
+    if (carNumber && (!existing.vehicle_number || existing.vehicle_number === 'NA')) {
+      patch.vehicle_number = carNumber.slice(0, 20);
+    }
+    await db.from('service_leads').update(patch).eq('id', existing.id);
+    if (!first) first = { ...existing, ...patch, customer_phone: existing.customer_phone || phone10 };
   }
-  await db.from('service_leads').update(patch).eq('id', existing.id);
-  return { lead: { ...existing, ...patch, customer_phone: existing.customer_phone || phone10 }, created: false };
+  return { lead: first, created: false };
+}
+
+export async function markWhatsAppLeadFresh(phone: string, extra: Record<string, string>) {
+  const local10 = String(phone || '').replace(/\D/g, '').slice(-10);
+  if (local10.length !== 10) return null;
+  return freshOrCreateLead(getAdminDb(), local10, extra, 'FRESH', '');
 }
 
 export async function loadPublishedFlowById(flowId: string): Promise<LoadedFlow | null> {

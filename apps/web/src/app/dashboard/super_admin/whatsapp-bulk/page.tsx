@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 type Contact = { id: string; phone: string; name: string | null; created_at: string; upload_id?: string | null; fields?: Record<string, string> | null };
-type Segment = { id: string; name: string; created_at: string; contact_count: number };
+type Segment = { id: string; name: string; created_at: string; contact_count: number; description?: string | null; condition_count?: number | null };
 type Upload = { id: string; label: string; added: number; created_at: string };
 type Campaign = {
   id: string;
@@ -30,7 +31,9 @@ type Template = {
   meta?: { status?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; text?: string; buttons?: WaButton[] }> } } | null;
 };
 type ButtonAction = { text: string; action: 'create_lead' | 'ignore'; tag: string };
-type Tab = 'contacts' | 'segments' | 'templates' | 'campaign';
+type Tab = 'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'campaign' | 'results';
+type AudienceRow = { id: string; name: string | null; phone: string; status: string; reply_button: string | null; reply_kind?: string | null; delivery_status?: string | null; sent_at: string | null; replied_at: string | null };
+type CustomField = { id: string; field_key: string; title: string; description: string; field_type: string; created_at: string };
 
 function statusOf(template: Template) {
   return String(template.meta?.status || (template.is_active === false ? 'DISABLED' : 'APPROVED')).toUpperCase();
@@ -54,6 +57,76 @@ function statusTone(status: string) {
   if (status === 'APPROVED') return 'bg-emerald-100 text-emerald-700';
   if (status === 'REJECTED' || status === 'DISABLED' || status === 'PAUSED') return 'bg-orange-100 text-orange-700';
   return 'bg-amber-100 text-amber-800';
+}
+
+const SAMPLE_CAMPAIGN_ID = 'sample-10k-whatsapp';
+
+const SAMPLE_REPORT = {
+  sample: true,
+  campaign: {
+    id: SAMPLE_CAMPAIGN_ID,
+    name: '10k WhatsApp blast (sample)',
+    template_name: 'service_button_test',
+    status: 'COMPLETED',
+  },
+  audience: 10000,
+  sent: 862,
+  delivered: 806,
+  read: 444,
+  replied: 30,
+  auto: 86,
+  failed: 9138,
+  skipped: 0,
+  pending: 0,
+  rates: { sent: 8.6, delivered: 8.1, read: 4.4, replied: 0.3, auto: 0.9, failed: 91.4, skipped: 0 },
+  replies: [
+    { button: 'Book service', count: 17, percent: 56.7 },
+    { button: 'Not interested', count: 10, percent: 33.3 },
+    { button: 'Interested', count: 3, percent: 10 },
+  ],
+};
+
+const SAMPLE_NAMES = ['Rahul', 'Priya', 'Amit', 'Sneha', 'Vikram', 'Anjali', 'Rohit', 'Pooja', 'Karan', 'Neha', 'Arjun', 'Kavita', 'Suresh', 'Meera', 'Imran', 'Divya'];
+const SAMPLE_REPLIES = ['Book service', 'Not interested', 'Interested'] as const;
+
+function sampleCount(view: string) {
+  if (view === 'sent') return SAMPLE_REPORT.sent;
+  if (view === 'delivered') return SAMPLE_REPORT.delivered;
+  if (view === 'read') return SAMPLE_REPORT.read;
+  if (view === 'replied') return SAMPLE_REPORT.replied;
+  if (view === 'auto') return SAMPLE_REPORT.auto;
+  if (view === 'failed') return SAMPLE_REPORT.failed;
+  return SAMPLE_REPORT.audience;
+}
+
+function sampleAudience(view: string): AudienceRow[] {
+  const sentAt = '2026-11-12T11:00:00.000Z';
+  const rows: AudienceRow[] = [];
+  const total = view === 'replied' ? 16 : 24;
+  for (let index = 0; index < total; index += 1) {
+    const auto = view === 'auto' || (view === 'all' && index >= 2 && index <= 3);
+    const reply = auto ? 'Thanks, I will reply when I am free.' : view === 'replied' ? SAMPLE_REPLIES[index % SAMPLE_REPLIES.length] : null;
+    const failed = !auto && (view === 'failed' || (view === 'all' && index > 3));
+    const read = view === 'read' || view === 'replied' || (view === 'delivered' && index % 2 === 0);
+    const delivered = !failed && (view === 'delivered' || view === 'read' || view === 'replied' || view === 'sent');
+    rows.push({
+      id: `sample-${view}-${index}`,
+      name: SAMPLE_NAMES[index % SAMPLE_NAMES.length],
+      phone: `91${String(9800001000 + index)}`,
+      status: failed ? 'failed' : 'sent',
+      reply_button: reply,
+      reply_kind: auto ? 'auto' : null,
+      delivery_status: auto ? 'AUTO' : failed ? 'FAILED' : read ? 'READ' : delivered ? 'DELIVERED' : 'SENT',
+      sent_at: failed ? null : sentAt,
+      replied_at: reply ? '2026-11-12T11:20:00.000Z' : null,
+    });
+  }
+  return rows;
+}
+
+function hasReplyButtons(template: Template) {
+  const buttons = template.meta?.raw?.components?.find((item) => String(item.type || '').toUpperCase() === 'BUTTONS')?.buttons || [];
+  return buttons.some((button) => button.text && !/URL|PHONE|OTP|COPY/.test(String(button.type || 'QUICK_REPLY').toUpperCase()));
 }
 
 function partsOf(template: Template | null) {
@@ -84,6 +157,60 @@ function fillBody(body: string, params: string[]) {
     output = output.replaceAll(`{{${index + 1}}}`, value.replace(/\{\{\s*name\s*\}\}/gi, 'Rahul') || `{{${index + 1}}}`);
   });
   return output;
+}
+
+const PIE_COLORS = ['#0f766e', '#f97316', '#1d4ed8', '#7c3aed', '#e11d48', '#0891b2'];
+
+function dayLabel(iso: string) {
+  return new Date(iso).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
+}
+
+function ResultCharts({ report }: { report: { sent: number; delivered: number; read: number; replied: number; auto?: number; failed: number; replies?: Array<{ button: string; count: number; percent: number }> } }) {
+  const bars = [
+    { name: 'Sent', value: report.sent, fill: '#2563eb' },
+    { name: 'Delivered', value: report.delivered, fill: '#0891b2' },
+    { name: 'Read', value: report.read, fill: '#059669' },
+    { name: 'Replied', value: report.replied, fill: '#4f46e5' },
+    { name: 'Auto', value: report.auto || 0, fill: '#7c3aed' },
+    { name: 'Failed', value: report.failed, fill: '#d97706' },
+  ];
+  const slices = (report.replies || []).filter((row) => row.count > 0);
+  return (
+    <div className="grid gap-4 lg:grid-cols-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-3">
+        <p className="text-sm font-semibold text-slate-800">Delivery</p>
+        <div className="mt-2 h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={bars} barSize={28}>
+              <CartesianGrid stroke="#eef2f7" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{ fill: '#f8fafc' }} />
+              <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                {bars.map((bar) => <Cell key={bar.name} fill={bar.fill} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
+        <p className="text-sm font-semibold text-slate-800">Button replies</p>
+        <div className="mt-2 h-64">
+          {slices.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={slices} dataKey="count" nameKey="button" innerRadius={48} outerRadius={78} paddingAngle={2}>
+                  {slices.map((slice, index) => <Cell key={slice.button} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} iconSize={8} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p className="pt-16 text-center text-sm text-slate-400">No button replies yet.</p>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PhonePreview({
@@ -123,12 +250,18 @@ function PhonePreview({
 }
 
 export default function BulkWhatsAppPage() {
-  const [tab, setTab] = useState<Tab>('contacts');
+  const [tab, setTab] = useState<Tab>('dashboard');
+  const [demo, setDemo] = useState(false);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [contactTotal, setContactTotal] = useState(0);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [fieldOpen, setFieldOpen] = useState(false);
+  const [fieldTitle, setFieldTitle] = useState('');
+  const [fieldDescription, setFieldDescription] = useState('');
+  const [fieldType, setFieldType] = useState('STRING');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredTotal, setFilteredTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -147,8 +280,14 @@ export default function BulkWhatsAppPage() {
   const [to, setTo] = useState('');
   const [uploadId, setUploadId] = useState('');
   const [segmentName, setSegmentName] = useState('');
+  const [segmentQuery, setSegmentQuery] = useState('');
+  const [segmentEditor, setSegmentEditor] = useState<{ id: string; name: string; description: string; condition_count: number } | null>(null);
 
   const [report, setReport] = useState<any>(null);
+  const [audience, setAudience] = useState<AudienceRow[]>([]);
+  const [audienceTotal, setAudienceTotal] = useState(0);
+  const [audienceView, setAudienceView] = useState('all');
+  const [audienceOpen, setAudienceOpen] = useState(false);
   const [leadFrom, setLeadFrom] = useState('');
   const [leadTo, setLeadTo] = useState('');
   const [leadStatus, setLeadStatus] = useState('ALL');
@@ -185,6 +324,7 @@ export default function BulkWhatsAppPage() {
     setCampaigns(bulk.campaigns || []);
     setContactTotal(bulk.contact_total || 0);
     setTemplates(Array.isArray(templateJson.templates) ? templateJson.templates : []);
+    setCustomFields(Array.isArray(bulk.custom_fields) ? bulk.custom_fields : []);
   }, []);
 
   const loadContacts = useCallback(async (nextPage = page) => {
@@ -250,16 +390,48 @@ export default function BulkWhatsAppPage() {
   const visibleTemplates = useMemo(() => {
     const q = templateQuery.trim().toLowerCase();
     return templates.filter((template) => {
+      if (!hasReplyButtons(template)) return false;
       if (!q) return true;
       return `${template.display_name || ''} ${template.template_name} ${template.body_text || ''}`.toLowerCase().includes(q);
     });
   }, [templateQuery, templates]);
 
+  function openSampleReport() {
+    setReport(SAMPLE_REPORT);
+    setAudienceOpen(false);
+    setAudience([]);
+    setTab('results');
+  }
+
   async function openReport(id: string) {
+    if (id === SAMPLE_CAMPAIGN_ID) {
+      openSampleReport();
+      return;
+    }
     const response = await fetch(`/api/super_admin/whatsapp-bulk?section=campaign&id=${encodeURIComponent(id)}`);
     const json = await response.json();
     if (!response.ok) throw new Error(json.error || 'Could not load campaign');
     setReport(json.report);
+    setAudienceOpen(false);
+    setTab('results');
+  }
+
+  async function openAudience(view = audienceView) {
+    if (!report?.campaign?.id) return;
+    if (report.campaign.id === SAMPLE_CAMPAIGN_ID) {
+      setAudienceView(view);
+      setAudienceOpen(true);
+      setAudience(sampleAudience(view));
+      setAudienceTotal(sampleCount(view));
+      return;
+    }
+    setAudienceView(view);
+    setAudienceOpen(true);
+    const response = await fetch(`/api/super_admin/whatsapp-bulk?section=audience&id=${encodeURIComponent(report.campaign.id)}&view=${encodeURIComponent(view)}`);
+    const json = await response.json();
+    if (!response.ok) throw new Error(json.error || 'Could not load audience');
+    setAudience(json.rows || []);
+    setAudienceTotal(json.total || 0);
   }
 
   async function post(payload: Record<string, unknown>) {
@@ -295,7 +467,9 @@ export default function BulkWhatsAppPage() {
       setNotice(
         result.fields_saved === false
           ? `${result.added} numbers saved in “${result.upload_label}”. Car number and address were not stored yet. Run database/391_whatsapp_bulk_fields_and_button_flows.sql, then upload again.`
-          : `${result.added} numbers saved in “${result.upload_label}”.`,
+          : result.custom_fields_ready === false
+            ? `${result.added} numbers saved. Run database/392_whatsapp_bulk_custom_fields.sql so the columns become custom fields.`
+            : `${result.added} numbers saved in “${result.upload_label}”.${result.field_titles?.length ? ` Fields: ${result.field_titles.join(', ')}.` : ''}`,
       );
       setPaste('');
       setFileName('');
@@ -394,6 +568,46 @@ export default function BulkWhatsAppPage() {
 
   const approved = chosen ? statusOf(chosen) === 'APPROVED' : false;
   const pages = Math.max(1, Math.ceil(filteredTotal / 40));
+  const contactSeries = useMemo(() => {
+    if (demo && !uploads.length) {
+      return [
+        { day: '18 Oct', contacts: 120 },
+        { day: '21 Oct', contacts: 80 },
+        { day: '25 Oct', contacts: 40 },
+        { day: '29 Oct', contacts: 10000 },
+        { day: '31 Oct', contacts: 260 },
+        { day: '03 Nov', contacts: 90 },
+        { day: '10 Nov', contacts: 40 },
+      ];
+    }
+    const byDay = new Map<string, number>();
+    uploads.forEach((upload) => {
+      const day = dayLabel(upload.created_at);
+      byDay.set(day, (byDay.get(day) || 0) + Number(upload.added || 0));
+    });
+    return Array.from(byDay.entries()).map(([day, contacts]) => ({ day, contacts }));
+  }, [demo, uploads]);
+  const campaignSeries = useMemo(() => {
+    if (demo && !campaigns.length) {
+      return [
+        { day: '18 Oct', campaigns: 0, receivers: 0 },
+        { day: '29 Oct', campaigns: 1, receivers: 10000 },
+        { day: '10 Nov', campaigns: 1, receivers: 10000 },
+      ];
+    }
+    const byDay = new Map<string, { campaigns: number; receivers: number }>();
+    campaigns.forEach((campaign) => {
+      const day = dayLabel(campaign.created_at);
+      const current = byDay.get(day) || { campaigns: 0, receivers: 0 };
+      current.campaigns += 1;
+      current.receivers += Number(campaign.total || campaign.sent || 0);
+      byDay.set(day, current);
+    });
+    return Array.from(byDay.entries()).map(([day, row]) => ({ day, ...row }));
+  }, [campaigns, demo]);
+  const dashboardContacts = contactTotal + (demo && !contactTotal ? 10000 : 0);
+  const dashboardReceivers = campaigns.reduce((sum, campaign) => sum + Number(campaign.total || 0), 0) + (demo && !campaigns.length ? 10000 : 0);
+  const dashboardCampaigns = campaigns.length + (demo && !campaigns.length ? 1 : 0);
 
   return (
     <div className="min-h-screen bg-[#f4f7fb]">
@@ -401,36 +615,56 @@ export default function BulkWhatsAppPage() {
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#004AAD]">WhatsApp · +91 95949 96161</p>
-            <h1 className="mt-1 text-2xl font-bold text-gray-900">Bulk campaigns</h1>
-            <p className="mt-1 max-w-2xl text-sm text-gray-600">
-              Upload a batch, filter it into a segment, preview the template, send a test, then map reply buttons into TeleCRM leads.
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Bulk campaigns</h1>
+            <p className="mt-1 max-w-2xl text-sm text-slate-500">
+              Contacts, fields, segments, and campaign results for +91 95949 96161.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            {[
-              ['Contacts', contactTotal],
-              ['Segments', segments.length],
-              ['Templates', templates.length],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-xl border bg-[#f8fbff] px-4 py-2">
-                <p className="text-lg font-bold text-gray-900">{loading ? '–' : value}</p>
-                <p className="text-[11px] font-medium uppercase text-gray-500">{label}</p>
-              </div>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                ['Contacts', contactTotal],
+                ['Segments', segments.length],
+                ['Templates', templates.length],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="min-w-[72px] rounded-xl border border-slate-200 bg-white px-3 py-1.5">
+                  <p className="text-sm font-semibold text-slate-800">{loading ? '–' : value}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setDemo((on) => {
+                  if (on) {
+                    setReport(null);
+                    setAudienceOpen(false);
+                  }
+                  return !on;
+                });
+              }}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold ${demo ? 'border border-slate-300 text-slate-700' : 'bg-[#004AAD] text-white'}`}
+            >
+              {demo ? 'Remove demo' : 'Load demo data'}
+            </button>
           </div>
         </div>
         <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
           {([
+            ['dashboard', 'Dashboard'],
             ['contacts', 'Contacts'],
+            ['fields', 'Fields'],
             ['segments', 'Segments'],
             ['templates', 'Templates'],
             ['campaign', 'Create campaign'],
+            ['results', 'Campaign results'],
           ] as Array<[Tab, string]>).map(([id, label]) => (
             <button
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className={`border-b-2 px-4 py-3 text-sm font-semibold ${tab === id ? 'border-[#004AAD] text-[#004AAD]' : 'border-transparent text-gray-500'}`}
+              className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold ${tab === id ? 'border-[#004AAD] text-[#004AAD]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
             >
               {label}
             </button>
@@ -449,6 +683,136 @@ export default function BulkWhatsAppPage() {
         ) : null}
         {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
         {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}
+
+        {tab === 'dashboard' ? (
+          <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Contacts overview</p>
+                    <p className="mt-3 text-xs uppercase tracking-wide text-slate-400">Total contacts</p>
+                    <p className="text-xl font-semibold tracking-tight text-slate-950">{loading ? '–' : dashboardContacts.toLocaleString('en-IN')}</p>
+                  </div>
+                  {demo && !uploads.length ? <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">Demo</span> : null}
+                </div>
+                <div className="mt-4 h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={contactSeries}>
+                      <CartesianGrid stroke="#eef2f7" vertical={false} />
+                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="contacts" name="New contacts" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Campaign overview</p>
+                    <p className="mt-3 text-xs uppercase tracking-wide text-slate-400">Total campaigns</p>
+                    <p className="text-xl font-semibold tracking-tight text-slate-950">{dashboardCampaigns.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400 sm:mt-7">Total receivers</p>
+                    <p className="text-xl font-semibold tracking-tight text-slate-950">{dashboardReceivers.toLocaleString('en-IN')}</p>
+                  </div>
+                </div>
+                <div className="mt-4 h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={campaignSeries}>
+                      <CartesianGrid stroke="#eef2f7" vertical={false} />
+                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
+                      <Line type="monotone" dataKey="campaigns" name="Campaigns" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="receivers" name="Receivers" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+              <section className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-slate-800">Last send</p>
+                  <div className="mt-3 space-y-2">
+                    {(demo && !campaigns.length ? [
+                      ['Sent', 862, 8.6],
+                      ['Delivered', 806, 8.1],
+                      ['Read', 444, 4.4],
+                      ['Replied', 30, 0.3],
+                      ['Auto replied', 86, 0.9],
+                      ['Failed', 9138, 91.4],
+                    ] : [
+                      ['Sent', campaigns[0]?.sent || 0, 0],
+                      ['Failed', campaigns[0]?.failed || 0, 0],
+                    ]).map(([label, value]) => (
+                      <div key={String(label)}>
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>{label}</span>
+                          <span>{Number(value).toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 rounded-full bg-slate-100">
+                          <div className="h-1.5 rounded-full bg-[#004AAD]" style={{ width: `${Math.min(100, Math.max(2, (Number(value) / (demo && !campaigns.length ? 10000 : Math.max(campaigns[0]?.total || 1, 1))) * 100))}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {!demo && !campaigns.length ? <p className="mt-3 text-xs text-slate-400">Load demo data, or launch a campaign.</p> : null}
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-slate-800">Button replies</p>
+                  <div className="mt-3 space-y-2">
+                    {(demo ? SAMPLE_REPORT.replies : []).map((row) => (
+                      <div key={row.button} className="flex items-center justify-between text-xs text-slate-600">
+                        <span>{row.button}</span>
+                        <span className="font-medium text-slate-800">{row.count} · {row.percent}%</span>
+                      </div>
+                    ))}
+                    {!demo ? <p className="text-xs text-slate-400">Replies show after a campaign, or when demo data is loaded.</p> : null}
+                  </div>
+                  <p className="mt-4 text-sm font-semibold text-slate-800">Recent uploads</p>
+                  <div className="mt-2 space-y-1">
+                    {uploads.slice(0, 4).map((upload) => (
+                      <p key={upload.id} className="text-xs text-slate-600">{upload.label} · {upload.added}</p>
+                    ))}
+                    {!uploads.length ? <p className="text-xs text-slate-400">No uploads yet.</p> : null}
+                  </div>
+                </div>
+              </section>
+            </div>
+            <aside className="space-y-3">
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-slate-800">Quick links</p>
+                <div className="mt-3 space-y-2">
+                  {([
+                    ['contacts', 'Contacts', 'Upload numbers and extra columns'],
+                    ['fields', 'Fields', 'Columns from the CSV'],
+                    ['segments', 'Segments', 'Groups for a campaign'],
+                    ['templates', 'Templates', 'Button templates only'],
+                    ['campaign', 'Campaigns', 'Test send, then launch'],
+                    ['results', 'Results', 'Sent, read, replies, charts'],
+                  ] as Array<[Tab, string, string]>).map(([id, label, hint]) => (
+                    <button key={id} type="button" onClick={() => setTab(id)} className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-left hover:border-[#004AAD]/30">
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-800">{label}</span>
+                        <span className="block text-xs text-slate-500">{hint}</span>
+                      </span>
+                      <span className="text-xs font-semibold text-[#004AAD]">Open</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section className="rounded-2xl bg-[#0b3f91] p-4 text-white shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-blue-100">Connected number</p>
+                <p className="mt-1 text-lg font-semibold">+91 95949 96161</p>
+                <p className="mt-2 text-sm text-blue-100">{segments.length} segments · {customFields.length} fields · {templates.filter(hasReplyButtons).length} button templates</p>
+              </section>
+            </aside>
+          </div>
+        ) : null}
 
         {tab === 'contacts' ? (
           <div className="space-y-4">
@@ -656,20 +1020,104 @@ export default function BulkWhatsAppPage() {
           </div>
         ) : null}
 
+        {tab === 'fields' ? (
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-950">Custom fields</h2>
+                <p className="text-sm text-gray-500">Columns in the first upload are created here. Add more by hand.</p>
+              </div>
+              <button type="button" onClick={() => setFieldOpen(true)} className="rounded-lg bg-[#004AAD] px-4 py-2 text-sm font-semibold text-white">Add custom field</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  <tr>
+                    <th className="px-5 py-3">Type</th>
+                    <th className="py-3">Title</th>
+                    <th className="py-3">Field ID</th>
+                    <th className="py-3">Created on</th>
+                    <th className="py-3">Description</th>
+                    <th className="py-3 pr-5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customFields.map((field) => (
+                    <tr key={field.id} className="border-t border-slate-100">
+                      <td className="px-5 py-3"><span className="rounded bg-sky-50 px-2 py-1 text-[11px] font-bold text-sky-700">{field.field_type}</span></td>
+                      <td className="py-3 font-medium text-gray-900">{field.title}</td>
+                      <td className="py-3 font-mono text-xs text-gray-600">{field.field_key}</td>
+                      <td className="py-3 text-gray-600">{new Date(field.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                      <td className="py-3 text-gray-600">{field.description || '—'}</td>
+                      <td className="py-3 pr-5 text-right">
+                        <button type="button" className="text-xs font-semibold text-red-600" onClick={() => void post({ action: 'delete_field', id: field.id }).then(loadHome).catch((err) => setError(err?.message || 'Could not delete field'))}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!customFields.length ? <p className="px-5 py-10 text-center text-sm text-gray-500">No fields yet. Upload a CSV with extra columns, or add one.</p> : null}
+            </div>
+          </section>
+        ) : null}
+
         {tab === 'segments' ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {segments.map((segment) => (
-              <article key={segment.id} className="rounded-2xl border bg-white p-4 shadow-sm">
-                <h3 className="font-semibold text-gray-900">{segment.name}</h3>
-                <p className="mt-1 text-sm text-gray-500">{segment.contact_count} contacts · {new Date(segment.created_at).toLocaleDateString('en-IN')}</p>
-                <div className="mt-4 flex gap-3 text-sm font-semibold">
-                  <button type="button" className="text-[#004AAD]" onClick={() => { setSendSegment(segment.id); setTab('campaign'); }}>Use in campaign</button>
-                  <button type="button" className="text-red-600" onClick={() => void post({ action: 'delete_segment', id: segment.id }).then(loadHome)}>Delete</button>
-                </div>
-              </article>
-            ))}
-            {!segments.length ? <p className="text-sm text-gray-500">Filter contacts and create a segment from that set.</p> : null}
-          </div>
+          <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
+              <input
+                value={segmentQuery}
+                onChange={(event) => setSegmentQuery(event.target.value)}
+                placeholder="Search Segments With Title ..."
+                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm sm:max-w-xs"
+              />
+              <div className="flex gap-2 sm:ml-auto">
+                <button type="button" onClick={() => void loadHome()} className="rounded-md bg-[#2f6bff] px-3 py-2 text-sm font-semibold text-white">Refresh</button>
+                <button type="button" onClick={() => setSegmentEditor({ id: '', name: '', description: '', condition_count: 1 })} className="rounded-md bg-[#2f6bff] px-3 py-2 text-sm font-semibold text-white">+ Add New Segment</button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead>
+                  <tr className="border-y border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    <th className="px-5 py-3 font-semibold">Title</th>
+                    <th className="py-3 text-center font-semibold">Conditions</th>
+                    <th className="py-3 text-right font-semibold">Contacts</th>
+                    <th className="px-6 py-3 font-semibold">Created on</th>
+                    <th className="py-3 font-semibold">Description</th>
+                    <th className="py-3 pr-5 text-right font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {segments.filter((segment) => segment.name.toLowerCase().includes(segmentQuery.trim().toLowerCase())).map((segment, index) => {
+                    const when = new Date(segment.created_at);
+                    return (
+                      <tr key={segment.id} className={index % 2 ? 'bg-[#f7f9fc]' : 'bg-white'}>
+                        <td className="px-5 py-4 text-slate-700">{segment.name}</td>
+                        <td className="py-4 text-center">
+                          <span className="inline-flex min-w-6 items-center justify-center rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{segment.condition_count ?? 1}</span>
+                        </td>
+                        <td className="py-4 text-right font-medium text-rose-500">{(segment.contact_count || 0).toLocaleString('en-IN')}</td>
+                        <td className="px-6 py-4 text-slate-500">
+                          <span className="block">{when.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          <span className="block text-xs">{when.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}</span>
+                        </td>
+                        <td className="py-4 text-slate-500">{segment.description || segment.name}</td>
+                        <td className="py-4 pr-5 text-right">
+                          <button type="button" aria-label="Edit segment" className="mr-2 text-[#2f6bff]" onClick={() => setSegmentEditor({ id: segment.id, name: segment.name, description: segment.description || segment.name, condition_count: segment.condition_count ?? 1 })}>
+                            <svg viewBox="0 0 24 24" className="inline h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                          </button>
+                          <button type="button" aria-label="Delete segment" className="text-rose-400" onClick={() => void post({ action: 'delete_segment', id: segment.id }).then(loadHome)}>
+                            <svg viewBox="0 0 24 24" className="inline h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {!segments.length ? <p className="px-5 py-10 text-center text-sm text-slate-400">No segments yet. Add one, or save a contact filter as a segment.</p> : null}
+            </div>
+          </section>
         ) : null}
 
         {tab === 'templates' ? (
@@ -725,7 +1173,7 @@ export default function BulkWhatsAppPage() {
                 </tbody>
               </table>
             </div>
-            {!visibleTemplates.length ? <p className="px-4 py-8 text-center text-sm text-gray-500">No templates yet. Sync them from the template studio.</p> : null}
+            {!visibleTemplates.length ? <p className="px-4 py-8 text-center text-sm text-gray-500">No button templates yet. Bulk send uses only templates that have reply buttons.</p> : null}
           </section>
         ) : null}
 
@@ -753,7 +1201,7 @@ export default function BulkWhatsAppPage() {
                 Template
                 <select value={templateName} onChange={(event) => setTemplateName(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
                   <option value="">Choose an approved template</option>
-                  {templates.map((template) => (
+                  {templates.filter(hasReplyButtons).map((template) => (
                     <option key={template.template_name} value={template.template_name} disabled={statusOf(template) !== 'APPROVED'}>
                       {template.display_name || template.template_name} · {statusOf(template)}
                     </option>
@@ -812,57 +1260,207 @@ export default function BulkWhatsAppPage() {
             </section>
             <aside className="space-y-4">
               {chosen ? <PhonePreview template={chosen} params={params} /> : <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">Pick a template to see the WhatsApp preview, including buttons.</div>}
-              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+              <button type="button" onClick={() => setTab('results')} className="w-full rounded-2xl border bg-white p-4 text-left shadow-sm">
                 <h3 className="font-semibold text-gray-900">Campaign results</h3>
-                <div className="mt-2 divide-y">
-                  {campaigns.map((campaign) => (
-                    <button key={campaign.id} type="button" className="block w-full py-3 text-left text-sm" onClick={() => void openReport(campaign.id).catch((err) => setError(err?.message || 'Could not load campaign'))}>
-                      <p className="font-medium text-gray-900">{campaign.name || campaign.template_name}</p>
-                      <p className="text-gray-500">{campaign.status} · sent {campaign.sent} · failed {campaign.failed} · skipped {campaign.skipped} / {campaign.total}</p>
-                      {campaign.status !== 'completed' ? (
-                        <span className="mt-1 inline-block text-sm font-semibold text-[#004AAD]" onClick={(event) => { event.stopPropagation(); void launch(campaign.id); }}>Continue</span>
-                      ) : null}
-                    </button>
-                  ))}
-                  {!campaigns.length ? <p className="py-3 text-sm text-gray-500">No campaigns yet.</p> : null}
-                </div>
-                {report ? (
-                  <div className="mt-3 border-t pt-3">
-                    <p className="text-sm font-semibold text-gray-900">{report.campaign?.name || report.campaign?.template_name}</p>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {[
-                        ['Sent', report.sent, report.rates?.sent],
-                        ['Delivered', report.delivered, report.rates?.delivered],
-                        ['Read', report.read, report.rates?.read],
-                        ['Replied', report.replied, report.rates?.replied],
-                        ['Failed', report.failed, report.rates?.failed],
-                        ['Skipped', report.skipped, report.rates?.skipped],
-                      ].map(([label, value, rate]) => (
-                        <div key={String(label)} className="rounded-lg bg-[#f8fbff] px-2 py-2">
-                          <p className="text-[11px] uppercase text-gray-500">{label}</p>
-                          <p className="text-lg font-bold text-gray-900">{value}</p>
-                          <p className="text-xs text-[#004AAD]">{rate}% of {report.audience}</p>
-                        </div>
-                      ))}
-                    </div>
-                    {report.replies?.length ? (
-                      <div className="mt-3 space-y-1">
-                        <p className="text-xs font-semibold uppercase text-gray-500">Replies by button</p>
-                        {report.replies.map((row: { button: string; count: number; percent: number }) => (
-                          <div key={row.button} className="flex items-center justify-between text-sm">
-                            <span>{row.button}</span>
-                            <span className="font-semibold">{row.count} · {row.percent}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : <p className="mt-3 text-xs text-gray-500">No button replies yet. Delivered and read update as WhatsApp reports them.</p>}
-                  </div>
-                ) : null}
-              </div>
+                <p className="mt-1 text-sm text-gray-500">Open sent, delivered, read, failed, and button replies.</p>
+              </button>
             </aside>
           </div>
         ) : null}
+
+        {tab === 'results' ? (
+          <div className="space-y-4">
+            {!report ? (
+              <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                <div className="border-b px-4 py-3">
+                  <h2 className="font-semibold text-gray-900">Campaign results</h2>
+                  <p className="text-sm text-gray-500">Open a campaign to see sent, delivered, read, replies, and failed numbers.</p>
+                </div>
+                <div className="divide-y">
+                  {demo ? (
+                    <button type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50" onClick={openSampleReport}>
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">10k WhatsApp blast (demo)</span>
+                        <span className="block text-xs text-gray-500">service_button_test · 10,000 people</span>
+                      </span>
+                      <span className="text-xs text-gray-600">sent 862 / 10000</span>
+                    </button>
+                  ) : null}
+                  {campaigns.map((campaign) => (
+                    <button key={campaign.id} type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50" onClick={() => void openReport(campaign.id).catch((err) => setError(err?.message || 'Could not load campaign'))}>
+                      <span>
+                        <span className="block font-medium text-gray-900">{campaign.name || campaign.template_name}</span>
+                        <span className="block text-sm text-gray-500">{campaign.template_name} · {campaign.status}</span>
+                      </span>
+                      <span className="text-sm text-gray-600">sent {campaign.sent} / {campaign.total}</span>
+                    </button>
+                  ))}
+                  {!campaigns.length && !demo ? <p className="px-4 py-6 text-sm text-gray-500">No campaigns yet. Load demo data from the top, or launch one.</p> : null}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <button type="button" className="text-sm font-semibold text-[#004AAD]" onClick={() => { setReport(null); setAudienceOpen(false); }}>All campaigns</button>
+                <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-gray-500">{report.campaign?.status || 'Campaign'}</p>
+                      <h2 className="text-lg font-semibold text-gray-900">{report.campaign?.name || report.campaign?.template_name}</h2>
+                      <button type="button" className="mt-1 text-sm font-semibold text-[#004AAD]" onClick={() => void openAudience('all').catch((err) => setError(err?.message || 'Could not load audience'))}>
+                        Template: {report.campaign?.template_name}
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-500">Audience {report.audience}{report.sample ? ' · sample, no messages sent' : ''}</p>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+                    {[
+                      ['all', 'All', report.audience, 100, 'border-t-slate-400'],
+                      ['sent', 'Sent', report.sent, report.rates?.sent, 'border-t-blue-500'],
+                      ['delivered', 'Delivered', report.delivered, report.rates?.delivered, 'border-t-cyan-500'],
+                      ['read', 'Read', report.read, report.rates?.read, 'border-t-emerald-500'],
+                      ['replied', 'Replied', report.replied, report.rates?.replied, 'border-t-indigo-500'],
+                      ['auto', 'Auto replied', report.auto || 0, report.rates?.auto || 0, 'border-t-violet-500'],
+                      ['failed', 'Failed', report.failed, report.rates?.failed, 'border-t-amber-500'],
+                    ].map(([view, label, value, rate, accent]) => (
+                      <button key={String(view)} type="button" onClick={() => void openAudience(String(view)).catch((err) => setError(err?.message || 'Could not load audience'))} className={`rounded-2xl border border-t-4 px-3 py-3 text-left shadow-sm ${accent} ${audienceOpen && audienceView === view ? 'border-[#004AAD] bg-[#f8fbff]' : 'border-slate-200 bg-white'}`}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+                        <p className="mt-1 text-lg font-semibold tracking-tight text-gray-950">{Number(value).toLocaleString('en-IN')}</p>
+                        <p className="text-xs font-medium text-[#004AAD]">{rate}%</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <ResultCharts report={report} />
+                {audienceOpen ? (
+                  <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{report.campaign?.template_name}</h3>
+                        <p className="text-sm text-gray-500">{audienceTotal.toLocaleString('en-IN')} in this view{report.sample ? ' · sample rows, counts are for all 10,000' : ''}</p>
+                      </div>
+                      <button type="button" className="text-sm text-gray-500" onClick={() => setAudienceOpen(false)}>Close</button>
+                    </div>
+                    {report.replies?.length && audienceView === 'replied' ? (
+                      <div className="grid gap-2 border-b px-4 py-3 sm:grid-cols-3">
+                        {report.replies.map((row: { button: string; count: number; percent: number }) => (
+                          <div key={row.button} className="rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-sm font-medium text-gray-900">{row.button}</p>
+                            <p className="text-xs text-gray-500">{row.count} · {row.percent}%</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-left text-[11px] uppercase text-gray-500">
+                          <tr>
+                            <th className="px-4 py-2">Name</th>
+                            <th className="px-4 py-2">WhatsApp number</th>
+                            <th className="px-4 py-2">Status</th>
+                            <th className="px-4 py-2">Sent</th>
+                            <th className="px-4 py-2">Reply</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {audience.map((row) => (
+                            <tr key={row.id} className="border-t">
+                              <td className="px-4 py-2">{row.name || '—'}</td>
+                              <td className="px-4 py-2">{row.phone}</td>
+                              <td className="px-4 py-2">
+                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${row.reply_kind === 'auto' ? 'bg-violet-100 text-violet-800' : row.reply_button ? 'bg-indigo-100 text-indigo-800' : row.delivery_status === 'FAILED' || row.status === 'failed' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>
+                                  {row.reply_kind === 'auto' ? 'AUTO REPLIED' : row.reply_button ? 'REPLIED' : row.delivery_status || row.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2">{row.sent_at ? new Date(row.sent_at).toLocaleString('en-IN') : '—'}</td>
+                              <td className="px-4 py-2">{row.reply_button || '—'}</td>
+                            </tr>
+                          ))}
+                          {!audience.length ? <tr><td className="px-4 py-6 text-gray-500" colSpan={5}>No rows in this view.</td></tr> : null}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
+      {segmentEditor ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={() => setSegmentEditor(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-950">{segmentEditor.id ? 'Edit segment' : 'Add new segment'}</h3>
+            <label className="mt-4 block text-xs font-semibold text-gray-500">Title
+              <input value={segmentEditor.name} onChange={(event) => setSegmentEditor({ ...segmentEditor, name: event.target.value })} placeholder="MH-04 combined" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
+            </label>
+            <label className="mt-3 block text-xs font-semibold text-gray-500">Description
+              <input value={segmentEditor.description} onChange={(event) => setSegmentEditor({ ...segmentEditor, description: event.target.value })} placeholder="Delhi batch" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={() => setSegmentEditor(null)}>Cancel</button>
+              <button
+                type="button"
+                disabled={!segmentEditor.name.trim()}
+                className="rounded-lg bg-[#2f6bff] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                onClick={() => {
+                  void post({
+                    action: 'save_segment',
+                    id: segmentEditor.id,
+                    name: segmentEditor.name,
+                    description: segmentEditor.description,
+                    condition_count: segmentEditor.condition_count,
+                  }).then(async () => {
+                    setSegmentEditor(null);
+                    await loadHome();
+                  }).catch((err) => setError(err?.message || 'Could not save segment'));
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {fieldOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={() => setFieldOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-950">Add custom field</h3>
+            <label className="mt-4 block text-xs font-semibold text-gray-500">Title
+              <input value={fieldTitle} onChange={(event) => setFieldTitle(event.target.value)} placeholder="Car number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
+            </label>
+            <label className="mt-3 block text-xs font-semibold text-gray-500">Description
+              <input value={fieldDescription} onChange={(event) => setFieldDescription(event.target.value)} placeholder="Vehicle registration" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
+            </label>
+            <label className="mt-3 block text-xs font-semibold text-gray-500">Field type
+              <select value={fieldType} onChange={(event) => setFieldType(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
+                <option value="STRING">String</option>
+                <option value="NUMBER">Number</option>
+              </select>
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={() => setFieldOpen(false)}>Cancel</button>
+              <button
+                type="button"
+                disabled={!fieldTitle.trim()}
+                className="rounded-lg bg-[#004AAD] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                onClick={() => {
+                  void post({ action: 'save_field', title: fieldTitle, description: fieldDescription, field_type: fieldType })
+                    .then(async () => {
+                      setFieldOpen(false);
+                      setFieldTitle('');
+                      setFieldDescription('');
+                      setFieldType('STRING');
+                      await loadHome();
+                    })
+                    .catch((err) => setError(err?.message || 'Could not save field'));
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {previewTemplate ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={() => setPreviewTemplate(null)}>
           <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>

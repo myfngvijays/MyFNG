@@ -46,6 +46,24 @@ function headerKind(cell: string) {
   return 'field';
 }
 
+async function writeSegment(db: any, input: { name: string; description?: string; condition_count?: number }, id = '') {
+  const row = {
+    name: input.name,
+    description: String(input.description || input.name).slice(0, 180),
+    condition_count: Math.max(0, Number(input.condition_count ?? 1) || 0),
+  };
+  const select = 'id, name, description, condition_count';
+  let saved = id
+    ? await db.from('wa_bulk_segments').update(row).eq('id', id).select(select).maybeSingle()
+    : await db.from('wa_bulk_segments').insert(row).select(select).maybeSingle();
+  if (saved.error && /description|condition_count/i.test(saved.error.message || '')) {
+    saved = id
+      ? await db.from('wa_bulk_segments').update({ name: input.name }).eq('id', id).select('id, name').maybeSingle()
+      : await db.from('wa_bulk_segments').insert({ name: input.name }).select('id, name').maybeSingle();
+  }
+  return saved;
+}
+
 function fieldKey(header: string) {
   return header
     .toLowerCase()
@@ -61,6 +79,7 @@ function parseContactLines(text: string) {
     .filter(Boolean);
   const rows: Array<{ name: string; phone: string; fields: Record<string, string> }> = [];
   const seen = new Set<string>();
+  const samples: Record<string, string[]> = {};
   let nameIndex = -1;
   let phoneIndex = -1;
   let headers: string[] = [];
@@ -84,7 +103,11 @@ function parseContactLines(text: string) {
         if (index === phoneIndex || index === nameIndex) return;
         const key = fieldKey(header);
         const value = String(parts[index] || '').trim();
-        if (key && value) fields[key] = value.slice(0, 180);
+        if (key && value) {
+          fields[key] = value.slice(0, 180);
+          samples[key] = samples[key] || [];
+          if (samples[key].length < 20) samples[key].push(value);
+        }
       });
     } else if (parts.length >= 2) {
       const last = parts[parts.length - 1];
@@ -106,7 +129,17 @@ function parseContactLines(text: string) {
     rows.push({ name: name.slice(0, 80), phone, fields });
     if (rows.length >= MAX_PASTE) break;
   }
-  return rows;
+  const fieldDefs = headers
+    .map((header, index) => ({ header, index, kind: headerKind(header) }))
+    .filter((item) => item.kind === 'field' && phoneIndex >= 0)
+    .map((item) => {
+      const key = fieldKey(item.header);
+      const values = samples[key] || [];
+      const numeric = values.length > 0 && values.every((value) => /^-?\d+(\.\d+)?$/.test(value));
+      return { key, title: item.header.trim().slice(0, 80), field_type: numeric ? 'NUMBER' : 'STRING' };
+    })
+    .filter((item) => item.key);
+  return { rows, fieldDefs };
 }
 
 async function selectIn(db: any, table: string, columns: string, column: string, values: string[]) {
@@ -227,15 +260,22 @@ async function campaignReport(db: any, campaignId: string) {
   if (campaign.error) return { error: campaign.error };
   if (!campaign.data) return { error: { message: 'Campaign not found' } };
 
-  const buckets = { sent: 0, failed: 0, skipped: 0, pending: 0, replied: 0, delivered: 0, read: 0 };
+  const buckets = { sent: 0, failed: 0, skipped: 0, pending: 0, replied: 0, delivered: 0, read: 0, auto: 0 };
   const replies: Record<string, number> = {};
   const messageIds: string[] = [];
   for (let offset = 0; offset < 30000; offset += 1000) {
-    const page = await db
+    let page = await db
       .from('wa_bulk_recipients')
-      .select('status, reply_button, message_id, delivery_status')
+      .select('status, reply_button, message_id, delivery_status, reply_kind')
       .eq('campaign_id', campaignId)
       .range(offset, offset + 999);
+    if (page.error && /reply_kind/i.test(page.error.message || '')) {
+      page = await db
+        .from('wa_bulk_recipients')
+        .select('status, reply_button, message_id, delivery_status')
+        .eq('campaign_id', campaignId)
+        .range(offset, offset + 999);
+    }
     if (page.error && /delivery_status/i.test(page.error.message || '')) {
       const fallback = await db
         .from('wa_bulk_recipients')
@@ -261,7 +301,8 @@ async function campaignReport(db: any, campaignId: string) {
       const status = String(row.status || 'pending');
       if (status === 'sent' || status === 'failed' || status === 'skipped' || status === 'pending') buckets[status] += 1;
       const reply = String(row.reply_button || '').trim();
-      if (reply) {
+      if (String(row.reply_kind || '') === 'auto') buckets.auto += 1;
+      else if (reply) {
         buckets.replied += 1;
         replies[reply] = (replies[reply] || 0) + 1;
       }
@@ -300,6 +341,7 @@ async function campaignReport(db: any, campaignId: string) {
       delivered: pct(buckets.delivered),
       read: pct(buckets.read),
       replied: pct(buckets.replied),
+      auto: pct(buckets.auto),
       failed: pct(buckets.failed),
       skipped: pct(buckets.skipped),
     },
@@ -380,6 +422,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, report });
   }
 
+  if (section === 'audience') {
+    const id = String(params.get('id') || '').trim();
+    if (!id) return NextResponse.json({ error: 'Campaign id is required' }, { status: 400 });
+    const view = String(params.get('view') || 'all').toLowerCase();
+    const page = Math.max(1, Number(params.get('page') || 1));
+    const limit = 40;
+    const from = (page - 1) * limit;
+    let query = db
+      .from('wa_bulk_recipients')
+      .select('id, name, phone, status, reply_button, delivery_status, sent_at, replied_at', { count: 'exact' })
+      .eq('campaign_id', id);
+    if (view === 'sent') query = query.eq('status', 'sent');
+    if (view === 'failed') query = query.eq('status', 'failed');
+    if (view === 'replied') query = query.not('reply_button', 'is', null);
+    if (view === 'delivered') query = query.in('delivery_status', ['DELIVERED', 'VIEWED', 'READ']);
+    if (view === 'read') query = query.in('delivery_status', ['VIEWED', 'READ']);
+    if (view === 'auto') query = query.eq('reply_kind', 'auto');
+    query = query.order('sent_at', { ascending: false }).range(from, from + limit - 1);
+    const rows = await query;
+    if (rows.error && /reply_kind/i.test(rows.error.message || '') && view === 'auto') {
+      return NextResponse.json({ success: true, rows: [], total: 0, page });
+    }
+    if (rows.error && /delivery_status/i.test(rows.error.message || '') && (view === 'delivered' || view === 'read')) {
+      return NextResponse.json({ success: true, rows: [], total: 0, page });
+    }
+    if (rows.error) return NextResponse.json({ error: rows.error.message }, { status: 500 });
+    return NextResponse.json({ success: true, rows: rows.data || [], total: rows.count || 0, page });
+  }
+
   if (section === 'leads') {
     const filters = {
       q: params.get('q') || '',
@@ -439,10 +510,11 @@ export async function GET(request: NextRequest) {
     .select('id, name, template_name, status, total, sent, failed, skipped, button_map, created_at, finished_at')
     .order('created_at', { ascending: false })
     .limit(30);
-  const [totalRes, segmentsRes, uploadsRes] = await Promise.all([
+  const [totalRes, segmentsRes, uploadsRes, fieldsRes] = await Promise.all([
     db.from('wa_bulk_contacts').select('id', { count: 'exact', head: true }),
-    db.from('wa_bulk_segments').select('id, name, created_at').order('created_at', { ascending: false }),
+    db.from('wa_bulk_segments').select('id, name, description, condition_count, created_at').order('created_at', { ascending: false }),
     db.from('wa_bulk_uploads').select('id, label, added, created_at').order('created_at', { ascending: false }).limit(40),
+    db.from('wa_bulk_custom_fields').select('id, field_key, title, description, field_type, created_at').order('created_at', { ascending: true }),
   ]);
   let campaignsRes = await campaignsQuery;
   if (campaignsRes.error && /button_map/i.test(campaignsRes.error.message || '')) {
@@ -452,14 +524,18 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(30);
   }
-  const firstError = totalRes.error || segmentsRes.error || campaignsRes.error;
+  let segmentRows = segmentsRes;
+  if (segmentRows.error && /description|condition_count/i.test(segmentRows.error.message || '')) {
+    segmentRows = await db.from('wa_bulk_segments').select('id, name, created_at').order('created_at', { ascending: false });
+  }
+  const firstError = totalRes.error || segmentRows.error || campaignsRes.error;
   if (firstError) {
     if (tablesMissing(firstError)) return missingResponse();
     return NextResponse.json({ error: firstError.message }, { status: 500 });
   }
 
   const segments = await Promise.all(
-    ((segmentsRes.data || []) as Array<{ id: string; name: string; created_at: string }>).map(async (segment) => {
+    ((segmentRows.data || []) as Array<{ id: string; name: string; created_at: string; description?: string; condition_count?: number }>).map(async (segment) => {
       const count = await db
         .from('wa_bulk_segment_contacts')
         .select('contact_id', { count: 'exact', head: true })
@@ -476,6 +552,8 @@ export async function GET(request: NextRequest) {
     campaigns: (campaignsRes.data || []).map((row: any) => ({ ...row, button_map: row.button_map || [] })),
     uploads: uploadsRes.error ? [] : uploadsRes.data || [],
     uploads_ready: !uploadsRes.error,
+    custom_fields: fieldsRes.error ? [] : fieldsRes.data || [],
+    custom_fields_ready: !fieldsRes.error,
   });
 }
 
@@ -488,7 +566,8 @@ export async function POST(request: NextRequest) {
 
   try {
     if (action === 'add_contacts') {
-      const rows = parseContactLines(String(body?.text || ''));
+      const parsed = parseContactLines(String(body?.text || ''));
+      const rows = parsed.rows;
       if (!rows.length) return NextResponse.json({ error: 'No valid mobile numbers found' }, { status: 400 });
       const label = String(body?.upload_label || '').trim().slice(0, 80) || `Upload ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
       let uploadId = '';
@@ -535,12 +614,34 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      let fieldsCreated = 0;
+      let customFieldsReady = true;
+      if (parsed.fieldDefs.length) {
+        const savedDefs = await db.from('wa_bulk_custom_fields').upsert(
+          parsed.fieldDefs.map((field) => ({
+            field_key: field.key,
+            title: field.title,
+            field_type: field.field_type,
+            description: 'From contact upload',
+          })),
+          { onConflict: 'field_key', ignoreDuplicates: true },
+        );
+        if (savedDefs.error && /does not exist|relation|42P01|PGRST205/i.test(savedDefs.error.message || '')) {
+          customFieldsReady = false;
+        } else if (!savedDefs.error) {
+          fieldsCreated = parsed.fieldDefs.length;
+        }
+      }
+
       return NextResponse.json({
         success: true,
         added: rows.length,
         upload_id: uploadId || null,
         upload_label: label,
         fields_saved: fieldsSaved,
+        fields_created: fieldsCreated,
+        field_titles: parsed.fieldDefs.map((field) => field.title),
+        custom_fields_ready: customFieldsReady,
       });
     }
 
@@ -558,7 +659,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: filtered.error.message }, { status: 500 });
       }
       if (!filtered.ids.length) return NextResponse.json({ error: 'No contacts match this filter' }, { status: 400 });
-      const saved = await db.from('wa_bulk_segments').insert({ name }).select('id, name').maybeSingle();
+      const conditions = [body?.q, body?.from, body?.to, body?.upload_id].filter((value) => String(value || '').trim()).length || 1;
+      const saved = await writeSegment(db, { name, description: String(body?.description || name), condition_count: conditions });
       if (saved.error || !saved.data) return NextResponse.json({ error: saved.error?.message || 'Could not create segment' }, { status: 500 });
       for (let index = 0; index < filtered.ids.length; index += 400) {
         const links = filtered.ids.slice(index, index + 400).map((contactId) => ({
@@ -597,7 +699,8 @@ export async function POST(request: NextRequest) {
       }
       const ids = await selectIn(db, 'wa_bulk_contacts', 'id', 'phone', found.people.map((person) => person.phone));
       if (ids.error) return NextResponse.json({ error: ids.error.message }, { status: 500 });
-      const segment = await db.from('wa_bulk_segments').insert({ name }).select('id, name').maybeSingle();
+      const conditions = [filters.q, filters.from, filters.to, filters.city, filters.source, filters.status && filters.status !== 'ALL' ? filters.status : '', filters.crm && filters.crm !== 'ALL' ? filters.crm : ''].filter((value) => String(value || '').trim()).length || 1;
+      const segment = await writeSegment(db, { name, description: String(body?.description || name), condition_count: conditions });
       if (segment.error || !segment.data) return NextResponse.json({ error: segment.error?.message || 'Could not create segment' }, { status: 500 });
       const contactIds = (ids.data || []).map((row: { id: string }) => row.id);
       for (let index = 0; index < contactIds.length; index += 400) {
@@ -610,6 +713,35 @@ export async function POST(request: NextRequest) {
 
     if (action === 'test_send') {
       return testSend(db, auth.userId, auth.actorName, auth.role, body);
+    }
+
+    if (action === 'save_field') {
+      const title = String(body?.title || '').trim().slice(0, 80);
+      if (!title) return NextResponse.json({ error: 'Field title is required' }, { status: 400 });
+      const key = fieldKey(title);
+      if (!key) return NextResponse.json({ error: 'Field title needs letters or numbers' }, { status: 400 });
+      const fieldType = String(body?.field_type || 'STRING').toUpperCase() === 'NUMBER' ? 'NUMBER' : 'STRING';
+      const saved = await db.from('wa_bulk_custom_fields').upsert({
+        field_key: key,
+        title,
+        description: String(body?.description || '').trim().slice(0, 180),
+        field_type: fieldType,
+      }, { onConflict: 'field_key' }).select('id, field_key, title, description, field_type, created_at').maybeSingle();
+      if (saved.error) {
+        if (/does not exist|relation|42P01|PGRST205/i.test(saved.error.message || '')) {
+          return NextResponse.json({ error: 'Run database/392_whatsapp_bulk_custom_fields.sql in Supabase, then add the field again.' }, { status: 503 });
+        }
+        return NextResponse.json({ error: saved.error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, field: saved.data });
+    }
+
+    if (action === 'delete_field') {
+      const id = String(body?.id || '').trim();
+      if (!id) return NextResponse.json({ error: 'Field id is required' }, { status: 400 });
+      const removed = await db.from('wa_bulk_custom_fields').delete().eq('id', id);
+      if (removed.error) return NextResponse.json({ error: removed.error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
     }
 
     if (action === 'delete_contact') {
@@ -627,9 +759,11 @@ export async function POST(request: NextRequest) {
       const name = String(body?.name || '').trim().slice(0, 80);
       if (!name) return NextResponse.json({ error: 'Segment name is required' }, { status: 400 });
       const id = String(body?.id || '').trim();
-      const saved = id
-        ? await db.from('wa_bulk_segments').update({ name }).eq('id', id).select('id, name').maybeSingle()
-        : await db.from('wa_bulk_segments').insert({ name }).select('id, name').maybeSingle();
+      const saved = await writeSegment(db, {
+        name,
+        description: String(body?.description || name),
+        condition_count: Number(body?.condition_count ?? 1),
+      }, id);
       if (saved.error) {
         if (tablesMissing(saved.error)) return missingResponse();
         return NextResponse.json({ error: saved.error.message }, { status: 500 });

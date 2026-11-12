@@ -1963,9 +1963,15 @@ function SuperAdminBookingsPage() {
           leadMatchesChartBucket(lead, chartDrill.dimension, chartDrill.key, baseFilteredServiceLeads),
         )
       : baseFilteredServiceLeads;
+    const activityTime = (lead: { created_at?: string | null; coupon_meta?: any }) => {
+      const meta = lead.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+      const created = new Date(lead.created_at || 0).getTime();
+      const fresh = new Date(meta.refreshed_at || meta.last_call_at || 0).getTime();
+      return Math.max(created, Number.isFinite(fresh) ? fresh : 0);
+    };
     const sorted = [...rows].sort((a, b) => {
-      const da = new Date(a.created_at || 0).getTime();
-      const db = new Date(b.created_at || 0).getTime();
+      const da = activityTime(a);
+      const db = activityTime(b);
       return listSort === 'oldest' ? da - db : db - da;
     });
     return hideOtpStubsWhenNamedBookingExists(

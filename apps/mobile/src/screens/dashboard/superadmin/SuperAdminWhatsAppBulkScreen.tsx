@@ -17,7 +17,7 @@ import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 type Contact = { id: string; phone: string; name: string | null };
-type Segment = { id: string; name: string; contact_count: number };
+type Segment = { id: string; name: string; contact_count: number; description?: string | null };
 type Upload = { id: string; label: string; added: number };
 type Campaign = { id: string; name?: string | null; template_name: string; status: string; sent: number; failed: number; skipped: number; total: number };
 type Template = {
@@ -30,6 +30,11 @@ type Template = {
   is_active?: boolean;
   meta?: { status?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; text?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
 };
+
+function hasReplyButtons(template: Template) {
+  const buttons = template.meta?.raw?.components?.find((item) => String(item.type || '').toUpperCase() === 'BUTTONS')?.buttons || [];
+  return buttons.some((button) => button.text && !/URL|PHONE|OTP|COPY/.test(String(button.type || 'QUICK_REPLY').toUpperCase()));
+}
 
 function statusOf(template: Template) {
   return String(template.meta?.status || (template.is_active === false ? 'DISABLED' : 'APPROVED')).toUpperCase();
@@ -67,7 +72,11 @@ function variableCount(body: string) {
 
 export default function SuperAdminWhatsAppBulkScreen() {
   const navigation = useNavigation<any>();
-  const [tab, setTab] = useState<'contacts' | 'segments' | 'templates' | 'send'>('contacts');
+  const [tab, setTab] = useState<'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'send' | 'results'>('dashboard');
+  const [demo, setDemo] = useState(false);
+  const [fields, setFields] = useState<Array<{ id: string; title: string; field_key: string; field_type: string }>>([]);
+  const [fieldTitle, setFieldTitle] = useState('');
+  const [report, setReport] = useState<any>(null);
   const [preview, setPreview] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -107,6 +116,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
       setSegments(bulk.segments || []);
       setUploads(bulk.uploads || []);
       setCampaigns(bulk.campaigns || []);
+      setFields(bulk.custom_fields || []);
       setTemplates(Array.isArray(templateJson.templates) ? templateJson.templates : []);
     } catch (err: any) {
       setError(err?.message || 'Could not load');
@@ -217,7 +227,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
       <View style={styles.tabs}>
-        {(['contacts', 'segments', 'templates', 'send'] as const).map((item) => (
+        {(['dashboard', 'contacts', 'fields', 'segments', 'templates', 'send', 'results'] as const).map((item) => (
           <TouchableOpacity key={item} style={[styles.tab, tab === item && styles.tabOn]} onPress={() => setTab(item)}>
             <Text style={[styles.tabText, tab === item && styles.tabTextOn]}>{item}</Text>
           </TouchableOpacity>
@@ -225,6 +235,37 @@ export default function SuperAdminWhatsAppBulkScreen() {
       </View>
       {loading ? <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} /> : (
         <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: 12 }}>
+          {tab === 'dashboard' ? (
+            <>
+              <TouchableOpacity style={styles.primary} onPress={() => setDemo((on) => !on)}>
+                <Text style={styles.primaryText}>{demo ? 'Remove demo' : 'Load demo data'}</Text>
+              </TouchableOpacity>
+              <View style={styles.row}>
+                <Text style={styles.rowTitle}>Contacts</Text>
+                <Text style={styles.hint}>{demo && !contacts.length ? '10,000 demo' : `${contacts.length} on this page`}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.rowTitle}>Campaigns</Text>
+                <Text style={styles.hint}>{demo && !campaigns.length ? '1 demo · 10,000 receivers' : `${campaigns.length} campaigns`}</Text>
+              </View>
+              {demo ? <Text style={styles.hint}>10k demo delivery</Text> : <Text style={styles.hint}>Load demo data to preview delivery.</Text>}
+              {demo ? [
+                ['Sent', 862, '#2563eb'],
+                ['Delivered', 806, '#0891b2'],
+                ['Read', 444, '#059669'],
+                ['Replied', 30, '#4f46e5'],
+                ['Auto replied', 86, '#7c3aed'],
+                ['Failed', 9138, '#d97706'],
+              ].map(([label, value, color]) => (
+                <View key={String(label)} style={styles.row}>
+                  <Text style={styles.rowTitle}>{label}</Text>
+                  <View style={{ height: 8, borderRadius: 99, backgroundColor: '#e2e8f0', marginTop: 6 }}>
+                    <View style={{ height: 8, borderRadius: 99, backgroundColor: String(color), width: `${Math.max(4, Math.round((Number(value) / 10000) * 100))}%` }} />
+                  </View>
+                </View>
+              )) : null}
+            </>
+          ) : null}
           {tab === 'contacts' ? (
             <>
               <Text style={styles.hint}>CSV or one number per line. Extra columns such as car number and address are saved as {'{{car_number}}'} and {'{{address}}'}.</Text>
@@ -270,6 +311,27 @@ export default function SuperAdminWhatsAppBulkScreen() {
               ))}
             </>
           ) : null}
+          {tab === 'fields' ? (
+            <>
+              <Text style={styles.hint}>Columns from a CSV are created here. Add one by title.</Text>
+              <TextInput value={fieldTitle} onChangeText={setFieldTitle} placeholder="Field title, e.g. Car number" style={styles.input} />
+              <TouchableOpacity
+                style={styles.primary}
+                disabled={busy || !fieldTitle.trim()}
+                onPress={() => void post({ action: 'save_field', title: fieldTitle, field_type: 'STRING' }).then(() => { setFieldTitle(''); return load(); }).catch((err) => setError(err?.message || 'Could not save field'))}
+              >
+                <Text style={styles.primaryText}>Add custom field</Text>
+              </TouchableOpacity>
+              {fields.map((field) => (
+                <View key={field.id} style={styles.row}>
+                  <Text style={styles.badge}>{field.field_type}</Text>
+                  <Text style={styles.rowTitle}>{field.title}</Text>
+                  <Text style={styles.hint}>{field.field_key}</Text>
+                </View>
+              ))}
+              {!fields.length ? <Text style={styles.hint}>No fields yet.</Text> : null}
+            </>
+          ) : null}
           {tab === 'segments' ? (
             <>
               <TextInput value={segmentName} onChangeText={setSegmentName} placeholder="Segment name" style={styles.input} />
@@ -283,9 +345,10 @@ export default function SuperAdminWhatsAppBulkScreen() {
               {segments.map((segment) => (
                 <View key={segment.id} style={styles.row}>
                   <Text style={styles.rowTitle}>{segment.name}</Text>
-                  <Text style={styles.hint}>{segment.contact_count} contacts</Text>
+                  <Text style={styles.hint}>{segment.description || segment.name}</Text>
+                  <Text style={{ color: '#f43f5e', fontWeight: '600' }}>{segment.contact_count} contacts</Text>
                   <TouchableOpacity onPress={() => { setSendSegment(segment.id); setTab('send'); }}>
-                    <Text style={styles.link}>Send</Text>
+                    <Text style={styles.link}>Use</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -293,14 +356,14 @@ export default function SuperAdminWhatsAppBulkScreen() {
           ) : null}
           {tab === 'templates' ? (
             <>
-              {templates.map((template) => (
+              {templates.filter(hasReplyButtons).map((template) => (
                 <TouchableOpacity key={`${template.template_name}-${template.language_code}`} style={styles.row} onPress={() => setPreview(template)}>
                   <Text style={styles.badge}>{statusOf(template)}</Text>
                   <Text style={styles.rowTitle}>{template.display_name || template.template_name}</Text>
                   <Text style={styles.hint}>{variableFormat(template)} · {String(template.category || 'UTILITY').toUpperCase()} · {languageLabel(template.language_code)}</Text>
                 </TouchableOpacity>
               ))}
-              {!templates.length ? <Text style={styles.hint}>No templates yet.</Text> : null}
+              {!templates.filter(hasReplyButtons).length ? <Text style={styles.hint}>No button templates yet. Bulk send uses only templates with reply buttons.</Text> : null}
             </>
           ) : null}
           {tab === 'send' ? (
@@ -312,7 +375,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
                 </TouchableOpacity>
               ))}
               <Text style={styles.hint}>Template</Text>
-              {templates.slice(0, 40).map((template) => (
+              {templates.filter(hasReplyButtons).slice(0, 40).map((template) => (
                 <TouchableOpacity key={template.template_name} style={[styles.choice, templateName === template.template_name && styles.choiceOn]} onPress={() => setTemplateName(template.template_name)}>
                   <Text style={styles.rowTitle}>{template.display_name || template.template_name}</Text>
                 </TouchableOpacity>
@@ -366,6 +429,62 @@ export default function SuperAdminWhatsAppBulkScreen() {
                   ) : null}
                 </View>
               ))}
+            </>
+          ) : null}
+          {tab === 'results' ? (
+            <>
+              {demo && !report ? (
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => setReport({
+                    sample: true,
+                    campaign: { name: '10k WhatsApp blast (sample)', template_name: 'service_button_test', status: 'COMPLETED' },
+                    audience: 10000,
+                    sent: 862,
+                    delivered: 806,
+                    read: 444,
+                    replied: 30,
+                    auto: 86,
+                    failed: 9138,
+                    rates: { sent: 8.6, delivered: 8.1, read: 4.4, replied: 0.3, auto: 0.9, failed: 91.4 },
+                    replies: [
+                      { button: 'Book service', count: 17, percent: 56.7 },
+                      { button: 'Not interested', count: 10, percent: 33.3 },
+                      { button: 'Interested', count: 3, percent: 10 },
+                    ],
+                  })}
+                >
+                  <Text style={styles.rowTitle}>10k WhatsApp blast (sample)</Text>
+                  <Text style={styles.hint}>SAMPLE · sent 862 / 10000 · no messages sent</Text>
+                </TouchableOpacity>
+              ) : null}
+              {!report ? campaigns.map((campaign) => (
+                <TouchableOpacity
+                  key={campaign.id}
+                  style={styles.row}
+                  onPress={() => void apiFetch<any>(`/api/super_admin/whatsapp-bulk?section=campaign&id=${encodeURIComponent(campaign.id)}`).then((json) => setReport(json.report)).catch((err) => setError(err?.message || 'Could not load campaign'))}
+                >
+                  <Text style={styles.rowTitle}>{campaign.name || campaign.template_name}</Text>
+                  <Text style={styles.hint}>{campaign.status} · sent {campaign.sent} / {campaign.total}</Text>
+                </TouchableOpacity>
+              )) : (
+                <View style={styles.row}>
+                  <TouchableOpacity onPress={() => setReport(null)}><Text style={styles.link}>All campaigns</Text></TouchableOpacity>
+                  <Text style={styles.rowTitle}>{report.campaign?.name || report.campaign?.template_name}</Text>
+                  <Text style={styles.hint}>Template {report.campaign?.template_name}</Text>
+                  <Text style={styles.hint}>Audience {report.audience}</Text>
+                  <Text style={styles.hint}>Sent {report.sent} ({report.rates?.sent}%)</Text>
+                  <Text style={styles.hint}>Delivered {report.delivered} ({report.rates?.delivered}%)</Text>
+                  <Text style={styles.hint}>Read {report.read} ({report.rates?.read}%)</Text>
+                  <Text style={styles.hint}>Replied {report.replied} ({report.rates?.replied}%)</Text>
+                  <Text style={styles.hint}>Auto replied {report.auto || 0} ({report.rates?.auto || 0}%)</Text>
+                  <Text style={styles.hint}>Failed {report.failed} ({report.rates?.failed}%)</Text>
+                  {(report.replies || []).map((row: { button: string; count: number; percent: number }) => (
+                    <Text key={row.button} style={styles.hint}>{row.button}: {row.count} · {row.percent}%</Text>
+                  ))}
+                </View>
+              )}
+              {!campaigns.length && !report ? <Text style={styles.hint}>No campaigns yet.</Text> : null}
             </>
           ) : null}
         </ScrollView>

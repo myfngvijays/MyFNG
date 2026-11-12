@@ -224,6 +224,7 @@ export function stampFreshOnMeta(meta: Record<string, unknown>): Record<string, 
     ...meta,
     last_call_result: 'FRESH',
     last_call_label: 'Fresh',
+    last_call_at: new Date().toISOString(),
     refreshed_at: new Date().toISOString(),
     refreshed_reason: 'whatsapp_inbound',
   };
