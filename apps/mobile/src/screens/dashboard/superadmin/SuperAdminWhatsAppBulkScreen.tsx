@@ -107,6 +107,9 @@ export default function SuperAdminWhatsAppBulkScreen() {
   const [uploadId, setUploadId] = useState('');
   const [segmentName, setSegmentName] = useState('');
   const [sendSegment, setSendSegment] = useState('');
+  const [campaignName, setCampaignName] = useState('');
+  const [savedCampaignId, setSavedCampaignId] = useState('');
+  const [campaignReady, setCampaignReady] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [params, setParams] = useState<string[]>([]);
   const [buttonMap, setButtonMap] = useState<Array<{ text: string; action: 'create_lead' | 'ignore'; tag: string }>>([]);
@@ -223,22 +226,50 @@ export default function SuperAdminWhatsAppBulkScreen() {
     }
   }
 
+  async function saveCampaignDraft() {
+    setBusy(true);
+    setError('');
+    try {
+      const saved = await post({
+        action: 'save_campaign',
+        campaign_id: savedCampaignId || undefined,
+        name: campaignName || undefined,
+        segment_id: sendSegment,
+        template_name: templateName,
+        params,
+        button_map: buttonMap,
+      });
+      setSavedCampaignId(saved.campaign.id);
+      setCampaignReady(true);
+      setNotice(`Campaign saved. ${saved.campaign.total || 0} contacts. Launch it below.`);
+    } catch (err: any) {
+      setCampaignReady(false);
+      setError(err?.message || 'Could not save campaign');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function sendBulk(existingId?: string) {
     setBusy(true);
     setError('');
     setProgress('Starting…');
+    let startedSending = false;
     try {
       if (needsHeaderImage(chosen) && !headerImageUrl) throw new Error('Upload the header image first.');
-      let campaignId = existingId || '';
-      if (!campaignId) {
+      let campaignId = existingId || savedCampaignId || '';
+      if (!existingId) {
         const started = await post({
           action: 'send_start',
+          campaign_id: savedCampaignId || undefined,
+          name: campaignName || undefined,
           segment_id: sendSegment,
           template_name: templateName,
           params,
           button_map: buttonMap,
         });
         campaignId = started.campaign.id;
+        startedSending = true;
         if (!started.pending) {
           setNotice('Nothing to send. This segment is on DND.');
           await load();
@@ -264,6 +295,10 @@ export default function SuperAdminWhatsAppBulkScreen() {
     } catch (err: any) {
       setError(err?.message || 'Send failed');
     } finally {
+      if (startedSending) {
+        setSavedCampaignId('');
+        setCampaignReady(false);
+      }
       setBusy(false);
     }
   }
@@ -404,15 +439,17 @@ export default function SuperAdminWhatsAppBulkScreen() {
           ) : null}
           {tab === 'send' ? (
             <>
+              <Text style={styles.hint}>Campaign name</Text>
+              <TextInput value={campaignName} onChangeText={(text) => { setCampaignName(text); setCampaignReady(false); }} placeholder="12 Nov interested blast" style={styles.input} />
               <Text style={styles.hint}>Segment</Text>
               {segments.map((segment) => (
-                <TouchableOpacity key={segment.id} style={[styles.choice, sendSegment === segment.id && styles.choiceOn]} onPress={() => setSendSegment(segment.id)}>
+                <TouchableOpacity key={segment.id} style={[styles.choice, sendSegment === segment.id && styles.choiceOn]} onPress={() => { setSendSegment(segment.id); setCampaignReady(false); }}>
                   <Text style={styles.rowTitle}>{segment.name} ({segment.contact_count})</Text>
                 </TouchableOpacity>
               ))}
               <Text style={styles.hint}>Template</Text>
               {templates.filter(hasReplyButtons).slice(0, 40).map((template, index) => (
-                <TouchableOpacity key={template.template_name} style={[styles.choice, templateName === template.template_name && styles.choiceOn]} onPress={() => setTemplateName(template.template_name)}>
+                <TouchableOpacity key={template.template_name} style={[styles.choice, templateName === template.template_name && styles.choiceOn]} onPress={() => { setTemplateName(template.template_name); setCampaignReady(false); }}>
                   <Text style={styles.rowTitle}>{index + 1}. {template.display_name || template.template_name}</Text>
                 </TouchableOpacity>
               ))}
@@ -430,7 +467,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
                 <TouchableOpacity
                   key={item.text}
                   style={[styles.choice, item.action === 'create_lead' && styles.choiceOn]}
-                  onPress={() => setButtonMap((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, action: row.action === 'create_lead' ? 'ignore' : 'create_lead' } : row))}
+                  onPress={() => { setCampaignReady(false); setButtonMap((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, action: row.action === 'create_lead' ? 'ignore' : 'create_lead' } : row)); }}
                 >
                   <Text style={styles.rowTitle}>{item.text}</Text>
                   <Text style={styles.hint}>{item.action === 'create_lead' ? 'Creates a TeleCRM lead' : 'Does nothing'}</Text>
@@ -448,14 +485,19 @@ export default function SuperAdminWhatsAppBulkScreen() {
                 <TextInput
                   key={index}
                   value={value}
-                  onChangeText={(text) => setParams((current) => current.map((item, itemIndex) => (itemIndex === index ? text : item)))}
+                  onChangeText={(text) => { setCampaignReady(false); setParams((current) => current.map((item, itemIndex) => (itemIndex === index ? text : item))); }}
                   placeholder={`{{${index + 1}}}  use {{name}} or {{car_number}}`}
                   style={styles.input}
                 />
               ))}
-              <TouchableOpacity style={styles.primary} disabled={busy || !sendSegment || !templateName} onPress={() => void sendBulk()}>
-                <Text style={styles.primaryText}>{busy ? 'Sending…' : 'Send bulk'}</Text>
+              <TouchableOpacity style={styles.primary} disabled={busy || !sendSegment || !templateName} onPress={() => void saveCampaignDraft()}>
+                <Text style={styles.primaryText}>{busy && !progress ? 'Saving…' : 'Save campaign'}</Text>
               </TouchableOpacity>
+              {campaignReady && savedCampaignId ? (
+                <TouchableOpacity style={styles.primary} disabled={busy} onPress={() => void sendBulk()}>
+                  <Text style={styles.primaryText}>{progress ? 'Sending…' : 'Launch campaign'}</Text>
+                </TouchableOpacity>
+              ) : null}
               {progress ? <Text style={styles.hint}>{progress}</Text> : null}
               {campaigns.map((campaign) => (
                 <View key={campaign.id} style={styles.row}>
@@ -467,7 +509,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
                   }).catch((err) => setError(err?.message || 'Could not load campaign'))}>
                     <Text style={styles.link}>Details</Text>
                   </TouchableOpacity>
-                  {campaign.status !== 'completed' ? (
+                  {campaign.status === 'sending' ? (
                     <TouchableOpacity disabled={busy} onPress={() => void sendBulk(campaign.id)}>
                       <Text style={styles.link}>Continue</Text>
                     </TouchableOpacity>

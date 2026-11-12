@@ -307,6 +307,8 @@ export default function BulkWhatsAppPage() {
   const [leadTotal, setLeadTotal] = useState<number | null>(null);
   const [leadName, setLeadName] = useState('');
   const [campaignName, setCampaignName] = useState('');
+  const [savedCampaignId, setSavedCampaignId] = useState('');
+  const [campaignReady, setCampaignReady] = useState(false);
   const [sendSegment, setSendSegment] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templateQuery, setTemplateQuery] = useState('');
@@ -597,16 +599,43 @@ export default function BulkWhatsAppPage() {
     }
   }
 
+  async function saveCampaignDraft() {
+    setBusy(true);
+    setError('');
+    try {
+      const saved = await post({
+        action: 'save_campaign',
+        campaign_id: savedCampaignId || undefined,
+        name: campaignName || undefined,
+        segment_id: sendSegment,
+        template_name: templateName,
+        params,
+        button_map: buttonMap,
+      });
+      setSavedCampaignId(saved.campaign.id);
+      setCampaignReady(true);
+      setNotice(`Campaign saved. ${saved.campaign.total || 0} contacts. Launch it below when you are ready.`);
+      await loadHome();
+    } catch (err: any) {
+      setCampaignReady(false);
+      setError(err?.message || 'Could not save campaign');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function launch(existingId?: string) {
     setBusy(true);
     setError('');
     setProgress('Preparing campaign…');
+    let startedSending = false;
     try {
       if (needsImage && !headerImageUrl) throw new Error('Upload the header image first.');
-      let campaignId = existingId || '';
-      if (!campaignId) {
+      let campaignId = existingId || savedCampaignId || '';
+      if (!existingId) {
         const started = await post({
           action: 'send_start',
+          campaign_id: savedCampaignId || undefined,
           name: campaignName || undefined,
           segment_id: sendSegment,
           template_name: templateName,
@@ -614,6 +643,7 @@ export default function BulkWhatsAppPage() {
           button_map: buttonMap,
         });
         campaignId = started.campaign.id;
+        startedSending = true;
         if (!started.pending) {
           setNotice('Nothing to send. This segment is on DND.');
           await loadHome();
@@ -630,6 +660,10 @@ export default function BulkWhatsAppPage() {
           setNotice('WhatsApp slowed the send. Use Continue in a minute.');
           break;
         }
+        if (batch.stopped) {
+          setNotice(`Sending stopped. ${batch.sent || 0} had already gone out.`);
+          break;
+        }
         if (batch.done || batch.pending === 0) {
           setNotice(`Campaign finished. Sent ${batch.sent}, failed ${batch.failed}, skipped ${batch.skipped}.`);
           await openReport(campaignId);
@@ -640,6 +674,10 @@ export default function BulkWhatsAppPage() {
     } catch (err: any) {
       setError(err?.message || 'Campaign failed');
     } finally {
+      if (startedSending) {
+        setSavedCampaignId('');
+        setCampaignReady(false);
+      }
       setBusy(false);
       setProgress('');
     }
@@ -1215,7 +1253,7 @@ export default function BulkWhatsAppPage() {
                             type="button"
                             disabled={status !== 'APPROVED'}
                             className="ml-2 rounded-lg border border-[#004AAD] px-2 py-1 text-xs font-semibold text-[#004AAD] disabled:opacity-40"
-                            onClick={(event) => { event.stopPropagation(); setTemplateName(template.template_name); setTab('campaign'); }}
+                            onClick={(event) => { event.stopPropagation(); setTemplateName(template.template_name); setCampaignReady(false); setTab('campaign'); }}
                           >
                             Use
                           </button>
@@ -1235,15 +1273,15 @@ export default function BulkWhatsAppPage() {
             <section className="space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Create campaign</h2>
-                <p className="text-sm text-gray-500">Segment, template, test number, then the real send.</p>
+                <p className="text-sm text-gray-500">Save the campaign first. Launch shows up underneath after it is saved.</p>
               </div>
               <label className="block text-xs font-semibold text-gray-500">
                 Campaign name
-                <input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} placeholder="12 Nov interested blast" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
+                <input value={campaignName} onChange={(event) => { setCampaignName(event.target.value); setCampaignReady(false); }} placeholder="12 Nov interested blast" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900" />
               </label>
               <label className="block text-xs font-semibold text-gray-500">
                 Segment
-                <select value={sendSegment} onChange={(event) => setSendSegment(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
+                <select value={sendSegment} onChange={(event) => { setSendSegment(event.target.value); setCampaignReady(false); }} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
                   <option value="">Choose a segment</option>
                   {segments.map((segment) => (
                     <option key={segment.id} value={segment.id}>{segment.name} · {segment.contact_count}</option>
@@ -1252,7 +1290,7 @@ export default function BulkWhatsAppPage() {
               </label>
               <label className="block text-xs font-semibold text-gray-500">
                 Template
-                <select value={templateName} onChange={(event) => setTemplateName(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
+                <select value={templateName} onChange={(event) => { setTemplateName(event.target.value); setCampaignReady(false); }} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
                   <option value="">Choose an approved template</option>
                   {templates.filter(hasReplyButtons).map((template, index) => (
                     <option key={template.template_name} value={template.template_name} disabled={statusOf(template) !== 'APPROVED'}>
@@ -1283,7 +1321,7 @@ export default function BulkWhatsAppPage() {
                 <div className="space-y-2">
                   <p className="text-xs text-gray-500">Use {'{{name}}'}, {'{{car_number}}'}, {'{{address}}'}, or any extra column from the file.</p>
                   {params.map((value, index) => (
-                    <input key={index} value={value} onChange={(event) => setParams((current) => current.map((item, itemIndex) => (itemIndex === index ? event.target.value : item)))} placeholder={`{{${index + 1}}}`} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    <input key={index} value={value} onChange={(event) => { setCampaignReady(false); setParams((current) => current.map((item, itemIndex) => (itemIndex === index ? event.target.value : item))); }} placeholder={`{{${index + 1}}}`} className="w-full rounded-lg border px-3 py-2 text-sm" />
                   ))}
                 </div>
               ) : null}
@@ -1297,7 +1335,7 @@ export default function BulkWhatsAppPage() {
                         <div className="rounded-lg border bg-white px-3 py-2 text-sm font-medium">{item.text}</div>
                         <select
                           value={item.action}
-                          onChange={(event) => setButtonMap((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, action: event.target.value as ButtonAction['action'] } : row))}
+                          onChange={(event) => { setCampaignReady(false); setButtonMap((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, action: event.target.value as ButtonAction['action'] } : row)); }}
                           className="rounded-lg border bg-white px-2 py-2 text-sm"
                         >
                           <option value="create_lead">Create TeleCRM lead</option>
@@ -1305,7 +1343,7 @@ export default function BulkWhatsAppPage() {
                         </select>
                         <input
                           value={item.tag}
-                          onChange={(event) => setButtonMap((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, tag: event.target.value } : row))}
+                          onChange={(event) => { setCampaignReady(false); setButtonMap((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, tag: event.target.value } : row)); }}
                           placeholder="Lead tag"
                           className="rounded-lg border bg-white px-3 py-2 text-sm"
                         />
@@ -1324,9 +1362,27 @@ export default function BulkWhatsAppPage() {
                   </button>
                 </div>
               </div>
-              <button type="button" disabled={busy || !sendSegment || !approved} onClick={() => void launch()} className="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-                {busy ? 'Working…' : 'Launch campaign'}
-              </button>
+              <div className="space-y-3">
+                <button type="button" disabled={busy || !sendSegment || !templateName} onClick={() => void saveCampaignDraft()} className="rounded-lg bg-[#004AAD] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                  {busy && !progress ? 'Saving…' : 'Save campaign'}
+                </button>
+                {campaignReady && savedCampaignId ? (
+                  <div>
+                    <button type="button" disabled={busy || !approved} onClick={() => void launch()} className="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                      {progress ? 'Working…' : 'Launch campaign'}
+                    </button>
+                  </div>
+                ) : null}
+                {progress ? (
+                  <button
+                    type="button"
+                    onClick={() => void post({ action: 'stop_campaign' }).then(() => setNotice('Stopping the send…')).catch((err) => setError(err?.message || 'Could not stop'))}
+                    className="rounded-lg bg-red-600 px-5 py-2.5 text-sm font-semibold text-white"
+                  >
+                    Stop sending
+                  </button>
+                ) : null}
+              </div>
               {progress ? <p className="text-sm text-gray-600">{progress}</p> : null}
             </section>
             <aside className="space-y-4">
@@ -1541,7 +1597,7 @@ export default function BulkWhatsAppPage() {
             <button
               type="button"
               disabled={statusOf(previewTemplate) !== 'APPROVED'}
-              onClick={() => { setTemplateName(previewTemplate.template_name); setPreviewTemplate(null); setTab('campaign'); }}
+              onClick={() => { setTemplateName(previewTemplate.template_name); setCampaignReady(false); setPreviewTemplate(null); setTab('campaign'); }}
               className="mt-4 w-full rounded-lg bg-[#004AAD] py-2 text-sm font-semibold text-white disabled:opacity-40"
             >
               Use in campaign

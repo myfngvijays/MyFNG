@@ -888,8 +888,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    if (action === 'save_campaign') return saveCampaign(db, auth.userId, body);
     if (action === 'send_start') return startCampaign(db, auth.userId, body);
     if (action === 'send_batch') return sendBatch(db, auth.userId, auth.actorName, auth.role, body);
+    if (action === 'stop_campaign') return stopCampaign(db, body);
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error: any) {
@@ -952,10 +954,99 @@ async function testSend(db: any, userId: string, actorName: string, role: string
   return NextResponse.json({ success: true, message_id: result.messageId || null });
 }
 
-async function startCampaign(db: any, userId: string, body: any) {
+function campaignButtonMap(body: any) {
+  return Array.isArray(body?.button_map)
+    ? body.button_map
+        .map((item: any) => ({
+          text: String(item?.text || '').trim().slice(0, 40),
+          action: item?.action === 'create_lead' ? 'create_lead' : 'ignore',
+          tag: String(item?.tag || item?.text || '').trim().slice(0, 40),
+        }))
+        .filter((item: { text: string }) => item.text)
+    : [];
+}
+
+async function saveCampaign(db: any, userId: string, body: any) {
   const segmentId = String(body?.segment_id || '').trim();
   const templateName = String(body?.template_name || '').trim();
   const params = Array.isArray(body?.params) ? body.params.map((value: unknown) => String(value ?? '')) : [];
+  if (!segmentId || !templateName) {
+    return NextResponse.json({ error: 'Segment and template are required' }, { status: 400 });
+  }
+
+  const template = await db
+    .from('whatsapp_templates')
+    .select('template_name, language_code')
+    .ilike('template_name', templateName)
+    .maybeSingle();
+  if (template.error) return NextResponse.json({ error: template.error.message }, { status: 500 });
+  if (!template.data) return NextResponse.json({ error: 'Template not found. Sync templates first.' }, { status: 400 });
+
+  const members = await loadSegmentContactIds(db, segmentId);
+  if (members.error) {
+    if (tablesMissing(members.error)) return missingResponse();
+    return NextResponse.json({ error: members.error.message }, { status: 500 });
+  }
+
+  const payload = {
+    name: String(body?.name || '').trim().slice(0, 80) || template.data.template_name,
+    segment_id: segmentId,
+    template_name: template.data.template_name,
+    language_code: template.data.language_code || 'en',
+    body_params: params,
+    button_map: campaignButtonMap(body),
+    status: 'draft',
+    total: members.ids.length,
+  };
+
+  const existingId = String(body?.campaign_id || '').trim();
+  if (existingId) {
+    const current = await db.from('wa_bulk_campaigns').select('id, status').eq('id', existingId).maybeSingle();
+    if (current.error) return NextResponse.json({ error: current.error.message }, { status: 500 });
+    if (current.data?.status === 'draft') {
+      const updated = await db.from('wa_bulk_campaigns').update(payload).eq('id', existingId).select('id, name, status, total').maybeSingle();
+      if (updated.error || !updated.data) return NextResponse.json({ error: updated.error?.message || 'Could not save campaign' }, { status: 500 });
+      return NextResponse.json({ success: true, campaign: updated.data });
+    }
+  }
+
+  const created = await db
+    .from('wa_bulk_campaigns')
+    .insert({ ...payload, created_by: userId })
+    .select('id, name, status, total')
+    .maybeSingle();
+  if (created.error || !created.data) {
+    return NextResponse.json({ error: created.error?.message || 'Could not save campaign' }, { status: 500 });
+  }
+  return NextResponse.json({ success: true, campaign: created.data });
+}
+
+async function startCampaign(db: any, userId: string, body: any) {
+  const existingId = String(body?.campaign_id || '').trim();
+  let existing: any = null;
+  if (existingId) {
+    const loaded = await db
+      .from('wa_bulk_campaigns')
+      .select('id, status, segment_id, template_name, name, body_params, button_map')
+      .eq('id', existingId)
+      .maybeSingle();
+    if (loaded.error) return NextResponse.json({ error: loaded.error.message }, { status: 500 });
+    if (!loaded.data) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+    existing = loaded.data;
+    if (existing.status === 'completed' || existing.status === 'stopped') {
+      return NextResponse.json({ error: 'This campaign has already finished.' }, { status: 400 });
+    }
+    if (existing.status === 'sending') {
+      const pending = await db.from('wa_bulk_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', existingId).eq('status', 'pending');
+      return NextResponse.json({ success: true, campaign: existing, pending: pending.count || 0 });
+    }
+  }
+
+  const segmentId = String(body?.segment_id || existing?.segment_id || '').trim();
+  const templateName = String(body?.template_name || existing?.template_name || '').trim();
+  const params = Array.isArray(body?.params)
+    ? body.params.map((value: unknown) => String(value ?? ''))
+    : (Array.isArray(existing?.body_params) ? existing.body_params.map((value: unknown) => String(value ?? '')) : []);
   if (!segmentId || !templateName) {
     return NextResponse.json({ error: 'Segment and template are required' }, { status: 400 });
   }
@@ -1000,53 +1091,35 @@ async function startCampaign(db: any, userId: string, body: any) {
     dnd.error ? [] : (dnd.data || []).map((item: { phone_last10: string }) => String(item.phone_last10)),
   );
 
-  const campaignName = String(body?.name || '').trim().slice(0, 80) || templateName;
-  const buttonMap = Array.isArray(body?.button_map)
-    ? body.button_map
-        .map((item: any) => ({
-          text: String(item?.text || '').trim().slice(0, 40),
-          action: item?.action === 'create_lead' ? 'create_lead' : 'ignore',
-          tag: String(item?.tag || item?.text || '').trim().slice(0, 40),
-        }))
-        .filter((item: { text: string }) => item.text)
-    : [];
-  let created = await db
-    .from('wa_bulk_campaigns')
-    .insert({
-      name: campaignName,
-      segment_id: segmentId,
-      template_name: row.template_name,
-      language_code: row.language_code || 'en',
-      body_params: params,
-      button_map: buttonMap,
-      status: 'sending',
-      total: people.length,
-      skipped: people.filter((person) => blocked.has(person.phone.slice(-10))).length,
-      created_by: userId,
-    })
-    .select('id, template_name, language_code, body_params, total, skipped')
-    .maybeSingle();
+  const campaignName = String(body?.name || existing?.name || '').trim().slice(0, 80) || templateName;
+  const buttonMap = Array.isArray(body?.button_map) ? campaignButtonMap(body) : (Array.isArray(existing?.button_map) ? existing.button_map : []);
+  const campaignRow = {
+    name: campaignName,
+    segment_id: segmentId,
+    template_name: row.template_name,
+    language_code: row.language_code || 'en',
+    body_params: params,
+    button_map: buttonMap,
+    status: 'sending',
+    total: people.length,
+    skipped: people.filter((person) => blocked.has(person.phone.slice(-10))).length,
+  };
+  let created = existing
+    ? await db.from('wa_bulk_campaigns').update(campaignRow).eq('id', existing.id).select('id, template_name, language_code, body_params, total, skipped').maybeSingle()
+    : await db.from('wa_bulk_campaigns').insert({ ...campaignRow, created_by: userId }).select('id, template_name, language_code, body_params, total, skipped').maybeSingle();
   if (created.error && /button_map/i.test(created.error.message || '')) {
-    const { button_map: _ignored, ...withoutMap } = {
-      name: campaignName,
-      segment_id: segmentId,
-      template_name: row.template_name,
-      language_code: row.language_code || 'en',
-      body_params: params,
-      button_map: buttonMap,
-      status: 'sending',
-      total: people.length,
-      skipped: people.filter((person) => blocked.has(person.phone.slice(-10))).length,
-      created_by: userId,
-    };
-    created = await db
-      .from('wa_bulk_campaigns')
-      .insert(withoutMap)
-      .select('id, template_name, language_code, body_params, total, skipped')
-      .maybeSingle();
+    const { button_map: _ignored, ...withoutMap } = campaignRow;
+    created = existing
+      ? await db.from('wa_bulk_campaigns').update(withoutMap).eq('id', existing.id).select('id, template_name, language_code, body_params, total, skipped').maybeSingle()
+      : await db.from('wa_bulk_campaigns').insert({ ...withoutMap, created_by: userId }).select('id, template_name, language_code, body_params, total, skipped').maybeSingle();
   }
   if (created.error || !created.data) {
     return NextResponse.json({ error: created.error?.message || 'Could not start campaign' }, { status: 500 });
+  }
+
+  if (existing) {
+    const cleared = await db.from('wa_bulk_recipients').delete().eq('campaign_id', created.data.id);
+    if (cleared.error) return NextResponse.json({ error: cleared.error.message }, { status: 500 });
   }
 
   const recipients = people.map((person) => {
@@ -1083,8 +1156,18 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
     .maybeSingle();
   if (campaign.error) return NextResponse.json({ error: campaign.error.message }, { status: 500 });
   if (!campaign.data) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
-  if (campaign.data.status === 'completed') {
-    return NextResponse.json({ success: true, done: true, sent_now: 0, failed_now: 0, pending: 0 });
+  if (campaign.data.status === 'draft') {
+    return NextResponse.json({ error: 'This campaign is saved. Use Launch campaign to start sending.' }, { status: 400 });
+  }
+  if (campaign.data.status === 'completed' || campaign.data.status === 'stopped') {
+    return NextResponse.json({
+      success: true,
+      done: true,
+      stopped: campaign.data.status === 'stopped',
+      sent_now: 0,
+      failed_now: 0,
+      pending: 0,
+    });
   }
 
   const templateRow = await db
@@ -1172,14 +1255,16 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
   ]);
 
   const pendingLeft = pendingCount.count || 0;
-  const done = pendingLeft === 0 && !rateLimited;
+  const latest = await db.from('wa_bulk_campaigns').select('status').eq('id', campaignId).maybeSingle();
+  const stopped = String(latest.data?.status || '') === 'stopped';
+  const done = stopped || (pendingLeft === 0 && !rateLimited);
   await db
     .from('wa_bulk_campaigns')
     .update({
       sent: sentCount.count || 0,
       failed: failedCount.count || 0,
       skipped: skippedCount.count || 0,
-      status: done ? 'completed' : 'sending',
+      status: stopped ? 'stopped' : done ? 'completed' : 'sending',
       finished_at: done ? new Date().toISOString() : null,
     })
     .eq('id', campaignId);
@@ -1187,10 +1272,31 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
   return NextResponse.json({
     success: true,
     done,
+    stopped,
     rate_limited: rateLimited,
     sent: sentCount.count || 0,
     failed: failedCount.count || 0,
     skipped: skippedCount.count || 0,
-    pending: pendingLeft,
+    pending: stopped ? 0 : pendingLeft,
   });
+}
+
+async function stopCampaign(db: any, body: any) {
+  const campaignId = String(body?.campaign_id || '').trim();
+  let lookup = db.from('wa_bulk_campaigns').select('id, sent').in('status', ['sending', 'stopped']);
+  if (campaignId) lookup = lookup.eq('id', campaignId);
+  const found = await lookup;
+  if (found.error) return NextResponse.json({ error: found.error.message }, { status: 500 });
+  const ids = (found.data || []).map((row: { id: string }) => row.id);
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    await db.from('wa_bulk_recipients').update({ status: 'skipped', error: 'Stopped' }).eq('campaign_id', id).eq('status', 'pending');
+    const sent = await db.from('wa_bulk_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'sent');
+    await db.from('wa_bulk_campaigns').update({
+      status: 'stopped',
+      sent: sent.count || 0,
+      finished_at: now,
+    }).eq('id', id);
+  }
+  return NextResponse.json({ success: true, stopped: ids.length, sent: (found.data || []).reduce((sum: number, row: { sent?: number }) => sum + Number(row.sent || 0), 0) });
 }
