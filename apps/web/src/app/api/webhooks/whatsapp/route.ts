@@ -171,14 +171,7 @@ function extractSessionCandidates(call: WhatsAppCallEvent): any[] {
   return [...fromCall, ...fromSession].filter(Boolean);
 }
 
-function isSignatureValid(
-  rawBody: string,
-  signatureHeader: string | null,
-  appSecret: string,
-): boolean {
-  if (!appSecret) return true;
-  if (!signatureHeader?.startsWith('sha256=')) return false;
-
+function signatureMatches(rawBody: string, signatureHeader: string, appSecret: string): boolean {
   const expected = `sha256=${crypto
     .createHmac('sha256', appSecret)
     .update(rawBody, 'utf8')
@@ -189,6 +182,17 @@ function isSignatureValid(
   } catch {
     return false;
   }
+}
+
+function isSignatureValid(
+  rawBody: string,
+  signatureHeader: string | null,
+  appSecrets: string[],
+): boolean {
+  const secrets = [...new Set(appSecrets.map((secret) => secret.trim()).filter(Boolean))];
+  if (!secrets.length) return true;
+  if (!signatureHeader?.startsWith('sha256=')) return false;
+  return secrets.some((secret) => signatureMatches(rawBody, signatureHeader, secret));
 }
 
 export async function GET(request: NextRequest) {
@@ -216,9 +220,13 @@ export async function POST(request: NextRequest) {
   const signatureHeader = request.headers.get('x-hub-signature-256');
 
   const creds = await getResolvedWhatsAppAgentsCredentials();
-  const appSecret = creds.whatsapp_app_secret || process.env.WHATSAPP_APP_SECRET || '';
+  const appSecrets = [
+    creds.whatsapp_app_secret,
+    process.env.WHATSAPP_APP_SECRET || '',
+    process.env.WHATSAPP_APP_SECRET_2 || '',
+  ];
 
-  if (!isSignatureValid(rawBody, signatureHeader, appSecret)) {
+  if (!isSignatureValid(rawBody, signatureHeader, appSecrets)) {
     return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
   }
 
