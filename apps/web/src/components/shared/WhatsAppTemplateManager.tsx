@@ -7,6 +7,8 @@ import ToggleSwitch from '@/components/shared/ToggleSwitch';
 import WhatsAppTemplatePreviewModal, {
   WhatsAppTemplateBubble,
 } from '@/components/shared/WhatsAppTemplatePreviewModal';
+import { templateMatchesWaAccount } from '@/lib/whatsapp/accountSelection';
+import WhatsAppAccountSwitch, { useWhatsAppAccount } from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 type TemplateRow = {
   id: string;
@@ -23,6 +25,7 @@ type TemplateRow = {
     template_id?: string;
     source?: string;
     crm_telecaller?: boolean | string | number;
+    account_phone?: string;
   } | null;
   created_at: string;
   updated_at: string;
@@ -196,6 +199,7 @@ function normalizeTemplateNameClient(input: string) {
 }
 
 export default function WhatsAppTemplateManager() {
+  const waAccount = useWhatsAppAccount();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -301,7 +305,8 @@ export default function WhatsAppTemplateManager() {
       const matchesDate = !filterDate || rowDate === filterDate;
       const audience = templateAudience(row.template_name);
       const matchesAudience = audienceFilter === 'ALL' || audience === audienceFilter;
-      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage && matchesDate && matchesAudience;
+      const matchesAccount = templateMatchesWaAccount(row, waAccount.selected);
+      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage && matchesDate && matchesAudience && matchesAccount;
     }).sort((a, b) => {
       const audienceDiff = AUDIENCE_ORDER.indexOf(templateAudience(a.template_name)) - AUDIENCE_ORDER.indexOf(templateAudience(b.template_name));
       if (audienceDiff !== 0) return audienceDiff;
@@ -309,15 +314,15 @@ export default function WhatsAppTemplateManager() {
       if (createdDiff !== 0) return createdDiff;
       return timeValue(b.updated_at) - timeValue(a.updated_at);
     });
-  }, [templates, search, statusFilter, categoryFilter, languageFilter, dateField, filterDate, audienceFilter]);
+  }, [templates, search, statusFilter, categoryFilter, languageFilter, dateField, filterDate, audienceFilter, waAccount.selected]);
 
   const audienceCounts = useMemo(() => {
     const counts: Record<TemplateAudience, number> = { bulk: 0, customer: 0, admin: 0 };
-    templates.forEach((row) => {
+    templates.filter((row) => templateMatchesWaAccount(row, waAccount.selected)).forEach((row) => {
       counts[templateAudience(row.template_name)] += 1;
     });
     return counts;
-  }, [templates]);
+  }, [templates, waAccount.selected]);
 
   const groupedRows = useMemo(() => {
     let serial = 0;
@@ -593,8 +598,11 @@ export default function WhatsAppTemplateManager() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Templates</h2>
             <p className="text-xs text-gray-500">
-              Promotion, customer messages, and admin alerts are listed separately. Active = usable in CRM. TC = telecaller chat.
+              Showing templates for {waAccount.selected?.display_phone || '+91 95949 96161'}. Switch the number to see the other account.
             </p>
+            <div className="mt-2">
+              <WhatsAppAccountSwitch />
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button

@@ -18,6 +18,7 @@ import {
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import ToggleSwitch from '@/components/shared/ToggleSwitch';
+import WhatsAppAccountSwitch from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 type TriggerRow = {
   trigger_key: string;
@@ -396,6 +397,9 @@ export default function WhatsAppCronPage() {
             <p className="mt-1 text-sm text-gray-500">
               Har job alag on/off · alert numbers on/off · schedule IST
             </p>
+            <div className="mt-3">
+              <WhatsAppAccountSwitch />
+            </div>
           </div>
           <button
             type="button"

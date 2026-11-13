@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { writeStoredWaAccountId } from '@/lib/whatsapp/accountSelection';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 type Contact = { id: string; phone: string; name: string | null; created_at: string; upload_id?: string | null; fields?: Record<string, string> | null };
@@ -28,10 +29,11 @@ type Template = {
   example_values?: string[] | null;
   is_active?: boolean;
   variable_keys?: string[] | null;
-  meta?: { status?: string; header_image_url?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: WaButton[] }> } } | null;
+  meta?: { status?: string; header_image_url?: string; account_phone?: string; send_name?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: WaButton[] }> } } | null;
 };
 type ButtonAction = { text: string; action: 'create_lead' | 'ignore'; tag: string };
-type Tab = 'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'campaign' | 'results';
+type Tab = 'accounts' | 'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'campaign' | 'results';
+type SendingAccount = { id: string; label: string; display_phone: string; verified_name: string; phone_number_id_last4: string; quality_rating: string; limit_label?: string; account_status?: string; is_active: boolean; source: string };
 type AudienceRow = { id: string; name: string | null; phone: string; status: string; reply_button: string | null; reply_kind?: string | null; delivery_status?: string | null; sent_at: string | null; replied_at: string | null };
 type CustomField = { id: string; field_key: string; title: string; description: string; field_type: string; created_at: string };
 
@@ -223,10 +225,12 @@ function PhonePreview({
   template,
   params,
   headerImage,
+  displayPhone = '+91 95949 96161',
 }: {
   template: Template;
   params: string[];
   headerImage?: string;
+  displayPhone?: string;
 }) {
   const parts = partsOf(template);
   const image = headerImage || parts.headerImage;
@@ -235,7 +239,7 @@ function PhonePreview({
     <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.6rem] border-[8px] border-[#111b21] bg-[#efeae2] shadow-lg">
       <div className="bg-[#075e54] px-3 py-2 text-white">
         <p className="text-[11px] text-white/70">My FNG Autocare</p>
-        <p className="text-sm font-semibold">+91 95949 96161</p>
+        <p className="text-sm font-semibold">{displayPhone}</p>
       </div>
       <div className="min-h-[220px] px-3 py-3">
         <div className="rounded-lg rounded-tl-none bg-white px-3 py-2 shadow-sm">
@@ -260,7 +264,7 @@ function PhonePreview({
 }
 
 export default function BulkWhatsAppPage() {
-  const [tab, setTab] = useState<Tab>('dashboard');
+  const [tab, setTab] = useState<Tab>('accounts');
   const [segments, setSegments] = useState<Segment[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -318,6 +322,16 @@ export default function BulkWhatsAppPage() {
   const [testPhone, setTestPhone] = useState('');
   const [headerImageUrl, setHeaderImageUrl] = useState('');
   const [progress, setProgress] = useState('');
+  const [accounts, setAccounts] = useState<SendingAccount[]>([]);
+  const [accountsReady, setAccountsReady] = useState(true);
+  const [sendingNumber, setSendingNumber] = useState('+91 95949 96161');
+  const [accountLabel, setAccountLabel] = useState('');
+  const [accountPhoneId, setAccountPhoneId] = useState('');
+  const [accountToken, setAccountToken] = useState('');
+  const [accountWaba, setAccountWaba] = useState('');
+  const [accountWabaById, setAccountWabaById] = useState<Record<string, string>>({});
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState('');
 
   const loadHome = useCallback(async () => {
     const [bulkRes, templateRes] = await Promise.all([
@@ -337,6 +351,9 @@ export default function BulkWhatsAppPage() {
     setContactTotal(bulk.contact_total || 0);
     setTemplates(Array.isArray(templateJson.templates) ? templateJson.templates : []);
     setCustomFields(Array.isArray(bulk.custom_fields) ? bulk.custom_fields : []);
+    setAccounts(Array.isArray(bulk.accounts) ? bulk.accounts : []);
+    setAccountsReady(bulk.accounts_ready !== false);
+    setSendingNumber(String(bulk.sending_number || '+91 95949 96161'));
   }, []);
 
   const loadContacts = useCallback(async (nextPage = page) => {
@@ -407,14 +424,37 @@ export default function BulkWhatsAppPage() {
     return Array.from(keys).map((key) => ({ key, label: key.replace(/_/g, ' ') }));
   }, [contacts, customFields]);
 
+  const activeAccount = accounts.find((account) => account.is_active);
+  const accountTemplates = useMemo(() => {
+    const activePhone = String(activeAccount?.display_phone || '').replace(/\D/g, '').slice(-10);
+    return templates.filter((template) => {
+      const owner = String(template.meta?.account_phone || '').replace(/\D/g, '').slice(-10);
+      if (activeAccount?.source === 'settings') return !owner || owner === activePhone;
+      return Boolean(activePhone) && owner === activePhone;
+    });
+  }, [activeAccount, templates]);
   const visibleTemplates = useMemo(() => {
     const q = templateQuery.trim().toLowerCase();
-    return templates.filter((template) => {
+    return accountTemplates.filter((template) => {
       if (!hasReplyButtons(template)) return false;
       if (!q) return true;
       return `${template.display_name || ''} ${template.template_name} ${template.body_text || ''}`.toLowerCase().includes(q);
     });
-  }, [templateQuery, templates]);
+  }, [accountTemplates, templateQuery]);
+
+  async function syncAccountTemplates(id: string) {
+    setBusy(true);
+    setError('');
+    try {
+      const result = await post({ action: 'sync_account_templates', id, waba_id: accountWabaById[id] || '' });
+      setNotice(`${result.synced || 0} templates synced for ${result.display_phone || 'this number'}.`);
+      await loadHome();
+    } catch (err: any) {
+      setError(err?.message || 'Could not sync templates');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function openSampleReport() {
     setReport(SAMPLE_REPORT);
@@ -713,29 +753,20 @@ export default function BulkWhatsAppPage() {
       <div className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#004AAD]">WhatsApp · +91 95949 96161</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">WhatsApp</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Bulk campaigns</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-500">
-              Contacts, fields, segments, and campaign results for +91 95949 96161.
+              Contacts, fields, segments, and campaign results.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              {[
-                ['Contacts', contactTotal],
-                ['Segments', segments.length],
-                ['Templates', templates.length],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="min-w-[72px] rounded-xl border border-slate-200 bg-white px-3 py-1.5">
-                  <p className="text-sm font-semibold text-slate-800">{loading ? '–' : value}</p>
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-                </div>
-              ))}
-            </div>
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 shadow-[0_10px_30px_-18px_rgba(16,185,129,0.8)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Active</p>
+            <p className="text-lg font-semibold tracking-tight text-emerald-700">{sendingNumber}</p>
           </div>
         </div>
         <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
           {([
+            ['accounts', 'Accounts'],
             ['dashboard', 'Dashboard'],
             ['contacts', 'Contacts'],
             ['fields', 'Fields'],
@@ -767,6 +798,119 @@ export default function BulkWhatsAppPage() {
         ) : null}
         {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
         {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}
+
+        {tab === 'accounts' ? (
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">All accounts</h2>
+              <p className="text-sm text-slate-500">Each number shows its Meta quality and how many business messages it can start in 24 hours.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {accounts.map((account) => {
+                const quality = String(account.quality_rating || '').toUpperCase();
+                const qualityClass = quality === 'GREEN' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : quality === 'YELLOW' ? 'bg-amber-50 text-amber-800 ring-amber-200' : quality === 'RED' ? 'bg-rose-50 text-rose-700 ring-rose-200' : 'bg-slate-50 text-slate-600 ring-slate-200';
+                const confirming = confirmRemoveId === account.id;
+                return (
+                  <article key={account.id} className={`flex flex-col overflow-hidden rounded-2xl border bg-white shadow-[0_10px_24px_-18px_rgba(15,23,42,0.4)] ${account.is_active ? 'border-emerald-200' : 'border-rose-200'}`}>
+                    <div className={`h-1 ${account.is_active ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 'bg-gradient-to-r from-rose-300 to-rose-500'}`} />
+                    <div className={`flex flex-1 flex-col p-3 ${account.is_active ? 'bg-gradient-to-b from-emerald-50/90 via-white to-white' : 'bg-gradient-to-b from-rose-50/80 via-white to-white'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{account.is_active ? 'Sending from' : 'Standby'}</p>
+                          <p className={`mt-0.5 text-sm font-semibold tracking-tight ${account.is_active ? 'text-emerald-700' : 'text-slate-950'}`}>{account.display_phone || account.label}</p>
+                          <p className="truncate text-xs text-slate-500">{account.verified_name || account.label}</p>
+                        </div>
+                        {account.is_active ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                            <span className="h-1 w-1 rounded-full bg-white" />
+                            In use
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-2.5 rounded-xl bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-100">
+                        <p className="text-base font-semibold tracking-tight text-slate-950">{account.limit_label || 'Limit not available'}</p>
+                        <p className="text-[10px] text-slate-500">Business messages / 24 hours</p>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${qualityClass}`}>{quality || 'Quality unknown'}</span>
+                        {account.account_status ? <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{account.account_status}</span> : null}
+                      </div>
+                      {account.source === 'connected' && !confirming ? (
+                        <input value={accountWabaById[account.id] || ''} onChange={(event) => setAccountWabaById((current) => ({ ...current, [account.id]: event.target.value }))} placeholder="asset_id from the WhatsApp Manager link" className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none ring-emerald-200 focus:ring-2" />
+                      ) : null}
+                      {confirming ? (
+                        <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-2">
+                          <p className="text-xs font-semibold text-rose-900">Remove {account.display_phone || 'this number'}?</p>
+                          <p className="mt-0.5 text-[10px] text-rose-700">Campaigns will stop using it. Saved templates stay.</p>
+                          <div className="mt-2 flex gap-1.5">
+                            <button type="button" onClick={() => setConfirmRemoveId('')} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">Keep</button>
+                            <button
+                              type="button"
+                              onClick={() => void post({ action: 'delete_account', id: account.id }).then(() => { setConfirmRemoveId(''); return loadHome(); }).catch((err) => setError(err?.message || 'Could not remove'))}
+                              className="rounded-lg bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white"
+                            >
+                              Yes, remove
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {!account.is_active ? (
+                            <button type="button" className="rounded-lg bg-[#004AAD] px-2.5 py-1 text-[11px] font-semibold text-white" onClick={() => void post({ action: 'activate_account', id: account.id }).then(() => { writeStoredWaAccountId(account.id); return loadHome(); }).catch((err) => setError(err?.message || 'Could not switch number'))}>Use this</button>
+                          ) : null}
+                          {account.source === 'connected' ? (
+                            <button type="button" className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700" onClick={() => void syncAccountTemplates(account.id)}>Sync templates</button>
+                          ) : null}
+                          {account.source === 'connected' ? (
+                            <button type="button" className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50" onClick={() => setConfirmRemoveId(account.id)}>Remove</button>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+              <button type="button" onClick={() => { setConfirmRemoveId(''); setAccountFormOpen(true); }} className="flex min-h-[148px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-slate-500 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] transition hover:border-[#004AAD] hover:text-[#004AAD]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-current text-xl font-light leading-none">+</span>
+                <span className="mt-1.5 text-xs font-semibold">Add account</span>
+              </button>
+            </div>
+            {accountFormOpen ? (
+              <div className="max-w-md space-y-2 rounded-2xl border bg-white p-4 shadow-sm">
+                <input value={accountLabel} onChange={(event) => setAccountLabel(event.target.value)} placeholder="Label, e.g. Thane workshop" className="w-full rounded-lg border px-3 py-2 text-sm" />
+                <input value={accountPhoneId} onChange={(event) => setAccountPhoneId(event.target.value)} placeholder="Phone number ID from WhatsApp Manager" className="w-full rounded-lg border px-3 py-2 text-sm" />
+                <input value={accountToken} onChange={(event) => setAccountToken(event.target.value)} placeholder="Access token, only for a different Meta account" type="password" autoComplete="off" className="w-full rounded-lg border px-3 py-2 text-sm" />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || !accountPhoneId.trim()}
+                    onClick={() => void (async () => {
+                      setBusy(true);
+                      setError('');
+                      try {
+                        const saved = await post({ action: 'connect_account', label: accountLabel, phone_number_id: accountPhoneId, access_token: accountToken });
+                        setAccountToken('');
+                        setAccountPhoneId('');
+                        setAccountLabel('');
+                        setAccountFormOpen(false);
+                        setNotice(`${saved.account?.display_phone || 'Number'} connected. Campaigns will use it.`);
+                        await loadHome();
+                      } catch (err: any) {
+                        setError(err?.message || 'Could not connect this number');
+                      } finally {
+                        setBusy(false);
+                      }
+                    })()}
+                    className="rounded-lg bg-[#004AAD] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    Connect
+                  </button>
+                  <button type="button" onClick={() => setAccountFormOpen(false)} className="rounded-lg border px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {tab === 'dashboard' ? (
           <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
@@ -854,10 +998,84 @@ export default function BulkWhatsAppPage() {
               </section>
             </div>
             <aside className="space-y-3">
-              <section className="rounded-2xl bg-[#0b3f91] p-4 text-white shadow-sm">
-                <p className="text-xs uppercase tracking-wide text-blue-100">Connected number</p>
-                <p className="mt-1 text-lg font-semibold">+91 95949 96161</p>
-                <p className="mt-2 text-sm text-blue-100">{segments.length} segments · {customFields.length} fields · {templates.filter(hasReplyButtons).length} button templates</p>
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <button type="button" onClick={() => setTab('accounts')} className="text-sm font-semibold text-slate-800">WhatsApp accounts</button>
+                    <p className="mt-1 text-xs text-slate-500">Campaigns send from the number marked In use. {segments.length} segments · {customFields.length} fields · {accountTemplates.filter(hasReplyButtons).length} button templates.</p>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {accounts.map((account) => (
+                    <div key={account.id} className={`rounded-xl border px-3 py-2 ${account.is_active ? 'border-emerald-300 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{account.display_phone || account.label}</p>
+                          <p className="text-xs text-slate-500">{account.verified_name || account.label}{account.quality_rating ? ` · ${account.quality_rating}` : ''}</p>
+                          <p className="text-xs font-semibold text-slate-700">{account.limit_label || 'Limit loading'}</p>
+                        </div>
+                        {account.is_active ? <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold text-white">In use</span> : null}
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        {!account.is_active ? (
+                          <button type="button" className="text-xs font-semibold text-[#004AAD]" onClick={() => void post({ action: 'activate_account', id: account.id }).then(() => { writeStoredWaAccountId(account.id); return loadHome(); }).catch((err) => setError(err?.message || 'Could not switch number'))}>
+                            Use this
+                          </button>
+                        ) : null}
+                        {account.source === 'connected' ? (
+                          <button type="button" className="text-xs font-semibold text-[#004AAD]" onClick={() => void syncAccountTemplates(account.id)}>Sync templates</button>
+                        ) : null}
+                        {account.source === 'connected' && confirmRemoveId === account.id ? (
+                          <>
+                            <button type="button" className="text-xs font-semibold text-slate-600" onClick={() => setConfirmRemoveId('')}>Keep</button>
+                            <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => void post({ action: 'delete_account', id: account.id }).then(() => { setConfirmRemoveId(''); return loadHome(); }).catch((err) => setError(err?.message || 'Could not remove'))}>Yes, remove</button>
+                          </>
+                        ) : account.source === 'connected' ? (
+                          <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => setConfirmRemoveId(account.id)}>Remove</button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {!accountsReady ? <p className="mt-3 text-xs text-amber-700">Run database/394_whatsapp_bulk_accounts.sql in Supabase before connecting another number.</p> : null}
+                {accountFormOpen ? (
+                  <div className="mt-3 space-y-2">
+                    <input value={accountLabel} onChange={(event) => setAccountLabel(event.target.value)} placeholder="Label, e.g. Thane workshop" className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    <input value={accountPhoneId} onChange={(event) => setAccountPhoneId(event.target.value)} placeholder="Phone number ID from WhatsApp Manager" className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    <input value={accountToken} onChange={(event) => setAccountToken(event.target.value)} placeholder="Access token, only for a different Meta account" type="password" autoComplete="off" className="w-full rounded-lg border px-3 py-2 text-sm" />
+                    <p className="text-xs text-slate-500">Phone number ID is the long number on that phone’s row in WhatsApp Manager. Leave the token empty only when the number is on the same account as +91 95949 96161.</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || !accountPhoneId.trim()}
+                        onClick={() => void (async () => {
+                          setBusy(true);
+                          setError('');
+                          try {
+                            const saved = await post({ action: 'connect_account', label: accountLabel, phone_number_id: accountPhoneId, access_token: accountToken });
+                            setAccountToken('');
+                            setAccountPhoneId('');
+                            setAccountWaba('');
+                            setAccountLabel('');
+                            setAccountFormOpen(false);
+                            setNotice(`${saved.account?.display_phone || 'Number'} connected. Campaigns will use it.`);
+                            await loadHome();
+                          } catch (err: any) {
+                            setError(err?.message || 'Could not connect this number');
+                          } finally {
+                            setBusy(false);
+                          }
+                        })()}
+                        className="rounded-lg bg-[#004AAD] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        Connect
+                      </button>
+                      <button type="button" onClick={() => setAccountFormOpen(false)} className="rounded-lg border px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setAccountFormOpen(true)} className="mt-3 text-sm font-semibold text-[#004AAD]">Connect another account</button>
+                )}
               </section>
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-semibold text-slate-800">Quick links</p>
@@ -1211,7 +1429,23 @@ export default function BulkWhatsAppPage() {
           <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <input value={templateQuery} onChange={(event) => setTemplateQuery(event.target.value)} placeholder="Search with template name" className="w-full max-w-xs rounded-lg border px-3 py-2 text-sm" />
-              <Link href="/dashboard/super_admin/whatsapp-templates" className="text-sm font-semibold text-[#004AAD]">Template studio</Link>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (activeAccount?.source === 'connected') {
+                      void syncAccountTemplates(activeAccount.id);
+                      return;
+                    }
+                    void loadHome().then(() => setNotice('Templates refreshed.')).catch((err) => setError(err?.message || 'Could not refresh'));
+                  }}
+                  className="rounded-lg border px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                >
+                  {busy ? 'Refreshing…' : 'Refresh'}
+                </button>
+                <Link href="/dashboard/super_admin/whatsapp-templates" className="text-sm font-semibold text-[#004AAD]">Template studio</Link>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
@@ -1292,7 +1526,7 @@ export default function BulkWhatsAppPage() {
                 Template
                 <select value={templateName} onChange={(event) => { setTemplateName(event.target.value); setCampaignReady(false); }} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal text-gray-900">
                   <option value="">Choose an approved template</option>
-                  {templates.filter(hasReplyButtons).map((template, index) => (
+                  {accountTemplates.filter(hasReplyButtons).map((template, index) => (
                     <option key={template.template_name} value={template.template_name} disabled={statusOf(template) !== 'APPROVED'}>
                       {index + 1}. {template.display_name || template.template_name} · {statusOf(template)}
                     </option>
@@ -1386,7 +1620,7 @@ export default function BulkWhatsAppPage() {
               {progress ? <p className="text-sm text-gray-600">{progress}</p> : null}
             </section>
             <aside className="space-y-4">
-              {chosen ? <PhonePreview template={chosen} params={params} headerImage={headerImageUrl} /> : <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">Pick a template to see the WhatsApp preview, including buttons.</div>}
+              {chosen ? <PhonePreview template={chosen} params={params} headerImage={headerImageUrl} displayPhone={sendingNumber} /> : <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">Pick a template to see the WhatsApp preview, including buttons.</div>}
               <button type="button" onClick={() => setTab('results')} className="w-full rounded-2xl border bg-white p-4 text-left shadow-sm">
                 <h3 className="font-semibold text-gray-900">Campaign results</h3>
                 <p className="mt-1 text-sm text-gray-500">Open sent, delivered, read, failed, and button replies.</p>
@@ -1593,7 +1827,7 @@ export default function BulkWhatsAppPage() {
                 Close
               </button>
             </div>
-            <PhonePreview template={previewTemplate} params={previewTemplate.example_values || []} />
+            <PhonePreview template={previewTemplate} params={previewTemplate.example_values || []} displayPhone={sendingNumber} />
             <button
               type="button"
               disabled={statusOf(previewTemplate) !== 'APPROVED'}

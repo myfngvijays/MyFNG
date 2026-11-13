@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -30,12 +31,20 @@ type Template = {
   body_text?: string | null;
   example_values?: string[] | null;
   is_active?: boolean;
-  meta?: { status?: string; header_image_url?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
+  meta?: { status?: string; header_image_url?: string; account_phone?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: Array<{ type?: string; text?: string }> }> } } | null;
 };
 
 function needsHeaderImage(template: Template | null) {
   const header = template?.meta?.raw?.components?.find((item) => String(item.type || '').toUpperCase() === 'HEADER');
   return String(header?.format || '').toUpperCase() === 'IMAGE' || Boolean(String(template?.meta?.header_image_url || '').trim());
+}
+
+function templateMatchesAccount(template: Template, accounts: Array<{ display_phone: string; is_active: boolean; source: string }>, sendingNumber: string) {
+  const active = accounts.find((account) => account.is_active);
+  const activePhone = sendingNumber.replace(/\D/g, '').slice(-10);
+  const owner = String(template.meta?.account_phone || '').replace(/\D/g, '').slice(-10);
+  if (!active || active.source === 'settings') return !owner || owner === activePhone;
+  return owner === activePhone;
 }
 
 function hasReplyButtons(template: Template) {
@@ -86,7 +95,7 @@ function variableCount(body: string) {
 
 export default function SuperAdminWhatsAppBulkScreen() {
   const navigation = useNavigation<any>();
-  const [tab, setTab] = useState<'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'send' | 'results'>('dashboard');
+  const [tab, setTab] = useState<'accounts' | 'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'send' | 'results'>('accounts');
   const [fields, setFields] = useState<Array<{ id: string; title: string; field_key: string; field_type: string }>>([]);
   const [fieldTitle, setFieldTitle] = useState('');
   const [report, setReport] = useState<any>(null);
@@ -116,6 +125,11 @@ export default function SuperAdminWhatsAppBulkScreen() {
   const [testPhone, setTestPhone] = useState('');
   const [headerImageUrl, setHeaderImageUrl] = useState('');
   const [progress, setProgress] = useState('');
+  const [accounts, setAccounts] = useState<Array<{ id: string; label: string; display_phone: string; verified_name?: string; quality_rating?: string; limit_label?: string; is_active: boolean; source: string }>>([]);
+  const [sendingNumber, setSendingNumber] = useState('+91 95949 96161');
+  const [accountLabel, setAccountLabel] = useState('');
+  const [accountPhoneId, setAccountPhoneId] = useState('');
+  const [accountToken, setAccountToken] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -133,6 +147,8 @@ export default function SuperAdminWhatsAppBulkScreen() {
       setSegments(bulk.segments || []);
       setUploads(bulk.uploads || []);
       setCampaigns(bulk.campaigns || []);
+      setAccounts(Array.isArray(bulk.accounts) ? bulk.accounts : []);
+      setSendingNumber(String(bulk.sending_number || '+91 95949 96161'));
       setFields(bulk.custom_fields || []);
       setTemplates(Array.isArray(templateJson.templates) ? templateJson.templates : []);
     } catch (err: any) {
@@ -311,13 +327,13 @@ export default function SuperAdminWhatsAppBulkScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Bulk WhatsApp</Text>
-          <Text style={styles.sub}>+91 95949 96161</Text>
+          <Text style={[styles.sub, { color: '#059669', fontWeight: '700' }]}>{sendingNumber}</Text>
         </View>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
       <View style={styles.tabs}>
-        {(['dashboard', 'contacts', 'fields', 'segments', 'templates', 'send', 'results'] as const).map((item) => (
+        {(['accounts', 'dashboard', 'contacts', 'fields', 'segments', 'templates', 'send', 'results'] as const).map((item) => (
           <TouchableOpacity key={item} style={[styles.tab, tab === item && styles.tabOn]} onPress={() => setTab(item)}>
             <Text style={[styles.tabText, tab === item && styles.tabTextOn]}>{item}</Text>
           </TouchableOpacity>
@@ -325,6 +341,54 @@ export default function SuperAdminWhatsAppBulkScreen() {
       </View>
       {loading ? <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} /> : (
         <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: 12 }}>
+          {tab === 'accounts' || tab === 'dashboard' ? (
+              <View style={styles.row}>
+                <Text style={styles.rowTitle}>WhatsApp accounts</Text>
+                <Text style={styles.hint}>Campaigns send from the number marked In use.</Text>
+                {accounts.map((account) => (
+                  <View key={account.id} style={{ marginTop: 8, borderWidth: 1, borderRadius: 12, padding: 12, backgroundColor: account.is_active ? '#ecfdf5' : '#fef2f2', borderColor: account.is_active ? '#6ee7b7' : '#fecaca' }}>
+                    <Text style={styles.rowTitle}>{account.display_phone || account.label}</Text>
+                    <Text style={styles.hint}>{account.is_active ? 'In use' : account.verified_name || account.label}</Text>
+                    <Text style={styles.rowTitle}>{account.limit_label || 'Limit not available'}</Text>
+                    {!account.is_active ? (
+                      <TouchableOpacity onPress={() => void post({ action: 'activate_account', id: account.id }).then(() => load()).catch((err) => setError(err?.message || 'Could not switch number'))}>
+                        <Text style={styles.link}>Use this</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {account.source === 'connected' ? (
+                      <TouchableOpacity onPress={() => void post({ action: 'sync_account_templates', id: account.id }).then((result) => { setNotice(`${result.synced || 0} templates synced.`); return load(); }).catch((err) => setError(err?.message || 'Could not sync templates'))}>
+                        <Text style={styles.link}>Sync templates</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {account.source === 'connected' ? (
+                      <TouchableOpacity onPress={() => Alert.alert('Remove this number?', `Campaigns will stop using ${account.display_phone || 'this number'}. Saved templates stay.`, [
+                        { text: 'Keep', style: 'cancel' },
+                        { text: 'Remove', style: 'destructive', onPress: () => void post({ action: 'delete_account', id: account.id }).then(() => load()).catch((err) => setError(err?.message || 'Could not remove')) },
+                      ])}>
+                        <Text style={[styles.link, { color: '#e11d48' }]}>Remove</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ))}
+                <TextInput value={accountLabel} onChangeText={setAccountLabel} placeholder="Label" style={styles.input} />
+                <TextInput value={accountPhoneId} onChangeText={setAccountPhoneId} placeholder="Phone number ID from WhatsApp Manager" style={styles.input} />
+                <TextInput value={accountToken} onChangeText={setAccountToken} placeholder="Access token if this is another Meta account" secureTextEntry style={styles.input} />
+                <Text style={styles.hint}>Leave the token empty only when the number is on the same account as +91 95949 96161.</Text>
+                <TouchableOpacity
+                  style={styles.primary}
+                  disabled={busy || !accountPhoneId.trim()}
+                  onPress={() => void post({ action: 'connect_account', label: accountLabel, phone_number_id: accountPhoneId, access_token: accountToken }).then((saved) => {
+                    setAccountToken('');
+                    setAccountPhoneId('');
+                    setAccountLabel('');
+                    setNotice(`${saved.account?.display_phone || 'Number'} connected.`);
+                    return load();
+                  }).catch((err) => setError(err?.message || 'Could not connect this number'))}
+                >
+                  <Text style={styles.primaryText}>Connect account</Text>
+                </TouchableOpacity>
+              </View>
+          ) : null}
           {tab === 'dashboard' ? (
             <>
               <View style={styles.row}>
@@ -427,7 +491,20 @@ export default function SuperAdminWhatsAppBulkScreen() {
           ) : null}
           {tab === 'templates' ? (
             <>
-              {templates.filter(hasReplyButtons).map((template, index) => (
+              <TouchableOpacity
+                disabled={busy}
+                onPress={() => {
+                  const active = accounts.find((account) => account.is_active);
+                  if (active?.source === 'connected') {
+                    void post({ action: 'sync_account_templates', id: active.id }).then((result) => { setNotice(`${result.synced || 0} templates refreshed.`); return load(); }).catch((err) => setError(err?.message || 'Could not refresh'));
+                    return;
+                  }
+                  void load();
+                }}
+              >
+                <Text style={styles.link}>{busy ? 'Refreshing…' : 'Refresh'}</Text>
+              </TouchableOpacity>
+              {templates.filter((template) => hasReplyButtons(template) && templateMatchesAccount(template, accounts, sendingNumber)).map((template, index) => (
                 <TouchableOpacity key={`${template.template_name}-${template.language_code}`} style={styles.row} onPress={() => setPreview(template)}>
                   <Text style={styles.badge}>{statusOf(template)}</Text>
                   <Text style={styles.rowTitle}>{index + 1}. {template.display_name || template.template_name}</Text>
@@ -448,7 +525,7 @@ export default function SuperAdminWhatsAppBulkScreen() {
                 </TouchableOpacity>
               ))}
               <Text style={styles.hint}>Template</Text>
-              {templates.filter(hasReplyButtons).slice(0, 40).map((template, index) => (
+              {templates.filter((template) => hasReplyButtons(template) && templateMatchesAccount(template, accounts, sendingNumber)).slice(0, 40).map((template, index) => (
                 <TouchableOpacity key={template.template_name} style={[styles.choice, templateName === template.template_name && styles.choiceOn]} onPress={() => { setTemplateName(template.template_name); setCampaignReady(false); }}>
                   <Text style={styles.rowTitle}>{index + 1}. {template.display_name || template.template_name}</Text>
                 </TouchableOpacity>

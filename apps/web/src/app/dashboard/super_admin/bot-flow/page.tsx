@@ -27,6 +27,8 @@ import AgentEnvSettingsPanel from './components/AgentEnvSettingsPanel';
 import BookingAgentTestModal from './components/BookingAgentTestModal';
 import AgentDryRunTestModal from './components/AgentDryRunTestModal';
 import CampaignButtonBots from './components/CampaignButtonBots';
+import { flowMatchesWaAccount, last10Digits } from '@/lib/whatsapp/accountSelection';
+import WhatsAppAccountSwitch, { useWhatsAppAccount } from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 type TestModalId = null | 'brain' | 'misa' | 'followup' | 'chase';
 
@@ -42,6 +44,7 @@ type BotFlow = {
   name: string;
   status: string;
   channel?: string;
+  account_phone?: string | null;
   updated_at?: string;
   created_at?: string;
 };
@@ -110,6 +113,7 @@ const DEFAULT_CONFIG: BrainConfig = {
 
 export default function SuperAdminBotFlowPage() {
   const router = useRouter();
+  const waAccount = useWhatsAppAccount();
   const [activeTab, setActiveTab] = useState<AgentTabId>('brain');
   const [flows, setFlows] = useState<BotFlow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,6 +138,7 @@ export default function SuperAdminBotFlowPage() {
   const dedupedFlows = useMemo(() => {
     const byName = new Map<string, BotFlow>();
     for (const flow of flows) {
+      if (!flowMatchesWaAccount(flow, waAccount.selected)) continue;
       const key = String(flow.name || flow.id).trim().toLowerCase();
       const current = byName.get(key);
       if (!current) {
@@ -159,9 +164,9 @@ export default function SuperAdminBotFlowPage() {
       const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
       return bTime - aTime;
     });
-  }, [flows, brainConfig.active_flow_id]);
+  }, [flows, brainConfig.active_flow_id, waAccount.selected]);
 
-  const hiddenDuplicateCount = Math.max(0, flows.length - dedupedFlows.length);
+  const hiddenDuplicateCount = Math.max(0, flows.filter((flow) => flowMatchesWaAccount(flow, waAccount.selected)).length - dedupedFlows.length);
 
   const activeFlow = useMemo(
     () => dedupedFlows.find((flow) => flow.id === brainConfig.active_flow_id) || null,
@@ -284,7 +289,10 @@ export default function SuperAdminBotFlowPage() {
       const res = await fetch('/api/whatsapp/bot-flow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          account_phone: waAccount.selected?.source === 'connected' ? last10Digits(waAccount.selected.display_phone) : '',
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json?.success || !json?.flow?.id) {
@@ -366,8 +374,11 @@ export default function SuperAdminBotFlowPage() {
           <div>
             <h1 className="text-2xl font-bold text-yellow-300 sm:text-3xl">Bot Flows</h1>
             <p className="mt-1 text-sm text-blue-100">
-              Manage flows, AI brain, and WhatsApp agents — MISA AI, Follow-up, and Chase bots.
+              Flows for {waAccount.selected?.display_phone || '+91 95949 96161'}. Choose the account before creating a new flow.
             </p>
+            <div className="mt-3">
+              <WhatsAppAccountSwitch />
+            </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               <span
                 className={`rounded-full px-2.5 py-1 font-semibold ${

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ToggleSwitch from '@/components/shared/ToggleSwitch';
+import WhatsAppAccountSwitch from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 type TemplateStatus = {
   triggerKey: string;
@@ -448,6 +449,9 @@ export default function WhatsAppAutomationPage() {
               All triggers use UTILITY templates in English. Use Active for instant/event sends and Cron for scheduled jobs — no page reload.
               {refreshing ? ' · Updating...' : ''}
             </p>
+            <div className="mt-3">
+              <WhatsAppAccountSwitch />
+            </div>
           </div>
           <AdminPageRefresh onClick={() => void loadTriggers(true)} loading={refreshing || loading} />
         </div>

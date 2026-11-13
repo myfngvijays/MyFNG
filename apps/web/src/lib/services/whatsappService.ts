@@ -24,6 +24,12 @@ type MediaMessageInput = {
   filename?: string;
 };
 
+type TemplateSender = {
+  phoneNumberId: string;
+  accessToken: string;
+  apiUrl?: string;
+};
+
 type TemplateMessageInput = {
   phoneNumber: string;
   templateName: string;
@@ -31,6 +37,7 @@ type TemplateMessageInput = {
   buttonUrlParams?: string[];
   languageCode?: string;
   headerImageUrl?: string;
+  sender?: TemplateSender;
 };
 
 function assertWhatsAppConfig(creds: {
@@ -63,8 +70,14 @@ async function parseCloudApiError(response: Response): Promise<{ message: string
   }
 }
 
-async function sendMessagePayload(payload: unknown): Promise<WhatsAppSendResult> {
-  const creds = await getResolvedWhatsAppAgentsCredentials();
+async function sendMessagePayload(payload: unknown, sender?: TemplateSender): Promise<WhatsAppSendResult> {
+  const creds = sender?.phoneNumberId && sender?.accessToken
+    ? {
+        whatsapp_phone_number_id: sender.phoneNumberId,
+        whatsapp_access_token: sender.accessToken,
+        whatsapp_api_url: sender.apiUrl || 'https://graph.facebook.com/v25.0',
+      }
+    : await getResolvedWhatsAppAgentsCredentials();
   const configError = assertWhatsAppConfig(creds);
   if (configError) {
     return { success: false, error: configError };
@@ -336,7 +349,7 @@ export async function sendTemplateMessage(input: TemplateMessageInput): Promise<
         language: { code: languageCode },
         components: components.length > 0 ? components : undefined,
       },
-    });
+    }, input.sender);
     if (result.success) return result;
     lastError = result;
     const msg = String(result.error || '').toLowerCase();

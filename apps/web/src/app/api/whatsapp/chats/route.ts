@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -609,12 +610,46 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const chats = Array.from(byPhone.values())
+      let chats = Array.from(byPhone.values())
         .map((chat) => ({
           ...chat,
           unread_count: unreadCountForChat(chat, unreadStreak, chat.phone, readMap),
         }))
         .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
+
+      const accountParam = String(request.nextUrl.searchParams.get('account') || '').trim();
+      if (accountParam && accountParam !== 'settings') {
+        const accountScope = await loadWaAccountScope(accountParam);
+        if (accountScope.source === 'connected') {
+          const matched = new Map<string, any>();
+          const { data: scopedMsgs } = await supabaseAdmin
+            .from('whatsapp_messages')
+            .select('direction, sender_phone, recipient_phone, message_type, text_body, media_caption, template_name, status, created_at, meta')
+            .order('created_at', { ascending: false })
+            .limit(2000);
+          for (const row of scopedMsgs || []) {
+            if (!messageInWaScope(row, accountScope)) continue;
+            const phone = getChatPhone(row);
+            if (!phone) continue;
+            if (searchDigits && !phone.includes(searchDigits)) continue;
+            const previous = matched.get(phone);
+            const rowTs = ts(row?.created_at);
+            if (previous && ts(previous.last_message_at) > rowTs) continue;
+            const lead = byPhone.get(phone);
+            matched.set(phone, {
+              phone,
+              customer_name: lead?.customer_name || null,
+              last_message_preview: messagePreviewFromRow(row),
+              last_message_type: row?.message_type || null,
+              last_direction: row?.direction || null,
+              last_status: row?.status || null,
+              last_message_at: row?.created_at || null,
+              unread_count: unreadCountForChat(lead || { phone, last_message_at: row?.created_at }, unreadStreak, phone, readMap),
+            });
+          }
+          chats = Array.from(matched.values()).sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
+        }
+      }
 
       return NextResponse.json({
         success: true,

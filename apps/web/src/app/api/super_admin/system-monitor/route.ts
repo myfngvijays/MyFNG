@@ -3270,13 +3270,49 @@ async function checkWhatsAppBulk(): Promise<HealthCheck> {
       };
     }
 
+    const accounts = await client.from('wa_bulk_accounts').select('id', { count: 'exact', head: true });
+    if (accounts.error && /does not exist|relation|42P01|PGRST205/i.test(accounts.error.message || '')) {
+      return {
+        name: 'WhatsApp Bulk Send',
+        category: 'Notifications',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Extra WhatsApp numbers cannot be saved yet',
+        reason: 'Run database/394_whatsapp_bulk_accounts.sql so more than one WhatsApp account can be connected for bulk campaigns.',
+        quickFix: {
+          label: 'Open Bulk WhatsApp',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/whatsapp-bulk' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const flowAccount = await client.from('bot_flows').select('account_phone').limit(1);
+    if (flowAccount.error && /account_phone/i.test(flowAccount.error.message || '')) {
+      return {
+        name: 'WhatsApp Bulk Send',
+        category: 'Notifications',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'WhatsApp flows are not split by number yet',
+        reason: 'Run database/395_whatsapp_account_on_flows.sql so workflows and bot flows can belong to each connected WhatsApp number.',
+        quickFix: {
+          label: 'Open Bot Flow',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/bot-flow' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
     return {
       name: 'WhatsApp Bulk Send',
       category: 'Notifications',
       status: 'healthy',
       responseTime: Date.now() - start,
-      message: `${contacts.count || 0} bulk contact${contacts.count === 1 ? '' : 's'} saved`,
-      reason: 'wa_bulk_contacts is available. Sends use the connected WhatsApp number.',
+      message: `${contacts.count || 0} bulk contact${contacts.count === 1 ? '' : 's'} saved${accounts.error ? '' : `, ${accounts.count || 0} extra number${accounts.count === 1 ? '' : 's'}`}`,
+      reason: 'wa_bulk_contacts is available. Bulk sends use the active connected WhatsApp number.',
       quickFix: {
         label: 'Open Bulk WhatsApp',
         action: 'internal-link',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { enumerateYmdRange, resolveReportDateRange } from '@/lib/report-date-range';
+import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 
 const ALLOWED_ADMIN_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const MAX_DAILY_CHART_DAYS = 30;
@@ -94,9 +95,10 @@ export async function GET(request: NextRequest) {
     const auth = await assertAdmin(db);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+    const accountScope = await loadWaAccountScope(String(request.nextUrl.searchParams.get('account') || 'settings'));
     const { data: messageRows, error: messageError } = await db
       .from('whatsapp_messages')
-      .select('status, created_at, direction, message_type')
+      .select('status, created_at, direction, message_type, recipient_phone, meta')
       .gte('created_at', range.start)
       .lte('created_at', range.end)
       .order('created_at', { ascending: false })
@@ -111,7 +113,7 @@ export async function GET(request: NextRequest) {
       { date: string; sent: number; delivered: number; read: number; failed: number }
     >();
 
-    for (const row of ((messageRows || []) as MessageRow[]).filter(isOutboundTemplate)) {
+    for (const row of ((messageRows || []) as MessageRow[]).filter((item) => messageInWaScope(item, accountScope) && isOutboundTemplate(item))) {
       const key = dayKey(row.created_at);
       if (!key) continue;
       const current = dailyVolumeMap.get(key) || { date: key, sent: 0, delivered: 0, read: 0, failed: 0 };

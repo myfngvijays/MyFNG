@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 import {
   applyReportDateRangeFilter,
   resolveReportDateRange,
@@ -71,6 +72,7 @@ export async function fetchWhatsAppOutboundMessages(options: {
   source?: string;
   template?: string;
   phone?: string;
+  account?: string;
 }) {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) {
@@ -119,10 +121,20 @@ export async function fetchWhatsAppOutboundMessages(options: {
     query = query.or('meta->>source.is.null,meta->>source.neq.whatsapp_automation');
   }
 
+  const scope = await loadWaAccountScope(String(options.account || 'settings'));
+  if (scope.source === 'connected') {
+    const parts = [
+      scope.phoneNumberId ? `meta->>phone_number_id.eq.${scope.phoneNumberId}` : '',
+      scope.phoneLast10 ? `meta->>business_phone.ilike.%${scope.phoneLast10}%` : '',
+    ].filter(Boolean);
+    if (parts.length) query = query.or(parts.join(','));
+  }
+
   const { data, error, count } = await query.range(offset, offset + limit - 1);
   if (error) throw new Error(error.message || 'Failed to fetch outbound messages');
 
-  const rows = ((data || []) as MessageRecord[]).map(mapMessageRow);
+  const visible = ((data || []) as MessageRecord[]).filter((row) => messageInWaScope(row, scope));
+  const rows = visible.map(mapMessageRow);
 
   const total = count || 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));

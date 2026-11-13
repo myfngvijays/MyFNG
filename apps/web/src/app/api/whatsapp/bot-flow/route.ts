@@ -10,9 +10,21 @@ export async function GET() {
     const { data: flows, error } = await auth.db
       .from('bot_flows')
       .select(
-        'id, name, channel, status, trigger_event, description, total_runs, success_runs, failed_runs, last_run_at, active_version_id, created_at, updated_at, bot_flow_versions!bot_flow_versions_bot_flow_id_fkey(id, version_no, status, created_at, published_at)'
+        'id, name, channel, status, trigger_event, description, total_runs, success_runs, failed_runs, last_run_at, account_phone, active_version_id, created_at, updated_at, bot_flow_versions!bot_flow_versions_bot_flow_id_fkey(id, version_no, status, created_at, published_at)'
       )
       .order('updated_at', { ascending: false });
+
+    if (error && /account_phone/i.test(String(error.message || ''))) {
+      const withoutAccount = await auth.db
+        .from('bot_flows')
+        .select(
+          'id, name, channel, status, trigger_event, description, total_runs, success_runs, failed_runs, last_run_at, active_version_id, created_at, updated_at, bot_flow_versions!bot_flow_versions_bot_flow_id_fkey(id, version_no, status, created_at, published_at)'
+        )
+        .order('updated_at', { ascending: false });
+      if (!withoutAccount.error) {
+        return NextResponse.json({ success: true, flows: withoutAccount.data || [] });
+      }
+    }
 
     if (error) {
       // Older DBs without 315 columns — fall back.
@@ -47,6 +59,7 @@ export async function POST(request: NextRequest) {
     const validation = validateBotFlowGraph(graph);
     const now = new Date().toISOString();
 
+    const accountPhone = String(body?.account_phone || '').replace(/\D/g, '').slice(-10);
     const insertPayload: Record<string, unknown> = {
       name,
       channel: 'WHATSAPP',
@@ -55,6 +68,7 @@ export async function POST(request: NextRequest) {
       updated_at: now,
       trigger_event: triggerEvent,
       description,
+      ...(accountPhone ? { account_phone: accountPhone } : {}),
     };
 
     let createdFlow: any = null;
@@ -67,6 +81,16 @@ export async function POST(request: NextRequest) {
         .single();
       createdFlow = first.data;
       flowError = first.error;
+      if (flowError && /account_phone/i.test(String(flowError.message || ''))) {
+        delete insertPayload.account_phone;
+        const retryAccount = await auth.db
+          .from('bot_flows')
+          .insert(insertPayload)
+          .select('id, name, channel, status, trigger_event, description, total_runs, success_runs, failed_runs, active_version_id, created_at, updated_at')
+          .single();
+        createdFlow = retryAccount.data;
+        flowError = retryAccount.error;
+      }
       if (flowError && /trigger_event|description|total_runs/i.test(String(flowError.message || ''))) {
         const fallback = await auth.db
           .from('bot_flows')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -82,6 +83,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Valid phone is required' }, { status: 400 });
     }
     const local10 = normalized.slice(-10);
+    const accountParam = String(request.nextUrl.searchParams.get('account') || '').trim();
+    const accountScope = accountParam ? await loadWaAccountScope(accountParam) : null;
 
     // Cursor-based fetch with strict normalized filtering for large chats.
     const fetchBatchSize = Math.max(limit * 5, 120);
@@ -129,12 +132,12 @@ export async function GET(request: NextRequest) {
         const recipient = normalizePhone(String(row?.recipient_phone || ''));
         const senderDigits = String(row?.sender_phone || '').replace(/\D/g, '');
         const recipientDigits = String(row?.recipient_phone || '').replace(/\D/g, '');
-        return (
+        const sameCustomer =
           sender === normalized ||
           recipient === normalized ||
           senderDigits.endsWith(local10) ||
-          recipientDigits.endsWith(local10)
-        );
+          recipientDigits.endsWith(local10);
+        return sameCustomer && (!accountScope || messageInWaScope(row, accountScope));
       });
       strictMatches.push(...strictBatch);
 

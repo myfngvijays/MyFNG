@@ -14,6 +14,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { EXPORT_DATE_PRESETS, enumerateYmdRange, resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
+import WhatsAppAccountSwitch, { useWhatsAppAccount } from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 const WHATSAPP_DASHBOARD_DATE_PRESETS = EXPORT_DATE_PRESETS.map((option) => {
   if (option.value === 'all_time') return { ...option, label: 'Maximum' };
@@ -290,6 +291,7 @@ function exportCsv(data: DashboardOverview, preset: string, rangeLabel: string) 
 }
 
 export default function SuperAdminWhatsAppDashboardPage() {
+  const waAccount = useWhatsAppAccount();
   const [preset, setPreset] = useState<ReportDatePreset>('last_7_days');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -342,6 +344,7 @@ export default function SuperAdminWhatsAppDashboardPage() {
         if (customStart) params.set('start', customStart);
         if (customEnd) params.set('end', customEnd);
       }
+      params.set('account', waAccount.accountId);
       const res = await fetch(`/api/whatsapp/dashboard/messages?${params.toString()}`, {
         cache: 'no-store',
       });
@@ -357,7 +360,7 @@ export default function SuperAdminWhatsAppDashboardPage() {
     } finally {
       setRecentLoading(false);
     }
-  }, [customEnd, customStart, preset, recentPage]);
+  }, [customEnd, customStart, preset, recentPage, waAccount.accountId]);
 
   const buildDailyChartUrl = useCallback(() => {
     const params = new URLSearchParams({ preset: chartPreset });
@@ -365,8 +368,9 @@ export default function SuperAdminWhatsAppDashboardPage() {
       if (chartCustomStart) params.set('start', chartCustomStart);
       if (chartCustomEnd) params.set('end', chartCustomEnd);
     }
+    params.set('account', waAccount.accountId);
     return `/api/whatsapp/dashboard/daily-volume?${params.toString()}`;
-  }, [chartCustomEnd, chartCustomStart, chartPreset]);
+  }, [chartCustomEnd, chartCustomStart, chartPreset, waAccount.accountId]);
 
   const loadDailyChart = useCallback(async () => {
     if (chartCustomInvalid) {
@@ -402,8 +406,9 @@ export default function SuperAdminWhatsAppDashboardPage() {
       if (customStart) params.set('start', customStart);
       if (customEnd) params.set('end', customEnd);
     }
+    params.set('account', waAccount.accountId);
     return `/api/whatsapp/dashboard/overview?${params.toString()}`;
-  }, [customEnd, customStart, preset]);
+  }, [customEnd, customStart, preset, waAccount.accountId]);
 
   const loadDashboard = useCallback(async (silent = false) => {
     if (preset === 'custom' && (!customStart || !customEnd)) {
@@ -553,8 +558,11 @@ export default function SuperAdminWhatsAppDashboardPage() {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-yellow-300">WhatsApp Dashboard</h1>
             <p className="mt-1 text-sm text-blue-100">
-              Template delivery analytics, automation performance, and channel health — outbound templates only.
+              Stats for {waAccount.selected?.display_phone || '+91 95949 96161'}. Switch the number to see the other account.
             </p>
+            <div className="mt-3">
+              <WhatsAppAccountSwitch />
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link

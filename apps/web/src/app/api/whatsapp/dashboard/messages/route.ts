@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     const source = String(params.get('source') || 'all');
     const template = String(params.get('template') || '');
     const phone = String(params.get('phone') || '');
+    const account = String(params.get('account') || 'settings');
     const exportCsv = params.get('export') === '1';
 
     const result = await fetchWhatsAppOutboundMessages({
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
       source,
       template,
       phone,
+      account,
     });
 
     if (exportCsv) {

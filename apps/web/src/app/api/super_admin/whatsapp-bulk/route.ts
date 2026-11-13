@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { sendTemplateMessage } from '@/lib/services/whatsappService';
+import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const BATCH_SIZE = 20;
@@ -173,6 +174,128 @@ function chosenHeaderImage(body: { header_image_url?: string } | null | undefine
   const requested = String(body?.header_image_url || '').trim();
   if (/^https?:\/\//i.test(requested)) return requested;
   return headerImageFrom(meta);
+}
+
+const DEFAULT_SENDING_NUMBER = '+91 95949 96161';
+
+function prettyIndianPhone(value: string) {
+  const digits = String(value || '').replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+  if (last10.length !== 10) return String(value || '').trim();
+  return `+91 ${last10.slice(0, 5)} ${last10.slice(5)}`;
+}
+
+function publicAccount(row: any, active: boolean) {
+  return {
+    id: String(row.id),
+    label: String(row.label || row.verified_name || 'WhatsApp'),
+    display_phone: String(row.display_phone || ''),
+    verified_name: String(row.verified_name || ''),
+    phone_number_id_last4: String(row.phone_number_id || '').slice(-4),
+    quality_rating: String(row.quality_rating || ''),
+    is_active: active,
+    source: 'connected',
+  };
+}
+
+async function listSendingAccounts(db: any) {
+  const saved = await db
+    .from('wa_bulk_accounts')
+    .select('id, label, display_phone, verified_name, phone_number_id, quality_rating, is_active, created_at')
+    .order('created_at', { ascending: true });
+  const settingsAccount = {
+    id: 'settings',
+    label: 'WhatsApp settings',
+    display_phone: DEFAULT_SENDING_NUMBER,
+    verified_name: 'My FNG Autocare',
+    phone_number_id_last4: '',
+    quality_rating: '',
+    is_active: true,
+    source: 'settings',
+  };
+  if (saved.error) {
+    return { accounts: [settingsAccount], ready: false, missing: tablesMissing(saved.error) || /wa_bulk_accounts/i.test(saved.error.message || ''), error: saved.error, active: settingsAccount };
+  }
+  const rows = saved.data || [];
+  const activeRow = rows.find((row: { is_active?: boolean }) => row.is_active);
+  const accounts = [
+    { ...settingsAccount, is_active: !activeRow },
+    ...rows.map((row: any) => publicAccount(row, Boolean(row.is_active))),
+  ];
+  const active = accounts.find((account) => account.is_active) || accounts[0];
+  return { accounts, ready: true, missing: false, error: null, active };
+}
+
+function limitLabel(tier: string) {
+  const labels: Record<string, string> = {
+    TIER_50: '50',
+    TIER_250: '250',
+    TIER_1K: '1,000',
+    TIER_1000: '1,000',
+    TIER_2K: '2,000',
+    TIER_10K: '10,000',
+    TIER_100K: '1 Lakh',
+    TIER_UNLIMITED: 'Unlimited',
+  };
+  return labels[String(tier || '').toUpperCase()] || '';
+}
+
+async function phoneProfile(phoneNumberId: string, accessToken: string, apiUrl?: string) {
+  const base = String(apiUrl || 'https://graph.facebook.com/v25.0').replace(/\/$/, '');
+  if (!phoneNumberId || !accessToken) return { limit_label: 'Limit not available', account_status: '', quality_rating: '' };
+  try {
+    const response = await fetch(`${base}/${phoneNumberId}?fields=quality_rating,whatsapp_business_manager_messaging_limit,messaging_limit_tier,status,verified_name`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return { limit_label: 'Limit not available', account_status: '', quality_rating: '' };
+    const tier = String(json.whatsapp_business_manager_messaging_limit || json.messaging_limit_tier || '');
+    return {
+      quality_rating: String(json.quality_rating || ''),
+      account_status: String(json.status || ''),
+      verified_name: String(json.verified_name || ''),
+      limit_label: limitLabel(tier) || 'Limit not published',
+    };
+  } catch {
+    return { limit_label: 'Limit not available', account_status: '', quality_rating: '' };
+  }
+}
+
+async function withAccountLimits(db: any, state: { accounts: any[]; ready: boolean; active?: any }) {
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const secrets = await db.from('wa_bulk_accounts').select('id, phone_number_id, access_token, api_url');
+  const byId = new Map<string, { phone_number_id?: string; access_token?: string; api_url?: string }>(
+    (secrets.data || []).map((row: { id: string; phone_number_id?: string; access_token?: string; api_url?: string }) => [row.id, row]),
+  );
+  const accounts = await Promise.all(state.accounts.map(async (account) => {
+    const secret = account.id === 'settings'
+      ? { phone_number_id: creds.whatsapp_phone_number_id, access_token: creds.whatsapp_access_token, api_url: creds.whatsapp_api_url }
+      : byId.get(account.id);
+    const profile = await phoneProfile(String(secret?.phone_number_id || ''), String(secret?.access_token || ''), secret?.api_url);
+    return {
+      ...account,
+      quality_rating: profile.quality_rating || account.quality_rating || '',
+      verified_name: account.verified_name || profile.verified_name || '',
+      limit_label: profile.limit_label,
+      account_status: profile.account_status || '',
+    };
+  }));
+  return { ...state, accounts };
+}
+
+async function loadActiveSender(db: any) {
+  const row = await db
+    .from('wa_bulk_accounts')
+    .select('phone_number_id, access_token, api_url')
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle();
+  if (row.error || !row.data?.access_token || !row.data?.phone_number_id) return undefined;
+  return {
+    phoneNumberId: String(row.data.phone_number_id),
+    accessToken: String(row.data.access_token),
+    apiUrl: String(row.data.api_url || 'https://graph.facebook.com/v25.0'),
+  };
 }
 
 async function assertAdmin() {
@@ -573,9 +696,12 @@ export async function GET(request: NextRequest) {
     }),
   );
 
+  const accountState = await withAccountLimits(db, await listSendingAccounts(db));
   return NextResponse.json({
     success: true,
-    sending_number: '+91 95949 96161',
+    sending_number: accountState.active?.display_phone || DEFAULT_SENDING_NUMBER,
+    accounts: accountState.accounts,
+    accounts_ready: accountState.ready,
     contact_total: totalRes.count || 0,
     segments,
     campaigns: (campaignsRes.data || []).map((row: any) => ({ ...row, button_map: row.button_map || [] })),
@@ -789,6 +915,11 @@ export async function POST(request: NextRequest) {
       return testSend(db, auth.userId, auth.actorName, auth.role, body);
     }
 
+    if (action === 'connect_account') return connectAccount(db, body);
+    if (action === 'sync_account_templates') return syncAccountTemplates(db, auth.userId, body);
+    if (action === 'activate_account') return activateAccount(db, body);
+    if (action === 'delete_account') return deleteAccount(db, body);
+
     if (action === 'save_field') {
       const title = String(body?.title || '').trim().slice(0, 80);
       if (!title) return NextResponse.json({ error: 'Field title is required' }, { status: 400 });
@@ -926,12 +1057,14 @@ async function testSend(db: any, userId: string, actorName: string, role: string
     return NextResponse.json({ error: 'This template needs a header image. Upload one before sending.' }, { status: 400 });
   }
   const filled = fillParams(params, String(body?.name || savedContact.data?.name || 'Test'), savedFields);
+  const sender = await loadActiveSender(db);
   const result = await sendTemplateMessage({
     phoneNumber: phone,
-    templateName: row.template_name,
+    templateName: String(row.meta?.send_name || row.template_name),
     templateParams: filled,
     languageCode: row.language_code || 'en',
     headerImageUrl,
+    sender,
   });
   const now = new Date().toISOString();
   await db.from('whatsapp_messages').insert({
@@ -946,12 +1079,258 @@ async function testSend(db: any, userId: string, actorName: string, role: string
     status_at: now,
     error_message: result.success ? null : result.error || 'Send failed',
     payload: { source: 'bulk_test', response: result.raw || null },
-    meta: { source: 'bulk_test', actor_id: userId, actor_name: actorName, role_code: role },
+    meta: { source: 'bulk_test', actor_id: userId, actor_name: actorName, role_code: role, phone_number_id: sender?.phoneNumberId || null },
     created_by: userId,
     updated_at: now,
   });
   if (!result.success) return NextResponse.json({ error: result.error || 'Test send failed' }, { status: 502 });
+  if (result.messageId) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const check = await db
+        .from('whatsapp_messages')
+        .select('status, error_message')
+        .eq('provider_message_id', result.messageId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const delivery = String(check.data?.status || '').toUpperCase();
+      if (delivery === 'FAILED') {
+        return NextResponse.json({ error: check.data?.error_message || 'WhatsApp rejected this message.' }, { status: 502 });
+      }
+      if (delivery === 'DELIVERED' || delivery === 'VIEWED' || delivery === 'READ') break;
+    }
+  }
   return NextResponse.json({ success: true, message_id: result.messageId || null });
+}
+
+async function graphGet(apiUrl: string, accessToken: string, path: string) {
+  const response = await fetch(`${apiUrl}/${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  const json = await response.json().catch(() => ({}));
+  return { ok: response.ok, json };
+}
+
+async function idHasTemplates(apiUrl: string, accessToken: string, id: string) {
+  const result = await graphGet(apiUrl, accessToken, `${id}/message_templates?fields=id&limit=1`);
+  if (result.ok) return true;
+  return !/nonexisting field|message_templates/i.test(String(result.json?.error?.message || ''));
+}
+
+async function wabaOwnsPhone(apiUrl: string, accessToken: string, wabaId: string, phoneNumberId: string) {
+  const result = await graphGet(apiUrl, accessToken, `${wabaId}/phone_numbers?fields=id&limit=50`);
+  return (result.json?.data || []).some((row: { id?: string }) => String(row.id) === phoneNumberId);
+}
+
+async function wabasUnderBusiness(apiUrl: string, accessToken: string, businessId: string) {
+  const ids: string[] = [];
+  for (const edge of ['owned_whatsapp_business_accounts', 'client_whatsapp_business_accounts']) {
+    const result = await graphGet(apiUrl, accessToken, `${businessId}/${edge}?fields=id&limit=20`);
+    for (const row of result.json?.data || []) ids.push(String(row.id || ''));
+  }
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
+async function resolveWabaForTemplates(apiUrl: string, accessToken: string, phoneNumberId: string, candidateId: string) {
+  const nested = candidateId ? await wabasUnderBusiness(apiUrl, accessToken, candidateId) : [];
+  const pool = Array.from(new Set([candidateId, ...nested].filter(Boolean)));
+  for (const id of pool) {
+    if (!(await idHasTemplates(apiUrl, accessToken, id))) continue;
+    if (await wabaOwnsPhone(apiUrl, accessToken, id, phoneNumberId)) return id;
+  }
+  const usable = [];
+  for (const id of nested) {
+    if (await idHasTemplates(apiUrl, accessToken, id)) usable.push(id);
+  }
+  if (usable.length === 1) return usable[0];
+  return discoverWabaId(apiUrl, accessToken, phoneNumberId, '');
+}
+
+async function discoverWabaId(apiUrl: string, accessToken: string, phoneNumberId: string, savedWabaId: string) {
+  if (savedWabaId) return savedWabaId;
+  const debug = await fetch(`${apiUrl}/debug_token?input_token=${encodeURIComponent(accessToken)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const payload = await debug.json().catch(() => ({}));
+  const appId = String(payload?.data?.app_id || '');
+  const appSecret = String(process.env.WHATSAPP_APP_SECRET || '');
+  let scopes = Array.isArray(payload?.data?.granular_scopes) ? payload.data.granular_scopes : [];
+  if (appId && appSecret && !scopes.some((scope: { target_ids?: string[] }) => scope?.target_ids?.length)) {
+    const appToken = `${appId}|${appSecret}`;
+    const again = await fetch(`${apiUrl}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(appToken)}`);
+    const againPayload = await again.json().catch(() => ({}));
+    if (Array.isArray(againPayload?.data?.granular_scopes)) scopes = againPayload.data.granular_scopes;
+  }
+  const ids = Array.from(new Set(scopes.flatMap((scope: { target_ids?: string[] }) => scope?.target_ids || [])));
+  for (const id of ids) {
+    const phones = await fetch(`${apiUrl}/${id}/phone_numbers?fields=id&limit=50`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const json = await phones.json().catch(() => ({}));
+    if ((json.data || []).some((row: { id?: string }) => String(row.id) === phoneNumberId)) return String(id);
+  }
+  return String(ids[0] || '');
+}
+
+async function syncAccountTemplates(db: any, userId: string, body: any) {
+  const id = String(body?.id || '').trim();
+  if (!id || id === 'settings') {
+    return NextResponse.json({ error: 'Open WhatsApp Templates and use Sync for the settings number.' }, { status: 400 });
+  }
+  const account = await db.from('wa_bulk_accounts').select('id, label, display_phone, phone_number_id, waba_id, access_token, api_url').eq('id', id).maybeSingle();
+  if (account.error || !account.data) return NextResponse.json({ error: account.error?.message || 'Account not found' }, { status: 404 });
+  const apiUrl = String(account.data.api_url || 'https://graph.facebook.com/v25.0').replace(/\/$/, '');
+  const accessToken = String(account.data.access_token || '');
+  const phoneNumberId = String(account.data.phone_number_id || '');
+  const accountPhone = String(account.data.display_phone || '').replace(/\D/g, '').slice(-10);
+  const providedWabaId = String(body?.waba_id || account.data.waba_id || '').replace(/\D/g, '');
+  const wabaId = await resolveWabaForTemplates(apiUrl, accessToken, phoneNumberId, providedWabaId);
+  if (!wabaId) {
+    return NextResponse.json({ error: 'That number is the Business ID. In the WhatsApp Manager link, paste the asset_id. For this account it is 403294406199168.' }, { status: 400 });
+  }
+  if (account.data.waba_id !== wabaId) await db.from('wa_bulk_accounts').update({ waba_id: wabaId }).eq('id', id);
+
+  const templates: any[] = [];
+  let nextUrl = `${apiUrl}/${wabaId}/message_templates?fields=id,name,language,status,category,components&limit=100`;
+  while (nextUrl) {
+    const response = await fetch(nextUrl, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return NextResponse.json({ error: payload?.error?.error_user_msg || payload?.error?.message || 'Could not read templates from this account.' }, { status: 502 });
+    }
+    templates.push(...(Array.isArray(payload.data) ? payload.data : []));
+    nextUrl = payload?.paging?.next || '';
+  }
+
+  const existing = await db.from('whatsapp_templates').select('template_name, meta');
+  if (existing.error) return NextResponse.json({ error: existing.error.message }, { status: 500 });
+  const byName = new Map<string, any>((existing.data || []).map((row: { template_name: string; meta?: any }) => [String(row.template_name).toLowerCase(), row.meta || {}]));
+  const rows = templates.map((template) => {
+    const metaName = String(template.name || '').trim().toLowerCase();
+    if (!metaName) return null;
+    const body = (template.components || []).find((item: { type?: string }) => String(item.type || '').toUpperCase() === 'BODY');
+    const bodyText = String(body?.text || '').trim() || '[Body not provided by Meta]';
+    const prior = byName.get(metaName) || {};
+    const priorPhone = String(prior.account_phone || '').replace(/\D/g, '').slice(-10);
+    const takenByOther = byName.has(metaName) && priorPhone !== accountPhone;
+    const localName = takenByOther ? `${metaName}__${accountPhone.slice(-5)}` : metaName;
+    const priorLocal = byName.get(localName) || {};
+    return {
+      template_name: localName,
+      display_name: String(template.name || metaName),
+      language_code: String(template.language || 'en'),
+      category: String(template.category || 'UTILITY').toUpperCase(),
+      body_text: bodyText,
+      variable_keys: Array.from(bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)).map((match) => `variable_${match[1]}`),
+      example_values: Array.isArray(body?.example?.body_text?.[0]) ? body.example.body_text[0] : [],
+      is_active: String(template.status || '').toUpperCase() === 'APPROVED',
+      meta: {
+        ...(priorLocal.header_image_url ? { header_image_url: priorLocal.header_image_url } : {}),
+        source: 'meta_sync',
+        status: String(template.status || '').toUpperCase(),
+        template_id: template.id || null,
+        send_name: metaName,
+        account_phone: accountPhone,
+        waba_id: wabaId,
+        synced_at: new Date().toISOString(),
+        raw: template,
+      },
+      created_by: userId,
+      updated_at: new Date().toISOString(),
+    };
+  }).filter(Boolean);
+
+  for (let index = 0; index < rows.length; index += 50) {
+    const saved = await db.from('whatsapp_templates').upsert(rows.slice(index, index + 50), { onConflict: 'template_name' });
+    if (saved.error) return NextResponse.json({ error: saved.error.message }, { status: 500 });
+  }
+  return NextResponse.json({ success: true, synced: rows.length, display_phone: account.data.display_phone, waba_id: wabaId });
+}
+
+async function connectAccount(db: any, body: any) {
+  const rawId = String(body?.phone_number_id || '').trim();
+  const phoneNumberId = rawId.replace(/\D/g, '');
+  const wabaId = String(body?.waba_id || '').replace(/\D/g, '');
+  const label = String(body?.label || '').trim().slice(0, 80);
+  if (!/^\d{13,20}$/.test(phoneNumberId)) {
+    return NextResponse.json({ error: 'Phone number ID is the long number in WhatsApp Manager → Phone numbers. It is not the mobile number and not an email.' }, { status: 400 });
+  }
+  let accessToken = String(body?.access_token || '').trim();
+  if (!accessToken) {
+    const creds = await getResolvedWhatsAppAgentsCredentials();
+    accessToken = String(creds.whatsapp_access_token || '').trim();
+  }
+  if (!accessToken) {
+    return NextResponse.json({ error: 'No access token is saved in WhatsApp Settings.' }, { status: 400 });
+  }
+  const apiUrl = 'https://graph.facebook.com/v25.0';
+  const infoRes = await fetch(`${apiUrl}/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,status`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const info = await infoRes.json().catch(() => ({}));
+  if (!infoRes.ok) {
+    const raw = String(info?.error?.error_user_msg || info?.error?.message || '');
+    const blocked = /does not exist|missing permissions|unsupported get request/i.test(raw);
+    const message = blocked
+      ? 'This Phone number ID is not on the WhatsApp account saved in Settings. In WhatsApp Manager open this number, copy the Phone number ID from its row, and paste that account’s access token below.'
+      : (raw || 'WhatsApp did not accept this number.');
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+  const payload = {
+    label: label || String(info.verified_name || 'WhatsApp'),
+    display_phone: prettyIndianPhone(String(info.display_phone_number || '')),
+    verified_name: String(info.verified_name || ''),
+    phone_number_id: phoneNumberId,
+    waba_id: wabaId,
+    access_token: accessToken,
+    api_url: apiUrl,
+    quality_rating: String(info.quality_rating || ''),
+    is_active: true,
+  };
+  const existing = await db.from('wa_bulk_accounts').select('id').eq('phone_number_id', phoneNumberId).maybeSingle();
+  if (existing.error) {
+    if (tablesMissing(existing.error) || /wa_bulk_accounts/i.test(existing.error.message || '')) {
+      return NextResponse.json({ error: 'Run database/394_whatsapp_bulk_accounts.sql in Supabase, then connect the number again.' }, { status: 503 });
+    }
+    return NextResponse.json({ error: existing.error.message }, { status: 500 });
+  }
+  const saved = existing.data
+    ? await db.from('wa_bulk_accounts').update(payload).eq('id', existing.data.id).select('id, label, display_phone, verified_name, phone_number_id, quality_rating, is_active').maybeSingle()
+    : await db.from('wa_bulk_accounts').insert(payload).select('id, label, display_phone, verified_name, phone_number_id, quality_rating, is_active').maybeSingle();
+  if (saved.error || !saved.data) return NextResponse.json({ error: saved.error?.message || 'Could not save this account' }, { status: 500 });
+  await db.from('wa_bulk_accounts').update({ is_active: false }).neq('id', saved.data.id);
+  return NextResponse.json({ success: true, account: publicAccount(saved.data, true) });
+}
+
+async function activateAccount(db: any, body: any) {
+  const id = String(body?.id || '').trim();
+  if (!id || id === 'settings') {
+    const cleared = await db.from('wa_bulk_accounts').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+    if (cleared.error && !(tablesMissing(cleared.error))) return NextResponse.json({ error: cleared.error.message }, { status: 500 });
+    return NextResponse.json({ success: true, id: 'settings' });
+  }
+  const found = await db.from('wa_bulk_accounts').select('id').eq('id', id).maybeSingle();
+  if (found.error) {
+    if (tablesMissing(found.error)) {
+      return NextResponse.json({ error: 'Run database/394_whatsapp_bulk_accounts.sql in Supabase first.' }, { status: 503 });
+    }
+    return NextResponse.json({ error: found.error.message }, { status: 500 });
+  }
+  if (!found.data) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+  await db.from('wa_bulk_accounts').update({ is_active: false }).neq('id', id);
+  const updated = await db.from('wa_bulk_accounts').update({ is_active: true }).eq('id', id);
+  if (updated.error) return NextResponse.json({ error: updated.error.message }, { status: 500 });
+  return NextResponse.json({ success: true, id });
+}
+
+async function deleteAccount(db: any, body: any) {
+  const id = String(body?.id || '').trim();
+  if (!id || id === 'settings') return NextResponse.json({ error: 'The settings number stays connected.' }, { status: 400 });
+  const removed = await db.from('wa_bulk_accounts').delete().eq('id', id);
+  if (removed.error) return NextResponse.json({ error: removed.error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
 }
 
 function campaignButtonMap(body: any) {
@@ -1195,6 +1574,7 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
     (fieldLookup.data || []).map((row: { phone: string; fields?: Record<string, string> }) => [row.phone, row.fields || {}]),
   );
   let rateLimited = false;
+  const sender = await loadActiveSender(db);
 
   for (let index = 0; index < rows.length; index += 5) {
     if (rateLimited) break;
@@ -1205,10 +1585,11 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
         const filled = fillParams(params, row.name || '', fieldsByPhone.get(row.phone) || {});
         const result = await sendTemplateMessage({
           phoneNumber: row.phone,
-          templateName: campaign.data.template_name,
+          templateName: String(templateRow.data?.meta?.send_name || campaign.data.template_name),
           templateParams: filled,
           languageCode: campaign.data.language_code || 'en',
           headerImageUrl,
+          sender,
         });
         const rateHit = /rate limit|130429|80007/i.test(String(result.error || ''));
         if (rateHit) {
@@ -1239,7 +1620,7 @@ async function sendBatch(db: any, userId: string, actorName: string, role: strin
           status_at: now,
           error_message: result.success ? null : result.error || 'Send failed',
           payload: { source: 'bulk', response: result.raw || null },
-          meta: { source: 'bulk', campaign_id: campaignId, actor_id: userId, actor_name: actorName, role_code: role },
+          meta: { source: 'bulk', campaign_id: campaignId, actor_id: userId, actor_name: actorName, role_code: role, phone_number_id: sender?.phoneNumberId || null },
           created_by: userId,
           updated_at: now,
         });

@@ -20,6 +20,8 @@ import {
   createGraphForTriggerEvent,
   labelForTriggerEvent,
 } from '@/lib/whatsappBotFlow/workflowEvents';
+import { flowMatchesWaAccount, last10Digits } from '@/lib/whatsapp/accountSelection';
+import WhatsAppAccountSwitch, { useWhatsAppAccount } from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 type FlowRow = {
   id: string;
@@ -31,6 +33,7 @@ type FlowRow = {
   success_runs?: number | null;
   failed_runs?: number | null;
   last_run_at?: string | null;
+  account_phone?: string | null;
   updated_at?: string | null;
   bot_flow_versions?: Array<{ id: string; status: string; version_no: number }>;
 };
@@ -48,6 +51,7 @@ type RunRow = {
 
 export default function WhatsAppWorkflowsPage() {
   const router = useRouter();
+  const waAccount = useWhatsAppAccount();
   const [flows, setFlows] = useState<FlowRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,13 +74,13 @@ export default function WhatsAppWorkflowsPage() {
 
   const filteredFlows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return flows;
     return flows.filter((f) => {
+      if (!flowMatchesWaAccount(f, waAccount.selected)) return false;
       const name = String(f.name || '').toLowerCase();
       const ev = String(f.trigger_event || '').toLowerCase();
-      return name.includes(q) || ev.includes(q) || labelForTriggerEvent(ev).toLowerCase().includes(q);
+      return !q || name.includes(q) || ev.includes(q) || labelForTriggerEvent(ev).toLowerCase().includes(q);
     });
-  }, [flows, search]);
+  }, [flows, search, waAccount.selected]);
 
   const filteredEvents = useMemo(() => {
     const q = eventSearch.trim().toLowerCase();
@@ -132,6 +136,7 @@ export default function WhatsAppWorkflowsPage() {
           trigger_event: selectedEvent,
           description: WORKFLOW_TRIGGER_EVENTS.find((e) => e.key === selectedEvent)?.description || '',
           graph_json: createGraphForTriggerEvent(selectedEvent),
+          account_phone: waAccount.selected?.source === 'connected' ? last10Digits(waAccount.selected.display_phone) : '',
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -185,8 +190,11 @@ export default function WhatsAppWorkflowsPage() {
               Workflow Builder
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              TeleCRM-style flows — synced with Bot Flow canvas, templates, and inbound WhatsApp.
+              New workflows are saved for {waAccount.selected?.display_phone || '+91 95949 96161'}. Pick the account before you create.
             </p>
+            <div className="mt-3">
+              <WhatsAppAccountSwitch />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -423,7 +431,10 @@ export default function WhatsAppWorkflowsPage() {
             <div className="flex items-start justify-between border-b px-5 py-4">
               <div>
                 <p className="text-lg font-bold text-slate-900">Select event</p>
-                <p className="text-xs text-slate-500">Select the event that will trigger the workflow.</p>
+                <p className="text-xs text-slate-500">This workflow will belong to {waAccount.selected?.display_phone || '+91 95949 96161'}.</p>
+                <div className="mt-2">
+                  <WhatsAppAccountSwitch />
+                </div>
               </div>
               <button type="button" onClick={() => setCreateOpen(false)} className="rounded-lg p-1.5 hover:bg-slate-100">
                 <X className="h-5 w-5 text-slate-500" />

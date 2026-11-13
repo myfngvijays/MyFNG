@@ -535,10 +535,13 @@ export async function POST(request: NextRequest) {
             nextTimestamps.failed_at = String(statusAt || now);
           }
 
+          const statusMeta = change?.value?.metadata || {};
           const mergedMeta = {
             ...existingMeta,
             status_raw: statusItem?.status || existingMeta?.status_raw || null,
             status_timestamps: nextTimestamps,
+            business_phone: existingMeta?.business_phone || statusMeta.display_phone_number || null,
+            phone_number_id: existingMeta?.phone_number_id || statusMeta.phone_number_id || null,
           };
 
           const { data: updatedMsgRaw } = await db

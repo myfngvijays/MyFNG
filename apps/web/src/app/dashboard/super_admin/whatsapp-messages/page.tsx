@@ -9,6 +9,7 @@ import {
   resolveReportDateRange,
   type ReportDatePreset,
 } from '@/lib/report-date-range';
+import WhatsAppAccountSwitch, { useWhatsAppAccount } from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 const WHATSAPP_DATE_PRESETS = EXPORT_DATE_PRESETS.map((option) => {
   if (option.value === 'all_time') return { ...option, label: 'Maximum' };
@@ -58,6 +59,7 @@ function buildQueryParams(input: {
   source: string;
   template: string;
   phone: string;
+  account?: string;
   exportCsv?: boolean;
 }) {
   const params = new URLSearchParams({
@@ -73,6 +75,7 @@ function buildQueryParams(input: {
   }
   if (input.template.trim()) params.set('template', input.template.trim());
   if (input.phone.trim()) params.set('phone', input.phone.trim());
+  if (input.account) params.set('account', input.account);
   if (input.exportCsv) params.set('export', '1');
   return params;
 }
@@ -93,6 +96,7 @@ export default function WhatsAppMessagesPage() {
 
 function WhatsAppMessagesPageContent() {
   const searchParams = useSearchParams();
+  const waAccount = useWhatsAppAccount();
   const initialPreset = (searchParams.get('preset') || 'last_7_days') as ReportDatePreset;
   const initialStart = searchParams.get('start') || '';
   const initialEnd = searchParams.get('end') || '';
@@ -135,6 +139,7 @@ function WhatsAppMessagesPageContent() {
         source,
         template,
         phone,
+        account: waAccount.accountId,
       });
       const res = await fetch(`/api/whatsapp/dashboard/messages?${params.toString()}`, {
         cache: 'no-store',
@@ -151,7 +156,7 @@ function WhatsAppMessagesPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [customEnd, customStart, limit, page, phone, preset, source, status, template]);
+  }, [customEnd, customStart, limit, page, phone, preset, source, status, template, waAccount.accountId]);
 
   useEffect(() => {
     loadMessages();
@@ -171,6 +176,7 @@ function WhatsAppMessagesPageContent() {
         source,
         template,
         phone,
+        account: waAccount.accountId,
         exportCsv: true,
       });
       const res = await fetch(`/api/whatsapp/dashboard/messages?${params.toString()}`);
@@ -201,8 +207,11 @@ function WhatsAppMessagesPageContent() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Outbound Message Logs</h1>
           <p className="mt-1 text-sm text-gray-600">
-            All outbound WhatsApp template messages — delivered, read, pending & failed.
+            Logs for {waAccount.selected?.display_phone || '+91 95949 96161'}. The original number stays selected until you switch.
           </p>
+          <div className="mt-3">
+            <WhatsAppAccountSwitch />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link

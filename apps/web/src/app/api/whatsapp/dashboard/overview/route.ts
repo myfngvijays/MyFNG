@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { enumerateYmdRange, resolveReportDateRange, shouldApplyDateRangeFilter } from '@/lib/report-date-range';
+import { loadWaAccountScope, messageInWaScope, templateInWaScope } from '@/lib/whatsapp/accountScope';
 
 const ALLOWED_ADMIN_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const MAX_DAILY_CHART_DAYS = 30;
@@ -182,7 +183,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const outboundTemplates = ((messageRows || []) as MessageRow[]).filter(isOutboundTemplate);
+    const accountScope = await loadWaAccountScope(String(request.nextUrl.searchParams.get('account') || 'settings'));
+    const templateList = await db.from('whatsapp_templates').select('category, is_active, meta');
+    const scopedTemplates = templateList.error ? null : (templateList.data || []).filter((row: { meta?: { account_phone?: string } | null }) => templateInWaScope(row, accountScope));
+    const scopedTemplateTotal = scopedTemplates ? scopedTemplates.length : totalTemplates || 0;
+    const scopedApprovedTotal = scopedTemplates ? scopedTemplates.filter((row: { is_active?: boolean }) => row.is_active !== false).length : approvedTemplates || 0;
+    const scopedUtilityTotal = scopedTemplates ? scopedTemplates.filter((row: { category?: string }) => String(row.category || '').toUpperCase() === 'UTILITY').length : utilityTemplates || 0;
+    const scopedMarketingTotal = scopedTemplates ? scopedTemplates.filter((row: { category?: string }) => String(row.category || '').toUpperCase() === 'MARKETING').length : marketingTemplates || 0;
+
+    const outboundTemplates = ((messageRows || []) as MessageRow[]).filter((row) => messageInWaScope(row, accountScope) && isOutboundTemplate(row));
     const automationOutbound = outboundTemplates.filter(isAutomationMessage);
     const manualOutbound = outboundTemplates.filter((row) => !isAutomationMessage(row));
 
@@ -377,10 +386,10 @@ export async function GET(request: NextRequest) {
         manual_sent: manualStats.sent,
         enabled_automation_triggers: enabledAutomationCount,
         total_automation_triggers: (automationSettings || []).length,
-        total_templates: totalTemplates || 0,
-        approved_templates: approvedTemplates || 0,
-        utility_templates: utilityTemplates || 0,
-        marketing_templates: marketingTemplates || 0,
+        total_templates: scopedTemplateTotal,
+        approved_templates: scopedApprovedTotal,
+        utility_templates: scopedUtilityTotal,
+        marketing_templates: scopedMarketingTotal,
       },
       sources: {
         automation: automationStats,

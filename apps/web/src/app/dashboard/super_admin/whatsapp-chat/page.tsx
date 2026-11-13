@@ -24,6 +24,8 @@ import {
   MicOff,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { templateMatchesWaAccount } from '@/lib/whatsapp/accountSelection';
+import WhatsAppAccountSwitch, { useWhatsAppAccount } from '@/components/whatsapp/WhatsAppAccountSwitch';
 
 type ChatItem = {
   phone: string;
@@ -360,6 +362,7 @@ async function compressImageIfNeeded(file: File): Promise<File> {
 }
 
 export default function SuperAdminWhatsAppChatPage() {
+  const waAccount = useWhatsAppAccount();
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -600,6 +603,7 @@ export default function SuperAdminWhatsAppChatPage() {
         params.set('limit', '500');
         params.set('scan', '10000');
         if (search.trim()) params.set('search', search.trim());
+        params.set('account', waAccount.accountId);
 
         const res = await fetch(`/api/whatsapp/chats?${params.toString()}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({}));
@@ -620,7 +624,7 @@ export default function SuperAdminWhatsAppChatPage() {
         setRefreshing(false);
       }
     },
-    [search]
+    [search, waAccount.accountId]
   );
 
   const loadConversation = useCallback(async (phone: string) => {
@@ -634,6 +638,7 @@ export default function SuperAdminWhatsAppChatPage() {
       const params = new URLSearchParams();
       params.set('phone', phone);
       params.set('limit', '80');
+      params.set('account', waAccount.accountId);
       const res = await fetch(`/api/whatsapp/conversation?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Failed to load conversation');
@@ -644,7 +649,7 @@ export default function SuperAdminWhatsAppChatPage() {
     } finally {
       setConversationLoading(false);
     }
-  }, []);
+  }, [waAccount.accountId]);
 
   const loadCalls = useCallback(async (phone: string) => {
     if (!phone) {
@@ -1889,10 +1894,13 @@ export default function SuperAdminWhatsAppChatPage() {
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">All chats</h1>
                   <p className="text-xs text-gray-500">
-                    {activeSection === 'all'
+                    {waAccount.selected?.display_phone || '+91 95949 96161'} · {activeSection === 'all'
                       ? titleText
                       : `${filteredChats.length} in ${activeSection}`}
                   </p>
+                  <div className="mt-2">
+                    <WhatsAppAccountSwitch />
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -2588,7 +2596,7 @@ export default function SuperAdminWhatsAppChatPage() {
                       className="rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-[#004AAD]"
                     >
                       <option value="">Select template</option>
-                      {templateOptions.map((tpl) => (
+                      {templateOptions.filter((tpl) => templateMatchesWaAccount(tpl, waAccount.selected)).map((tpl) => (
                         <option key={tpl.template_name} value={tpl.template_name}>
                           {tpl.display_name || tpl.template_name}
                         </option>

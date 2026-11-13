@@ -69,6 +69,8 @@ import {
   Mail,
   Hash,
   Radar,
+  Plus,
+  Minus,
 } from 'lucide-react';
 
 type NavItem = {
@@ -87,6 +89,29 @@ type FlatNavItem = {
   description: string;
   parent?: string;
 };
+
+const NAV_SECTIONS_KEY = 'myfng.sa.navSections.v2';
+
+function defaultClosedSections(): Record<string, boolean> {
+  const closed: Record<string, boolean> = {};
+  for (const item of navigationItems) {
+    if (item.isSection && item.name !== 'Overview') closed[item.name] = true;
+  }
+  return closed;
+}
+
+function readClosedSections(): Record<string, boolean> {
+  const defaults = defaultClosedSections();
+  if (typeof window === 'undefined') return defaults;
+  try {
+    const raw = localStorage.getItem(NAV_SECTIONS_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : defaults;
+  } catch {
+    return defaults;
+  }
+}
 
 function compactNavText(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -909,6 +934,7 @@ function SuperAdminLayoutInner({
   const searchQueryRef = useRef('');
   const searchFocusedRef = useRef(false);
   searchQueryRef.current = searchQuery;
+  const [closedSections, setClosedSections] = useState<Record<string, boolean>>(defaultClosedSections);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Smart Tools': false,
     'App Content & Display': false,
@@ -922,6 +948,36 @@ function SuperAdminLayoutInner({
     WhatsApp: false,
     'MISA AI': false,
   });
+
+  React.useEffect(() => {
+    setClosedSections(readClosedSections());
+  }, []);
+
+  const toggleSection = useCallback((name: string) => {
+    setClosedSections((prev) => {
+      const next = { ...prev, [name]: !prev[name] };
+      if (!next[name]) delete next[name];
+      try {
+        localStorage.setItem(NAV_SECTIONS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota / private mode */
+      }
+      return next;
+    });
+  }, []);
+
+  const hiddenNavNames = useMemo(() => {
+    const hidden = new Set<string>();
+    let closed = false;
+    for (const item of navigationItems) {
+      if (item.isSection) {
+        closed = Boolean(closedSections[item.name]);
+        continue;
+      }
+      if (closed) hidden.add(item.name);
+    }
+    return hidden;
+  }, [closedSections]);
 
   React.useEffect(() => {
     setMobileMenuOpen(false);
@@ -1294,16 +1350,30 @@ function SuperAdminLayoutInner({
           <div className="space-y-1">
             {navigationItems.map((item) => {
               if (item.isSection) {
+                const closed = Boolean(closedSections[item.name]);
                 return sidebarOpen ? (
-                  <div key={`section-${item.name}`} className="px-3 pt-3 first:pt-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-100/85">
+                  <button
+                    key={`section-${item.name}`}
+                    type="button"
+                    onClick={() => toggleSection(item.name)}
+                    className="w-full flex items-center gap-2 px-3 pt-3 pb-1 first:pt-0 text-left rounded-md hover:bg-blue-500/20"
+                    aria-expanded={!closed}
+                  >
+                    <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-blue-100/85">
                       {item.name}
-                    </div>
-                  </div>
+                    </span>
+                    {closed ? (
+                      <Plus className="w-3.5 h-3.5 shrink-0 text-blue-100" />
+                    ) : (
+                      <Minus className="w-3.5 h-3.5 shrink-0 text-blue-100" />
+                    )}
+                  </button>
                 ) : (
                   <div key={`section-${item.name}`} className="h-1.5" />
                 );
               }
+
+              if (sidebarOpen && hiddenNavNames.has(item.name)) return null;
 
               const Icon = item.icon;
               const active = item.href ? isActive(item.href) : isGroupActive(item);
@@ -1542,14 +1612,28 @@ function SuperAdminLayoutInner({
               <div className="space-y-1">
                 {navigationItems.map((item) => {
                   if (item.isSection) {
+                    const closed = Boolean(closedSections[item.name]);
                     return (
-                      <div key={`mobile-section-${item.name}`} className="px-3 pt-3 first:pt-0">
-                        <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-100/85">
+                      <button
+                        key={`mobile-section-${item.name}`}
+                        type="button"
+                        onClick={() => toggleSection(item.name)}
+                        className="w-full flex items-center gap-2 px-3 pt-3 pb-1 first:pt-0 text-left rounded-md hover:bg-blue-500/20"
+                        aria-expanded={!closed}
+                      >
+                        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-blue-100/85">
                           {item.name}
-                        </div>
-                      </div>
+                        </span>
+                        {closed ? (
+                          <Plus className="w-3.5 h-3.5 shrink-0 text-blue-100" />
+                        ) : (
+                          <Minus className="w-3.5 h-3.5 shrink-0 text-blue-100" />
+                        )}
+                      </button>
                     );
                   }
+
+                  if (hiddenNavNames.has(item.name)) return null;
 
                   const Icon = item.icon;
               const active = item.href ? isActive(item.href) : isGroupActive(item);
