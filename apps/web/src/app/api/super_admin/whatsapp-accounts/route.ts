@@ -30,6 +30,8 @@ export async function GET() {
     source: 'settings',
     quality_rating: '',
     is_active: false,
+    phone_number_id: String(process.env.WHATSAPP_PHONE_NUMBER_ID || '').replace(/\D/g, ''),
+    waba_id: String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '').replace(/\D/g, ''),
   };
 
   const { supabaseAdmin } = getSupabaseAdmin();
@@ -37,7 +39,7 @@ export async function GET() {
 
   const saved = await supabaseAdmin
     .from('wa_bulk_accounts')
-    .select('id, label, display_phone, verified_name, quality_rating, is_active')
+    .select('id, label, display_phone, verified_name, phone_number_id, waba_id, quality_rating, is_active')
     .order('created_at', { ascending: true });
   if (saved.error) return NextResponse.json({ accounts: [settings] });
 
@@ -49,6 +51,8 @@ export async function GET() {
     source: 'connected',
     quality_rating: String(row.quality_rating || ''),
     is_active: Boolean(row.is_active),
+    phone_number_id: String(row.phone_number_id || '').replace(/\D/g, ''),
+    waba_id: String(row.waba_id || '').replace(/\D/g, ''),
   }));
 
   return NextResponse.json({ accounts: [settings, ...connected] });

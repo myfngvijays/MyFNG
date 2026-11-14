@@ -150,7 +150,9 @@ export default function BookServicePage() {
   const [otpTimer, setOtpTimer] = useState(0);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpAnim, setOtpAnim] = useState<OtpAnimStatus>('idle');
-  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms'>('whatsapp');
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms' | 'email'>('whatsapp');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpChannels, setOtpChannels] = useState({ sms_dlt: false, whatsapp: true, email: false, firebase: false });
   const otpVerifyLock = useRef(false);
   const autoOtpPhoneRef = useRef('');
   const latestPhoneRef = useRef('');
@@ -209,6 +211,25 @@ export default function BookServicePage() {
         }
       });
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/public/otp-channels', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        setOtpChannels({
+          sms_dlt: Boolean(json?.sms_dlt),
+          whatsapp: Boolean(json?.whatsapp),
+          email: Boolean(json?.email),
+          firebase: Boolean(json?.firebase),
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -985,7 +1006,7 @@ export default function BookServicePage() {
   };
 
   const sendBookingOtp = async (
-    channel: 'whatsapp' | 'sms',
+    channel: 'whatsapp' | 'sms' | 'email',
     opts?: { fallbackWhatsapp?: boolean },
   ) => {
     if (!requiredConsentsGranted(bookingConsent, ['service'])) {
@@ -996,6 +1017,10 @@ export default function BookServicePage() {
     setConsentError('');
     if (!isValidIndianMobile(formData.customerPhone)) {
       toast.error('Please enter a valid Indian mobile number');
+      return;
+    }
+    if (channel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpEmail.trim())) {
+      toast.error('Enter the email address that should receive the code');
       return;
     }
     if (otpLoading) return;
@@ -1011,7 +1036,8 @@ export default function BookServicePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: phoneAtSend,
-          channel: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS',
+          email: otpEmail.trim(),
+          channel: channel === 'whatsapp' ? 'WHATSAPP' : channel === 'email' ? 'EMAIL' : 'SMS',
           fallbackWhatsapp: channel === 'sms' && opts?.fallbackWhatsapp === true,
           metadata: { source: 'book-service-step2' },
         }),
@@ -1022,7 +1048,8 @@ export default function BookServicePage() {
         throw new Error(json?.error || 'Failed to send OTP');
       }
 
-      const delivered = String(json.channel || '').toUpperCase() === 'WHATSAPP' ? 'whatsapp' : channel;
+      const deliveredChannel = String(json.channel || '').toUpperCase();
+      const delivered = deliveredChannel === 'WHATSAPP' ? 'whatsapp' : deliveredChannel === 'EMAIL' ? 'email' : channel === 'email' ? 'email' : 'sms';
       setOtpChannel(delivered);
       setOtpSent(true);
       setOtpVerified(false);
@@ -1030,7 +1057,7 @@ export default function BookServicePage() {
       setOtpAnim('idle');
       otpVerifyLock.current = false;
       setOtpTimer(30);
-      toast.success(delivered === 'whatsapp' ? 'OTP sent on WhatsApp' : 'OTP sent by SMS');
+      toast.success(delivered === 'whatsapp' ? 'OTP sent on WhatsApp' : delivered === 'email' ? 'OTP sent by email' : 'OTP sent by SMS');
       setTimeout(() => otpInputRefs.current[0]?.focus(), 60);
     } catch (error: any) {
       const message = error?.message || 'Unable to send OTP';
@@ -1142,8 +1169,12 @@ export default function BookServicePage() {
     if (!requiredConsentsGranted(bookingConsent, ['service'])) return;
     if (autoOtpPhoneRef.current === phone) return;
     autoOtpPhoneRef.current = phone;
-    void sendBookingOtp('sms', { fallbackWhatsapp: true });
-  }, [currentStep, formData.customerPhone, bookingConsent, otpSent, otpVerified, otpLoading]);
+    if (otpChannels.sms_dlt) {
+      void sendBookingOtp('sms', { fallbackWhatsapp: otpChannels.whatsapp });
+      return;
+    }
+    if (otpChannels.whatsapp) void sendBookingOtp('whatsapp');
+  }, [currentStep, formData.customerPhone, bookingConsent, otpSent, otpVerified, otpLoading, otpChannels.sms_dlt, otpChannels.whatsapp]);
 
   const scrollToStepTop = () => {
     if (typeof window === 'undefined') return;
@@ -1452,7 +1483,7 @@ export default function BookServicePage() {
           amount: couponAdjustedTotal,
           customerName: customerName,
           customerPhone: formData.customerPhone.trim(),
-          customerEmail: '', // Optional
+          customerEmail: otpEmail.trim(),
         }),
       });
 
@@ -2354,7 +2385,9 @@ export default function BookServicePage() {
                           if (e.key !== 'Enter') return;
                           e.preventDefault();
                           if (!otpSent && isValidIndianMobile(formData.customerPhone)) {
-                            void sendBookingOtp('sms', { fallbackWhatsapp: true });
+                            if (otpChannels.sms_dlt) void sendBookingOtp('sms', { fallbackWhatsapp: otpChannels.whatsapp });
+                            else if (otpChannels.whatsapp) void sendBookingOtp('whatsapp');
+                            else if (otpChannels.email) void sendBookingOtp('email');
                             return;
                           }
                           if (otpSent && !otpVerified && otpCode.length === 6) {
@@ -2395,7 +2428,18 @@ export default function BookServicePage() {
                     />
 
                     {!otpSent ? (
-                      <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex flex-col gap-2">
+                        {otpChannels.email ? (
+                          <input
+                            type="email"
+                            value={otpEmail}
+                            onChange={(event) => setOtpEmail(event.target.value)}
+                            placeholder="Email for the verification code"
+                            className="w-full rounded-xl border-2 border-gray-200 px-3 py-3 text-base outline-none focus:border-brand-primary"
+                          />
+                        ) : null}
+                        <div className="flex flex-col sm:flex-row gap-2">
+                        {otpChannels.whatsapp ? (
                         <button
                           type="button"
                           onClick={() => void sendBookingOtp('whatsapp')}
@@ -2405,21 +2449,39 @@ export default function BookServicePage() {
                           {otpLoading && otpChannel === 'whatsapp' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                           WhatsApp OTP
                         </button>
+                        ) : null}
+                        {otpChannels.sms_dlt ? (
                         <button
                           type="button"
-                          onClick={() => void sendBookingOtp('sms', { fallbackWhatsapp: true })}
+                          onClick={() => void sendBookingOtp('sms', { fallbackWhatsapp: otpChannels.whatsapp })}
                           disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading || !requiredConsentsGranted(bookingConsent, ['service'])}
                           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 border-brand-primary text-brand-primary font-semibold hover:bg-brand-primary/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {otpLoading && otpChannel === 'sms' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                           SMS OTP
                         </button>
+                        ) : null}
+                        {otpChannels.email ? (
+                        <button
+                          type="button"
+                          onClick={() => void sendBookingOtp('email')}
+                          disabled={!isValidIndianMobile(formData.customerPhone) || otpLoading || !requiredConsentsGranted(bookingConsent, ['service'])}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 border-blue-600 text-blue-700 font-semibold hover:bg-blue-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {otpLoading && otpChannel === 'email' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          Email OTP
+                        </button>
+                        ) : null}
+                        </div>
+                        {!otpChannels.whatsapp && !otpChannels.sms_dlt && !otpChannels.email ? (
+                          <p className="text-sm text-amber-800">No OTP channel is on. Turn one on from the OTP menu.</p>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="space-y-3 rounded-2xl border-2 border-green-200 bg-green-50/50 p-4 sm:p-5">
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                           <p className="text-sm font-semibold text-green-800">
-                            OTP sent via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 {formData.customerPhone}
+                            OTP sent via {otpChannel === 'whatsapp' ? 'WhatsApp' : otpChannel === 'email' ? 'email' : 'SMS'} to {otpChannel === 'email' ? otpEmail : `+91 ${formData.customerPhone}`}
                           </p>
                           <button
                             type="button"
@@ -2475,19 +2537,21 @@ export default function BookServicePage() {
                             Resend OTP
                             {otpTimer > 0 ? `(${otpTimer}s)` : ''}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void sendBookingOtp(
-                                otpChannel === 'whatsapp' ? 'sms' : 'whatsapp',
-                                otpChannel === 'whatsapp' ? { fallbackWhatsapp: true } : undefined,
-                              )
-                            }
-                            disabled={otpLoading}
-                            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Try {otpChannel === 'whatsapp' ? 'SMS' : 'WhatsApp'} instead
+                          {otpChannels.whatsapp && otpChannel !== 'whatsapp' ? (
+                          <button type="button" onClick={() => void sendBookingOtp('whatsapp')} disabled={otpLoading} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition disabled:opacity-50">
+                            Try WhatsApp instead
                           </button>
+                          ) : null}
+                          {otpChannels.sms_dlt && otpChannel !== 'sms' ? (
+                          <button type="button" onClick={() => void sendBookingOtp('sms')} disabled={otpLoading} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition disabled:opacity-50">
+                            Try SMS instead
+                          </button>
+                          ) : null}
+                          {otpChannels.email && otpChannel !== 'email' ? (
+                          <button type="button" onClick={() => void sendBookingOtp('email')} disabled={otpLoading} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition disabled:opacity-50">
+                            Try email instead
+                          </button>
+                          ) : null}
                         </div>
                       </div>
                     )}

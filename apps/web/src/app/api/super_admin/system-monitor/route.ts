@@ -1961,6 +1961,25 @@ async function checkSitemap(): Promise<HealthCheck> {
 
 async function checkEmailService(): Promise<HealthCheck> {
   const start = Date.now();
+  try {
+    const { loadOtpChannelConfig, emailOtpReady } = await import('@/lib/otp/channelConfig');
+    const otpEmail = await loadOtpChannelConfig();
+    if (otpEmail.email) {
+      const ready = emailOtpReady(otpEmail);
+      return {
+        name: 'Email (SMTP)',
+        category: 'Notifications',
+        status: ready ? 'healthy' : 'degraded',
+        responseTime: Date.now() - start,
+        message: ready ? `OTP mailbox ${otpEmail.email_from || otpEmail.email_user}` : 'Email OTP is on, but the mailbox is incomplete',
+        reason: ready ? 'Booking and login can send a code from the saved mailbox.' : 'Host, username, password, and from address are required.',
+        quickFix: { label: 'Open OTP settings', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/otp' } },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+  } catch {
+    // Fall through to the env check.
+  }
   const sendgrid = Boolean(String(process.env.SENDGRID_API_KEY || '').trim());
   const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_HOST;
   if (sendgrid || smtpHost) {

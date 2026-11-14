@@ -425,7 +425,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [newAddrLocating, setNewAddrLocating] = useState(false);
 
   const [otpSent, setOtpSent] = useState(false);
-  const [otpChannel, setOtpChannel] = useState<'sms' | 'whatsapp'>('whatsapp');
+  const [otpChannel, setOtpChannel] = useState<'sms' | 'whatsapp' | 'email'>('whatsapp');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpChannels, setOtpChannels] = useState({ sms_dlt: false, whatsapp: true, email: false });
+  const otpChannelsRef = useRef(otpChannels);
   const [otpValue, setOtpValue] = useState('');
   const [otpConfirmation, setOtpConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
@@ -2404,6 +2407,49 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   };
 
 
+  useEffect(() => {
+    fetch(`${ENV.API_URL}/api/public/otp-channels`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        const next = {
+          sms_dlt: Boolean(json?.sms_dlt),
+          whatsapp: Boolean(json?.whatsapp),
+          email: Boolean(json?.email),
+        };
+        otpChannelsRef.current = next;
+        setOtpChannels(next);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const handleSendEmailOtp = async () => {
+    const cleanPhone = form.customerPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpEmail.trim())) {
+      Alert.alert('Email', 'Enter the email that should receive the code');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpChannel('email');
+    try {
+      const res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+        body: JSON.stringify({ phone: cleanPhone, email: otpEmail.trim(), channel: 'EMAIL' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to send email OTP');
+      setOtpSent(true);
+    } catch (error: any) {
+      Alert.alert('OTP Failed', error?.message || 'Unable to send email OTP');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const handleSendWhatsAppOtp = async () => {
     const cleanPhone = form.customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
@@ -2485,9 +2531,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     if (autoOtpPhoneRef.current === cleanPhone) return;
     autoOtpPhoneRef.current = cleanPhone;
     void (async () => {
-      const smsSent = await handleSendSmsOtp({ silent: true });
-      if (smsSent) return;
-      await handleSendWhatsAppOtp();
+      const channels = otpChannelsRef.current;
+      if (channels.sms_dlt) {
+        const smsSent = await handleSendSmsOtp({ silent: true });
+        if (smsSent || !channels.whatsapp) return;
+        await handleSendWhatsAppOtp();
+        return;
+      }
+      if (channels.whatsapp) await handleSendWhatsAppOtp();
     })();
   }, [form.customerPhone, isLoggedIn, otpSent, otpVerified, otpLoading, step]);
 
@@ -3098,6 +3149,18 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 </View>
                 {!isLoggedIn && !otpSent && !otpVerified ? (
                   <View style={styles.otpBtnRow}>
+                    {otpChannels.email ? (
+                      <TextInput
+                        value={otpEmail}
+                        onChangeText={setOtpEmail}
+                        style={[styles.input, { flexBasis: '100%' }]}
+                        placeholder="Email for the code"
+                        placeholderTextColor={COLORS.gray[500]}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                      />
+                    ) : null}
+                    {otpChannels.whatsapp ? (
                     <TouchableOpacity
                       style={styles.otpWhatsAppBtn}
                       onPress={handleSendWhatsAppOtp}
@@ -3107,6 +3170,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
                       <Text style={styles.otpWhatsAppBtnText}>WhatsApp OTP</Text>
                     </TouchableOpacity>
+                    ) : null}
+                    {otpChannels.sms_dlt ? (
                     <TouchableOpacity
                       style={styles.otpSmsBtnAlt}
                       onPress={handleSendSmsOtp}
@@ -3116,6 +3181,18 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <Ionicons name="chatbubble-ellipses" size={16} color={COLORS.primary} />
                       <Text style={styles.otpSmsBtnAltText}>SMS OTP</Text>
                     </TouchableOpacity>
+                    ) : null}
+                    {otpChannels.email ? (
+                    <TouchableOpacity
+                      style={styles.otpSmsBtnAlt}
+                      onPress={handleSendEmailOtp}
+                      disabled={otpLoading || form.customerPhone.replace(/\D/g, '').length < 10}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="mail-outline" size={16} color={COLORS.primary} />
+                      <Text style={styles.otpSmsBtnAltText}>Email OTP</Text>
+                    </TouchableOpacity>
+                    ) : null}
                   </View>
                 ) : null}
                 {!isLoggedIn && otpSent && !otpVerified ? (
@@ -3123,7 +3200,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                       <Ionicons name={otpChannel === 'whatsapp' ? 'logo-whatsapp' : 'chatbubble-ellipses'} size={14} color={otpChannel === 'whatsapp' ? '#25D366' : COLORS.primary} />
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B7280' }}>
-                        OTP sent via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 {form.customerPhone}
+                        OTP sent via {otpChannel === 'whatsapp' ? 'WhatsApp' : otpChannel === 'email' ? 'email' : 'SMS'} to {otpChannel === 'email' ? otpEmail : `+91 ${form.customerPhone}`}
                       </Text>
                     </View>
                     <Text style={styles.label}>Enter OTP *</Text>
@@ -3140,14 +3217,24 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       editable={!otpLoading && otpAnim !== 'success'}
                     />
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
-                      <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendWhatsAppOtp : handleSendSmsOtp} disabled={otpLoading}>
+                      <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendWhatsAppOtp : otpChannel === 'email' ? handleSendEmailOtp : handleSendSmsOtp} disabled={otpLoading}>
                         <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>Resend OTP</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendSmsOtp : handleSendWhatsAppOtp} disabled={otpLoading}>
-                        <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '700' }}>
-                          Try {otpChannel === 'whatsapp' ? 'SMS' : 'WhatsApp'} instead
-                        </Text>
+                      {otpChannels.sms_dlt && otpChannel !== 'sms' ? (
+                      <TouchableOpacity onPress={() => void handleSendSmsOtp()} disabled={otpLoading}>
+                        <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '700' }}>Try SMS instead</Text>
                       </TouchableOpacity>
+                      ) : null}
+                      {otpChannels.whatsapp && otpChannel !== 'whatsapp' ? (
+                      <TouchableOpacity onPress={handleSendWhatsAppOtp} disabled={otpLoading}>
+                        <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '700' }}>Try WhatsApp instead</Text>
+                      </TouchableOpacity>
+                      ) : null}
+                      {otpChannels.email && otpChannel !== 'email' ? (
+                      <TouchableOpacity onPress={handleSendEmailOtp} disabled={otpLoading}>
+                        <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '700' }}>Try email instead</Text>
+                      </TouchableOpacity>
+                      ) : null}
                     </View>
                   </View>
                 ) : null}

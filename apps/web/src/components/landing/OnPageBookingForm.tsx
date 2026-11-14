@@ -97,6 +97,8 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
   const [visitTime, setVisitTime] = useState('');
   const [consent, setConsent] = useState(true);
   const [otpChannelLabel, setOtpChannelLabel] = useState('');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [emailOtpOn, setEmailOtpOn] = useState(false);
   const otpSendLock = useRef('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -199,20 +201,39 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
     setError('');
     setOtpLoading(true);
     try {
+      const channelRes = await fetch('/api/public/otp-channels', { cache: 'no-store' });
+      const channels = await channelRes.json().catch(() => ({}));
+      setEmailOtpOn(Boolean(channels?.email));
+      let channel = 'SMS';
+      let fallbackWhatsapp = false;
+      if (channels?.sms_dlt) {
+        channel = 'SMS';
+        fallbackWhatsapp = Boolean(channels?.whatsapp);
+      } else if (channels?.whatsapp) {
+        channel = 'WHATSAPP';
+      } else if (channels?.email) {
+        channel = 'EMAIL';
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpEmail.trim())) {
+          throw new Error('Enter the email that should receive the code.');
+        }
+      } else {
+        throw new Error('OTP is turned off.');
+      }
       const res = await fetch('/api/booking/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: targetPhone,
-          channel: 'SMS',
-          fallbackWhatsapp: true,
+          email: otpEmail.trim(),
+          channel,
+          fallbackWhatsapp,
           metadata: { source },
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) throw new Error(json?.error || 'Could not send OTP.');
-      const onWhatsapp = String(json.channel || '').toUpperCase() === 'WHATSAPP';
-      setOtpChannelLabel(onWhatsapp ? 'OTP sent on WhatsApp' : 'OTP sent by SMS');
+      const delivered = String(json.channel || '').toUpperCase();
+      setOtpChannelLabel(delivered === 'WHATSAPP' ? 'OTP sent on WhatsApp' : delivered === 'EMAIL' ? 'OTP sent by email' : 'OTP sent by SMS');
       setOtpSent(true);
       setOtpVerified(false);
       setOtpCode('');
@@ -224,6 +245,13 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
       setOtpLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetch('/api/public/otp-channels', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => setEmailOtpOn(Boolean(json?.email)))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!/^[6-9]\d{9}$/.test(phone)) return;
@@ -627,6 +655,15 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
                   placeholder="10-digit mobile"
                   className="h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
+                {emailOtpOn ? (
+                  <input
+                    value={otpEmail}
+                    onChange={(e) => setOtpEmail(e.target.value)}
+                    type="email"
+                    placeholder="Email for the code"
+                    className="mt-2 h-10 w-full rounded-xl border border-blue-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                ) : null}
                 <div className="mt-1 text-[10px] font-medium leading-4 text-slate-500">
                   {otpLoading
                     ? 'Sending OTP…'

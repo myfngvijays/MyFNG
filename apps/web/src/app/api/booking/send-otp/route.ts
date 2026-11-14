@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { issueSmsOtp, normalizeSmsPhone } from '@/lib/sms/issueSmsOtp';
-import { sendWhatsAppOtpMessage } from '@/lib/services/whatsappOtpSend';
+import { sendWhatsAppOtpMessage, stampWhatsAppOtpRequest } from '@/lib/services/whatsappOtpSend';
+import { issueEmailOtp } from '@/lib/otp/issueEmailOtp';
+import { loadOtpChannelConfig } from '@/lib/otp/channelConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +20,24 @@ export async function POST(request: NextRequest) {
   }
 
   const requested = String(body.channel || 'SMS').trim().toUpperCase();
-  const channel = requested === 'WHATSAPP' ? 'WHATSAPP' : 'SMS';
+  const channel = requested === 'WHATSAPP' || requested === 'EMAIL' ? requested : 'SMS';
   const baseMetadata = body.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+  const channels = await loadOtpChannelConfig();
+
+  if (channel === 'EMAIL') {
+    const result = await issueEmailOtp(supabaseAdmin, phone, String(body.email || ''), {
+      metadata: baseMetadata,
+      ip: request.headers.get('x-forwarded-for'),
+      userAgent: request.headers.get('user-agent'),
+    });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({
+      success: true,
+      message: 'OTP sent by email',
+      channel: 'EMAIL',
+      expiresInSeconds: result.expiresInSeconds,
+    });
+  }
 
   if (channel === 'WHATSAPP') {
     const result = await issueWhatsAppBookingOtp(supabaseAdmin, phone, {
@@ -36,6 +54,28 @@ export async function POST(request: NextRequest) {
       channel: 'WHATSAPP',
       expiresInSeconds: result.expiresInSeconds,
     });
+  }
+
+  if (!channels.sms_dlt) {
+    const fallbackWhatsapp = body.fallbackWhatsapp === true || body.fallback_whatsapp === true;
+    if (fallbackWhatsapp && channels.whatsapp) {
+      const wa = await issueWhatsAppBookingOtp(supabaseAdmin, phone, {
+        metadata: baseMetadata,
+        ip: request.headers.get('x-forwarded-for'),
+        userAgent: request.headers.get('user-agent'),
+      });
+      if (wa.ok) {
+        return NextResponse.json({
+          success: true,
+          message: 'OTP sent on WhatsApp',
+          channel: 'WHATSAPP',
+          fallback: true,
+          expiresInSeconds: wa.expiresInSeconds,
+        });
+      }
+      return NextResponse.json({ error: wa.error }, { status: wa.status });
+    }
+    return NextResponse.json({ error: 'SMS OTP is turned off.' }, { status: 403 });
   }
 
   const result = await issueSmsOtp(supabaseAdmin, phone, {
@@ -130,17 +170,8 @@ async function issueWhatsAppBookingOtp(
   }
 
   const waResult = await sendWhatsAppOtpMessage(phone, otpCode);
+  await stampWhatsAppOtpRequest(inserted.id, metadata, waResult);
   if (!waResult.success) {
-    await supabaseAdmin
-      .from('otp_requests')
-      .update({
-        status: 'FAILED',
-        metadata: {
-          ...metadata,
-          whatsapp_error: waResult.error || 'Unknown WhatsApp error',
-        },
-      })
-      .eq('id', inserted.id);
     return { ok: false, status: 502, error: waResult.error || 'Failed to send OTP on WhatsApp' };
   }
 

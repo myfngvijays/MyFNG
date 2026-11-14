@@ -23,6 +23,8 @@ function isValidIndianMobile(phone: string): boolean {
 export function MisaVerificationPanel({ chatContext, onContextPatch, onVerified }: Props) {
   const sessionId = String(chatContext?.conversationId || '').trim();
   const [phoneInput, setPhoneInput] = useState(chatContext?.customerPhone || '');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [emailOtpOn, setEmailOtpOn] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
@@ -34,6 +36,13 @@ export function MisaVerificationPanel({ chatContext, onContextPatch, onVerified 
   useEffect(() => {
     if (chatContext?.customerPhone) setPhoneInput(chatContext.customerPhone);
   }, [chatContext?.customerPhone]);
+
+  useEffect(() => {
+    fetch('/api/public/otp-channels', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => setEmailOtpOn(Boolean(json?.email)))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!otpSent || chatContext?.phoneVerified || otpTimer <= 0) return;
@@ -52,21 +61,40 @@ export function MisaVerificationPanel({ chatContext, onContextPatch, onVerified 
     setLoading(true);
     setError(null);
     try {
+      const channelRes = await fetch('/api/public/otp-channels', { cache: 'no-store' });
+      const channels = await channelRes.json().catch(() => ({}));
+      setEmailOtpOn(Boolean(channels?.email));
+      let channel = 'SMS';
+      let fallbackWhatsapp = false;
+      if (channels?.sms_dlt) {
+        channel = 'SMS';
+        fallbackWhatsapp = Boolean(channels?.whatsapp);
+      } else if (channels?.whatsapp) {
+        channel = 'WHATSAPP';
+      } else if (channels?.email) {
+        channel = 'EMAIL';
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpEmail.trim())) {
+          throw new Error('Email daalein jahan code bhejna hai');
+        }
+      } else {
+        throw new Error('OTP is turned off.');
+      }
       const res = await fetch('/api/booking/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: targetPhone,
-          channel: 'SMS',
-          fallbackWhatsapp: true,
+          email: otpEmail.trim(),
+          channel,
+          fallbackWhatsapp,
           metadata: { source: 'misa-ai-verification', session_id: sessionId },
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) throw new Error(json?.error || 'OTP send failed');
 
-      const onWhatsapp = String(json.channel || '').toUpperCase() === 'WHATSAPP';
-      setOtpChannelLabel(onWhatsapp ? 'OTP sent on WhatsApp' : 'OTP sent by SMS');
+      const delivered = String(json.channel || '').toUpperCase();
+      setOtpChannelLabel(delivered === 'WHATSAPP' ? 'OTP sent on WhatsApp' : delivered === 'EMAIL' ? 'OTP sent by email' : 'OTP sent by SMS');
       setOtpSent(true);
       setOtpCode('');
       setOtpTimer(30);
@@ -177,6 +205,18 @@ export function MisaVerificationPanel({ chatContext, onContextPatch, onVerified 
                     className="h-11 w-full rounded-xl border border-gray-200 px-3 text-base text-gray-900 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
                   />
                 </label>
+                {emailOtpOn ? (
+                  <label className="block min-w-0 flex-1">
+                    <span className="mb-1.5 block text-xs font-medium text-gray-600">Email</span>
+                    <input
+                      type="email"
+                      value={otpEmail}
+                      onChange={(e) => setOtpEmail(e.target.value)}
+                      placeholder="code yahan aayega"
+                      className="h-11 w-full rounded-xl border border-gray-200 px-3 text-base text-gray-900 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                    />
+                  </label>
+                ) : null}
                 <label className="block min-w-0 flex-1">
                   <span className="mb-1.5 block text-xs font-medium text-gray-600">OTP</span>
                   <input

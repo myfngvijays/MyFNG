@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     .from('otp_requests')
     .select('id, metadata, status, created_at')
     .eq('phone', phone)
-    .in('channel', ['SMS', 'WHATSAPP'])
+    .in('channel', ['SMS', 'WHATSAPP', 'EMAIL'])
     .eq('status', 'SENT')
     .order('created_at', { ascending: false })
     .limit(25);

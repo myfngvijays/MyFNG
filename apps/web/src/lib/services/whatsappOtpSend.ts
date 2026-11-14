@@ -9,6 +9,7 @@ import {
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import type { WhatsAppSendResult } from '@/lib/services/whatsappService';
 import { normalizePhoneNumber } from '@/lib/services/whatsappService';
+import { loadOtpChannelConfig } from '@/lib/otp/channelConfig';
 
 type OtpCreds = {
   whatsapp_access_token: string;
@@ -19,6 +20,12 @@ type OtpCreds = {
 };
 
 type SenderHealth = 'healthy' | 'down' | 'unknown';
+
+type OtpSendResult = WhatsAppSendResult & {
+  attempts?: Array<{ label: string; error?: string; statusCode?: number }>;
+  senderPhoneNumberId?: string;
+  triedPhoneNumberIds?: string[];
+};
 
 type MetaTemplateComponent = {
   type?: string;
@@ -313,7 +320,7 @@ async function loadOtpSenders(): Promise<OtpCreds[]> {
     const phoneId = String(row.phone_number_id || '').trim();
     const token = String(row.access_token || '').trim();
     const wabaId = String(row.waba_id || '').trim();
-    if (!phoneId || !token || !wabaId) continue;
+    if (!phoneId || !token) continue;
     if (senders.some((sender) => sender.whatsapp_phone_number_id === phoneId)) continue;
     senders.push({
       whatsapp_access_token: token,
@@ -353,19 +360,30 @@ async function sendOtpFromSender(
   }
 
   if (!selectedTemplate) {
-    return {
+    const direct = await sendAttempt(creds, phoneNumber, 'otp', {
+      label: 'otp-url',
+      languageCode: 'en',
+      components: [
+        { type: 'body', parameters: [{ type: 'text', text: otpCode }] },
+        { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: otpCode }] },
+      ],
+    });
+    if (direct.success) return tagSender(creds, direct);
+    return tagSender(creds, {
       success: false,
-      error: 'WhatsApp OTP template "otp" is not on this number.',
-    };
+      error: direct.error || 'WhatsApp OTP template "otp" is not on this number.',
+      statusCode: direct.statusCode,
+      raw: direct.raw,
+    });
   }
 
   const metaStatus = String(selectedTemplate.status || '').toUpperCase();
   if (metaStatus !== 'APPROVED') {
-    return {
+    return tagSender(creds, {
       success: false,
       error: `WhatsApp OTP template is ${metaStatus || 'NOT APPROVED'} on this number.`,
       raw: selectedTemplate,
-    };
+    });
   }
 
   const attempts = buildAttemptsForTemplate(selectedTemplate, otpCode);
@@ -374,7 +392,7 @@ async function sendOtpFromSender(
 
   for (const attempt of attempts) {
     const result = await sendAttempt(creds, phoneNumber, selectedTemplateName, attempt);
-    if (result.success) return result;
+    if (result.success) return tagSender(creds, result);
     lastResult = result;
     attemptErrors.push({
       label: attempt.label,
@@ -383,19 +401,52 @@ async function sendOtpFromSender(
     });
   }
 
-  return {
+  return tagSender(creds, {
     ...lastResult,
     attempts: attemptErrors,
     error:
       lastResult.error ||
       'Failed to send OTP on WhatsApp. Check that template "otp" matches Meta (AUTHENTICATION/body/button).',
+  });
+}
+
+function tagSender(creds: OtpCreds, result: OtpSendResult): OtpSendResult {
+  return { ...result, senderPhoneNumberId: creds.whatsapp_phone_number_id };
+}
+
+export async function stampWhatsAppOtpRequest(
+  id: string,
+  metadata: Record<string, unknown>,
+  result: OtpSendResult,
+) {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin || !id) return;
+  const next = {
+    ...metadata,
+    whatsapp_phone_number_id: result.senderPhoneNumberId || null,
+    whatsapp_message_id: result.messageId || null,
+    whatsapp_tried_phone_number_ids: result.triedPhoneNumberIds || (result.senderPhoneNumberId ? [result.senderPhoneNumberId] : []),
   };
+  if (!result.success) {
+    Object.assign(next, {
+      whatsapp_error: String(result.error || 'Unknown WhatsApp error').slice(0, 240),
+      whatsapp_status_code: result.statusCode || null,
+    });
+  }
+  await supabaseAdmin
+    .from('otp_requests')
+    .update({ status: result.success ? 'SENT' : 'FAILED', metadata: next })
+    .eq('id', id);
 }
 
 export async function sendWhatsAppOtpMessage(
   phoneNumber: string,
   otpCode: string,
-): Promise<WhatsAppSendResult & { attempts?: Array<{ label: string; error?: string; statusCode?: number }> }> {
+): Promise<OtpSendResult> {
+  const channels = await loadOtpChannelConfig();
+  if (!channels.whatsapp) {
+    return { success: false, error: 'WhatsApp OTP is turned off.' };
+  }
   const senders = await loadOtpSenders();
   if (!senders.length) {
     return { success: false, error: 'WhatsApp API credentials are not configured' };
@@ -413,12 +464,15 @@ export async function sendWhatsAppOtpMessage(
   const queue = usable.length ? usable : ranked;
 
   const attemptErrors: Array<{ label: string; error?: string; statusCode?: number }> = [];
-  let lastResult: WhatsAppSendResult = { success: false, error: 'Unknown WhatsApp error' };
+  const triedPhoneNumberIds: string[] = [];
+  let lastResult: OtpSendResult = { success: false, error: 'Unknown WhatsApp error' };
 
   for (const row of queue) {
     const result = await sendOtpFromSender(row.sender, phoneNumber, otpCode);
-    if (result.success) return result;
-    lastResult = result;
+    const senderId = result.senderPhoneNumberId || row.sender.whatsapp_phone_number_id;
+    if (senderId && !triedPhoneNumberIds.includes(senderId)) triedPhoneNumberIds.push(senderId);
+    if (result.success) return { ...result, senderPhoneNumberId: senderId, triedPhoneNumberIds };
+    lastResult = { ...result, senderPhoneNumberId: senderId, triedPhoneNumberIds: [...triedPhoneNumberIds] };
     attemptErrors.push(...(result.attempts || [{ label: 'otp', error: result.error, statusCode: result.statusCode }]));
     if (!shouldTryNextAccount(result)) break;
   }
@@ -426,6 +480,7 @@ export async function sendWhatsAppOtpMessage(
   return {
     ...lastResult,
     attempts: attemptErrors,
+    triedPhoneNumberIds,
     error: lastResult.error || 'Failed to send OTP on WhatsApp.',
   };
 }

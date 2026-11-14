@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { sendTemplateMessage } from '@/lib/services/whatsappService';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
+import { ensureOtpTemplateForAccount } from '@/lib/services/whatsappAuthenticationOtpTemplate';
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const BATCH_SIZE = 20;
@@ -191,7 +192,9 @@ function publicAccount(row: any, active: boolean) {
     label: String(row.label || row.verified_name || 'WhatsApp'),
     display_phone: String(row.display_phone || ''),
     verified_name: String(row.verified_name || ''),
+    phone_number_id: String(row.phone_number_id || '').replace(/\D/g, ''),
     phone_number_id_last4: String(row.phone_number_id || '').slice(-4),
+    waba_id: String(row.waba_id || '').replace(/\D/g, ''),
     quality_rating: String(row.quality_rating || ''),
     is_active: active,
     source: 'connected',
@@ -201,14 +204,16 @@ function publicAccount(row: any, active: boolean) {
 async function listSendingAccounts(db: any) {
   const saved = await db
     .from('wa_bulk_accounts')
-    .select('id, label, display_phone, verified_name, phone_number_id, quality_rating, is_active, created_at')
+    .select('id, label, display_phone, verified_name, phone_number_id, waba_id, quality_rating, is_active, created_at')
     .order('created_at', { ascending: true });
   const settingsAccount = {
     id: 'settings',
     label: 'WhatsApp settings',
     display_phone: DEFAULT_SENDING_NUMBER,
     verified_name: 'My FNG Autocare',
-    phone_number_id_last4: '',
+    phone_number_id: String(process.env.WHATSAPP_PHONE_NUMBER_ID || '').replace(/\D/g, ''),
+    phone_number_id_last4: String(process.env.WHATSAPP_PHONE_NUMBER_ID || '').slice(-4),
+    waba_id: String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '').replace(/\D/g, ''),
     quality_rating: '',
     is_active: true,
     source: 'settings',
@@ -917,6 +922,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'connect_account') return connectAccount(db, body);
     if (action === 'sync_account_templates') return syncAccountTemplates(db, auth.userId, body);
+    if (action === 'ensure_account_otp') return ensureAccountOtp(db, auth.userId, body);
     if (action === 'activate_account') return activateAccount(db, body);
     if (action === 'delete_account') return deleteAccount(db, body);
 
@@ -1174,6 +1180,37 @@ async function discoverWabaId(apiUrl: string, accessToken: string, phoneNumberId
   return String(ids[0] || '');
 }
 
+function metaAccountPhone(meta: any) {
+  return String(meta?.account_phone || '').replace(/\D/g, '').slice(-10);
+}
+
+async function removeAccountTemplates(
+  db: any,
+  accountPhone: string,
+  options: { keepNames?: string[]; onlyOtherPhoneId?: string } = {},
+) {
+  if (!accountPhone) return 0;
+  const existing = await db.from('whatsapp_templates').select('id, template_name, meta');
+  if (existing.error) throw new Error(existing.error.message);
+  const keep = new Set((options.keepNames || []).map((name) => name.toLowerCase()));
+  const ids: string[] = [];
+  for (const row of existing.data || []) {
+    if (metaAccountPhone(row.meta) !== accountPhone) continue;
+    const name = String(row.template_name || '').toLowerCase();
+    if (keep.has(name)) continue;
+    if (options.onlyOtherPhoneId) {
+      const stamped = String(row.meta?.phone_number_id || '').replace(/\D/g, '');
+      if (stamped === options.onlyOtherPhoneId) continue;
+    }
+    if (row.id) ids.push(String(row.id));
+  }
+  for (let index = 0; index < ids.length; index += 50) {
+    const removed = await db.from('whatsapp_templates').delete().in('id', ids.slice(index, index + 50));
+    if (removed.error) throw new Error(removed.error.message);
+  }
+  return ids.length;
+}
+
 async function syncAccountTemplates(db: any, userId: string, body: any) {
   const id = String(body?.id || '').trim();
   if (!id || id === 'settings') {
@@ -1188,7 +1225,12 @@ async function syncAccountTemplates(db: any, userId: string, body: any) {
   const providedWabaId = String(body?.waba_id || account.data.waba_id || '').replace(/\D/g, '');
   const wabaId = await resolveWabaForTemplates(apiUrl, accessToken, phoneNumberId, providedWabaId);
   if (!wabaId) {
-    return NextResponse.json({ error: 'That number is the Business ID. In the WhatsApp Manager link, paste the asset_id. For this account it is 403294406199168.' }, { status: 400 });
+    const removed = await removeAccountTemplates(db, accountPhone, { onlyOtherPhoneId: phoneNumberId });
+    return NextResponse.json({
+      error: removed
+        ? `Yesterday's templates for this number were removed (${removed}). Open WhatsApp Manager for this number, copy asset_id from the address bar, paste it on the account card, then Sync again.`
+        : 'Open WhatsApp Manager for this number, copy asset_id from the address bar, paste it on the account card, then Sync again.',
+    }, { status: 400 });
   }
   if (account.data.waba_id !== wabaId) await db.from('wa_bulk_accounts').update({ waba_id: wabaId }).eq('id', id);
 
@@ -1233,6 +1275,7 @@ async function syncAccountTemplates(db: any, userId: string, body: any) {
         template_id: template.id || null,
         send_name: metaName,
         account_phone: accountPhone,
+        phone_number_id: phoneNumberId,
         waba_id: wabaId,
         synced_at: new Date().toISOString(),
         raw: template,
@@ -1240,13 +1283,56 @@ async function syncAccountTemplates(db: any, userId: string, body: any) {
       created_by: userId,
       updated_at: new Date().toISOString(),
     };
-  }).filter(Boolean);
+  }).filter((row): row is { template_name: string } => Boolean(row));
 
   for (let index = 0; index < rows.length; index += 50) {
     const saved = await db.from('whatsapp_templates').upsert(rows.slice(index, index + 50), { onConflict: 'template_name' });
     if (saved.error) return NextResponse.json({ error: saved.error.message }, { status: 500 });
   }
-  return NextResponse.json({ success: true, synced: rows.length, display_phone: account.data.display_phone, waba_id: wabaId });
+  const removed = await removeAccountTemplates(db, accountPhone, {
+    keepNames: rows.map((row: { template_name: string }) => row.template_name),
+  });
+  return NextResponse.json({
+    success: true,
+    synced: rows.length,
+    deleted: removed,
+    display_phone: account.data.display_phone,
+    waba_id: wabaId,
+  });
+}
+
+async function ensureAccountOtp(db: any, userId: string, body: any) {
+  const id = String(body?.id || '').trim();
+  if (!id || id === 'settings') {
+    return NextResponse.json({ error: 'Use Fix OTP on the settings number from WhatsApp Templates.' }, { status: 400 });
+  }
+  const account = await db.from('wa_bulk_accounts').select('id, display_phone, phone_number_id, waba_id, access_token, api_url').eq('id', id).maybeSingle();
+  if (account.error || !account.data) return NextResponse.json({ error: account.error?.message || 'Account not found' }, { status: 404 });
+  const apiUrl = String(account.data.api_url || 'https://graph.facebook.com/v25.0').replace(/\/$/, '');
+  const accessToken = String(account.data.access_token || '');
+  const phoneNumberId = String(account.data.phone_number_id || '');
+  const accountPhone = String(account.data.display_phone || '').replace(/\D/g, '').slice(-10);
+  const providedWabaId = String(body?.waba_id || account.data.waba_id || '').replace(/\D/g, '');
+  const wabaId = await resolveWabaForTemplates(apiUrl, accessToken, phoneNumberId, providedWabaId);
+  if (!wabaId) {
+    return NextResponse.json({
+      error: 'This number has no WhatsApp account id yet. Open WhatsApp Manager, copy asset_id from the address bar, paste it on the account card, then create the OTP template again.',
+    }, { status: 400 });
+  }
+  if (account.data.waba_id !== wabaId) await db.from('wa_bulk_accounts').update({ waba_id: wabaId }).eq('id', id);
+  try {
+    const result = await ensureOtpTemplateForAccount({
+      apiUrl,
+      accessToken,
+      wabaId,
+      accountPhone,
+      phoneNumberId,
+      createdBy: userId,
+    });
+    return NextResponse.json({ success: true, ...result, display_phone: account.data.display_phone });
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Could not create the OTP template' }, { status: 502 });
+  }
 }
 
 async function connectAccount(db: any, body: any) {
@@ -1297,10 +1383,12 @@ async function connectAccount(db: any, body: any) {
     return NextResponse.json({ error: existing.error.message }, { status: 500 });
   }
   const saved = existing.data
-    ? await db.from('wa_bulk_accounts').update(payload).eq('id', existing.data.id).select('id, label, display_phone, verified_name, phone_number_id, quality_rating, is_active').maybeSingle()
-    : await db.from('wa_bulk_accounts').insert(payload).select('id, label, display_phone, verified_name, phone_number_id, quality_rating, is_active').maybeSingle();
+    ? await db.from('wa_bulk_accounts').update(payload).eq('id', existing.data.id).select('id, label, display_phone, verified_name, phone_number_id, waba_id, quality_rating, is_active').maybeSingle()
+    : await db.from('wa_bulk_accounts').insert(payload).select('id, label, display_phone, verified_name, phone_number_id, waba_id, quality_rating, is_active').maybeSingle();
   if (saved.error || !saved.data) return NextResponse.json({ error: saved.error?.message || 'Could not save this account' }, { status: 500 });
   await db.from('wa_bulk_accounts').update({ is_active: false }).neq('id', saved.data.id);
+  const accountPhone = String(payload.display_phone || '').replace(/\D/g, '').slice(-10);
+  await removeAccountTemplates(db, accountPhone, { onlyOtherPhoneId: phoneNumberId });
   return NextResponse.json({ success: true, account: publicAccount(saved.data, true) });
 }
 
@@ -1328,6 +1416,11 @@ async function activateAccount(db: any, body: any) {
 async function deleteAccount(db: any, body: any) {
   const id = String(body?.id || '').trim();
   if (!id || id === 'settings') return NextResponse.json({ error: 'The settings number stays connected.' }, { status: 400 });
+  const existing = await db.from('wa_bulk_accounts').select('id, display_phone').eq('id', id).maybeSingle();
+  if (existing.error) return NextResponse.json({ error: existing.error.message }, { status: 500 });
+  if (!existing.data) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+  const accountPhone = String(existing.data.display_phone || '').replace(/\D/g, '').slice(-10);
+  await removeAccountTemplates(db, accountPhone);
   const removed = await db.from('wa_bulk_accounts').delete().eq('id', id);
   if (removed.error) return NextResponse.json({ error: removed.error.message }, { status: 500 });
   return NextResponse.json({ success: true });

@@ -29,11 +29,11 @@ type Template = {
   example_values?: string[] | null;
   is_active?: boolean;
   variable_keys?: string[] | null;
-  meta?: { status?: string; header_image_url?: string; account_phone?: string; send_name?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: WaButton[] }> } } | null;
+  meta?: { status?: string; header_image_url?: string; account_phone?: string; phone_number_id?: string; send_name?: string; raw?: { parameter_format?: string; components?: Array<{ type?: string; format?: string; text?: string; buttons?: WaButton[] }> } } | null;
 };
 type ButtonAction = { text: string; action: 'create_lead' | 'ignore'; tag: string };
 type Tab = 'accounts' | 'dashboard' | 'contacts' | 'fields' | 'segments' | 'templates' | 'campaign' | 'results';
-type SendingAccount = { id: string; label: string; display_phone: string; verified_name: string; phone_number_id_last4: string; quality_rating: string; limit_label?: string; account_status?: string; is_active: boolean; source: string };
+type SendingAccount = { id: string; label: string; display_phone: string; verified_name: string; phone_number_id?: string; phone_number_id_last4: string; waba_id?: string; quality_rating: string; limit_label?: string; account_status?: string; is_active: boolean; source: string };
 type AudienceRow = { id: string; name: string | null; phone: string; status: string; reply_button: string | null; reply_kind?: string | null; delivery_status?: string | null; sent_at: string | null; replied_at: string | null };
 type CustomField = { id: string; field_key: string; title: string; description: string; field_type: string; created_at: string };
 
@@ -351,7 +351,15 @@ export default function BulkWhatsAppPage() {
     setContactTotal(bulk.contact_total || 0);
     setTemplates(Array.isArray(templateJson.templates) ? templateJson.templates : []);
     setCustomFields(Array.isArray(bulk.custom_fields) ? bulk.custom_fields : []);
-    setAccounts(Array.isArray(bulk.accounts) ? bulk.accounts : []);
+    const nextAccounts = Array.isArray(bulk.accounts) ? bulk.accounts : [];
+    setAccounts(nextAccounts);
+    setAccountWabaById((current) => {
+      const next = { ...current };
+      for (const account of nextAccounts) {
+        if (!next[account.id] && account.waba_id) next[account.id] = String(account.waba_id);
+      }
+      return next;
+    });
     setAccountsReady(bulk.accounts_ready !== false);
     setSendingNumber(String(bulk.sending_number || '+91 95949 96161'));
   }, []);
@@ -427,9 +435,15 @@ export default function BulkWhatsAppPage() {
   const activeAccount = accounts.find((account) => account.is_active);
   const accountTemplates = useMemo(() => {
     const activePhone = String(activeAccount?.display_phone || '').replace(/\D/g, '').slice(-10);
+    const activePhoneId = String(activeAccount?.phone_number_id || '').replace(/\D/g, '');
     return templates.filter((template) => {
       const owner = String(template.meta?.account_phone || '').replace(/\D/g, '').slice(-10);
-      if (activeAccount?.source === 'settings') return !owner || owner === activePhone;
+      const templatePhoneId = String(template.meta?.phone_number_id || '').replace(/\D/g, '');
+      if (activeAccount?.source === 'settings') {
+        if (templatePhoneId && activePhoneId && templatePhoneId !== activePhoneId) return false;
+        return !owner || owner === activePhone;
+      }
+      if (activePhoneId) return templatePhoneId === activePhoneId;
       return Boolean(activePhone) && owner === activePhone;
     });
   }, [activeAccount, templates]);
@@ -447,7 +461,8 @@ export default function BulkWhatsAppPage() {
     setError('');
     try {
       const result = await post({ action: 'sync_account_templates', id, waba_id: accountWabaById[id] || '' });
-      setNotice(`${result.synced || 0} templates synced for ${result.display_phone || 'this number'}.`);
+      const removed = Number(result.deleted || 0);
+      setNotice(`${result.synced || 0} templates synced for ${result.display_phone || 'this number'}.${removed ? ` ${removed} old templates removed.` : ''}`);
       await loadHome();
     } catch (err: any) {
       setError(err?.message || 'Could not sync templates');
@@ -841,7 +856,7 @@ export default function BulkWhatsAppPage() {
                       {confirming ? (
                         <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-2">
                           <p className="text-xs font-semibold text-rose-900">Remove {account.display_phone || 'this number'}?</p>
-                          <p className="mt-0.5 text-[10px] text-rose-700">Campaigns will stop using it. Saved templates stay.</p>
+                          <p className="mt-0.5 text-[10px] text-rose-700">Campaigns stop using it, and its templates leave the WhatsApp section.</p>
                           <div className="mt-2 flex gap-1.5">
                             <button type="button" onClick={() => setConfirmRemoveId('')} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">Keep</button>
                             <button

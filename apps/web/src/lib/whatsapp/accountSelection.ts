@@ -10,6 +10,8 @@ export type WaAccountChoice = {
   source: string;
   quality_rating?: string;
   is_active?: boolean;
+  phone_number_id?: string;
+  waba_id?: string;
 };
 
 export function last10Digits(value: string) {
@@ -28,12 +30,18 @@ export function writeStoredWaAccountId(id: string) {
 }
 
 export function templateMatchesWaAccount(
-  template: { meta?: { account_phone?: string } | null },
-  account: { source?: string; display_phone?: string } | null,
+  template: { meta?: { account_phone?: string; phone_number_id?: string } | null },
+  account: { source?: string; display_phone?: string; phone_number_id?: string } | null,
 ) {
   const owner = last10Digits(String(template?.meta?.account_phone || ''));
   const selected = last10Digits(account?.display_phone || DEFAULT_WHATSAPP_PHONE);
-  if (!account || account.source === 'settings') return !owner || owner === selected;
+  const templatePhoneId = String(template?.meta?.phone_number_id || '').replace(/\D/g, '');
+  const accountPhoneId = String(account?.phone_number_id || '').replace(/\D/g, '');
+  if (!account || account.source === 'settings') {
+    if (templatePhoneId && accountPhoneId && templatePhoneId !== accountPhoneId) return false;
+    return !owner || owner === selected;
+  }
+  if (accountPhoneId) return templatePhoneId === accountPhoneId;
   return Boolean(selected) && owner === selected;
 }
 

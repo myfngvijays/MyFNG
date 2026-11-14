@@ -26,6 +26,7 @@ type TemplateRow = {
     source?: string;
     crm_telecaller?: boolean | string | number;
     account_phone?: string;
+    phone_number_id?: string;
   } | null;
   created_at: string;
   updated_at: string;
@@ -522,14 +523,20 @@ export default function WhatsAppTemplateManager() {
   const handleSyncTemplates = async () => {
     setSyncing(true);
     try {
-      const res = await fetch('/api/whatsapp/templates/sync', {
-        method: 'POST',
-      });
+      const selected = waAccount.selected;
+      const connected = selected?.source === 'connected' && selected.id && selected.id !== 'settings';
+      const res = connected
+        ? await fetch('/api/super_admin/whatsapp-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'sync_account_templates', id: selected.id, waba_id: selected.waba_id || '' }),
+          })
+        : await fetch('/api/whatsapp/templates/sync', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to sync templates');
       const parts: string[] = [];
       if (data?.synced != null) parts.push(`Synced ${data.synced} templates`);
-      if (data?.deleted) parts.push(`Deleted ${data.deleted} stale`);
+      if (data?.deleted) parts.push(`Removed ${data.deleted} old`);
       toast.success(parts.length > 0 ? parts.join(', ') : 'Templates synced from Meta successfully');
       await loadTemplates(true);
     } catch (error: any) {
@@ -540,14 +547,24 @@ export default function WhatsAppTemplateManager() {
   };
 
   const handleEnsureOtpTemplate = async () => {
+    const selected = waAccount.selected;
+    const connected = selected?.source === 'connected' && selected.id && selected.id !== 'settings';
     const confirmed = window.confirm(
-      'Create/link the AUTHENTICATION template "otp" on the current WABA in Meta?\n\nThis is required for booking + app login OTP.'
+      connected
+        ? `Create the OTP template on ${selected.display_phone}?\n\n401516 is your verification code. For your security, do not share this code.`
+        : 'Create/link the AUTHENTICATION template "otp" on +91 95949 96161?\n\nThis is required for booking + app login OTP.'
     );
     if (!confirmed) return;
 
     setEnsuringOtp(true);
     try {
-      const res = await fetch('/api/whatsapp/templates/ensure-otp', { method: 'POST' });
+      const res = connected
+        ? await fetch('/api/super_admin/whatsapp-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'ensure_account_otp', id: selected.id, waba_id: selected.waba_id || '' }),
+          })
+        : await fetch('/api/whatsapp/templates/ensure-otp', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to create OTP template on Meta');
       toast.success(data?.message || 'OTP template submitted to Meta');
@@ -598,7 +615,10 @@ export default function WhatsAppTemplateManager() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Templates</h2>
             <p className="text-xs text-gray-500">
-              Showing templates for {waAccount.selected?.display_phone || '+91 95949 96161'}. Switch the number to see the other account.
+              Showing templates for {waAccount.selected?.display_phone || '+91 95949 96161'}.
+              {waAccount.selected?.source === 'connected' && templates.filter((row) => templateMatchesWaAccount(row, waAccount.selected)).length === 0
+                ? ' This number was added again, so the old templates are hidden. Paste asset_id from the WhatsApp Manager address bar on Bulk WhatsApp → Accounts, then Sync and Fix OTP.'
+                : ' Switch the number to see the other account.'}
             </p>
             <div className="mt-2">
               <WhatsAppAccountSwitch />
@@ -1015,7 +1035,7 @@ export default function WhatsAppTemplateManager() {
             onClick={() => setAudienceFilter('ALL')}
             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${audienceFilter === 'ALL' ? 'border-gray-800 bg-gray-900 text-white' : 'border-gray-200 text-gray-600'}`}
           >
-            All · {templates.length}
+            All · {templates.filter((row) => templateMatchesWaAccount(row, waAccount.selected)).length}
           </button>
           {AUDIENCE_ORDER.map((audience) => (
             <button

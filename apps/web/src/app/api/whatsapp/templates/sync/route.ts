@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { DEFAULT_WHATSAPP_PHONE, last10Digits } from '@/lib/whatsapp/accountSelection';
 
 const ALLOWED_ADMIN_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
@@ -257,8 +258,17 @@ export async function POST() {
 
     const metaTemplateNames = new Set(normalizedRows.map((r) => r.template_name));
 
+    const settingsPhoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || '').replace(/\D/g, '');
+    const settingsPhone = last10Digits(DEFAULT_WHATSAPP_PHONE);
+    const ownedByAnotherAccount = (name: string) => {
+      const prior = existingMetaByName.get(name) || {};
+      const owner = last10Digits(String(prior.account_phone || ''));
+      return Boolean(owner) && owner !== settingsPhone;
+    };
+
     const rowsToUpsert = normalizedRows
       .filter((row) => !doNotOverwrite.has(row.template_name))
+      .filter((row) => !ownedByAnotherAccount(row.template_name))
       .map((row) => {
         const priorMeta = existingMetaByName.get(row.template_name) || {};
         const preserveKeys = [
@@ -284,6 +294,7 @@ export async function POST() {
             ...preserved,
             ...row.meta,
             ...preserved,
+            phone_number_id: settingsPhoneId || priorMeta.phone_number_id || null,
           },
         };
       });
@@ -343,6 +354,7 @@ export async function POST() {
     let markedMissing = 0;
     for (const templateName of doNotOverwrite) {
       if (metaTemplateNames.has(templateName)) continue;
+      if (ownedByAnotherAccount(templateName)) continue;
       const priorMeta = existingMetaByName.get(templateName) || {};
       const { error: missingError } = await adminDb
         .from('whatsapp_templates')

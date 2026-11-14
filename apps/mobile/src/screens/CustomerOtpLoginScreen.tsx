@@ -28,7 +28,7 @@ import {
 } from '../lib/welcomeBonus';
 
 type Step = 'phone' | 'otp';
-type OtpChannel = 'sms' | 'whatsapp';
+type OtpChannel = 'sms' | 'whatsapp' | 'email';
 
 export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [step, setStep] = useState<Step>('phone');
@@ -36,12 +36,25 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [otpChannel, setOtpChannel] = useState<OtpChannel>('whatsapp');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpChannels, setOtpChannels] = useState({ sms_dlt: false, whatsapp: true, email: false });
   const [confirmation, setConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingGoBackRef = React.useRef(false);
   const pendingWelcomeCustomerIdRef = React.useRef<string | null>(null);
   const pendingWelcomePhoneRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${ENV.API_URL}/api/public/otp-channels`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => setOtpChannels({
+        sms_dlt: Boolean(json?.sms_dlt),
+        whatsapp: Boolean(json?.whatsapp),
+        email: Boolean(json?.email),
+      }))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const initialPhone = route?.params?.initialPhone;
@@ -198,6 +211,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       const payload = JSON.stringify({
         phone: cleanPhone,
         otp: otp.trim(),
+        channel: otpChannel === 'email' ? 'EMAIL' : 'WHATSAPP',
       });
       const headers = {
         'Content-Type': 'application/json',
@@ -257,7 +271,35 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     }
   };
 
-  const handleVerifyOtp = otpChannel === 'whatsapp' ? handleVerifyWhatsAppOtp : handleVerifySmsOtp;
+  const handleSendEmailOtp = async () => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpEmail.trim())) {
+      Alert.alert('Email', 'Enter the email that should receive the code');
+      return;
+    }
+    setLoading(true);
+    setOtpChannel('email');
+    try {
+      const res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+        body: JSON.stringify({ phone: cleanPhone, email: otpEmail.trim(), channel: 'EMAIL' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Unable to send email OTP');
+      setStep('otp');
+    } catch (error: any) {
+      Alert.alert('Send OTP Failed', error?.message || 'Unable to send email OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = otpChannel === 'sms' ? handleVerifySmsOtp : handleVerifyWhatsAppOtp;
 
   return (
     <KeyboardAvoidingView
@@ -290,7 +332,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
 
           {step === 'otp' && (
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>OTP ({otpChannel === 'sms' ? 'SMS' : 'WhatsApp'})</Text>
+              <Text style={styles.label}>OTP ({otpChannel === 'sms' ? 'SMS' : otpChannel === 'email' ? 'Email' : 'WhatsApp'})</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Enter OTP"
@@ -305,6 +347,17 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
 
           {step === 'phone' ? (
             <>
+              {otpChannels.email ? (
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email for the code"
+                  value={otpEmail}
+                  onChangeText={setOtpEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              ) : null}
+              {otpChannels.sms_dlt ? (
               <TouchableOpacity
                 style={[styles.button, loading && otpChannel === 'sms' && styles.buttonDisabled]}
                 onPress={handleSendSmsOtp}
@@ -316,6 +369,8 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
                   <Text style={styles.buttonText}>Send OTP via SMS</Text>
                 )}
               </TouchableOpacity>
+              ) : null}
+              {otpChannels.whatsapp ? (
               <TouchableOpacity
                 style={[styles.whatsappButton, loading && otpChannel === 'whatsapp' && styles.buttonDisabled]}
                 onPress={handleSendWhatsAppOtp}
@@ -327,6 +382,12 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
                   <Text style={styles.buttonText}>Send OTP via WhatsApp</Text>
                 )}
               </TouchableOpacity>
+              ) : null}
+              {otpChannels.email ? (
+                <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleSendEmailOtp} disabled={loading}>
+                  <Text style={styles.buttonText}>Send OTP via Email</Text>
+                </TouchableOpacity>
+              ) : null}
             </>
           ) : (
             <>

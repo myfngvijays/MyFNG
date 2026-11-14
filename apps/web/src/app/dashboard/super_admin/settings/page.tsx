@@ -41,6 +41,7 @@ export default function SystemSettingsPage() {
 
       const settingsMap: Record<string, any> = {};
       (data || []).forEach((setting: any) => {
+        if (setting.setting_key === 'otp_email_smtp_pass') return;
         settingsMap[setting.setting_key] = {
           ...setting,
           value: setting.setting_type === 'BOOLEAN'
@@ -264,71 +265,6 @@ export default function SystemSettingsPage() {
                   type="checkbox"
                   checked={settings.auto_lead_assignment?.value || false}
                   onChange={() => handleToggle('auto_lead_assignment')}
-                  className="sr-only peer"
-                />
-                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Notifications */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
-            <h2 className="font-semibold text-base sm:text-lg">🔔 Notifications</h2>
-          </div>
-          <div className="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-              <h3 className="font-medium text-sm sm:text-base">SMS Notifications</h3>
-              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                <input
-                  type="checkbox"
-                  checked={settings.sms_notifications_enabled?.value || false}
-                  onChange={() => handleToggle('sms_notifications_enabled')}
-                  className="sr-only peer"
-                />
-                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 border-t pt-3 sm:pt-4">
-              <div>
-                <h3 className="font-medium text-sm sm:text-base">Mobile App Login — SMS OTP</h3>
-                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                  Same toggle as Push → Firebase Settings → SMS OTP Login.
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                <input
-                  type="checkbox"
-                  checked={settings.mobile_sms_otp_enabled?.value || false}
-                  onChange={() => handleToggle('mobile_sms_otp_enabled')}
-                  className="sr-only peer"
-                />
-                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-              <h3 className="font-medium text-sm sm:text-base">Email Notifications</h3>
-              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                <input
-                  type="checkbox"
-                  checked={settings.email_notifications_enabled?.value || false}
-                  onChange={() => handleToggle('email_notifications_enabled')}
-                  className="sr-only peer"
-                />
-                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-              <h3 className="font-medium text-sm sm:text-base">Push Notifications</h3>
-              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                <input
-                  type="checkbox"
-                  checked={settings.push_notifications_enabled?.value || false}
-                  onChange={() => handleToggle('push_notifications_enabled')}
                   className="sr-only peer"
                 />
                 <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

@@ -71,6 +71,7 @@ import {
   Radar,
   Plus,
   Minus,
+  KeyRound,
 } from 'lucide-react';
 
 type NavItem = {
@@ -886,6 +887,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/compliance-reports',
     icon: FileCheck,
     description: 'DPDP data rights & audit reports'
+  },
+  {
+    name: 'OTP',
+    href: '/dashboard/super_admin/otp',
+    icon: KeyRound,
+    description: 'SMS, Firebase, WhatsApp and email codes'
   },
   {
     name: 'System Settings',

@@ -57,8 +57,8 @@ export function messageInWaScope(row: any, scope: WaAccountScope) {
     business = last10Digits(String(row?.recipient_phone || ''));
   }
   if (scope.source === 'connected') {
-    if (scope.phoneNumberId && phoneId && phoneId === scope.phoneNumberId) return true;
-    if (scope.phoneLast10 && business && business === scope.phoneLast10) return true;
+    if (phoneId && scope.phoneNumberId) return phoneId === scope.phoneNumberId;
+    if (!phoneId && scope.phoneLast10 && business && business === scope.phoneLast10) return true;
     return false;
   }
   if (phoneId && scope.otherPhoneNumberIds.includes(phoneId)) return false;
@@ -66,8 +66,17 @@ export function messageInWaScope(row: any, scope: WaAccountScope) {
   return true;
 }
 
-export function templateInWaScope(row: { meta?: { account_phone?: string } | null }, scope: WaAccountScope) {
+export function templateInWaScope(
+  row: { meta?: { account_phone?: string; phone_number_id?: string } | null },
+  scope: WaAccountScope,
+) {
   const owner = last10Digits(String(row?.meta?.account_phone || ''));
-  if (scope.source === 'connected') return Boolean(scope.phoneLast10) && owner === scope.phoneLast10;
+  const templatePhoneId = digits(row?.meta?.phone_number_id);
+  if (scope.source === 'connected') {
+    if (scope.phoneNumberId) return templatePhoneId === scope.phoneNumberId;
+    return Boolean(scope.phoneLast10) && owner === scope.phoneLast10;
+  }
+  if (templatePhoneId && scope.otherPhoneNumberIds.includes(templatePhoneId)) return false;
+  if (owner && scope.otherPhoneLast10.includes(owner)) return false;
   return !owner || owner === scope.phoneLast10;
 }

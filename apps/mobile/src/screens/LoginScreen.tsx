@@ -48,7 +48,15 @@ import {
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const insets = useSafeAreaInsets();
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
-  const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp'>('whatsapp');
+  const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp' | 'email'>('whatsapp');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpChannels, setOtpChannels] = useState({ sms_dlt: false, whatsapp: true, email: false });
+  const [channelsReady, setChannelsReady] = useState(false);
+  const [loginCodeSent, setLoginCodeSent] = useState(false);
+  const [otpButtonPhase, setOtpButtonPhase] = useState<'idle' | 'sent' | 'submitted'>('idle');
+  const waAutoPhone = useRef('');
+  const emailAutoKey = useRef('');
+  const deliveredRef = useRef({ whatsapp: false, email: false });
   const [customerStep, setCustomerStep] = useState<'input' | 'otp'>('input');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerOtp, setCustomerOtp] = useState('');
@@ -196,6 +204,52 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     finishLoginNavigation();
   };
 
+  useEffect(() => {
+    fetch(`${ENV.API_URL}/api/public/otp-channels`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => setOtpChannels({
+        sms_dlt: Boolean(json?.sms_dlt),
+        whatsapp: Boolean(json?.whatsapp),
+        email: Boolean(json?.email),
+      }))
+      .catch(() => undefined)
+      .finally(() => setChannelsReady(true));
+  }, []);
+
+  const handleEmailOtpStart = async (cleanPhone: string, emailValue: string, auto = false) => {
+    if (!auto) setErrorText('');
+    if (cleanPhone.length !== 10) {
+      setErrorText('Enter your mobile number too.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+      setErrorText('Enter a valid email ID');
+      return;
+    }
+    if (!auto) setLoading(true);
+    setPhoneOtpChannel('email');
+    try {
+      const res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true', 'X-App-Platform': Platform.OS },
+        body: JSON.stringify({ phone: cleanPhone, email: emailValue, channel: 'EMAIL' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Unable to send email OTP');
+      deliveredRef.current.email = true;
+      setLoginCodeSent(true);
+      setOtpButtonPhase('sent');
+      setErrorText('');
+      if (!auto) setCustomerStep('otp');
+      setResendInSec(30);
+    } catch (error: any) {
+      emailAutoKey.current = '';
+      setErrorText(error?.message || 'Unable to send email OTP');
+    } finally {
+      if (!auto) setLoading(false);
+    }
+  };
+
   const handleCustomerOtpStart = async () => {
     setErrorText('');
     const cleanPhone = customerPhone.replace(/\D/g, '');
@@ -217,18 +271,18 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     }
   };
 
-  const handleWhatsAppOtpStart = async () => {
-    setErrorText('');
+  const handleWhatsAppOtpStart = async (cleanPhone?: string, auto = false) => {
+    if (!auto) setErrorText('');
     setPhoneOtpChannel('whatsapp');
-    const cleanPhone = customerPhone.replace(/\D/g, '');
-    if (cleanPhone.length !== 10) {
+    const phone = String(cleanPhone || customerPhone).replace(/\D/g, '');
+    if (phone.length !== 10) {
       setErrorText('Please enter a valid 10-digit mobile number');
       return;
     }
 
-    setLoading(true);
+    if (!auto) setLoading(true);
     try {
-      const payload = JSON.stringify({ phone: cleanPhone });
+      const payload = JSON.stringify({ phone });
       const headers = {
         'Content-Type': 'application/json',
         'x-mobile-client': 'true',
@@ -255,17 +309,75 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         throw new Error(json?.error || `Unable to send WhatsApp OTP (HTTP ${res.status})`);
       }
 
+      deliveredRef.current.whatsapp = true;
+      setLoginCodeSent(true);
+      setOtpButtonPhase('sent');
       setErrorText('');
-      setCustomerStep('otp');
+      if (!auto) setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {
+      waAutoPhone.current = '';
       setErrorText(error?.message || 'Unable to send WhatsApp OTP');
     } finally {
-      setLoading(false);
+      if (!auto) setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (!channelsReady || loginMethod !== 'phone') return;
+    const phone = customerPhone.replace(/\D/g, '');
+    if (phone.length !== 10) {
+      waAutoPhone.current = '';
+      return;
+    }
+    if (waAutoPhone.current === phone) return;
+    waAutoPhone.current = phone;
+    if (!otpChannels.whatsapp) {
+      setErrorText('WhatsApp OTP is turned off.');
+      return;
+    }
+    void handleWhatsAppOtpStart(phone, true);
+  }, [channelsReady, customerPhone, loginMethod, otpChannels.whatsapp]);
+
+  const sendWhatsappWhenReady = (phone: string) => {
+    if (!channelsReady || loginMethod !== 'phone' || phone.length !== 10) return;
+    if (waAutoPhone.current === phone) return;
+    waAutoPhone.current = phone;
+    if (!otpChannels.whatsapp) {
+      setErrorText('WhatsApp OTP is turned off.');
+      return;
+    }
+    void handleWhatsAppOtpStart(phone, true);
+  };
+
+  useEffect(() => {
+    if (!channelsReady || loginMethod !== 'phone') return;
+    const phone = customerPhone.replace(/\D/g, '');
+    const emailValue = otpEmail.trim();
+    const emailReady = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue);
+    if (!emailReady) {
+      emailAutoKey.current = '';
+      return;
+    }
+    if (phone.length !== 10) {
+      setErrorText('Enter your mobile number too.');
+      return;
+    }
+    const key = `${phone}|${emailValue.toLowerCase()}`;
+    if (emailAutoKey.current === key) return;
+    const timer = setTimeout(() => {
+      emailAutoKey.current = key;
+      if (!otpChannels.email) {
+        setErrorText('Email OTP is turned off.');
+        return;
+      }
+      void handleEmailOtpStart(phone, emailValue, true);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [channelsReady, customerPhone, loginMethod, otpChannels.email, otpEmail]);
+
   const handleCustomerOtpVerify = async (code?: string) => {
+    setOtpButtonPhase('submitted');
     setErrorText('');
     const otp = (code ?? customerOtp).replace(/\D/g, '');
     const cleanPhone = customerPhone.replace(/\D/g, '');
@@ -292,6 +404,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       await persistSessionAndGoHome(authResult.session_token, authResult);
     } catch (error: any) {
       setOtpAnim('error');
+      setOtpButtonPhase('sent');
       setErrorText(error?.message || 'Invalid OTP');
     } finally {
       setLoading(false);
@@ -300,6 +413,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   };
 
   const handleWhatsAppOtpVerify = async (code?: string) => {
+    setOtpButtonPhase('submitted');
     setErrorText('');
     const otp = (code ?? customerOtp).replace(/\D/g, '');
     const cleanPhone = customerPhone.replace(/\D/g, '');
@@ -319,6 +433,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       const payload = JSON.stringify({
         phone: cleanPhone,
         otp,
+        channel: phoneOtpChannel === 'email' ? 'EMAIL' : 'WHATSAPP',
       });
       const headers = {
         'Content-Type': 'application/json',
@@ -360,6 +475,20 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         }
       }
 
+      if (!res.ok && deliveredRef.current.whatsapp && deliveredRef.current.email) {
+        const other = phoneOtpChannel === 'email' ? 'WHATSAPP' : 'EMAIL';
+        const retry = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ phone: cleanPhone, otp, channel: other }),
+        });
+        const retryJson = await retry.json().catch(() => ({}));
+        if (retry.ok && retryJson?.session_token) {
+          res = retry;
+          json = retryJson;
+        }
+      }
+
       if (!res.ok) {
         throw new Error(json?.error || `Verification failed (HTTP ${res.status})`);
       }
@@ -373,6 +502,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       await persistSessionAndGoHome(String(json.session_token), json);
     } catch (error: any) {
       setOtpAnim('error');
+      setOtpButtonPhase('sent');
       setErrorText(error?.message || 'Invalid WhatsApp OTP');
     } finally {
       setLoading(false);
@@ -493,6 +623,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     if (loading || resendInSec > 0) return;
     if (phoneOtpChannel === 'whatsapp') {
       await handleWhatsAppOtpStart();
+    } else if (phoneOtpChannel === 'email') {
+      await handleEmailOtpStart(customerPhone.replace(/\D/g, ''), otpEmail.trim(), false);
     } else {
       await handleCustomerOtpStart();
     }
@@ -521,6 +653,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     setCustomerOtp('');
     setCustomerConfirmation(null);
     setPhoneOtpChannel('sms');
+    setLoginCodeSent(false);
+    setOtpButtonPhase('idle');
+    deliveredRef.current = { whatsapp: false, email: false };
+    waAutoPhone.current = '';
+    emailAutoKey.current = '';
     setErrorText('');
     setResendInSec(0);
     setOtpAnim('idle');
@@ -551,28 +688,33 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <TouchableOpacity
-        style={[styles.skipButton, { top: insets.top + 14 }]}
-        onPress={() => navigation?.navigate?.('PublicHome')}
-        activeOpacity={0.8}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Text style={styles.skipText}>Skip</Text>
-        <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-      </TouchableOpacity>
+      <View style={[styles.hero, { paddingTop: insets.top + 6 }]}>
+        <View style={styles.heroBase} />
+        <View style={styles.heroViolet} />
+        <View style={styles.heroCyan} />
+        <TouchableOpacity
+          style={[styles.skipButton, { top: insets.top + 8 }]}
+          onPress={() => navigation?.navigate?.('PublicHome')}
+          activeOpacity={0.8}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.skipText}>Skip</Text>
+          <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={styles.logoPill}>
+          <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
+        </View>
+      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.centerWrap}>
-          <View style={styles.brandWrap}>
-            <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
-          </View>
+      <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <View style={styles.sheet}>
           <Text style={styles.brandTitle}>
-            {loginMethod === 'email' ? 'Staff login' : 'Welcome to MyFNG'}
+            {loginMethod === 'email' ? 'Staff login' : 'Welcome back'}
           </Text>
           <Text style={styles.brandSubTitle}>
             {loginMethod === 'email'
               ? 'Login to your admin or workshop account'
-              : "Your car's best friend is just a login away"}
+              : 'Enter your mobile number to continue'}
           </Text>
 
           {customerStep === 'input' && (
@@ -582,21 +724,21 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                 onPress={switchToPhoneLogin}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.methodButtonText, loginMethod === 'phone' && styles.methodButtonTextActive]}>Phone Number</Text>
+                <Text style={[styles.methodButtonText, loginMethod === 'phone' && styles.methodButtonTextActive]}>Customer Login</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.methodButton, loginMethod === 'email' && styles.methodButtonActive]}
                 onPress={switchToEmailLogin}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.methodButtonText, loginMethod === 'email' && styles.methodButtonTextActive]}>Email Address</Text>
+                <Text style={[styles.methodButtonText, loginMethod === 'email' && styles.methodButtonTextActive]}>Staff Login</Text>
               </TouchableOpacity>
             </View>
           )}
 
           <View style={styles.formArea}>
             {customerStep === 'input' || loginMethod === 'email' ? (
-              <View style={[styles.formSection, loginMethod === 'email' && styles.staffCard]}>
+              <View style={styles.formSection}>
                 <Text style={styles.inputLabel}>{loginMethod === 'phone' ? 'Phone Number' : 'Email Address'}</Text>
                 <View style={[styles.inputContainer, loginMethod === 'email' && styles.staffInput]}>
                   {loginMethod === 'phone' ? (
@@ -609,11 +751,15 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                     placeholder={loginMethod === 'phone' ? '9152307030' : 'your@email.com'}
                     placeholderTextColor="#9CA3AF"
                     value={loginMethod === 'phone' ? customerPhone : email}
-                    onChangeText={(text) =>
-                      loginMethod === 'phone'
-                        ? setCustomerPhone(text.replace(/\D/g, ''))
-                        : setEmail(text.trim())
-                    }
+                    onChangeText={(text) => {
+                      if (loginMethod !== 'phone') {
+                        setEmail(text.trim());
+                        return;
+                      }
+                      const digits = text.replace(/\D/g, '').slice(0, 10);
+                      setCustomerPhone(digits);
+                      if (digits.length === 10) sendWhatsappWhenReady(digits);
+                    }}
                     keyboardType={loginMethod === 'phone' ? 'phone-pad' : 'email-address'}
                     maxLength={loginMethod === 'phone' ? 10 : 80}
                     autoCapitalize="none"
@@ -655,34 +801,61 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                 ) : null}
                 {loginMethod === 'phone' ? (
                   <View style={styles.otpButtonsWrap}>
+                    <Text style={styles.inputLabel}>Email ID</Text>
+                    <View style={styles.inputContainer}>
+                      <Ionicons name="mail-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="you@email.com"
+                        placeholderTextColor="#9CA3AF"
+                        value={otpEmail}
+                        onChangeText={setOtpEmail}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="email-address"
+                        autoComplete="email"
+                      />
+                    </View>
+                    {loginCodeSent ? (
+                      <View>
+                        <Text style={[styles.inputLabel, styles.otpLabel]}>Enter 6-Digit OTP</Text>
+                        <AnimatedOtpInput
+                          value={customerOtp}
+                          onChange={(next) => {
+                            setCustomerOtp(next);
+                            if (otpAnim === 'error') setOtpAnim('idle');
+                            setErrorText('');
+                          }}
+                          status={otpAnim}
+                          onFilled={(code) => { void submitOtp(code); }}
+                          editable={otpAnim !== 'success'}
+                        />
+                      </View>
+                    ) : null}
                     <TouchableOpacity
-                      style={[styles.primaryButton, styles.channelButton, loading && styles.buttonDisabled]}
-                      onPress={startPhoneOtp}
-                      disabled={loading}
+                      style={[styles.primaryButton, styles.channelButton]}
+                      onPress={() => {
+                        if (otpButtonPhase === 'submitted' || loading) return;
+                        if (customerOtp.replace(/\D/g, '').length === 6) {
+                          void submitOtp();
+                          return;
+                        }
+                        const digits = customerPhone.replace(/\D/g, '');
+                        if (digits.length !== 10) {
+                          setErrorText('Enter your mobile number');
+                          return;
+                        }
+                        void handleWhatsAppOtpStart(digits, false);
+                      }}
                       activeOpacity={0.9}
                     >
-                      {loading && phoneOtpChannel === 'sms' ? (
+                      <Image pointerEvents="none" source={require('../../assets/logo-blue-gradient.png')} style={styles.btnGradient} resizeMode="stretch" />
+                      {loading ? (
                         <ActivityIndicator color="#FFFFFF" />
                       ) : (
-                        <View style={styles.primaryButtonRow}>
-                          <Ionicons name="chatbox-ellipses-outline" size={16} color="#FFFFFF" />
-                          <Text style={styles.primaryButtonText}>Send OTP via SMS</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.whatsappButton, styles.channelButton, loading && styles.buttonDisabled]}
-                      onPress={handleWhatsAppOtpStart}
-                      disabled={loading}
-                      activeOpacity={0.9}
-                    >
-                      {loading && phoneOtpChannel === 'whatsapp' ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <View style={styles.primaryButtonRow}>
-                          <Ionicons name="logo-whatsapp" size={16} color="#FFFFFF" />
-                          <Text style={styles.primaryButtonText}>Send OTP via WhatsApp</Text>
-                        </View>
+                        <Text style={styles.primaryButtonText}>
+                          {otpButtonPhase === 'submitted' ? 'SUBMITTED' : otpButtonPhase === 'sent' ? 'OTP SENT' : 'Continue'}
+                        </Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -693,6 +866,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                     disabled={loading}
                     activeOpacity={0.9}
                   >
+                    <Image pointerEvents="none" source={require('../../assets/logo-blue-gradient.png')} style={styles.btnGradient} resizeMode="stretch" />
                     {loading ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
@@ -706,13 +880,13 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                 <View style={styles.otpHelpWrap}>
                   <View style={styles.otpSentBadge}>
                     <Ionicons
-                      name={phoneOtpChannel === 'whatsapp' ? 'logo-whatsapp' : 'chatbox-ellipses'}
+                      name={phoneOtpChannel === 'whatsapp' ? 'logo-whatsapp' : phoneOtpChannel === 'email' ? 'mail-outline' : 'chatbox-ellipses'}
                       size={16}
                       color={phoneOtpChannel === 'whatsapp' ? '#25D366' : '#004AAD'}
                     />
                     <Text style={styles.otpHelp}>
-                      OTP sent via {loginMethod === 'phone' ? (phoneOtpChannel === 'sms' ? 'SMS' : 'WhatsApp') : 'Email'} to{' '}
-                      {loginMethod === 'phone' ? `+91 ${customerPhone}` : email}
+                      OTP sent via {phoneOtpChannel === 'sms' ? 'SMS' : phoneOtpChannel === 'email' ? 'email' : 'WhatsApp'} to{' '}
+                      {phoneOtpChannel === 'email' ? otpEmail : loginMethod === 'phone' ? `+91 ${customerPhone}` : email}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -826,64 +1000,111 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F0F7FF',
+    backgroundColor: '#E4ECFF',
+  },
+  hero: {
+    height: 268,
+    backgroundColor: '#2457F5',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  heroBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#2457F5',
+  },
+  heroViolet: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: '#7C5CFF',
+    opacity: 0.55,
+    top: -110,
+    right: -80,
+  },
+  heroCyan: {
+    position: 'absolute',
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: '#3DB7FF',
+    opacity: 0.42,
+    bottom: -50,
+    left: -70,
   },
   skipButton: {
     position: 'absolute',
-    right: 20,
+    right: 18,
+    top: 8,
     zIndex: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
   },
   skipText: {
-    color: '#9CA3AF',
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
+  logoPill: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginTop: 64,
+    zIndex: 2,
+    shadowColor: '#102A8A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  sheetScroll: {
+    flex: 1,
+    marginTop: -36,
+    backgroundColor: 'transparent',
+  },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 24,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
   },
-  centerWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  brandWrap: {
-    width: 200,
-    height: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
+  sheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 22,
+    paddingBottom: 16,
+    shadowColor: '#1E3A8A',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
   },
   brandLogo: {
-    width: 200,
-    height: 54,
+    width: 142,
+    height: 38,
   },
   brandTitle: {
     color: '#111827',
-    fontSize: 30,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
   },
   brandSubTitle: {
     color: '#6B7280',
     fontSize: 14,
-    marginTop: 8,
-    marginBottom: 40,
-    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 22,
   },
   methodToggle: {
     width: '100%',
-    maxWidth: 420,
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 14,
     padding: 4,
-    marginBottom: 32,
+    marginBottom: 22,
   },
   methodButton: {
     flex: 1,
@@ -968,13 +1189,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   inputLabel: {
-    fontSize: 10,
-    color: '#9CA3AF',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
     marginBottom: 8,
-    marginLeft: 4,
+    marginLeft: 2,
   },
   otpLabel: {
     textAlign: 'center',
@@ -984,10 +1203,10 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
+    backgroundColor: '#F7F9FF',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: '#E3E9F7',
     paddingHorizontal: 14,
   },
   countryCode: {
@@ -1040,17 +1259,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   primaryButton: {
-    marginTop: 14,
-    borderRadius: 16,
-    backgroundColor: '#004AAD',
+    marginTop: 18,
+    borderRadius: 14,
+    backgroundColor: '#023D95',
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#004AAD',
+    overflow: 'hidden',
+    shadowColor: '#023D95',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.28,
     shadowRadius: 14,
     elevation: 6,
+  },
+  btnGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
   },
   whatsappButton: {
     borderRadius: 16,
@@ -1068,6 +1295,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+    zIndex: 1,
   },
   verifyButton: {
     borderRadius: 16,
@@ -1113,7 +1341,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   termsText: {
-    marginTop: 48,
+    marginTop: 28,
     textAlign: 'center',
     fontSize: 10,
     color: '#9CA3AF',

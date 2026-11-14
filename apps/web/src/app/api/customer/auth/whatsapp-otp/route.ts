@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendWhatsAppOtpMessage } from '@/lib/services/whatsappOtpSend';
+import { sendWhatsAppOtpMessage, stampWhatsAppOtpRequest } from '@/lib/services/whatsappOtpSend';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,21 +71,9 @@ export async function POST(request: NextRequest) {
   }
 
   const waResult = await sendWhatsAppOtpMessage(phone, otpCode);
+  await stampWhatsAppOtpRequest(String(inserted?.id || ''), metadata, waResult);
 
   if (!waResult.success) {
-    await supabaseAdmin
-      .from('otp_requests')
-      .update({
-        status: 'FAILED',
-        metadata: {
-          ...metadata,
-          whatsapp_error: waResult.error || 'Unknown WhatsApp error',
-          whatsapp_status_code: waResult.statusCode || null,
-          whatsapp_raw: waResult.raw || null,
-        },
-      })
-      .eq('id', inserted?.id);
-
     return NextResponse.json(
       { error: waResult.error || 'Failed to send OTP on WhatsApp' },
       { status: 502 }

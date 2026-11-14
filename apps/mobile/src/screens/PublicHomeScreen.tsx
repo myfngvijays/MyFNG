@@ -1083,16 +1083,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
               spacing="inline"
               title="Latest from Blog"
               subtitle="Tips, guides and car care insights"
-              rightAccessory={
-                <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                  <TouchableOpacity onPress={() => Linking.openURL('https://myfng.in/blog')}>
-                    <Text style={styles.blogReadMore}>Read More →</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => Linking.openURL('https://myfng.in/automobile-news')}>
-                    <Text style={styles.blogReadMore}>Automobile News →</Text>
-                  </TouchableOpacity>
-                </View>
-              }
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {(liveBlogs.length > 0 ? liveBlogs : BLOG_ITEMS).map((post) => (
@@ -1120,6 +1110,24 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+            <View style={styles.blogLinkRow}>
+              <TouchableOpacity
+                style={styles.blogLinkBtn}
+                activeOpacity={0.85}
+                onPress={() => Linking.openURL('https://myfng.in/blogs')}
+              >
+                <Text style={styles.blogLinkBtnText}>Read More</Text>
+                <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.blogLinkBtn}
+                activeOpacity={0.85}
+                onPress={() => Linking.openURL('https://myfng.in/automobile-news')}
+              >
+                <Text style={styles.blogLinkBtnText}>Automobile News</Text>
+                <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
           </Section>
 
           <Section>
@@ -2009,8 +2017,26 @@ const styles = StyleSheet.create({
     borderColor: '#F3F4F6',
     marginBottom: 14,
   },
-  blogReadMore: {
-    fontSize: 11,
+  blogLinkRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  blogLinkBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  blogLinkBtnText: {
+    fontSize: 13,
     fontWeight: '700',
     color: COLORS.primary,
   },

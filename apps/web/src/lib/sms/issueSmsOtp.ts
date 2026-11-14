@@ -1,4 +1,5 @@
 import { sendWhySmsOtp } from '@/lib/dlt-sms/send';
+import { loadOtpChannelConfig } from '@/lib/otp/channelConfig';
 
 export const SMS_OTP_WINDOW_MINUTES = 15;
 export const SMS_OTP_MAX_ATTEMPTS = 5;
@@ -24,6 +25,10 @@ export async function issueSmsOtp(
   | { ok: true; expiresInSeconds: number }
   | { ok: false; status: number; error: string }
 > {
+  const channels = await loadOtpChannelConfig();
+  if (!channels.sms_dlt) {
+    return { ok: false, status: 403, error: 'SMS OTP is turned off.' };
+  }
   const windowStart = new Date(Date.now() - SMS_OTP_WINDOW_MINUTES * 60 * 1000).toISOString();
   const { data: recent } = await supabaseAdmin
     .from('otp_requests')
