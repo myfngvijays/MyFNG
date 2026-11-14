@@ -20,7 +20,17 @@ import {
   Building,
   Calendar,
   History,
+  Minus,
+  Plus,
+  Type,
 } from 'lucide-react';
+import {
+  UI_FONT_DEFAULT,
+  UI_FONT_MAX,
+  UI_FONT_MIN,
+  readUiFontPx,
+  saveUiFontPx,
+} from '@/lib/uiFontSize';
 
 type Profile = {
   id: string;
@@ -74,6 +84,22 @@ export default function TelecallerMyProfilePage() {
     phone: '',
     department: '',
   });
+  const [fontPx, setFontPx] = useState(UI_FONT_DEFAULT);
+
+  useEffect(() => {
+    setFontPx(readUiFontPx() ?? UI_FONT_DEFAULT);
+  }, []);
+
+  const changeFontPx = (next: number | null) => {
+    if (next == null) {
+      saveUiFontPx(null);
+      setFontPx(UI_FONT_DEFAULT);
+      return;
+    }
+    const px = Math.min(UI_FONT_MAX, Math.max(UI_FONT_MIN, next));
+    saveUiFontPx(px);
+    setFontPx(px);
+  };
 
   const loadAttendance = useCallback(async () => {
     try {
@@ -419,6 +445,49 @@ export default function TelecallerMyProfilePage() {
                     <p className="font-semibold text-[#023D95]">{formatDateTime(profile.last_login)}</p>
                   </div>
                 ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-base font-bold text-[#023D95]">
+                    <Type className="h-4 w-4" /> Text size
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Dashboard text size. Saved on this browser.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => changeFontPx(fontPx - 1)}
+                    disabled={fontPx <= UI_FONT_MIN}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:opacity-40"
+                    aria-label="Decrease font size"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="min-w-[4.5rem] text-center text-sm font-extrabold text-[#023D95]">
+                    {fontPx} px
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => changeFontPx(fontPx + 1)}
+                    disabled={fontPx >= UI_FONT_MAX}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:opacity-40"
+                    aria-label="Increase font size"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changeFontPx(null)}
+                    className="rounded-xl px-3 py-2 text-xs font-bold text-[#004AAD]"
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
             </section>
 

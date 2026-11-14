@@ -98,6 +98,7 @@ export default function CrmFollowUpDateTime({
 }: Props) {
   const today = istYmd();
   const parsed = parseYmd(date) || parseYmd(today)!;
+  const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(parsed.y);
   const [viewMonth0, setViewMonth0] = useState(parsed.m0);
   const snapped = snapTimeToTenMinutes(time);
@@ -110,6 +111,18 @@ export default function CrmFollowUpDateTime({
     setViewMonth0(p.m0);
   }, [date]);
 
+  useEffect(() => {
+    if (dateError || timeError) setOpen(true);
+  }, [dateError, timeError]);
+
+  const dateLabel = (() => {
+    const p = parseYmd(date);
+    if (!p) return '';
+    return `${p.d} ${MONTHS[p.m0].slice(0, 3)} ${p.y}`;
+  })();
+  const timeLabel = TIME_SLOTS.find((s) => s.value === snapped)?.label || '';
+  const summary = [dateLabel, timeLabel].filter(Boolean).join(' · ');
+
   const shiftMonth = (delta: number) => {
     const next = new Date(viewYear, viewMonth0 + delta, 1);
     setViewYear(next.getFullYear());
@@ -117,7 +130,27 @@ export default function CrmFollowUpDateTime({
   };
 
   return (
-    <div className="col-span-2 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="col-span-2 lg:col-span-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+          Date & time (IST){' '}
+          {required ? <span className="text-rose-500">*</span> : <span className="normal-case font-medium">(optional)</span>}
+        </p>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`rounded-xl border px-3 py-2 text-xs font-bold ${
+            dateError || timeError
+              ? 'border-rose-400 bg-rose-50 text-rose-700'
+              : 'border-slate-200 bg-white text-[#023D95] hover:border-[#004AAD]'
+          }`}
+        >
+          {open ? 'Hide' : summary || 'Pick date & time'}
+        </button>
+      </div>
+      {dateError || timeError ? <p className="mt-1 text-xs text-rose-600">Date and time required</p> : null}
+      {open ? (
+    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div>
         <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
           Date (IST){' '}
@@ -223,6 +256,8 @@ export default function CrmFollowUpDateTime({
         >
           Clear date & time
         </button>
+      ) : null}
+    </div>
       ) : null}
     </div>
   );

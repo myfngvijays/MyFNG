@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import type { WhatsAppSendResult } from '@/lib/services/whatsappService';
 import { normalizePhoneNumber } from '@/lib/services/whatsappService';
 import { loadOtpChannelConfig } from '@/lib/otp/channelConfig';
+import { archiveSentOtpMessage } from '@/lib/whatsapp/otpInbox';
 
 type OtpCreds = {
   whatsapp_access_token: string;
@@ -471,7 +472,21 @@ export async function sendWhatsAppOtpMessage(
     const result = await sendOtpFromSender(row.sender, phoneNumber, otpCode);
     const senderId = result.senderPhoneNumberId || row.sender.whatsapp_phone_number_id;
     if (senderId && !triedPhoneNumberIds.includes(senderId)) triedPhoneNumberIds.push(senderId);
-    if (result.success) return { ...result, senderPhoneNumberId: senderId, triedPhoneNumberIds };
+    if (result.success) {
+      try {
+        const { supabaseAdmin } = getSupabaseAdmin();
+        if (supabaseAdmin && senderId) {
+          await archiveSentOtpMessage(supabaseAdmin, {
+            phoneNumberId: senderId,
+            recipientPhone: phoneNumber,
+            messageId: result.messageId,
+          });
+        }
+      } catch (archiveError) {
+        console.warn('[whatsapp-otp] chat archive skipped', archiveError);
+      }
+      return { ...result, senderPhoneNumberId: senderId, triedPhoneNumberIds };
+    }
     lastResult = { ...result, senderPhoneNumberId: senderId, triedPhoneNumberIds: [...triedPhoneNumberIds] };
     attemptErrors.push(...(result.attempts || [{ label: 'otp', error: result.error, statusCode: result.statusCode }]));
     if (!shouldTryNextAccount(result)) break;

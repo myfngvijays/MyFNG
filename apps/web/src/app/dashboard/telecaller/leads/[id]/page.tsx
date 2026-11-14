@@ -1,13 +1,14 @@
 'use client';
 
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useRouter, usePathname, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
 import {
   Phone, Mail, MapPin, Car, Calendar, Clock, FileText,
   User, Building2, PhoneCall, MessageSquare, ArrowLeft,
-  CheckCircle, AlertCircle, TrendingUp, Share2, Users, Wrench, X
+  CheckCircle, AlertCircle, TrendingUp, ArrowRightLeft, Users, Wrench, X
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -32,20 +33,28 @@ import toast from 'react-hot-toast';
 import CrmFollowUpDateTime from '@/components/telecaller/crm/CrmFollowUpDateTime';
 import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
 
-function LeadDetailContent() {
+export function LeadDetailContent({
+  panelLeadId,
+  onPanelClose,
+}: {
+  panelLeadId?: string;
+  onPanelClose?: () => void;
+} = {}) {
   const params = useParams();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
-  const leadId = params?.id as string;
-  const isEmbed = searchParams?.get('embed') === '1';
-  const wrap = (node: ReactNode) =>
-    isEmbed ? (
-      <div className="min-h-screen bg-slate-50">{node}</div>
-    ) : (
-      <DashboardLayout role={layoutRole}>{node}</DashboardLayout>
-    );
+  const leadId = panelLeadId || (params?.id as string);
+  const isPanel = Boolean(panelLeadId);
+  const isEmbed = isPanel || searchParams?.get('embed') === '1';
+  const wrap = (node: ReactNode) => {
+    if (isPanel) return node;
+    if (searchParams?.get('embed') === '1') {
+      return <div className="min-h-screen bg-slate-50">{node}</div>;
+    }
+    return <DashboardLayout role={layoutRole}>{node}</DashboardLayout>;
+  };
 
   const [lead, setLead] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
@@ -197,6 +206,10 @@ function LeadDetailContent() {
   }, [leadId]);
 
   const exitEditing = () => {
+    if (onPanelClose) {
+      onPanelClose();
+      return;
+    }
     router.push(`${base}/leads`);
   };
 
@@ -642,11 +655,17 @@ function LeadDetailContent() {
 
   return wrap(
     <>
-      <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-5 pb-8">
+      <div
+        className={
+          isPanel
+            ? 'w-full min-w-0 space-y-3 px-2.5 py-2 sm:px-3'
+            : 'mx-auto w-full min-w-0 max-w-none space-y-4 pb-8 sm:space-y-5'
+        }
+      >
         {isLeadManager ? <LeadBrainCard leadId={leadId} basePath={base} /> : null}
         {editing ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
-            <div className="lg:col-span-2 min-w-0">
+          <div className={isPanel ? 'lead-detail-split min-w-0' : 'grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3'}>
+            <div className={isPanel ? 'min-w-0' : 'min-w-0 lg:col-span-2'}>
               <CrmLeadEditForm
                 leadId={leadId}
                 embedded
@@ -687,94 +706,7 @@ function LeadDetailContent() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                  <h2 className="text-base font-black text-[#023D95] flex items-center gap-2">
-                    <PhoneCall className="w-5 h-5" /> Log call
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setShowCallLogForm(!showCallLogForm)}
-                    className="rounded-xl bg-[#004AAD] text-white px-3 py-2 text-xs font-bold"
-                  >
-                    {showCallLogForm ? 'Close' : '+ Log call'}
-                  </button>
-                </div>
-                {showCallLogForm && (
-                  <div className="mb-2 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-                    <select
-                      value={callLogData.activity}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        const opt = activityOptions.find((o) => o.id === next);
-                        const needsLost = Boolean(opt?.requires_lost_reason) || next === 'LOST';
-                        setCallLogData({
-                          ...callLogData,
-                          activity: next,
-                          lost_reason: needsLost ? callLogData.lost_reason : '',
-                        });
-                      }}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
-                    >
-                      {activityOptions.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    {(callLogData.activity === 'LOST' ||
-                      activityOptions.find((o) => o.id === callLogData.activity)?.requires_lost_reason) && (
-                      <select
-                        value={callLogData.lost_reason}
-                        onChange={(e) => setCallLogData({ ...callLogData, lost_reason: e.target.value })}
-                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
-                      >
-                        <option value="">Select lost reason</option>
-                        {lostReasons.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <input
-                      type="number"
-                      placeholder="Duration (seconds)"
-                      value={callLogData.call_duration}
-                      onChange={(e) => setCallLogData({ ...callLogData, call_duration: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
-                    />
-                    <textarea
-                      placeholder="Notes / remarks..."
-                      value={callLogData.notes}
-                      onChange={(e) => setCallLogData({ ...callLogData, notes: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
-                      rows={3}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleAddCallLog}
-                        className="flex-1 rounded-xl bg-emerald-600 text-white py-2 text-sm font-bold"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowCallLogForm(false)}
-                        className="rounded-xl border px-4 py-2 text-sm font-bold"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <p className="text-[11px] text-slate-500">
-                  Calls and recordings appear in the Activity feed below (newest first).
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-black text-[#023D95] flex items-center gap-1.5">
                     <Clock className="w-4 h-4" /> Call reminders
@@ -932,12 +864,13 @@ function LeadDetailContent() {
                 ) : null}
                 <button
                   type="button"
-                  title={isLeadManager ? 'Assign TC' : 'Transfer'}
-                  aria-label={isLeadManager ? 'Assign TC' : 'Transfer'}
+                  title={isLeadManager ? 'Assign to a telecaller' : 'Transfer to another telecaller'}
+                  aria-label={isLeadManager ? 'Assign to a telecaller' : 'Transfer to another telecaller'}
                   onClick={() => void openSharePanel()}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-bold text-[#004AAD] shadow hover:bg-blue-50"
                 >
-                  <Share2 className="w-4 h-4" />
+                  <ArrowRightLeft className="w-4 h-4" />
+                  {isLeadManager ? 'Assign' : 'Transfer'}
                 </button>
               </div>
             </div>
@@ -1432,8 +1365,9 @@ function LeadDetailContent() {
         )}
       </div>
 
-      {shareOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-3">
+      {shareOpen && typeof document !== 'undefined'
+        ? createPortal(
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/40 p-3">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <h3 className="font-black text-[#023D95]">{isLeadManager ? 'Assign telecaller' : 'Transfer Lead'}</h3>
@@ -1445,12 +1379,13 @@ function LeadDetailContent() {
                   <div>
                     <p className="font-bold text-sm text-slate-900">{peer.full_name || 'Telecaller'}</p>
                   </div>
-                  <span className="text-[11px] font-bold text-indigo-700">Assign</span>
+                  <span className="text-[11px] font-bold text-indigo-700">{isLeadManager ? 'Assign' : 'Transfer'}</span>
                 </button>
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
 
       <SendWhatsAppModal

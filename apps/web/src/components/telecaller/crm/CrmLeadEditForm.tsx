@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode, type ComponentType } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { createClient } from '@/lib/supabase/client';
@@ -20,7 +21,6 @@ import {
   Loader2,
   PhoneCall,
   Share2,
-  Users,
 } from 'lucide-react';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 import {
@@ -1072,17 +1072,42 @@ export default function CrmLeadEditForm({
     );
   }
 
+  const dockFooter =
+    embedded && typeof document !== 'undefined'
+      ? document.getElementById('lead-drawer-actions')
+      : null;
+  const inDrawer = Boolean(dockFooter);
+
+  const saveBar = (
+    <div
+      className={
+        inDrawer
+          ? 'flex gap-2 bg-white px-3 py-2.5'
+          : 'fixed bottom-3 sm:bottom-4 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(12px,env(safe-area-inset-bottom,0px))] sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]'
+      }
+    >
+      <div className={inDrawer ? 'flex w-full gap-2' : 'mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3'}>
+        <button type="button" onClick={handleCancel} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+          <X className="w-4 h-4" /> Back
+        </button>
+        <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
+          {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div
-      className={`${embedded ? 'w-full' : 'max-w-5xl mx-auto'} space-y-4 pb-28 ${embedded ? '' : 'px-3 sm:px-4'}`}
+      className={`${embedded ? 'w-full' : 'max-w-5xl mx-auto'} ${inDrawer ? 'space-y-3 pb-2' : 'space-y-4 pb-28'} ${embedded ? '' : 'px-3 sm:px-4'}`}
     >
       <div
-        className={`relative overflow-hidden rounded-2xl text-white p-4 sm:p-6 shadow-lg transition-colors ${headerCardClass(formData.activity_result)}`}
+        className={`relative overflow-hidden rounded-2xl text-white shadow-lg transition-colors ${headerCardClass(formData.activity_result)} ${inDrawer ? 'p-3' : 'p-4 sm:p-6'}`}
       >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.12),_transparent_55%)]" />
-        <div className="relative flex flex-col gap-4">
+        <div className={`relative flex flex-col ${inDrawer ? 'gap-2' : 'gap-4'}`}>
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0 flex-1">
+            <div className="flex items-start gap-2.5 min-w-0 flex-1">
               <button
                 type="button"
                 onClick={handleCancel}
@@ -1091,10 +1116,12 @@ export default function CrmLeadEditForm({
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
+                {inDrawer ? null : (
                 <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">
                   {isLeadManager ? 'Lead Manager · Service Lead Details' : 'Telecaller · Service Lead Details'}
                 </p>
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate mt-0.5 text-white">
+                )}
+                <h1 className={`font-black text-white ${inDrawer ? 'text-lg leading-tight break-words' : 'text-xl sm:text-2xl md:text-3xl truncate mt-0.5'}`}>
                   {formData.customer_name || lead.customer_name || 'Lead'}
                 </h1>
                 <p className="text-sm text-white/90 mt-1 flex flex-wrap gap-x-3 gap-y-1">
@@ -1108,7 +1135,8 @@ export default function CrmLeadEditForm({
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+              {inDrawer ? null : (
               <button
                 type="submit"
                 form="crm-lead-edit-form"
@@ -1117,6 +1145,7 @@ export default function CrmLeadEditForm({
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>
+              )}
               {onCall && (formData.customer_phone || lead.customer_phone) ? (
                 <button
                   type="button"
@@ -1164,28 +1193,8 @@ export default function CrmLeadEditForm({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {lead.is_incomplete && formData.activity_result === 'FRESH' ? (
-              <span className="rounded-full bg-amber-400 text-amber-950 px-3 py-1 text-xs font-black">
-                Fresh
-              </span>
-            ) : formData.activity_result === 'RINGING' ? (
-              <span className="rounded-full bg-slate-200 text-slate-700 px-3 py-1 text-xs font-black">
-                Ringing
-              </span>
-            ) : null}
-            <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
-              Priority {formData.lead_priority || 'NORMAL'}
-            </span>
-            {lead.assigned_telecaller?.full_name ? (
-              <span className="rounded-full bg-indigo-300/30 px-3 py-1 text-xs font-semibold inline-flex items-center gap-1">
-                <Users className="w-3.5 h-3.5" /> TC: {lead.assigned_telecaller.full_name}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="rounded-xl bg-white/10 p-3 overflow-x-auto">
-            <div className="flex items-center gap-1 min-w-[520px]">
+          <div className={`rounded-xl bg-white/10 ${inDrawer ? 'p-1.5' : 'overflow-x-auto p-3'}`}>
+            <div className={`flex items-center gap-1 ${inDrawer ? 'min-w-0' : 'min-w-[520px]'}`}>
               {PIPELINE.map((step, idx) => {
                 const active = pipelineActiveIndex(lead, formData.activity_result);
                 const lost = active < 0;
@@ -1270,6 +1279,8 @@ export default function CrmLeadEditForm({
               )}
               {errors.customer_phone ? <p className="mt-1 text-xs text-rose-600">{errors.customer_phone}</p> : null}
             </div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <FieldLabel>Alternate Phone</FieldLabel>
               <input type="tel" name="customer_alternate_phone" value={formData.customer_alternate_phone} onChange={handleChange} className={fieldCls()} maxLength={10} />
@@ -1768,20 +1779,11 @@ export default function CrmLeadEditForm({
         <SectionCard title="Additional Information" icon={FileText} tone="indigo">
           <div>
             <FieldLabel>Notes</FieldLabel>
-            <textarea name="notes" value={formData.notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Any additional notes or comments" />
+            <textarea name="notes" value={formData.notes} onChange={handleChange} className={fieldCls()} rows={inDrawer ? 2 : 3} placeholder="Any additional notes or comments" />
           </div>
         </SectionCard>
 
-        <div className="fixed bottom-3 sm:bottom-4 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(12px,env(safe-area-inset-bottom,0px))] sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]">
-          <div className="mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3">
-            <button type="button" onClick={handleCancel} className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              <X className="w-4 h-4" /> Back
-            </button>
-            <button type="submit" disabled={saving} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
-              {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
-            </button>
-          </div>
-        </div>
+        {inDrawer && dockFooter ? createPortal(saveBar, dockFooter) : saveBar}
       </form>
     </div>
   );

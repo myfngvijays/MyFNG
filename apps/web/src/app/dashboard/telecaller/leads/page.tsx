@@ -27,7 +27,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   Phone,
   Search,
-  Share2,
+  ArrowRightLeft,
   Bell,
   Loader2,
   X,
@@ -45,8 +45,13 @@ import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel'
 import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkActionsBar';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import CrmDatePickerModal from '@/components/telecaller/crm/CrmDatePickerModal';
+import { LeadDetailContent } from './[id]/page';
 
-const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v5';
+/** Compact filters — same size on 14", 15.6", and wide monitors. Two-up only on phones. */
+const FILTER_FIELD =
+  'relative min-w-0 flex-1 basis-[calc(50%-0.25rem)] min-[720px]:w-44 min-[720px]:flex-none min-[720px]:basis-auto';
+
+const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v6';
 
 const BOOKING_SOURCE_OPTIONS = [
   { value: 'ALL', label: 'All Sources' },
@@ -74,13 +79,13 @@ const BOOKING_COUPON_OPTIONS = [
 const LEADS_TABLE_COLUMNS = [
   { key: 'leadNumber', label: 'Lead #', onByDefault: false, locked: false },
   { key: 'status', label: 'Status', onByDefault: true, locked: false },
-  { key: 'mlScore', label: 'ML', onByDefault: true, locked: false },
+  { key: 'mlScore', label: 'ML', onByDefault: false, locked: false },
   { key: 'customer', label: 'Customer', onByDefault: true, locked: false },
   { key: 'phone', label: 'Phone', onByDefault: true, locked: false },
-  { key: 'message', label: 'Message', onByDefault: true, locked: false },
-  { key: 'regNo', label: 'Reg. No', onByDefault: true, locked: false },
-  { key: 'makeModel', label: 'Make / Model', onByDefault: true, locked: false },
-  { key: 'city', label: 'City', onByDefault: true, locked: false },
+  { key: 'message', label: 'Message', onByDefault: false, locked: false },
+  { key: 'regNo', label: 'Reg. No', onByDefault: false, locked: false },
+  { key: 'makeModel', label: 'Make / Model', onByDefault: false, locked: false },
+  { key: 'city', label: 'City', onByDefault: false, locked: false },
   { key: 'priority', label: 'Priority', onByDefault: false, locked: false },
   { key: 'source', label: 'Source', onByDefault: false, locked: false },
   { key: 'assignee', label: 'Assignee', onByDefault: true, locked: false },
@@ -114,14 +119,19 @@ function formatLeadDateTime(iso: string | null | undefined) {
   return `${parts.date}, ${parts.time}`;
 }
 
-/** Prefer 2 lines with full name (no ellipsis) — first word(s) then remainder. */
-function splitCustomerNameLines(name: string): [string, string | null] {
-  const full = String(name || '').trim() || 'Unknown';
-  const parts = full.split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return [full, null];
-  if (parts.length === 2) return [parts[0], parts[1]];
-  // 3+ words: keep first on line 1, rest complete on line 2
-  return [parts[0], parts.slice(1).join(' ')];
+/** One line, each word capitalised (not ALL CAPS, not all lowercase). */
+function formatLeadName(name: string | null | undefined): string {
+  const full = String(name || '').trim();
+  if (!full) return 'Unknown';
+  return full
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      if (/^\d+$/.test(word)) return word;
+      const lower = word.toLowerCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
 }
 
 function StackedDateTime({ iso }: { iso: string | null | undefined }) {
@@ -232,7 +242,7 @@ function TelecallerCrmLeadsContent() {
     newLeads: number;
   } | null>(null);
   const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string | null }>>([]);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>(dateParam || defaults.datePreset);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>(dateParam || 'all_time');
   const [dateField, setDateField] = useState<'created' | 'modified'>(
     dateFieldParam === 'modified' || dateFieldParam === 'updated_at' ? 'modified' : defaults.dateField,
   );
@@ -261,6 +271,7 @@ function TelecallerCrmLeadsContent() {
   const columnsMenuRef = useRef<HTMLDivElement>(null);
   const advancedMenuRef = useRef<HTMLDivElement>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [selectedOnly, setSelectedOnly] = useState(false);
 
   useEffect(() => {
     setVisibleColumns(loadLeadsColumnVisibility());
@@ -282,7 +293,6 @@ function TelecallerCrmLeadsContent() {
   }, [columnsMenuOpen]);
 
   const showCol = (key: LeadsColumnKey) => {
-    if (key === 'assignee' && !isLeadManager) return false;
     if (key === 'source' && !isLeadManager) return false;
     if (key === 'mlScore' && !isLeadManager) return false;
     return Boolean(visibleColumns[key]);
@@ -292,18 +302,56 @@ function TelecallerCrmLeadsContent() {
     return LEADS_TABLE_COLUMNS.filter((c) => showCol(c.key));
   }, [visibleColumns, isLeadManager]);
 
-  const dataColWidthPct = useMemo(() => {
-    const dataCount = visibleTableCols.filter((c) => c.key !== 'actions').length || 1;
-    return `${(100 / dataCount).toFixed(3)}%`;
+  const COL_MIN_PX: Record<LeadsColumnKey, number> = {
+    leadNumber: 124,
+    status: 152,
+    mlScore: 68,
+    customer: 176,
+    phone: 124,
+    message: 240,
+    regNo: 118,
+    makeModel: 136,
+    city: 108,
+    priority: 92,
+    source: 116,
+    assignee: 128,
+    date: 112,
+    modified: 112,
+    actions: 188,
+  };
+
+  const tableMinPx = useMemo(() => {
+    return 48 + visibleTableCols.reduce((sum, col) => sum + COL_MIN_PX[col.key], 0);
   }, [visibleTableCols]);
 
-  /** Tight widths for Status / Customer / Phone so badge ↔ name gap isn't huge. */
+  /** Few columns fill the row. Many columns keep a readable width and slide sideways. */
+  const slideColumns = tableMinPx > 1180;
+
   const colWidthStyle = (key: LeadsColumnKey): CSSProperties => {
-    if (key === 'status') return { width: '5.25rem', minWidth: '5.25rem', maxWidth: '5.75rem' };
-    if (key === 'mlScore') return { width: '3.5rem', minWidth: '3.25rem', maxWidth: '3.75rem' };
-    if (key === 'phone') return { width: '6.75rem', minWidth: '6.5rem', maxWidth: '7.25rem' };
-    if (key === 'customer') return { width: '8.25rem', minWidth: '7.5rem', maxWidth: '10rem' };
-    return { width: dataColWidthPct };
+    if (slideColumns) {
+      return { width: COL_MIN_PX[key], minWidth: COL_MIN_PX[key] };
+    }
+    const weight: Record<LeadsColumnKey, number> = {
+      leadNumber: 1.15,
+      status: 1.45,
+      mlScore: 0.7,
+      customer: 2.05,
+      phone: 1.3,
+      message: 2.1,
+      regNo: 1.2,
+      makeModel: 1.45,
+      city: 1.1,
+      priority: 0.95,
+      source: 1.1,
+      assignee: 1.4,
+      date: 1.15,
+      modified: 1.15,
+      actions: 1.05,
+    };
+    const total = visibleTableCols.reduce((sum, col) => sum + weight[col.key], 0) || 1;
+    const pct = (weight[key] / total) * 96;
+    if (key === 'actions') return { width: `${pct.toFixed(2)}%`, minWidth: 188 };
+    return { width: `${pct.toFixed(2)}%` };
   };
 
   const toggleColumn = (key: LeadsColumnKey) => {
@@ -358,7 +406,7 @@ function TelecallerCrmLeadsContent() {
   useEffect(() => {
     const saved = loadTelecallerCrmFilterPrefs();
     setFilter(filterParam || 'all');
-    setDatePreset((dateParam && dateParam) || saved.datePreset);
+    setDatePreset(dateParam || 'all_time');
     setDateField(
       dateFieldParam === 'modified' || dateFieldParam === 'updated_at'
         ? 'modified'
@@ -421,7 +469,7 @@ function TelecallerCrmLeadsContent() {
 
       if (!f || f === 'all') params.delete('filter');
       else params.set('filter', f);
-      if (!d || d === 'last_7_days') params.delete('date');
+      if (!d || d === 'all_time') params.delete('date');
       else params.set('date', d);
       if (!df || df === 'created') params.delete('date_field');
       else params.set('date_field', df);
@@ -474,13 +522,40 @@ function TelecallerCrmLeadsContent() {
     [],
   );
 
+  const openLeadId = searchParams?.get('lead') || '';
+
   const openLead = (leadId: string) => {
-    router.push(`${base}/leads/${leadId}`);
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    params.set('lead', leadId);
+    const qs = params.toString();
+    router.replace(`${base}/leads${qs ? `?${qs}` : ''}`, { scroll: false });
   };
 
+  const closeLead = useCallback(() => {
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    params.delete('lead');
+    const qs = params.toString();
+    router.replace(`${base}/leads${qs ? `?${qs}` : ''}`, { scroll: false });
+  }, [searchParams, router, base]);
+
+  useEffect(() => {
+    if (!openLeadId) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeLead();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [openLeadId, closeLead]);
+
   const displayedLeads = useMemo(() => {
-    if (appliedQ.trim()) return leads;
-    return leads.filter((lead) => {
+    const base = appliedQ.trim()
+      ? leads
+      : leads.filter((lead) => {
       if (advIncomplete && !lead.is_incomplete) return false;
       if (advFollowUp) {
         if (crmLeadClosedForFollowUp(lead)) return false;
@@ -506,6 +581,8 @@ function TelecallerCrmLeadsContent() {
       }
       return true;
     });
+    if (!selectedOnly || selectedIds.size === 0) return base;
+    return base.filter((lead) => selectedIds.has(String(lead.id)));
   }, [
     leads,
     appliedQ,
@@ -516,6 +593,8 @@ function TelecallerCrmLeadsContent() {
     advNoAssignee,
     advHasPhone,
     advOverdueReminder,
+    selectedOnly,
+    selectedIds,
   ]);
 
   const persistDate = (next: {
@@ -597,28 +676,31 @@ function TelecallerCrmLeadsContent() {
   }, [isLeadManager]);
 
   useEffect(() => {
-    if (!isLeadManager || !prefsReady) return;
+    if (!isLeadManager || !prefsReady || loading) return;
     let cancelled = false;
-    const range = resolveCrmDateRange(datePreset, customStart, customEnd);
-    const params = new URLSearchParams({ overview: '1', limit: '4000' });
-    if (!range.allTime) {
-      params.set('from', range.start);
-      params.set('to', range.end);
-    }
-    if (dateField === 'modified') params.set('date_field', 'updated_at');
-    fetch(`/api/telecaller/crm/leads?${params.toString()}`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (cancelled || !json?.overview) return;
-        setOverview(json.overview);
-      })
-      .catch(() => {
-        if (!cancelled) setOverview(null);
-      });
+    const timer = window.setTimeout(() => {
+      const range = resolveCrmDateRange(datePreset, customStart, customEnd);
+      const params = new URLSearchParams({ overview: '1', limit: '4000' });
+      if (!range.allTime) {
+        params.set('from', range.start);
+        params.set('to', range.end);
+      }
+      if (dateField === 'modified') params.set('date_field', 'updated_at');
+      fetch(`/api/telecaller/crm/leads?${params.toString()}`)
+        .then((res) => res.json())
+        .then((json) => {
+          if (cancelled || !json?.overview) return;
+          setOverview(json.overview);
+        })
+        .catch(() => {
+          if (!cancelled) setOverview(null);
+        });
+    }, 400);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [isLeadManager, prefsReady, datePreset, customStart, customEnd, dateField]);
+  }, [isLeadManager, prefsReady, loading, datePreset, customStart, customEnd, dateField]);
 
   const exportLeadsCsv = () => {
     const range = resolveCrmDateRange(datePreset, customStart, customEnd);
@@ -637,7 +719,6 @@ function TelecallerCrmLeadsContent() {
   };
 
   const toggleSelect = (id: string) => {
-    if (!isLeadManager) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -652,10 +733,9 @@ function TelecallerCrmLeadsContent() {
   );
 
   const allPageSelected =
-    isLeadManager && pageLeadIds.length > 0 && pageLeadIds.every((id) => selectedIds.has(id));
+    pageLeadIds.length > 0 && pageLeadIds.every((id) => selectedIds.has(id));
 
   const toggleSelectPage = () => {
-    if (!isLeadManager) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allPageSelected) {
@@ -800,6 +880,12 @@ function TelecallerCrmLeadsContent() {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
+  const openLeadWas = useRef('');
+  useEffect(() => {
+    if (openLeadWas.current && !openLeadId) void load();
+    openLeadWas.current = openLeadId;
+  }, [openLeadId, load]);
+
   const runSearch = () => {
     const nextQ = q.trim();
     setAppliedQ(nextQ);
@@ -868,17 +954,12 @@ function TelecallerCrmLeadsContent() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto w-full min-w-0 max-w-7xl space-y-4 pb-24">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="mx-auto w-full min-w-0 max-w-none space-y-3 pb-24 sm:space-y-4">
+        <div className="flex flex-col gap-3 min-[1100px]:flex-row min-[1100px]:items-center min-[1100px]:justify-between">
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-[#023D95]">Leads</h1>
-            <p className="text-sm text-slate-500 mt-0.5">
-              {isLeadManager
-                ? 'Bookings + CRM leads ek jagah. Source / discount / trigger filter — click karke Service Lead Details.'
-                : 'Sirf aapke assigned (ya aapke banaye) leads — WhatsApp · 6161 sticky pe niche.'}
-            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2 min-[720px]:ml-auto min-[720px]:justify-end">
             <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
               <button
                 type="button"
@@ -958,8 +1039,7 @@ function TelecallerCrmLeadsContent() {
                     <div className="max-h-72 space-y-0.5 overflow-y-auto">
                       {LEADS_TABLE_COLUMNS.filter(
                         (c) =>
-                          (c.key !== 'assignee' && c.key !== 'source' && c.key !== 'mlScore') ||
-                          isLeadManager,
+                          (c.key !== 'source' && c.key !== 'mlScore') || isLeadManager,
                       )
                         .filter((c) => {
                           const q = columnsQuery.trim().toLowerCase();
@@ -1069,104 +1149,12 @@ function TelecallerCrmLeadsContent() {
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-3.5 shadow-sm space-y-3">
-          {/* Search + clear in same bar */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                className={`w-full rounded-xl border border-slate-200 py-2 pl-9 text-sm ${
-                  q ? 'pr-9' : 'pr-3'
-                }`}
-                placeholder="Search name, phone, lead #"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              {q ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQ('');
-                    setAppliedQ('');
-                    persistAll({ q: '' });
-                    syncFiltersToUrl({ q: '' });
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Clear search"
-                  title="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              ) : null}
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setFilterAndUrl('all');
-                  setCity('');
-                  setPriority('');
-                  setTelecallerId('');
-                  setUnassignedOnly(false);
-                  setSourceFilter('ALL');
-                  setCouponFilter('ALL');
-                  setTriggerFilter('');
-                  setLostReason('');
-                  setQ('');
-                  setAppliedQ('');
-                  setAdvIncomplete(false);
-                  setAdvFollowUp(false);
-                  setAdvHasVehicle(false);
-                  setAdvHasCoupon(false);
-                  setAdvNoAssignee(false);
-                  setAdvHasPhone(false);
-                  setAdvOverdueReminder(false);
-                  setDateField('created');
-                  persistAll({
-                    statusFilter: 'all',
-                    city: '',
-                    priority: '',
-                    telecallerId: '',
-                    unassignedOnly: false,
-                    lostReason: '',
-                    q: '',
-                    dateField: 'created',
-                    advIncomplete: false,
-                    advFollowUp: false,
-                    advHasVehicle: false,
-                    advHasCoupon: false,
-                    advNoAssignee: false,
-                  });
-                  syncFiltersToUrl({
-                    filter: 'all',
-                    city: '',
-                    priority: '',
-                    telecallerId: '',
-                    unassignedOnly: false,
-                    lostReason: '',
-                    q: '',
-                    dateField: 'created',
-                    source: 'ALL',
-                    hasCoupon: 'ALL',
-                    trigger: '',
-                  });
-                }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-              >
-                <X className="h-4 w-4" /> Clear
-              </button>
-            </div>
-          </div>
-
-          {/* Compact filter dropdowns */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
-            <div className="relative min-w-0">
+        <div className="space-y-2">
+          {/* Filters, then search + Clear in the leftover space on the same line. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={FILTER_FIELD}>
               <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                 value={filter}
                 onChange={(e) => setFilterAndUrl(e.target.value)}
                 aria-label="Lead Status"
@@ -1183,7 +1171,7 @@ function TelecallerCrmLeadsContent() {
             <button
               type="button"
               onClick={() => setDatePickerOpen(true)}
-              className="w-full inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left text-sm font-semibold text-slate-800 hover:border-blue-300"
+              className={`${FILTER_FIELD} inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left text-sm font-semibold text-slate-800 hover:border-blue-300`}
               title="Select date"
             >
               <CalendarDays className="h-4 w-4 text-[#004AAD] shrink-0" />
@@ -1191,9 +1179,9 @@ function TelecallerCrmLeadsContent() {
               <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
             </button>
 
-            <div className="relative min-w-0">
+            <div className={FILTER_FIELD}>
               <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                 value={city}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -1213,9 +1201,9 @@ function TelecallerCrmLeadsContent() {
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             </div>
 
-            <div className="relative min-w-0">
+            <div className={FILTER_FIELD}>
               <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                 value={priority}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -1234,43 +1222,10 @@ function TelecallerCrmLeadsContent() {
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             </div>
 
-            {isLeadManager ? (
-              <div className="relative min-w-0">
-                <select
-                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
-                  value={unassignedOnly ? '__unassigned__' : telecallerId}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '__unassigned__') {
-                      setUnassignedOnly(true);
-                      setTelecallerId('');
-                      persistAll({ unassignedOnly: true, telecallerId: '' });
-                      syncFiltersToUrl({ unassignedOnly: true, telecallerId: '' });
-                    } else {
-                      setUnassignedOnly(false);
-                      setTelecallerId(v);
-                      persistAll({ unassignedOnly: false, telecallerId: v });
-                      syncFiltersToUrl({ unassignedOnly: false, telecallerId: v });
-                    }
-                  }}
-                  aria-label="Telecaller"
-                >
-                  <option value="">All telecallers</option>
-                  <option value="__unassigned__">Unassigned only</option>
-                  {telecallers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.full_name || t.id.slice(0, 8)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              </div>
-            ) : null}
-
             {filter === 'lost' ? (
-              <div className="relative min-w-0">
+              <div className={FILTER_FIELD}>
                 <select
-                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                   value={lostReason}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -1290,75 +1245,25 @@ function TelecallerCrmLeadsContent() {
               </div>
             ) : null}
 
-            {isLeadManager ? (
-              <>
-                <div className="relative min-w-0">
-                  <select
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
-                    value={sourceFilter}
-                    onChange={(e) => {
-                      const v = e.target.value || 'ALL';
-                      setSourceFilter(v);
-                      syncFiltersToUrl({ source: v });
-                    }}
-                    aria-label="Source"
-                  >
-                    {BOOKING_SOURCE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                </div>
-                <div className="relative min-w-0">
-                  <select
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
-                    value={couponFilter}
-                    onChange={(e) => {
-                      const v = e.target.value || 'ALL';
-                      setCouponFilter(v);
-                      syncFiltersToUrl({ hasCoupon: v });
-                    }}
-                    aria-label="Discount"
-                  >
-                    {BOOKING_COUPON_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                </div>
-                <div className="relative min-w-0">
-                  <select
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
-                    value={triggerFilter}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setTriggerFilter(v);
-                      syncFiltersToUrl({ trigger: v });
-                    }}
-                    aria-label="Trigger"
-                  >
-                    <option value="">All triggers</option>
-                    <option value="NONE">No trigger</option>
-                    {messageTriggers.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                </div>
-              </>
-            ) : null}
+            <button
+              type="button"
+              disabled={selectedIds.size === 0}
+              onClick={() => setSelectedOnly((v) => !v)}
+              className={`${FILTER_FIELD} inline-flex items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                selectedOnly && selectedIds.size > 0
+                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                  : 'border-[#004AAD]/30 bg-[#E7F0FF] text-[#023D95]'
+              }`}
+              title="Select leads in the list, then filter to only those"
+            >
+              Selected{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+            </button>
 
-            <div className="relative" ref={advancedMenuRef}>
+            <div className={FILTER_FIELD} ref={advancedMenuRef}>
               <button
                 type="button"
                 onClick={() => setShowAdvanced((v) => !v)}
-                className="w-full inline-flex items-center justify-between gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800"
+                className="inline-flex w-full items-center justify-between gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800"
                 aria-expanded={showAdvanced}
               >
                 <span className="inline-flex items-center gap-1.5 truncate">
@@ -1375,7 +1280,91 @@ function TelecallerCrmLeadsContent() {
                 />
               </button>
               {showAdvanced ? (
-                <div className="absolute left-0 right-0 z-40 mt-1.5 min-w-[240px] rounded-xl border border-slate-200 bg-white p-2 shadow-lg sm:right-auto sm:w-72">
+                <div className="absolute right-0 z-40 mt-1.5 max-h-[70vh] w-72 max-w-[80vw] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                  {isLeadManager ? (
+                    <div className="mb-2 space-y-2 border-b border-slate-100 pb-2">
+                      <label className="block px-2 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        Team
+                      </label>
+                      <select
+                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-2.5 pr-8 text-sm font-semibold text-slate-800"
+                        value={unassignedOnly ? '__unassigned__' : telecallerId}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === '__unassigned__') {
+                            setUnassignedOnly(true);
+                            setTelecallerId('');
+                            persistAll({ unassignedOnly: true, telecallerId: '' });
+                            syncFiltersToUrl({ unassignedOnly: true, telecallerId: '' });
+                          } else {
+                            setUnassignedOnly(false);
+                            setTelecallerId(v);
+                            persistAll({ unassignedOnly: false, telecallerId: v });
+                            syncFiltersToUrl({ unassignedOnly: false, telecallerId: v });
+                          }
+                        }}
+                        aria-label="Telecaller"
+                      >
+                        <option value="">All telecallers</option>
+                        <option value="__unassigned__">Unassigned only</option>
+                        {telecallers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.full_name || t.id.slice(0, 8)}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-2.5 pr-8 text-sm font-semibold text-slate-800"
+                        value={sourceFilter}
+                        onChange={(e) => {
+                          const v = e.target.value || 'ALL';
+                          setSourceFilter(v);
+                          syncFiltersToUrl({ source: v });
+                        }}
+                        aria-label="Source"
+                      >
+                        {BOOKING_SOURCE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-2.5 pr-8 text-sm font-semibold text-slate-800"
+                        value={couponFilter}
+                        onChange={(e) => {
+                          const v = e.target.value || 'ALL';
+                          setCouponFilter(v);
+                          syncFiltersToUrl({ hasCoupon: v });
+                        }}
+                        aria-label="Discount"
+                      >
+                        {BOOKING_COUPON_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-2.5 pr-8 text-sm font-semibold text-slate-800"
+                        value={triggerFilter}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setTriggerFilter(v);
+                          syncFiltersToUrl({ trigger: v });
+                        }}
+                        aria-label="Trigger"
+                      >
+                        <option value="">All triggers</option>
+                        <option value="NONE">No trigger</option>
+                        {messageTriggers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
                   <label className="block px-2 pt-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                     Date type
                   </label>
@@ -1468,6 +1457,93 @@ function TelecallerCrmLeadsContent() {
                 </div>
               ) : null}
             </div>
+
+            <div className="relative ml-auto min-w-[16rem] flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#004AAD]" />
+              <input
+                className={`w-full rounded-xl border border-[#004AAD]/40 bg-[#E7F0FF] py-2 pl-9 text-sm font-semibold text-[#023D95] placeholder:text-[#004AAD]/60 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/25 ${
+                  q ? 'pr-9' : 'pr-3'
+                }`}
+                placeholder="Search name, phone, lead #"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              {q ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQ('');
+                    setAppliedQ('');
+                    persistAll({ q: '' });
+                    syncFiltersToUrl({ q: '' });
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterAndUrl('all');
+                setCity('');
+                setPriority('');
+                setTelecallerId('');
+                setUnassignedOnly(false);
+                setSourceFilter('ALL');
+                setCouponFilter('ALL');
+                setTriggerFilter('');
+                setLostReason('');
+                setQ('');
+                setAppliedQ('');
+                setAdvIncomplete(false);
+                setAdvFollowUp(false);
+                setAdvHasVehicle(false);
+                setAdvHasCoupon(false);
+                setAdvNoAssignee(false);
+                setAdvHasPhone(false);
+                setAdvOverdueReminder(false);
+                setDateField('created');
+                persistAll({
+                  statusFilter: 'all',
+                  city: '',
+                  priority: '',
+                  telecallerId: '',
+                  unassignedOnly: false,
+                  lostReason: '',
+                  q: '',
+                  dateField: 'created',
+                  advIncomplete: false,
+                  advFollowUp: false,
+                  advHasVehicle: false,
+                  advHasCoupon: false,
+                  advNoAssignee: false,
+                });
+                syncFiltersToUrl({
+                  filter: 'all',
+                  city: '',
+                  priority: '',
+                  telecallerId: '',
+                  unassignedOnly: false,
+                  lostReason: '',
+                  q: '',
+                  dateField: 'created',
+                  source: 'ALL',
+                  hasCoupon: 'ALL',
+                  trigger: '',
+                });
+              }}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+            >
+              <X className="h-4 w-4" /> Clear
+            </button>
           </div>
         </div>
 
@@ -1524,21 +1600,22 @@ function TelecallerCrmLeadsContent() {
         ) : (
           <>
             {/* Desktop table — visible cols share width (no blank gaps when unchecked) */}
-            <div className="hidden lg:block w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
-              <table className="w-full table-fixed text-left text-sm">
-                  <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            <div className="hidden w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white lg:block">
+              <table
+                className={`text-left text-sm ${slideColumns ? 'w-max' : 'w-full table-fixed'}`}
+                style={slideColumns ? { minWidth: tableMinPx } : undefined}
+              >
+                  <thead className="bg-[#004AAD] text-[11px] font-bold uppercase tracking-wide text-white [&_th]:!py-[9px]">
                     <tr>
-                      {isLeadManager ? (
-                        <th className="px-2 py-2 w-10">
-                          <input
-                            type="checkbox"
-                            checked={allPageSelected}
-                            onChange={toggleSelectPage}
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label="Select all on page"
-                          />
-                        </th>
-                      ) : null}
+                      <th className="px-2 py-2 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          onChange={toggleSelectPage}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Select all on page"
+                        />
+                      </th>
                       {showCol('leadNumber') ? (
                         <th className="px-2 py-2 truncate" style={colWidthStyle('leadNumber')}>
                           Lead #
@@ -1555,7 +1632,7 @@ function TelecallerCrmLeadsContent() {
                         </th>
                       ) : null}
                       {showCol('customer') ? (
-                        <th className="px-1.5 py-2 whitespace-normal" style={colWidthStyle('customer')}>
+                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('customer')}>
                           Customer
                         </th>
                       ) : null}
@@ -1594,23 +1671,26 @@ function TelecallerCrmLeadsContent() {
                           Source
                         </th>
                       ) : null}
-                      {showCol('assignee') && isLeadManager ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('assignee')}>
+                      {showCol('assignee') ? (
+                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('assignee')}>
                           Assignee
                         </th>
                       ) : null}
                       {showCol('date') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('date')}>
+                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('date')}>
                           Created on
                         </th>
                       ) : null}
                       {showCol('modified') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('modified')}>
+                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('modified')}>
                           Modified
                         </th>
                       ) : null}
                       {showCol('actions') ? (
-                        <th className="sticky right-0 z-20 w-[112px] bg-slate-50 px-2 py-2 text-right shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.18)]">
+                        <th
+                          className="sticky right-0 z-20 bg-[#004AAD] px-2 py-2 text-right text-white shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.18)]"
+                          style={colWidthStyle('actions')}
+                        >
                           Actions
                         </th>
                       ) : null}
@@ -1638,44 +1718,47 @@ function TelecallerCrmLeadsContent() {
                         <tr
                           key={lead.id}
                           className={`group cursor-pointer transition ${
-                            isLeadManager && selectedIds.has(String(lead.id))
-                              ? 'ring-2 ring-inset ring-blue-400'
-                              : ''
+                            openLeadId === String(lead.id)
+                              ? 'ring-2 ring-inset ring-[#004AAD]'
+                              : selectedIds.has(String(lead.id))
+                                ? 'ring-2 ring-inset ring-blue-400'
+                                : ''
                           }`}
                           style={{
                             backgroundColor:
-                              isLeadManager && selectedIds.has(String(lead.id))
+                              selectedIds.has(String(lead.id))
                                 ? '#DBEAFE'
                                 : tint.cardBg,
                           }}
                           onClick={() => openLead(String(lead.id))}
                         >
-                          {isLeadManager ? (
-                            <td
-                              className="px-2 py-2"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSelect(String(lead.id));
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.has(String(lead.id))}
-                                onChange={() => toggleSelect(String(lead.id))}
-                                onClick={(e) => e.stopPropagation()}
-                                aria-label={`Select ${lead.lead_number || lead.id}`}
-                              />
-                            </td>
-                          ) : null}
+                          <td
+                            className="px-2 py-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelect(String(lead.id));
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(String(lead.id))}
+                              onChange={() => toggleSelect(String(lead.id))}
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={`Select ${lead.lead_number || lead.id}`}
+                            />
+                          </td>
                           {showCol('leadNumber') ? (
-                            <td className="px-2 py-2 font-extrabold text-[#023D95] truncate text-[13px]">
+                            <td
+                              className="whitespace-nowrap px-2 py-2 font-extrabold text-[#023D95] text-[13px]"
+                              style={colWidthStyle('leadNumber')}
+                            >
                               {lead.lead_number || lead.id?.slice(0, 8)}
                             </td>
                           ) : null}
                           {showCol('status') ? (
                             <td className="px-1.5 py-2" style={colWidthStyle('status')}>
                               <span
-                                className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold"
+                                className="inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold"
                                 style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
                               >
                                 {statusLabel}
@@ -1693,23 +1776,13 @@ function TelecallerCrmLeadsContent() {
                           ) : null}
                           {showCol('customer') ? (
                             <td
-                              className="px-1.5 py-2 font-semibold text-slate-900 text-[13px]"
+                              className="overflow-hidden px-1.5 py-2 font-semibold text-slate-900 text-[13px]"
                               style={colWidthStyle('customer')}
-                              title={lead.customer_name || 'Unknown'}
+                              title={formatLeadName(lead.customer_name)}
                             >
-                              {(() => {
-                                const [line1, line2] = splitCustomerNameLines(
-                                  lead.customer_name || 'Unknown',
-                                );
-                                return (
-                                  <span className="inline-flex flex-col leading-snug">
-                                    <span className="break-words">{line1}</span>
-                                    {line2 ? (
-                                      <span className="break-words">{line2}</span>
-                                    ) : null}
-                                  </span>
-                                );
-                              })()}
+                              <span className="block truncate whitespace-nowrap">
+                                {formatLeadName(lead.customer_name)}
+                              </span>
                             </td>
                           ) : null}
                           {showCol('phone') ? (
@@ -1771,14 +1844,19 @@ function TelecallerCrmLeadsContent() {
                               {lead.booking_source_label || lead.lead_source || '—'}
                             </td>
                           ) : null}
-                          {showCol('assignee') && isLeadManager ? (
-                            <td className="px-2 py-2 text-indigo-700 font-semibold text-xs whitespace-nowrap">
-                              {lead.assigned_telecaller?.full_name || 'Unassigned'}
+                          {showCol('assignee') ? (
+                            <td
+                              className="px-1.5 py-2 text-indigo-700 font-semibold text-xs whitespace-nowrap truncate"
+                              style={colWidthStyle('assignee')}
+                              title={formatLeadName(lead.assigned_telecaller?.full_name || 'Unassigned')}
+                            >
+                              {formatLeadName(lead.assigned_telecaller?.full_name || 'Unassigned')}
                             </td>
                           ) : null}
                           {showCol('date') ? (
                             <td
-                              className="px-2 py-2 text-[11px] text-slate-600"
+                              className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-600"
+                              style={colWidthStyle('date')}
                               title={lead.created_at || undefined}
                             >
                               <StackedDateTime iso={lead.created_at} />
@@ -1786,7 +1864,8 @@ function TelecallerCrmLeadsContent() {
                           ) : null}
                           {showCol('modified') ? (
                             <td
-                              className="px-2 py-2 text-[11px] text-slate-600"
+                              className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-600"
+                              style={colWidthStyle('modified')}
                               title={lead.updated_at || undefined}
                             >
                               <StackedDateTime iso={lead.updated_at || lead.created_at} />
@@ -1797,7 +1876,7 @@ function TelecallerCrmLeadsContent() {
                               className="sticky right-0 z-10 px-2 py-2 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)]"
                               style={{
                                 backgroundColor:
-                                  isLeadManager && selectedIds.has(String(lead.id))
+                                  selectedIds.has(String(lead.id))
                                     ? '#DBEAFE'
                                     : tint.cardBg,
                               }}
@@ -1828,11 +1907,12 @@ function TelecallerCrmLeadsContent() {
                                 <button
                                   type="button"
                                   onClick={() => openShare(lead)}
-                                  title="Transfer"
-                                  aria-label="Transfer"
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-600 text-white shadow-sm hover:bg-slate-700"
+                                  title="Transfer to another telecaller"
+                                  aria-label="Transfer to another telecaller"
+                                  className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg bg-[#004AAD] px-2 text-[11px] font-bold text-white shadow-sm hover:bg-[#023D95]"
                                 >
-                                  <Share2 className="h-3.5 w-3.5 fill-current" strokeWidth={2.5} />
+                                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                                  Transfer
                                 </button>
                               </div>
                             </td>
@@ -1852,28 +1932,37 @@ function TelecallerCrmLeadsContent() {
                 return (
                   <div
                     key={lead.id}
-                    className="rounded-2xl border p-3 shadow-sm"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openLead(String(lead.id))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openLead(String(lead.id));
+                      }
+                    }}
+                    className={`rounded-2xl border p-3 shadow-sm ${
+                      openLeadId === String(lead.id) ? 'ring-2 ring-[#004AAD]' : ''
+                    }`}
                     style={{
                       backgroundColor: tint.cardBg,
                       borderColor: tint.border,
                     }}
                   >
-                    {isLeadManager ? (
-                      <div className="mb-2">
-                        <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(String(lead.id))}
-                            onChange={() => toggleSelect(String(lead.id))}
-                          />
-                          Select
-                        </label>
-                      </div>
-                    ) : null}
+                    <div className="mb-2" onClick={(e) => e.stopPropagation()}>
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(String(lead.id))}
+                          onChange={() => toggleSelect(String(lead.id))}
+                        />
+                        Select
+                      </label>
+                    </div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-slate-900 leading-snug truncate">
-                          {lead.customer_name || 'Unknown'}
+                          {formatLeadName(lead.customer_name)}
                         </p>
                         <p className="mt-1 text-sm font-semibold text-slate-700">
                           {lead.customer_phone || '—'}
@@ -1917,7 +2006,7 @@ function TelecallerCrmLeadsContent() {
                         ) : null}
                       </div>
                     </div>
-                    <div className="mt-2.5 flex gap-2">
+                    <div className="mt-2.5 flex gap-2" onClick={(e) => e.stopPropagation()}>
                       {lead.customer_phone ? (
                         <a
                           href={`tel:${lead.customer_phone}`}
@@ -1940,7 +2029,7 @@ function TelecallerCrmLeadsContent() {
                         onClick={() => openShare(lead)}
                         className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-blue-50 px-2 py-2 text-xs font-bold text-[#004AAD]"
                       >
-                        <Share2 className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
                         Transfer
                       </button>
                     </div>
@@ -1998,16 +2087,16 @@ function TelecallerCrmLeadsContent() {
       </div>
 
       {shareLead ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[80vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-extrabold text-[#023D95]">Transfer Lead</h3>
+              <h3 className="text-lg font-extrabold text-[#023D95]">Transfer to telecaller</h3>
               <button type="button" onClick={() => setShareLead(null)}>
                 <X className="h-5 w-5 text-slate-400" />
               </button>
             </div>
             <p className="mb-3 text-sm text-slate-600">
-              {shareLead.customer_name} · {shareLead.lead_number}
+              {formatLeadName(shareLead.customer_name)} · {shareLead.lead_number}. Choose who should get this lead.
             </p>
             {peers.length === 0 ? (
               <p className="text-sm text-slate-500">No peer telecallers found</p>
@@ -2035,6 +2124,37 @@ function TelecallerCrmLeadsContent() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {openLeadId ? (
+        <div className="fixed inset-0 z-[80] flex justify-end">
+          <button
+            type="button"
+            aria-label="Close lead"
+            className="absolute inset-0 bg-slate-900/40"
+            onClick={closeLead}
+          />
+          <div className="telecaller-lead-drawer relative flex h-full w-full min-w-0 flex-col bg-[#f4f7fb] shadow-2xl min-[1100px]:w-[calc(100vw-7rem)] min-[1536px]:w-[min(1360px,calc(100vw-9rem))]">
+            <div className="flex shrink-0 items-center justify-end border-b border-slate-200 bg-white px-2 py-1">
+              <button
+                type="button"
+                onClick={closeLead}
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-bold text-slate-600 hover:bg-slate-100"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <LeadDetailContent panelLeadId={openLeadId} onPanelClose={closeLead} />
+            </div>
+            <div
+              id="lead-drawer-actions"
+              className="shrink-0 border-t border-slate-200 bg-white shadow-[0_-6px_16px_rgba(15,23,42,0.06)]"
+            />
           </div>
         </div>
       ) : null}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
+import { businessPhoneForScope, loadOtpOutbounds, otpOutboundToMessage } from '@/lib/whatsapp/otpInbox';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -242,6 +243,26 @@ export async function GET(request: NextRequest) {
         }
       } catch (seedErr) {
         console.warn('[whatsapp/conversation] lead seed skipped', seedErr);
+      }
+
+      try {
+        const otpRows = await loadOtpOutbounds(db, accountScope, { phone: normalized, limit: 80 });
+        const seenIds = new Set(
+          messages.map((row: any) => String(row?.provider_message_id || '').trim()).filter(Boolean),
+        );
+        const businessPhone = businessPhoneForScope(accountScope);
+        const otpMessages = otpRows
+          .filter((row) => !row.provider_message_id || !seenIds.has(row.provider_message_id))
+          .map((row) => otpOutboundToMessage(row, businessPhone));
+        if (otpMessages.length > 0) {
+          messages = [...messages, ...otpMessages].sort(
+            (a, b) =>
+              new Date(a.created_at || a.status_at || 0).getTime() -
+              new Date(b.created_at || b.status_at || 0).getTime(),
+          );
+        }
+      } catch (otpErr) {
+        console.warn('[whatsapp/conversation] otp merge skipped', otpErr);
       }
     }
 

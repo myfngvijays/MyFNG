@@ -81,7 +81,7 @@ export default function CrmReportsDuplicatesPage() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto w-full max-w-7xl space-y-5 pb-10">
+      <div className="mx-auto w-full max-w-none space-y-5 pb-10">
         <CrmReportsNav
           title="Duplicate phones"
           subtitle={`${stats.total_groups} groups · ${stats.total_extra_leads} extra lead rows`}

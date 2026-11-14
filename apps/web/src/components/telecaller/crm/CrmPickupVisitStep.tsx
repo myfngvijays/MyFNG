@@ -99,6 +99,9 @@ export default function CrmPickupVisitStep({
   const pickupRequired = forcePickup ? true : value.pickup_required;
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loadingWs, setLoadingWs] = useState(false);
+  const [modeChosen, setModeChosen] = useState(
+    () => Boolean(value.pickup_date || value.pickup_time),
+  );
   const dateInputRef = useRef<HTMLInputElement>(null);
 
   const todayStr = formatDateYMD(getIndiaDate());
@@ -162,6 +165,7 @@ export default function CrmPickupVisitStep({
 
   const setMode = (pickup: boolean) => {
     if (forcePickup && !pickup) return;
+    setModeChosen(true);
     onChange({
       pickup_required: pickup,
       ...(pickup
@@ -188,34 +192,29 @@ export default function CrmPickupVisitStep({
         </div>
 
         {!forcePickup ? (
-          <div className="flex shrink-0 flex-col items-end gap-1">
+          <div className="flex shrink-0 gap-2">
             <button
               type="button"
-              role="switch"
-              aria-checked={pickupRequired}
-              aria-label={pickupRequired ? 'Doorstep pickup on' : 'Visit workshop'}
-              onClick={() => setMode(!pickupRequired)}
-              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                pickupRequired ? 'bg-[#004AAD]' : 'bg-slate-300'
+              onClick={() => setMode(false)}
+              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-bold ${
+                modeChosen && !pickupRequired
+                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                  : 'border-slate-200 bg-white text-slate-700'
               }`}
             >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
-                  pickupRequired ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
+              <MapPin className="h-3.5 w-3.5" /> Visit
             </button>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              {pickupRequired ? (
-                <span className="inline-flex items-center gap-0.5 text-[#004AAD]">
-                  <Navigation className="h-3 w-3" /> Pickup
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-0.5">
-                  <MapPin className="h-3 w-3" /> Visit
-                </span>
-              )}
-            </span>
+            <button
+              type="button"
+              onClick={() => setMode(true)}
+              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-bold ${
+                modeChosen && pickupRequired
+                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                  : 'border-slate-200 bg-white text-slate-700'
+              }`}
+            >
+              <Navigation className="h-3.5 w-3.5" /> Pickup
+            </button>
           </div>
         ) : (
           <div className="rounded-full bg-[#004AAD]/10 px-3 py-1 text-[11px] font-bold text-[#004AAD]">
@@ -224,6 +223,8 @@ export default function CrmPickupVisitStep({
         )}
       </div>
 
+      {modeChosen || forcePickup ? (
+      <>
       {!hideVehicleNumber ? (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <label className="mb-2 block text-sm font-bold text-gray-800">Vehicle Number *</label>
@@ -303,7 +304,7 @@ export default function CrmPickupVisitStep({
       </div>
 
       {value.pickup_date ? (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
           <label className="mb-2 block text-sm font-bold text-gray-800">
             {pickupRequired ? 'Pickup Time' : 'Visit Time'}
             {reqMark}
@@ -332,7 +333,7 @@ export default function CrmPickupVisitStep({
         </div>
       ) : null}
 
-      {pickupRequired ? (
+      {value.pickup_time && pickupRequired ? (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex flex-wrap gap-2">
             {ADDR_TYPES.map(({ key, label, icon: Icon }) => {
@@ -393,8 +394,8 @@ export default function CrmPickupVisitStep({
             </>
           ) : null}
         </div>
-      ) : (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      ) : value.pickup_time ? (
+        <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
           <p className="mb-2 text-sm font-bold text-gray-800">Nearby Workshops</p>
           {!/^\d{6}$/.test(String(pincode || '').trim()) ? (
             <p className="text-sm text-gray-500">
@@ -443,7 +444,9 @@ export default function CrmPickupVisitStep({
             </>
           )}
         </div>
-      )}
+      ) : null}
+      </>
+      ) : null}
 
       {quoteTotal != null && quoteTotal > 0 ? (
         <div className="mt-4 flex items-center justify-between rounded-xl bg-[#004AAD]/10 px-4 py-3">

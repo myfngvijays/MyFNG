@@ -60,6 +60,7 @@ import WhatsAppWebWorkspace from '@/components/shared/WhatsAppWebWorkspace';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import { dashboardRolesMatch, getRoleDashboardHome } from '@/lib/dashboard/roleHome';
 import IncomingClickToCallBanner from '@/components/telecaller/crm/IncomingClickToCallBanner';
+import TelecallerFloorHeaderButton from '@/components/telecaller/TelecallerFloorHeaderButton';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 const AANSH_OPTIONAL_SKIP_KEY = 'myfng:aansh_optional_skip';
@@ -1196,6 +1197,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                 {aanshSession ? `Aansh: ${aanshSession.aansh_id}` : 'Select Aansh'}
               </button>
             )}
+            {roleCode === 'TELECALLER' ? <TelecallerFloorHeaderButton /> : null}
             <ReminderHeaderIcon />
             <NotificationBell />
             

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import DashboardLayout from '@/components/DashboardLayout';
-import TelecallerAanshBar from '@/components/telecaller/TelecallerAanshBar';
 import {
   CRM_DATE_PRESETS,
   resolveCrmDateRange,
@@ -30,12 +29,23 @@ import {
   MapPin,
   Tag,
   TrendingUp,
-  LogIn,
-  LogOut,
 } from 'lucide-react';
 import { shouldKeepPreviousDashboardKpis } from '@/lib/telecaller/crmDashboardGuard';
 import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 type Kpis = {
   new_leads?: number;
@@ -92,6 +102,18 @@ type FreshLead = {
   vehicle_model?: string | null;
 };
 
+function formatDashName(name?: string | null): string {
+  const full = String(name || '').trim();
+  if (!full) return 'Customer';
+  return full
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) =>
+      /^\d+$/.test(word) ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+    )
+    .join(' ');
+}
+
 function formatLeadAgo(iso?: string | null): string {
   if (!iso) return '';
   const t = new Date(iso).getTime();
@@ -113,59 +135,6 @@ function formatReminderClock(iso?: string | null): string {
   return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
-function SimpleBarChart({
-  title,
-  data,
-  color,
-  emptyHint,
-}: {
-  title: string;
-  data: Array<{ label: string; value: number }>;
-  color: string;
-  emptyHint: string;
-}) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  const max = Math.max(1, ...data.map((d) => d.value));
-  const BAR_TRACK_PX = 128;
-  return (
-    <div className="rounded-2xl bg-white p-3.5 sm:p-4 shadow-sm border border-slate-100 min-h-[200px] flex flex-col">
-      <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">{title}</h2>
-      {data.length === 0 || total === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center rounded-xl bg-slate-50/80 border border-dashed border-slate-200 px-4 py-8 text-center">
-          <BarChart3 className="h-7 w-7 text-slate-300 mb-2" />
-          <p className="text-xs font-semibold text-slate-500">{emptyHint}</p>
-        </div>
-      ) : (
-        <div className="flex items-end gap-2 flex-1 pt-1" style={{ minHeight: BAR_TRACK_PX + 40 }}>
-          {data.map((t, i) => {
-            const hPx = Math.max(t.value > 0 ? 10 : 2, Math.round((t.value / max) * BAR_TRACK_PX));
-            return (
-              <div key={`${t.label}-${i}`} className="flex flex-1 flex-col items-center gap-1 min-w-0">
-                <span className="text-[10px] font-bold text-slate-700 tabular-nums leading-none">
-                  {t.value}
-                </span>
-                <div
-                  className="w-full flex items-end justify-center"
-                  style={{ height: BAR_TRACK_PX }}
-                >
-                  <div
-                    className="w-full max-w-[32px] rounded-t-md transition-all"
-                    style={{ height: hPx, backgroundColor: color }}
-                    title={`${t.label}: ${t.value}`}
-                  />
-                </div>
-                <span className="text-[10px] font-semibold text-slate-500 truncate w-full text-center">
-                  {t.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function TelecallerCrmHomePage() {
   const pathname = usePathname();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
@@ -176,12 +145,8 @@ export default function TelecallerCrmHomePage() {
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminder[]>([]);
   const [freshLeads, setFreshLeads] = useState<FreshLead[]>([]);
   const [profileName, setProfileName] = useState('Telecaller');
-  const [punchedIn, setPunchedIn] = useState(false);
-  const [punching, setPunching] = useState(false);
   const [waUnread, setWaUnread] = useState(0);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>(
-    () => loadTelecallerCrmFilterPrefs().datePreset,
-  );
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('all_time');
   const [customStart, setCustomStart] = useState(
     () => loadTelecallerCrmFilterPrefs().customStart,
   );
@@ -243,7 +208,6 @@ export default function TelecallerCrmHomePage() {
           setFreshLeads(nextFresh);
         }
         setProfileName(json?.profile?.name || 'Telecaller');
-        setPunchedIn(Boolean(json?.attendance?.is_punched_in));
         setLoadError(null);
         setReady(true);
       } finally {
@@ -292,26 +256,6 @@ export default function TelecallerCrmHomePage() {
       window.removeEventListener('myfng:open-wa-inbox', onClear);
     };
   }, []);
-
-  const punch = async () => {
-    setPunching(true);
-    try {
-      const res = await fetch('/api/telecaller/crm/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: punchedIn ? 'punch_out' : 'punch_in' }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || 'Punch failed');
-      setPunchedIn(!punchedIn);
-      setRefreshing(true);
-      void load(true);
-    } catch (e: any) {
-      alert(e?.message || 'Punch failed');
-    } finally {
-      setPunching(false);
-    }
-  };
 
   // Same labels / filters as Leads — colors from leadStatusCardColors palette
   const kpiCards = [
@@ -374,72 +318,58 @@ export default function TelecallerCrmHomePage() {
     },
   ];
 
-  const callTrend = trend.map((t) => ({
+  const activityBars = trend.map((t) => ({
     label: t.label || String(t.date || '').slice(5) || '',
-    value: Number(t.calls || 0),
+    calls: Number(t.calls || 0),
+    bookings: Number(t.leads_created || 0),
   }));
-  const bookingTrend = trend.map((t) => ({
-    label: t.label || String(t.date || '').slice(5) || '',
-    value: Number(t.leads_created || 0),
-  }));
+  const statusPie = kpiCards
+    .filter((k) => k.filter)
+    .map((k) => {
+      const tint = leadStatusKpiColors(k.statusKey);
+      const fill = tint.badgeText === '#FFFFFF' ? tint.badgeBg : tint.badgeText;
+      return { name: k.label, value: Number(k.value || 0), fill };
+    })
+    .filter((d) => d.value > 0);
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto w-full max-w-6xl space-y-3 pb-8">
-        {/* Compact hero strip: title + punch + date/Aansh */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-3.5 shadow-sm space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h1 className="text-lg sm:text-xl font-extrabold text-[#023D95] leading-tight truncate">
-                {isLeadManager ? 'Lead Manager' : profileName}
-              </h1>
+      <div className="w-full max-w-none space-y-4 pb-8">
+        <div className="rounded-2xl bg-[#004AAD] px-4 py-3.5 text-white shadow-md sm:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+              <div className="min-w-0 shrink-0">
+                <h1 className="truncate text-xl font-extrabold leading-tight text-white sm:text-2xl">
+                  {isLeadManager ? 'Lead Manager' : formatDashName(profileName)}
+                </h1>
+                <p className="text-xs font-semibold text-blue-100">
+                  {isLeadManager ? 'All team leads' : 'Your floor'}
+                </p>
+              </div>
+              {isLeadManager ? (
+                <Link
+                  href={`${base}/floor`}
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2.5 text-xs font-bold text-[#5B21B6]"
+                >
+                  Floor status
+                </Link>
+              ) : null}
             </div>
-            {isLeadManager ? (
-              <Link
-                href={`${base}/floor`}
-                className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-800 ring-1 ring-violet-200 hover:bg-violet-100"
-              >
-                Floor status
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void punch()}
-                disabled={punching}
-                title={punchedIn ? 'Punch out' : 'Punch in'}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-bold disabled:opacity-60 ${
-                  punchedIn
-                    ? 'bg-emerald-500/10 text-emerald-800 ring-1 ring-emerald-200'
-                    : 'bg-orange-500/10 text-orange-800 ring-1 ring-orange-200'
-                }`}
-              >
-                {punching ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : punchedIn ? (
-                  <LogOut className="h-3.5 w-3.5" />
-                ) : (
-                  <LogIn className="h-3.5 w-3.5" />
-                )}
-                {punchedIn ? 'On Floor · Out' : 'Off Duty · In'}
-              </button>
-            )}
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,240px)_1fr] gap-2 items-start">
-            <div className="relative z-20">
+            <div className="relative z-20 w-full sm:ml-auto sm:w-44 sm:shrink-0">
               <button
                 type="button"
                 onClick={() => setDateOpen((v) => !v)}
-                className="w-full flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                className="flex w-full items-center gap-2 rounded-xl border border-white bg-white px-3 py-2.5"
               >
-                <CalendarDays className="w-4 h-4 text-[#004AAD] shrink-0" />
-                <span className="flex-1 text-left text-[12px] font-bold text-slate-800 truncate">
+                <CalendarDays className="h-4 w-4 shrink-0 text-[#004AAD]" />
+                <span className="flex-1 truncate text-left text-[12px] font-bold text-[#023D95]">
                   {datePreset === 'custom' ? dateRange.label : dateLabel}
                 </span>
                 {dateOpen ? (
-                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                  <ChevronUp className="h-4 w-4 text-[#004AAD]" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="h-4 w-4 text-[#004AAD]" />
                 )}
               </button>
               {dateOpen ? (
@@ -496,13 +426,6 @@ export default function TelecallerCrmHomePage() {
                 </div>
               ) : null}
             </div>
-
-            <TelecallerAanshBar
-              onClaimed={() => {
-                setRefreshing(true);
-                void load(true);
-              }}
-            />
           </div>
         </div>
 
@@ -560,7 +483,62 @@ export default function TelecallerCrmHomePage() {
               })}
             </div>
 
-            <div className="rounded-2xl bg-[#F3F7FF] p-3.5 sm:p-4 shadow-sm border border-[#C7D7F5] border-l-4 border-l-[#004AAD]">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-5">
+              <div className="rounded-2xl border border-[#C7D7F5] bg-[#EEF4FF] p-3.5 shadow-sm sm:p-4 xl:col-span-2">
+                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Lead mix</h2>
+                {statusPie.length === 0 ? (
+                  <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
+                    No leads in this range
+                  </div>
+                ) : (
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={statusPie}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={58}
+                          outerRadius={88}
+                          paddingAngle={2}
+                        >
+                          {statusPie.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+              <div className="rounded-2xl border border-[#BBF7D0] bg-[#F0FDF4] p-3.5 shadow-sm sm:p-4 xl:col-span-3">
+                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Calls and bookings</h2>
+                {activityBars.length === 0 ? (
+                  <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
+                    No activity this week
+                  </div>
+                ) : (
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={activityBars} barGap={4}>
+                        <CartesianGrid stroke="#E2E8F0" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="calls" name="Calls" fill="#004AAD" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="bookings" name="Bookings" fill="#10B981" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <div className="rounded-2xl border border-[#C7D7F5] border-l-4 border-l-[#004AAD] bg-[#F3F7FF] p-3.5 shadow-sm sm:p-4">
               <div className="mb-2.5 flex items-center justify-between gap-2">
                 <h2 className="text-[14px] font-bold text-[#023D95]">Fresh leads</h2>
                 <Link href={`${base}/leads?filter=new`} className="text-xs font-bold text-[#004AAD]">
@@ -579,7 +557,7 @@ export default function TelecallerCrmHomePage() {
                       <li key={lead.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
                         <Link href={`${base}/leads/${lead.id}`} className="min-w-0 flex-1 hover:opacity-90">
                           <p className="truncate text-sm font-bold text-slate-900">
-                            {String(lead.customer_name || 'Customer').trim()}
+                            {formatDashName(lead.customer_name)}
                           </p>
                           <p className="mt-0.5 truncate text-xs text-slate-500">
                             {phone || '—'}
@@ -606,7 +584,7 @@ export default function TelecallerCrmHomePage() {
               )}
             </div>
 
-            <div className="rounded-2xl bg-[#FFF8F1] p-3.5 sm:p-4 shadow-sm border border-[#F3D5B5] border-l-4 border-l-[#EA580C]">
+            <div className="rounded-2xl border border-[#F3D5B5] border-l-4 border-l-[#EA580C] bg-[#FFF7ED] p-3.5 shadow-sm sm:p-4">
               <div className="mb-2.5 flex items-center justify-between gap-2">
                 <h2 className="text-[14px] font-bold text-[#9A3412]">Upcoming reminders</h2>
                 <Link href={`${base}/followups`} className="text-xs font-bold text-[#C2410C]">
@@ -627,7 +605,7 @@ export default function TelecallerCrmHomePage() {
                       <li key={r.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
                         <Link href={leadHref} className="min-w-0 flex-1 hover:opacity-90">
                           <p className="truncate text-sm font-bold text-slate-900">
-                            {r.lead?.customer_name || 'Customer'}
+                            {formatDashName(r.lead?.customer_name)}
                           </p>
                           <p className="mt-0.5 truncate text-xs text-slate-500">
                             {r.reason || 'Follow-up'}
@@ -654,9 +632,10 @@ export default function TelecallerCrmHomePage() {
                 </ul>
               )}
             </div>
+            </div>
 
             {/* Quick Actions — web only, above analytics (phone order unchanged) */}
-            <div>
+            <div className="rounded-2xl border border-[#C7D7F5] bg-[#F4F8FF] p-3.5 sm:p-4">
               <h2 className="text-[14px] font-bold text-[#023D95] mb-2">Quick Actions</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-2.5">
                 {[
@@ -726,7 +705,7 @@ export default function TelecallerCrmHomePage() {
                         setWaUnread(0);
                         window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'));
                       }}
-                      className="relative rounded-xl bg-white py-3 px-2 shadow-sm border border-slate-100 flex flex-col items-center gap-1.5 hover:border-emerald-200 transition"
+                      className="relative flex flex-col items-center gap-1.5 rounded-xl border border-[#86EFAC] bg-[#ECFDF5] px-2 py-3 shadow-sm transition hover:brightness-[0.98]"
                     >
                       <span
                         className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -747,7 +726,8 @@ export default function TelecallerCrmHomePage() {
                     <Link
                       key={a.href + a.label}
                       href={a.href}
-                      className="rounded-xl bg-white py-3 px-2 shadow-sm border border-slate-100 flex flex-col items-center gap-1.5 hover:border-blue-200 transition"
+                      className="flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 shadow-sm transition hover:brightness-[0.98]"
+                      style={{ backgroundColor: `${a.color}18`, borderColor: `${a.color}55` }}
                     >
                       <span
                         className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -764,9 +744,9 @@ export default function TelecallerCrmHomePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <div className="rounded-2xl bg-white p-3.5 sm:p-4 shadow-sm border border-slate-100">
-                <h2 className="text-[14px] font-bold text-[#023D95] mb-2.5">Calls in range</h2>
+            <div className="grid grid-cols-1 gap-3">
+              <div className="rounded-2xl border border-[#C7D7F5] bg-[#F3F7FF] p-3.5 shadow-sm sm:p-4">
+                <h2 className="mb-2.5 text-[14px] font-bold text-[#023D95]">Calls in range</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div className="text-center">
                     <div className="text-lg sm:text-xl font-extrabold text-[#004AAD] tabular-nums">
@@ -818,19 +798,6 @@ export default function TelecallerCrmHomePage() {
                   </Link>
                 )}
               </div>
-
-              <SimpleBarChart
-                title="7-Day Call Trend"
-                data={callTrend}
-                color="#004AAD"
-                emptyHint="No calls this week"
-              />
-              <SimpleBarChart
-                title="7-Day Bookings Created"
-                data={bookingTrend}
-                color="#10B981"
-                emptyHint="No bookings this week"
-              />
             </div>
           </>
         )}

@@ -278,7 +278,7 @@ export default function CrmReportsLeaderboardPage() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto w-full max-w-7xl space-y-4 pb-10">
+      <div className="mx-auto w-full max-w-none space-y-4 pb-10">
         <CrmReportsNav
           title={teamMode ? 'Leaderboard' : 'My performance'}
           subtitle={

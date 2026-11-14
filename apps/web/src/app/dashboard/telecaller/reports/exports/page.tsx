@@ -126,7 +126,7 @@ export default function CrmReportsExportsPage() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="mx-auto w-full max-w-6xl space-y-5 pb-10">
+      <div className="mx-auto w-full max-w-none space-y-5 pb-10">
         <CrmReportsNav
           title="Exports"
           subtitle="Generate CSV files for offline review. Recent downloads are kept on this browser."

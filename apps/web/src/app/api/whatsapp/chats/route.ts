@@ -3,6 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
+import { loadOtpOutbounds, mergeOtpChats } from '@/lib/whatsapp/otpInbox';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -618,9 +619,8 @@ export async function GET(request: NextRequest) {
         .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
       const accountParam = String(request.nextUrl.searchParams.get('account') || '').trim();
-      if (accountParam && accountParam !== 'settings') {
-        const accountScope = await loadWaAccountScope(accountParam);
-        if (accountScope.source === 'connected') {
+      const accountScope = await loadWaAccountScope(accountParam || 'settings');
+      if (accountParam && accountParam !== 'settings' && accountScope.source === 'connected') {
           const matched = new Map<string, any>();
           const { data: scopedMsgs } = await supabaseAdmin
             .from('whatsapp_messages')
@@ -648,7 +648,13 @@ export async function GET(request: NextRequest) {
             });
           }
           chats = Array.from(matched.values()).sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
-        }
+      }
+
+      try {
+        const otpRows = await loadOtpOutbounds(supabaseAdmin, accountScope);
+        chats = mergeOtpChats(chats, otpRows, { searchDigits, searchName });
+      } catch (otpErr) {
+        console.warn('[whatsapp/chats] otp inbox merge skipped', otpErr);
       }
 
       return NextResponse.json({

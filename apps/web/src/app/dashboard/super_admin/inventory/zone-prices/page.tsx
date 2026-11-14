@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Download, Loader2, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -205,6 +206,8 @@ async function writeZonePriceExport(format: 'csv' | 'xlsx' | 'pdf', filename: st
 }
 
 export default function ZonePricesPage() {
+  const pathname = usePathname();
+  const fullWidth = pathname?.includes('/telecaller/') || pathname?.includes('/lead_manager/');
   const [zones, setZones] = useState<ZoneInfo[]>([]);
   const [classes, setClasses] = useState<string[]>([]);
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
@@ -443,8 +446,8 @@ export default function ZonePricesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="mx-auto max-w-6xl">
+    <div className={fullWidth ? 'w-full bg-gray-50 p-4 sm:p-6' : 'min-h-screen bg-gray-50 p-4 sm:p-6'}>
+      <div className={fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto max-w-6xl'}>
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Zone Prices</h1>

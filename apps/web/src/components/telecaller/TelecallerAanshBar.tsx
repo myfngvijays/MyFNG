@@ -32,9 +32,11 @@ function setStoredSession(session: AanshSession | null) {
 export default function TelecallerAanshBar({
   onSessionChange,
   onClaimed,
+  onDark = false,
 }: {
   onSessionChange?: (session: AanshSession | null) => void;
   onClaimed?: () => void;
+  onDark?: boolean;
 } = {}) {
   const [session, setSession] = useState<AanshSession | null>(null);
   const [available, setAvailable] = useState<AanshItem[]>([]);
@@ -168,10 +170,12 @@ export default function TelecallerAanshBar({
           void refreshAvailable();
           setModalOpen(true);
         }}
-        className={`w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold border shadow-sm transition ${
-          session
-            ? 'bg-[#004AAD] text-white border-[#004AAD]'
-            : 'bg-white text-[#004AAD] border-[#004AAD]/4a'
+        className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold shadow-sm transition ${
+          onDark
+            ? 'border-white bg-white text-[#004AAD]'
+            : session
+              ? 'border-[#004AAD] bg-[#004AAD] text-white'
+              : 'border-[#004AAD]/40 bg-white text-[#004AAD]'
         }`}
       >
         <Headset className="w-4 h-4 shrink-0" />

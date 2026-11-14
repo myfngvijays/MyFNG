@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { applyUiFontPx, readUiFontPx } from '@/lib/uiFontSize';
 
 /**
  * Windows / non-Apple laptops often render the admin UI oversized at 100% zoom
@@ -36,6 +37,7 @@ export default function UiDensityController() {
       root.classList.toggle('ui-density-compact', compact);
       if (compact) root.setAttribute('data-ui-density', 'compact');
       else root.removeAttribute('data-ui-density');
+      applyUiFontPx(readUiFontPx());
     };
 
     apply();

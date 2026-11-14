@@ -145,6 +145,51 @@
       padding-right: max(1.5rem, env(safe-area-inset-right));
     }
   }
+  @media (min-width: 1536px) {
+    .admin-page,
+    .dashboard-page {
+      padding-left: max(1.75rem, env(safe-area-inset-left));
+      padding-right: max(1.75rem, env(safe-area-inset-right));
+    }
+  }
+
+  /* Telecaller lead opens from the right. Width follows the laptop, not a centered card. */
+  .telecaller-lead-drawer {
+    container-type: inline-size;
+    container-name: lead-drawer;
+    animation: telecaller-drawer-in 0.22s ease-out;
+  }
+  @keyframes telecaller-drawer-in {
+    from { transform: translateX(16px); opacity: 0.6; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .lead-detail-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+  @container lead-drawer (min-width: 980px) {
+    .lead-detail-split {
+      grid-template-columns: minmax(0, 1.7fr) minmax(250px, 320px);
+      align-items: start;
+    }
+  }
+  /* Tighter cards inside the side panel so more of the form shows without scrolling. */
+  .telecaller-lead-drawer section.rounded-2xl {
+    padding: 0.75rem;
+  }
+  .telecaller-lead-drawer section.rounded-2xl > .mb-4 {
+    margin-bottom: 0.5rem;
+  }
+  /* Form grids use the viewport. Inside a side panel, keep fields at 2 columns until the panel is wide. */
+  .telecaller-lead-drawer .lg\:grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @container lead-drawer (min-width: 1280px) {
+    .telecaller-lead-drawer .lg\:grid-cols-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
 
   .admin-page img,
   .dashboard-page img,

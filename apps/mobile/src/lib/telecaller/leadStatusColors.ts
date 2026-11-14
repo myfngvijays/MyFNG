@@ -1,10 +1,64 @@
-/** Lead list cards: Lost, Booking confirmed, and Service Done keep accent. */
-export function leadStatusCardColors(leadOrLabel: any): {
+type StatusTint = {
   cardBg: string;
   border: string;
   badgeBg: string;
   badgeText: string;
-} {
+};
+
+function statusTint(badgeBg: string, badgeText: string): StatusTint {
+  return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg, badgeText };
+}
+
+function statusTintFromLabel(label: string): StatusTint {
+  const s = String(label || '').toUpperCase();
+
+  if (s.includes('NOT INTERESTED') || s.includes('LOST') || s === 'REJECTED') {
+    return statusTint('#FECACA', '#B91C1C');
+  }
+  if (s.includes('OTP')) {
+    return statusTint('#F5D0FE', '#A21CAF');
+  }
+  if (s.includes('RINGING') || s.includes('NO ANSWER') || s.includes('NO-RESPONSE')) {
+    return statusTint('#FDE68A', '#B45309');
+  }
+  if (s.includes('WILL VISIT')) {
+    return statusTint('#DDD6FE', '#6D28D9');
+  }
+  if (s.includes('INTERESTED')) {
+    return statusTint('#FDBA74', '#C2410C');
+  }
+  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) {
+    return statusTint('#BAE6FD', '#0369A1');
+  }
+  if (s.includes('BOOKING') || s.includes('CONFIRMED') || s.includes('VALIDATED')) {
+    return statusTint('#A7F3D0', '#047857');
+  }
+  if (s.includes('IN SERVICE') || s === 'IN_PROGRESS' || s.includes('IN PROGRESS')) {
+    return statusTint('#C7D2FE', '#3730A3');
+  }
+  if (s.includes('SERVICE DONE') || s === 'SERVICE_DONE' || s === 'COMPLETED' || s === 'DONE') {
+    return statusTint('#BBF7D0', '#15803D');
+  }
+  if (s.includes('ASSIGNED')) {
+    return statusTint('#E9D5FF', '#7E22CE');
+  }
+  if (s.includes('CONTACTED')) {
+    return statusTint('#A5F3FC', '#0E7490');
+  }
+  if (s.includes('ACCEPTED')) {
+    return statusTint('#D9F99D', '#3F6212');
+  }
+  if (s.includes('PENDING')) {
+    return statusTint('#FEF08A', '#A16207');
+  }
+  if (s === 'NEW' || s.includes('FRESH') || s.includes('INCOMPLETE')) {
+    return statusTint('#BFDBFE', '#1D4ED8');
+  }
+  return statusTint('#E2E8F0', '#334155');
+}
+
+/** Lead list cards and status pills. */
+export function leadStatusCardColors(leadOrLabel: any): StatusTint {
   const label =
     typeof leadOrLabel === 'string'
       ? leadOrLabel
@@ -14,20 +68,7 @@ export function leadStatusCardColors(leadOrLabel: any): {
             leadOrLabel?.status ||
             '',
         );
-  const s = String(label || '').toUpperCase();
-
-  if (s.includes('LOST') || s === 'REJECTED') {
-    return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
-  }
-  if (
-    s.includes('BOOKING') ||
-    s.includes('SERVICE DONE') ||
-    s === 'SERVICE_DONE' ||
-    s === 'COMPLETED'
-  ) {
-    return { cardBg: '#ECFDF5', border: '#A7F3D0', badgeBg: '#D1FAE5', badgeText: '#047857' };
-  }
-  return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
+  return statusTintFromLabel(label);
 }
 
 /** Home KPI tiles — full status palette (previous look). */

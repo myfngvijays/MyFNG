@@ -200,7 +200,16 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
             <Text style={styles.statusText}>{item.status}</Text>
           </View>
           <Text style={[styles.leadName, { marginTop: 8 }]} numberOfLines={1}>
-            {item.customer_name || 'Unknown'}
+            {String(item.customer_name || 'Unknown')
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean)
+              .map((word: string) =>
+                /^\d+$/.test(word)
+                  ? word
+                  : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+              )
+              .join(' ') || 'Unknown'}
           </Text>
         </View>
       </View>

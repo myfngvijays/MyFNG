@@ -79,14 +79,6 @@ export async function GET(request: NextRequest) {
     }
 
     const seesAll = crmSeesAllLeads(roleCode);
-    try {
-      await healStaleFollowUps(db, {
-        telecallerId: seesAll ? String(request.nextUrl.searchParams.get('telecaller_id') || '').trim() || null : teleCallerId,
-        completedBy: teleCallerId,
-      });
-    } catch (fuHealErr) {
-      console.warn('[crm/leads] stale follow-up heal skipped', fuHealErr);
-    }
 
     // Never block the leads list on WhatsApp inbound sync (was ~10s+ per request).
     // Opt-in only: ?sync_wa=1
@@ -150,8 +142,14 @@ export async function GET(request: NextRequest) {
         workshop:workshops(id, name, city),
         assigned_telecaller:users_login!assigned_telecaller_id(id, full_name, phone)
       `;
+    const OVERVIEW_SELECT =
+      'id, status, lead_source, created_from, coupon_code, coupon_meta';
 
-    let query = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
+    let query = db
+      .from('service_leads')
+      .select(wantOverview ? OVERVIEW_SELECT : LEAD_LIST_SELECT, {
+        count: wantOverview ? undefined : 'exact',
+      });
     query = applyAssigneeScope(query).order(orderCol, { ascending: false });
     if (wantOverview || bookingFilterOn) {
       query = query.limit(wantOverview ? 4000 : 2000);
@@ -183,7 +181,11 @@ export async function GET(request: NextRequest) {
 
     if (error && /deleted_at/i.test(String(error.message || ''))) {
       // Retry without soft-delete filter for older schemas
-      let retry = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
+      let retry = db
+        .from('service_leads')
+        .select(wantOverview ? OVERVIEW_SELECT : LEAD_LIST_SELECT, {
+          count: wantOverview ? undefined : 'exact',
+        });
       retry = applyAssigneeScope(retry).order(orderCol, { ascending: false });
       if (wantOverview || bookingFilterOn) {
         retry = retry.limit(wantOverview ? 4000 : 2000);
@@ -208,6 +210,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    if (wantOverview) {
+      const scoped = (data || []).map((row: any) => enrichBookingLead(row));
+      return NextResponse.json({
+        success: true,
+        overview: computeServiceLeadOverview(scoped),
+        total: scoped.length,
+      });
+    }
 
     let rows = data || [];
     // Skip full healLeadDispositions on list (extra call-log queries). Ringing-from-activity is cheap.
@@ -370,14 +381,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (wantOverview) {
-      return NextResponse.json({
-        success: true,
-        overview: computeServiceLeadOverview(scoped),
-        total: scoped.length,
-      });
-    }
-
     const filteredTotal = bookingFilterOn ? scoped.length : typeof count === 'number' ? count : scoped.length;
     const paged = bookingFilterOn ? scoped.slice(rangeFrom, rangeFrom + pageSize) : scoped;
 
@@ -408,6 +411,13 @@ export async function GET(request: NextRequest) {
     const leadsWithScores = paged.map((row: any) => {
       const ml = scoreByLead.get(String(row.id));
       return ml ? { ...row, ml_score: ml } : row;
+    });
+
+    void healStaleFollowUps(db, {
+      telecallerId: seesAll ? telecallerFilter || null : teleCallerId,
+      completedBy: teleCallerId,
+    }).catch((fuHealErr) => {
+      console.warn('[crm/leads] stale follow-up heal skipped', fuHealErr);
     });
 
     return NextResponse.json({
