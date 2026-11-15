@@ -7,14 +7,15 @@ import {
   TouchableOpacity,
   RefreshControl,
   AppState,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { isPartnerPreview } from '../../../lib/partnerPreview';
 import { apiFetch } from '../../../lib/api';
 import { shouldKeepPreviousDashboard } from '../../../lib/crmDashboardGuard';
-import { useNotifications } from '../../../context/NotificationContext';
+import { useAuth } from '../../../context/AuthContext';
 import CarLoading from '../../../components/CarLoading';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
-import TelecallerAanshBar from '../../../components/telecaller/TelecallerAanshBar';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import {
@@ -33,6 +34,15 @@ function formatReminderClock(iso?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function leadInitials(name?: string | null): string {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const first = parts[0];
+  if (/^\d/.test(first)) return first.slice(0, 2);
+  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+  return `${first[0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 function formatLeadAgo(iso?: string | null): string {
@@ -90,7 +100,7 @@ type Props = {
 export default function CrmHomeTab({
   onNavigate,
   onOpenWhatsApp,
-  embedInShell = false,
+  embedInShell: _embedInShell = false,
   datePreset: datePresetProp,
   customStart: customStartProp,
   customEnd: customEndProp,
@@ -111,8 +121,8 @@ export default function CrmHomeTab({
   const [customStartLocal, setCustomStartLocal] = useState(istYmd());
   const [customEndLocal, setCustomEndLocal] = useState(istYmd());
   const [dateOpen, setDateOpen] = useState(false);
-  const [aanshActive, setAanshActive] = useState(false);
-  const { unreadCount } = useNotifications();
+  const [punching, setPunching] = useState(false);
+  const { userProfile } = useAuth();
 
   const datePreset = datePresetProp ?? datePresetLocal;
   const customStart = customStartProp ?? customStartLocal;
@@ -125,6 +135,14 @@ export default function CrmHomeTab({
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
 
   const load = useCallback(async (force = false) => {
+    if (isPartnerPreview()) {
+      setData({ kpis: {}, trend: [], fresh_leads: [], upcoming_reminders: [] });
+      setLoadError('');
+      onRemindersCount?.(0);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (inFlight.current && !force) return;
     inFlight.current = true;
     try {
@@ -176,13 +194,49 @@ export default function CrmHomeTab({
   }, [load, isActive]);
 
   const kpis = data?.kpis || {};
-  const trend = Array.isArray(data?.trend) ? data.trend : [];
+  const preview = isPartnerPreview();
+  const trend = preview
+    ? [
+        { label: 'Mon', calls: 6, leads_created: 2 },
+        { label: 'Tue', calls: 9, leads_created: 3 },
+        { label: 'Wed', calls: 4, leads_created: 1 },
+        { label: 'Thu', calls: 11, leads_created: 4 },
+        { label: 'Fri', calls: 8, leads_created: 2 },
+        { label: 'Sat', calls: 5, leads_created: 1 },
+        { label: 'Sun', calls: 3, leads_created: 1 },
+      ]
+    : Array.isArray(data?.trend)
+      ? data.trend
+      : [];
   const freshLeads: FreshLead[] = Array.isArray(data?.fresh_leads) ? data.fresh_leads : [];
   const reminders: HomeReminder[] = Array.isArray(data?.upcoming_reminders)
     ? data.upcoming_reminders.slice(0, 3)
     : [];
   const punchedIn = Boolean(data?.attendance?.is_punched_in);
   const onFloor = punchedIn;
+  const floorPlace = userProfile?.workshop?.name || '';
+
+  const toggleFloor = async () => {
+    if (punching) return;
+    const next = !onFloor;
+    setPunching(true);
+    try {
+      await apiFetch('/api/telecaller/crm/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: next ? 'punch_in' : 'punch_out' }),
+      });
+      setData((prev: any) =>
+        prev
+          ? { ...prev, attendance: { ...(prev.attendance || {}), is_punched_in: next } }
+          : prev,
+      );
+    } catch (e: any) {
+      Alert.alert('Attendance', e?.message || 'Could not update floor status');
+    } finally {
+      setPunching(false);
+    }
+  };
 
   const quickActions = [
     {
@@ -197,7 +251,7 @@ export default function CrmHomeTab({
       color: COLORS.primary,
       go: () => onNavigate('book', { mode: 'lead' }),
     },
-    { label: 'Open Leads', icon: 'list' as const, color: COLORS.orange, go: () => onNavigate('queue') },
+    { label: 'Leads', icon: 'list' as const, color: COLORS.orange, go: () => onNavigate('queue') },
     {
       label: 'Reports',
       icon: 'bar-chart' as const,
@@ -240,47 +294,37 @@ export default function CrmHomeTab({
         </View>
       ) : null}
 
-      <View style={styles.hero}>
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={styles.name}>{data?.profile?.name || 'Telecaller'}</Text>
+      {preview ? null : (
+      <View style={styles.floorCard}>
+        <View style={styles.floorCopy}>
+          <View style={styles.floorNameRow}>
+            <View style={[styles.floorDot, { backgroundColor: onFloor ? '#16A34A' : '#D97706' }]} />
+            <Text style={styles.floorName} numberOfLines={1}>
+              {data?.profile?.name || 'Telecaller'}
+            </Text>
+          </View>
+          {floorPlace ? (
+            <View style={styles.floorPlaceRow}>
+              <Ionicons name="location-sharp" size={12} color="#64748B" />
+              <Text style={styles.floorPlace} numberOfLines={1}>{floorPlace}</Text>
+            </View>
+          ) : null}
         </View>
-        {!embedInShell ? (
-          <>
-            <TouchableOpacity
-              style={styles.remindBtn}
-              onPress={() => onNavigate('Notifications')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="notifications-outline" size={18} color="#0369A1" />
-              {unreadCount > 0 ? (
-                <View style={styles.remindBadge}>
-                  <Text style={styles.remindBadgeText}>
-                    {unreadCount > 99 ? '99+' : String(unreadCount)}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.remindBtn}
-              onPress={() => onNavigate('TelecallerFollowUps')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="alarm-outline" size={18} color="#0369A1" />
-              {Number(kpis.reminders_pending || kpis.followups_today || 0) > 0 ? (
-                <View style={styles.remindBadge}>
-                  <Text style={styles.remindBadgeText}>
-                    {kpis.reminders_pending || kpis.followups_today}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-          </>
-        ) : null}
-        <View style={[styles.badge, onFloor ? styles.badgeOn : styles.badgeOff]}>
-          <View style={[styles.dot, { backgroundColor: onFloor ? COLORS.green : COLORS.orange }]} />
-          <Text style={styles.badgeText}>{onFloor ? 'On Floor' : 'Off Duty'}</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.onlineWrap}
+          onPress={() => void toggleFloor()}
+          disabled={punching}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.onlineTrack, onFloor && styles.onlineTrackOn]}>
+            <View style={[styles.onlineKnob, onFloor && styles.onlineKnobOn]} />
+          </View>
+          <Text style={[styles.onlineLabel, onFloor && styles.onlineLabelOn]}>
+            {onFloor ? 'Online' : 'Offline'}
+          </Text>
+        </TouchableOpacity>
       </View>
+      )}
 
       {/* Date filter (same as Leads) */}
       <View style={styles.dateDropdownWrap}>
@@ -343,64 +387,64 @@ export default function CrmHomeTab({
         ) : null}
       </View>
 
-      <TelecallerAanshBar
-        onSessionChange={(s) => setAanshActive(Boolean(s?.session_token))}
-        onClaimed={() => {
-          setRefreshing(true);
-          load(true);
-        }}
-      />
-
       <View style={styles.kpiGrid}>
         {[
-          { label: 'Fresh', value: kpis.new_leads || 0, statusKey: 'Fresh', filter: 'new' },
+          { label: 'Fresh', value: kpis.new_leads || 0, statusKey: 'Fresh', filter: 'new', icon: 'flash' as const },
           {
             label: 'Interested',
             value: kpis.interested,
             statusKey: 'Interested',
             filter: 'interested',
+            icon: 'heart' as const,
           },
           {
             label: 'He will visit',
             value: kpis.will_visit,
             statusKey: 'He will visit',
             filter: 'will_visit',
+            icon: 'walk' as const,
           },
           {
             label: 'Follow-up',
             value: kpis.callbacks,
             statusKey: 'Follow-up',
             filter: 'callback',
+            icon: 'time' as const,
           },
           {
             label: 'Booking confirmed',
             value: kpis.booking_confirmed ?? kpis.booked,
             statusKey: 'Booking confirmed',
             filter: 'booking_confirmed',
+            icon: 'calendar' as const,
           },
           {
             label: 'In Service',
             value: kpis.in_service,
             statusKey: 'In Service',
             filter: 'in_service',
+            icon: 'construct' as const,
           },
           {
             label: 'Service Done',
             value: kpis.service_done,
             statusKey: 'Service Done',
             filter: 'service_done',
+            icon: 'checkmark-circle' as const,
           },
           {
             label: 'Today due',
             value: kpis.followups_today,
             statusKey: 'Follow-up',
             filter: 'followups',
+            icon: 'alarm' as const,
           },
           {
             label: 'Lost',
             value: kpis.lost ?? kpis.rejected,
             statusKey: 'Lost',
             filter: 'lost',
+            icon: 'close-circle' as const,
           },
         ].map((k) => {
           const tint = leadStatusKpiColors(k.statusKey);
@@ -421,8 +465,9 @@ export default function CrmHomeTab({
               }}
               activeOpacity={0.85}
             >
+              <Ionicons name={k.icon} size={16} color={accent} style={styles.kpiIcon} />
               <Text style={[styles.kpiValue, { color: accent }]}>{k.value ?? 0}</Text>
-              <Text style={[styles.kpiLabel, { color: accent }]} numberOfLines={2}>
+              <Text style={styles.kpiLabel} numberOfLines={2}>
                 {k.label}
               </Text>
             </TouchableOpacity>
@@ -432,8 +477,15 @@ export default function CrmHomeTab({
 
       <View style={styles.listCardFresh}>
         <View style={styles.navyHead}>
-          <Text style={styles.navyTitle}>Fresh leads</Text>
-          <TouchableOpacity onPress={() => onNavigate('queue', { filter: 'new' })} activeOpacity={0.8}>
+          <View style={styles.sectionTitleRow}>
+            <View style={styles.sectionMark} />
+            <Text style={styles.navyTitle}>Fresh leads</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.navyViewAllBtn}
+            onPress={() => onNavigate('queue', { filter: 'new' })}
+            activeOpacity={0.8}
+          >
             <Text style={styles.navyViewAll}>View all</Text>
           </TouchableOpacity>
         </View>
@@ -443,6 +495,7 @@ export default function CrmHomeTab({
           freshLeads.map((lead, idx) => {
             const vehicle = [lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ');
             const meta = [lead.city, vehicle].filter(Boolean).join(' · ');
+            const name = String(lead.customer_name || 'Customer').trim();
             return (
               <View
                 key={String(lead.id)}
@@ -453,15 +506,20 @@ export default function CrmHomeTab({
                   onPress={() => onNavigate('TelecallerLeadDetail', { leadId: lead.id })}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.navyName} numberOfLines={1}>
-                    {String(lead.customer_name || 'Customer').trim()}
-                  </Text>
-                  <Text style={styles.navyMeta} numberOfLines={1}>
-                    {lead.customer_phone || '—'}
-                    {meta ? ` · ${meta}` : ''}
-                  </Text>
-                  <Text style={styles.navyAgo}>{formatLeadAgo(lead.created_at)}</Text>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{leadInitials(name)}</Text>
+                  </View>
+                  <View style={styles.navyCopy}>
+                    <Text style={styles.navyName} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    <Text style={styles.navyMeta} numberOfLines={1}>
+                      {lead.customer_phone || '—'}
+                      {meta ? ` · ${meta}` : ''}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
+                <Text style={styles.navyAgo}>{formatLeadAgo(lead.created_at)}</Text>
                 <TouchableOpacity
                   style={styles.navyCall}
                   onPress={() =>
@@ -474,7 +532,7 @@ export default function CrmHomeTab({
                   }
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="call" size={16} color={COLORS.primary} />
+                  <Ionicons name="call" size={14} color={COLORS.primary} />
                 </TouchableOpacity>
               </View>
             );
@@ -484,8 +542,15 @@ export default function CrmHomeTab({
 
       <View style={styles.listCardRemind}>
         <View style={styles.navyHead}>
-          <Text style={styles.remindTitle}>Upcoming reminders</Text>
-          <TouchableOpacity onPress={() => onNavigate('TelecallerFollowUps')} activeOpacity={0.8}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionMark, { backgroundColor: '#EA580C' }]} />
+            <Text style={styles.remindTitle}>Upcoming reminders</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.remindViewAllBtn}
+            onPress={() => onNavigate('TelecallerFollowUps')}
+            activeOpacity={0.8}
+          >
             <Text style={styles.remindViewAll}>View all</Text>
           </TouchableOpacity>
         </View>
@@ -496,6 +561,7 @@ export default function CrmHomeTab({
             const leadId = String(r.lead_id || r.lead?.id || '');
             const phone = r.lead?.customer_phone;
             const overdue = r.scheduled_time ? new Date(r.scheduled_time).getTime() < Date.now() : false;
+            const name = String(r.lead?.customer_name || 'Customer').trim();
             return (
               <View
                 key={String(r.id)}
@@ -509,18 +575,22 @@ export default function CrmHomeTab({
                   }}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.navyName} numberOfLines={1}>
-                    {String(r.lead?.customer_name || 'Customer').trim()}
-                  </Text>
-                  <Text style={styles.navyMeta} numberOfLines={1}>
-                    {r.reason || 'Follow-up'}
-                    {phone ? ` · ${phone}` : ''}
-                  </Text>
-                  <Text style={[styles.navyAgo, overdue ? { color: '#DC2626' } : { color: '#C2410C' }]}>
-                    {overdue ? 'Overdue · ' : ''}
-                    {formatReminderClock(r.scheduled_time)}
-                  </Text>
+                  <View style={[styles.avatar, styles.avatarRemind]}>
+                    <Text style={[styles.avatarText, styles.avatarTextRemind]}>{leadInitials(name)}</Text>
+                  </View>
+                  <View style={styles.navyCopy}>
+                    <Text style={styles.navyName} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    <Text style={styles.navyMeta} numberOfLines={1}>
+                      {r.reason || 'Follow-up'}
+                      {phone ? ` · ${phone}` : ''}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
+                <Text style={[styles.navyAgo, overdue ? { color: '#DC2626' } : { color: '#C2410C' }]}>
+                  {formatReminderClock(r.scheduled_time)}
+                </Text>
                 {phone ? (
                   <TouchableOpacity
                     style={styles.remindCall}
@@ -581,24 +651,30 @@ export default function CrmHomeTab({
         }))}
       />
 
+      {preview ? null : (
+      <>
       <Text style={[styles.sectionTitle, { marginTop: 18 }]}>Quick Actions</Text>
       <View style={styles.actionsGrid}>
         {quickActions.map((a) => (
           <TouchableOpacity key={a.label} style={styles.actionCard} onPress={a.go} activeOpacity={0.85}>
             <View style={[styles.actionIcon, { backgroundColor: a.color + '18' }]}>
-              <Ionicons name={a.icon} size={22} color={a.color} />
+              <Ionicons name={a.icon} size={15} color={a.color} />
             </View>
-            <Text style={styles.actionText}>{a.label}</Text>
+            <Text style={styles.actionText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+              {a.label}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
+      </>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  content: { paddingHorizontal: SPACING.md, paddingTop: 4, paddingBottom: 40 },
+  content: { paddingHorizontal: SPACING.md, paddingTop: 12, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   muted: { color: COLORS.textSecondary },
   loadBanner: {
@@ -613,26 +689,44 @@ const styles = StyleSheet.create({
   },
   loadBannerText: { color: '#991B1B', fontSize: 13, fontWeight: '600' },
   loadBannerRetry: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
-  hero: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  hello: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
-  name: { fontSize: 22, fontWeight: '800', color: COLORS.textHeading, marginTop: 2 },
-  badge: {
+  floorCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
+    alignSelf: 'stretch',
+    backgroundColor: '#E7F8EF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#C9EBD8',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+    gap: 10,
   },
-  badgeOn: { backgroundColor: COLORS.green + '18' },
-  badgeOff: { backgroundColor: COLORS.orange + '18' },
-  badgeText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
-  dot: { width: 8, height: 8, borderRadius: 4 },
+  floorCopy: { flex: 1, minWidth: 0 },
+  floorNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  floorDot: { width: 7, height: 7, borderRadius: 4 },
+  floorName: { flexShrink: 1, fontSize: 14, fontWeight: '800', color: '#0F2744' },
+  floorPlaceRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 13 },
+  floorPlace: { flexShrink: 1, fontSize: 11, color: '#64748B', fontWeight: '600' },
+  onlineWrap: { alignItems: 'center', gap: 2 },
+  onlineTrack: {
+    width: 38,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#D1D5DB',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  onlineTrackOn: { backgroundColor: '#86EFAC' },
+  onlineKnob: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+  },
+  onlineKnobOn: { alignSelf: 'flex-end', backgroundColor: '#15803D' },
+  onlineLabel: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+  onlineLabelOn: { color: '#15803D' },
   remindBtn: {
     marginRight: 8,
     width: 36,
@@ -656,7 +750,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   remindBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  dateDropdownWrap: { marginBottom: 10, zIndex: 5 },
+  dateDropdownWrap: { marginBottom: 0, zIndex: 30, elevation: 30 },
   dateDropdownBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -671,13 +765,19 @@ const styles = StyleSheet.create({
   },
   dateDropdownText: { flex: 1, fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   dateMenu: {
-    marginTop: 6,
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 4,
     backgroundColor: COLORS.white,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
-    ...SHADOWS.small,
+    zIndex: 40,
+    elevation: 24,
+    ...SHADOWS.medium,
   },
   dateItem: {
     flexDirection: 'row',
@@ -717,23 +817,36 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     width: '32%',
+    position: 'relative',
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    alignItems: 'center',
+    borderRadius: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingLeft: 10,
+    paddingRight: 28,
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    minHeight: 78,
+    minHeight: 68,
     ...SHADOWS.small,
   },
-  kpiValue: { fontSize: 20, fontWeight: '800', textAlign: 'center', width: '100%' },
+  kpiIcon: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  kpiValue: { fontSize: 20, fontWeight: '800' },
   kpiLabel: {
     fontSize: 10,
-    fontWeight: '700',
-    marginTop: 4,
-    textAlign: 'center',
-    width: '100%',
+    fontWeight: '600',
+    color: '#64748B',
     lineHeight: 13,
+  },
+  sectionMark: {
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+    marginRight: 6,
   },
   perfCard: {
     backgroundColor: COLORS.white,
@@ -750,10 +863,10 @@ const styles = StyleSheet.create({
   listCardFresh: {
     backgroundColor: '#F3F7FF',
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 6,
-    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 2,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#C7D7F5',
     borderLeftWidth: 4,
@@ -763,10 +876,10 @@ const styles = StyleSheet.create({
   listCardRemind: {
     backgroundColor: '#FFF8F1',
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 6,
-    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 2,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#F3D5B5',
     borderLeftWidth: 4,
@@ -777,43 +890,68 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  navyTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textHeading },
-  navyViewAll: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
-  remindTitle: { fontSize: 15, fontWeight: '800', color: '#9A3412' },
-  remindViewAll: { fontSize: 12, fontWeight: '800', color: '#C2410C' },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+  navyTitle: { fontSize: 14, fontWeight: '800', color: COLORS.textHeading },
+  navyViewAllBtn: {
+    backgroundColor: '#E4EDFF',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  navyViewAll: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
+  remindTitle: { fontSize: 14, fontWeight: '800', color: '#9A3412' },
+  remindViewAllBtn: {
+    backgroundColor: '#FFEDD5',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  remindViewAll: { fontSize: 11, fontWeight: '700', color: '#C2410C' },
   navyEmpty: {
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    paddingVertical: 16,
+    paddingVertical: 8,
   },
   navyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 10,
+    paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(15, 23, 42, 0.08)',
   },
   navyRowLast: { borderBottomWidth: 0 },
-  navyBody: { flex: 1, minWidth: 0 },
-  navyName: { fontSize: 14, fontWeight: '800', color: COLORS.textHeading },
-  navyMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-  navyAgo: { fontSize: 11, fontWeight: '700', color: COLORS.primary, marginTop: 3 },
+  navyBody: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  navyCopy: { flex: 1, minWidth: 0 },
+  avatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#DCE8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarRemind: { backgroundColor: '#FFEDD5' },
+  avatarText: { fontSize: 11, fontWeight: '800', color: COLORS.primary },
+  avatarTextRemind: { color: '#C2410C' },
+  navyName: { fontSize: 13, fontWeight: '700', color: COLORS.textHeading },
+  navyMeta: { fontSize: 11, color: COLORS.textSecondary, marginTop: 1 },
+  navyAgo: { width: 64, textAlign: 'right', fontSize: 11, fontWeight: '600', color: COLORS.primary },
   navyCall: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#DCE8FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   remindCall: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#FFEDD5',
     alignItems: 'center',
     justifyContent: 'center',
@@ -821,24 +959,26 @@ const styles = StyleSheet.create({
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   actionCard: {
-    width: '47.5%',
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+    width: '31.5%',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    ...SHADOWS.small,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E6EDF5',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    gap: 4,
   },
   actionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionText: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'center' },
+  actionText: { flex: 1, fontSize: 11, fontWeight: '700', color: '#0F2744' },
 });

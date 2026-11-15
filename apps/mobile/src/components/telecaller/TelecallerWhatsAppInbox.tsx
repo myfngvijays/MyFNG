@@ -405,39 +405,26 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   );
 }
 
-/** Floating action buttons: Call (dialer) + WhatsApp — CRM shell */
+/** Floating WhatsApp button — CRM shell */
 export function TelecallerWhatsAppFab({
   onPress,
-  onCallPress,
   badge,
   bottomOffset = 108,
 }: {
   onPress: () => void;
-  /** Opens CRM dialer when set */
-  onCallPress?: () => void;
   badge?: number;
   /** Clearance above bottom nav (CRM pill is taller) */
   bottomOffset?: number;
 }) {
   return (
     <View style={[styles.fabStack, { bottom: bottomOffset }]} pointerEvents="box-none">
-      {onCallPress ? (
-        <TouchableOpacity
-          style={[styles.fab, styles.fabCall]}
-          onPress={onCallPress}
-          activeOpacity={0.85}
-          accessibilityLabel="Open dialer"
-        >
-          <Ionicons name="call" size={24} color={COLORS.white} />
-        </TouchableOpacity>
-      ) : null}
       <TouchableOpacity
         style={[styles.fab, styles.fabWhatsApp]}
         onPress={onPress}
         activeOpacity={0.85}
         accessibilityLabel="Open WhatsApp"
       >
-        <Ionicons name="logo-whatsapp" size={26} color={COLORS.white} />
+        <Ionicons name="logo-whatsapp" size={22} color={COLORS.white} />
         {badge && badge > 0 ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -640,18 +627,15 @@ const styles = StyleSheet.create({
     elevation: 18,
   },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.large,
   },
-  fabCall: {
-    backgroundColor: COLORS.primary,
-  },
   fabWhatsApp: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: '#25D366',
   },
   badge: {
     position: 'absolute',

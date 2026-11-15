@@ -1,6 +1,5 @@
 package com.myfng.app
 
-import android.os.Build
 import android.os.Bundle
 
 import com.facebook.react.ReactActivity
@@ -46,16 +45,10 @@ class MainActivity : ReactActivity() {
     * @see <a href="https://developer.android.com/reference/android/app/Activity#onBackPressed()">onBackPressed</a>
     */
   override fun invokeDefaultOnBackPressed() {
-      if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
-          if (!moveTaskToBack(false)) {
-              // For non-root activities, use the default implementation to finish them.
-              super.invokeDefaultOnBackPressed()
-          }
-          return
+      // Keep the task in the background. Finishing here closed the app on the
+      // first system back / gesture even when a screen was still open.
+      if (!moveTaskToBack(false)) {
+          super.invokeDefaultOnBackPressed()
       }
-
-      // Use the default back button implementation on Android S
-      // because it's doing more than [Activity.moveTaskToBack] in fact.
-      super.invokeDefaultOnBackPressed()
   }
 }

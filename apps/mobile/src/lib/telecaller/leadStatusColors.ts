@@ -108,6 +108,9 @@ export function leadStatusKpiColors(leadOrLabel: any): {
   if (incomplete) {
     return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#B45309', badgeText: '#FFFFFF' };
   }
+  if (s.includes('RINGING') || s.includes('NO ANSWER') || s.includes('NO-RESPONSE')) {
+    return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#B45309', badgeText: '#FFFFFF' };
+  }
   if (s === 'NEW' || s === 'FRESH' || s.includes('FRESH')) {
     return { cardBg: '#EFF6FF', border: '#BFDBFE', badgeBg: '#1D4ED8', badgeText: '#FFFFFF' };
   }

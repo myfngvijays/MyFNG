@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Image, Alert, Share, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import DashboardHeader from '../../../components/DashboardHeader';
+import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 import { ENV } from '../../../config/environment';
@@ -202,6 +203,14 @@ async function shareExportFile(filename: string, contents: string, encoding: 'ut
 }
 
 export default function ZoneServicePricesScreen({ navigation }: any) {
+  const { userProfile } = useAuth();
+  const roleCode = String(
+    userProfile?.role?.role_code
+      || (userProfile as any)?.role_code
+      || (typeof (userProfile as any)?.role === 'string' ? (userProfile as any).role : '')
+      || '',
+  ).toUpperCase();
+  const canExport = roleCode !== 'TELECALLER';
   const [zones, setZones] = useState<ZoneInfo[]>([]);
   const [classes, setClasses] = useState<string[]>([]);
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
@@ -435,17 +444,20 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
               const selected = activeZone?.id === zone.id;
               return (
                 <TouchableOpacity key={zone.id} onPress={() => setZoneId(zone.id)} style={[styles.zoneBtn, selected && styles.zoneBtnOn]}>
-                  <Text style={[styles.zoneName, selected && styles.zoneNameOn]}>{zoneLabel(zone)}</Text>
+                  <Text style={[styles.zoneName, selected && styles.zoneNameOn]} numberOfLines={1}>
+                    {zoneLabel(zone)}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
-            <TextInput
-              value={modelQuery}
-              onChangeText={setModelQuery}
-              placeholder="Rapid, Swift..."
-              style={styles.modelInput}
-            />
           </View>
+          <TextInput
+            value={modelQuery}
+            onChangeText={setModelQuery}
+            placeholder="Car model, e.g. Rapid"
+            placeholderTextColor="#94A3B8"
+            style={styles.modelInput}
+          />
           {modelHits.map((car) => (
             <TouchableOpacity key={`${car.id}-${car.variant || ''}`} onPress={() => pickModel(car)} style={styles.modelHit}>
               <Text style={styles.modelHitTitle}>{car.make} {car.model}{car.variant ? ` (${car.variant})` : ''}</Text>
@@ -454,40 +466,43 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
           ))}
 
           <Text style={styles.step}>Car class</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tiles}>
+          <View style={styles.classGrid}>
             {classChoices.map((name) => {
               const meta = classMeta(name);
               const selected = carClass === name;
               return (
                 <TouchableOpacity key={name} onPress={() => setCarClass(name)} style={[styles.classTile, selected && styles.classTileOn]}>
                   <Image source={{ uri: iconUrl(meta.image) }} style={styles.classPhoto} />
-                  <Text style={styles.classLabel}>{meta.label}</Text>
+                  <Text style={styles.classLabel} numberOfLines={2}>{meta.label}</Text>
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
 
           <Text style={styles.step}>Service</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tiles}>
+          <View style={styles.serviceGrid}>
             <TouchableOpacity onPress={() => setCategory(SHOW_ALL)} style={[styles.tile, showAll && styles.tileOn]}>
               <View style={styles.iconBox}>
                 <Text style={styles.allMark}>All</Text>
               </View>
-              <Text style={styles.tileText}>Show all</Text>
+              <Text style={styles.tileText} numberOfLines={2}>Show all</Text>
             </TouchableOpacity>
             {visibleCategories.map((item) => (
               <TouchableOpacity key={item.name} onPress={() => setCategory(item.name)} style={[styles.tile, category === item.name && styles.tileOn]}>
                 <View style={styles.iconBox}>
                   {item.icon ? <Image source={{ uri: iconUrl(item.icon) }} style={styles.icon} /> : <Text style={styles.allMark}>{shortCategory(item.name).slice(0, 2)}</Text>}
                 </View>
-                <Text style={styles.tileText}>{shortCategory(item.name)}</Text>
+                <Text style={styles.tileText} numberOfLines={2}>{shortCategory(item.name)}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+            {Array.from({ length: (4 - ((1 + visibleCategories.length) % 4)) % 4 }).map((_, index) => (
+              <View key={`service-pad-${index}`} style={styles.tilePad} />
+            ))}
+          </View>
 
           <Text style={styles.resultTitle}>{categoryLabel} · {selectedClass.label}</Text>
-          <TextInput value={query} onChangeText={setQuery} placeholder="Search service" style={styles.input} />
-          <View style={styles.exportBox}>
+          <TextInput value={query} onChangeText={setQuery} placeholder="Search service" placeholderTextColor="#94A3B8" style={styles.input} />
+          {canExport ? <View style={styles.exportBox}>
             <Text style={styles.exportLabel}>Export this selection</Text>
             <View style={styles.exportRow}>
               {(['csv', 'xlsx', 'pdf'] as const).map((format) => (
@@ -504,7 +519,7 @@ export default function ZoneServicePricesScreen({ navigation }: any) {
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          </View> : null}
 
           {sections.length === 0 ? <Text style={styles.note}>No price for {selectedClass.label} in {categoryLabel}.</Text> : sections.map((section) => (
             <View key={section.name} style={styles.section}>
@@ -543,26 +558,28 @@ const styles = StyleSheet.create({
   body: { padding: SPACING.md, paddingBottom: 40 },
   step: { color: '#64748B', fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 },
   note: { color: '#92400E', fontSize: 13, marginBottom: 10 },
-  zoneRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  zoneBtn: { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', padding: 14 },
+  zoneRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  zoneBtn: { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 10, alignItems: 'center' },
   zoneBtnOn: { backgroundColor: '#1D4ED8', borderColor: '#1D4ED8' },
-  zoneName: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
+  zoneName: { fontSize: 14, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
   zoneNameOn: { color: '#fff' },
-  modelInput: { width: 130, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingHorizontal: 10, paddingVertical: 10, fontSize: 13 },
+  modelInput: { borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: '#0F172A', marginBottom: 14 },
   modelHit: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 6 },
   modelHitTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   modelHitClass: { fontSize: 12, color: '#64748B', marginTop: 2 },
-  tiles: { gap: 8, paddingBottom: 8 },
-  classTile: { width: 120, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 6, alignItems: 'center' },
+  classGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 8 },
+  classTile: { width: '32%', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingVertical: 6, paddingHorizontal: 4, alignItems: 'center', marginBottom: 8 },
   classTileOn: { borderColor: '#1D4ED8', borderWidth: 2 },
-  classPhoto: { width: 108, height: 64, resizeMode: 'contain' },
-  classLabel: { marginTop: 2, fontSize: 11, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
-  tile: { width: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', padding: 10, alignItems: 'center' },
+  classPhoto: { width: '100%', height: 40, resizeMode: 'contain' },
+  classLabel: { marginTop: 2, minHeight: 28, fontSize: 10, lineHeight: 13, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
+  serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 8 },
+  tile: { width: '23.5%', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', paddingVertical: 6, paddingHorizontal: 3, alignItems: 'center', marginBottom: 8 },
+  tilePad: { width: '23.5%' },
   tileOn: { borderColor: '#93C5FD', borderWidth: 2 },
-  iconBox: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center' },
-  icon: { width: 32, height: 32, resizeMode: 'contain' },
-  allMark: { fontSize: 12, fontWeight: '800', color: '#1D4ED8' },
-  tileText: { marginTop: 6, fontSize: 11, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
+  iconBox: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 20, height: 20, resizeMode: 'contain' },
+  allMark: { fontSize: 10, fontWeight: '800', color: '#1D4ED8' },
+  tileText: { marginTop: 4, minHeight: 26, fontSize: 10, lineHeight: 12, fontWeight: '800', color: '#0F172A', textAlign: 'center' },
   resultTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
   section: { marginBottom: 12 },
   sectionTitle: { color: '#64748B', fontSize: 12, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4 },

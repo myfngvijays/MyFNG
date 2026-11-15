@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../../../lib/api';
+import { isPartnerPreview } from '../../../lib/partnerPreview';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
@@ -75,6 +76,10 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
   }, []);
 
   const loadAttendance = useCallback(async () => {
+    if (isPartnerPreview()) {
+      setAttendance({ is_punched_in: false, history: [] });
+      return;
+    }
     try {
       const res = await apiFetch<any>('/api/telecaller/crm/attendance');
       setAttendance(res);
@@ -88,6 +93,15 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
   }, []);
 
   const loadProfile = useCallback(async () => {
+    if (isPartnerPreview()) {
+      setProfile({
+        full_name: 'Manager',
+        email: '',
+        phone: '',
+        role: { role_name: 'Lead Manager', role_code: 'LEAD_MANAGER' },
+      });
+      return;
+    }
     try {
       const {
         data: { user },
@@ -230,7 +244,7 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
     >
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.sub}>Profile & attendance</Text>
+          <Text style={styles.pageTitle}>My Profile</Text>
         </View>
         {!isEditing ? (
           <TouchableOpacity style={styles.editBtn} onPress={() => setIsEditing(true)}>
@@ -462,7 +476,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: { fontSize: 20, fontWeight: '800', color: COLORS.textHeading },
-  sub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
+  pageTitle: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
   subTight: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 10 },
   editBtn: {
     flexDirection: 'row',

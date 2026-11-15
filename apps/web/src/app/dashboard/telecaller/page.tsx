@@ -114,6 +114,15 @@ function formatDashName(name?: string | null): string {
     .join(' ');
 }
 
+function leadInitials(name?: string | null): string {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const first = parts[0];
+  if (/^\d/.test(first)) return first.slice(0, 2);
+  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+  return `${first[0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
 function formatLeadAgo(iso?: string | null): string {
   if (!iso) return '';
   const t = new Date(iso).getTime();
@@ -539,10 +548,10 @@ export default function TelecallerCrmHomePage() {
 
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             <div className="rounded-2xl border border-[#C7D7F5] border-l-4 border-l-[#004AAD] bg-[#F3F7FF] p-3.5 shadow-sm sm:p-4">
-              <div className="mb-2.5 flex items-center justify-between gap-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <h2 className="text-[14px] font-bold text-[#023D95]">Fresh leads</h2>
-                <Link href={`${base}/leads?filter=new`} className="text-xs font-bold text-[#004AAD]">
-                  View all →
+                <Link href={`${base}/leads?filter=new`} className="rounded-full bg-[#E4EDFF] px-2 py-0.5 text-[11px] font-semibold text-[#004AAD]">
+                  View all
                 </Link>
               </div>
               {freshLeads.length === 0 ? (
@@ -553,28 +562,32 @@ export default function TelecallerCrmHomePage() {
                     const phone = String(lead.customer_phone || '').trim();
                     const vehicle = [lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ');
                     const meta = [lead.city, vehicle].filter(Boolean).join(' · ');
+                    const name = formatDashName(lead.customer_name);
                     return (
-                      <li key={lead.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
-                        <Link href={`${base}/leads/${lead.id}`} className="min-w-0 flex-1 hover:opacity-90">
-                          <p className="truncate text-sm font-bold text-slate-900">
-                            {formatDashName(lead.customer_name)}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-slate-500">
-                            {phone || '—'}
-                            {meta ? ` · ${meta}` : ''}
-                          </p>
-                          <p className="mt-0.5 text-[11px] font-bold text-[#004AAD]">
-                            {formatLeadAgo(lead.created_at)}
-                          </p>
+                      <li key={lead.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
+                        <Link href={`${base}/leads/${lead.id}`} className="flex min-w-0 flex-1 items-center gap-2 hover:opacity-90">
+                          <span className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[#DCE8FF] text-[11px] font-extrabold text-[#004AAD]">
+                            {leadInitials(name)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-semibold text-slate-900">{name}</span>
+                            <span className="block truncate text-[11px] text-slate-500">
+                              {phone || '—'}
+                              {meta ? ` · ${meta}` : ''}
+                            </span>
+                          </span>
                         </Link>
+                        <span className="w-16 shrink-0 text-right text-[11px] font-semibold text-[#004AAD]">
+                          {formatLeadAgo(lead.created_at)}
+                        </span>
                         {phone ? (
                           <a
                             href={`tel:${phone}`}
                             title="Call"
                             aria-label="Call"
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#DCE8FF] text-[#004AAD]"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#DCE8FF] text-[#004AAD]"
                           >
-                            <Phone className="h-3.5 w-3.5" />
+                            <Phone className="h-3 w-3" />
                           </a>
                         ) : null}
                       </li>
@@ -585,10 +598,10 @@ export default function TelecallerCrmHomePage() {
             </div>
 
             <div className="rounded-2xl border border-[#F3D5B5] border-l-4 border-l-[#EA580C] bg-[#FFF7ED] p-3.5 shadow-sm sm:p-4">
-              <div className="mb-2.5 flex items-center justify-between gap-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <h2 className="text-[14px] font-bold text-[#9A3412]">Upcoming reminders</h2>
-                <Link href={`${base}/followups`} className="text-xs font-bold text-[#C2410C]">
-                  View all →
+                <Link href={`${base}/followups`} className="rounded-full bg-[#FFEDD5] px-2 py-0.5 text-[11px] font-semibold text-[#C2410C]">
+                  View all
                 </Link>
               </div>
               {upcomingReminders.length === 0 ? (
@@ -601,29 +614,32 @@ export default function TelecallerCrmHomePage() {
                       : false;
                     const phone = String(r.lead?.customer_phone || '').trim();
                     const leadHref = `${base}/leads/${r.lead_id || r.lead?.id || ''}`;
+                    const name = formatDashName(r.lead?.customer_name);
                     return (
-                      <li key={r.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
-                        <Link href={leadHref} className="min-w-0 flex-1 hover:opacity-90">
-                          <p className="truncate text-sm font-bold text-slate-900">
-                            {formatDashName(r.lead?.customer_name)}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-slate-500">
-                            {r.reason || 'Follow-up'}
-                            {phone ? ` · ${phone}` : ''}
-                          </p>
-                          <p className={`mt-0.5 text-[11px] font-bold ${overdue ? 'text-red-600' : 'text-[#C2410C]'}`}>
-                            {overdue ? 'Overdue · ' : ''}
-                            {formatReminderClock(r.scheduled_time)}
-                          </p>
+                      <li key={r.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
+                        <Link href={leadHref} className="flex min-w-0 flex-1 items-center gap-2 hover:opacity-90">
+                          <span className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[#FFEDD5] text-[11px] font-extrabold text-[#C2410C]">
+                            {leadInitials(name)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-semibold text-slate-900">{name}</span>
+                            <span className="block truncate text-[11px] text-slate-500">
+                              {r.reason || 'Follow-up'}
+                              {phone ? ` · ${phone}` : ''}
+                            </span>
+                          </span>
                         </Link>
+                        <span className={`w-16 shrink-0 text-right text-[11px] font-semibold ${overdue ? 'text-red-600' : 'text-[#C2410C]'}`}>
+                          {formatReminderClock(r.scheduled_time)}
+                        </span>
                         {phone ? (
                           <a
                             href={`tel:${phone}`}
                             title="Call"
                             aria-label="Call"
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#FFEDD5] text-[#C2410C]"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FFEDD5] text-[#C2410C]"
                           >
-                            <Phone className="h-3.5 w-3.5" />
+                            <Phone className="h-3 w-3" />
                           </a>
                         ) : null}
                       </li>
@@ -637,7 +653,7 @@ export default function TelecallerCrmHomePage() {
             {/* Quick Actions — web only, above analytics (phone order unchanged) */}
             <div className="rounded-2xl border border-[#C7D7F5] bg-[#F4F8FF] p-3.5 sm:p-4">
               <h2 className="text-[14px] font-bold text-[#023D95] mb-2">Quick Actions</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-2.5">
+              <div className="grid grid-cols-3 gap-2">
                 {[
                   {
                     href: `${base}/book?mode=book`,
@@ -653,7 +669,7 @@ export default function TelecallerCrmHomePage() {
                   },
                   {
                     href: `${base}/leads`,
-                    label: 'Open Leads',
+                    label: 'Leads',
                     icon: ClipboardList,
                     color: '#F59E0B',
                   },
@@ -705,15 +721,15 @@ export default function TelecallerCrmHomePage() {
                         setWaUnread(0);
                         window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'));
                       }}
-                      className="relative flex flex-col items-center gap-1.5 rounded-xl border border-[#86EFAC] bg-[#ECFDF5] px-2 py-3 shadow-sm transition hover:brightness-[0.98]"
+                      className="relative flex flex-row items-center gap-1.5 rounded-xl border border-[#E6EDF5] bg-white px-2 py-2.5 shadow-sm transition hover:brightness-[0.98]"
                     >
                       <span
-                        className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center"
                         style={{ backgroundColor: `${a.color}18` }}
                       >
-                        <WhatsAppIcon className="w-5 h-5 text-[#25D366]" />
+                        <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
                       </span>
-                      <span className="text-[12px] font-bold text-slate-800 text-center leading-tight">
+                      <span className="min-w-0 flex-1 text-[11px] font-bold leading-tight text-[#0F2744]">
                         {a.label}
                       </span>
                       {waUnread > 0 ? (
@@ -726,16 +742,15 @@ export default function TelecallerCrmHomePage() {
                     <Link
                       key={a.href + a.label}
                       href={a.href}
-                      className="flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 shadow-sm transition hover:brightness-[0.98]"
-                      style={{ backgroundColor: `${a.color}18`, borderColor: `${a.color}55` }}
+                      className="flex flex-row items-center gap-1.5 rounded-xl border border-[#E6EDF5] bg-white px-2 py-2.5 shadow-sm transition hover:brightness-[0.98]"
                     >
                       <span
-                        className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center"
                         style={{ backgroundColor: `${a.color}18` }}
                       >
-                        <a.icon className="w-5 h-5" style={{ color: a.color }} />
+                        <a.icon className="w-4 h-4" style={{ color: a.color }} />
                       </span>
-                      <span className="text-[12px] font-bold text-slate-800 text-center leading-tight">
+                      <span className="min-w-0 flex-1 text-[11px] font-bold leading-tight text-[#0F2744]">
                         {a.label}
                       </span>
                     </Link>

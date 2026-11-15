@@ -8,17 +8,36 @@ function toValidDate(input: string | number | Date | null | undefined): Date | n
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Hermes on some simulators rejects Asia/Kolkata. Fall back to a fixed IST offset. */
+function istCalendarParts(d: Date): { day: string; month: string; year: string } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+    const day = get('day');
+    const month = get('month');
+    const year = get('year');
+    if (day && month && year) return { day, month, year };
+  } catch {
+    /* timezone data missing */
+  }
+  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+  return {
+    day: pad2(ist.getUTCDate()),
+    month: pad2(ist.getUTCMonth() + 1),
+    year: String(ist.getUTCFullYear()),
+  };
+}
+
 export function formatDateDMY(date: string | number | Date | null | undefined): string {
   const d = toValidDate(date);
   if (!d) return '';
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(d);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
-  return `${get('day')}-${get('month')}-${get('year')}`;
+  const { day, month, year } = istCalendarParts(d);
+  return `${day}-${month}-${year}`;
 }
 
 export function formatTime12h(date: string | number | Date | null | undefined): string {

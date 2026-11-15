@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 import ToggleSwitch from '@/components/shared/ToggleSwitch';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import { callScriptDisplayTitle, withMyfngCallScripts } from '../../../../../../shared/constants/myfngCallScripts';
 
 type ScriptRow = {
   id: string;
@@ -49,6 +50,7 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
   const showWhatsAppTemplatesTab = isLeadManager;
   const searchParams = useSearchParams();
   const tabParam = String(searchParams.get('tab') || '').toLowerCase();
+  const [scriptLang, setScriptLang] = useState<'hi' | 'en'>('hi');
   const [tab, setTab] = useState<'scripts' | 'whatsapp'>(
     showWhatsAppTemplatesTab && tabParam === 'whatsapp' ? 'whatsapp' : 'scripts',
   );
@@ -83,7 +85,7 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
       if (!showWhatsAppTemplatesTab) {
         const { data: scriptRows, error: sErr } = await scriptsPromise;
         if (sErr) throw new Error(sErr.message);
-        setScripts((scriptRows || []) as ScriptRow[]);
+        setScripts(withMyfngCallScripts((scriptRows || []) as ScriptRow[]) as ScriptRow[]);
         setTemplates([]);
         return;
       }
@@ -96,7 +98,7 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
         }),
       ]);
       if (sErr) throw new Error(sErr.message);
-      setScripts((scriptRows || []) as ScriptRow[]);
+      setScripts(withMyfngCallScripts((scriptRows || []) as ScriptRow[]) as ScriptRow[]);
       if (waRes.ok) {
         const list = Array.isArray(waRes.j?.templates) ? waRes.j.templates : [];
         setTemplates(
@@ -231,42 +233,62 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
           Loading…
         </div>
       ) : tab === 'scripts' ? (
+        <div className="space-y-3">
+        <div className="inline-flex rounded-lg bg-[#004AAD] p-0.5">
+          {([
+            { id: 'hi' as const, label: 'हिंदी' },
+            { id: 'en' as const, label: 'EN' },
+          ]).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setScriptLang(item.id)}
+              className={`rounded-md px-3 py-1.5 text-[12px] font-bold ${
+                scriptLang === item.id ? 'bg-white text-[#004AAD]' : 'text-white/75'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {scripts.map((s) => {
-            const title = s.script_title || s.title || 'Script';
+          {scripts.filter((s) => {
+            const lang = String((s as { language?: string }).language || '');
+            return !lang || lang === scriptLang;
+          }).map((s) => {
+            const title = callScriptDisplayTitle(s.script_title || s.title);
             const body = s.script_content || s.body || '';
             return (
               <div
                 key={s.id}
-                className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+                className="rounded-xl border border-[#E6EDF8] border-l-4 border-l-[#004AAD] bg-white px-3.5 py-3.5 shadow-sm"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-extrabold text-[#023D95]">{title}</h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {[s.category, s.script_type].filter(Boolean).join(' · ') || 'Call script'}
-                    </p>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <h3 className="min-w-0 flex-1 truncate text-[13px] font-bold text-[#0F2744]">{title}</h3>
                   <button
                     type="button"
                     onClick={() => void copy(s.id, body)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-[#004AAD]"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#E8F0FE] px-2 py-1 text-[11px] font-bold text-[#004AAD]"
                   >
                     <Copy className="h-3 w-3" />
                     {copied === s.id ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <p className="mt-2 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                <p className="mt-3 line-clamp-2 text-[13px] leading-5 text-slate-600 whitespace-pre-wrap">
                   {body}
                 </p>
               </div>
             );
           })}
-          {!scripts.length ? (
+          {!scripts.filter((s) => {
+            const lang = String((s as { language?: string }).language || '');
+            return !lang || lang === scriptLang;
+          }).length ? (
             <p className="text-sm text-slate-500 col-span-full text-center py-10">
               No active call scripts yet.
             </p>
           ) : null}
+        </div>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">

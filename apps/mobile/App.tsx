@@ -92,6 +92,9 @@ import { trackScreen, trackEvent, setUserId } from './src/lib/trackEvent';
 import { reportForegroundWorkshopProximity, startWorkshopGeofencing } from './src/lib/workshopGeofencing';
 import { hasBackgroundLocationConsent } from './src/lib/backgroundLocationConsent';
 import { apiFetch } from './src/lib/api';
+import { getAppVariant, resolveRoleAccess } from './src/config/appVariant';
+import { setPartnerPreview, setPartnerPreviewExit } from './src/lib/partnerPreview';
+import WrongAppScreen from './src/screens/WrongAppScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -101,7 +104,8 @@ const SPLASH_ANIMATION_MS = 1800;
 
 function AppContent() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
-  const [showSplash, setShowSplash] = useState(true);
+  const partnerBuild = getAppVariant() === 'partner';
+  const [showSplash, setShowSplash] = useState(!partnerBuild);
   const [authReady, setAuthReady] = useState(false);
   const [updateCheckDone, setUpdateCheckDone] = useState(__DEV__);
   const [forceUpdate, setForceUpdate] = useState<ForceUpdateResult | null>(null);
@@ -110,6 +114,15 @@ function AppContent() {
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loginScreenKey, setLoginScreenKey] = useState(0);
+
+  useEffect(() => {
+    setPartnerPreviewExit(() => {
+      setPartnerPreview(false);
+      setUser(null);
+      setUserProfile(null);
+    });
+    return () => setPartnerPreviewExit(null);
+  }, []);
   const isCustomerSessionUser =
     user?.type === 'customer_session' && userProfile?.role?.role_code === 'CUSTOMER';
   const isLoggedInConsumer =
@@ -167,6 +180,12 @@ function AppContent() {
       const kind = String(data.kind || '');
       const leadId = String(data.lead_id || '').trim();
       const nav = navigationRef.current;
+
+      if (kind === 'SIM_DIAL') {
+        const { handleSimDialPush } = require('./src/lib/simDial');
+        void handleSimDialPush(data);
+        return;
+      }
 
       if (leadId && kind === 'CALLER_ID') {
         const { requestOpenCrmLead, emitCallerIdCard } =
@@ -346,6 +365,7 @@ function AppContent() {
           return;
         }
         if (event === 'SIGNED_OUT') {
+          setPartnerPreview(false);
           clearAccessToken();
           void (async () => {
             try {
@@ -470,6 +490,7 @@ function AppContent() {
   };
 
   const handleLoginSuccess = (user: any, profile: any) => {
+    setPartnerPreview(false);
     trackEvent('login_success', { role: profile?.role?.role_code || 'unknown' });
     setUserId(user?.id || null);
     setUser(user);
@@ -479,7 +500,20 @@ function AppContent() {
     }
   };
 
+  const handlePartnerSkip = () => {
+    setPartnerPreview(true);
+    setUser({ id: 'partner-preview', type: 'partner_preview' });
+    setUserProfile({
+      id: 'partner-preview',
+      full_name: 'Manager',
+      email: null,
+      role: { role_code: 'LEAD_MANAGER', role_name: 'Lead Manager' },
+      preview: true,
+    });
+  };
+
   const handleLogout = async () => {
+    setPartnerPreview(false);
     trackEvent('logout_tapped');
     setUserId(null);
     try {
@@ -519,6 +553,20 @@ function AppContent() {
 
   const isLoggedIn = Boolean(user && userProfile);
   const roleCode = userProfile?.role?.role_code;
+  const roleAccess = isLoggedIn ? resolveRoleAccess(roleCode) : null;
+  if (isLoggedIn && roleAccess && roleAccess.kind !== 'allowed') {
+    return (
+      <WrongAppScreen
+        access={roleAccess.kind}
+        roleName={userProfile?.role?.role_name}
+        onLogout={() => {
+          void handleLogout();
+        }}
+      />
+    );
+  }
+
+  const isPartnerApp = getAppVariant() === 'partner';
   const isConsumerCustomer = isCustomerSessionUser || roleCode === 'CUSTOMER';
   const initialRoute = isLoggedIn
     ? isConsumerCustomer
@@ -538,6 +586,18 @@ function AppContent() {
       <NavigationContainer ref={navigationRef} onStateChange={onNavigationStateChange}>
         <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
           {!user || !userProfile || isCustomerSessionUser ? (
+            isPartnerApp ? (
+              <Stack.Screen name="Login">
+                {(props) => (
+                  <LoginScreen
+                    key={`login-${loginScreenKey}`}
+                    {...props}
+                    onLoginSuccess={handleLoginSuccess}
+                    onSkipPreview={handlePartnerSkip}
+                  />
+                )}
+              </Stack.Screen>
+            ) : (
             <>
               {/* Public Home (marketing + navigation hub) */}
               <Stack.Screen name="PublicHome" component={PublicHomeScreen} />
@@ -589,6 +649,7 @@ function AppContent() {
                 </Stack.Screen>
               ) : null}
             </>
+            )
           ) : (
             <>
               <Stack.Screen name="Dashboard" options={{ gestureEnabled: false, animation: 'none' }}>

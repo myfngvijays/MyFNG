@@ -35,6 +35,7 @@ import { ReferralCodeModal } from '../components/ReferralCodeModal';
 import { InstallCouponModal } from '../components/InstallCouponModal';
 import AnimatedOtpInput, { type OtpAnimStatus } from '../components/AnimatedOtpInput';
 import { getPendingReferralCode, clearPendingReferralCode } from '../lib/referralDeepLink';
+import { getAppVariant, resolveRoleAccess } from '../config/appVariant';
 import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
@@ -45,9 +46,11 @@ import {
   resolveCustomerIdFromAuth,
 } from '../lib/welcomeBonus';
 
-export default function LoginScreen({ navigation, onLoginSuccess }: any) {
+export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview }: any) {
   const insets = useSafeAreaInsets();
-  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
+  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>(
+    getAppVariant() === 'partner' ? 'email' : 'phone',
+  );
   const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp' | 'email'>('whatsapp');
   const [otpEmail, setOtpEmail] = useState('');
   const [otpChannels, setOtpChannels] = useState({ sms_dlt: false, whatsapp: true, email: false });
@@ -595,6 +598,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           const roleCode = String(
             (profile as any)?.role?.role_code || (profile as any)?.roles?.role_code || '',
           ).toUpperCase();
+          if (resolveRoleAccess(roleCode).kind !== 'allowed') return;
           if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
             await apiFetch('/api/telecaller/crm/attendance', {
               method: 'POST',
@@ -627,24 +631,6 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       await handleEmailOtpStart(customerPhone.replace(/\D/g, ''), otpEmail.trim(), false);
     } else {
       await handleCustomerOtpStart();
-    }
-  };
-
-  const switchToPhoneLogin = () => {
-    setLoginMethod('phone');
-  };
-
-  const switchToEmailLogin = () => {
-    setLoginMethod('email');
-    if (customerStep === 'otp') {
-      setCustomerStep('input');
-      setCustomerOtp('');
-      setCustomerConfirmation(null);
-      setPhoneOtpChannel('sms');
-      setErrorText('');
-      setResendInSec(0);
-      setOtpAnim('idle');
-      otpVerifyLock.current = false;
     }
   };
 
@@ -692,6 +678,17 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         <View style={styles.heroBase} />
         <View style={styles.heroViolet} />
         <View style={styles.heroCyan} />
+        {getAppVariant() === 'partner' ? (
+          <TouchableOpacity
+            style={[styles.skipButton, { top: insets.top + 8 }]}
+            onPress={() => onSkipPreview?.()}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.skipText}>Skip</Text>
+            <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
         <TouchableOpacity
           style={[styles.skipButton, { top: insets.top + 8 }]}
           onPress={() => navigation?.navigate?.('PublicHome')}
@@ -701,6 +698,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           <Text style={styles.skipText}>Skip</Text>
           <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
         </TouchableOpacity>
+        )}
         <View style={styles.logoPill}>
           <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
         </View>
@@ -708,69 +706,38 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
       <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.sheet}>
-          <Text style={styles.brandTitle}>
-            {loginMethod === 'email' ? 'Staff login' : 'Welcome back'}
+          <Text style={[styles.brandTitle, loginMethod === 'email' && styles.partnerTitle]}>
+            {loginMethod === 'email' ? 'Partner Login' : 'Welcome back'}
           </Text>
-          <Text style={styles.brandSubTitle}>
-            {loginMethod === 'email'
-              ? 'Login to your admin or workshop account'
-              : 'Enter your mobile number to continue'}
-          </Text>
-
-          {customerStep === 'input' && (
-            <View style={styles.methodToggle}>
-              <TouchableOpacity
-                style={[styles.methodButton, loginMethod === 'phone' && styles.methodButtonActive]}
-                onPress={switchToPhoneLogin}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.methodButtonText, loginMethod === 'phone' && styles.methodButtonTextActive]}>Customer Login</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.methodButton, loginMethod === 'email' && styles.methodButtonActive]}
-                onPress={switchToEmailLogin}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.methodButtonText, loginMethod === 'email' && styles.methodButtonTextActive]}>Staff Login</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {loginMethod === 'phone' ? (
+            <Text style={styles.brandSubTitle}>Enter your mobile number to continue</Text>
+          ) : null}
 
           <View style={styles.formArea}>
             {customerStep === 'input' || loginMethod === 'email' ? (
               <View style={styles.formSection}>
-                <Text style={styles.inputLabel}>{loginMethod === 'phone' ? 'Phone Number' : 'Email Address'}</Text>
-                <View style={[styles.inputContainer, loginMethod === 'email' && styles.staffInput]}>
-                  {loginMethod === 'phone' ? (
-                    <Text style={styles.countryCode}>+91</Text>
-                  ) : (
-                    <Ionicons name="mail-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
-                  )}
-                  <TextInput
-                    style={[styles.input, loginMethod === 'phone' && styles.phoneInput]}
-                    placeholder={loginMethod === 'phone' ? '9152307030' : 'your@email.com'}
-                    placeholderTextColor="#9CA3AF"
-                    value={loginMethod === 'phone' ? customerPhone : email}
-                    onChangeText={(text) => {
-                      if (loginMethod !== 'phone') {
-                        setEmail(text.trim());
-                        return;
-                      }
-                      const digits = text.replace(/\D/g, '').slice(0, 10);
-                      setCustomerPhone(digits);
-                      if (digits.length === 10) sendWhatsappWhenReady(digits);
-                    }}
-                    keyboardType={loginMethod === 'phone' ? 'phone-pad' : 'email-address'}
-                    maxLength={loginMethod === 'phone' ? 10 : 80}
-                    autoCapitalize="none"
-                    autoComplete={loginMethod === 'email' ? 'email' : 'tel'}
-                    editable={!loading}
-                  />
-                </View>
-                {loginMethod === 'email' && (
-                  <>
-                    <Text style={[styles.inputLabel, { marginTop: 10 }]}>Password</Text>
-                    <View style={[styles.inputContainer, styles.passwordContainer, styles.staffInput]}>
+              {loginMethod === 'email' ? (
+                <>
+                  <View style={styles.partnerField}>
+                    <Text style={styles.partnerFieldLabel}>Email Address</Text>
+                    <View style={[styles.inputContainer, styles.staffInput]}>
+                      <Ionicons name="mail-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="your@email.com"
+                        placeholderTextColor="#9CA3AF"
+                        value={email}
+                        onChangeText={(text) => setEmail(text.trim())}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoComplete="email"
+                        editable={!loading}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.partnerField}>
+                    <Text style={styles.partnerFieldLabel}>Password</Text>
+                    <View style={[styles.inputContainer, styles.passwordContainer, styles.staffInput, styles.partnerPasswordBox]}>
                       <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
                       <TextInput
                         style={styles.input}
@@ -787,8 +754,32 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                         <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#6B7280" />
                       </TouchableOpacity>
                     </View>
-                  </>
-                )}
+                  </View>
+                </>
+              ) : (
+              <View>
+                <Text style={styles.inputLabel}>Phone Number</Text>
+                <View style={styles.inputContainer}>
+                    <Text style={styles.countryCode}>+91</Text>
+                  <TextInput
+                    style={[styles.input, styles.phoneInput]}
+                    placeholder="9152307030"
+                    placeholderTextColor="#9CA3AF"
+                    value={customerPhone}
+                    onChangeText={(text) => {
+                      const digits = text.replace(/\D/g, '').slice(0, 10);
+                      setCustomerPhone(digits);
+                      if (digits.length === 10) sendWhatsappWhenReady(digits);
+                    }}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    autoCapitalize="none"
+                    autoComplete="tel"
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+              )}
                 {errorText ? (
                   <View style={styles.errorBox}>
                     <Text style={styles.errorText}>{errorText}</Text>
@@ -1091,6 +1082,24 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 28,
     fontWeight: '800',
+  },
+  partnerTitle: {
+    textAlign: 'center',
+    fontSize: 22,
+    marginBottom: 16,
+  },
+  partnerField: {
+    marginBottom: 14,
+  },
+  partnerFieldLabel: {
+    fontSize: 10,
+    color: '#111827',
+    fontWeight: '600',
+    marginBottom: 6,
+    marginLeft: 2,
+  },
+  partnerPasswordBox: {
+    marginTop: 0,
   },
   brandSubTitle: {
     color: '#6B7280',

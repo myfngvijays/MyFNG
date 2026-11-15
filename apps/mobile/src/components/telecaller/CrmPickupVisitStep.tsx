@@ -25,10 +25,11 @@ const TIME_SLOTS = Array.from({ length: 6 }, (_, i) => {
   const startSuffix = hour >= 12 ? 'PM' : 'AM';
   const endH = nextHour === 12 ? 12 : nextHour > 12 ? nextHour - 12 : nextHour;
   const endSuffix = nextHour >= 12 ? 'PM' : 'AM';
-  return {
-    value: time24,
-    label: `${startH} ${startSuffix} - ${endH} ${endSuffix}`,
-  };
+  const label =
+    startSuffix === endSuffix
+      ? `${startH}–${endH} ${endSuffix}`
+      : `${startH} ${startSuffix}–${endH} ${endSuffix}`;
+  return { value: time24, label };
 });
 
 const ADDR_TYPES = [
@@ -166,7 +167,7 @@ export default function CrmPickupVisitStep({
   dayAfter.setDate(dayAfter.getDate() + 2);
   const dayAfterStr = formatDateYMD(dayAfter);
 
-  const slots = pickupRequired ? TIME_SLOTS : TIME_SLOTS.filter((s) => s.value < '13:00');
+  const slots = TIME_SLOTS;
   const todayClosed = !slots.some((s) => !isTimeSlotPastForDate(s.value, todayStr, todayStr));
   const minDate = parseYmdToDate(todayClosed ? tomorrowStr : todayStr);
 
@@ -404,7 +405,12 @@ export default function CrmPickupVisitStep({
                   style={[styles.timeTile, active && styles.timeTileActive, past && styles.timeTileDisabled]}
                   onPress={() => onChange({ pickup_time: slot.value })}
                 >
-                  <Text style={[styles.timeText, active && styles.timeTextActive, past && styles.timeTextDisabled]}>
+                  <Text
+                    style={[styles.timeText, active && styles.timeTextActive, past && styles.timeTextDisabled]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
                     {slot.label}
                   </Text>
                 </TouchableOpacity>
@@ -414,7 +420,7 @@ export default function CrmPickupVisitStep({
         </View>
       ) : null}
 
-      {pickupRequired ? (
+      {pickupRequired && value.pickup_time ? (
         <View style={styles.card}>
           <View style={styles.addrTypeRow}>
             {ADDR_TYPES.map(({ key, label, icon }) => {
@@ -703,17 +709,19 @@ const styles = StyleSheet.create({
   calDoneText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   timeTile: {
-    width: '47%',
-    paddingVertical: 12,
+    width: '31%',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
     borderRadius: 10,
     backgroundColor: COLORS.gray[50],
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   timeTileActive: { backgroundColor: '#A855F7', borderColor: '#A855F7' },
   timeTileDisabled: { opacity: 0.4 },
-  timeText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
+  timeText: { fontSize: 11, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'center' },
   timeTextActive: { color: '#fff' },
   timeTextDisabled: { color: COLORS.textSecondary },
   addrTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },

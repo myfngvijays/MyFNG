@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
+import { isPartnerPreview } from '../../../lib/partnerPreview';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
 import {
@@ -31,7 +32,6 @@ import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telec
 
 type ScopeFilter = 'all' | 'today' | 'calendar' | 'completed';
 type TypeFilter = 'all' | 'CALLBACK';
-type DropdownKey = 'type' | null;
 type CalendarPickMode = 'single' | 'range';
 
 function scheduledInIstRange(iso: string, startIso: string, endIso: string) {
@@ -99,6 +99,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   const [customStart, setCustomStart] = useState(istYmd());
   const [customEnd, setCustomEnd] = useState(istYmd());
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [calendarPickMode, setCalendarPickMode] = useState<CalendarPickMode>('single');
   const [draftStart, setDraftStart] = useState(istYmd());
   const [draftEnd, setDraftEnd] = useState(istYmd());
@@ -106,9 +107,8 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   const todayYmd = istYmd();
   const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
   const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
-  const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [stats, setStats] = useState({ pending: 0, today: 0, overdue: 0 });
+  const [, setStats] = useState({ pending: 0, today: 0, overdue: 0 });
   const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
   const [showReschedulePicker, setShowReschedulePicker] = useState(false);
   const [rescheduleDraft, setRescheduleDraft] = useState(new Date());
@@ -120,13 +120,11 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   const [completionTarget, setCompletionTarget] = useState<any | null>(null);
   const [completionNotes, setCompletionNotes] = useState('');
   const [showCompletion, setShowCompletion] = useState(false);
-  const [expandedFollowUpId, setExpandedFollowUpId] = useState<string | null>(null);
 
   const calendarLabel =
     customStart === customEnd
       ? formatYmdShort(customStart)
       : `${formatYmdShort(customStart)} – ${formatYmdShort(customEnd)}`;
-  const typeLabel = typeFilter === 'CALLBACK' ? 'Follow-up only' : 'All types';
 
   const openCalendarPicker = () => {
     setFilter('calendar');
@@ -137,7 +135,6 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     const base = customStart || istYmd();
     setViewYear(Number(base.slice(0, 4)));
     setViewMonth0(Number(base.slice(5, 7)) - 1);
-    setOpenDropdown(null);
     setShowCalendarModal(true);
   };
 
@@ -214,6 +211,12 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   }, [navigation]);
 
   const fetchFollowUps = async () => {
+    if (isPartnerPreview()) {
+      setFollowUps([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const { data: profile } = await supabase
         .from('users_login')
@@ -614,18 +617,14 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     navigation.navigate('TelecallerLeadDetail', { leadId });
   };
 
-  const renderFollowUp = (item: any) => {
+  const renderFollowUp = (item: any, index: number, total: number) => {
     const scheduledTime = new Date(item.scheduled_time);
     const isDone = item.status === 'COMPLETED';
     const isCancelled = item.status === 'CANCELLED';
     const isPending = item.status === 'PENDING';
     const isOverdue = isPending && scheduledTime < new Date();
     const isToday = isPending && isScheduledIstToday(item.scheduled_time);
-    const whenLabel = formatDateTime(item.scheduled_time) || scheduledTime.toLocaleString();
-    const rawType = String(item.follow_up_type || 'CALLBACK').toUpperCase();
-    const typeLabel = rawType === 'CALLBACK' ? 'CALLBACK' : rawType.replace(/_/g, ' ');
     const phone = String(item.lead?.customer_phone || '').replace(/\D/g, '').slice(-10);
-    const expanded = expandedFollowUpId === item.id;
     const pillLabel = isDone
       ? 'Done'
       : isCancelled
@@ -653,119 +652,83 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           : isToday
             ? styles.timePillTextToday
             : undefined;
+    const isFirst = index === 0;
+    const isLast = index === total - 1;
 
     return (
-      <View key={item.id} style={[styles.followUpCard, isOverdue && styles.overdueCard]}>
-        <TouchableOpacity
-          style={styles.cardTop}
-          onPress={() => setExpandedFollowUpId(expanded ? null : item.id)}
-          activeOpacity={0.85}
-        >
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {String(item.lead?.customer_name || 'C')
-                .trim()
-                .charAt(0)
-                .toUpperCase()}
+      <TouchableOpacity
+        key={item.id}
+        style={[
+          styles.row,
+          isFirst && styles.rowFirst,
+          isLast && styles.rowLast,
+          !isLast && styles.rowDivider,
+        ]}
+        activeOpacity={0.85}
+        onPress={() => handleViewLead(item.lead_id)}
+      >
+        <View style={styles.rowCopy}>
+          <Text style={styles.customerName} numberOfLines={1}>
+            {item.lead?.customer_name || 'Customer'}
+          </Text>
+          <Text style={styles.leadMeta} numberOfLines={1}>
+            {phone || '—'}
+          </Text>
+          <View style={[styles.statusPill, pillStyle]}>
+            <Text style={[styles.statusPillText, pillTextStyle]} numberOfLines={1}>
+              {pillLabel}
             </Text>
           </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.customerName} numberOfLines={1}>
-              {item.lead?.customer_name || 'Customer'}
-            </Text>
-            <Text style={styles.leadMeta} numberOfLines={1}>
-              {phone || '—'}
-            </Text>
-          </View>
-          <View style={[styles.timePill, pillStyle]}>
-            <Text style={[styles.timePillText, pillTextStyle]}>{pillLabel}</Text>
-          </View>
-          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textSecondary} />
-        </TouchableOpacity>
-
-        {expanded ? (
-          <>
-            <View style={styles.detailBlock}>
-              <Text style={styles.detailLine} numberOfLines={1}>
-                <Text style={styles.detailKey}>Type </Text>
-                {typeLabel}
-              </Text>
-              <Text
-                style={[styles.detailLine, isOverdue && styles.overdueText]}
-                numberOfLines={1}
-              >
-                <Text style={styles.detailKey}>When </Text>
-                {whenLabel}
-              </Text>
-              {item.reason ? (
-                <Text style={styles.detailLine} numberOfLines={3}>
-                  <Text style={styles.detailKey}>Reason </Text>
-                  {item.reason}
-                </Text>
-              ) : null}
-              {item.lead?.lead_number ? (
-                <Text style={styles.detailLine} numberOfLines={1}>
-                  <Text style={styles.detailKey}>Lead </Text>
-                  {item.lead.lead_number}
-                </Text>
-              ) : null}
-            </View>
-
-            {isPending ? (
-              <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionPrimary]}
-                  onPress={() => Linking.openURL(`tel:${item.lead?.customer_phone}`)}
-                >
-                  <Icon name="phone" size={15} color="#fff" />
-                  <Text style={styles.actionBtnTextOn}>Call</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionGhost]}
-                  onPress={() => handleViewLead(item.lead_id)}
-                >
-                  <Text style={styles.actionGhostText}>Open</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconAction}
-                  onPress={() => handleMarkCompleted(item.id)}
-                  accessibilityLabel="Done"
-                >
-                  <Icon name="check" size={18} color="#059669" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconAction}
-                  onPress={() => handleReschedule(item.id)}
-                  accessibilityLabel="Reschedule"
-                >
-                  <Icon name="calendar-clock" size={17} color="#0369A1" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconAction}
-                  onPress={() => handleMarkMissed(item.id)}
-                  accessibilityLabel="Cancel"
-                >
-                  <Icon name="close" size={18} color="#DC2626" />
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {isDone && item.completed_at ? (
-              <View style={styles.completedInfo}>
-                <Icon name="check" size={14} color={COLORS.green} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.completedText}>Done · {formatDateTime(item.completed_at)}</Text>
-                  {item.completion_notes ? (
-                    <Text style={styles.completedNotes}>{item.completion_notes}</Text>
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-          </>
-        ) : null}
-      </View>
+        </View>
+        <View style={styles.iconActions}>
+          {item.lead?.customer_phone ? (
+            <TouchableOpacity
+              style={[styles.iconAct, styles.iconActPrimary]}
+              onPress={() => Linking.openURL(`tel:${item.lead.customer_phone}`)}
+              accessibilityLabel="Call"
+            >
+              <Icon name="phone" size={15} color="#fff" />
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={styles.iconAct}
+            onPress={() => handleViewLead(item.lead_id)}
+            accessibilityLabel="Open"
+          >
+            <Icon name="eye" size={15} color={COLORS.primary} />
+          </TouchableOpacity>
+          {isPending ? (
+            <TouchableOpacity
+              style={styles.iconAct}
+              onPress={() => handleMarkCompleted(item.id)}
+              accessibilityLabel="Done"
+            >
+              <Icon name="check" size={16} color="#059669" />
+            </TouchableOpacity>
+          ) : null}
+          {isPending ? (
+            <TouchableOpacity
+              style={styles.iconAct}
+              onPress={() => handleReschedule(item.id)}
+              accessibilityLabel="Reschedule"
+            >
+              <Icon name="calendar" size={15} color="#0369A1" />
+            </TouchableOpacity>
+          ) : null}
+          {isPending ? (
+            <TouchableOpacity
+              style={styles.iconAct}
+              onPress={() => handleMarkMissed(item.id)}
+              accessibilityLabel="Cancel"
+            >
+              <Icon name="close" size={16} color="#DC2626" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </TouchableOpacity>
     );
   };
+
 
   if (loading) {
     return (
@@ -802,157 +765,18 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           onChangeText={setSearchTerm}
           placeholderTextColor={COLORS.textSecondary}
         />
-      </View>
-
-      <View style={styles.scopeRow}>
-        {(
-          [
-            { id: 'all' as const, label: 'All Pending' },
-            { id: 'today' as const, label: 'Today' },
-            { id: 'calendar' as const, label: 'Calendar' },
-          ]
-        ).map((f) => (
-          <TouchableOpacity
-            key={f.id}
-            style={[styles.scopeChip, filter === f.id && styles.scopeChipActive]}
-            onPress={() => {
-              setOpenDropdown(null);
-              if (f.id === 'calendar') {
-                openCalendarPicker();
-                return;
-              }
-              setFilter(f.id);
-            }}
-          >
-            {f.id === 'calendar' ? (
-              <Icon
-                name="calendar"
-                size={14}
-                color={filter === 'calendar' ? '#fff' : COLORS.primary}
-              />
-            ) : null}
-            <Text style={[styles.scopeChipText, filter === f.id && styles.scopeChipTextActive]}>
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
         <TouchableOpacity
-          style={[styles.scopeChip, filter === 'completed' && styles.scopeChipActive]}
-          onPress={() => {
-            setFilter('completed');
-            setOpenDropdown(null);
-          }}
+          style={styles.filterBtn}
+          onPress={() => setShowFilters(true)}
+          accessibilityLabel="Filters"
         >
-          <Text
-            style={[styles.scopeChipText, filter === 'completed' && styles.scopeChipTextActive]}
-          >
-            Done
-          </Text>
+          <Icon name="filter" size={18} color={COLORS.primary} />
         </TouchableOpacity>
-      </View>
-
-      <View style={styles.dropdownRow} pointerEvents="box-none">
-        <View
-          style={[
-            styles.dropdownWrap,
-            filter !== 'calendar' && styles.dropdownDim,
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.dropdownBtn}
-            activeOpacity={0.85}
-            onPress={openCalendarPicker}
-          >
-            <Icon name="calendar" size={16} color={COLORS.primary} />
-            <Text style={styles.dropdownBtnText} numberOfLines={1}>
-              {filter === 'calendar' ? calendarLabel : 'Pick date / range'}
-            </Text>
-            <Icon name="chevron-down" size={16} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        <View
-          style={[styles.dropdownWrap, openDropdown === 'type' && styles.dropdownOpen]}
-        >
-          <TouchableOpacity
-            style={styles.dropdownBtn}
-            activeOpacity={0.85}
-            onPress={() => setOpenDropdown(openDropdown === 'type' ? null : 'type')}
-          >
-            <Icon name="filter" size={16} color={COLORS.primary} />
-            <Text style={styles.dropdownBtnText} numberOfLines={1}>
-              {typeLabel}
-            </Text>
-            <Icon
-              name={openDropdown === 'type' ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={COLORS.textSecondary}
-            />
-          </TouchableOpacity>
-          {openDropdown === 'type' ? (
-            <View style={styles.dropdownMenu}>
-              {(
-                [
-                  { id: 'all' as const, label: 'All types', hint: 'Har reminder type' },
-                  {
-                    id: 'CALLBACK' as const,
-                    label: 'Follow-up only',
-                    hint: 'Sirf Follow-up status wale',
-                  },
-                ]
-              ).map((opt) => (
-                <TouchableOpacity
-                  key={opt.id}
-                  style={[
-                    styles.dropdownItem,
-                    typeFilter === opt.id && styles.dropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    setTypeFilter(opt.id);
-                    setOpenDropdown(null);
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        styles.dropdownItemText,
-                        typeFilter === opt.id && styles.dropdownItemTextActive,
-                      ]}
-                    >
-                      {opt.label}
-                    </Text>
-                    <Text style={styles.dropdownHint}>{opt.hint}</Text>
-                  </View>
-                  {typeFilter === opt.id ? (
-                    <Icon name="check" size={16} color={COLORS.primary} />
-                  ) : null}
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.statsCard}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats.pending}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: COLORS.primary }]}>{stats.today}</Text>
-          <Text style={styles.statLabel}>Today</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: COLORS.red }]}>{stats.overdue}</Text>
-          <Text style={styles.statLabel}>Overdue</Text>
-        </View>
       </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: embedded ? 110 : 32 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: embedded ? 110 : 32 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
@@ -971,7 +795,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             </Text>
           </View>
         ) : (
-          followUps.map(renderFollowUp)
+          followUps.map((item, index) => renderFollowUp(item, index, followUps.length))
         )}
       </ScrollView>
 
@@ -998,6 +822,64 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           </View>
         </View>
       )}
+
+      <Modal visible={showFilters} transparent animationType="slide" onRequestClose={() => setShowFilters(false)}>
+        <View style={styles.pickerOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFilters(false)} />
+          <View style={styles.filterSheet}>
+            <Text style={styles.filterSheetTitle}>Filters</Text>
+            <Text style={styles.filterLabel}>Show</Text>
+            <View style={styles.filterChipRow}>
+              {(
+                [
+                  { id: 'all' as const, label: 'All Pending' },
+                  { id: 'today' as const, label: 'Today' },
+                  { id: 'calendar' as const, label: 'Calendar' },
+                  { id: 'completed' as const, label: 'Done' },
+                ]
+              ).map((f) => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.scopeChip, filter === f.id && styles.scopeChipActive]}
+                  onPress={() => {
+                    if (f.id === 'calendar') {
+                      setShowFilters(false);
+                      openCalendarPicker();
+                      return;
+                    }
+                    setFilter(f.id);
+                  }}
+                >
+                  <Text style={[styles.scopeChipText, filter === f.id && styles.scopeChipTextActive]}>
+                    {f.id === 'calendar' && filter === 'calendar' ? calendarLabel : f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.filterLabel}>Type</Text>
+            {(
+              [
+                { id: 'all' as const, label: 'All types' },
+                { id: 'CALLBACK' as const, label: 'Follow-up only' },
+              ]
+            ).map((opt) => (
+              <TouchableOpacity
+                key={opt.id}
+                style={styles.filterTypeRow}
+                onPress={() => setTypeFilter(opt.id)}
+              >
+                <Text style={[styles.filterTypeText, typeFilter === opt.id && styles.filterTypeTextOn]}>
+                  {opt.label}
+                </Text>
+                {typeFilter === opt.id ? <Icon name="check" size={16} color={COLORS.primary} /> : null}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.filterDone} onPress={() => setShowFilters(false)}>
+              <Text style={styles.filterDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showCalendarModal}
@@ -1492,7 +1374,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginHorizontal: SPACING.md,
     marginTop: SPACING.sm,
-    marginBottom: 6,
+    marginBottom: 2,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 2,
@@ -1512,6 +1394,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  filterBtn: { padding: 6 },
+  filterSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+    paddingBottom: 28,
+  },
+  filterSheetTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 12 },
+  filterLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 8, marginTop: 8 },
+  filterChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E6EDF5',
+  },
+  filterTypeText: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
+  filterTypeTextOn: { color: COLORS.primary, fontWeight: '800' },
+  filterDone: {
+    marginTop: 16,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  filterDoneText: { color: '#fff', fontWeight: '800' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  rowFirst: { borderTopLeftRadius: 14, borderTopRightRadius: 14 },
+  rowLast: { borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
+  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E6EDF5' },
+  rowCopy: { flex: 1, minWidth: 0, gap: 2 },
+  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconAct: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary + '12',
+  },
+  iconActPrimary: { backgroundColor: COLORS.primary },
+  statusPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  statusPillText: { fontSize: 11, fontWeight: '700', color: '#047857' },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

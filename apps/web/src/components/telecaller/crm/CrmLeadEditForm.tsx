@@ -82,6 +82,7 @@ function pipelineActiveIndex(lead: any, activityResult: string): number {
 
 const ACTIVITY_OPTIONS = [
   // Soft CRM stages live in coupon_meta.last_call_result; DB enum has no CONTACTED.
+  { id: 'RINGING', label: 'Ringing', lead_status: 'NEW' as string | null },
   { id: 'FRESH', label: 'Fresh', lead_status: 'NEW' as string | null },
   { id: 'INTERESTED', label: 'Interested', lead_status: 'NEW' as string | null },
   { id: 'WILL_VISIT', label: 'He will visit', lead_status: 'NEW' as string | null },
@@ -90,7 +91,6 @@ const ACTIVITY_OPTIONS = [
   { id: 'IN_SERVICE', label: 'In Service', lead_status: 'IN_PROGRESS' as string | null },
   { id: 'SERVICE_DONE', label: 'Service Done', lead_status: 'COMPLETED' as string | null },
   { id: 'LOST', label: 'Lost', lead_status: 'REJECTED' as string | null },
-  { id: 'RINGING', label: 'Ringing / No answer', lead_status: 'NEW' as string | null },
 ] as const;
 
 function headerCardClass(activityResult: string): string {
@@ -333,7 +333,7 @@ export default function CrmLeadEditForm({
 
     notes: '',
     lead_priority: 'NORMAL',
-    activity_result: 'FRESH',
+    activity_result: 'RINGING',
     lost_reason: '',
     activity_notes: '',
     callback_date: '',
@@ -711,7 +711,7 @@ export default function CrmLeadEditForm({
           if (st === 'COMPLETED') return 'SERVICE_DONE';
           if (st === 'REJECTED') return 'LOST';
           if (st === 'CONTACTED' || st === 'ASSIGNED' || st === 'ACCEPTED') return 'INTERESTED';
-          return 'FRESH';
+          return 'RINGING';
         })(),
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
         activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
@@ -771,6 +771,7 @@ export default function CrmLeadEditForm({
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
+      ...(name === 'activity_result' && value === 'BOOKING_CONFIRMED' ? { pickup_required: true } : {}),
     }));
 
     if (errors[name]) {
@@ -1211,7 +1212,11 @@ export default function CrmLeadEditForm({
                     <button
                       type="button"
                       onClick={() =>
-                        setFormData((prev) => ({ ...prev, activity_result: activityId }))
+                        setFormData((prev) => ({
+                          ...prev,
+                          activity_result: activityId,
+                          ...(activityId === 'BOOKING_CONFIRMED' ? { pickup_required: true } : {}),
+                        }))
                       }
                       className={`flex-1 rounded-lg px-2 py-1.5 text-center text-[10px] sm:text-[11px] font-bold truncate transition ${
                         lost

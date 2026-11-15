@@ -655,9 +655,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
               Gateway settings
             </h2>
                         <p className="text-sm text-slate-500 mt-1">
-              Sirf tumhara gateway URL hit hota hai (
-              <code className="text-xs">?from=&amp;to=&amp;did=&amp;provider=</code>
-              ). Call button aur Fresh auto-dial dono same URL use karte hain.
+              Smartflo off hone pe gateway aur Fresh auto-dial band ho jaate hain. Website ka Call button phone app pe hi jaata hai.
             </p>
           </div>
           <button
@@ -670,20 +668,29 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           </button>
         </div>
 
-        <label className="flex items-center gap-2 text-sm font-medium text-slate-800 mb-3">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="rounded border-slate-300"
-          />
-          Enabled (Call + Fresh auto-dial use this URL when on)
+        <label className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900">
+          <span>
+            Smartflo
+            <span className="mt-0.5 block text-xs font-normal text-slate-500">
+              {enabled ? 'On — gateway and Fresh auto-dial can run' : 'Off — Smartflo calls are stopped'}
+            </span>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => setEnabled((on) => !on)}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition ${enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+          >
+            <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${enabled ? 'left-5' : 'left-0.5'}`} />
+          </button>
         </label>
 
-        <label className="mb-4 flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-sm text-slate-800">
+        <label className={`mb-4 flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-sm text-slate-800 ${enabled ? '' : 'opacity-50'}`}>
           <input
             type="checkbox"
-            checked={autoDialFresh}
+            checked={enabled && autoDialFresh}
+            disabled={!enabled}
             onChange={(e) => setAutoDialFresh(e.target.checked)}
             className="mt-1 rounded border-slate-300"
           />

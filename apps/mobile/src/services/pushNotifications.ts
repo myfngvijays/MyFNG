@@ -424,6 +424,11 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
     });
     const data = remoteMessage.data || {};
     const kind = String(data.kind || '');
+    if (kind === 'SIM_DIAL') {
+      const { handleSimDialPush } = require('../lib/simDial');
+      void handleSimDialPush(data);
+      return;
+    }
     if (kind === 'CALLER_ID') {
       const { emitCallerIdCard } = require('../components/telecaller/IncomingCallLeadOverlay');
       emitCallerIdCard({

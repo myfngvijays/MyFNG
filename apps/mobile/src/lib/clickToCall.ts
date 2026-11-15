@@ -11,8 +11,8 @@ function normalizePhone10(raw: unknown): string | null {
 }
 
 /**
- * Smartflo click-to-call via Next API → Supabase edge gateway.
- * Falls back to native dialer if agent phone missing or gateway fails (optional).
+ * Dial the customer from this phone's SIM, then save the call on the lead.
+ * A website Call button does not use this path — the server pushes SIM_DIAL here.
  */
 export async function clickToCallCustomer(opts: {
   customerPhone: string | null | undefined;
@@ -30,67 +30,24 @@ export async function clickToCallCustomer(opts: {
     return { ok: false, error: 'Customer phone missing' };
   }
 
+  await openPhoneCall(to);
+
   try {
-    const json = await apiFetch<{
-      success?: boolean;
-      error?: string;
-      code?: string;
-      message?: string;
-      session_id?: string;
-    }>('/api/telecaller/click-to-call', {
+    await apiFetch('/api/telecaller/click-to-call', {
       method: 'POST',
       body: JSON.stringify({
         to,
         lead_id: opts.leadId || undefined,
+        customer_name: opts.customerName || undefined,
+        source: 'device',
       }),
     });
-
-    if ((json as any)?.error && !(json as any)?.success) {
-      throw Object.assign(new Error(String((json as any).error)), {
-        code: (json as any).code,
-      });
-    }
-
-    const message = String(
-      (json as any)?.message ||
-        'Answer your phone first — customer will be connected after you pick up.',
-    );
-
-    if (!opts.silent) {
-      Alert.alert('Calling…', message);
-    }
-    return {
-      ok: true,
-      message,
-      sessionId: (json as any)?.session_id ? String((json as any).session_id) : undefined,
-    };
-  } catch (e: any) {
-    const msg = String(e?.message || 'Click-to-call failed');
-    const code = e?.code ? String(e.code) : undefined;
-    const missingAgent =
-      code === 'MISSING_AGENT_PHONE' || /from|agent phone|calling number/i.test(msg);
-
-    if (opts.fallbackToDialer !== false) {
-      Alert.alert(
-        'Click-to-call failed',
-        missingAgent
-          ? `${msg}\n\nOpening phone dialer instead.`
-          : `${msg}\n\nOpening phone dialer instead.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              void openPhoneCall(to);
-            },
-          },
-        ],
-      );
-      return { ok: false, error: msg, code };
-    }
-
-    if (!opts.silent) {
-      Alert.alert('Call failed', msg);
-    }
-    return { ok: false, error: msg, code };
+  } catch {
+    // The dialer is already open. A missed log should not block the call.
   }
+
+  if (!opts.silent) {
+    Alert.alert('Calling', `Opening your phone dialer for ${to}`);
+  }
+  return { ok: true, message: 'Opening your phone dialer' };
 }

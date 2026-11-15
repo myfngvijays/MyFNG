@@ -708,13 +708,6 @@ export default function TelecallerDashboard() {
 
       <TelecallerWhatsAppFab
         onPress={() => setWhatsAppOpen(true)}
-        onCallPress={() => {
-          try {
-            stackNav.navigate('CrmDialer');
-          } catch {
-            /* classic shell without dialer route */
-          }
-        }}
       />
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
 

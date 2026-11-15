@@ -16,27 +16,29 @@ import * as Clipboard from 'expo-clipboard';
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
+import { callScriptDisplayTitle, withMyfngCallScripts } from '../../../../../../shared/constants/myfngCallScripts';
 
 export default function TelecallerScriptsScreen({ navigation, embedded = false }: any) {
   const [scripts, setScripts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [language, setLanguage] = useState<'hi' | 'en'>('hi');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedScript, setExpandedScript] = useState<string | null>(null);
 
   const categories = [
-    { value: 'all', label: 'All', icon: 'view-grid' },
-    { value: 'GREETING', label: 'Greeting', icon: 'hand-wave' },
-    { value: 'INFORMATION_GATHERING', label: 'Info Gathering', icon: 'clipboard-text' },
-    { value: 'CLOSING', label: 'Closing', icon: 'check-circle' },
-    { value: 'FOLLOW_UP', label: 'Follow-up', icon: 'phone-forward' },
-    { value: 'OBJECTION_HANDLING', label: 'Objections', icon: 'shield-alert' }
+    { value: 'all', label: 'All' },
+    { value: 'GREETING', label: 'Open' },
+    { value: 'INFORMATION_GATHERING', label: 'Pitch' },
+    { value: 'CLOSING', label: 'Close' },
+    { value: 'FOLLOW_UP', label: 'Follow-up' },
+    { value: 'OBJECTION_HANDLING', label: 'Objections' },
   ];
 
   useEffect(() => {
     fetchScripts();
-  }, [selectedCategory, searchQuery]);
+  }, [selectedCategory, searchQuery, language]);
 
   // Handle hardware back button
   useEffect(() => {
@@ -70,14 +72,27 @@ export default function TelecallerScriptsScreen({ navigation, embedded = false }
       const { data, error } = await query;
 
       if (error) throw error;
-      setScripts(data || []);
+      setScripts(filterVisibleScripts(data || []));
 
     } catch (error) {
       console.error('Error fetching scripts:', error);
+      setScripts(filterVisibleScripts([]));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+  };
+
+  const filterVisibleScripts = (rows: any[]) => {
+    const q = searchQuery.trim().toLowerCase();
+    return withMyfngCallScripts(rows).filter((script) => {
+      if (script.language && script.language !== language) return false;
+      if (selectedCategory !== 'all' && script.category !== selectedCategory) return false;
+      if (!q) return true;
+      const title = String(script.script_title || '').toLowerCase();
+      const body = String(script.script_content || '').toLowerCase();
+      return title.includes(q) || body.includes(q);
+    });
   };
 
   const onRefresh = () => {
@@ -112,79 +127,39 @@ export default function TelecallerScriptsScreen({ navigation, embedded = false }
 
   const renderScript = (script: any) => {
     const isExpanded = expandedScript === script.id;
-    const previewLength = 80;
-    const shouldTruncate = script.script_content.length > previewLength;
+    const accent = getScriptTypeColor(script.script_type);
 
     return (
       <TouchableOpacity
         key={script.id}
-        style={styles.scriptCard}
+        style={[styles.scriptCard, { borderLeftColor: accent }]}
         onPress={() => toggleExpand(script.id)}
-        activeOpacity={0.7}
+        activeOpacity={0.75}
       >
-        {/* Header */}
         <View style={styles.scriptHeader}>
-          <View style={{ flex: 1 }}>
-            <View style={styles.titleRow}>
-              <Text style={styles.scriptTitle}>{script.script_title}</Text>
-              {script.language === 'hi' && (
-                <View style={styles.languageBadge}>
-                  <Text style={styles.languageText}>हिंदी</Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.tagsRow}>
-              <View style={[
-                styles.typeBadge,
-                { backgroundColor: getScriptTypeColor(script.script_type) + '20' }
-              ]}>
-                <Text style={[
-                  styles.typeText,
-                  { color: getScriptTypeColor(script.script_type) }
-                ]}>
-                  {script.script_type}
-                </Text>
-              </View>
-              {script.category && (
-                <View style={styles.categoryBadge}>
-                  <Icon
-                    name={getCategoryIcon(script.category)}
-                    size={12}
-                    color={COLORS.textSecondary}
-                  />
-                  <Text style={styles.categoryText}>{script.category}</Text>
-                </View>
-              )}
-            </View>
-          </View>
+          <Text style={styles.scriptTitle} numberOfLines={1}>
+            {callScriptDisplayTitle(script.script_title)}
+          </Text>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={24}
+            size={18}
             color={COLORS.textSecondary}
           />
         </View>
 
-        {/* Content */}
-        <View style={styles.scriptContent}>
-          <Text style={styles.scriptText}>
-            {isExpanded || !shouldTruncate
-              ? script.script_content
-              : script.script_content.substring(0, previewLength) + '...'}
-          </Text>
-        </View>
+        <Text style={styles.scriptText} numberOfLines={isExpanded ? undefined : 2}>
+          {script.script_content}
+        </Text>
 
-        {/* Actions */}
-        {isExpanded && (
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleCopyScript(script.script_content, script.script_title)}
-            >
-              <Icon name="content-copy" size={18} color={COLORS.primary} />
-              <Text style={styles.actionButtonText}>Copy Script</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {isExpanded ? (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleCopyScript(script.script_content, callScriptDisplayTitle(script.script_title))}
+          >
+            <Icon name="content-copy" size={16} color={COLORS.primary} />
+            <Text style={styles.actionButtonText}>Copy</Text>
+          </TouchableOpacity>
+        ) : null}
       </TouchableOpacity>
     );
   };
@@ -214,60 +189,68 @@ export default function TelecallerScriptsScreen({ navigation, embedded = false }
         </View>
       ) : null}
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search scripts..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor={COLORS.textSecondary}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Icon name="close-circle" size={20} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-        )}
+      <View style={styles.toolbar}>
+        <View style={styles.searchContainer}>
+          <Icon name="magnify" size={16} color="#64748B" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#94A3B8"
+          />
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Icon name="close-circle" size={16} color="#94A3B8" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <View style={styles.langTrack}>
+          {([
+            { id: 'hi' as const, label: 'हिंदी' },
+            { id: 'en' as const, label: 'EN' },
+          ]).map((item) => {
+            const active = language === item.id;
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.langOption, active && styles.langOptionActive]}
+                onPress={() => setLanguage(item.id)}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.langOptionText, active && styles.langOptionTextActive]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {/* Category Filter */}
-      <View style={styles.categoriesContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {categories.map((category) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoriesContainer}
+        contentContainerStyle={styles.categoriesContent}
+      >
+        {categories.map((category) => {
+          const active = selectedCategory === category.value;
+          return (
             <TouchableOpacity
               key={category.value}
-              style={[
-                styles.categoryTab,
-                selectedCategory === category.value && styles.categoryTabActive
-              ]}
+              style={styles.categoryTab}
               onPress={() => setSelectedCategory(category.value)}
+              activeOpacity={0.7}
             >
-              <Icon
-                name={category.icon as any}
-                size={18}
-                color={selectedCategory === category.value ? '#fff' : COLORS.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.categoryTabText,
-                  selectedCategory === category.value && styles.categoryTabTextActive
-                ]}
-              >
+              <Text style={[styles.categoryTabText, active && styles.categoryTabTextActive]}>
                 {category.label}
               </Text>
+              <View style={[styles.categoryMark, active && styles.categoryMarkActive]} />
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Quick Info */}
-      <View style={styles.infoCard}>
-        <Icon name="information" size={20} color={COLORS.primary} />
-        <Text style={styles.infoText}>
-          Tap any script to expand and copy. Use these scripts as a guide during calls.
-        </Text>
-      </View>
+          );
+        })}
+      </ScrollView>
 
       {/* Scripts List */}
       <ScrollView
@@ -291,28 +274,12 @@ export default function TelecallerScriptsScreen({ navigation, embedded = false }
           </View>
         ) : (
           <>
-            <View style={styles.resultsHeader}>
-              <Text style={styles.resultsText}>
-                {scripts.length} script{scripts.length !== 1 ? 's' : ''} found
-              </Text>
-            </View>
             {scripts.map(renderScript)}
           </>
         )}
       </ScrollView>
     </View>
   );
-}
-
-function getCategoryIcon(category: string): string {
-  switch (category) {
-    case 'GREETING': return 'hand-wave';
-    case 'INFORMATION_GATHERING': return 'clipboard-text';
-    case 'CLOSING': return 'check-circle';
-    case 'FOLLOW_UP': return 'phone-forward';
-    case 'OBJECTION_HANDLING': return 'shield-alert';
-    default: return 'script-text';
-  }
 }
 
 const styles = StyleSheet.create({
@@ -353,49 +320,90 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     color: COLORS.textSecondary,
   },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 8,
+  },
   searchContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    margin: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 12,
-    elevation: 2,
-    gap: SPACING.sm,
+    paddingHorizontal: 10,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 6,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: COLORS.textPrimary,
+    fontSize: 13,
+    color: '#0F2744',
+    paddingVertical: 0,
+  },
+  langTrack: {
+    flexDirection: 'row',
+    backgroundColor: '#004AAD',
+    borderRadius: 10,
+    padding: 3,
+  },
+  langOption: {
+    paddingHorizontal: 10,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  langOptionActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  langOptionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.78)',
+  },
+  langOptionTextActive: {
+    color: '#004AAD',
   },
   categoriesContainer: {
-    backgroundColor: '#fff',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
+    flexGrow: 0,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E6EDF8',
   },
-  categoryTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 20,
-    marginRight: SPACING.sm,
-    backgroundColor: COLORS.background,
+  categoriesContent: {
+    paddingHorizontal: 14,
     gap: 4,
   },
-  categoryTabActive: {
-    backgroundColor: COLORS.primary,
+  categoryTab: {
+    alignItems: 'stretch',
+    paddingHorizontal: 10,
+    paddingTop: 6,
   },
   categoryTabText: {
     fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
+    letterSpacing: 0.2,
+    color: '#94A3B8',
+    fontWeight: '600',
   },
   categoryTabTextActive: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: '#004AAD',
+    fontWeight: '800',
+  },
+  categoryMark: {
+    marginTop: 8,
+    height: 2,
+    width: '100%',
+    borderRadius: 2,
+    backgroundColor: 'transparent',
+  },
+  categoryMarkActive: {
+    backgroundColor: '#004AAD',
   },
   infoCard: {
     flexDirection: 'row',
@@ -425,93 +433,64 @@ const styles = StyleSheet.create({
   },
   scriptCard: {
     backgroundColor: '#fff',
-    marginHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
+    marginHorizontal: 12,
+    marginBottom: 8,
     borderRadius: 12,
-    padding: SPACING.md,
-    elevation: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#E6EDF8',
+    borderLeftWidth: 3,
   },
   scriptHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACING.sm,
-  },
-  titleRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    marginBottom: SPACING.xs,
+    gap: 8,
   },
   scriptTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
     flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F2744',
   },
   languageBadge: {
-    backgroundColor: COLORS.orange + '20',
-    paddingHorizontal: SPACING.xs,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 8,
+    borderRadius: 6,
   },
   languageText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: COLORS.orange,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    flexWrap: 'wrap',
-  },
-  typeBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  typeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.gray[500] + '20',
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  categoryText: {
     fontSize: 10,
-    color: COLORS.textSecondary,
+    fontWeight: '800',
+    color: '#B45309',
   },
-  scriptContent: {
-    marginBottom: SPACING.sm,
+  languageBadgeEn: {
+    backgroundColor: '#E8EEF8',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  languageTextEn: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#004AAD',
   },
   scriptText: {
-    fontSize: 14,
+    marginTop: 10,
+    fontSize: 13,
     lineHeight: 20,
-    color: COLORS.textPrimary,
-  },
-  actionsContainer: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray[500] + '20',
-    paddingTop: SPACING.sm,
-    flexDirection: 'row',
-    gap: SPACING.sm,
+    color: '#475569',
   },
   actionButton: {
-    flex: 1,
+    marginTop: 14,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.primary + '10',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#E8F0FE',
     borderRadius: 8,
-    gap: SPACING.xs,
+    gap: 6,
   },
   actionButtonText: {
     fontSize: 13,

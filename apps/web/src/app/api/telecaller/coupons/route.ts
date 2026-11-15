@@ -2,31 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { couponAppliesToChannel } from '@/lib/coupon-rules';
-
-function normalizeArrayField(value: any): string[] | null {
-  if (value == null) return null;
-  if (Array.isArray(value)) return value.map(String);
-  // JSONB might come back as object/primitive; best-effort
-  try {
-    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-    if (Array.isArray(parsed)) return parsed.map(String);
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
 function isNowWithinWindow(coupon: any, nowIso: string) {
   if (coupon?.start_at && String(coupon.start_at) > nowIso) return false;
   if (coupon?.end_at && String(coupon.end_at) < nowIso) return false;
   return true;
-}
-
-function matchesAny(list: string[] | null, candidates: string[]) {
-  if (!list || list.length === 0) return true; // not restricted
-  const set = new Set(list.map((v) => String(v)));
-  return candidates.some((c) => set.has(String(c)));
 }
 
 export async function GET(request: NextRequest) {
@@ -45,13 +25,6 @@ export async function GET(request: NextRequest) {
     if (!supabaseAdmin) {
       return NextResponse.json({ error: adminError || 'Admin client not configured' }, { status: 500 });
     }
-
-    const url = new URL(request.url);
-    const cityId = url.searchParams.get('city_id')?.trim() || '';
-    const serviceTypeIds = (url.searchParams.get('service_type_ids') || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
 
     const nowIso = new Date().toISOString();
 
@@ -76,17 +49,7 @@ export async function GET(request: NextRequest) {
 
     const filtered = (coupons || [])
       .filter((c: any) => isNowWithinWindow(c, nowIso))
-      .filter((c: any) => couponAppliesToChannel(c, 'TELECALLER'))
       .filter((c: any) => !isReferAndRiseCoupon(c))
-      .filter((c: any) => {
-        const applicableCities = normalizeArrayField(c.applicable_city_ids);
-        const applicableServiceTypes = normalizeArrayField(c.applicable_service_type_ids);
-
-        const cityOk = !cityId ? true : matchesAny(applicableCities, [cityId]);
-        const serviceOk = serviceTypeIds.length === 0 ? true : matchesAny(applicableServiceTypes, serviceTypeIds);
-
-        return cityOk && serviceOk;
-      })
       .map((c: any) => ({
         id: c.id,
         code: c.code,
@@ -107,4 +70,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
-

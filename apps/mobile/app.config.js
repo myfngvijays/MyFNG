@@ -23,8 +23,17 @@ module.exports = ({ config }) => {
     (base.ios && base.ios.config && base.ios.config.googleMapsApiKey) ||
     undefined;
 
+  // customer | partner split the phone apps. Unset keeps the current single app.
+  const appVariantRaw = String(process.env.APP_VARIANT || 'unified').trim().toLowerCase();
+  const appVariant =
+    appVariantRaw === 'customer' || appVariantRaw === 'partner' ? appVariantRaw : 'unified';
+
   return {
     ...base,
+    extra: {
+      ...(base.extra || {}),
+      appVariant,
+    },
     android: {
       ...(base.android || {}),
       config: {

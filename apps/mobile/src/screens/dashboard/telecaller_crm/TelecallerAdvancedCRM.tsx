@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -13,6 +13,7 @@ import {
   Alert,
   BackHandler,
   DeviceEventEmitter,
+  PanResponder,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,9 +23,7 @@ import { supabase } from '../../../lib/supabase';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useAuth } from '../../../context/AuthContext';
 import { setAndroidShellBackHandler } from '../../../lib/androidShellBack';
-import TelecallerWhatsAppInbox, {
-  TelecallerWhatsAppFab,
-} from '../../../components/telecaller/TelecallerWhatsAppInbox';
+import TelecallerWhatsAppInbox from '../../../components/telecaller/TelecallerWhatsAppInbox';
 import TelecallerLeadDetailScreen from '../telecaller/TelecallerLeadDetailScreen';
 import {
   CRM_OPEN_LEAD_EVENT,
@@ -38,6 +37,7 @@ import CrmEngageTab from './CrmEngageTab';
 import CrmWorkshopLocatorTab from './CrmWorkshopLocatorTab';
 import CrmMeTab from './CrmMeTab';
 import { COLORS } from '../../../constants/theme';
+import { isPartnerPreview, exitPartnerPreview } from '../../../lib/partnerPreview';
 import { istYmd, type CrmDatePreset } from '../../../lib/crmDateRange';
 import {
   defaultTelecallerCrmFilterPrefs,
@@ -51,6 +51,13 @@ const HIDDEN_TAB: ViewStyle = {
   opacity: 0,
   zIndex: 0,
 };
+
+const PREVIEW_TABS = [
+  { id: 'home', label: 'Home', icon: 'home-outline' as const },
+  { id: 'queue', label: 'Leads', icon: 'clipboard-outline' as const },
+  { id: 'engage', label: 'Reminders', icon: 'alarm-outline' as const },
+  { id: 'me', label: 'Profile', icon: 'person-outline' as const },
+];
 
 const MENU_TABS = [
   { id: 'home', label: 'Home', icon: 'home-outline' as const },
@@ -488,6 +495,7 @@ export default function TelecallerAdvancedCRM() {
   const { unreadCount, refreshNotifications } = useNotifications();
   const { logout: authLogout } = useAuth();
   const isLeadManager = String(route?.name || '').includes('LeadManager');
+  const preview = isPartnerPreview();
   const insets = useSafeAreaInsets();
   const drawerNav = isLeadManager ? LM_NAV : TC_NAV;
   const drawerTopPad =
@@ -497,6 +505,7 @@ export default function TelecallerAdvancedCRM() {
     ) + 12;
   const defaults = defaultTelecallerCrmFilterPrefs();
   const [tab, setTab] = useState('home');
+  const [previewGate, setPreviewGate] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
   const [engageSegment, setEngageSegment] = useState('followups');
@@ -549,6 +558,10 @@ export default function TelecallerAdvancedCRM() {
       setWhatsAppOpen(false);
       return true;
     }
+    if (preview && previewGate) {
+      setPreviewGate(null);
+      return true;
+    }
     if (detailLeadId) {
       setDetailLeadId(null);
       setDetailEditing(false);
@@ -564,7 +577,21 @@ export default function TelecallerAdvancedCRM() {
       return true;
     }
     return false;
-  }, [menuOpen, whatsAppOpen, detailLeadId, bookMode, tab]);
+  }, [menuOpen, whatsAppOpen, preview, previewGate, detailLeadId, bookMode, tab]);
+
+  const consumeRef = useRef(consumeInnerBack);
+  consumeRef.current = consumeInnerBack;
+  const edgeSwipe = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (evt, g) => {
+        const startX = evt.nativeEvent.pageX - g.dx;
+        return startX < 28 && g.dx > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.2;
+      },
+      onPanResponderRelease: (_evt, g) => {
+        if (g.dx > 64 && g.dx > Math.abs(g.dy)) consumeRef.current();
+      },
+    }),
+  ).current;
 
   const onAndroidBack = useCallback(() => {
     if (consumeInnerBack()) return true;
@@ -583,7 +610,8 @@ export default function TelecallerAdvancedCRM() {
     const unsub = stackNav.addListener('beforeRemove', (e: any) => {
       const type = String(e?.data?.action?.type || '');
       if (type && !['GO_BACK', 'POP', 'POP_TO_TOP'].includes(type)) return;
-      if (consumeInnerBack()) e.preventDefault();
+      e.preventDefault();
+      consumeInnerBack();
     });
     return () => {
       setAndroidShellBackHandler(null);
@@ -842,17 +870,22 @@ export default function TelecallerAdvancedCRM() {
   const showQueue = prefsReady;
   const homeActive = tab === 'home' && !detailLeadId;
   const queueActive = tab === 'queue' && !detailLeadId;
-  const activeTitle =
-    MENU_TABS.find((t) => t.id === (detailLeadId ? 'queue' : tab))?.label ||
-    (isLeadManager ? 'Lead Manager' : 'Telecaller CRM');
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top']} {...edgeSwipe.panHandlers}>
       <StatusBar barStyle={detailLeadId ? 'light-content' : 'dark-content'} />
 
       {!detailLeadId ? (
         <View style={styles.topBar}>
           <View style={styles.topSide} pointerEvents="box-none">
+            {preview ? (
+              <Image
+                source={require('../../../../assets/logo.png')}
+                style={styles.previewLogo}
+                resizeMode="contain"
+              />
+            ) : (
+            <>
             <TouchableOpacity
               style={styles.menuBtn}
               onPress={() => setMenuOpen(true)}
@@ -863,13 +896,10 @@ export default function TelecallerAdvancedCRM() {
             >
               <Ionicons name="menu" size={26} color={COLORS.primary} />
             </TouchableOpacity>
-            <Text
-              style={[styles.topTitle, tab === 'home' && styles.topTitleHome]}
-              numberOfLines={1}
-            >
-              {activeTitle}
-            </Text>
+            </>
+            )}
           </View>
+          {preview ? null : (
           <View style={styles.topCenter} pointerEvents="box-none">
             <TouchableOpacity
               onPress={goHome}
@@ -885,7 +915,20 @@ export default function TelecallerAdvancedCRM() {
               />
             </TouchableOpacity>
           </View>
+          )}
           <View style={styles.topSideRight} pointerEvents="box-none">
+            {preview ? (
+              <TouchableOpacity
+                style={styles.previewLoginBtn}
+                onPress={() => exitPartnerPreview()}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Login"
+              >
+                <Text style={styles.previewLoginText}>Login</Text>
+              </TouchableOpacity>
+            ) : (
+            <>
             <TouchableOpacity
               style={styles.menuBtn}
               onPress={() => {
@@ -940,6 +983,8 @@ export default function TelecallerAdvancedCRM() {
             >
               <Ionicons name="log-out-outline" size={22} color="#DC2626" />
             </TouchableOpacity>
+            </>
+            )}
           </View>
         </View>
       ) : null}
@@ -956,6 +1001,12 @@ export default function TelecallerAdvancedCRM() {
               isActive={homeActive}
               onRemindersCount={setReminderBadge}
               onNavigate={(screen, params) => {
+                if (preview) {
+                  if (screen === 'queue' || screen === 'engage' || screen === 'me') {
+                    setPreviewGate(screen);
+                  }
+                  return;
+                }
                 if (screen === 'queue') {
                   setQueueFilter(params?.filter || 'all');
                   setTab('queue');
@@ -1078,19 +1129,51 @@ export default function TelecallerAdvancedCRM() {
             active
           />
         )}
+        {preview && previewGate ? (
+          <View style={styles.loginRequired}>
+            <Ionicons name="lock-closed-outline" size={40} color="#004AAD" />
+            <Text style={styles.loginRequiredTitle}>Login required</Text>
+            <Text style={styles.loginRequiredBody}>
+              Sign in to open {PREVIEW_TABS.find((item) => item.id === previewGate)?.label || 'this page'}.
+            </Text>
+            <TouchableOpacity style={styles.loginRequiredBtn} onPress={() => exitPartnerPreview()} activeOpacity={0.9}>
+              <Text style={styles.loginRequiredBtnText}>Login</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
 
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
-      {!detailLeadId && tab !== 'book' ? (
-        <TelecallerWhatsAppFab
-          onPress={() => setWhatsAppOpen(true)}
-          onCallPress={
-            isLeadManager ? undefined : () => stackNav.navigate('CrmDialer')
-          }
-          bottomOffset={28}
-        />
+
+      {preview && !detailLeadId ? (
+        <View style={[styles.previewBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          {PREVIEW_TABS.map((item) => {
+            const active = (previewGate || 'home') === item.id;
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.previewTab}
+                onPress={() => {
+                  if (item.id === 'home') {
+                    setPreviewGate(null);
+                    setDetailLeadId(null);
+                    setBookMode(null);
+                    setTab('home');
+                    return;
+                  }
+                  setPreviewGate(item.id);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={item.icon} size={22} color={active ? '#FFFFFF' : 'rgba(255,255,255,0.72)'} />
+                <Text style={[styles.previewTabText, active && styles.previewTabTextActive]}>{item.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       ) : null}
 
+      {preview ? null : (
       <Modal
         visible={menuOpen}
         transparent
@@ -1269,12 +1352,67 @@ export default function TelecallerAdvancedCRM() {
           <Pressable style={styles.drawerScrim} onPress={() => setMenuOpen(false)} />
         </View>
       </Modal>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
+  previewBar: {
+    flexDirection: 'row',
+    backgroundColor: '#004AAD',
+    paddingTop: 8,
+  },
+  previewTab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: 4,
+  },
+  previewTabText: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  previewTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  loginRequired: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
+    backgroundColor: '#F0F7FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  loginRequiredTitle: {
+    marginTop: 12,
+    color: '#023D95',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  loginRequiredBody: {
+    marginTop: 8,
+    color: '#3A3F45',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  loginRequiredBtn: {
+    marginTop: 20,
+    backgroundColor: '#004AAD',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+  },
+  loginRequiredBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   body: { flex: 1, minHeight: 0, overflow: 'hidden' },
   activeTab: { zIndex: 2, overflow: 'visible' },
   topBar: {
@@ -1344,16 +1482,22 @@ const styles = StyleSheet.create({
     width: 108,
     height: 32,
   },
-  topTitle: {
-    flexShrink: 1,
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.textHeading,
-    textAlign: 'left',
-    maxWidth: 96,
+  previewLogo: {
+    width: 108,
+    height: 32,
+    marginLeft: 10,
   },
-  topTitleHome: {
-    color: COLORS.primary,
+  previewLoginBtn: {
+    marginRight: 10,
+    backgroundColor: '#004AAD',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+  },
+  previewLoginText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   drawerRoot: {
     flex: 1,

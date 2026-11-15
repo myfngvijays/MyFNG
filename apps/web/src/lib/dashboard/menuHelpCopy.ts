@@ -43,17 +43,17 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/telecaller/dialer': {
     title: 'Dialer',
     body:
-      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.\n\nFresh auto-dial / click-to-call pe phone ring hote hi CRM popup dikhata hai kaunsi lead hai (DID number se dhundne ki zaroorat nahi).',
+      'Phone keypad se number bhejte ho us phone pe jahan yahi account MyFNG app mein login hai. Wahi phone customer ko dial karta hai.\n\nApp login rehni chahiye, warna call phone tak nahi pahunchegi.',
     tips: [
-      'Click to Call setup me aapka from-number set hona chahiye.',
-      'Agar number pe pehle se lead hai to call log us lead pe attach ho sakta hai.',
-      'Ring aate hi Open lead dabao — phone pe DID dikhega, lead CRM mein khulegi.',
+      'Pehle phone pe MyFNG app isi account se login karo.',
+      'Android pe dialer khul jayega. iPhone pe Call ek baar dabana padega.',
+      'Lead pe call log tab banta hai jab phone dialer kholta hai.',
     ],
   },
   '/dashboard/lead_manager/dialer': {
     title: 'Dialer',
     body:
-      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.\n\nRing aate hi popup dikhata hai kaunsi lead hai.',
+      'Phone keypad se number us phone pe jaata hai jahan yahi account MyFNG app mein login hai. Wahi phone customer ko dial karta hai.',
   },
   '/dashboard/lead_manager/click-to-call': {
     title: 'Click to Call',

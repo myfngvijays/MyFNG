@@ -54,9 +54,20 @@ class MainApplication : Application(), ReactApplication {
       val manager = getSystemService(NotificationManager::class.java)
       manager?.createNotificationChannel(channel)
     }
-    FacebookSdk.setAutoInitEnabled(true)
-    FacebookSdk.fullyInitialize()
-    AppEventsLogger.activateApp(this)
+    try {
+      val clientToken = runCatching {
+        val id = resources.getIdentifier("facebook_client_token", "string", packageName)
+        if (id == 0) "" else getString(id)
+      }.getOrDefault("").trim()
+      if (clientToken.isNotEmpty()) {
+        FacebookSdk.setClientToken(clientToken)
+        FacebookSdk.setAutoInitEnabled(true)
+        FacebookSdk.fullyInitialize()
+        AppEventsLogger.activateApp(this)
+      }
+    } catch (e: Throwable) {
+      android.util.Log.e("MyFNG", "Facebook SDK skipped", e)
+    }
     SoLoader.init(this, OpenSourceMergedSoMapping)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.

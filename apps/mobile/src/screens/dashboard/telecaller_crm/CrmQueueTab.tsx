@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
+import { isPartnerPreview } from '../../../lib/partnerPreview';
 import CarLoading from '../../../components/CarLoading';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { supabase } from '../../../lib/supabase';
@@ -392,6 +393,13 @@ export default function CrmQueueTab({
   }, [q, localPrefsReady]);
 
   const load = useCallback(async () => {
+    if (isPartnerPreview()) {
+      setLeads([]);
+      setLoadError('');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (!localPrefsReady) return;
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
@@ -594,7 +602,7 @@ export default function CrmQueueTab({
   };
 
   const renderSelect = (
-    key: Exclude<DropdownKey, 'date' | 'status' | null>,
+    key: Exclude<DropdownKey, 'date' | null>,
     label: string,
     value: string,
     options: Array<{ value: string; label: string }>,
@@ -676,6 +684,7 @@ export default function CrmQueueTab({
             <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
         ) : null}
+        {managerOps ? (
         <View style={styles.viewToggle}>
           <TouchableOpacity
             style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnOn]}
@@ -700,6 +709,7 @@ export default function CrmQueueTab({
             />
           </TouchableOpacity>
         </View>
+        ) : null}
         <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.filterBtn}>
           <Ionicons name="options-outline" size={18} color={COLORS.primary} />
         </TouchableOpacity>
@@ -712,7 +722,7 @@ export default function CrmQueueTab({
         />
       ) : null}
 
-      {/* Status + Date — menus overlay leads (absolute), don't push list down */}
+      {managerOps ? (
       <View style={styles.filterSection} pointerEvents="box-none">
         <View style={styles.filterRow} pointerEvents="box-none">
           <View
@@ -728,9 +738,13 @@ export default function CrmQueueTab({
               activeOpacity={0.85}
             >
               <Ionicons name="funnel-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.dateDropdownText} numberOfLines={1}>
-                {statusLabel}
-              </Text>
+              {managerOps ? (
+                <Text style={styles.dateDropdownText} numberOfLines={1}>
+                  {statusLabel}
+                </Text>
+              ) : (
+                <View style={styles.filterBtnSpacer} />
+              )}
               <Ionicons
                 name={openDropdown === 'status' ? 'chevron-up' : 'chevron-down'}
                 size={16}
@@ -889,6 +903,7 @@ export default function CrmQueueTab({
           </View>
         ) : null}
       </View>
+      ) : null}
 
       {loading && leads.length === 0 ? (
         <View style={{ marginTop: 36, alignItems: 'center' }}>
@@ -903,7 +918,7 @@ export default function CrmQueueTab({
             <Text style={{ color: COLORS.primary, fontWeight: '800' }}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : viewMode === 'chart' ? (
+      ) : managerOps && viewMode === 'chart' ? (
         <ScrollView
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100, gap: 12 }}
           refreshControl={
@@ -941,7 +956,7 @@ export default function CrmQueueTab({
         <FlatList
           data={displayedLeads}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
+          contentContainerStyle={{ paddingHorizontal: SPACING.md, paddingTop: 4, paddingBottom: 100 }}
           style={styles.list}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="none"
@@ -1017,7 +1032,7 @@ export default function CrmQueueTab({
               <Text style={styles.emptyText}>No leads in this queue</Text>
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const statusLabel = leadDisplayStatus(item);
             const tint = leadStatusCardColors(
               item.is_incomplete
@@ -1031,15 +1046,15 @@ export default function CrmQueueTab({
                 item.assigned_telecaller_name ||
                 '',
             ).trim();
-            const assigneeSeed =
-              String(item.assigned_telecaller_id || item.assigned_telecaller?.id || '') ||
-              assigneeName;
+            const isFirst = index === 0;
+            const isLast = index === displayedLeads.length - 1;
             return (
             <TouchableOpacity
               style={[
                 styles.card,
-                { backgroundColor: tint.cardBg, borderColor: tint.border, borderWidth: 1 },
-                selected ? { borderColor: COLORS.primary, borderWidth: 2 } : null,
+                isFirst ? styles.cardFirst : null,
+                isLast ? styles.cardLast : styles.cardDivider,
+                selected ? { backgroundColor: '#EFF6FF' } : null,
               ]}
               activeOpacity={0.9}
               delayLongPress={350}
@@ -1055,76 +1070,50 @@ export default function CrmQueueTab({
                 onOpenLead(item.id);
               }}
             >
-              <View style={styles.cardTop}>
-                <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                  {(() => {
-                    const full = String(item.customer_name || 'Unknown').trim();
-                    return (
-                      <Text style={styles.name} numberOfLines={1}>
-                        {full}
-                      </Text>
-                    );
-                  })()}
-                  <Text style={styles.meta}>{item.customer_phone || '—'}</Text>
-                </View>
-                <View style={styles.cardRightCol}>
-                  {managerOps ? (
-                    <MlScorePill
-                      score={item.ml_score?.conversion_score}
-                      temperature={item.ml_score?.temperature}
-                    />
-                  ) : null}
-                  <View style={[styles.statusCornerInline, { backgroundColor: tint.badgeBg }]}>
-                    <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
-                      {statusLabel}
-                    </Text>
-                  </View>
-                  {managerOps ? (
-                    <View style={styles.assigneeWrap}>
-                      <View
-                        style={[
-                          styles.assigneeAvatar,
-                          { backgroundColor: colorForAssignee(assigneeSeed) },
-                        ]}
-                      >
-                        <Text style={styles.assigneeInitials}>
-                          {assigneeInitials(assigneeName)}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-                    </View>
-                  ) : (
-                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-                  )}
+            <View style={styles.cardBody}>
+              <View style={styles.cardCopy}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {String(item.customer_name || 'Unknown').trim()}
+                </Text>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {item.customer_phone || '—'}
+                  {managerOps && assigneeName ? `  ·  ${assigneeName}` : ''}
+                </Text>
+                <View style={[styles.statusCornerInline, { backgroundColor: tint.badgeBg }]}>
+                  <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
+                    {statusLabel}
+                  </Text>
                 </View>
               </View>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={[styles.act, { backgroundColor: COLORS.primary }]}
-                  onPress={() =>
-                    void clickToCallCustomer({
-                      customerPhone: item.customer_phone,
-                      leadId: item.id,
-                    })
-                  }
-                >
-                  <Ionicons name="call" size={14} color="#fff" />
-                  <Text style={styles.actText}>Call</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.act, styles.actOutline]}
-                  onPress={() => onOpenLead(item.id)}
-                >
-                  <Text style={styles.actOutlineText}>Open</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.act, styles.actOutline]}
-                  onPress={() => openShare(item)}
-                >
-                  <Ionicons name="swap-horizontal-outline" size={14} color={COLORS.primary} />
-                  <Text style={styles.actOutlineText}>Transfer</Text>
-                </TouchableOpacity>
-              </View>
+              <View style={styles.iconActions}>
+                  <TouchableOpacity
+                    style={[styles.iconAct, { backgroundColor: COLORS.primary }]}
+                    onPress={() =>
+                      void clickToCallCustomer({
+                        customerPhone: item.customer_phone,
+                        leadId: item.id,
+                      })
+                    }
+                    accessibilityLabel="Call"
+                  >
+                    <Ionicons name="call" size={15} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.iconAct}
+                    onPress={() => onOpenLead(item.id)}
+                    accessibilityLabel="Open"
+                  >
+                    <Ionicons name="open-outline" size={15} color={COLORS.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.iconAct}
+                    onPress={() => openShare(item)}
+                    accessibilityLabel="Transfer"
+                  >
+                    <Ionicons name="swap-horizontal-outline" size={15} color={COLORS.primary} />
+                  </TouchableOpacity>
+                </View>
+            </View>
             </TouchableOpacity>
             );
           }}
@@ -1144,6 +1133,31 @@ export default function CrmQueueTab({
             </View>
 
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {renderSelect(
+                'status',
+                'Lead status',
+                filter,
+                statusFilters.map((c) => ({ value: c.id, label: c.label })),
+                (v) => {
+                  setFilter(v);
+                  onFilterChange?.(v);
+                  const nextLost = v === 'lost' ? lostReason : '';
+                  if (v !== 'lost') setLostReason('');
+                  persistLocalFilters({ statusFilter: v, lostReason: nextLost });
+                },
+              )}
+              {filter === 'lost'
+                ? renderSelect(
+                    'lostReason',
+                    'Lost reason',
+                    lostReason,
+                    LOST_REASON_FILTERS.map((c) => ({ value: c.id, label: c.label })),
+                    (v) => {
+                      setLostReason(v);
+                      persistLocalFilters({ lostReason: v });
+                    },
+                  )
+                : null}
               {renderSelect(
                 'dateField',
                 'Date type',
@@ -1274,6 +1288,9 @@ export default function CrmQueueTab({
                     setDatePreset('today');
                     setCustomStart(istYmd());
                     setCustomEnd(istYmd());
+                    setFilter('all');
+                    setLostReason('');
+                    onFilterChange?.('all');
                     persistLocalFilters({
                       city: '',
                       priority: '',
@@ -1282,6 +1299,8 @@ export default function CrmQueueTab({
                       advHasVehicle: false,
                       advHasCoupon: false,
                       dateField: 'created',
+                      statusFilter: 'all',
+                      lostReason: '',
                     });
                     setOpenDropdown(null);
                   }}
@@ -1390,7 +1409,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginHorizontal: SPACING.md,
     marginTop: 4,
-    marginBottom: 8,
+    marginBottom: 2,
     backgroundColor: COLORS.white,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -1505,6 +1524,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   dateDropdownText: { flex: 1, fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  filterBtnSpacer: { flex: 1 },
   dateMenu: {
     position: 'absolute',
     top: '100%',
@@ -1559,17 +1579,40 @@ const styles = StyleSheet.create({
   filterLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   customRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   card: {
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    ...SHADOWS.small,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  cardFirst: {
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+  },
+  cardLast: {
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+  },
+  cardDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E6EDF5',
+  },
+  cardBody: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardCopy: { flex: 1, minWidth: 0, gap: 2 },
+  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  iconAct: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary + '12',
   },
   statusCornerInline: {
-    borderRadius: 999,
+    alignSelf: 'flex-start',
+    borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    maxWidth: 110,
-    alignSelf: 'flex-end',
+    paddingVertical: 2,
+    marginTop: 2,
+    flexShrink: 0,
   },
   bulkTopRow: {
     flexDirection: 'row',
@@ -1624,11 +1667,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   assigneeInitials: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  name: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  name: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 18 },
   nameSecond: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginTop: 1 },
   status: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: 120, flexShrink: 1 },
-  statusText: { fontSize: 10, fontWeight: '700' },
-  meta: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
+  statusText: { fontSize: 11, fontWeight: '700', lineHeight: 14, textAlign: 'center' },
+  meta: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 16 },
   msgRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

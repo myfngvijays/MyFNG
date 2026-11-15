@@ -3,7 +3,7 @@
     "name": "MyFNG",
     "slug": "myfng-app",
     "scheme": "myfng",
-    "version": "1.3.7",
+    "version": "1.3.8",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
     "icon": "./assets/app-icon.png",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "47",
+      "buildNumber": "48",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:myfng.in",
@@ -43,7 +43,8 @@
         "NSUserTrackingUsageDescription": "MyFNG uses this identifier to measure ads and show relevant service offers.",
         "FacebookAppID": "2662238024237088",
         "FacebookDisplayName": "MyFNG",
-        "FacebookAutoLogAppEventsEnabled": true,
+        "FacebookAutoInitEnabled": false,
+        "FacebookAutoLogAppEventsEnabled": false,
         "FacebookAdvertiserIDCollectionEnabled": true,
         "CFBundleURLTypes": [
           {
@@ -70,7 +71,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
-      "versionCode": 47,
+      "versionCode": 48,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",

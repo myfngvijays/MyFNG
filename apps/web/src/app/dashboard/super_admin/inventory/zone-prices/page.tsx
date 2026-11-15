@@ -208,6 +208,7 @@ async function writeZonePriceExport(format: 'csv' | 'xlsx' | 'pdf', filename: st
 export default function ZonePricesPage() {
   const pathname = usePathname();
   const fullWidth = pathname?.includes('/telecaller/') || pathname?.includes('/lead_manager/');
+  const canExport = !pathname?.includes('/telecaller/');
   const [zones, setZones] = useState<ZoneInfo[]>([]);
   const [classes, setClasses] = useState<string[]>([]);
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
@@ -526,7 +527,7 @@ export default function ZonePricesPage() {
 
             <section className="mb-3">
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Car class</h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+              <div className="grid grid-cols-3 gap-2">
                 {classChoices.map((name) => {
                   const meta = classMeta(name);
                   const selected = carClass === name;
@@ -537,8 +538,8 @@ export default function ZonePricesPage() {
                       onClick={() => setCarClass(name)}
                       className={`flex flex-col items-center rounded-2xl border bg-white px-2 py-2 text-center text-gray-900 ${selected ? 'border-blue-600 ring-2 ring-blue-200 shadow-sm' : 'border-gray-200 hover:border-gray-300'}`}
                     >
-                      <img src={meta.image} alt="" className="h-16 w-full object-contain" />
-                      <span className="mt-1 text-xs font-extrabold leading-tight">{meta.label}</span>
+                      <img src={meta.image} alt="" className="h-10 w-full object-contain" />
+                      <span className="mt-1 text-[11px] font-extrabold leading-tight">{meta.label}</span>
                     </button>
                   );
                 })}
@@ -547,14 +548,14 @@ export default function ZonePricesPage() {
 
             <section>
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Service</h2>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+              <div className="grid grid-cols-4 gap-2">
                 <button
                   type="button"
                   onClick={() => setCategory(SHOW_ALL)}
-                  className={`rounded-3xl border bg-white p-3 text-center ${showAll ? 'border-blue-300 ring-2 ring-blue-200/70 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}
+                  className={`rounded-2xl border bg-white p-2 text-center ${showAll ? 'border-blue-300 ring-2 ring-blue-200/70 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}
                 >
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-50 text-xs font-extrabold text-blue-700">All</div>
-                  <div className="mt-2 text-xs font-extrabold leading-tight text-gray-900">Show all</div>
+                  <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-gray-50 text-[10px] font-extrabold text-blue-700">All</div>
+                  <div className="mt-1 text-[11px] font-extrabold leading-tight text-gray-900">Show all</div>
                 </button>
                 {visibleCategories.map((item) => {
                   const selected = category === item.name;
@@ -563,16 +564,16 @@ export default function ZonePricesPage() {
                       key={item.name}
                       type="button"
                       onClick={() => setCategory(item.name)}
-                      className={`rounded-3xl border bg-white p-3 text-center ${selected ? 'border-blue-300 ring-2 ring-blue-200/70 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}
+                      className={`rounded-2xl border bg-white p-2 text-center ${selected ? 'border-blue-300 ring-2 ring-blue-200/70 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}
                     >
-                      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-50">
+                      <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-gray-50">
                         {item.icon ? (
-                          <img src={item.icon} alt="" className="h-8 w-8 object-contain" style={{ mixBlendMode: 'darken' }} />
+                          <img src={item.icon} alt="" className="h-5 w-5 object-contain" style={{ mixBlendMode: 'darken' }} />
                         ) : (
-                          <span className="text-xs font-bold text-gray-500">{shortCategory(item.name).slice(0, 2)}</span>
+                          <span className="text-[10px] font-bold text-gray-500">{shortCategory(item.name).slice(0, 2)}</span>
                         )}
                       </div>
-                      <div className="mt-2 line-clamp-2 text-xs font-extrabold leading-tight text-gray-900">{shortCategory(item.name)}</div>
+                      <div className="mt-1 line-clamp-2 text-[11px] font-extrabold leading-tight text-gray-900">{shortCategory(item.name)}</div>
                     </button>
                   );
                 })}
@@ -587,7 +588,7 @@ export default function ZonePricesPage() {
                   <div className="text-xs text-gray-500">{activeZone ? zoneLabel(activeZone) : ''}</div>
                 </div>
                 <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-                <div className="relative" ref={exportRef}>
+                {canExport ? <div className="relative" ref={exportRef}>
                   <button
                     type="button"
                     onClick={() => setExportOpen((open) => !open)}
@@ -633,7 +634,7 @@ export default function ZonePricesPage() {
                       </div>
                     </div>
                   ) : null}
-                </div>
+                </div> : null}
                 <label className="relative w-full sm:w-56">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input

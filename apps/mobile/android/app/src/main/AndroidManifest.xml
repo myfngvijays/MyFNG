@@ -26,14 +26,14 @@
     <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:value="@mipmap/ic_launcher" tools:replace="android:value"/>
     <meta-data android:name="com.google.android.geo.API_KEY" android:value="${GOOGLE_MAPS_API_KEY}"/>
     <meta-data android:name="com.facebook.sdk.ApplicationId" android:value="@string/facebook_app_id"/>
-    <meta-data android:name="com.facebook.sdk.AutoLogAppEventsEnabled" android:value="true"/>
+    <meta-data android:name="com.facebook.sdk.AutoLogAppEventsEnabled" android:value="false"/>
     <meta-data android:name="com.facebook.sdk.AdvertiserIDCollectionEnabled" android:value="true"/>
-    <meta-data android:name="com.facebook.sdk.AutoInitEnabled" android:value="true"/>
+    <meta-data android:name="com.facebook.sdk.AutoInitEnabled" android:value="false"/>
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_SDK_VERSION" android:value="50.0.0"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
-    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize" android:launchMode="singleTask" android:windowSoftInputMode="adjustPan" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait" android:resizeableActivity="true">
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize" android:launchMode="singleTask" android:windowSoftInputMode="adjustPan" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait" android:resizeableActivity="true" android:enableOnBackInvokedCallback="false">
       <property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true" />
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

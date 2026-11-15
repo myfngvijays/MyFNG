@@ -40,11 +40,17 @@ public class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate, Mes
     #endif
 
     #if canImport(FBSDKCoreKit)
-    ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
-    Settings.shared.isAutoLogAppEventsEnabled = true
-    Settings.shared.isAdvertiserIDCollectionEnabled = true
-    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-      self.enableFacebookAdvertiserTracking()
+    // SDK 13+ throws on launch when FacebookClientToken is missing. Skip init so the app still opens.
+    let facebookClientToken = (Bundle.main.object(forInfoDictionaryKey: "FacebookClientToken") as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !facebookClientToken.isEmpty {
+      Settings.shared.clientToken = facebookClientToken
+      Settings.shared.isAutoLogAppEventsEnabled = true
+      Settings.shared.isAdvertiserIDCollectionEnabled = true
+      ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+        self.enableFacebookAdvertiserTracking()
+      }
     }
     #endif
 

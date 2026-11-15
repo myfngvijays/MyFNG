@@ -79,8 +79,10 @@
     <string>2662238024237088</string>
     <key>FacebookDisplayName</key>
     <string>MyFNG</string>
+    <key>FacebookAutoInitEnabled</key>
+    <false/>
     <key>FacebookAutoLogAppEventsEnabled</key>
-    <true/>
+    <false/>
     <key>FacebookAdvertiserIDCollectionEnabled</key>
     <true/>
     <key>NSUserTrackingUsageDescription</key>

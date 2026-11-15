@@ -4,12 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
-import { Calendar, Clock, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Eye } from 'lucide-react';
+import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { formatDateTime } from "@/lib/utils";
 import { istYmd, istDayBounds } from '@/lib/telecaller/crmDateRange';
-import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 function formatYmdShort(ymd: string) {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -70,7 +68,6 @@ export default function FollowUpsPage() {
   const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
   const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
   const [rangeTap, setRangeTap] = useState<'start' | 'end'>('start');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchFollowUps();
@@ -475,163 +472,99 @@ export default function FollowUpsPage() {
         </div>
 
         {/* Follow-ups — single-column list (leads-style rows) */}
-        <div className="space-y-2">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
           {filteredFollowUps.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-white py-10 text-center">
+            <div className="py-10 text-center">
               <Calendar className="w-10 h-10 text-gray-400 mx-auto mb-3" />
               <p className="text-gray-500 text-sm">No follow-ups found</p>
             </div>
           ) : (
-            filteredFollowUps.map((followUp) => {
+            filteredFollowUps.map((followUp, index) => {
               const timeStatus = getTimeStatus(followUp.scheduled_time);
-              const expanded = expandedId === followUp.id;
-
+              const pending = followUp.status === 'PENDING';
+              const pill =
+                followUp.status === 'COMPLETED'
+                  ? 'Done'
+                  : followUp.status === 'CANCELLED'
+                    ? 'Cancelled'
+                    : timeStatus.label;
+              const pillClass =
+                followUp.status === 'COMPLETED'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : followUp.status === 'CANCELLED'
+                    ? 'bg-slate-100 text-slate-500'
+                    : timeStatus.color === 'red'
+                      ? 'bg-red-100 text-red-700'
+                      : timeStatus.color === 'orange'
+                        ? 'bg-orange-100 text-orange-700'
+                        : timeStatus.color === 'blue'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-emerald-50 text-emerald-700';
               return (
                 <div
                   key={followUp.id}
-                  className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:px-4 shadow-sm hover:bg-slate-50/80 transition"
+                  className={`flex items-center gap-2 px-3 py-2.5 ${
+                    index < filteredFollowUps.length - 1 ? 'border-b border-slate-100' : ''
+                  }`}
                 >
-                  <button
-                    type="button"
-                    className="flex w-full min-w-0 items-center gap-3 text-left"
-                    onClick={() => setExpandedId(expanded ? null : followUp.id)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <h3 className="truncate text-sm font-bold text-[#023D95] sm:text-base">
-                          {followUp.lead?.customer_name || 'Unknown'}
-                        </h3>
-                        <span
-                          className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            timeStatus.color === 'red'
-                              ? 'bg-red-100 text-red-700'
-                              : timeStatus.color === 'orange'
-                                ? 'bg-orange-100 text-orange-700'
-                                : timeStatus.color === 'blue'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
-                          {timeStatus.label}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-slate-600">
-                        {followUp.lead?.customer_phone || '—'}
-                      </p>
-                    </div>
-                    {expanded ? (
-                      <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-                    )}
-                  </button>
-                  {expanded ? (
-                  <div className="mt-2 min-w-0 border-t border-slate-100 pt-2">
-                    <div className="mb-2 flex min-w-0 flex-col gap-0.5 text-xs text-slate-700">
-                      <span className="inline-flex min-w-0 items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        <span className="font-semibold text-slate-500">Type</span>
-                        <span className="truncate">{followUp.follow_up_type}</span>
-                      </span>
-                      <span className="inline-flex min-w-0 items-center gap-1">
-                        <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        <span className="shrink-0 font-semibold text-slate-500">When</span>
-                        <span className="truncate">{formatDateTime(followUp.scheduled_time)}</span>
-                      </span>
-                      {followUp.reason ? (
-                        <span className="min-w-0 text-slate-600" title={followUp.reason}>
-                          <span className="font-semibold text-slate-500">Reason</span>{' '}
-                          {followUp.reason}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
-
-                    {followUp.status === 'PENDING' ? (
-                      <div className="flex flex-row flex-wrap gap-1.5 shrink-0 ml-auto">
-                        {followUp.lead?.customer_phone ? (
-                          <a
-                            href={`tel:${followUp.lead.customer_phone}`}
-                            title="Call"
-                            aria-label="Call"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#004AAD] text-white"
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                          </a>
-                        ) : null}
-                        {followUp.lead?.customer_phone ? (
-                          <button
-                            type="button"
-                            title="WhatsApp"
-                            aria-label="WhatsApp"
-                            onClick={() => {
-                              const phone = String(followUp.lead?.customer_phone || '').replace(/\D/g, '');
-                              if (!phone) return;
-                              window.dispatchEvent(
-                                new CustomEvent('myfng:open-wa-chat', {
-                                  detail: { phone },
-                                }),
-                              );
-                            }}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#25D366] text-white"
-                          >
-                            <WhatsAppIcon className="w-3.5 h-3.5" />
-                          </button>
-                        ) : null}
-                        <Link
-                          href={`${base}/leads/${followUp.lead_id}`}
-                          title="View lead"
-                          aria-label="View lead"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#004AAD] text-[#004AAD]"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </Link>
-                        <button
-                          type="button"
-                          title="Mark done"
-                          aria-label="Mark done"
-                          onClick={() => {
-                            const notes = prompt('Add completion notes (optional):');
-                            if (notes !== null) {
-                              markAsCompleted(followUp.id, notes);
-                            }
-                          }}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500 text-emerald-700"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Cancel"
-                          aria-label="Cancel"
-                          onClick={() => {
-                            if (confirm('Cancel this follow-up?')) {
-                              cancelFollowUp(followUp.id);
-                            }
-                          }}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-400 text-red-600"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 shrink-0 ml-auto text-green-700">
-                        <CheckCircle className="w-4 h-4" />
-                        <p className="text-xs font-semibold">Completed</p>
-                      </div>
-                    )}
-                  </div>
-                  {followUp.context_notes ? (
-                    <p className="mt-1.5 text-xs text-slate-500 italic truncate">{followUp.context_notes}</p>
-                  ) : null}
-                  {followUp.status === 'COMPLETED' && followUp.completion_notes ? (
-                    <p className="mt-1.5 text-xs text-emerald-700 truncate">
-                      Done: {followUp.completion_notes}
-                      {followUp.completed_at ? ` · ${formatDateTime(followUp.completed_at)}` : ''}
+                  <Link href={`${base}/leads/${followUp.lead_id}`} className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {followUp.lead?.customer_name || 'Unknown'}
                     </p>
-                  ) : null}
-                    </div>
-                  ) : null}
+                    <p className="truncate text-xs text-slate-500">
+                      {followUp.lead?.customer_phone || '—'}
+                    </p>
+                    <span className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-[11px] font-bold ${pillClass}`}>
+                      {pill}
+                    </span>
+                  </Link>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {followUp.lead?.customer_phone ? (
+                      <a
+                        href={`tel:${followUp.lead.customer_phone}`}
+                        title="Call"
+                        aria-label="Call"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#004AAD] text-white"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                    <Link
+                      href={`${base}/leads/${followUp.lead_id}`}
+                      title="Open"
+                      aria-label="Open"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#004AAD]"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Link>
+                    {pending ? (
+                      <button
+                        type="button"
+                        title="Mark done"
+                        aria-label="Mark done"
+                        onClick={() => {
+                          const notes = prompt('Add completion notes (optional):');
+                          if (notes !== null) markAsCompleted(followUp.id, notes);
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                    {pending ? (
+                      <button
+                        type="button"
+                        title="Cancel"
+                        aria-label="Cancel"
+                        onClick={() => {
+                          if (confirm('Cancel this follow-up?')) cancelFollowUp(followUp.id);
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-red-600"
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               );
             })

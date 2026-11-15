@@ -25,6 +25,7 @@ import { formatPreferredSlotLabel } from '../../../lib/preferredSlot';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
+import { leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
 import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
 import { parseIds } from '../../../lib/parseIds';
 import {
@@ -331,8 +332,8 @@ const RINGING: CallDisposition = {
 };
 
 const DEFAULT_STATUS_OPTIONS: CallDisposition[] = [
-  { id: 'FRESH', label: 'Fresh', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'RINGING', label: 'Ringing', call_status: 'NO_ANSWER', outcome: null },
+  { id: 'FRESH', label: 'Fresh', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   {
@@ -400,7 +401,7 @@ function activityResultFromLead(data: any): string {
   if (st === 'IN_PROGRESS') return 'IN_SERVICE';
   if (st === 'COMPLETED') return 'SERVICE_DONE';
   if (st === 'REJECTED') return 'LOST';
-  return 'FRESH';
+  return 'RINGING';
 }
 
 export default function TelecallerLeadDetailScreen({
@@ -444,6 +445,7 @@ export default function TelecallerLeadDetailScreen({
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const [pricingItems, setPricingItems] = useState<Array<{ name: string; price: number }>>([]);
   const [couponInput, setCouponInput] = useState('');
+  const [activeCoupons, setActiveCoupons] = useState<Array<{ id: string; code: string; description?: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [sendingPricing, setSendingPricing] = useState(false);
   const [showWaChat, setShowWaChat] = useState(false);
@@ -470,7 +472,7 @@ export default function TelecallerLeadDetailScreen({
   const [profileHistory, setProfileHistory] = useState<any[]>([]);
 
   const [activityData, setActivityData] = useState({
-    result: 'FRESH',
+    result: 'RINGING',
     lostReason: '',
     notes: '',
     date: '',
@@ -485,6 +487,20 @@ export default function TelecallerLeadDetailScreen({
 
   const lastPhoneLookupRef = React.useRef<string>('');
   const activityTouchedRef = React.useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ coupons?: Array<{ id: string; code: string; description?: string }> }>('/api/telecaller/coupons')
+      .then((data) => {
+        if (!cancelled) setActiveCoupons(Array.isArray(data?.coupons) ? data.coupons : []);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveCoupons([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -503,10 +519,8 @@ export default function TelecallerLeadDetailScreen({
             requires_lost_reason:
               Boolean(r.requires_lost_reason) || String(r.code).toUpperCase() === 'LOST',
           }));
-          if (!mapped.some((o) => o.id === 'RINGING')) {
-            mapped.splice(1, 0, RINGING);
-          }
-          if (mapped.length) setStatusOptions(mapped);
+          const withoutRinging = mapped.filter((o) => o.id !== 'RINGING');
+          setStatusOptions([RINGING, ...withoutRinging]);
         }
         const reasons = Array.isArray(data?.lost_reasons) ? data.lost_reasons : [];
         if (!cancelled && reasons.length) {
@@ -1296,9 +1310,11 @@ export default function TelecallerLeadDetailScreen({
         apiFetch<{ items?: any[] }>(
           `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(leadId)}`,
         ),
-        apiFetch<{ items?: any[] }>(
-          `/api/super_admin/app-activity?lead_id=${encodeURIComponent(leadId)}`,
-        ).catch(() => ({ items: [] })),
+        canSeeMlDl
+          ? apiFetch<{ items?: any[] }>(
+              `/api/super_admin/app-activity?lead_id=${encodeURIComponent(leadId)}`,
+            ).catch(() => ({ items: [] }))
+          : Promise.resolve({ items: [] as any[] }),
       ]);
       setTimelineItems(Array.isArray(data?.items) ? data.items : []);
       setAppActivityItems(Array.isArray(appData?.items) ? appData.items : []);
@@ -1891,8 +1907,8 @@ export default function TelecallerLeadDetailScreen({
     );
   };
 
-  const handleApplyCoupon = async () => {
-    const code = couponInput.trim().toUpperCase();
+  const handleApplyCoupon = async (codeOverride?: string) => {
+    const code = String(codeOverride || couponInput).trim().toUpperCase();
     if (!code) {
       Alert.alert('Coupon', 'Enter a coupon code');
       return;
@@ -2012,6 +2028,7 @@ export default function TelecallerLeadDetailScreen({
 
   const headerStatus = resolveLeadDisplayStatus(lead, callLogs);
   const badge = getCallStatusBadge(headerStatus);
+  const headerBg = statusAccentColor(leadStatusKpiColors(headerStatus));
 
   return (
     <KeyboardAvoidingView
@@ -2019,7 +2036,7 @@ export default function TelecallerLeadDetailScreen({
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header with Back Button */}
-      <View style={[styles.headerBar, embedded && styles.headerBarEmbedded]}>
+      <View style={[styles.headerBar, embedded && styles.headerBarEmbedded, { backgroundColor: headerBg }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation?.goBack?.()}
@@ -2056,7 +2073,7 @@ export default function TelecallerLeadDetailScreen({
           )
         }
       >
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: headerBg }]}>
               <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
                 <Text style={styles.headerTitle} numberOfLines={2}>
                   {editing ? editForm.customer_name || lead.customer_name : lead.customer_name}
@@ -2215,6 +2232,20 @@ export default function TelecallerLeadDetailScreen({
               );
             }
             return (
+              <View style={{ gap: 8 }}>
+                {activeCoupons.length > 0 ? (
+                  <View style={styles.couponChipRow}>
+                    {activeCoupons.map((c) => (
+                      <TouchableOpacity
+                        key={c.id || c.code}
+                        style={styles.couponChip}
+                        onPress={() => void handleApplyCoupon(c.code)}
+                      >
+                        <Text style={styles.couponChipText}>{c.code}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
               <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                 <TextInput
                   style={[styles.input, { flex: 1, marginBottom: 0 }]}
@@ -2226,10 +2257,11 @@ export default function TelecallerLeadDetailScreen({
                 />
                 <TouchableOpacity
                   style={[styles.formButton, styles.formButtonPrimary, { flex: 0, paddingHorizontal: 16 }]}
-                  onPress={handleApplyCoupon}
+                  onPress={() => void handleApplyCoupon()}
                 >
                   <Text style={styles.formButtonTextPrimary}>Apply</Text>
                 </TouchableOpacity>
+              </View>
               </View>
             );
           })()}
@@ -2472,12 +2504,15 @@ export default function TelecallerLeadDetailScreen({
           <Text style={styles.sectionTitle}>Lead Overview</Text>
         </View>
         <View style={styles.sectionContent}>
-          <DetailRow icon="pound" label="Lead #" value={lead?.lead_number || '—'} />
-          <DetailRow
-            icon="flag"
-            label="Status"
-            value={String(lead?.status || '—').replace(/_/g, ' ')}
-          />
+          <View style={styles.detailGrid}>
+            <DetailRow icon="pound" label="Lead #" value={lead?.lead_number || '—'} compact />
+            <DetailRow
+              icon="flag"
+              label="Status"
+              value={String(lead?.status || '—').replace(/_/g, ' ')}
+              compact
+            />
+          </View>
           {editing ? (
             <View style={{ marginBottom: 10 }}>
               <Text style={styles.fieldCaption}>Priority</Text>
@@ -2974,43 +3009,21 @@ export default function TelecallerLeadDetailScreen({
                 title=""
               />
 
-              <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Call result</Text>
-              <Text style={styles.formLabel}>Quick</Text>
-              <View style={styles.chipRow}>
+              <View style={styles.callResultRow}>
+                <Text style={[styles.fieldCaption, styles.callResultLabel]}>Call result</Text>
                 <TouchableOpacity
-                  style={[styles.chip, activityData.result === 'RINGING' && styles.chipActive]}
-                  onPress={() =>
-                    setActivityData({
-                      ...activityData,
-                      result: 'RINGING',
-                      lostReason: '',
-                    })
-                  }
+                  style={[styles.selectBtn, styles.callResultStatus]}
+                  onPress={() => {
+                    setShowLostMenu(false);
+                    setShowStatusMenu(true);
+                  }}
                 >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      activityData.result === 'RINGING' && styles.chipTextActive,
-                    ]}
-                  >
-                    Ringing
+                  <Text style={styles.selectBtnText} numberOfLines={1}>
+                    {selectedResult.label}
                   </Text>
+                  <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
-
-              <Text style={styles.formLabel}>Status</Text>
-              <TouchableOpacity
-                style={styles.selectBtn}
-                onPress={() => {
-                  setShowLostMenu(false);
-                  setShowStatusMenu(true);
-                }}
-              >
-                <Text style={styles.selectBtnText}>
-                  {selectedResult.label}
-                </Text>
-                <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
-              </TouchableOpacity>
 
               {activityData.result === 'LOST' || selectedResult.requires_lost_reason ? (
                 <>
@@ -3111,6 +3124,20 @@ export default function TelecallerLeadDetailScreen({
                       );
                     }
                     return (
+                      <View style={{ gap: 8 }}>
+                        {activeCoupons.length > 0 ? (
+                          <View style={styles.couponChipRow}>
+                            {activeCoupons.map((c) => (
+                              <TouchableOpacity
+                                key={c.id || c.code}
+                                style={styles.couponChip}
+                                onPress={() => void handleApplyCoupon(c.code)}
+                              >
+                                <Text style={styles.couponChipText}>{c.code}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        ) : null}
                       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                         <TextInput
                           style={[styles.input, { flex: 1, marginBottom: 0 }]}
@@ -3126,10 +3153,11 @@ export default function TelecallerLeadDetailScreen({
                             styles.formButtonPrimary,
                             { flex: 0, paddingHorizontal: 16 },
                           ]}
-                          onPress={handleApplyCoupon}
+                          onPress={() => void handleApplyCoupon()}
                         >
                           <Text style={styles.formButtonTextPrimary}>Apply</Text>
                         </TouchableOpacity>
+                      </View>
                       </View>
                     );
                   })()}
@@ -3251,29 +3279,6 @@ export default function TelecallerLeadDetailScreen({
         {!editing && showActivityForm ? (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>Log Call</Text>
-
-            <Text style={styles.formLabel}>Quick</Text>
-            <View style={styles.chipRow}>
-              <TouchableOpacity
-                style={[styles.chip, activityData.result === 'RINGING' && styles.chipActive]}
-                onPress={() =>
-                  setActivityData({
-                    ...activityData,
-                    result: 'RINGING',
-                    lostReason: '',
-                  })
-                }
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    activityData.result === 'RINGING' && styles.chipTextActive,
-                  ]}
-                >
-                  Ringing
-                </Text>
-              </TouchableOpacity>
-            </View>
 
             <Text style={styles.formLabel}>Status</Text>
             <TouchableOpacity
@@ -3435,6 +3440,7 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
+      {canSeeMlDl ? (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>
@@ -3471,6 +3477,7 @@ export default function TelecallerLeadDetailScreen({
           </>
         )}
       </View>
+      ) : null}
 
       {/* Workshop Info */}
       {lead.workshop && (
@@ -3499,6 +3506,9 @@ export default function TelecallerLeadDetailScreen({
                   result: opt.id,
                   lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? activityData.lostReason : '',
                 });
+                if (opt.id === 'BOOKING_CONFIRMED') {
+                  setEditForm((prev) => ({ ...prev, pickup_required: true }));
+                }
                 setShowStatusMenu(false);
               }}
             >
@@ -4478,6 +4488,24 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 2,
   },
+  callResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  callResultLabel: { marginTop: 0, marginBottom: 0 },
+  callResultStatus: { flex: 1, marginBottom: 0, paddingVertical: 8 },
+  couponChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  couponChip: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  couponChipText: { color: COLORS.primary, fontWeight: '800', fontSize: 12 },
   mutedValue: {
     fontSize: 13,
     color: COLORS.textSecondary,

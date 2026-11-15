@@ -16,17 +16,21 @@ export type CrmPickupVisitValue = {
   workshop_name?: string;
 };
 
-const TIME_SLOTS = Array.from({ length: 9 }, (_, i) => {
-  const hour = 9 + i;
+const TIME_SLOTS = Array.from({ length: 6 }, (_, i) => {
+  const hour = 10 + i;
   const time24 = `${String(hour).padStart(2, '0')}:00`;
   const nextHour = hour + 1;
   const startH = hour === 12 ? 12 : hour > 12 ? hour - 12 : hour;
   const startSuffix = hour >= 12 ? 'PM' : 'AM';
   const endH = nextHour === 12 ? 12 : nextHour > 12 ? nextHour - 12 : nextHour;
   const endSuffix = nextHour >= 12 ? 'PM' : 'AM';
+  const label =
+    startSuffix === endSuffix
+      ? `${startH}–${endH} ${endSuffix}`
+      : `${startH} ${startSuffix}–${endH} ${endSuffix}`;
   return {
     value: time24,
-    label: `${startH} ${startSuffix} - ${endH} ${endSuffix}`,
+    label,
   };
 });
 
@@ -309,7 +313,7 @@ export default function CrmPickupVisitStep({
             {pickupRequired ? 'Pickup Time' : 'Visit Time'}
             {reqMark}
           </label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2">
             {slots.map((slot) => {
               const past = isTimeSlotPastForDate(slot.value, value.pickup_date, todayStr);
               const active = value.pickup_time === slot.value;
@@ -319,7 +323,7 @@ export default function CrmPickupVisitStep({
                   type="button"
                   disabled={past}
                   onClick={() => onChange({ pickup_time: slot.value })}
-                  className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`whitespace-nowrap rounded-xl border px-1 py-2.5 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                     active
                       ? 'border-[#004AAD] bg-[#004AAD] text-white'
                       : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-[#004AAD]/40'

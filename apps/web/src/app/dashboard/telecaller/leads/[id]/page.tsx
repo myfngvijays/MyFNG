@@ -25,6 +25,7 @@ import {
 import { redactLeadSourceForTelecaller } from '@/lib/telecaller/redactLeadSource';
 import { activityLooksLikeRinging, parseCallDisposition } from '@/lib/telecaller/callDisposition';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import { useAuthStore } from '@/store/authStore';
 import { parseSecondCar, secondCarLabel } from '@/lib/telecaller/crmSecondCar';
 import { parseReferredBy, referredByLabel } from '@/lib/telecaller/crmLeadReference';
 import { requestClickToCall } from '@/lib/telecaller/clickToCall';
@@ -45,6 +46,16 @@ export function LeadDetailContent({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
+  const authRole = useAuthStore((s) => s.role);
+  const authProfile = useAuthStore((s) => s.userProfile);
+  const roleCode = String(
+    authRole || authProfile?.role?.role_code || authProfile?.roles?.role_code || '',
+  ).toUpperCase();
+  const canSeeAppActivity =
+    isLeadManager ||
+    roleCode === 'LEAD_MANAGER' ||
+    roleCode === 'SUPER_ADMIN' ||
+    roleCode === 'SUB_ADMIN';
   const leadId = panelLeadId || (params?.id as string);
   const isPanel = Boolean(panelLeadId);
   const isEmbed = isPanel || searchParams?.get('embed') === '1';
@@ -112,10 +123,10 @@ export function LeadDetailContent({
   }
 
   const [callLogData, setCallLogData] = useState({
-    call_status: 'ANSWERED',
+    call_status: 'NO_ANSWER',
     call_duration: '',
-    outcome: 'INFO_COLLECTED',
-    activity: 'FRESH',
+    outcome: null,
+    activity: 'RINGING',
     lost_reason: '',
     notes: ''
   });
@@ -131,6 +142,7 @@ export function LeadDetailContent({
   };
 
   const FALLBACK_ACTIVITY: ActivityOpt[] = [
+    { id: 'RINGING', label: 'Ringing', call_status: 'NO_ANSWER', outcome: null, lead_status: null },
     { id: 'FRESH', label: 'Fresh', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
     { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
     { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
@@ -139,7 +151,6 @@ export function LeadDetailContent({
     { id: 'IN_SERVICE', label: 'In Service', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'IN_PROGRESS' },
     { id: 'SERVICE_DONE', label: 'Service Done', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'COMPLETED' },
     { id: 'LOST', label: 'Lost', call_status: 'ANSWERED', outcome: 'NOT_INTERESTED', lead_status: 'REJECTED', requires_lost_reason: true },
-    { id: 'RINGING', label: 'Ringing / No answer', call_status: 'NO_ANSWER', outcome: null, lead_status: null },
   ];
 
   const [activityOptions, setActivityOptions] = useState<ActivityOpt[]>(FALLBACK_ACTIVITY);
@@ -162,8 +173,7 @@ export function LeadDetailContent({
         if (!res.ok || cancelled) return;
         const rows = Array.isArray(json?.statuses) ? json.statuses : [];
         if (rows.length) {
-          setActivityOptions(
-            rows.map((r: any) => ({
+          const mapped = rows.map((r: any) => ({
               id: String(r.code || '').toUpperCase(),
               label: String(r.name || r.code),
               call_status: String(r.call_status || 'ANSWERED').toUpperCase(),
@@ -171,8 +181,10 @@ export function LeadDetailContent({
               lead_status: r.pipeline_status ? String(r.pipeline_status).toUpperCase() : null,
               requires_lost_reason: Boolean(r.requires_lost_reason) || String(r.code).toUpperCase() === 'LOST',
               requires_follow_up: Boolean(r.requires_follow_up),
-            })),
-          );
+            }));
+          const ringing =
+            mapped.find((o: ActivityOpt) => o.id === 'RINGING') || FALLBACK_ACTIVITY[0];
+          setActivityOptions([ringing, ...mapped.filter((o: ActivityOpt) => o.id !== 'RINGING')]);
         }
         const reasons = Array.isArray(json?.lost_reasons) ? json.lost_reasons : [];
         if (reasons.length) {
@@ -426,13 +438,10 @@ export function LeadDetailContent({
         leadId,
       });
       if (!result.ok) {
-        toast.error(result.error || 'Click-to-call failed');
-        if (result.code === 'MISSING_AGENT_PHONE') {
-          window.open(`tel:${lead.customer_phone}`, '_self');
-        }
+        toast.error(result.error || 'Could not send the call to your phone');
         return;
       }
-      toast.success(result.message || 'Call initiated — answer your phone');
+      toast.success(result.message || 'Call sent to your logged-in phone');
     } finally {
       setCalling(false);
     }
@@ -465,10 +474,10 @@ export function LeadDetailContent({
 
       if (res.ok) {
         setCallLogData({
-          call_status: 'ANSWERED',
+          call_status: 'NO_ANSWER',
           call_duration: '',
-          outcome: 'INFO_COLLECTED',
-          activity: 'FRESH',
+          outcome: null,
+          activity: 'RINGING',
           lost_reason: '',
           notes: ''
         });
@@ -798,10 +807,12 @@ export function LeadDetailContent({
                 callLogs={callLogs}
                 refreshKey={timelineRefreshKey}
               />
+              {canSeeAppActivity ? (
               <AppActivityTimeline
                 leadId={leadId}
                 phone={lead.customer_phone ? String(lead.customer_phone) : null}
               />
+              ) : null}
             </div>
           </div>
         ) : (
@@ -1230,10 +1241,12 @@ export function LeadDetailContent({
               callLogs={callLogs}
               refreshKey={timelineRefreshKey}
             />
+            {canSeeAppActivity ? (
             <AppActivityTimeline
               leadId={leadId}
               phone={lead.customer_phone ? String(lead.customer_phone) : null}
             />
+            ) : null}
 
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-2">

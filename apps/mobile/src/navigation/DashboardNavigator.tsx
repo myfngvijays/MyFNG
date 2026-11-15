@@ -1,8 +1,10 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, TouchableOpacity, StyleSheet, BackHandler } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, BackHandler, ToastAndroid, Platform } from 'react-native';
 import { COLORS } from '../constants/theme';
 import { handleAndroidShellBack } from '../lib/androidShellBack';
+import { resolveRoleAccess } from '../config/appVariant';
+import WrongAppScreen from '../screens/WrongAppScreen';
 
 // Import all dashboard screens
 import TelecallerDashboard from '../screens/dashboard/TelecallerDashboard';
@@ -226,6 +228,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     userProfile?.role_name || 
     'User';
 
+  const exitAtRef = React.useRef(0);
   React.useEffect(() => {
     const onHardwareBack = () => {
       if (handleAndroidShellBack()) return true;
@@ -233,15 +236,23 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         navigation.goBack();
         return true;
       }
-      return false;
+      const now = Date.now();
+      if (now - exitAtRef.current < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      exitAtRef.current = now;
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+      }
+      return true;
     };
     const backSub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
     const beforeRemove = navigation?.addListener?.('beforeRemove', (e: any) => {
       const type = String(e?.data?.action?.type || '');
       if (['NAVIGATE', 'REPLACE', 'RESET', 'PUSH', 'JUMP_TO'].includes(type)) return;
-      if (handleAndroidShellBack()) {
-        e.preventDefault();
-      }
+      // Root dashboard pop finishes the Android activity. Stay in the app.
+      e.preventDefault();
     });
     return () => {
       backSub.remove();
@@ -263,6 +274,17 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     </TouchableOpacity>
   );
 
+  const roleAccess = resolveRoleAccess(roleCode);
+  if (roleAccess.kind !== 'allowed') {
+    return (
+      <WrongAppScreen
+        access={roleAccess.kind}
+        roleName={roleName}
+        onLogout={onLogout}
+      />
+    );
+  }
+
   const screenOptions: any = {
     headerRight: () => <LogoutButton />,
     headerShown: false, // Hide React Navigation header
@@ -274,9 +296,10 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
       fontWeight: 'bold' as const,
       fontFamily: 'Poppins',
     },
-    gestureEnabled: true, // Enable swipe back gesture
-    gestureDirection: 'horizontal', // Swipe from left edge
-    animation: 'slide_from_right', // Slide animation
+    gestureEnabled: true,
+    fullScreenGestureEnabled: true,
+    gestureDirection: 'horizontal',
+    animation: 'slide_from_right',
   };
 
   // Telecaller Navigation
