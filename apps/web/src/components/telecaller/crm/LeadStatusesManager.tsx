@@ -13,7 +13,7 @@ export type StatusRow = {
   is_active?: boolean;
   requires_follow_up?: boolean;
   requires_lost_reason?: boolean;
-  stage_group?: 'active' | 'won' | 'lost' | string;
+  stage_group?: 'active' | 'won' | 'lost' | 'other' | string;
 };
 
 type LostReasonRow = {
@@ -61,7 +61,7 @@ function StageChevron({ label }: { label: string }) {
 
 export default function LeadStatusesManager({
   title = 'Lead status',
-  subtitle = 'TeleCRM-style stages — Active / Closed. Lost reasons alag manage.',
+  subtitle = 'TeleCRM-style stages — Active / Closed. Lost and Other items alag manage.',
   helpSlot,
 }: Props) {
   const [statuses, setStatuses] = useState<StatusRow[]>([]);
@@ -85,6 +85,12 @@ export default function LeadStatusesManager({
   const [editingLostId, setEditingLostId] = useState<string | null>(null);
   const [editLostName, setEditLostName] = useState('');
 
+  const [otherReasons, setOtherReasons] = useState<LostReasonRow[]>([]);
+  const [otherAddOpen, setOtherAddOpen] = useState(false);
+  const [otherName, setOtherName] = useState('');
+  const [editingOtherId, setEditingOtherId] = useState<string | null>(null);
+  const [editOtherName, setEditOtherName] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -94,6 +100,7 @@ export default function LeadStatusesManager({
       if (!res.ok) throw new Error(json?.error || 'Failed');
       setStatuses(Array.isArray(json?.statuses) ? json.statuses : []);
       setLostReasons(Array.isArray(json?.lost_reasons) ? json.lost_reasons : []);
+      setOtherReasons(Array.isArray(json?.other_reasons) ? json.other_reasons : []);
       if (json?.max_lost_reasons) setMaxLost(Number(json.max_lost_reasons) || 25);
       setWarning(json?.warning ? String(json.warning) : null);
     } catch (e: any) {
@@ -114,6 +121,7 @@ export default function LeadStatusesManager({
           s.is_active !== false &&
           (s.stage_group || 'active') === 'active' &&
           String(s.code).toUpperCase() !== 'LOST' &&
+          String(s.code).toUpperCase() !== 'OTHER' &&
           String(s.code).toUpperCase() !== 'SERVICE_DONE',
       ),
     [statuses],
@@ -132,7 +140,17 @@ export default function LeadStatusesManager({
       statuses.filter(
         (s) =>
           s.is_active !== false &&
-          ((s.stage_group || '') === 'lost' || String(s.code).toUpperCase() === 'LOST'),
+          ((s.stage_group || '') === 'lost' || String(s.code).toUpperCase() === 'LOST') &&
+          String(s.code).toUpperCase() !== 'OTHER',
+      ),
+    [statuses],
+  );
+  const otherStatuses = useMemo(
+    () =>
+      statuses.filter(
+        (s) =>
+          s.is_active !== false &&
+          ((s.stage_group || '') === 'other' || String(s.code).toUpperCase() === 'OTHER'),
       ),
     [statuses],
   );
@@ -303,6 +321,70 @@ export default function LeadStatusesManager({
     }
   };
 
+  const createOther = async () => {
+    if (!otherName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/lead-manager/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_other_reason', name: otherName.trim() }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Create failed');
+      setOtherName('');
+      setOtherAddOpen(false);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Create failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveOtherEdit = async () => {
+    if (!editingOtherId || !editOtherName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/lead-manager/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_other_reason',
+          id: editingOtherId,
+          name: editOtherName.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Update failed');
+      setEditingOtherId(null);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeOther = async (r: LostReasonRow) => {
+    if (!confirm(`Delete other item "${r.name}"?`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/lead-manager/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_other_reason', id: r.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Delete failed');
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Delete failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const renderStatusRow = (s: StatusRow) => {
     if (editingId === s.id) {
       return (
@@ -404,6 +486,7 @@ export default function LeadStatusesManager({
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-4">
           {/* Active stage */}
           <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
             <StageChevron label="Active stage" />
@@ -446,6 +529,114 @@ export default function LeadStatusesManager({
             ) : null}
             <ul className="space-y-2">{activeStatuses.map(renderStatusRow)}</ul>
           </section>
+
+          <div className="rounded-lg border-2 border-violet-300 overflow-hidden bg-white">
+            <div className="bg-violet-50 px-3 py-2 text-sm font-bold text-violet-800">Other</div>
+            <div className="bg-white p-2 space-y-3">
+              <ul className="space-y-2">{otherStatuses.map(renderStatusRow)}</ul>
+              <div className="border-t border-slate-100 pt-2">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-600">
+                    Other items{otherReasons.length ? ` (${otherReasons.length})` : ''}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setOtherAddOpen(true)}
+                    className="text-xs font-bold text-[#2563EB] hover:underline"
+                  >
+                    + Add
+                  </button>
+                </div>
+                {otherAddOpen ? (
+                  <div className="mb-2 flex gap-2">
+                    <input
+                      className="flex-1 rounded-md border px-2 py-1.5 text-sm"
+                      placeholder="Other item"
+                      value={otherName}
+                      onChange={(e) => setOtherName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && void createOther()}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      disabled={saving || !otherName.trim()}
+                      onClick={() => void createOther()}
+                      className="rounded-md bg-[#004AAD] px-2.5 py-1.5 text-xs font-bold text-white"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOtherAddOpen(false)}
+                      className="rounded-md border px-2 py-1.5 text-xs font-bold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
+                <ul className="divide-y divide-slate-100 rounded-md border border-slate-100">
+                  {otherReasons.map((r) =>
+                    editingOtherId === r.id ? (
+                      <li key={r.id} className="flex gap-2 p-2 bg-blue-50/40">
+                        <input
+                          className="min-w-0 flex-1 rounded border px-2 py-1 text-sm"
+                          value={editOtherName}
+                          onChange={(e) => setEditOtherName(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && void saveOtherEdit()}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void saveOtherEdit()}
+                          className="rounded bg-[#004AAD] px-2 py-1 text-xs font-bold text-white"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingOtherId(null)}
+                          className="rounded border px-2 py-1 text-xs font-bold"
+                        >
+                          Cancel
+                        </button>
+                      </li>
+                    ) : (
+                      <li key={r.id} className="flex items-center gap-2 px-2 py-2 text-sm">
+                        <GripVertical className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                        <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
+                          {r.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingOtherId(r.id);
+                            setEditOtherName(r.name);
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded text-slate-600 hover:bg-slate-100"
+                          title="Edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeOther(r)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-600 hover:bg-rose-50"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ),
+                  )}
+                  {otherReasons.length === 0 ? (
+                    <li className="px-3 py-4 text-center text-xs text-slate-400">
+                      Abhi koi other item nahi. + Add se naya banao.
+                    </li>
+                  ) : null}
+                </ul>
+              </div>
+            </div>
+          </div>
+          </div>
 
           {/* Closed stage */}
           <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm space-y-4">

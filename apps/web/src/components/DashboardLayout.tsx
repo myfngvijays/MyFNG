@@ -859,6 +859,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         },
         { href: '/dashboard/super_admin/lead-tags', icon: <Tag className="w-5 h-5" />, label: 'Lead Tags' },
         { href: '/dashboard/super_admin/lead-statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead Status' },
+        { href: '/dashboard/super_admin/lead-fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead Fields' },
         { href: '/dashboard/super_admin/analytics-hub?section=overview', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics Hub' },
         { href: '/dashboard/super_admin/tracking-scripts', icon: <Code2 className="w-5 h-5" />, label: 'Tracking Scripts' },
         { href: '/dashboard/super_admin/system-monitor', icon: <Shield className="w-5 h-5" />, label: 'System Monitor' },
@@ -974,6 +975,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/lead_manager/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         { href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
         { href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
+        { href: '/dashboard/lead_manager/fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead fields' },
         {
           href: '/dashboard/lead_manager/templates',
           icon: <MessageSquare className="w-5 h-5" />,

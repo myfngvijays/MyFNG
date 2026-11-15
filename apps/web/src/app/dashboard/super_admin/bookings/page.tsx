@@ -69,12 +69,12 @@ import {
 } from '@/lib/chatbot_v2/misaLeadSource';
 import type { MessageTrigger } from '@/lib/enquiry/messageTriggers';
 import {
-  ENQUIRY_CSV_COLUMNS,
   enrichEnquiryMakes,
   enrichEnquiryTags,
-  formatEnquiryTimestamp,
   isValidEnquiryPhone,
   mapEnquiryCsvRows,
+  normalizePhoneDigits,
+  PANEL_PREVIEW_LABELS,
 } from '@/lib/crm/normalizeEnquiryCsv';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 
@@ -159,12 +159,56 @@ const BOOKINGS_TABLE_COLUMNS = [
   { key: 'actualAmount', label: 'Actual Amt', group: 'Payment', onByDefault: false, width: 120 },
   { key: 'paymentMode', label: 'Payment Mode', group: 'Payment', onByDefault: false, width: 120 },
   { key: 'paymentStatus', label: 'Payment Status', group: 'Payment', onByDefault: false, width: 120 },
+  { key: 'lostReason', label: 'Lost Reason', group: 'Imported', onByDefault: false, width: 150 },
+  { key: 'rating', label: 'Rating', group: 'Imported', onByDefault: false, width: 100 },
+  { key: 'assigneeEmail', label: 'Assignee emailid', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'userNotesCount', label: 'User Notes Count', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'packageName', label: 'Package', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'workshop', label: 'Workshop', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'nextFollowupDate', label: 'Next Followup Date', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'alternatePhone', label: 'Alternate Phone', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'leadTag', label: 'LEADTAG', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'packageRateAccess', label: 'packagerateaccess', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'pickupAddress', label: 'PickupAddress', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'leadNumberText', label: 'LeadNumber', group: 'Imported', onByDefault: false, width: 130 },
+  { key: 'reviewPending', label: 'Review Pending', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'serviceDone', label: 'Service Done', group: 'Imported', onByDefault: false, width: 130 },
+  { key: 'repeatCustomer', label: 'Repeat Customer', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'regDate', label: 'REGDATE', group: 'Imported', onByDefault: false, width: 130 },
+  { key: 'feedback', label: 'FEEDBACK', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'followup', label: 'FOLLOWUP', group: 'Imported', onByDefault: false, width: 150 },
+  { key: 'username', label: 'USERNAME', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'estTracking', label: 'esttracking', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'billTracking', label: 'billtracking', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'custEstimateAction', label: 'custEstimateAction', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'shortAddress', label: 'shortAddress', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'custPlanDetailsLink', label: 'custplandetailslink', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'pendingBillsLink', label: 'pendingbillslink', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'leadAssignee', label: 'Lead Assignee', group: 'Imported', onByDefault: false, width: 150 },
+  { key: 'remarkCoordinator', label: 'Remark Cordinator', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'serviceCenterInvoiceLink', label: 'servicecenterinvoicelink', group: 'Imported', onByDefault: false, width: 190 },
+  { key: 'alternateCarNo', label: 'alternate car no', group: 'Imported', onByDefault: false, width: 150 },
+  { key: 'sendWorkshopAddress', label: 'Send Workshop Address', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'authOtpWebsiteLogin', label: 'authotpforwebsitelogin', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'disposition', label: 'Disposition', group: 'Imported', onByDefault: false, width: 150 },
+  { key: 'pincode', label: 'Pincode', group: 'Imported', onByDefault: false, width: 110 },
+  { key: 'dialerId', label: 'DailerID', group: 'Imported', onByDefault: false, width: 130 },
+  { key: 'recordingUrl', label: 'Recording URL', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'interestedDate', label: 'InterestedDate', group: 'Imported', onByDefault: false, width: 140 },
+  { key: 'loanAmount', label: 'LoanAmount', group: 'Imported', onByDefault: false, width: 130 },
+  { key: 'membershipAmount', label: 'Membership Amount', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'createdOn', label: 'Created On', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'modifiedOn', label: 'Modified On', group: 'Imported', onByDefault: false, width: 160 },
+  { key: 'assigneeManagerName', label: 'Assignee Manager name', group: 'Imported', onByDefault: false, width: 180 },
+  { key: 'assigneeManagerEmail', label: 'Assignee Manager emailid', group: 'Imported', onByDefault: false, width: 190 },
+  { key: 'coupon', label: 'Coupon', group: 'Imported', onByDefault: false, width: 120 },
+  { key: 'adminBookingsCount', label: 'Admin Bookings Count', group: 'Imported', onByDefault: false, width: 160 },
 ] as const;
 
 type BookingsTableColumnKey = (typeof BOOKINGS_TABLE_COLUMNS)[number]['key'];
 type BookingsColumnVisibility = Record<BookingsTableColumnKey, boolean>;
 
-const BOOKINGS_COLUMN_GROUPS = ['Core', 'Lead', 'Customer', 'Vehicle', 'Service', 'Campaign', 'Payment'] as const;
+const BOOKINGS_COLUMN_GROUPS = ['Core', 'Lead', 'Customer', 'Vehicle', 'Service', 'Campaign', 'Payment', 'Imported'] as const;
 
 const DEFAULT_BOOKINGS_COLUMNS: BookingsColumnVisibility = BOOKINGS_TABLE_COLUMNS.reduce((acc, col) => {
   acc[col.key] = col.onByDefault;
@@ -276,6 +320,125 @@ function formatTimeOnly(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+}
+
+function textOf(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.map((item) => textOf(item)).filter(Boolean).join(', ');
+  return String(value).trim();
+}
+
+function importedPanelValue(lead: Record<string, any>, key: string, phoneBookingCount = 0): string {
+  const value = importedPanelValueDirect(lead, key, phoneBookingCount);
+  if (value) return value;
+  const label = BOOKINGS_TABLE_COLUMNS.find((col) => col.key === key)?.label || '';
+  return textOf(asRecord(asRecord(lead.meta).import_fields)[label]);
+}
+
+function importedPanelValueDirect(lead: Record<string, any>, key: string, phoneBookingCount = 0): string {
+  const meta = asRecord(lead.meta);
+  const coupon = asRecord(lead.coupon_meta);
+  const second = asRecord(coupon.second_car);
+  const history = Array.isArray(coupon.profile_history) ? coupon.profile_history : [];
+  const tags = Array.isArray(meta.lead_tags) ? meta.lead_tags : Array.isArray(lead.lead_tags) ? lead.lead_tags : [];
+  const status = String(lead.status || '').toUpperCase();
+  const assignee = textOf(lead.assigned_telecaller_name);
+  switch (key) {
+    case 'lostReason':
+      return textOf(coupon.last_lost_reason);
+    case 'rating':
+      return textOf(coupon.rating || meta.rating);
+    case 'assigneeEmail':
+      return textOf(lead.assigned_telecaller_email || meta.assignee_email);
+    case 'userNotesCount':
+      return history.length ? String(history.length) : '';
+    case 'packageName':
+      return textOf(meta.package || meta.plan);
+    case 'workshop':
+      return textOf(lead.workshop?.name || lead.workshop_name || meta.workshop);
+    case 'nextFollowupDate':
+      return lead.next_follow_up_at ? formatDateTime(lead.next_follow_up_at) : '';
+    case 'alternatePhone':
+      return textOf(lead.customer_alternate_phone);
+    case 'leadTag':
+      return textOf(tags);
+    case 'packageRateAccess':
+      return textOf(meta.package_rate_access);
+    case 'pickupAddress':
+      return textOf(lead.pickup_address);
+    case 'leadNumberText':
+      return textOf(lead.lead_number);
+    case 'reviewPending':
+      return textOf(meta.review_pending);
+    case 'serviceDone':
+      return status === 'COMPLETED' ? 'Yes' : '';
+    case 'repeatCustomer':
+      return phoneBookingCount > 1 ? 'Yes' : phoneBookingCount === 1 ? 'No' : '';
+    case 'regDate':
+      return textOf(meta.reg_date || meta.registration_date);
+    case 'feedback':
+      return textOf(coupon.feedback || meta.feedback);
+    case 'followup':
+      return lead.next_follow_up_at ? formatDateTime(lead.next_follow_up_at) : textOf(coupon.last_call_label);
+    case 'username':
+    case 'leadAssignee':
+      return assignee;
+    case 'estTracking':
+      return textOf(meta.est_tracking || meta.esttracking);
+    case 'billTracking':
+      return textOf(meta.bill_tracking || meta.billtracking);
+    case 'custEstimateAction':
+      return textOf(meta.cust_estimate_action);
+    case 'shortAddress':
+      return textOf(meta.short_address || [lead.city, lead.pincode].filter(Boolean).join(' '));
+    case 'custPlanDetailsLink':
+      return textOf(meta.cust_plan_details_link);
+    case 'pendingBillsLink':
+      return textOf(meta.pending_bills_link);
+    case 'remarkCoordinator':
+      return textOf(lead.telecaller_remarks || coupon.telecaller_remarks);
+    case 'serviceCenterInvoiceLink':
+      return textOf(meta.service_center_invoice_link);
+    case 'alternateCarNo':
+      return textOf(second.vehicle_number);
+    case 'sendWorkshopAddress':
+      return textOf(meta.send_workshop_address || meta.workshop_address);
+    case 'authOtpWebsiteLogin':
+      return '';
+    case 'disposition':
+      return textOf(coupon.last_call_label || coupon.telecrm_status);
+    case 'pincode':
+      return textOf(lead.pincode);
+    case 'dialerId':
+      return textOf(meta.dialer_id || meta.dailer_id);
+    case 'recordingUrl':
+      return textOf(lead.recording_url || meta.recording_url);
+    case 'interestedDate':
+      return textOf(meta.interested_date);
+    case 'loanAmount':
+      return textOf(meta.loan_amount);
+    case 'membershipAmount':
+      return textOf(meta.membership_amount || coupon.membership_amount);
+    case 'createdOn':
+      return lead.created_at ? formatDateTime(lead.created_at) : '';
+    case 'modifiedOn':
+      return lead.updated_at ? formatDateTime(lead.updated_at) : '';
+    case 'assigneeManagerName':
+      return textOf(meta.assignee_manager_name);
+    case 'assigneeManagerEmail':
+      return textOf(meta.assignee_manager_email);
+    case 'coupon':
+      return textOf(lead.coupon_display_code || lead.coupon_code);
+    case 'adminBookingsCount':
+      return phoneBookingCount > 0 ? String(phoneBookingCount) : '';
+    default:
+      return '';
+  }
 }
 
 function formatCurrency(value?: number | string | null) {
@@ -843,6 +1006,25 @@ function TelecallerUpdateCell({
               return;
             }
             lostReason = reason.trim();
+          }
+          if (next === 'OTHER') {
+            const reason = window.prompt(
+              'Other item (optional). Leave blank to mark Other only, or type a new item.',
+              '',
+            );
+            if (reason === null) {
+              setSelectKey((k) => k + 1);
+              return;
+            }
+            lostReason = reason.trim() || undefined;
+            if (lostReason) {
+              void fetch('/api/lead-manager/statuses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ action: 'create_other_reason', name: lostReason }),
+              });
+            }
           }
           onChange(next, lostReason);
         }}
@@ -1662,6 +1844,7 @@ function SuperAdminBookingsPage() {
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [visibleColumns, setVisibleColumns] = useState<BookingsColumnVisibility>(DEFAULT_BOOKINGS_COLUMNS);
+  const [customFields, setCustomFields] = useState<Array<{ id: string; name: string }>>([]);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnsQuery, setColumnsQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
@@ -1676,6 +1859,20 @@ function SuperAdminBookingsPage() {
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState<{
+    loading?: boolean;
+    error?: string;
+    file_phones: number;
+    matched: number;
+    fresh: number;
+    panel_total: number;
+    panel_kept: number;
+  } | null>(null);
+  const [overwriteArmed, setOverwriteArmed] = useState(false);
+  const [csvPreviewPage, setCsvPreviewPage] = useState(1);
+  const [uploadProgress, setUploadProgress] = useState('');
+  const [uploadDone, setUploadDone] = useState(0);
+  const [uploadError, setUploadError] = useState('');
   const [uploadResult, setUploadResult] = useState<{
     inserted: number;
     updated?: number;
@@ -1685,8 +1882,6 @@ function SuperAdminBookingsPage() {
     created_assignees?: string[];
     errors?: string[];
   } | null>(null);
-
-  const CSV_COLUMNS = ENQUIRY_CSV_COLUMNS;
 
   const splitCsvLine = (line: string, sep: string): string[] => {
     const fields: string[] = [];
@@ -1752,6 +1947,8 @@ function SuperAdminBookingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadResult(null);
+    setOverwriteArmed(false);
+    setCsvPreviewPage(1);
     setCsvFileName(file.name);
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -1784,48 +1981,38 @@ function SuperAdminBookingsPage() {
     if (csvRows.length === 0) return;
     setUploading(true);
     setUploadResult(null);
+    setUploadError('');
+    setUploadDone(0);
+    setUploadProgress(`Uploading 0 / ${csvRows.length}`);
 
     const CHUNK = 2000;
-    let totalInserted = 0;
-    let totalUpdated = 0;
-    let totalReminders = 0;
-    let totalSkipped = 0;
-    const createdAssignees: string[] = [];
-    const allErrors: string[] = [];
 
     try {
       for (let i = 0; i < csvRows.length; i += CHUNK) {
         const chunk = csvRows.slice(i, i + CHUNK);
+        const batchEnd = Math.min(i + chunk.length, csvRows.length);
+        setUploadDone(i);
+        setUploadProgress(`Queue mein bhej rahe hain ${batchEnd} / ${csvRows.length}`);
         const res = await fetch('/api/crm/enquiries/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: chunk }),
+          body: JSON.stringify({
+            rows: chunk,
+            overwrite: true,
+            queue: true,
+            reset: i === 0,
+            final: batchEnd >= csvRows.length,
+          }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Upload failed');
-        totalInserted += json.inserted || 0;
-        totalUpdated += json.updated || 0;
-        totalReminders += json.reminders || 0;
-        totalSkipped += json.skipped || 0;
-        if (Array.isArray(json.created_assignees)) createdAssignees.push(...json.created_assignees);
-        if (json.errors) allErrors.push(...json.errors);
       }
-
-      const result = {
-        inserted: totalInserted,
-        updated: totalUpdated,
-        reminders: totalReminders,
-        skipped: totalSkipped,
-        total: csvRows.length,
-        created_assignees: createdAssignees.length ? createdAssignees : undefined,
-        errors: allErrors.length > 0 ? allErrors : undefined,
-      };
-      setUploadResult(result);
-      toast.success(`${totalInserted} new · ${totalUpdated} updated in Bookings & Leads`);
+      setUploadProgress('Server queue mein chal raha hai. Menu badloge tab bhi chalega.');
     } catch (err: any) {
-      toast.error(err.message || 'Upload failed');
-    } finally {
+      const message = err.message || 'Upload failed';
+      setUploadError(message);
       setUploading(false);
+      toast.error(message);
     }
   };
 
@@ -1833,7 +2020,119 @@ function SuperAdminBookingsPage() {
     setCsvRows([]);
     setCsvFileName('');
     setUploadResult(null);
+    setUploadPreview(null);
+    setOverwriteArmed(false);
+    setCsvPreviewPage(1);
   };
+
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      try {
+        const res = await fetch('/api/crm/enquiries/upload');
+        const json = await res.json();
+        const job = json?.job;
+        if (stop || !job || job.status === 'idle') return;
+        if (job.status === 'running' || job.status === 'collecting') {
+          setUploading(true);
+          setUploadDone(Number(job.done || 0));
+          const total = Number(job.total || 0);
+          setUploadProgress(
+            job.status === 'collecting'
+              ? `Queue mein ${job.received || 0} rows`
+              : `Uploading ${job.done || 0} / ${total}`,
+          );
+          return;
+        }
+        if (job.status === 'done') {
+          setUploading(false);
+          setUploadDone(Number(job.total || 0));
+          setUploadProgress('');
+          setUploadResult((prev) => prev || {
+            inserted: Number(job.inserted || 0),
+            updated: Number(job.updated || 0),
+            skipped: 0,
+            total: Number(job.total || 0),
+          });
+          return;
+        }
+        if (job.status === 'error') {
+          setUploading(false);
+          setUploadError(String(job.error || 'Upload failed'));
+        }
+      } catch {
+        /* keep the last status */
+      }
+    };
+    const timer = setInterval(() => void tick(), 2000);
+    void tick();
+    return () => {
+      stop = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!csvRows.length) {
+      setUploadPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const phones = csvRows.map((row) => normalizePhoneDigits(row.phone_no)).filter(Boolean);
+    setUploadPreview({
+      loading: true,
+      file_phones: phones.length,
+      matched: 0,
+      fresh: 0,
+      panel_total: 0,
+      panel_kept: 0,
+    });
+    void fetch('/api/crm/enquiries/upload/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phones }),
+    })
+      .then((res) => res.json().then((json) => ({ ok: res.ok, json })))
+      .then(({ ok, json }) => {
+        if (cancelled) return;
+        if (!ok) {
+          setUploadPreview({
+            loading: false,
+            error: json?.error || 'Could not check existing leads',
+            file_phones: phones.length,
+            matched: 0,
+            fresh: phones.length,
+            panel_total: 0,
+            panel_kept: 0,
+          });
+          return;
+        }
+        setUploadPreview({
+          loading: false,
+          file_phones: Number(json.file_phones || 0),
+          matched: Number(json.matched || 0),
+          fresh: Number(json.fresh || 0),
+          panel_total: Number(json.panel_total || 0),
+          panel_kept: Number(json.panel_kept || 0),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUploadPreview({
+            loading: false,
+            error: 'Could not check existing leads',
+            file_phones: phones.length,
+            matched: 0,
+            fresh: phones.length,
+            panel_total: 0,
+            panel_kept: 0,
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [csvRows]);
 
   const assigneeOptions = useMemo(() => {
     const names = new Set<string>();
@@ -2016,7 +2315,17 @@ function SuperAdminBookingsPage() {
     setPhoneBookingsOpen(true);
   };
 
-  const serviceLeadOverview = useMemo(() => computeServiceLeadOverview(displayedServiceLeads), [displayedServiceLeads]);
+  const overviewSourceLeads = useMemo(() => {
+    if (!chartDrill) return baseFilteredServiceLeads;
+    return baseFilteredServiceLeads.filter((lead) =>
+      leadMatchesChartBucket(lead, chartDrill.dimension, chartDrill.key, baseFilteredServiceLeads),
+    );
+  }, [baseFilteredServiceLeads, chartDrill]);
+
+  const serviceLeadOverview = useMemo(
+    () => computeServiceLeadOverview(overviewSourceLeads),
+    [overviewSourceLeads],
+  );
 
   const totalPages = Math.max(1, Math.ceil(displayedServiceLeads.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
@@ -2044,6 +2353,10 @@ function SuperAdminBookingsPage() {
 
   useEffect(() => {
     setVisibleColumns(loadBookingsColumnVisibility());
+    void fetch('/api/lead-manager/fields')
+      .then((res) => res.json())
+      .then((json) => setCustomFields(Array.isArray(json?.fields) ? json.fields : []))
+      .catch(() => setCustomFields([]));
   }, []);
 
   useEffect(() => {
@@ -2646,7 +2959,7 @@ function SuperAdminBookingsPage() {
   ) => {
     e?.stopPropagation();
     if (!lead?.id) return;
-    if (resolveAdminCrmStatusId(lead) === statusId && statusId !== 'LOST') return;
+    if (resolveAdminCrmStatusId(lead) === statusId && statusId !== 'LOST' && statusId !== 'OTHER') return;
 
     setStatusUpdatingId(`crm:${lead.id}`);
     try {
@@ -3110,6 +3423,25 @@ function SuperAdminBookingsPage() {
                               </div>
                             );
                           })}
+                          {customFields.length > 0 ? (
+                            <div>
+                              <p className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                                Extra fields
+                              </p>
+                              <div className="space-y-0.5">
+                                {customFields
+                                  .filter((field) => {
+                                    const q = columnsQuery.trim().toLowerCase();
+                                    return !q || field.name.toLowerCase().includes(q);
+                                  })
+                                  .map((field) => (
+                                    <p key={field.id} className="px-2 py-1.5 text-sm font-medium text-gray-700">
+                                      {field.name}
+                                    </p>
+                                  ))}
+                              </div>
+                            </div>
+                          ) : null}
                           {BOOKINGS_TABLE_COLUMNS.every((col) => {
                             const q = columnsQuery.trim().toLowerCase();
                             if (!q) return false;
@@ -3659,31 +3991,86 @@ function SuperAdminBookingsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={handleUpload}
-                        disabled={uploading}
+                        onClick={() => {
+                          if (uploadPreview?.loading) return;
+                          if ((uploadPreview?.matched || 0) > 0 && !overwriteArmed) {
+                            setOverwriteArmed(true);
+                            return;
+                          }
+                          void handleUpload();
+                        }}
+                        disabled={uploading || !uploadPreview || Boolean(uploadPreview.loading)}
                         className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                       >
                         {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                        {uploading ? 'Uploading...' : 'Upload to Database'}
+                        {uploading
+                          ? uploadProgress || 'Uploading...'
+                          : !uploadPreview || uploadPreview.loading
+                            ? 'Checking matches...'
+                            : overwriteArmed
+                              ? `Yes, overwrite ${uploadPreview?.matched || 0} and upload`
+                              : 'Upload to Database'}
                       </button>
                     </div>
                   </div>
+
+                  {uploading ? (
+                    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-blue-950">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {uploadProgress || 'Uploading...'}
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-blue-100">
+                        <div
+                          className="h-full bg-blue-600 transition-all"
+                          style={{ width: `${csvRows.length ? Math.round((uploadDone / csvRows.length) * 100) : 0}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-blue-800">
+                        {csvRows.length ? Math.round((uploadDone / csvRows.length) * 100) : 0}% complete. Page band mat karna.
+                      </p>
+                    </div>
+                  ) : null}
 
                   {(() => {
                     const badPhones = csvRows.filter((r) => !isValidEnquiryPhone(r.phone_no));
                     if (!badPhones.length) return null;
                     return (
                       <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        {badPhones.length} row{badPhones.length > 1 ? 's' : ''} have invalid phone
-                        {badPhones.slice(0, 3).map((r) => (
-                          <span key={`${r.name}-${r.phone_no}`}>
-                            {' '}· {r.name || 'row'}: <span className="font-mono">{r.phone_no || '(empty)'}</span> ({String(r.phone_no || '').length} digits)
-                          </span>
-                        ))}
-                        . Need 10-digit Indian mobile (starts 6–9), or 91 + 10 digits. Excel Phone column should be Text.
+                        <p className="font-semibold">
+                          {badPhones.length} rows will be skipped. Phone is empty or not a 10-digit mobile.
+                        </p>
+                        <p className="mt-1">
+                          Upload uses only rows with a valid Phone. These blank rows are not an upload crash. Excel Phone column should be Text, 10 digits starting 6–9, or 91 + 10 digits.
+                        </p>
                       </div>
                     );
                   })()}
+
+                  {uploadPreview && !uploadPreview.loading ? (
+                    <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${overwriteArmed ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-blue-200 bg-blue-50 text-blue-950'}`}>
+                      <p className="font-semibold">
+                        File numbers: {uploadPreview.file_phones}. Already in panel: {uploadPreview.matched}. New: {uploadPreview.fresh}.
+                      </p>
+                      <p className="mt-1">
+                        Old panel leads not in this file: {uploadPreview.panel_kept}. These stay.
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        Total after upload: {uploadPreview.file_phones + uploadPreview.panel_kept} ({uploadPreview.file_phones} file + {uploadPreview.panel_kept} old).
+                      </p>
+                      {uploadPreview.matched > 0 ? (
+                        <p className="mt-1">
+                          {overwriteArmed
+                            ? `OK dabane pe ye ${uploadPreview.matched} numbers overwrite honge. Khali cell purani value nahi mitaayega.`
+                            : 'Overwrite tabhi hoga jab aap next button pe OK doge.'}
+                        </p>
+                      ) : (
+                        <p className="mt-1">Koi matching number nahi. Sirf naye leads add honge.</p>
+                      )}
+                      {uploadPreview.error ? <p className="mt-1 text-red-700">{uploadPreview.error}</p> : null}
+                      {uploadError ? <p className="mt-1 font-semibold text-red-700">Upload failed: {uploadError}</p> : null}
+                    </div>
+                  ) : null}
 
                   {uploadResult && (
                     <div className={`flex items-start gap-3 p-4 rounded-xl mb-4 ${uploadResult.errors ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
@@ -3713,48 +4100,81 @@ function SuperAdminBookingsPage() {
                   )}
 
                   {/* Preview Table */}
-                  <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
-                          {CSV_COLUMNS.map((col) => (
-                            <th key={col} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {csvRows.slice(0, 100).map((row, idx) => (
-                          <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
-                            {CSV_COLUMNS.map((col) => {
-                              const raw = row[col] || '';
-                              const display =
-                                (col === 'created_at' || col === 'updated_at' || col === 'next_followup_at') && raw
-                                  ? formatEnquiryTimestamp(raw)
-                                  : raw;
-                              const invalidPhone = col === 'phone_no' && !isValidEnquiryPhone(row.phone_no);
-                              return (
-                                <td
-                                  key={col}
-                                  className={`px-3 py-2 whitespace-nowrap max-w-[220px] truncate ${
-                                    invalidPhone ? 'text-red-600 font-semibold' : 'text-gray-700'
-                                  }`}
-                                >
-                                  {display || <span className="text-gray-300">-</span>}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {csvRows.length > 100 && (
-                      <div className="text-center py-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-200">
-                        Showing first 100 of {csvRows.length} rows
+                  {(() => {
+                    const pageSize = 100;
+                    const pageCount = Math.max(1, Math.ceil(csvRows.length / pageSize));
+                    const page = Math.min(csvPreviewPage, pageCount);
+                    const start = (page - 1) * pageSize;
+                    const pageRows = csvRows.slice(start, start + pageSize);
+                    const readField = (row: CsvRow, label: string) => {
+                      try {
+                        const bag = JSON.parse(row.import_fields || '{}') as Record<string, string>;
+                        return String(bag[label] || '').trim();
+                      } catch {
+                        return '';
+                      }
+                    };
+                    return (
+                      <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
+                              {PANEL_PREVIEW_LABELS.map((label) => (
+                                <th key={label} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pageRows.map((row, idx) => (
+                              <tr key={start + idx} className="border-b border-gray-100 hover:bg-gray-50">
+                                <td className="px-3 py-2 text-gray-400 text-xs">{start + idx + 1}</td>
+                                {PANEL_PREVIEW_LABELS.map((label) => {
+                                  const display = readField(row, label);
+                                  const invalidPhone = label === 'Phone' && !isValidEnquiryPhone(row.phone_no);
+                                  return (
+                                    <td
+                                      key={label}
+                                      className={`px-3 py-2 whitespace-nowrap max-w-[220px] truncate ${
+                                        invalidPhone ? 'text-red-600 font-semibold' : 'text-gray-700'
+                                      }`}
+                                      title={display}
+                                    >
+                                      {display || <span className="text-gray-300">-</span>}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-gray-600 bg-gray-50 border-t border-gray-200">
+                          <span>
+                            Showing {csvRows.length ? start + 1 : 0}–{Math.min(start + pageSize, csvRows.length)} of {csvRows.length} rows · {PANEL_PREVIEW_LABELS.length} fields
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={page <= 1}
+                              onClick={() => setCsvPreviewPage(page - 1)}
+                              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 font-semibold disabled:opacity-40"
+                            >
+                              Prev
+                            </button>
+                            <span>Page {page} / {pageCount}</span>
+                            <button
+                              type="button"
+                              disabled={page >= pageCount}
+                              onClick={() => setCsvPreviewPage(page + 1)}
+                              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 font-semibold disabled:opacity-40"
+                            >
+                              Next
+                            </button>
+                          </span>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -3853,6 +4273,12 @@ function SuperAdminBookingsPage() {
                       {showCol('actualAmount') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Actual Amt</th> : null}
                       {showCol('paymentMode') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pay Mode</th> : null}
                       {showCol('paymentStatus') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pay Status</th> : null}
+                      {BOOKINGS_TABLE_COLUMNS.filter((col) => col.group === 'Imported' && showCol(col.key)).map((col) => (
+                        <th key={col.key} className="px-3 py-3 whitespace-nowrap w-[140px]">{col.label}</th>
+                      ))}
+                      {customFields.map((field) => (
+                        <th key={field.id} className="px-3 py-3 whitespace-nowrap w-[140px]">{field.name}</th>
+                      ))}
                       <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
@@ -4116,6 +4542,23 @@ function SuperAdminBookingsPage() {
                         {showCol('paymentStatus') ? (
                           <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.payment_status)}</td>
                         ) : null}
+                        {BOOKINGS_TABLE_COLUMNS.filter((col) => col.group === 'Imported' && showCol(col.key)).map((col) => {
+                          const value = importedPanelValue(lead, col.key, phoneBookingCount);
+                          return (
+                            <td key={col.key} className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[140px] max-w-[160px] truncate" title={value}>
+                              {value || '—'}
+                            </td>
+                          );
+                        })}
+                        {customFields.map((field) => {
+                          const bag = lead?.coupon_meta?.custom_fields;
+                          const value = bag && typeof bag === 'object' ? String(bag[field.id] ?? '').trim() : '';
+                          return (
+                            <td key={field.id} className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[140px] max-w-[140px] truncate" title={value}>
+                              {value || '—'}
+                            </td>
+                          );
+                        })}
                                                 <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1">
                             <button

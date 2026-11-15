@@ -128,6 +128,7 @@ export function LeadDetailContent({
     outcome: null,
     activity: 'RINGING',
     lost_reason: '',
+    other_reason: '',
     notes: ''
   });
 
@@ -151,6 +152,7 @@ export function LeadDetailContent({
     { id: 'IN_SERVICE', label: 'In Service', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'IN_PROGRESS' },
     { id: 'SERVICE_DONE', label: 'Service Done', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'COMPLETED' },
     { id: 'LOST', label: 'Lost', call_status: 'ANSWERED', outcome: 'NOT_INTERESTED', lead_status: 'REJECTED', requires_lost_reason: true },
+    { id: 'OTHER', label: 'Other', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
   ];
 
   const [activityOptions, setActivityOptions] = useState<ActivityOpt[]>(FALLBACK_ACTIVITY);
@@ -163,6 +165,8 @@ export function LeadDetailContent({
     'Looking For Authorised Service Center',
     'Other Reasons',
   ]);
+  const [otherReasons, setOtherReasons] = useState<string[]>([]);
+  const [otherDraft, setOtherDraft] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -189,6 +193,10 @@ export function LeadDetailContent({
         const reasons = Array.isArray(json?.lost_reasons) ? json.lost_reasons : [];
         if (reasons.length) {
           setLostReasons(reasons.map((r: any) => String(r.name || '').trim()).filter(Boolean));
+        }
+        const others = Array.isArray(json?.other_reasons) ? json.other_reasons : [];
+        if (!cancelled) {
+          setOtherReasons(others.map((r: any) => String(r.name || '').trim()).filter(Boolean));
         }
       } catch {
         /* keep fallback */
@@ -453,7 +461,12 @@ export function LeadDetailContent({
         activityOptions.find((o) => o.id === callLogData.activity) || activityOptions[0];
       const needsLost = Boolean(selected.requires_lost_reason) || selected.id === 'LOST';
       const resolvedLost = needsLost ? callLogData.lost_reason.trim() || 'Other Reasons' : '';
-      const statusLabel = needsLost ? `Lost · ${resolvedLost}` : selected.label;
+      const resolvedOther = selected.id === 'OTHER' ? callLogData.other_reason.trim() : '';
+      const statusLabel = needsLost
+        ? `Lost · ${resolvedLost}`
+        : resolvedOther
+          ? `Other · ${resolvedOther}`
+          : selected.label;
       const notesParts = [`[${statusLabel}]`, callLogData.notes.trim() || null].filter(Boolean);
 
       const res = await fetch('/api/telecaller/calls/log', {
@@ -479,6 +492,7 @@ export function LeadDetailContent({
           outcome: null,
           activity: 'RINGING',
           lost_reason: '',
+          other_reason: '',
           notes: ''
         });
         setShowCallLogForm(false);
@@ -1193,6 +1207,7 @@ export function LeadDetailContent({
                         ...callLogData,
                         activity: next,
                         lost_reason: needsLost ? callLogData.lost_reason : '',
+                        other_reason: next === 'OTHER' ? callLogData.other_reason : '',
                       });
                     }}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
@@ -1209,6 +1224,50 @@ export function LeadDetailContent({
                       <option value="">Select lost reason</option>
                       {lostReasons.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
+                  )}
+                  {callLogData.activity === 'OTHER' && (
+                    <div className="space-y-2">
+                      <select
+                        value={callLogData.other_reason}
+                        onChange={(e) => setCallLogData({ ...callLogData, other_reason: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                      >
+                        <option value="">Other only</option>
+                        {otherReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <div className="flex gap-2">
+                        <input
+                          value={otherDraft}
+                          onChange={(e) => setOtherDraft(e.target.value)}
+                          placeholder="Naya other item"
+                          className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                        />
+                        <button
+                          type="button"
+                          className="rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white"
+                          onClick={async () => {
+                            const name = otherDraft.trim();
+                            if (!name) return;
+                            const res = await fetch('/api/lead-manager/statuses', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'create_other_reason', name }),
+                            });
+                            const json = await res.json().catch(() => ({}));
+                            if (!res.ok && res.status !== 409) {
+                              alert(json?.error || 'Could not add');
+                              return;
+                            }
+                            const saved = String(json?.reason?.name || name);
+                            setOtherReasons((prev) => (prev.some((n) => n.toLowerCase() === saved.toLowerCase()) ? prev : [...prev, saved]));
+                            setCallLogData((prev) => ({ ...prev, other_reason: saved }));
+                            setOtherDraft('');
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
                   )}
                   <input type="number" placeholder="Duration (seconds)" value={callLogData.call_duration} onChange={(e) => setCallLogData({ ...callLogData, call_duration: e.target.value })} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl" />
                   <textarea placeholder="Notes / remarks..." value={callLogData.notes} onChange={(e) => setCallLogData({ ...callLogData, notes: e.target.value })} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl" rows={3} />

@@ -56,7 +56,7 @@ const PIPELINE = [
 
 function pipelineActiveIndex(lead: any, activityResult: string): number {
   const result = String(activityResult || '').toUpperCase();
-  if (result === 'LOST') return -1;
+  if (result === 'LOST' || result === 'OTHER') return -1;
   if (result === 'SERVICE_DONE') return 5;
   if (result === 'IN_SERVICE') return 4;
   if (result === 'BOOKING_CONFIRMED') return 3;
@@ -65,7 +65,7 @@ function pipelineActiveIndex(lead: any, activityResult: string): number {
   if (result === 'FRESH') return 0;
 
   const fromMeta = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
-  if (fromMeta === 'LOST') return -1;
+  if (fromMeta === 'LOST' || fromMeta === 'OTHER') return -1;
   if (fromMeta === 'SERVICE_DONE') return 5;
   if (fromMeta === 'IN_SERVICE') return 4;
   if (fromMeta === 'BOOKING_CONFIRMED') return 3;
@@ -91,11 +91,13 @@ const ACTIVITY_OPTIONS = [
   { id: 'IN_SERVICE', label: 'In Service', lead_status: 'IN_PROGRESS' as string | null },
   { id: 'SERVICE_DONE', label: 'Service Done', lead_status: 'COMPLETED' as string | null },
   { id: 'LOST', label: 'Lost', lead_status: 'REJECTED' as string | null },
+  { id: 'OTHER', label: 'Other', lead_status: null },
 ] as const;
 
 function headerCardClass(activityResult: string): string {
   const a = String(activityResult || '').toUpperCase();
   if (a === 'LOST') return 'bg-rose-700';
+  if (a === 'OTHER') return 'bg-violet-700';
   if (a === 'BOOKING_CONFIRMED') return 'bg-emerald-700';
   if (a === 'IN_SERVICE') return 'bg-blue-800';
   if (a === 'SERVICE_DONE') return 'bg-teal-800';
@@ -191,6 +193,96 @@ function FieldLabel({
       {children}
       {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
     </label>
+  );
+}
+
+function OtherReasonField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  const [items, setItems] = useState<string[]>([]);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/lead-manager/statuses');
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const names = (Array.isArray(json?.other_reasons) ? json.other_reasons : [])
+          .map((r: { name?: string }) => String(r?.name || '').trim())
+          .filter(Boolean);
+        setItems(names);
+      } catch {
+        /* empty list is fine */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const addItem = async () => {
+    const name = draft.trim();
+    if (!name || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/lead-manager/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_other_reason', name }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 409) throw new Error(json?.error || 'Could not add');
+      const saved = String(json?.reason?.name || name);
+      setItems((prev) => (prev.some((n) => n.toLowerCase() === saved.toLowerCase()) ? prev : [...prev, saved]));
+      onChange(saved);
+      setDraft('');
+    } catch (e: any) {
+      alert(e?.message || 'Could not add');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sm:col-span-2">
+      <FieldLabel>Other</FieldLabel>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={fieldCls()}
+      >
+        <option value="">Other only</option>
+        {items.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+      <div className="mt-2 flex gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void addItem()}
+          placeholder="Naya other item"
+          className={fieldCls()}
+        />
+        <button
+          type="button"
+          disabled={busy || !draft.trim()}
+          onClick={() => void addItem()}
+          className="shrink-0 rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white disabled:opacity-50"
+        >
+          Add
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -290,6 +382,8 @@ export default function CrmLeadEditForm({
   const [resolvingCity, setResolvingCity] = useState(false);
   const [lookingUpPhone, setLookingUpPhone] = useState(false);
   const [lookupHint, setLookupHint] = useState<string | null>(null);
+  const [customFieldDefs, setCustomFieldDefs] = useState<Array<{ id: string; name: string }>>([]);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState({
     customer_name: '',
@@ -335,6 +429,7 @@ export default function CrmLeadEditForm({
     lead_priority: 'NORMAL',
     activity_result: 'RINGING',
     lost_reason: '',
+    other_reason: '',
     activity_notes: '',
     callback_date: '',
     callback_time: '',
@@ -346,6 +441,21 @@ export default function CrmLeadEditForm({
     if (SHOW_SERVICE_ADDONS) fetchServiceAddons();
     fetchCities();
   }, [leadId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/lead-manager/fields')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled) setCustomFieldDefs(Array.isArray(json?.fields) ? json.fields : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomFieldDefs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     fetchAvailableCouponsForForm();
@@ -714,6 +824,7 @@ export default function CrmLeadEditForm({
           return 'RINGING';
         })(),
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
+        other_reason: String(leadData?.coupon_meta?.last_other_reason || ''),
         activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
         callback_date: (() => {
           const parts = isoToIstParts(leadData.next_follow_up_at);
@@ -724,6 +835,12 @@ export default function CrmLeadEditForm({
           return parts ? snapTimeToTenMinutes(parts.hm) : '';
         })(),
       });
+      const customBag = leadData?.coupon_meta?.custom_fields;
+      setCustomFieldValues(
+        customBag && typeof customBag === 'object' && !Array.isArray(customBag)
+          ? Object.fromEntries(Object.entries(customBag).map(([k, v]) => [k, String(v ?? '')]))
+          : {},
+      );
       setCarDisplay(
         [leadData.vehicle_make, leadData.vehicle_model].filter(Boolean).join(' '),
       );
@@ -899,8 +1016,13 @@ export default function CrmLeadEditForm({
         lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
       const resolvedLost =
         selectedActivity.id === 'LOST' ? formData.lost_reason.trim() || 'Other Reasons' : '';
+      const resolvedOther = selectedActivity.id === 'OTHER' ? formData.other_reason.trim() : '';
       const statusLabel =
-        selectedActivity.id === 'LOST' ? `Lost · ${resolvedLost}` : selectedActivity.label;
+        selectedActivity.id === 'LOST'
+          ? `Lost · ${resolvedLost}`
+          : resolvedOther
+            ? `Other · ${resolvedOther}`
+            : selectedActivity.label;
       const historyEntry = {
         at: new Date().toISOString(),
         summary: `Updated ${statusLabel}`,
@@ -925,6 +1047,9 @@ export default function CrmLeadEditForm({
         telecaller_remarks: formData.activity_notes.trim() || null,
         last_lost_reason:
           selectedActivity.id === 'LOST' ? resolvedLost : (prevMeta as any).last_lost_reason || null,
+        last_other_reason:
+          selectedActivity.id === 'OTHER' ? resolvedOther || null : (prevMeta as any).last_other_reason || null,
+        custom_fields: customFieldValues,
         profile_history: [historyEntry, ...prevHistory].slice(0, 50),
         flat_number: formData.flat_number.trim() || null,
         landmark: formData.landmark.trim() || null,
@@ -1400,6 +1525,12 @@ export default function CrmLeadEditForm({
                 </select>
               </div>
             ) : null}
+            {formData.activity_result === 'OTHER' ? (
+              <OtherReasonField
+                value={formData.other_reason}
+                onChange={(name) => setFormData((prev) => ({ ...prev, other_reason: name }))}
+              />
+            ) : null}
             <CrmFollowUpDateTime
               date={formData.callback_date}
               time={formData.callback_time}
@@ -1410,6 +1541,22 @@ export default function CrmLeadEditForm({
                 setFormData((prev) => ({ ...prev, callback_date: date, callback_time: time }))
               }
             />
+            {customFieldDefs.length > 0 ? (
+              <div className="sm:col-span-2 lg:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {customFieldDefs.map((field) => (
+                  <div key={field.id}>
+                    <FieldLabel>{field.name}</FieldLabel>
+                    <input
+                      value={customFieldValues[field.id] || ''}
+                      onChange={(e) =>
+                        setCustomFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                      }
+                      className={fieldCls()}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="col-span-2 lg:col-span-4">
               <FieldLabel>Remarks</FieldLabel>
               <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Call notes / remarks for this lead" />

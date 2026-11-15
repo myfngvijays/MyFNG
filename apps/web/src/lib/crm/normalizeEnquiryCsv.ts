@@ -257,7 +257,7 @@ const FIELD_ALIASES: Record<EnquiryCsvColumn, string[]> = {
     'callback_date',
   ],
   package_rate_access: ['package_rate_access', 'packagerateaccess', 'package_rate', 'ro'],
-  lead_number: ['lead_number', 'leadnumber', 'lead_no'],
+  lead_number: ['lead_number', 'leadnumber', 'lead_no', 'lead__'],
   remark: ['remark', 'remarks', 'remark_cordinator', 'feedback'],
   disposition: ['status', 'lead_status', 'leadstatus', 'disposition'],
   lost_reason: ['lost_reason', 'lostreason', 'lost_reasons'],
@@ -373,6 +373,208 @@ export function collapseEnquiryCsvLeads(rows: EnquiryCsvRow[]): EnquiryCsvRow[] 
   return out;
 }
 
+export const PANEL_PREVIEW_LABELS = [
+  'Lead Status',
+  'Lost Reason',
+  'Rating',
+  'Assignee',
+  'Assignee emailid',
+  'Customer',
+  'Phone',
+  'Notes',
+  'User Notes Count',
+  'Model',
+  'Package',
+  'Workshop',
+  'Address',
+  'Service Type',
+  'Pickup Required',
+  'Vehicle',
+  'Next Followup Date',
+  'Alternate Phone',
+  'LEADTAG',
+  'packagerateaccess',
+  'PickupAddress',
+  'LeadNumber',
+  'Message',
+  'Review Pending',
+  'Service Done',
+  'Repeat Customer',
+  'Make',
+  'REGDATE',
+  'FEEDBACK',
+  'FOLLOWUP',
+  'USERNAME',
+  'esttracking',
+  'billtracking',
+  'custEstimateAction',
+  'shortAddress',
+  'custplandetailslink',
+  'UTM Source',
+  'UTM Medium',
+  'UTM Campaign',
+  'pendingbillslink',
+  'Lead Assignee',
+  'Remark Cordinator',
+  'servicecenterinvoicelink',
+  'alternate car no',
+  'Send Workshop Address',
+  'authotpforwebsitelogin',
+  'UTM Content',
+  'UTM Term',
+  'Disposition',
+  'Pincode',
+  'DailerID',
+  'Recording URL',
+  'InterestedDate',
+  'LoanAmount',
+  'Membership Amount',
+  'Created On',
+  'Modified On',
+  'Assignee Manager name',
+  'Assignee Manager emailid',
+  'Lead #',
+  'Source',
+  'Service',
+  'City',
+  'Coupon',
+  'Discount',
+  'Amount',
+  'Date',
+  'Time',
+  'Admin Bookings Count',
+  'Leads #',
+  'Status',
+  'Lead Type',
+  'Priority',
+  'Created From',
+  'Email',
+  'Variant',
+  'Year',
+  'Fuel Type',
+  'Odometer',
+  'Preferred Date',
+  'Preferred Time',
+  'Preferred Slot',
+  'Problem',
+  'Estimated Amt',
+  'Actual Amt',
+  'Payment Mode',
+  'Payment Status',
+] as const;
+
+const PANEL_IMPORT_LABELS: Record<string, string> = {
+  lead_status: 'Lead Status',
+  lost_reason: 'Lost Reason',
+  rating: 'Rating',
+  assignee: 'Assignee',
+  assignee_emailid: 'Assignee emailid',
+  customer: 'Customer',
+  name: 'Customer',
+  phone: 'Phone',
+  phone_no: 'Phone',
+  notes: 'Notes',
+  user_notes_count: 'User Notes Count',
+  model: 'Model',
+  package: 'Package',
+  workshop: 'Workshop',
+  address: 'Address',
+  service_type: 'Service Type',
+  plan: 'Service Type',
+  pickup_required: 'Pickup Required',
+  vehicle: 'Vehicle',
+  car_number: 'Vehicle',
+  next_followup_date: 'Next Followup Date',
+  next_followup_at: 'Next Followup Date',
+  alternate_phone: 'Alternate Phone',
+  leadtag: 'LEADTAG',
+  lead_tags: 'LEADTAG',
+  packagerateaccess: 'packagerateaccess',
+  package_rate_access: 'packagerateaccess',
+  pickupaddress: 'PickupAddress',
+  pickup_address: 'PickupAddress',
+  leadnumber: 'LeadNumber',
+  lead__: 'Lead #',
+  message: 'Message',
+  review_pending: 'Review Pending',
+  service_done: 'Service Done',
+  repeat_customer: 'Repeat Customer',
+  regdate: 'REGDATE',
+  feedback: 'FEEDBACK',
+  followup: 'FOLLOWUP',
+  username: 'USERNAME',
+  esttracking: 'esttracking',
+  billtracking: 'billtracking',
+  custestimateaction: 'custEstimateAction',
+  shortaddress: 'shortAddress',
+  custplandetailslink: 'custplandetailslink',
+  utm_source: 'UTM Source',
+  utm_medium: 'UTM Medium',
+  utm_campaign: 'UTM Campaign',
+  pendingbillslink: 'pendingbillslink',
+  lead_assignee: 'Lead Assignee',
+  remark_cordinator: 'Remark Cordinator',
+  remark: 'Remark Cordinator',
+  servicecenterinvoicelink: 'servicecenterinvoicelink',
+  alternate_car_no: 'alternate car no',
+  send_workshop_address: 'Send Workshop Address',
+  utm_content: 'UTM Content',
+  utm_term: 'UTM Term',
+  disposition: 'Disposition',
+  pincode: 'Pincode',
+  dailerid: 'DailerID',
+  dialer_id: 'DailerID',
+  recording_url: 'Recording URL',
+  interesteddate: 'InterestedDate',
+  loanamount: 'LoanAmount',
+  membership_amount: 'Membership Amount',
+  created_on: 'Created On',
+  modified_on: 'Modified On',
+  assignee_manager_name: 'Assignee Manager name',
+  assignee_manager_emailid: 'Assignee Manager emailid',
+  source: 'Source',
+  service: 'Service',
+  city: 'City',
+  coupon: 'Coupon',
+  discount: 'Discount',
+  amount: 'Amount',
+  date: 'Date',
+  time: 'Time',
+  admin_bookings_count: 'Admin Bookings Count',
+  leads__: 'Leads #',
+  status: 'Status',
+  lead_type: 'Lead Type',
+  priority: 'Priority',
+  created_from: 'Created From',
+  email: 'Email',
+  variant: 'Variant',
+  year: 'Year',
+  fuel_type: 'Fuel Type',
+  odometer: 'Odometer',
+  preferred_date: 'Preferred Date',
+  preferred_time: 'Preferred Time',
+  preferred_slot: 'Preferred Slot',
+  problem: 'Problem',
+  estimated_amt: 'Estimated Amt',
+  actual_amt: 'Actual Amt',
+  payment_mode: 'Payment Mode',
+  payment_status: 'Payment Status',
+  make: 'Make',
+};
+
+export function collectPanelImportFields(row: EnquiryCsvRow): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(row || {})) {
+    const norm = normKey(key);
+    if (!norm || norm.includes('otp')) continue;
+    const label = PANEL_IMPORT_LABELS[norm];
+    const text = String(value ?? '').trim();
+    if (!label || !text || EMPTY_RE.test(text)) continue;
+    if (!out[label]) out[label] = text;
+  }
+  return out;
+}
+
 function modelKey(value: string): string {
   return String(value || '')
     .toLowerCase()
@@ -408,12 +610,24 @@ export function mapEnquiryCsvRow(raw: EnquiryCsvRow, catalogTags: string[] = [])
     cell(row, ['action_created_at', 'action_created_on', 'action_at']),
     '',
   );
+  const leadStatusCell = cell(row, ['lead_status', 'leadstatus', 'disposition']);
+  const bookingStatusCell = cell(row, ['status']);
+  mapped.disposition = leadStatusCell || bookingStatusCell;
   mapped.lost_reason = mapTelecrmLostReason(mapped.lost_reason);
-  const crm = mapTelecrmStatus(mapped.disposition);
-  mapped.crm_status = crm.code;
-  mapped.crm_status_label = crm.label;
-  mapped.crm_pipeline = crm.pipeline;
-  mapped.pickup_required = /^pickup$/i.test(mapped.pickup_visit) ? 'true' : '';
+  if (mapped.disposition) {
+    const crm = mapTelecrmStatus(mapped.disposition);
+    mapped.crm_status = crm.code;
+    mapped.crm_status_label = crm.label;
+    mapped.crm_pipeline = crm.pipeline;
+  } else {
+    mapped.crm_status = '';
+    mapped.crm_status_label = '';
+    mapped.crm_pipeline = '';
+  }
+  const pickupCell = cell(row, ['pickup_required', 'pickuprequired']);
+  mapped.pickup_required =
+    /^pickup$/i.test(mapped.pickup_visit) || /^(yes|true|1|pickup)$/i.test(pickupCell) ? 'true' : '';
+  mapped.import_fields = JSON.stringify(collectPanelImportFields(row));
 
   mapped.created_at =
     mapped.created_at ||

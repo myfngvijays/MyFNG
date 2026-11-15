@@ -5,7 +5,19 @@ import DashboardLayout from '@/components/DashboardLayout';
 import PageHelpIcon from '@/components/PageHelpIcon';
 import { Check, Loader2, Pencil, Plus, Tag, Trash2, X } from 'lucide-react';
 
-type TagRow = { id: string; name: string; color: string; parent_tag_id?: string | null };
+type TagRow = {
+  id: string;
+  name: string;
+  color: string;
+  parent_tag_id?: string | null;
+  created_at?: string | null;
+};
+
+/** Tags added in the 16 Nov import (and anything created after). */
+function isNewLeadTag(createdAt?: string | null) {
+  const t = new Date(String(createdAt || '')).getTime();
+  return Number.isFinite(t) && t >= Date.parse('2026-11-15T19:22:00.000Z');
+}
 
 const COLORS = [
   '#DDD6FE',
@@ -257,6 +269,11 @@ export default function LeadManagerTagsPage() {
                         common
                       </span>
                     )}
+                    {isNewLeadTag(t.created_at) ? (
+                      <span className="rounded bg-emerald-600 px-1 py-px text-[9px] font-black uppercase leading-none tracking-wide text-white">
+                        New
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button

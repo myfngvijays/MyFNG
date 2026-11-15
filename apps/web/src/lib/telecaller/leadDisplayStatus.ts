@@ -99,6 +99,7 @@ const RESULT_LABEL: Record<string, string> = {
   IN_SERVICE: 'In Service',
   SERVICE_DONE: 'Service Done',
   LOST: 'Lost',
+  OTHER: 'Other',
   RINGING: 'Ringing',
   OTP_VERIFIED: 'OTP Verified',
 };
@@ -130,7 +131,7 @@ const PIPELINE_LABEL: Record<string, string> = {
 export function leadDisplayStatus(lead: any): string {
   const ringingStuck =
     activityLooksLikeRinging(lead?.coupon_meta, lead?.telecaller_remarks) &&
-    !['INTERESTED', 'WILL_VISIT', 'CALLBACK', 'BOOKING_CONFIRMED', 'IN_SERVICE', 'SERVICE_DONE', 'LOST'].includes(
+    !['INTERESTED', 'WILL_VISIT', 'CALLBACK', 'BOOKING_CONFIRMED', 'IN_SERVICE', 'SERVICE_DONE', 'LOST', 'OTHER'].includes(
       String(lead?.coupon_meta?.last_call_result || '').toUpperCase(),
     );
 
@@ -307,6 +308,7 @@ export const ADMIN_CRM_STATUS_OPTIONS = [
   { id: 'IN_SERVICE', label: 'In Service' },
   { id: 'SERVICE_DONE', label: 'Service Done' },
   { id: 'LOST', label: 'Lost' },
+  { id: 'OTHER', label: 'Other' },
   { id: 'RINGING', label: 'Ringing / No answer' },
 ] as const;
 
@@ -354,6 +356,7 @@ export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
   }
   const label = String(leadDisplayStatus(lead) || '').trim().toLowerCase();
   if (label.startsWith('lost')) return 'LOST';
+  if (label.startsWith('other')) return 'OTHER';
   if (label === 'completed' || label === 'service done') return 'SERVICE_DONE';
   const match = ADMIN_CRM_STATUS_OPTIONS.find((o) => o.label.toLowerCase() === label);
   if (match) return match.id;
@@ -379,9 +382,11 @@ export function buildAdminCrmStatusCouponMeta(
   if (statusId === 'LOST' && !lostReason) {
     return { ok: false, error: 'Lost reason is required' };
   }
+  const otherItem = statusId === 'OTHER' ? lostReason : '';
 
   const now = new Date().toISOString();
-  const label = statusId === 'LOST' ? `Lost · ${lostReason}` : spec.label;
+  const label =
+    statusId === 'LOST' ? `Lost · ${lostReason}` : otherItem ? `Other · ${otherItem}` : spec.label;
   const prev = prevMeta && typeof prevMeta === 'object' && !Array.isArray(prevMeta) ? { ...prevMeta } : {};
   const prevHistory = Array.isArray(prev.profile_history) ? prev.profile_history : [];
   const historyEntry = {
@@ -400,6 +405,7 @@ export function buildAdminCrmStatusCouponMeta(
       last_call_label: label,
       last_call_at: now,
       last_lost_reason: statusId === 'LOST' ? lostReason : prev.last_lost_reason || null,
+      last_other_reason: statusId === 'OTHER' ? otherItem || null : prev.last_other_reason || null,
       profile_history: [historyEntry, ...prevHistory].slice(0, 50),
     },
   };

@@ -331,6 +331,11 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     body:
       'Yahan se lead tags create karo (META, GOOGLE, WHATSAPP…).\n\nTelecallers lead detail pe ye tags apply kar sakte hain — incoming call reference ke liye.',
   },
+  '/dashboard/lead_manager/fields': {
+    title: 'Lead fields',
+    body:
+      'Built-in booking columns stay locked.\n\nExtra fields yahan se add, edit, delete karo. Value lead pe save hoti hai aur Bookings columns mein dikhti hai.',
+  },
   '/dashboard/lead_manager/statuses': {
     title: 'Lead status',
     body:
@@ -581,6 +586,7 @@ export function getLeadManagerReadme(): ReadmeSection[] {
         { href: '/dashboard/lead_manager/team', ...BY_HREF['/dashboard/lead_manager/team'] },
         { href: '/dashboard/lead_manager/tags', ...BY_HREF['/dashboard/lead_manager/tags'] },
         { href: '/dashboard/lead_manager/statuses', ...BY_HREF['/dashboard/lead_manager/statuses'] },
+        { href: '/dashboard/lead_manager/fields', ...BY_HREF['/dashboard/lead_manager/fields'] },
       ],
     },
     {

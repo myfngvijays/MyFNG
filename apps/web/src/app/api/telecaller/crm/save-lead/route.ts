@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
     const callResult = String(body?.call_result || '').trim() || null;
     const callLabel = String(body?.call_label || '').trim() || null;
     const lostReason = String(body?.lost_reason || '').trim() || null;
+    const otherReason = String(body?.other_reason || '').trim() || null;
     const callNotes =
       String(body?.call_notes || body?.problem_description || '').trim() || null;
 
@@ -149,6 +150,7 @@ export async function POST(request: NextRequest) {
         last_call_result: callResult,
         last_call_label: callLabel,
         last_lost_reason: callResult === 'LOST' ? lostReason : null,
+        last_other_reason: callResult === 'OTHER' ? otherReason : null,
         last_call_at: activityAt,
         profile_history: [
           {
@@ -158,6 +160,7 @@ export async function POST(request: NextRequest) {
             status: callResult,
             event: 'CREATED',
             lost_reason: callResult === 'LOST' ? lostReason : null,
+            other_reason: callResult === 'OTHER' ? otherReason : null,
           },
         ],
         ...(pricingCategories.length ? { pricing_categories: pricingCategories } : {}),

@@ -87,6 +87,13 @@ const LEAD_STATUS_OPTIONS = [
     outcome: 'NOT_INTERESTED',
     lead_status: 'REJECTED',
   },
+  {
+    id: 'OTHER',
+    label: 'Other',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'NEW',
+  },
 ];
 
 const LOST_REASONS = [
@@ -147,6 +154,10 @@ export default function CrmBookWizard({
   const [resolvingCity, setResolvingCity] = useState(false);
   const [leadStatusId, setLeadStatusId] = useState('INTERESTED');
   const [lostReason, setLostReason] = useState('');
+  const [otherReason, setOtherReason] = useState('');
+  const [otherItems, setOtherItems] = useState<string[]>([]);
+  const [otherDraft, setOtherDraft] = useState('');
+  const [otherMenuOpen, setOtherMenuOpen] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [lostMenuOpen, setLostMenuOpen] = useState(false);
   const [activityDate, setActivityDate] = useState(todayDateStr);
@@ -510,6 +521,7 @@ export default function CrmBookWizard({
       LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
     const resolvedLostReason =
       statusOpt.id === 'LOST' ? lostReason.trim() || 'Other Reasons' : '';
+    const resolvedOther = statusOpt.id === 'OTHER' ? otherReason.trim() : '';
     // Date/Time = kab baat hui (call activity); for CALLBACK this also schedules the reminder
     const activityIso =
       activityDate && activityTime ? istDateTimeToIso(activityDate, activityTime) : null;
@@ -523,7 +535,11 @@ export default function CrmBookWizard({
       return;
     }
     const statusLabel =
-      statusOpt.id === 'LOST' ? `Lost · ${resolvedLostReason}` : statusOpt.label;
+      statusOpt.id === 'LOST'
+        ? `Lost · ${resolvedLostReason}`
+        : resolvedOther
+          ? `Other · ${resolvedOther}`
+          : statusOpt.label;
 
     setSaving(true);
     try {
@@ -553,6 +569,7 @@ export default function CrmBookWizard({
           call_label: statusLabel,
           call_notes: form.problem_description || null,
           lost_reason: statusOpt.id === 'LOST' ? resolvedLostReason : null,
+          other_reason: statusOpt.id === 'OTHER' ? resolvedOther || null : null,
           activity_at: activityIso,
           tag_ids: selectedTagIds,
           coupon_meta: {
@@ -929,6 +946,33 @@ export default function CrmBookWizard({
               <Text style={styles.selectBtnText}>{selectedLeadStatus.label}</Text>
               <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
+
+            {leadStatusId === 'OTHER' ? (
+              <>
+                <Text style={styles.sectionLabel}>Other</Text>
+                <TouchableOpacity
+                  style={styles.selectBtn}
+                  onPress={async () => {
+                    setOtherMenuOpen(true);
+                    try {
+                      const data = await apiFetch<any>('/api/lead-manager/statuses');
+                      const names = (Array.isArray(data?.other_reasons) ? data.other_reasons : [])
+                        .map((r: { name?: string }) => String(r?.name || '').trim())
+                        .filter(Boolean);
+                      setOtherItems(names);
+                    } catch {
+                      setOtherItems([]);
+                    }
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.selectBtnText, !otherReason && { color: COLORS.textSecondary }]}>
+                    {otherReason || 'Other only — tap to pick or add'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </>
+            ) : null}
 
             {leadStatusId === 'LOST' ? (
               <>
@@ -1498,12 +1542,84 @@ export default function CrmBookWizard({
                 onPress={() => {
                   setLeadStatusId(opt.id);
                   if (opt.id !== 'LOST') setLostReason('');
+                  if (opt.id !== 'OTHER') setOtherReason('');
                   setStatusMenuOpen(false);
                 }}
               >
                 <Text style={styles.menuSheetItemText}>{opt.label}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={otherMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOtherMenuOpen(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setOtherMenuOpen(false)}>
+          <View style={styles.menuSheet}>
+            <Text style={styles.menuTitle}>Other</Text>
+            <TouchableOpacity
+              style={styles.menuSheetItem}
+              onPress={() => {
+                setOtherReason('');
+                setOtherMenuOpen(false);
+              }}
+            >
+              <Text style={styles.menuSheetItemText}>Other only</Text>
+            </TouchableOpacity>
+            {otherItems.map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                style={styles.menuSheetItem}
+                onPress={() => {
+                  setOtherReason(reason);
+                  setOtherMenuOpen(false);
+                }}
+              >
+                <Text style={styles.menuSheetItemText}>{reason}</Text>
+              </TouchableOpacity>
+            ))}
+            {otherItems.length === 0 ? (
+              <Text style={{ color: COLORS.textSecondary, paddingVertical: 8 }}>Abhi koi other item nahi.</Text>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <TextInput
+                value={otherDraft}
+                onChangeText={setOtherDraft}
+                placeholder="Naya item"
+                placeholderTextColor={COLORS.textSecondary}
+                style={[styles.selectBtn, { flex: 1 }]}
+              />
+              <TouchableOpacity
+                style={[styles.selectBtn, { backgroundColor: COLORS.primary }]}
+                onPress={async () => {
+                  const name = otherDraft.trim();
+                  if (!name) return;
+                  try {
+                    const json = await apiFetch<any>('/api/lead-manager/statuses', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'create_other_reason', name }),
+                    });
+                    const saved = String(json?.reason?.name || name);
+                    setOtherItems((prev) =>
+                      prev.some((n) => n.toLowerCase() === saved.toLowerCase()) ? prev : [...prev, saved],
+                    );
+                    setOtherReason(saved);
+                    setOtherDraft('');
+                    setOtherMenuOpen(false);
+                  } catch (e: any) {
+                    Alert.alert('Other', e?.message || 'Could not add');
+                  }
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Add</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Pressable>
       </Modal>

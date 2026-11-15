@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 /** Columns needed for bookings table / filters — avoid select('*') on large meta-heavy rows. */
 const LEADS_LIST_SELECT = [
@@ -39,7 +40,7 @@ const LEADS_LIST_SELECT = [
   'lead_type',
   'lead_priority',
   'service_type',
-  'service_type_id',
+  'service_type_ids',
   'lead_source',
   'created_from',
   'coupon_code',
@@ -58,11 +59,7 @@ const LEADS_LIST_SELECT = [
   'assigned_telecaller_id',
   'follow_up_required',
   'next_follow_up_at',
-  'telecaller_remarks',
   'meta',
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
   'created_at',
   'updated_at',
   'accepted_at',
@@ -173,37 +170,57 @@ export async function GET(request: NextRequest) {
     };
 
     const PAGE_SIZE = 1000;
-    const maxPages = Math.max(1, Math.ceil(maxRows / PAGE_SIZE));
+
+    const countInRange = async () => {
+      let countQuery = supabaseAdmin
+        .from('service_leads')
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null);
+      countQuery = applyCommonFilters(countQuery);
+      const countRes = await countQuery;
+      if (countRes.error && /deleted_at/i.test(String(countRes.error.message || ''))) {
+        let retryCount = supabaseAdmin.from('service_leads').select('id', { count: 'exact', head: true });
+        retryCount = applyCommonFilters(retryCount);
+        const retryRes = await retryCount;
+        return typeof retryRes.count === 'number' ? retryRes.count : null;
+      }
+      return typeof countRes.count === 'number' ? countRes.count : null;
+    };
+
+    const totalInRange = await countInRange();
+    const rowsToFetch =
+      typeof totalInRange === 'number' ? Math.min(totalInRange, maxRows) : maxRows;
+    const maxPages = Math.max(1, Math.ceil(rowsToFetch / PAGE_SIZE));
 
     const fetchPaged = async (opts: {
       select: string;
       withDeletedAtFilter: boolean;
     }) => {
+      const pages = await Promise.all(
+        Array.from({ length: maxPages }, async (_, page) => {
+          const from = page * PAGE_SIZE;
+          const to = Math.min(from + PAGE_SIZE - 1, rowsToFetch - 1);
+          let q = supabaseAdmin
+            .from('service_leads')
+            .select(opts.select)
+            .order('created_at', { ascending: false })
+            .range(from, to);
+          if (opts.withDeletedAtFilter) q = q.is('deleted_at', null);
+          q = applyCommonFilters(q);
+          const { data, error } = await q;
+          return { page, data: data || [], error };
+        }),
+      );
+
+      const failed = pages.find((page) => page.error);
+      if (failed?.error) return { rows: [] as any[], error: failed.error };
+
       const rows: any[] = [];
-      let lastError: any = null;
-
-      for (let page = 0; page < maxPages && rows.length < maxRows; page++) {
-        const from = page * PAGE_SIZE;
-        const to = Math.min(from + PAGE_SIZE - 1, maxRows - 1);
-        let q = supabaseAdmin
-          .from('service_leads')
-          .select(opts.select)
-          .order('created_at', { ascending: false })
-          .range(from, to);
-        if (opts.withDeletedAtFilter) q = q.is('deleted_at', null);
-        q = applyCommonFilters(q);
-
-        const { data, error } = await q;
-        if (error) {
-          lastError = error;
-          break;
-        }
-        const batch = data || [];
-        rows.push(...batch);
-        if (batch.length < PAGE_SIZE) break;
+      for (const page of pages.sort((a, b) => a.page - b.page)) {
+        rows.push(...page.data);
+        if (page.data.length < PAGE_SIZE) break;
       }
-
-      return { rows, error: lastError };
+      return { rows: rows.slice(0, maxRows), error: null };
     };
 
     let { rows: data, error } = await fetchPaged({
@@ -235,29 +252,6 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch service leads' }, { status: 500 });
-    }
-
-    // Exact count in selected date range (before client-side source/coupon filters).
-    let totalInRange: number | null = null;
-    try {
-      let countQuery = supabaseAdmin
-        .from('service_leads')
-        .select('id', { count: 'exact', head: true })
-        .is('deleted_at', null);
-      countQuery = applyCommonFilters(countQuery);
-      const countRes = await countQuery;
-      if (countRes.error && /deleted_at/i.test(String(countRes.error.message || ''))) {
-        let retryCount = supabaseAdmin
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true });
-        retryCount = applyCommonFilters(retryCount);
-        const retryRes = await retryCount;
-        totalInRange = typeof retryRes.count === 'number' ? retryRes.count : null;
-      } else {
-        totalInRange = typeof countRes.count === 'number' ? countRes.count : null;
-      }
-    } catch {
-      totalInRange = null;
     }
 
     let leads = (data || []).map((lead) => enrichBookingLead(lead as Record<string, any>));
@@ -300,11 +294,15 @@ export async function GET(request: NextRequest) {
           String(row.full_name || row.phone || row.email || 'Telecaller').trim() || 'Telecaller',
         ])
       );
+      const emailById = new Map(
+        (telecallerRows || []).map((row: any) => [String(row.id), String(row.email || '').trim()])
+      );
       leads = leads.map((lead) => {
         const tid = String((lead as any)?.assigned_telecaller_id || '').trim();
         return {
           ...lead,
           assigned_telecaller_name: tid ? nameById.get(tid) || null : null,
+          assigned_telecaller_email: tid ? emailById.get(tid) || null : null,
         };
       });
     } else {

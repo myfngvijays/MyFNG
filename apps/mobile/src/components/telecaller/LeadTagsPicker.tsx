@@ -11,7 +11,12 @@ import {
 import { apiFetch } from '../../lib/api';
 import { filterTagsForTelecaller } from '../../lib/telecallerLeadTags';
 
-type TagRow = { id: string; name: string; color?: string };
+type TagRow = { id: string; name: string; color?: string; created_at?: string | null };
+
+function isNewLeadTag(createdAt?: string | null) {
+  const t = new Date(String(createdAt || '')).getTime();
+  return Number.isFinite(t) && t >= Date.parse('2026-11-15T19:22:00.000Z');
+}
 
 type Props = {
   leadId?: string | null;
@@ -182,7 +187,10 @@ export default function LeadTagsPicker({
                   { borderColor: t.color || '#CBD5E1' },
                 ]}
               >
-                <Text style={[styles.choiceText, on && styles.choiceTextOn]}>{t.name}</Text>
+                <Text style={[styles.choiceText, on && styles.choiceTextOn]}>
+                  {t.name}
+                  {isNewLeadTag(t.created_at) ? '  NEW' : ''}
+                </Text>
               </Pressable>
             );
           })}

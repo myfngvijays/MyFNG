@@ -83,42 +83,45 @@ export async function exportServiceLeadsCsv(
   },
 ) {
   const range = resolveReportDateRange(opts.preset || 'last_30_days', opts.start, opts.end);
-
-  let query = supabaseAdmin
-    .from('service_leads')
-    .select('*')
-    .is('deleted_at', null)
-    .gte('created_at', range.start)
-    .lte('created_at', range.end)
-    .order('created_at', { ascending: false })
-    .limit(10000);
-
   const status = String(opts.status || 'ALL').trim().toUpperCase();
-  if (status && status !== 'ALL') {
-    query = query.eq('status', status);
-  }
-
   const search = String(opts.search || '').trim();
-  if (search) {
-    query = query.or(
-      [
-        `lead_number.ilike.%${search}%`,
-        `customer_name.ilike.%${search}%`,
-        `customer_phone.ilike.%${search}%`,
-        `vehicle_number.ilike.%${search}%`,
-        `city.ilike.%${search}%`,
-        `service_type.ilike.%${search}%`,
-        `coupon_code.ilike.%${search}%`,
-        `lead_source.ilike.%${search}%`,
-        `created_from.ilike.%${search}%`,
-      ].join(','),
-    );
+
+  const buildQuery = (withDeletedAt: boolean) => {
+    let query = supabaseAdmin
+      .from('service_leads')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (withDeletedAt) query = query.is('deleted_at', null);
+    query = applyReportDateRangeFilter(query, 'created_at', opts.preset || 'last_30_days', opts.start, opts.end);
+    if (status && status !== 'ALL') query = query.eq('status', status);
+    if (search) {
+      query = query.or(
+        [
+          `lead_number.ilike.%${search}%`,
+          `customer_name.ilike.%${search}%`,
+          `customer_phone.ilike.%${search}%`,
+          `vehicle_number.ilike.%${search}%`,
+          `city.ilike.%${search}%`,
+          `service_type.ilike.%${search}%`,
+          `coupon_code.ilike.%${search}%`,
+          `lead_source.ilike.%${search}%`,
+          `created_from.ilike.%${search}%`,
+        ].join(','),
+      );
+    }
+    return query;
+  };
+
+  let data: Record<string, unknown>[] = [];
+  try {
+    data = await fetchAllPaged(() => buildQuery(true));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (!/deleted_at/i.test(message)) throw new Error('Failed to export service leads');
+    data = await fetchAllPaged(() => buildQuery(false));
   }
 
-  const { data, error } = await query;
-  if (error) throw new Error('Failed to export service leads');
-
-  let leads = (data || []).map((lead: Record<string, unknown>) => enrichBookingLead(lead));
+  let leads = data.map((lead: Record<string, unknown>) => enrichBookingLead(lead));
   leads = filterBookingLeads(leads, {
     source: String(opts.source || 'ALL').trim().toUpperCase(),
     hasCoupon: String(opts.hasCoupon || 'ALL').trim().toUpperCase(),

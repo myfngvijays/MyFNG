@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Loader2, Search, Tag, X } from 'lucide-react';
 import { filterTagsForTelecaller } from '@/lib/telecaller/telecallerLeadTags';
 
-type TagRow = { id: string; name: string; color: string };
+type TagRow = { id: string; name: string; color: string; created_at?: string | null };
+
+function isNewLeadTag(createdAt?: string | null) {
+  const t = new Date(String(createdAt || '')).getTime();
+  return Number.isFinite(t) && t >= Date.parse('2026-11-15T19:22:00.000Z');
+}
 
 const FALLBACK_COLORS = [
   '#DDD6FE',
@@ -206,11 +211,18 @@ export default function LeadTagsPanel({
                 onClick={() => toggle(t.id)}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
               >
-                <span
-                  className="rounded-md px-2 py-0.5 text-[11px] font-bold"
-                  style={{ backgroundColor: bg, color: contrastText(bg) }}
-                >
-                  {t.name}
+                <span className="inline-flex min-w-0 items-center gap-1">
+                  <span
+                    className="rounded-md px-2 py-0.5 text-[11px] font-bold"
+                    style={{ backgroundColor: bg, color: contrastText(bg) }}
+                  >
+                    {t.name}
+                  </span>
+                  {isNewLeadTag(t.created_at) ? (
+                    <span className="rounded bg-emerald-600 px-1 py-px text-[8px] font-black uppercase leading-none text-white">
+                      New
+                    </span>
+                  ) : null}
                 </span>
                 {on ? <Check className="h-4 w-4 text-violet-600" /> : null}
               </button>
@@ -406,11 +418,18 @@ export default function LeadTagsPanel({
                       onClick={() => toggle(t.id)}
                       className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
                     >
-                      <span
-                        className="rounded-md px-2 py-0.5 text-[11px] font-bold"
-                        style={{ backgroundColor: bg, color: contrastText(bg) }}
-                      >
-                        {t.name}
+                      <span className="inline-flex min-w-0 items-center gap-1">
+                        <span
+                          className="rounded-md px-2 py-0.5 text-[11px] font-bold"
+                          style={{ backgroundColor: bg, color: contrastText(bg) }}
+                        >
+                          {t.name}
+                        </span>
+                        {isNewLeadTag(t.created_at) ? (
+                          <span className="rounded bg-emerald-600 px-1 py-px text-[8px] font-black uppercase leading-none text-white">
+                            New
+                          </span>
+                        ) : null}
                       </span>
                       {on ? <Check className="h-4 w-4 text-violet-600" /> : null}
                     </button>

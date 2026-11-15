@@ -7,6 +7,7 @@ export const ADMIN_CRM_STATUS_OPTIONS = [
   { id: 'IN_SERVICE', label: 'In Service' },
   { id: 'SERVICE_DONE', label: 'Service Done' },
   { id: 'LOST', label: 'Lost' },
+  { id: 'OTHER', label: 'Other' },
   { id: 'RINGING', label: 'Ringing / No answer' },
 ] as const;
 
@@ -63,6 +64,7 @@ export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
     .trim()
     .toLowerCase();
   if (label.startsWith('lost')) return 'LOST';
+  if (label.startsWith('other')) return 'OTHER';
   if (label === 'completed' || label === 'service done') return 'SERVICE_DONE';
   const match = ADMIN_CRM_STATUS_OPTIONS.find((o) => o.label.toLowerCase() === label);
   if (match) return match.id;
@@ -76,5 +78,9 @@ export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
 
 export function adminCrmStatusLabel(lead: any): string {
   const id = resolveAdminCrmStatusId(lead);
+  if (id === 'OTHER') {
+    const item = String(lead?.coupon_meta?.last_other_reason || '').trim();
+    return item ? `Other · ${item}` : 'Other';
+  }
   return ADMIN_CRM_STATUS_OPTIONS.find((o) => o.id === id)?.label || 'Fresh';
 }

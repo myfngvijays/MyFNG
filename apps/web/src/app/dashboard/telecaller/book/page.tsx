@@ -72,6 +72,13 @@ const LEAD_STATUS_OPTIONS = [
     outcome: 'NOT_INTERESTED',
     lead_status: 'REJECTED',
   },
+  {
+    id: 'OTHER',
+    label: 'Other',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'NEW',
+  },
 ];
 
 const LOST_REASONS = [
@@ -201,6 +208,9 @@ function TelecallerCrmBookContent() {
 
   const [leadStatusId, setLeadStatusId] = useState('INTERESTED');
   const [lostReason, setLostReason] = useState('');
+  const [otherReason, setOtherReason] = useState('');
+  const [otherItems, setOtherItems] = useState<string[]>([]);
+  const [otherDraft, setOtherDraft] = useState('');
   const [activityDate, setActivityDate] = useState(todayDateStr);
   const [activityTime, setActivityTime] = useState(nowTimeStr);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -531,6 +541,7 @@ function TelecallerCrmBookContent() {
       LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
     const resolvedLostReason =
       statusOpt.id === 'LOST' ? lostReason.trim() || 'Other Reasons' : '';
+    const resolvedOther = statusOpt.id === 'OTHER' ? otherReason.trim() : '';
     // Date/Time = kab baat hui (call activity), NOT follow-up schedule
     const activityIso =
       activityDate && activityTime ? istDateTimeToIso(activityDate, activityTime) : null;
@@ -541,7 +552,9 @@ function TelecallerCrmBookContent() {
     const statusLabel =
       statusOpt.id === 'LOST'
         ? `Lost · ${resolvedLostReason}`
-        : statusOpt.label;
+        : resolvedOther
+          ? `Other · ${resolvedOther}`
+          : statusOpt.label;
 
     setSaving(true);
     setError('');
@@ -572,6 +585,7 @@ function TelecallerCrmBookContent() {
           call_label: statusLabel,
           call_notes: form.problem_description || null,
           lost_reason: statusOpt.id === 'LOST' ? resolvedLostReason : null,
+          other_reason: statusOpt.id === 'OTHER' ? resolvedOther || null : null,
           activity_at: activityIso,
           ...((statusOpt.id === 'CALLBACK' ||
           (['INTERESTED', 'WILL_VISIT', 'RINGING'].includes(statusOpt.id) &&
@@ -1032,6 +1046,19 @@ function TelecallerCrmBookContent() {
                       onChange={(e) => {
                         setLeadStatusId(e.target.value);
                         if (e.target.value !== 'LOST') setLostReason('');
+                        if (e.target.value === 'OTHER') {
+                          void fetch('/api/lead-manager/statuses')
+                            .then((r) => r.json())
+                            .then((json) => {
+                              const names = (Array.isArray(json?.other_reasons) ? json.other_reasons : [])
+                                .map((r: { name?: string }) => String(r?.name || '').trim())
+                                .filter(Boolean);
+                              setOtherItems(names);
+                            })
+                            .catch(() => setOtherItems([]));
+                        } else {
+                          setOtherReason('');
+                        }
                       }}
                       className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                     >
@@ -1049,6 +1076,55 @@ function TelecallerCrmBookContent() {
                       onSelectionChange={setSelectedTagIds}
                     />
                   </div>
+                  {leadStatusId === 'OTHER' ? (
+                    <div className="sm:col-span-2">
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                        Other
+                      </label>
+                      <select
+                        value={otherReason}
+                        onChange={(e) => setOtherReason(e.target.value)}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900"
+                      >
+                        <option value="">Other only</option>
+                        {otherItems.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          value={otherDraft}
+                          onChange={(e) => setOtherDraft(e.target.value)}
+                          placeholder="Naya other item"
+                          className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          className="rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white"
+                          onClick={async () => {
+                            const name = otherDraft.trim();
+                            if (!name) return;
+                            const res = await fetch('/api/lead-manager/statuses', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'create_other_reason', name }),
+                            });
+                            const json = await res.json().catch(() => ({}));
+                            if (!res.ok && res.status !== 409) {
+                              setError(json?.error || 'Could not add');
+                              return;
+                            }
+                            const saved = String(json?.reason?.name || name);
+                            setOtherItems((prev) => (prev.some((n) => n.toLowerCase() === saved.toLowerCase()) ? prev : [...prev, saved]));
+                            setOtherReason(saved);
+                            setOtherDraft('');
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   {leadStatusId === 'LOST' ? (
                     <div>
                       <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">

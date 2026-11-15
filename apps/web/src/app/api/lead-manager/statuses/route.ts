@@ -160,6 +160,20 @@ export const DEFAULT_CRM_STATUSES = [
     pipeline_status: 'REJECTED',
     stage_group: 'lost' as const,
   },
+  {
+    code: 'OTHER',
+    name: 'Other',
+    color: '#EDE9FE',
+    sort_order: 80,
+    is_system: true,
+    is_active: true,
+    requires_follow_up: false,
+    requires_lost_reason: false,
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    pipeline_status: null,
+    stage_group: 'other' as const,
+  },
 ] as const;
 
 function nextAutoColor(existingColors: string[]): string {
@@ -182,11 +196,12 @@ function slugCode(name: string): string {
   return base || 'STATUS';
 }
 
-function inferStageGroup(code: string, explicit?: string | null): 'active' | 'won' | 'lost' {
+function inferStageGroup(code: string, explicit?: string | null): 'active' | 'won' | 'lost' | 'other' {
   const g = String(explicit || '').trim().toLowerCase();
-  if (g === 'active' || g === 'won' || g === 'lost') return g;
+  if (g === 'active' || g === 'won' || g === 'lost' || g === 'other') return g;
   const c = String(code || '').trim().toUpperCase();
   if (c === 'LOST') return 'lost';
+  if (c === 'OTHER') return 'other';
   if (c === 'SERVICE_DONE' || c === 'WON') return 'won';
   return 'active';
 }
@@ -246,6 +261,93 @@ async function loadLostReasons(supabaseAdmin: any, includeInactive: boolean) {
   return { reasons: rows, warning: null as string | null };
 }
 
+const OTHER_REASONS_SETTING = 'crm_other_reasons';
+
+function missingRelation(error: { code?: string; message?: string } | null | undefined) {
+  const msg = String(error?.message || '').toLowerCase();
+  return error?.code === '42P01' || error?.code === 'PGRST205' || msg.includes('does not exist') || msg.includes('schema cache');
+}
+
+async function readOtherFromSettings(supabaseAdmin: any) {
+  const { data } = await supabaseAdmin
+    .from('system_settings')
+    .select('setting_value')
+    .eq('setting_key', OTHER_REASONS_SETTING)
+    .maybeSingle();
+  try {
+    const parsed = JSON.parse(String(data?.setting_value || '[]'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeOtherToSettings(supabaseAdmin: any, rows: any[], userId?: string | null) {
+  const { error } = await supabaseAdmin.from('system_settings').upsert(
+    {
+      setting_key: OTHER_REASONS_SETTING,
+      setting_value: JSON.stringify(rows),
+      setting_type: 'JSON',
+      category: 'SYSTEM',
+      description: 'Items shown when a lead status is Other',
+      is_editable: true,
+      updated_by: userId || null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'setting_key' },
+  );
+  return error;
+}
+
+async function loadOtherReasons(supabaseAdmin: any, includeInactive: boolean) {
+  const { data, error } = await supabaseAdmin
+    .from('crm_other_reasons')
+    .select('id, name, sort_order, is_active, created_at')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error && missingRelation(error)) {
+    let rows = await readOtherFromSettings(supabaseAdmin);
+    if (!includeInactive) rows = rows.filter((r: any) => r.is_active !== false);
+    return { reasons: rows, warning: null as string | null, store: 'settings' as const };
+  }
+
+  if (error) {
+    return {
+      reasons: [] as Array<{ id: string; name: string; sort_order: number; is_active: boolean }>,
+      warning: error.message,
+      store: 'table' as const,
+    };
+  }
+
+  let rows = data || [];
+  if (!includeInactive) rows = rows.filter((r: any) => r.is_active !== false);
+  return { reasons: rows, warning: null as string | null, store: 'table' as const };
+}
+
+async function ensureOtherStatus(supabaseAdmin: any) {
+  const { data } = await supabaseAdmin
+    .from('crm_lead_statuses')
+    .select('id')
+    .ilike('code', 'other')
+    .maybeSingle();
+  if (data?.id) return;
+  await supabaseAdmin.from('crm_lead_statuses').insert({
+    code: 'OTHER',
+    name: 'Other',
+    color: '#EDE9FE',
+    sort_order: 80,
+    is_system: true,
+    is_active: true,
+    requires_follow_up: false,
+    requires_lost_reason: false,
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    pipeline_status: null,
+    stage_group: 'other',
+  });
+}
+
 /** GET statuses + lost reasons */
 export async function GET(request: NextRequest) {
   const gate = await requireCrmUser(request);
@@ -256,6 +358,8 @@ export async function GET(request: NextRequest) {
 
   const includeAll = request.nextUrl.searchParams.get('all') === '1' && gate.canManage;
 
+  await ensureOtherStatus(supabaseAdmin);
+
   const { data, error } = await supabaseAdmin
     .from('crm_lead_statuses')
     .select(
@@ -265,11 +369,13 @@ export async function GET(request: NextRequest) {
     .order('name', { ascending: true });
 
   const lostPack = await loadLostReasons(supabaseAdmin, includeAll);
+  const otherPack = await loadOtherReasons(supabaseAdmin, includeAll);
 
   if (error) {
     return NextResponse.json({
       statuses: DEFAULT_CRM_STATUSES.map((s, i) => ({ id: `fallback-${i}`, ...s })),
       lost_reasons: lostPack.reasons,
+      other_reasons: otherPack.reasons,
       warning: 'Run database/322_crm_lead_statuses.sql and database/323_crm_lead_status_stages_lost_reasons.sql',
       palette: [...CRM_STATUS_COLORS],
       max_lost_reasons: MAX_LOST_REASONS,
@@ -280,14 +386,19 @@ export async function GET(request: NextRequest) {
     ...r,
     stage_group: inferStageGroup(r.code, r.stage_group),
   }));
+  if (!rows.some((r: any) => String(r.code || '').toUpperCase() === 'OTHER')) {
+    const otherDefault = DEFAULT_CRM_STATUSES.find((s) => s.code === 'OTHER');
+    if (otherDefault) rows.push({ id: 'fallback-other', ...otherDefault });
+  }
   if (!includeAll) {
     rows = rows.filter((r: any) => r.is_active !== false);
   }
 
-  const warnings = [lostPack.warning].filter(Boolean);
+  const warnings = [lostPack.warning, otherPack.warning].filter(Boolean);
   return NextResponse.json({
     statuses: rows,
     lost_reasons: lostPack.reasons,
+    other_reasons: otherPack.reasons,
     warning: warnings[0] || null,
     palette: [...CRM_STATUS_COLORS],
     max_lost_reasons: MAX_LOST_REASONS,
@@ -299,12 +410,13 @@ export async function POST(request: NextRequest) {
   const gate = await requireCrmUser(request);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
-  if (!gate.canManage) {
-    return NextResponse.json({ error: 'Only managers/admins can manage statuses' }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => ({}));
   const action = String(body?.action || 'create_status').trim();
+
+  const telecallerAddOther = action === 'create_other_reason' && gate.roleCode === 'TELECALLER';
+  if (!gate.canManage && !telecallerAddOther) {
+    return NextResponse.json({ error: 'Only managers/admins can manage statuses' }, { status: 403 });
+  }
 
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return NextResponse.json({ error: 'Admin unavailable' }, { status: 500 });
@@ -594,6 +706,139 @@ export async function POST(request: NextRequest) {
     const id = String(body?.id || '').trim();
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
     const { error } = await supabaseAdmin.from('crm_lost_reasons').delete().eq('id', id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, deleted: id });
+  }
+
+  if (action === 'create_other_reason') {
+    const name = String(body?.name || '').trim();
+    if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
+
+    const { data: existing, error: listErr } = await supabaseAdmin
+      .from('crm_other_reasons')
+      .select('id, name');
+    const useSettings = Boolean(listErr && missingRelation(listErr));
+    if (listErr && !useSettings) {
+      return NextResponse.json({ error: listErr.message }, { status: 500 });
+    }
+
+    const rows = useSettings ? await readOtherFromSettings(supabaseAdmin) : existing || [];
+    const dup = rows.find(
+      (r: any) => String(r.name || '').trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (dup) {
+      return NextResponse.json(
+        { error: `Already exists as "${dup.name}"`, reason: dup },
+        { status: 409 },
+      );
+    }
+
+    if (useSettings) {
+      const reason = {
+        id: crypto.randomUUID(),
+        name,
+        sort_order: rows.length * 10 + 10,
+        is_active: true,
+      };
+      const writeErr = await writeOtherToSettings(supabaseAdmin, [...rows, reason], gate.userId);
+      if (writeErr) return NextResponse.json({ error: writeErr.message }, { status: 500 });
+      return NextResponse.json({ success: true, reason });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('crm_other_reasons')
+      .insert({
+        name,
+        sort_order: rows.length * 10 + 10,
+        is_active: true,
+        created_by: gate.userId,
+      })
+      .select('id, name, sort_order, is_active')
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, reason: data });
+  }
+
+  if (action === 'update_other_reason') {
+    const id = String(body?.id || '').trim();
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const name = body?.name != null ? String(body.name).trim() : null;
+    if (body?.name != null && !name) return NextResponse.json({ error: 'name required' }, { status: 400 });
+
+    const { data: existing, error: listErr } = await supabaseAdmin
+      .from('crm_other_reasons')
+      .select('id, name, sort_order, is_active');
+    const useSettings = Boolean(listErr && missingRelation(listErr));
+    if (listErr && !useSettings) {
+      return NextResponse.json({ error: listErr.message }, { status: 500 });
+    }
+
+    if (useSettings) {
+      const rows = await readOtherFromSettings(supabaseAdmin);
+      const dup = rows.find(
+        (r: any) =>
+          String(r.id) !== id && name && String(r.name || '').trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (dup) {
+        return NextResponse.json({ error: `Another item already exists as "${dup.name}"` }, { status: 409 });
+      }
+      const next = rows.map((r: any) =>
+        String(r.id) === id
+          ? {
+              ...r,
+              ...(name ? { name } : {}),
+              ...(body?.is_active != null ? { is_active: Boolean(body.is_active) } : {}),
+              ...(body?.sort_order != null && Number.isFinite(Number(body.sort_order))
+                ? { sort_order: Number(body.sort_order) }
+                : {}),
+            }
+          : r,
+      );
+      const writeErr = await writeOtherToSettings(supabaseAdmin, next, gate.userId);
+      if (writeErr) return NextResponse.json({ error: writeErr.message }, { status: 500 });
+      return NextResponse.json({ success: true, reason: next.find((r: any) => String(r.id) === id) || null });
+    }
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (name) {
+      const dup = (existing || []).find(
+        (r: any) => String(r.id) !== id && String(r.name || '').trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (dup) {
+        return NextResponse.json({ error: `Another item already exists as "${dup.name}"` }, { status: 409 });
+      }
+      patch.name = name;
+    }
+    if (body?.sort_order != null && Number.isFinite(Number(body.sort_order))) {
+      patch.sort_order = Number(body.sort_order);
+    }
+    if (body?.is_active != null) patch.is_active = Boolean(body.is_active);
+
+    const { data, error } = await supabaseAdmin
+      .from('crm_other_reasons')
+      .update(patch)
+      .eq('id', id)
+      .select('id, name, sort_order, is_active')
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, reason: data });
+  }
+
+  if (action === 'delete_other_reason') {
+    const id = String(body?.id || '').trim();
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const { error } = await supabaseAdmin.from('crm_other_reasons').delete().eq('id', id);
+    if (error && missingRelation(error)) {
+      const rows = await readOtherFromSettings(supabaseAdmin);
+      const writeErr = await writeOtherToSettings(
+        supabaseAdmin,
+        rows.filter((r: any) => String(r.id) !== id),
+        gate.userId,
+      );
+      if (writeErr) return NextResponse.json({ error: writeErr.message }, { status: 500 });
+      return NextResponse.json({ success: true, deleted: id });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true, deleted: id });
   }

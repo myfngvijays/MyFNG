@@ -3,6 +3,7 @@
 import React, { Suspense, useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
+import CrmUploadQueueBanner from '@/components/admin/CrmUploadQueueBanner';
 import {
   LayoutDashboard,
   Users,
@@ -62,6 +63,8 @@ import {
   Workflow,
   PhoneCall,
   Headphones,
+  Tag,
+  CircleDot,
   Brain,
   Plug,
   Target,
@@ -202,6 +205,24 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/bookings',
     icon: ClipboardList,
     description: 'Service Leads & AI Bookings'
+  },
+  {
+    name: 'Lead Tags',
+    href: '/dashboard/super_admin/lead-tags',
+    icon: Tag,
+    description: 'Create, edit and delete lead tags'
+  },
+  {
+    name: 'Lead Status',
+    href: '/dashboard/super_admin/lead-statuses',
+    icon: CircleDot,
+    description: 'Create, edit and delete lead statuses'
+  },
+  {
+    name: 'Lead Fields',
+    href: '/dashboard/super_admin/lead-fields',
+    icon: List,
+    description: 'Built-in columns and extra lead fields'
   },
   {
     name: 'Recordings',
@@ -1778,6 +1799,7 @@ function SuperAdminLayoutInner({
           aria-hidden
         />
         <div className="min-w-0 w-full max-w-full overflow-x-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <CrmUploadQueueBanner />
           {children}
         </div>
       </main>

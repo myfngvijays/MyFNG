@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
 import { Check, Loader2, Pencil, Plus, Tag, Trash2, X } from 'lucide-react';
 
 type TagRow = { id: string; name: string; color: string };
@@ -114,8 +113,7 @@ export default function SuperAdminLeadTagsPage() {
   };
 
   return (
-    <DashboardLayout role="SUPER_ADMIN">
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-4">
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-4">
         <div>
           <h1 className="text-2xl font-black text-[#023D95] flex items-center gap-2">
             <Tag className="h-6 w-6" /> Lead tags
@@ -226,7 +224,6 @@ export default function SuperAdminLeadTagsPage() {
             )}
           </ul>
         )}
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }

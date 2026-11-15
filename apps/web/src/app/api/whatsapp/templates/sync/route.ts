@@ -260,17 +260,20 @@ export async function POST() {
 
     const settingsPhoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || '').replace(/\D/g, '');
     const settingsPhone = last10Digits(DEFAULT_WHATSAPP_PHONE);
+    const settingsWabaId = String(WHATSAPP_BUSINESS_ACCOUNT_ID || '').replace(/\D/g, '');
     const ownedByAnotherAccount = (name: string) => {
       const prior = existingMetaByName.get(name) || {};
       const owner = last10Digits(String(prior.account_phone || ''));
       return Boolean(owner) && owner !== settingsPhone;
     };
+    const settingsLocalName = (metaName: string) =>
+      ownedByAnotherAccount(metaName) ? `${metaName}__${settingsPhone.slice(-5)}` : metaName;
 
     const rowsToUpsert = normalizedRows
-      .filter((row) => !doNotOverwrite.has(row.template_name))
-      .filter((row) => !ownedByAnotherAccount(row.template_name))
+      .filter((row) => !doNotOverwrite.has(settingsLocalName(row.template_name)))
       .map((row) => {
-        const priorMeta = existingMetaByName.get(row.template_name) || {};
+        const localName = settingsLocalName(row.template_name);
+        const priorMeta = existingMetaByName.get(localName) || {};
         const preserveKeys = [
           'crm_telecaller',
           'frictionless',
@@ -287,13 +290,17 @@ export async function POST() {
         }
         return {
           ...row,
-          is_active: existingActiveByName.has(row.template_name)
-            ? existingActiveByName.get(row.template_name)!
+          template_name: localName,
+          is_active: existingActiveByName.has(localName)
+            ? existingActiveByName.get(localName)!
             : row.is_active,
           meta: {
             ...preserved,
             ...row.meta,
             ...preserved,
+            send_name: row.template_name,
+            account_phone: settingsPhone,
+            waba_id: settingsWabaId || priorMeta.waba_id || null,
             phone_number_id: settingsPhoneId || priorMeta.phone_number_id || null,
           },
         };
@@ -325,8 +332,9 @@ export async function POST() {
 
     // Link Meta status onto protected local rows without overwriting body/name.
     for (const row of normalizedRows) {
-      if (!doNotOverwrite.has(row.template_name)) continue;
-      const priorMeta = existingMetaByName.get(row.template_name) || {};
+      const localName = settingsLocalName(row.template_name);
+      if (!doNotOverwrite.has(localName) || ownedByAnotherAccount(localName)) continue;
+      const priorMeta = existingMetaByName.get(localName) || {};
       const metaStatus = String(row.meta?.status || '').toUpperCase();
       const { error: linkError } = await adminDb
         .from('whatsapp_templates')
@@ -338,6 +346,10 @@ export async function POST() {
             synced_at: new Date().toISOString(),
             meta_linked: true,
             waba_missing: false,
+            send_name: row.template_name,
+            account_phone: settingsPhone,
+            waba_id: settingsWabaId || priorMeta.waba_id || null,
+            phone_number_id: settingsPhoneId || priorMeta.phone_number_id || null,
           },
           is_active:
             metaStatus === 'APPROVED'
@@ -347,7 +359,7 @@ export async function POST() {
                 : false,
           updated_at: new Date().toISOString(),
         })
-        .eq('template_name', row.template_name);
+        .eq('template_name', localName);
       if (!linkError) linkedProtected += 1;
     }
 

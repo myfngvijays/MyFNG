@@ -372,6 +372,12 @@ const DEFAULT_STATUS_OPTIONS: CallDisposition[] = [
     lead_status: 'REJECTED',
     requires_lost_reason: true,
   },
+  {
+    id: 'OTHER',
+    label: 'Other',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+  },
 ];
 
 const DEFAULT_LOST_REASONS = [
@@ -441,6 +447,8 @@ export default function TelecallerLeadDetailScreen({
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showLostMenu, setShowLostMenu] = useState(false);
+  const [showOtherMenu, setShowOtherMenu] = useState(false);
+  const [otherDraft, setOtherDraft] = useState('');
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const [pricingItems, setPricingItems] = useState<Array<{ name: string; price: number }>>([]);
@@ -474,6 +482,7 @@ export default function TelecallerLeadDetailScreen({
   const [activityData, setActivityData] = useState({
     result: 'RINGING',
     lostReason: '',
+    otherReason: '',
     notes: '',
     date: '',
     time: '',
@@ -481,6 +490,9 @@ export default function TelecallerLeadDetailScreen({
   const [statusOptions, setStatusOptions] =
     useState<CallDisposition[]>(DEFAULT_STATUS_OPTIONS);
   const [lostReasons, setLostReasons] = useState<string[]>(DEFAULT_LOST_REASONS);
+  const [otherReasons, setOtherReasons] = useState<string[]>([]);
+  const [customFieldDefs, setCustomFieldDefs] = useState<Array<{ id: string; name: string }>>([]);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   const setEditField = (key: keyof EditForm, value: any) =>
     setEditForm((prev) => ({ ...prev, [key]: value }));
@@ -527,6 +539,14 @@ export default function TelecallerLeadDetailScreen({
           setLostReasons(
             reasons.map((r: any) => String(r.name || '').trim()).filter(Boolean),
           );
+        }
+        const others = Array.isArray(data?.other_reasons) ? data.other_reasons : [];
+        if (!cancelled) {
+          setOtherReasons(others.map((r: any) => String(r.name || '').trim()).filter(Boolean));
+        }
+        const fieldRes = await apiFetch<any>('/api/lead-manager/fields');
+        if (!cancelled) {
+          setCustomFieldDefs(Array.isArray(fieldRes?.fields) ? fieldRes.fields : []);
         }
       } catch {
         /* keep defaults */
@@ -651,6 +671,16 @@ export default function TelecallerLeadDetailScreen({
       ...prev,
       result: activityResultFromLead(data),
       lostReason: String(meta.last_lost_reason || ''),
+      otherReason: String(meta.last_other_reason || ''),
+    }));
+    const bag = meta.custom_fields;
+    setCustomFieldValues(
+      bag && typeof bag === 'object' && !Array.isArray(bag)
+        ? Object.fromEntries(Object.entries(bag).map(([k, v]) => [String(k), String(v ?? '')]))
+        : {},
+    );
+    setActivityData((prev) => ({
+      ...prev,
       ...(activityTouchedRef.current
         ? {}
         : {
@@ -803,15 +833,20 @@ export default function TelecallerLeadDetailScreen({
       let dispositionStatus: string | null = null;
       const selected =
         statusOptions.find((r) => r.id === activityData.result) || RINGING;
+      const otherItem = selected.id === 'OTHER' ? activityData.otherReason.trim() : '';
       const statusLabel =
         selected.id === 'LOST'
           ? `Lost · ${activityData.lostReason.trim() || 'Other Reasons'}`
-          : selected.label;
+          : otherItem
+            ? `Other · ${otherItem}`
+            : selected.label;
       nextMeta.last_call_status = selected.call_status;
       nextMeta.last_call_result = selected.id;
       nextMeta.last_call_label = statusLabel;
       nextMeta.last_lost_reason =
         selected.id === 'LOST' ? activityData.lostReason.trim() || 'Other Reasons' : null;
+      nextMeta.last_other_reason = selected.id === 'OTHER' ? otherItem || null : null;
+      nextMeta.custom_fields = customFieldValues;
       nextMeta.last_call_at = new Date().toISOString();
       if (selected.lead_status) dispositionStatus = selected.lead_status;
       const servicesChangedLocal = servicesIdsChanged(
@@ -995,10 +1030,13 @@ export default function TelecallerLeadDetailScreen({
       try {
         const selected =
           statusOptions.find((r) => r.id === activityData.result) || RINGING;
+        const otherItem = selected.id === 'OTHER' ? activityData.otherReason.trim() : '';
         const statusLabel =
           selected.requires_lost_reason || selected.id === 'LOST'
             ? `Lost · ${activityData.lostReason}`
-            : selected.label;
+            : otherItem
+              ? `Other · ${otherItem}`
+              : selected.label;
         const whenIso = combineDateAndTime(activityData.date, activityData.time);
         if ((selected.requires_follow_up || selected.id === 'CALLBACK') && !whenIso) {
           Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
@@ -1035,6 +1073,7 @@ export default function TelecallerLeadDetailScreen({
             selected.requires_lost_reason || selected.id === 'LOST'
               ? activityData.lostReason
               : null,
+          last_other_reason: selected.id === 'OTHER' ? activityData.otherReason.trim() || null : null,
           last_call_at: new Date().toISOString(),
         };
         const leadUpdate: Record<string, unknown> = {
@@ -1099,6 +1138,7 @@ export default function TelecallerLeadDetailScreen({
       setActivityData({
         result: activityData.result,
         lostReason: activityData.result === 'LOST' ? activityData.lostReason : '',
+        otherReason: activityData.result === 'OTHER' ? activityData.otherReason : '',
         notes: '',
         date: '',
         time: '',
@@ -1496,6 +1536,10 @@ export default function TelecallerLeadDetailScreen({
         setShowLostMenu(false);
         return true;
       }
+      if (showOtherMenu) {
+        setShowOtherMenu(false);
+        return true;
+      }
       if (embedded) {
         navigation?.goBack?.();
         return true;
@@ -1509,7 +1553,7 @@ export default function TelecallerLeadDetailScreen({
     });
 
     return () => backHandler.remove();
-  }, [embedded, navigation, showWaChat, showStatusMenu, showLostMenu]);
+  }, [embedded, navigation, showWaChat, showStatusMenu, showLostMenu, showOtherMenu]);
 
   const fetchLeadDetails = async () => {
     let settled = false;
@@ -1683,10 +1727,13 @@ export default function TelecallerLeadDetailScreen({
       }
 
       const whenIso = combineDateAndTime(activityData.date, activityData.time);
+      const otherItem = selected.id === 'OTHER' ? activityData.otherReason.trim() : '';
       const statusLabel =
         selected.id === 'LOST'
           ? `Lost · ${activityData.lostReason.trim() || 'Other Reasons'}`
-          : selected.label;
+          : otherItem
+            ? `Other · ${otherItem}`
+            : selected.label;
       const notesParts = [
         `[${statusLabel}]`,
         activityData.notes.trim() || null,
@@ -1726,6 +1773,7 @@ export default function TelecallerLeadDetailScreen({
         last_call_result: selected.id,
         last_call_label: statusLabel,
         last_lost_reason: selected.id === 'LOST' ? activityData.lostReason.trim() || 'Other Reasons' : null,
+        last_other_reason: selected.id === 'OTHER' ? activityData.otherReason.trim() || null : null,
         last_call_at: new Date().toISOString(),
         profile_history: [historyEntry, ...prevHistory].slice(0, 50),
       };
@@ -1795,6 +1843,7 @@ export default function TelecallerLeadDetailScreen({
       setActivityData({
         result: selected.id,
         lostReason: selected.id === 'LOST' ? activityData.lostReason : '',
+        otherReason: selected.id === 'OTHER' ? activityData.otherReason : '',
         notes: '',
         date: '',
         time: '',
@@ -2438,6 +2487,21 @@ export default function TelecallerLeadDetailScreen({
                 </Text>
               )}
 
+              {customFieldDefs.map((field) => (
+                <View key={field.id}>
+                  <Text style={styles.fieldCaption}>{field.name}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={customFieldValues[field.id] || ''}
+                    onChangeText={(text) =>
+                      setCustomFieldValues((prev) => ({ ...prev, [field.id]: text }))
+                    }
+                    placeholder={field.name}
+                    placeholderTextColor={COLORS.textSecondary}
+                  />
+                </View>
+              ))}
+
               {customerMessage ? (
                 <View style={styles.customerMsgBox}>
                   <Text style={styles.fieldCaption}>Customer message</Text>
@@ -3048,6 +3112,30 @@ export default function TelecallerLeadDetailScreen({
                 </>
               ) : null}
 
+              {activityData.result === 'OTHER' ? (
+                <>
+                  <Text style={styles.formLabel}>Other</Text>
+                  <TouchableOpacity
+                    style={styles.selectBtn}
+                    onPress={() => {
+                      setShowStatusMenu(false);
+                      setShowLostMenu(false);
+                      setShowOtherMenu(true);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.selectBtnText,
+                        !activityData.otherReason && { color: COLORS.textSecondary },
+                      ]}
+                    >
+                      {activityData.otherReason || 'Other only — tap to pick or add'}
+                    </Text>
+                    <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                </>
+              ) : null}
+
               <Text style={styles.formLabel}>
                 {activityData.result === 'CALLBACK'
                   ? 'Follow-up date & time (required)'
@@ -3317,6 +3405,30 @@ export default function TelecallerLeadDetailScreen({
               </>
             ) : null}
 
+            {activityData.result === 'OTHER' ? (
+              <>
+                <Text style={styles.formLabel}>Other</Text>
+                <TouchableOpacity
+                  style={styles.selectBtn}
+                  onPress={() => {
+                    setShowStatusMenu(false);
+                    setShowLostMenu(false);
+                    setShowOtherMenu(true);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.selectBtnText,
+                      !activityData.otherReason && { color: COLORS.textSecondary },
+                    ]}
+                  >
+                    {activityData.otherReason || 'Other only — tap to pick or add'}
+                  </Text>
+                  <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </>
+            ) : null}
+
             <Text style={styles.formLabel}>
               {activityData.result === 'CALLBACK'
                 ? 'Follow-up date & time (required)'
@@ -3505,6 +3617,7 @@ export default function TelecallerLeadDetailScreen({
                   ...activityData,
                   result: opt.id,
                   lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? activityData.lostReason : '',
+                  otherReason: opt.id === 'OTHER' ? activityData.otherReason : '',
                 });
                 if (opt.id === 'BOOKING_CONFIRMED') {
                   setEditForm((prev) => ({ ...prev, pickup_required: true }));
@@ -3515,6 +3628,81 @@ export default function TelecallerLeadDetailScreen({
               <Text style={styles.menuItemText}>{opt.label}</Text>
             </TouchableOpacity>
           ))}
+        </View>
+      </Pressable>
+    </Modal>
+
+    <Modal visible={showOtherMenu} transparent animationType="fade" onRequestClose={() => setShowOtherMenu(false)}>
+      <Pressable style={styles.menuOverlay} onPress={() => setShowOtherMenu(false)}>
+        <View style={styles.menuSheet}>
+          <Text style={styles.menuTitle}>Other</Text>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              setActivityData({ ...activityData, otherReason: '' });
+              setShowOtherMenu(false);
+            }}
+          >
+            <Text style={styles.menuItemText}>Other only</Text>
+          </TouchableOpacity>
+          {otherReasons.map((reason) => (
+            <TouchableOpacity
+              key={reason}
+              style={styles.menuItem}
+              onPress={() => {
+                setActivityData({ ...activityData, otherReason: reason });
+                setShowOtherMenu(false);
+              }}
+            >
+              <Text style={styles.menuItemText}>{reason}</Text>
+            </TouchableOpacity>
+          ))}
+          {otherReasons.length === 0 ? (
+            <Text style={{ color: COLORS.textSecondary, fontSize: 13, paddingVertical: 8 }}>
+              Abhi koi other item nahi.
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <TextInput
+              value={otherDraft}
+              onChangeText={setOtherDraft}
+              placeholder="Naya item"
+              placeholderTextColor={COLORS.textSecondary}
+              style={[styles.selectBtn, { flex: 1, marginBottom: 0 }]}
+            />
+            <TouchableOpacity
+              style={[styles.selectBtn, { backgroundColor: COLORS.primary, marginBottom: 0 }]}
+              onPress={async () => {
+                const name = otherDraft.trim();
+                if (!name) return;
+                try {
+                  const json = await apiFetch<any>('/api/lead-manager/statuses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create_other_reason', name }),
+                  });
+                  const saved = String(json?.reason?.name || name);
+                  setOtherReasons((prev) =>
+                    prev.some((n) => n.toLowerCase() === saved.toLowerCase()) ? prev : [...prev, saved],
+                  );
+                  setActivityData({ ...activityData, otherReason: saved });
+                  setOtherDraft('');
+                  setShowOtherMenu(false);
+                } catch (e: any) {
+                  const msg = String(e?.message || '');
+                  if (/already exists/i.test(msg)) {
+                    setActivityData({ ...activityData, otherReason: name });
+                    setOtherDraft('');
+                    setShowOtherMenu(false);
+                    return;
+                  }
+                  Alert.alert('Other', msg || 'Could not add');
+                }
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Pressable>
     </Modal>

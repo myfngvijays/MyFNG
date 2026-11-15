@@ -175,6 +175,7 @@ export const ALL_CRM_LEAD_STATUS_NAMES = [
   'Ringing / No answer',
   'Service Done',
   'Lost',
+  'Other',
 ] as const;
 
 /** Auto-audit every CRM status — connected recordings are not filtered out. */
@@ -188,6 +189,7 @@ export const DEFAULT_CALL_IQ_LEAD_STATUSES = [
   'Ringing / No answer',
   'Service Done',
   'Lost',
+  'Other',
 ];
 
 const LEGACY_TELECRM_STATUS =

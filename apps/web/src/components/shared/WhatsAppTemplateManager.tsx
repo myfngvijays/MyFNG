@@ -93,10 +93,14 @@ function timeValue(value: string | null | undefined) {
 function templateTitle(row: { display_name?: string | null; template_name: string }) {
   const display = String(row.display_name || '').trim();
   const name = String(row.template_name || '').trim();
+  const bare = name.replace(/__\d{4,6}$/i, '');
+  if (display && (display.toLowerCase() === name.toLowerCase() || display.toLowerCase() === bare.toLowerCase())) {
+    return { title: display, subtitle: '' };
+  }
   if (display && display.toLowerCase() !== name.toLowerCase()) {
     return { title: display, subtitle: name };
   }
-  return { title: display || name, subtitle: '' };
+  return { title: display || bare || name, subtitle: '' };
 }
 
 function categoryTone(category: string) {
