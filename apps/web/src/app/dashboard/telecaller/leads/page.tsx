@@ -48,11 +48,11 @@ import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel'
 import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkActionsBar';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import CrmDatePickerModal from '@/components/telecaller/crm/CrmDatePickerModal';
+import LeadsSavedViews, { type CrmLeadsViewSnapshot } from '@/components/telecaller/crm/LeadsSavedViews';
 import { LeadDetailContent } from './[id]/page';
 
 /** Compact filters — same size on 14", 15.6", and wide monitors. Two-up only on phones. */
-const FILTER_FIELD =
-  'relative shrink-0 w-[calc(50%-0.25rem)] sm:w-auto sm:min-w-[9.25rem]';
+const FILTER_FIELD = 'relative shrink-0 w-auto min-w-[6.5rem]';
 
 const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v6';
 
@@ -1045,10 +1045,123 @@ function TelecallerCrmLeadsContent() {
     syncFiltersToUrl({ filter: id, lostReason: id === 'lost' ? lostReason : '' });
   };
 
+  const viewSnapshot: CrmLeadsViewSnapshot = {
+    kind: 'crm_leads',
+    v: 1,
+    filter,
+    lostReason,
+    city,
+    priority,
+    q: appliedQ,
+    datePreset,
+    dateField,
+    customStart,
+    customEnd,
+    telecallerId,
+    unassignedOnly,
+    source: sourceFilter,
+    coupon: couponFilter,
+    trigger: triggerFilter,
+    advIncomplete,
+    advFollowUp,
+    advHasVehicle,
+    advHasCoupon,
+    advNoAssignee,
+    advHasPhone,
+    advOverdueReminder,
+  };
+
+  const applySavedView = (next: CrmLeadsViewSnapshot) => {
+    const status = next.filter || 'all';
+    const lost = status === 'lost' ? next.lostReason || '' : '';
+    const preset = (next.datePreset || 'all_time') as CrmDatePreset;
+    const field = next.dateField === 'modified' ? 'modified' : 'created';
+    setFilter(status);
+    setLostReason(lost);
+    setCity(next.city || '');
+    setPriority(next.priority || '');
+    setQ(next.q || '');
+    setAppliedQ(next.q || '');
+    setDatePreset(preset);
+    setDateField(field);
+    setCustomStart(next.customStart || '');
+    setCustomEnd(next.customEnd || '');
+    setTelecallerId(next.telecallerId || '');
+    setUnassignedOnly(Boolean(next.unassignedOnly));
+    setSourceFilter(next.source || 'ALL');
+    setCouponFilter(next.coupon || 'ALL');
+    setTriggerFilter(next.trigger || '');
+    setAdvIncomplete(Boolean(next.advIncomplete));
+    setAdvFollowUp(Boolean(next.advFollowUp));
+    setAdvHasVehicle(Boolean(next.advHasVehicle));
+    setAdvHasCoupon(Boolean(next.advHasCoupon));
+    setAdvNoAssignee(Boolean(next.advNoAssignee));
+    setAdvHasPhone(Boolean(next.advHasPhone));
+    setAdvOverdueReminder(Boolean(next.advOverdueReminder));
+    persistAll({
+      statusFilter: status,
+      lostReason: lost,
+      city: next.city || '',
+      priority: next.priority || '',
+      q: next.q || '',
+      datePreset: preset,
+      dateField: field,
+      customStart: next.customStart || '',
+      customEnd: next.customEnd || '',
+      telecallerId: next.telecallerId || '',
+      unassignedOnly: Boolean(next.unassignedOnly),
+      advIncomplete: Boolean(next.advIncomplete),
+      advFollowUp: Boolean(next.advFollowUp),
+      advHasVehicle: Boolean(next.advHasVehicle),
+      advHasCoupon: Boolean(next.advHasCoupon),
+      advNoAssignee: Boolean(next.advNoAssignee),
+    });
+    syncFiltersToUrl({
+      filter: status,
+      lostReason: lost,
+      city: next.city || '',
+      priority: next.priority || '',
+      q: next.q || '',
+      datePreset: preset,
+      dateField: field,
+      telecallerId: next.telecallerId || '',
+      unassignedOnly: Boolean(next.unassignedOnly),
+      source: next.source || 'ALL',
+      hasCoupon: next.coupon || 'ALL',
+      trigger: next.trigger || '',
+    });
+  };
+
+  const applyViewRef = useRef(applySavedView);
+  applyViewRef.current = applySavedView;
+  const appliedViewRef = useRef('');
+  useEffect(() => {
+    const viewParam = searchParams?.get('view') || '';
+    if (!prefsReady || !viewParam || appliedViewRef.current === viewParam) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/lead-manager/saved-views', { credentials: 'include' });
+        const json = await res.json().catch(() => ({}));
+        const row = (Array.isArray(json?.views) ? json.views : []).find(
+          (item: any) => String(item?.id) === viewParam && item?.filters?.kind === 'crm_leads',
+        );
+        if (!row || cancelled) return;
+        appliedViewRef.current = viewParam;
+        applyViewRef.current(row.filters);
+      } catch {
+        /* sidebar click retries on next navigation */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prefsReady, searchParams]);
+
   return (
     <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full min-w-0 max-w-none space-y-3 pb-24 sm:space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 className="flex shrink-0 flex-wrap items-center gap-2 text-2xl font-extrabold text-[#023D95] md:text-3xl">
             Leads
             <span className="inline-flex items-baseline gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-bold tabular-nums text-slate-500">
@@ -1060,13 +1173,11 @@ function TelecallerCrmLeadsContent() {
               ) : null}
             </span>
           </h1>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end lg:w-auto lg:max-w-[42rem] lg:flex-1">
-            <div className="relative w-full sm:min-w-[16rem] sm:flex-1 sm:max-w-md">
+          <div className="flex w-full min-w-0 items-center gap-2 sm:max-w-[36rem] sm:flex-1">
+            <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
               <input
-                className={`w-full rounded-xl border border-[#023D95] bg-[#023D95] py-2.5 pl-9 text-sm font-semibold text-white placeholder:text-white/80 focus:outline-none focus:ring-2 focus:ring-white/40 ${
-                  q ? 'pr-9' : 'pr-3'
-                }`}
+                className="w-full rounded-xl border border-[#023D95] bg-[#023D95] py-2.5 pl-9 pr-3 text-sm font-semibold text-white placeholder:text-white/80 focus:outline-none focus:ring-2 focus:ring-white/40"
                 placeholder="Search name, phone, lead #"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -1075,133 +1186,22 @@ function TelecallerCrmLeadsContent() {
                 autoCorrect="off"
                 spellCheck={false}
               />
-              {q ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQ('');
-                    setAppliedQ('');
-                    persistAll({ q: '' });
-                    syncFiltersToUrl({ q: '' });
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-white/80 hover:bg-white/15 hover:text-white"
-                  aria-label="Clear search"
-                  title="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              ) : null}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-            <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode('chart')}
-                title="Chart view"
-                aria-pressed={viewMode === 'chart'}
-                style={
-                  viewMode === 'chart'
-                    ? { backgroundColor: '#004AAD', color: '#fff' }
-                    : { color: '#334155' }
-                }
-                className={`inline-flex h-9 w-10 items-center justify-center rounded-full transition ${
-                  viewMode === 'chart' ? 'shadow-sm' : 'hover:bg-slate-50'
-                }`}
-              >
-                <LineChart className="h-4 w-4" stroke="currentColor" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                title="List view"
-                aria-pressed={viewMode === 'list'}
-                style={
-                  viewMode === 'list'
-                    ? { backgroundColor: '#004AAD', color: '#fff' }
-                    : { color: '#334155' }
-                }
-                className={`inline-flex h-9 w-10 items-center justify-center rounded-full transition ${
-                  viewMode === 'list' ? 'shadow-sm' : 'hover:bg-slate-50'
-                }`}
-              >
-                <List className="h-4 w-4" stroke="currentColor" />
-              </button>
-            </div>
-            {viewMode === 'list' ? (
-              <div className="relative shrink-0" ref={columnsMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setColumnsMenuOpen((o) => !o)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
-                  aria-expanded={columnsMenuOpen}
-                >
-                  <Columns3 className="h-4 w-4" />
-                  Columns
-                  <ChevronDown className={`h-4 w-4 transition ${columnsMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {columnsMenuOpen ? (
-                  <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                        Show columns
-                      </p>
-                      <button
-                        type="button"
-                        className="text-[11px] font-bold text-[#004AAD]"
-                        onClick={() => {
-                          const next = { ...DEFAULT_LEADS_COLUMNS };
-                          setVisibleColumns(next);
-                          saveLeadsColumnVisibility(next);
-                        }}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                    <label className="relative mb-2 block">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="search"
-                        value={columnsQuery}
-                        onChange={(e) => setColumnsQuery(e.target.value)}
-                        placeholder="Search columns…"
-                        className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
-                        autoComplete="off"
-                        autoFocus
-                      />
-                    </label>
-                    <div className="max-h-72 space-y-0.5 overflow-y-auto">
-                      {LEADS_TABLE_COLUMNS.filter(
-                        (c) =>
-                          (c.key !== 'source' && c.key !== 'mlScore') || isLeadManager,
-                      )
-                        .filter((c) => {
-                          const q = columnsQuery.trim().toLowerCase();
-                          if (!q) return true;
-                          return c.label.toLowerCase().includes(q) || c.key.toLowerCase().includes(q);
-                        })
-                        .map((col) => (
-                        <label
-                          key={col.key}
-                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                            col.locked ? 'opacity-60' : 'hover:bg-slate-50 cursor-pointer'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-300"
-                            checked={showCol(col.key)}
-                            disabled={col.locked}
-                            onChange={() => toggleColumn(col.key)}
-                          />
-                          <span className="font-semibold text-slate-700">{col.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setQ('');
+                setAppliedQ('');
+                persistAll({ q: '' });
+                syncFiltersToUrl({ q: '' });
+              }}
+              className="inline-flex h-10 shrink-0 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="ml-auto shrink-0">
+            <LeadsSavedViews snapshot={viewSnapshot} onApply={applySavedView} />
           </div>
         </div>
 
@@ -1243,11 +1243,11 @@ function TelecallerCrmLeadsContent() {
           </div>
         ) : null}
 
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
+        <div>
+          <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto">
             <div className={FILTER_FIELD}>
               <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                 value={filter}
                 onChange={(e) => setFilterAndUrl(e.target.value)}
                 aria-label="Lead Status"
@@ -1264,7 +1264,7 @@ function TelecallerCrmLeadsContent() {
             <button
               type="button"
               onClick={() => setDatePickerOpen(true)}
-              className={`${FILTER_FIELD} inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left text-sm font-semibold text-slate-800 hover:border-blue-300`}
+              className={`${FILTER_FIELD} inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-left text-xs font-semibold text-slate-800 hover:border-blue-300`}
               title="Select date"
             >
               <CalendarDays className="h-4 w-4 text-[#004AAD] shrink-0" />
@@ -1274,7 +1274,7 @@ function TelecallerCrmLeadsContent() {
 
             <div className={FILTER_FIELD}>
               <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                 value={city}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -1296,7 +1296,7 @@ function TelecallerCrmLeadsContent() {
 
             <div className={FILTER_FIELD}>
               <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                 value={priority}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -1318,7 +1318,7 @@ function TelecallerCrmLeadsContent() {
             {filter === 'lost' ? (
               <div className={FILTER_FIELD}>
                 <select
-                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                  className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                   value={lostReason}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -1342,7 +1342,7 @@ function TelecallerCrmLeadsContent() {
               type="button"
               disabled={selectedIds.size === 0}
               onClick={() => setSelectedOnly((v) => !v)}
-              className={`${FILTER_FIELD} inline-flex items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`${FILTER_FIELD} inline-flex h-8 items-center justify-center gap-1 rounded-lg border px-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
                 selectedOnly && selectedIds.size > 0
                   ? 'border-[#004AAD] bg-[#004AAD] text-white'
                   : 'border-[#004AAD]/30 bg-[#E7F0FF] text-[#023D95]'
@@ -1356,7 +1356,7 @@ function TelecallerCrmLeadsContent() {
               <button
                 type="button"
                 onClick={() => setShowAdvanced((v) => !v)}
-                className="inline-flex w-full items-center justify-between gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800"
+                className="inline-flex h-8 w-full items-center justify-between gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-800"
                 aria-expanded={showAdvanced}
               >
                 <span className="inline-flex items-center gap-1.5 truncate">
@@ -1551,47 +1551,147 @@ function TelecallerCrmLeadsContent() {
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="contents">
               {isLeadManager ? (
                 <>
                   <button
                     type="button"
                     onClick={() => exportLeadsCsv()}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700"
                   >
                     <Download className="h-4 w-4" />
                     Export
                   </button>
                   <Link
                     href="/dashboard/lead_manager/bookings?upload=1"
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700"
                   >
                     <Upload className="h-4 w-4" />
                     Upload
                   </Link>
                 </>
               ) : null}
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
-                title="WhatsApp · 6161"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm"
-              >
-                <WhatsAppIcon className="h-5 w-5" />
-              </button>
               <Link
                 href={`${base}/book?mode=book`}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50"
               >
                 + New Booking
               </Link>
               <Link
                 href={`${base}/book?mode=lead`}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
+                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-[#023D95] px-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#012f73]"
               >
                 <UserPlus className="h-4 w-4" />
                 + Add Lead
               </Link>
+              <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('chart')}
+                  title="Chart view"
+                  aria-pressed={viewMode === 'chart'}
+                  style={
+                    viewMode === 'chart'
+                      ? { backgroundColor: '#004AAD', color: '#fff' }
+                      : { color: '#334155' }
+                  }
+                  className={`inline-flex h-7 w-8 items-center justify-center rounded-full transition ${
+                  viewMode === 'chart' ? 'shadow-sm' : 'hover:bg-slate-50'
+                }`}
+                >
+                  <LineChart className="h-4 w-4" stroke="currentColor" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  title="List view"
+                  aria-pressed={viewMode === 'list'}
+                  style={
+                    viewMode === 'list'
+                      ? { backgroundColor: '#004AAD', color: '#fff' }
+                      : { color: '#334155' }
+                  }
+                  className={`inline-flex h-7 w-8 items-center justify-center rounded-full transition ${
+                  viewMode === 'list' ? 'shadow-sm' : 'hover:bg-slate-50'
+                }`}
+                >
+                  <List className="h-4 w-4" stroke="currentColor" />
+                </button>
+              </div>
+              {viewMode === 'list' ? (
+                <div className="relative shrink-0" ref={columnsMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setColumnsMenuOpen((o) => !o)}
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700"
+                    aria-expanded={columnsMenuOpen}
+                  >
+                    <Columns3 className="h-4 w-4" />
+                    Columns
+                    <ChevronDown className={`h-4 w-4 transition ${columnsMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {columnsMenuOpen ? (
+                    <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                          Show columns
+                        </p>
+                        <button
+                          type="button"
+                          className="text-[11px] font-bold text-[#004AAD]"
+                          onClick={() => {
+                            const next = { ...DEFAULT_LEADS_COLUMNS };
+                            setVisibleColumns(next);
+                            saveLeadsColumnVisibility(next);
+                          }}
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <label className="relative mb-2 block">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="search"
+                          value={columnsQuery}
+                          onChange={(e) => setColumnsQuery(e.target.value)}
+                          placeholder="Search columns…"
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
+                          autoComplete="off"
+                          autoFocus
+                        />
+                      </label>
+                      <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                        {LEADS_TABLE_COLUMNS.filter(
+                          (c) =>
+                            (c.key !== 'source' && c.key !== 'mlScore') || isLeadManager,
+                        )
+                          .filter((c) => {
+                            const query = columnsQuery.trim().toLowerCase();
+                            if (!query) return true;
+                            return c.label.toLowerCase().includes(query) || c.key.toLowerCase().includes(query);
+                          })
+                          .map((col) => (
+                          <label
+                            key={col.key}
+                            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                              col.locked ? 'opacity-60' : 'hover:bg-slate-50 cursor-pointer'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="rounded border-slate-300"
+                              checked={showCol(col.key)}
+                              disabled={col.locked}
+                              onChange={() => toggleColumn(col.key)}
+                            />
+                            <span className="font-semibold text-slate-700">{col.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

@@ -235,6 +235,9 @@ export default function CrmQueueTab({
   const [bulkWaOpen, setBulkWaOpen] = useState(false);
   const [bulkWaText, setBulkWaText] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
+  const [savedViews, setSavedViews] = useState<Array<{ id: string; name: string; filters: any }>>([]);
+  const [viewName, setViewName] = useState('');
+  const [savingView, setSavingView] = useState(false);
 
   const datePreset = datePresetProp ?? datePresetLocal;
   const customStart = customStartProp ?? customStartLocal;
@@ -248,6 +251,102 @@ export default function CrmQueueTab({
   const lostReasonLabel =
     LOST_REASON_FILTERS.find((c) => c.id === lostReason)?.label || 'All lost reasons';
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
+
+  const currentViewFilters = {
+    kind: 'crm_leads' as const,
+    v: 1 as const,
+    filter,
+    lostReason,
+    city,
+    priority,
+    q: appliedQ,
+    datePreset,
+    dateField,
+    customStart,
+    customEnd,
+    advIncomplete,
+    advFollowUp,
+    advHasVehicle,
+    advHasCoupon,
+  };
+
+  const loadSavedViews = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/api/lead-manager/saved-views');
+      const rows = (Array.isArray(data?.views) ? data.views : [])
+        .filter((row: any) => row?.filters?.kind === 'crm_leads')
+        .map((row: any) => ({
+          id: String(row.id),
+          name: String(row.name || 'View'),
+          filters: row.filters,
+        }));
+      setSavedViews(rows);
+    } catch {
+      setSavedViews([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showFilters) void loadSavedViews();
+  }, [showFilters, loadSavedViews]);
+
+  const saveCurrentView = async () => {
+    const label = viewName.trim();
+    if (!label) {
+      Alert.alert('View name', 'View ka naam likho');
+      return;
+    }
+    setSavingView(true);
+    try {
+      await apiFetch('/api/lead-manager/saved-views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: label, filters: currentViewFilters }),
+      });
+      await loadSavedViews();
+      Alert.alert('Saved', 'Filter view save ho gaya');
+    } catch (e: any) {
+      Alert.alert('Save failed', String(e?.message || 'Could not save view'));
+    } finally {
+      setSavingView(false);
+    }
+  };
+
+  const applySavedView = (filters: any) => {
+    const status = String(filters?.filter || 'all');
+    const lost = status === 'lost' ? String(filters?.lostReason || '') : '';
+    const preset = (filters?.datePreset || 'all_time') as CrmDatePreset;
+    const field = filters?.dateField === 'modified' ? 'modified' : 'created';
+    setFilter(status);
+    onFilterChange?.(status);
+    setLostReason(lost);
+    setCity(String(filters?.city || ''));
+    setPriority(String(filters?.priority || ''));
+    setQ(String(filters?.q || ''));
+    setAppliedQ(String(filters?.q || ''));
+    setDateField(field);
+    setDatePreset(preset);
+    setCustomStart(String(filters?.customStart || ''));
+    setCustomEnd(String(filters?.customEnd || ''));
+    setAdvIncomplete(Boolean(filters?.advIncomplete));
+    setAdvFollowUp(Boolean(filters?.advFollowUp));
+    setAdvHasVehicle(Boolean(filters?.advHasVehicle));
+    setAdvHasCoupon(Boolean(filters?.advHasCoupon));
+    persistLocalFilters({
+      statusFilter: status,
+      lostReason: lost,
+      city: String(filters?.city || ''),
+      priority: String(filters?.priority || ''),
+      q: String(filters?.q || ''),
+      dateField: field,
+      advIncomplete: Boolean(filters?.advIncomplete),
+      advFollowUp: Boolean(filters?.advFollowUp),
+      advHasVehicle: Boolean(filters?.advHasVehicle),
+      advHasCoupon: Boolean(filters?.advHasCoupon),
+    });
+    closeFilters();
+    setLoading(true);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1260,6 +1359,31 @@ export default function CrmQueueTab({
             </View>
 
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={styles.filterLabel}>Filters</Text>
+              <TextInput
+                value={viewName}
+                onChangeText={setViewName}
+                placeholder="View name"
+                placeholderTextColor={COLORS.textSecondary}
+                style={[styles.selectBtn, { marginBottom: 8 }]}
+              />
+              <TouchableOpacity
+                style={[styles.primary, savingView && { opacity: 0.6 }]}
+                disabled={savingView}
+                onPress={() => void saveCurrentView()}
+              >
+                <Text style={styles.primaryText}>{savingView ? 'Saving…' : 'Save this filter'}</Text>
+              </TouchableOpacity>
+              {savedViews.map((row) => (
+                <TouchableOpacity
+                  key={row.id}
+                  style={[styles.selectItem, { marginTop: 6 }]}
+                  onPress={() => applySavedView(row.filters)}
+                >
+                  <Text style={styles.selectItemText}>{row.name}</Text>
+                </TouchableOpacity>
+              ))}
+              <View style={{ height: 12 }} />
               {renderSelect(
                 'status',
                 'Lead status',

@@ -108,6 +108,41 @@ function countBodyVariables(bodyText: string): number {
  * Parse template body params without breaking free-text that contains commas.
  * (#132000 often = "Hello Sir, Apki…" split into 2 params via .split(','))
  */
+function isFrictionlessTemplate(templateName: string): boolean {
+  const name = templateName.toLowerCase();
+  return (
+    name === 'myfng_quick_note' ||
+    name === 'myfng_msg_note' ||
+    name === 'myfng_msg_note_safe' ||
+    name === 'myfng_support_note' ||
+    name === 'myfng_closed_window_note' ||
+    name === 'myfng_frictionless_chat'
+  );
+}
+
+/** Meta rejects raw newlines in {{1}}. U+2028 still renders as a line break in WhatsApp. */
+function layoutTemplateParam(value: string): string {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/ {5,}/g, '    ')
+    .replace(/\n/g, '\u2028')
+    .trim();
+}
+
+function frictionlessLinePieces(params: string[]): string[][] {
+  const lines = String(params[0] || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 24);
+  if (lines.length <= 1) return [[layoutTemplateParam(params[0] || '')]];
+  return lines.map((line) => [line]);
+}
+
 function parseTemplateParams(raw: unknown, expectedVars = 0): string[] {
   let list: string[] = [];
   if (Array.isArray(raw)) {
@@ -313,6 +348,7 @@ export async function POST(request: NextRequest) {
     let result;
     let messageForLog = '';
     let requestPayload: Record<string, unknown> = {};
+    let templateLineSends: Array<{ params: string[]; result: any }> | null = null;
     let mediaMimeTypeForLog: string | null = null;
 
     if (messageType === 'text') {
@@ -450,31 +486,62 @@ export async function POST(request: NextRequest) {
 
       const templateParams = parseTemplateParams(body?.template_params, expectedVars);
       const buttonUrlParams = parseTemplateParams(body?.button_url_params, 0);
+      const multiline =
+        isFrictionlessTemplate(templateName) &&
+        templateParams.length <= 1 &&
+        /[\r\n]/.test(String(templateParams[0] || ''));
 
       messageForLog = `template:${templateName}`;
+      templateLineSends = [];
+      const sendPiece = async (piece: string[]) => {
+        const pieceResult = await sendTemplateMessage({
+          phoneNumber: recipientPhone,
+          templateName,
+          templateParams: piece,
+          buttonUrlParams,
+          languageCode,
+        });
+        templateLineSends!.push({ params: piece, result: pieceResult });
+        return pieceResult;
+      };
+
+      if (multiline) {
+        const laidOut = await sendPiece([layoutTemplateParam(templateParams[0] || '')]);
+        const rejectedLayout = /new-line|newline|tab character|consecutive spaces/i.test(
+          String(laidOut.error || ''),
+        );
+        if (!laidOut.success && rejectedLayout) {
+          templateLineSends = [];
+          for (const piece of frictionlessLinePieces(templateParams)) {
+            const pieceResult = await sendPiece(piece);
+            if (!pieceResult.success) break;
+          }
+        }
+      } else {
+        const piece = isFrictionlessTemplate(templateName)
+          ? templateParams.map((value) => layoutTemplateParam(value))
+          : templateParams;
+        await sendPiece(piece);
+      }
+
+      const lastPiece = templateLineSends[templateLineSends.length - 1];
+      result = lastPiece?.result;
+      if (!result?.success) {
+        console.error('[WA Template Send] Failed:', {
+          templateName,
+          paramsCount: lastPiece?.params?.length || 0,
+          expectedVars,
+          error: result?.error,
+          raw: result?.raw,
+        });
+      }
       requestPayload = {
         message_type: 'template',
         template_name: templateName,
         language: languageCode,
-        template_params: templateParams,
+        template_params: lastPiece?.params || templateParams,
         button_url_params: buttonUrlParams,
       };
-      result = await sendTemplateMessage({
-        phoneNumber: recipientPhone,
-        templateName,
-        templateParams,
-        buttonUrlParams,
-        languageCode,
-      });
-      if (!result.success) {
-        console.error('[WA Template Send] Failed:', {
-          templateName,
-          paramsCount: templateParams.length,
-          expectedVars,
-          error: result.error,
-          raw: result.raw,
-        });
-      }
     }
 
     const now = new Date().toISOString();
@@ -560,13 +627,47 @@ export async function POST(request: NextRequest) {
       updated_at: now,
     };
 
-    const { data: archivedRow, error: archiveError } = await archiveDb
-      .from('whatsapp_messages')
-      .insert(archivePayload)
-      .select(
-        'id, provider_message_id, direction, message_type, sender_phone, recipient_phone, template_name, text_body, media_url, media_mime_type, media_caption, payload, meta, status, error_message, status_at, created_at',
-      )
-      .maybeSingle();
+    const archiveSelect =
+      'id, provider_message_id, direction, message_type, sender_phone, recipient_phone, template_name, text_body, media_url, media_mime_type, media_caption, payload, meta, status, error_message, status_at, created_at';
+    let archivedRow: any = null;
+    let archiveError: { message?: string } | null = null;
+    const lineSends = templateLineSends && templateLineSends.length > 1 ? templateLineSends : null;
+    if (lineSends) {
+      for (const piece of lineSends) {
+        const params = piece.params.map((value) => String(value ?? ''));
+        const paramsHint = params.filter(Boolean).join(', ');
+        const inserted = await archiveDb
+          .from('whatsapp_messages')
+          .insert({
+            ...archivePayload,
+            provider_message_id: piece.result?.messageId || null,
+            text_body: paramsHint ? `Template: ${templateNameForLog} (${paramsHint})` : archivePayload.text_body,
+            status: piece.result?.success ? 'SENT' : 'FAILED',
+            error_message: piece.result?.success ? null : piece.result?.error || 'Unknown WhatsApp error',
+            payload: {
+              request: { ...requestPayload, template_params: params },
+              response: piece.result?.raw || null,
+            },
+            meta: {
+              ...(archivePayload.meta as Record<string, unknown>),
+              template_params: params,
+            },
+          })
+          .select(archiveSelect)
+          .maybeSingle();
+        archivedRow = inserted.data;
+        archiveError = inserted.error;
+        if (archiveError) break;
+      }
+    } else {
+      const inserted = await archiveDb
+        .from('whatsapp_messages')
+        .insert(archivePayload)
+        .select(archiveSelect)
+        .maybeSingle();
+      archivedRow = inserted.data;
+      archiveError = inserted.error;
+    }
     if (archiveError) {
       console.error('Failed to archive outbound WhatsApp message:', archiveError);
       return NextResponse.json(

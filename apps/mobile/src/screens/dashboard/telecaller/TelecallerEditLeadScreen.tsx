@@ -406,7 +406,6 @@ export default function TelecallerEditLeadScreen({
       next.second_vehicle = 'Select second car model';
     }
     if (!form.vehicle_fuel_type) next.vehicle_fuel_type = 'Fuel type required';
-    if (form.service_types.length === 0) next.service_types = 'Select at least one service';
     if (form.pickup_required) {
       if (!form.vehicle_number.trim()) next.vehicle_number = 'Registration required';
       if (!form.pickup_date || !form.pickup_time) next.slot = 'Select date & time';

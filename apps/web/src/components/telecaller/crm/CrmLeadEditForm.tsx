@@ -1046,8 +1046,6 @@ export default function CrmLeadEditForm({
         newErrors.vehicle_number = 'Please enter valid vehicle number (e.g., MH12AB1234) or NA';
       }
 
-      // Service validation
-      if (formData.service_types.length === 0) newErrors.service_types = 'Please select at least one service type';
     }
 
     // Soft leads: date/time not mandatory. Only when marking Booking confirmed.

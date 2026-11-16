@@ -18,7 +18,10 @@ export function parseMisaChoice(message: string): 'misa' | 'human' | null {
     t === MISA_TALK_BUTTON_ID ||
     t === 'talk to misa' ||
     t === 'talk to misa ai' ||
-    t === 'misa se baat'
+    t === 'misa se baat' ||
+    t === 'misa' ||
+    t === 'misa ai' ||
+    t === 'hi misa'
   ) {
     return 'misa';
   }

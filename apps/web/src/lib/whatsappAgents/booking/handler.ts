@@ -74,7 +74,7 @@ export async function shouldRouteToBookingAgent(phone: string, message: string):
   const config = await fetchAgentConfig('BOOKING');
   if (!config.enabled) return false;
 
-  if (parseMisaChoice(message) === 'misa') return true;
+  if (parseMisaChoice(message) === 'misa' || isGreetingMessage(message)) return true;
   if (await customerRequestedHumanAgent(phone)) return false;
 
   if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
@@ -110,12 +110,13 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
     }
   }
 
-  if (await customerRequestedHumanAgent(phone) && parseMisaChoice(message) !== 'misa') {
+  const wakeMisa = parseMisaChoice(message) === 'misa' || isGreetingMessage(message);
+  if (await customerRequestedHumanAgent(phone) && !wakeMisa) {
     return { handled: false, skippedReason: 'assigned_to_human' };
   }
 
   if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
-    if (parseMisaChoice(message) !== 'misa') {
+    if (!wakeMisa) {
       return { handled: false, skippedReason: 'assigned_to_human' };
     }
   }

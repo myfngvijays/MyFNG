@@ -436,7 +436,6 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
       }
       setSending(true);
       try {
-        const safeText = text.replace(/\r\n/g, ' ').replace(/[\r\n]+/g, ' ').trim();
         await apiFetch('/api/whatsapp/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -445,7 +444,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
             message_type: 'template',
             template_name: fr.template_name,
             language: fr.language_code || 'en',
-            template_params: [safeText],
+            template_params: [text],
           }),
         });
         setDraft('');
@@ -559,8 +558,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
           </Text>
           <Text style={styles.bannerClosedSub}>
             {cameFrom9696
-              ? 'Neeche likho. 6161 pe reply aane ke baad seedha chat khulegi.'
-              : 'Type below · or Send a template'}
+              ? 'Neeche likho. Enter se nayi line — message isi layout mein jayega.'
+              : 'Enter se nayi line. Message isi layout mein jayega.'}
           </Text>
         </View>
       ) : null}

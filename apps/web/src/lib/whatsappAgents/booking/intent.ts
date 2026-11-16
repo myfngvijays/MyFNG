@@ -1,4 +1,4 @@
-const GREETING_KEYWORDS = ['hi', 'hii', 'hello', 'hey', 'namaste', 'good morning', 'good evening', 'good afternoon'];
+const GREETING_KEYWORDS = ['hi', 'hii', 'hiii', 'hello', 'hey', 'helo', 'hlo', 'hu', 'hy', 'namaste', 'good morning', 'good evening', 'good afternoon'];
 
 const BOOKING_KEYWORDS = [
   'book',

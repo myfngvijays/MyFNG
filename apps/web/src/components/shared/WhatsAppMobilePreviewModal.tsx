@@ -2493,14 +2493,12 @@ export default function WhatsAppMobilePreviewModal({
           setActiveType('template');
           return;
         }
-        // Meta body params cannot contain newlines; keep as ONE param (commas OK)
-        const safeText = text.replace(/\r\n/g, ' ').replace(/[\r\n]+/g, ' ').trim();
         payload = {
           ...payload,
           message_type: 'template',
           template_name: fr.template_name,
           language: resolveTemplateLanguageCode(fr),
-          template_params: [safeText],
+          template_params: [text],
         };
       } else {
         payload = { ...payload, text };
@@ -3938,19 +3936,15 @@ export default function WhatsAppMobilePreviewModal({
 
                 <div className="flex items-end gap-2">
                   <div className="min-w-0 flex-1 rounded-2xl border border-[#d1d7db] bg-white px-3 py-2 shadow-sm">
-                    <input
+                    <textarea
                       value={textMessage}
                       onChange={(e) => setTextMessage(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (!sending) void handleSend();
-                        }
-                      }}
                       disabled={sending || paymentGenerating}
                       placeholder="Type message"
-                      className="w-full bg-transparent text-[14px] text-[#111b21] outline-none placeholder:text-[#8696a0] disabled:opacity-60"
+                      rows={3}
+                      className="max-h-40 w-full resize-y bg-transparent text-[14px] leading-5 text-[#111b21] outline-none placeholder:text-[#8696a0] disabled:opacity-60"
                     />
+                    <p className="mt-1 text-[11px] text-[#667781]">Enter se nayi line. Message isi layout mein jayega.</p>
                     {!textMessage.trim() ? (
                       <button
                         type="button"
@@ -4433,24 +4427,23 @@ export default function WhatsAppMobilePreviewModal({
                   </div>
                 ) : null}
               </div>
-              <input
+              <textarea
                 value={activeType === 'payment' ? '' : textMessage}
                 onChange={(e) => setTextMessage(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
                     if (!sending) void handleSend();
                   }
                 }}
                 disabled={sending || paymentGenerating || activeType === 'payment'}
+                rows={2}
                 placeholder={
                   activeType === 'payment'
                     ? 'Payment mode enabled'
-                    : isTemplateOnlyMode
-                    ? 'Type message'
                     : 'Type a message'
                 }
-                className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm outline-none ring-green-200 focus:border-green-500 focus:ring disabled:cursor-not-allowed disabled:bg-gray-100"
+                className="max-h-32 w-full resize-y rounded-2xl border border-gray-300 px-4 py-2 text-sm leading-5 outline-none ring-green-200 focus:border-green-500 focus:ring disabled:cursor-not-allowed disabled:bg-gray-100"
               />
               <button
                 type="button"

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import CrmSavedFiltersNav from '@/components/telecaller/crm/CrmSavedFiltersNav';
 import { 
   Wrench, 
   LogOut, 
@@ -1328,8 +1329,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                     ) : null}
                   </button>
                 ) : (
+                <div key={item.href}>
                 <NavLink
-                  key={item.href}
                   href={item.href}
                   icon={item.icon}
                   active={pathname === item.href}
@@ -1345,6 +1346,10 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                 >
                   {item.label}
                 </NavLink>
+                {item.href.endsWith('/leads') && (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER') ? (
+                  <CrmSavedFiltersNav leadsHref={item.href} collapsed={sidebarCollapsed} />
+                ) : null}
+                </div>
                 )
               );
             })}

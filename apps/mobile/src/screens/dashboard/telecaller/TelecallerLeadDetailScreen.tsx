@@ -818,11 +818,6 @@ export default function TelecallerLeadDetailScreen({
     }
 
     const bookingConfirmed = activityData.result === 'BOOKING_CONFIRMED';
-    // Service plan required only when confirming booking — soft leads can save without plan
-    if (bookingConfirmed && editForm.service_types.length === 0) {
-      Alert.alert('Missing info', 'Select at least one service to confirm booking');
-      return;
-    }
     if (bookingConfirmed) {
       if (!editForm.vehicle_number.trim()) {
         Alert.alert('Missing info', 'Registration required');
