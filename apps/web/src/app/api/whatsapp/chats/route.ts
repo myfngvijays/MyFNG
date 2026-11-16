@@ -13,6 +13,14 @@ const ALLOWED_ROLE_CODES = [
   'LEAD_MANAGER',
 ];
 
+function waLineFromLead(row: any): '9696' | '6161' {
+  const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
+  const biz = String(meta.wa_business_phone || meta.wa_inbox || '').replace(/\D/g, '');
+  const source = String(row?.lead_source || '');
+  if (biz.endsWith('9167779696') || source.includes('9167779696') || meta.telecrm_whatsapp) return '9696';
+  return '6161';
+}
+
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -153,7 +161,7 @@ async function loadTelecallerLeadPhones(
   let query = db
     .from('service_leads')
     .select(
-      'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at',
+      'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at',
     )
     .is('deleted_at', null)
     .not('customer_phone', 'is', null)
@@ -174,7 +182,7 @@ async function loadTelecallerLeadPhones(
     const retry = await db
       .from('service_leads')
       .select(
-        'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at',
+        'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at',
       )
       .is('deleted_at', null)
       .not('customer_phone', 'is', null)
@@ -207,6 +215,7 @@ async function loadTelecallerLeadPhones(
       last_status: null,
       last_message_at: metaInboundAt || row.updated_at || row.created_at || null,
       last_inbound_at: metaInboundAt,
+      wa_line: waLineFromLead(row),
     });
   }
 
@@ -226,7 +235,7 @@ async function loadAllCrmLeadPhones(
   const searchName = String(opts?.searchName || '').trim();
 
   const selectCols =
-    'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at, assigned_telecaller_id, assigned_telecaller:users_login!assigned_telecaller_id(id, full_name)';
+    'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, assigned_telecaller_id, assigned_telecaller:users_login!assigned_telecaller_id(id, full_name)';
 
   let query = db
     .from('service_leads')
@@ -251,7 +260,7 @@ async function loadAllCrmLeadPhones(
     let retry = db
       .from('service_leads')
       .select(
-        'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at, assigned_telecaller_id',
+        'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, assigned_telecaller_id',
       )
       .not('customer_phone', 'is', null)
       .order('updated_at', { ascending: false })
@@ -292,6 +301,7 @@ async function loadAllCrmLeadPhones(
       last_status: null,
       last_message_at: metaInboundAt || row.updated_at || row.created_at || null,
       last_inbound_at: metaInboundAt,
+      wa_line: waLineFromLead(row),
     });
   }
 
@@ -567,6 +577,7 @@ export async function GET(request: NextRequest) {
                 last_status: row?.status || null,
                 last_message_at: row?.created_at || existing?.last_message_at || null,
                 last_inbound_at: existing?.last_inbound_at || null,
+                wa_line: existing?.wa_line || '6161',
               });
             }
             const merged = byPhone.get(phone);
@@ -645,6 +656,7 @@ export async function GET(request: NextRequest) {
               last_status: row?.status || null,
               last_message_at: row?.created_at || null,
               unread_count: unreadCountForChat(lead || { phone, last_message_at: row?.created_at }, unreadStreak, phone, readMap),
+              wa_line: lead?.wa_line || '6161',
             });
           }
           chats = Array.from(matched.values()).sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
@@ -778,6 +790,7 @@ export async function GET(request: NextRequest) {
           last_direction: row?.direction || null,
           last_status: row?.status || null,
           last_message_at: row?.created_at || null,
+          wa_line: '6161',
         });
 
         if (byPhone.size >= limit) break;

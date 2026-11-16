@@ -102,6 +102,7 @@ type EditForm = {
   workshop_id: string;
   workshop_name: string;
   lead_priority: string;
+  repeat_customer: boolean;
 };
 
 function emptyEditForm(): EditForm {
@@ -134,6 +135,7 @@ function emptyEditForm(): EditForm {
     workshop_id: '',
     workshop_name: '',
     lead_priority: 'NORMAL',
+    repeat_customer: false,
   };
 }
 
@@ -301,6 +303,16 @@ function buildFormFromLead(data: any): EditForm {
     workshop_id: data?.workshop_id || '',
     workshop_name: data?.workshop?.name || '',
     lead_priority: data?.lead_priority || 'NORMAL',
+    repeat_customer: (() => {
+      const flag = meta.repeat_customer;
+      if (flag === true || flag === 1) return true;
+      const text = String(flag || '').trim().toLowerCase();
+      if (text === 'yes' || text === 'true' || text === '1' || text === 'checked') return true;
+      const imported =
+        data?.meta?.import_fields && typeof data.meta.import_fields === 'object' ? data.meta.import_fields : {};
+      const marked = String(imported['Repeat Customer'] || '').trim().toLowerCase();
+      return marked === 'yes' || marked === 'true' || marked === '1' || marked === 'checked';
+    })(),
   };
 }
 
@@ -429,6 +441,8 @@ export default function TelecallerLeadDetailScreen({
   const canSeeMlDl = showLeadIq;
 
   const [lead, setLead] = useState<any>(null);
+  const [repeatCustomer, setRepeatCustomer] = useState(false);
+  const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
@@ -486,6 +500,7 @@ export default function TelecallerLeadDetailScreen({
     notes: '',
     date: '',
     time: '',
+    serviceDate: '',
   });
   const [statusOptions, setStatusOptions] =
     useState<CallDisposition[]>(DEFAULT_STATUS_OPTIONS);
@@ -496,6 +511,30 @@ export default function TelecallerLeadDetailScreen({
 
   const setEditField = (key: keyof EditForm, value: any) =>
     setEditForm((prev) => ({ ...prev, [key]: value }));
+
+  useEffect(() => {
+    if (!leadId) return;
+    let cancelled = false;
+    setRepeatCustomer(false);
+    setRepeatRemark(null);
+    apiFetch<{ repeat_customer?: boolean; repeat_remark?: string | null }>(
+      `/api/crm/repeat-customer?lead_id=${encodeURIComponent(String(leadId))}`,
+    )
+      .then((data) => {
+        if (cancelled) return;
+        setRepeatCustomer(Boolean(data?.repeat_customer));
+        setRepeatRemark(data?.repeat_remark ? String(data.repeat_remark) : null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRepeatCustomer(false);
+          setRepeatRemark(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
 
   const lastPhoneLookupRef = React.useRef<string>('');
   const activityTouchedRef = React.useRef(false);
@@ -672,6 +711,22 @@ export default function TelecallerLeadDetailScreen({
       result: activityResultFromLead(data),
       lostReason: String(meta.last_lost_reason || ''),
       otherReason: String(meta.last_other_reason || ''),
+      serviceDate: (() => {
+        const imported =
+          data?.meta?.import_fields && typeof data.meta.import_fields === 'object'
+            ? data.meta.import_fields
+            : {};
+        const raw = String(
+          meta.service_done_at || data?.meta?.service_date || imported['Service Date'] || imported['Service Done Date'] || '',
+        ).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+        const d = new Date(raw);
+        if (!raw || Number.isNaN(d.getTime())) return '';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      })(),
     }));
     const bag = meta.custom_fields;
     setCustomFieldValues(
@@ -800,6 +855,10 @@ export default function TelecallerLeadDetailScreen({
       Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
       return;
     }
+    if (activityData.result === 'SERVICE_DONE' && !activityData.serviceDate) {
+      Alert.alert('Service done', 'Service done date daalo.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -828,6 +887,11 @@ export default function TelecallerLeadDetailScreen({
           lead?.problem_description ||
           null,
         telecaller_remarks: activityData.notes.trim() || couponMeta.telecaller_remarks || null,
+        repeat_customer: Boolean(editForm.repeat_customer),
+        service_done_at:
+          activityData.result === 'SERVICE_DONE'
+            ? activityData.serviceDate
+            : couponMeta.service_done_at || null,
       };
 
       let dispositionStatus: string | null = null;
@@ -1142,6 +1206,7 @@ export default function TelecallerLeadDetailScreen({
         notes: '',
         date: '',
         time: '',
+        serviceDate: activityData.serviceDate,
       });
       setEditing(true);
       await fetchLeadDetails();
@@ -1847,6 +1912,7 @@ export default function TelecallerLeadDetailScreen({
         notes: '',
         date: '',
         time: '',
+        serviceDate: activityData.serviceDate,
       });
       setShowActivityForm(false);
       fetchLeadDetails();
@@ -2130,13 +2196,74 @@ export default function TelecallerLeadDetailScreen({
                 <Text style={styles.headerSubtitle} numberOfLines={1}>
                   Lead #{lead.lead_number}
                 </Text>
+                {repeatCustomer || editForm.repeat_customer ? (
+                  <Text style={styles.repeatBanner} numberOfLines={3}>
+                    Repeat Customer{repeatRemark ? ` · ${repeatRemark}` : ''}
+                  </Text>
+                ) : null}
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+              <TouchableOpacity
+                style={[styles.statusBadge, { backgroundColor: badge.bg }]}
+                onPress={() => {
+                  setEditing(true);
+                  setShowLostMenu(false);
+                  setShowOtherMenu(false);
+                  setShowStatusMenu(true);
+                }}
+              >
                 <Text style={[styles.statusText, { color: badge.fg }]} numberOfLines={1}>
-                  {formatStatusLabel(headerStatus)}
+                  {editing ? selectedResult.label : formatStatusLabel(headerStatus)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
+            {activityData.result === 'LOST' ? (
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.formLabel}>Lost reason</Text>
+                <TouchableOpacity
+                  style={styles.selectBtn}
+                  onPress={() => {
+                    setEditing(true);
+                    setShowStatusMenu(false);
+                    setShowOtherMenu(false);
+                    setShowLostMenu(true);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.selectBtnText,
+                      !activityData.lostReason && { color: COLORS.textSecondary },
+                    ]}
+                  >
+                    {activityData.lostReason || 'Select lost reason'}
+                  </Text>
+                  <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {activityData.result === 'OTHER' ? (
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.formLabel}>Other</Text>
+                <TouchableOpacity
+                  style={styles.selectBtn}
+                  onPress={() => {
+                    setEditing(true);
+                    setShowStatusMenu(false);
+                    setShowLostMenu(false);
+                    setShowOtherMenu(true);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.selectBtnText,
+                      !activityData.otherReason && { color: COLORS.textSecondary },
+                    ]}
+                  >
+                    {activityData.otherReason || 'Other item select karo'}
+                  </Text>
+                  <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
       {canSeeMlDl ? (
         <LeadBrainCard
@@ -2733,6 +2860,19 @@ export default function TelecallerLeadDetailScreen({
               ))}
             </View>
           ) : null}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setEditField('repeat_customer', !editForm.repeat_customer)}
+            style={styles.repeatCheck}
+          >
+            <View style={[styles.repeatBox, editForm.repeat_customer && styles.repeatBoxOn]}>
+              {editForm.repeat_customer ? <Text style={styles.repeatTick}>✓</Text> : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.repeatTitle}>Repeat Customer</Text>
+              <Text style={styles.repeatHint}>Pehle service le chuka hai aur dobara aaya hai</Text>
+            </View>
+          </TouchableOpacity>
           <DetailRow
             icon="clock-outline"
             label="Created"
@@ -3136,6 +3276,20 @@ export default function TelecallerLeadDetailScreen({
                 </>
               ) : null}
 
+              {activityData.result === 'SERVICE_DONE' ? (
+                <>
+                  <Text style={styles.formLabel}>Service done date</Text>
+                  <TextInput
+                    style={styles.inlineNotes}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={COLORS.textSecondary}
+                    value={activityData.serviceDate}
+                    onChangeText={(serviceDate) =>
+                      setActivityData((prev) => ({ ...prev, serviceDate }))
+                    }
+                  />
+                </>
+              ) : null}
               <Text style={styles.formLabel}>
                 {activityData.result === 'CALLBACK'
                   ? 'Follow-up date & time (required)'
@@ -3429,6 +3583,20 @@ export default function TelecallerLeadDetailScreen({
               </>
             ) : null}
 
+            {activityData.result === 'SERVICE_DONE' ? (
+              <>
+                <Text style={styles.formLabel}>Service done date</Text>
+                <TextInput
+                  style={styles.inlineNotes}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={COLORS.textSecondary}
+                  value={activityData.serviceDate}
+                  onChangeText={(serviceDate) =>
+                    setActivityData((prev) => ({ ...prev, serviceDate }))
+                  }
+                />
+              </>
+            ) : null}
             <Text style={styles.formLabel}>
               {activityData.result === 'CALLBACK'
                 ? 'Follow-up date & time (required)'
@@ -3613,6 +3781,7 @@ export default function TelecallerLeadDetailScreen({
               key={opt.id}
               style={styles.menuItem}
               onPress={() => {
+                setEditing(true);
                 setActivityData({
                   ...activityData,
                   result: opt.id,
@@ -3623,6 +3792,8 @@ export default function TelecallerLeadDetailScreen({
                   setEditForm((prev) => ({ ...prev, pickup_required: true }));
                 }
                 setShowStatusMenu(false);
+                if (opt.id === 'LOST' || opt.requires_lost_reason) setShowLostMenu(true);
+                if (opt.id === 'OTHER') setShowOtherMenu(true);
               }}
             >
               <Text style={styles.menuItemText}>{opt.label}</Text>
@@ -4238,6 +4409,43 @@ const styles = StyleSheet.create({
     color: '#fff',
     opacity: 0.9,
     marginTop: 4,
+  },
+  repeatCheck: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+  },
+  repeatBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  repeatBoxOn: { backgroundColor: '#D97706', borderColor: '#D97706' },
+  repeatTick: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  repeatTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  repeatHint: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  repeatBanner: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    color: '#78350F',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   statusBadge: {
     paddingHorizontal: 10,

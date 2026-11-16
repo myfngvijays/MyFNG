@@ -91,6 +91,18 @@ export async function ensureTagIdsByNames(
   return Array.from(new Set(ids));
 }
 
+/** Common tag on every Meta message-trigger lead. */
+export const META_MESSAGE_TRIGGER_TAG = 'META-MAY-2026';
+
+export function metaMessageTriggerTagNames(input: {
+  triggerLabel?: string | null;
+  markAsMeta?: boolean;
+}): string[] {
+  const trigger = String(input.triggerLabel || '').trim();
+  if (!trigger || !input.markAsMeta) return [];
+  return [META_MESSAGE_TRIGGER_TAG];
+}
+
 /** Remove every tag on a lead, then keep only the given tags. */
 export async function replaceLeadTags(
   leadId: string,

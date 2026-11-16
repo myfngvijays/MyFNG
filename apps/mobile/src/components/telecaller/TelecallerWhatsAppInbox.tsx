@@ -38,12 +38,14 @@ type ChatRow = {
   last_direction: string | null;
   last_inbound_at?: string | null;
   unread_count?: number | null;
+  wa_line?: '9696' | '6161' | null;
   customer_name?: string | null;
 };
 
 type Props = {
   visible: boolean;
   onClose: () => void;
+  onOpenLead?: (leadId: string) => void;
 };
 
 function formatPhone(phone: string): string {
@@ -110,7 +112,13 @@ function isAwaitingReply(chat: ChatRow): boolean {
   return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
 }
 
-export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
+function chatInboxLabel(chat: ChatRow): 'Open' | 'Awaiting' | 'Closed' {
+  if (isWhatsAppSessionWindowClosed(chat)) return 'Closed';
+  if (isAwaitingReply(chat)) return 'Awaiting';
+  return 'Open';
+}
+
+export default function TelecallerWhatsAppInbox({ visible, onClose, onOpenLead }: Props) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -196,7 +204,9 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
     return { open, awaiting, closed };
   }, [rows]);
 
+  const searching = search.trim().length > 0;
   const filteredRows = useMemo(() => {
+    if (searching) return rows;
     return rows.filter((chat) => {
       const closed = isWhatsAppSessionWindowClosed(chat);
       const awaiting = isAwaitingReply(chat);
@@ -205,7 +215,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
       if (inboxTab === 'awaiting') return awaiting;
       return !awaiting;
     });
-  }, [rows, inboxTab]);
+  }, [rows, inboxTab, searching]);
 
   const subtitle = useMemo(() => {
     return `${leadCount} chats${inboundCount > 0 ? ` · ${inboundCount} unread` : ''}`;
@@ -261,6 +271,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
             setActivePhone(null);
             setActiveCustomerName(null);
           }}
+          onOpenLead={onOpenLead}
         />
       ) : (
         <View style={styles.container}>
@@ -331,7 +342,9 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                 <View style={styles.empty}>
                   <Ionicons name="chatbubbles-outline" size={42} color="#D1D7DB" />
                   <Text style={styles.emptyText}>
-                    {inboxTab === 'closed'
+                    {searching
+                      ? 'No chats match this search'
+                      : inboxTab === 'closed'
                       ? 'No window-closed chats'
                       : inboxTab === 'awaiting'
                         ? 'No chats awaiting reply'
@@ -364,6 +377,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                       <View style={styles.rowTop}>
                         <Text style={[styles.name, inbound && styles.nameUnread]} numberOfLines={1}>
                           {name}
+                          {searching ? ` · ${chatInboxLabel(item)}` : ''}
                         </Text>
                         <Text style={[styles.time, inbound && styles.timeUnread]}>
                           {formatListTime(item.last_message_at)}
@@ -383,6 +397,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                           />
                         ) : null}
                         <Text style={styles.preview} numberOfLines={1}>
+                          {item.wa_line === '9696' ? '9696 · ' : '6161 · '}
                           {previewText(item.last_message_preview)}
                         </Text>
                         {inbound ? (

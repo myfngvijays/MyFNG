@@ -57,7 +57,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const hasRealDisposition =
       (existingResult && existingResult !== 'FRESH') ||
       (existingLabel && !/^fresh$/i.test(existingLabel) && !/^new$/i.test(existingLabel));
-    if (hasRealDisposition && hasMatchingHistory) {
+    const force = body?.force === true;
+    if (!force && hasRealDisposition && hasMatchingHistory) {
+      return NextResponse.json({ success: true, healed: false, lead });
+    }
+    if (force && existingResult === result) {
       return NextResponse.json({ success: true, healed: false, lead });
     }
 
@@ -73,7 +77,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       (nextStatus === 'REJECTED' ||
         ['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'ASSIGNED'].includes(current));
 
-    const at = String(meta.last_call_at || new Date().toISOString());
+    const at = force ? new Date().toISOString() : String(meta.last_call_at || new Date().toISOString());
     const remark =
       body?.telecaller_remarks != null
         ? String(body.telecaller_remarks).trim() || null
@@ -95,9 +99,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       last_call_label: label,
       last_call_status: body?.last_call_status || meta.last_call_status || 'ANSWERED',
       last_call_at: at,
-      last_lost_reason: lostReason || meta.last_lost_reason || null,
+      last_lost_reason: force && result !== 'LOST' ? null : lostReason || meta.last_lost_reason || null,
       telecaller_remarks: remark ?? meta.telecaller_remarks ?? null,
-      profile_history: hasHist ? prevHistory : [historyEntry, ...prevHistory].slice(0, 50),
+      profile_history: !force && hasHist ? prevHistory : [historyEntry, ...prevHistory].slice(0, 50),
     };
 
     const patch: Record<string, unknown> = {

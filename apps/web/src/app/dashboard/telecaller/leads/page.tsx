@@ -18,9 +18,12 @@ import {
 import {
   LEAD_STATUS_FILTERS,
   LOST_REASON_FILTERS,
+  ADMIN_CRM_STATUS_OPTIONS,
   leadDisplayStatus,
   leadStatusCardColors,
+  mergeAdminStatusChoices,
   mergeCrmStatusFilters,
+  resolveAdminCrmStatusId,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
 import { createClient } from '@/lib/supabase/client';
@@ -49,7 +52,7 @@ import { LeadDetailContent } from './[id]/page';
 
 /** Compact filters — same size on 14", 15.6", and wide monitors. Two-up only on phones. */
 const FILTER_FIELD =
-  'relative min-w-0 flex-1 basis-[calc(50%-0.25rem)] min-[720px]:w-44 min-[720px]:flex-none min-[720px]:basis-auto';
+  'relative shrink-0 w-[calc(50%-0.25rem)] sm:w-auto sm:min-w-[9.25rem]';
 
 const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v6';
 
@@ -90,6 +93,7 @@ const LEADS_TABLE_COLUMNS = [
   { key: 'source', label: 'Source', onByDefault: false, locked: false },
   { key: 'assignee', label: 'Assignee', onByDefault: true, locked: false },
   { key: 'date', label: 'Created on', onByDefault: true, locked: false },
+  { key: 'serviceDoneDate', label: 'Service done date', onByDefault: false, locked: false },
   { key: 'modified', label: 'Modified', onByDefault: true, locked: false },
   { key: 'actions', label: 'Actions', onByDefault: true, locked: true },
 ] as const;
@@ -113,6 +117,19 @@ function formatLeadDateParts(iso: string | null | undefined): { date: string; ti
   };
 }
 
+function leadServiceDoneDate(lead: any): string {
+  const coupon = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+  const meta = lead?.meta && typeof lead.meta === 'object' ? lead.meta : {};
+  const imported = meta.import_fields && typeof meta.import_fields === 'object' ? meta.import_fields : {};
+  const raw = String(
+    coupon.service_done_at || meta.service_date || imported['Service Date'] || imported['Service Done Date'] || '',
+  ).trim();
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (!Number.isFinite(d.getTime())) return raw;
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function formatLeadDateTime(iso: string | null | undefined) {
   const parts = formatLeadDateParts(iso);
   if (!parts) return '—';
@@ -132,6 +149,11 @@ function formatLeadName(name: string | null | undefined): string {
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
     .join(' ');
+}
+
+function leadDateTitle(iso: string | null | undefined) {
+  const parts = formatLeadDateParts(iso);
+  return parts ? `${parts.date}, ${parts.time}` : undefined;
 }
 
 function StackedDateTime({ iso }: { iso: string | null | undefined }) {
@@ -218,6 +240,10 @@ function TelecallerCrmLeadsContent() {
   const [q, setQ] = useState(qParam || '');
   const [appliedQ, setAppliedQ] = useState(qParam || '');
   const [filter, setFilter] = useState(filterParam || 'all');
+  const [crmStatusChoices, setCrmStatusChoices] = useState(
+    ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({ id: opt.id, label: opt.label })),
+  );
+  const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
   const [statusFilters, setStatusFilters] = useState<Array<{ id: string; label: string }>>(
     () => LEAD_STATUS_FILTERS.map((f) => ({ id: f.id, label: f.label })),
   );
@@ -265,6 +291,7 @@ function TelecallerCrmLeadsContent() {
   const [pageSize, setPageSize] = useState<25 | 50 | 75 | 100>(25);
   const [page, setPage] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
+  const [scopeTotal, setScopeTotal] = useState(0);
   const [visibleColumns, setVisibleColumns] = useState<LeadsColumnVisibility>(DEFAULT_LEADS_COLUMNS);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnsQuery, setColumnsQuery] = useState('');
@@ -316,8 +343,9 @@ function TelecallerCrmLeadsContent() {
     source: 116,
     assignee: 128,
     date: 112,
+    serviceDoneDate: 132,
     modified: 112,
-    actions: 188,
+    actions: 268,
   };
 
   const tableMinPx = useMemo(() => {
@@ -345,12 +373,13 @@ function TelecallerCrmLeadsContent() {
       source: 1.1,
       assignee: 1.4,
       date: 1.15,
+      serviceDoneDate: 1.2,
       modified: 1.15,
       actions: 1.05,
     };
     const total = visibleTableCols.reduce((sum, col) => sum + weight[col.key], 0) || 1;
     const pct = (weight[key] / total) * 96;
-    if (key === 'actions') return { width: `${pct.toFixed(2)}%`, minWidth: 188 };
+    if (key === 'actions') return { width: 268, minWidth: 268 };
     return { width: `${pct.toFixed(2)}%` };
   };
 
@@ -393,6 +422,7 @@ function TelecallerCrmLeadsContent() {
         const rows = Array.isArray(json?.statuses) ? json.statuses : [];
         if (!rows.length) return;
         setStatusFilters(mergeCrmStatusFilters(rows, 'All'));
+        setCrmStatusChoices(mergeAdminStatusChoices(rows));
       } catch {
         /* keep defaults */
       }
@@ -401,6 +431,66 @@ function TelecallerCrmLeadsContent() {
       cancelled = true;
     };
   }, []);
+
+  const changeLeadStatus = async (lead: any, statusId: string) => {
+    const current = resolveAdminCrmStatusId(lead);
+    if (current === statusId && statusId !== 'LOST' && statusId !== 'OTHER') return;
+    let lostReason: string | null = null;
+    if (statusId === 'LOST') {
+      const reason = window.prompt('Lost reason', 'Not Interested');
+      if (!reason?.trim()) return;
+      lostReason = reason.trim();
+    }
+    if (statusId === 'OTHER') {
+      const reason = window.prompt('Other item (optional). Leave blank to mark Other only.', '');
+      if (reason === null) return;
+      lostReason = reason.trim() || null;
+    }
+    const choice = crmStatusChoices.find((opt) => opt.id === statusId);
+    const label =
+      statusId === 'LOST' && lostReason
+        ? `Lost · ${lostReason}`
+        : statusId === 'OTHER' && lostReason
+          ? `Other · ${lostReason}`
+          : choice?.label || statusId;
+    setStatusSavingId(String(lead.id));
+    try {
+      const res = await fetch(`/api/telecaller/leads/${lead.id}/heal-disposition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          force: true,
+          last_call_result: statusId,
+          last_call_label: label,
+          last_lost_reason: lostReason,
+          last_call_status: statusId === 'RINGING' ? 'NO_ANSWER' : 'ANSWERED',
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Status update failed');
+      setLeads((prev) =>
+        prev.map((row) =>
+          String(row.id) === String(lead.id)
+            ? {
+                ...row,
+                ...(json.lead && typeof json.lead === 'object' ? json.lead : {}),
+                coupon_meta: {
+                  ...(row.coupon_meta || {}),
+                  last_call_result: statusId,
+                  last_call_label: label,
+                  last_lost_reason: lostReason,
+                },
+              }
+            : row,
+        ),
+      );
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Status update failed');
+    } finally {
+      setStatusSavingId(null);
+    }
+  };
 
   // Restore saved filters once on client (survives lead open → back)
   useEffect(() => {
@@ -798,6 +888,7 @@ function TelecallerCrmLeadsContent() {
         }
         setLeads(all);
         setTotalLeads(total || all.length);
+        setScopeTotal(Number(data?.scope_total || total || all.length));
       } else {
         const params = new URLSearchParams(baseParams);
         params.set('limit', String(pageSize));
@@ -807,12 +898,14 @@ function TelecallerCrmLeadsContent() {
         if (!res.ok) throw new Error(data?.error || 'Failed');
         setLeads(Array.isArray(data?.leads) ? data.leads : []);
         setTotalLeads(Number(data?.total || 0));
+        setScopeTotal(Number(data?.scope_total || data?.total || 0));
       }
     } catch (e) {
       console.error(e);
       if (!bootedRef.current) {
         setLeads([]);
         setTotalLeads(0);
+        setScopeTotal(0);
       }
     } finally {
       setLoading(false);
@@ -955,11 +1048,51 @@ function TelecallerCrmLeadsContent() {
   return (
     <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full min-w-0 max-w-none space-y-3 pb-24 sm:space-y-4">
-        <div className="flex flex-col gap-3 min-[1100px]:flex-row min-[1100px]:items-center min-[1100px]:justify-between">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-[#023D95]">Leads</h1>
-          </div>
-          <div className="flex flex-wrap items-center justify-start gap-2 min-[720px]:ml-auto min-[720px]:justify-end">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <h1 className="flex shrink-0 flex-wrap items-center gap-2 text-2xl font-extrabold text-[#023D95] md:text-3xl">
+            Leads
+            <span className="inline-flex items-baseline gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-bold tabular-nums text-slate-500">
+              <span className="text-base text-[#023D95]">{totalLeads.toLocaleString('en-IN')}</span>
+              {filter !== 'all' && scopeTotal > 0 ? (
+                <span className="font-semibold text-slate-400">
+                  of {scopeTotal.toLocaleString('en-IN')}
+                </span>
+              ) : null}
+            </span>
+          </h1>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end lg:w-auto lg:max-w-[42rem] lg:flex-1">
+            <div className="relative w-full sm:min-w-[16rem] sm:flex-1 sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
+              <input
+                className={`w-full rounded-xl border border-[#023D95] bg-[#023D95] py-2.5 pl-9 text-sm font-semibold text-white placeholder:text-white/80 focus:outline-none focus:ring-2 focus:ring-white/40 ${
+                  q ? 'pr-9' : 'pr-3'
+                }`}
+                placeholder="Search name, phone, lead #"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              {q ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQ('');
+                    setAppliedQ('');
+                    persistAll({ q: '' });
+                    syncFiltersToUrl({ q: '' });
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-white/80 hover:bg-white/15 hover:text-white"
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
             <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
               <button
                 type="button"
@@ -1068,46 +1201,7 @@ function TelecallerCrmLeadsContent() {
                 ) : null}
               </div>
             ) : null}
-            {isLeadManager ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => exportLeadsCsv()}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
-                >
-                  <Download className="h-4 w-4" />
-                  Export CSV
-                </button>
-                <Link
-                  href="/dashboard/lead_manager/bookings?upload=1"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
-                >
-                  <Upload className="h-4 w-4" />
-                  Upload CRM
-                </Link>
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
-              title="WhatsApp · 6161"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm"
-            >
-              <WhatsAppIcon className="h-5 w-5" />
-            </button>
-            <Link
-              href={`${base}/book?mode=book`}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              + New Booking
-            </Link>
-            <Link
-              href={`${base}/book?mode=lead`}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
-            >
-              <UserPlus className="h-4 w-4" />
-              + Add Lead
-            </Link>
+            </div>
           </div>
         </div>
 
@@ -1150,7 +1244,6 @@ function TelecallerCrmLeadsContent() {
         ) : null}
 
         <div className="space-y-2">
-          {/* Filters, then search + Clear in the leftover space on the same line. */}
           <div className="flex flex-wrap items-center gap-2">
             <div className={FILTER_FIELD}>
               <select
@@ -1458,92 +1551,48 @@ function TelecallerCrmLeadsContent() {
               ) : null}
             </div>
 
-            <div className="relative ml-auto min-w-[16rem] flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#004AAD]" />
-              <input
-                className={`w-full rounded-xl border border-[#004AAD]/40 bg-[#E7F0FF] py-2 pl-9 text-sm font-semibold text-[#023D95] placeholder:text-[#004AAD]/60 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/25 ${
-                  q ? 'pr-9' : 'pr-3'
-                }`}
-                placeholder="Search name, phone, lead #"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              {q ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQ('');
-                    setAppliedQ('');
-                    persistAll({ q: '' });
-                    syncFiltersToUrl({ q: '' });
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Clear search"
-                  title="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {isLeadManager ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => exportLeadsCsv()}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </button>
+                  <Link
+                    href="/dashboard/lead_manager/bookings?upload=1"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Upload
+                  </Link>
+                </>
               ) : null}
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
+                title="WhatsApp · 6161"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm"
+              >
+                <WhatsAppIcon className="h-5 w-5" />
+              </button>
+              <Link
+                href={`${base}/book?mode=book`}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                + New Booking
+              </Link>
+              <Link
+                href={`${base}/book?mode=lead`}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#012f73]"
+              >
+                <UserPlus className="h-4 w-4" />
+                + Add Lead
+              </Link>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setFilterAndUrl('all');
-                setCity('');
-                setPriority('');
-                setTelecallerId('');
-                setUnassignedOnly(false);
-                setSourceFilter('ALL');
-                setCouponFilter('ALL');
-                setTriggerFilter('');
-                setLostReason('');
-                setQ('');
-                setAppliedQ('');
-                setAdvIncomplete(false);
-                setAdvFollowUp(false);
-                setAdvHasVehicle(false);
-                setAdvHasCoupon(false);
-                setAdvNoAssignee(false);
-                setAdvHasPhone(false);
-                setAdvOverdueReminder(false);
-                setDateField('created');
-                persistAll({
-                  statusFilter: 'all',
-                  city: '',
-                  priority: '',
-                  telecallerId: '',
-                  unassignedOnly: false,
-                  lostReason: '',
-                  q: '',
-                  dateField: 'created',
-                  advIncomplete: false,
-                  advFollowUp: false,
-                  advHasVehicle: false,
-                  advHasCoupon: false,
-                  advNoAssignee: false,
-                });
-                syncFiltersToUrl({
-                  filter: 'all',
-                  city: '',
-                  priority: '',
-                  telecallerId: '',
-                  unassignedOnly: false,
-                  lostReason: '',
-                  q: '',
-                  dateField: 'created',
-                  source: 'ALL',
-                  hasCoupon: 'ALL',
-                  trigger: '',
-                });
-              }}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-            >
-              <X className="h-4 w-4" /> Clear
-            </button>
           </div>
         </div>
 
@@ -1600,7 +1649,7 @@ function TelecallerCrmLeadsContent() {
         ) : (
           <>
             {/* Desktop table — visible cols share width (no blank gaps when unchecked) */}
-            <div className="hidden w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white lg:block">
+            <div className="hidden w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white xl:block">
               <table
                 className={`text-left text-sm ${slideColumns ? 'w-max' : 'w-full table-fixed'}`}
                 style={slideColumns ? { minWidth: tableMinPx } : undefined}
@@ -1681,6 +1730,11 @@ function TelecallerCrmLeadsContent() {
                           Created on
                         </th>
                       ) : null}
+                      {showCol('serviceDoneDate') ? (
+                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('serviceDoneDate')}>
+                          Service done date
+                        </th>
+                      ) : null}
                       {showCol('modified') ? (
                         <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('modified')}>
                           Modified
@@ -1756,13 +1810,25 @@ function TelecallerCrmLeadsContent() {
                             </td>
                           ) : null}
                           {showCol('status') ? (
-                            <td className="px-1.5 py-2" style={colWidthStyle('status')}>
-                              <span
-                                className="inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold"
+                            <td className="px-1.5 py-2" style={colWidthStyle('status')} onClick={(e) => e.stopPropagation()}>
+                              <select
+                                aria-label="Change lead status"
+                                value={resolveAdminCrmStatusId(lead)}
+                                disabled={statusSavingId === String(lead.id)}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  void changeLeadStatus(lead, e.target.value);
+                                }}
+                                className="max-w-[148px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-6 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
                                 style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
                               >
-                                {statusLabel}
-                              </span>
+                                {crmStatusChoices.map((opt) => (
+                                  <option key={opt.id} value={opt.id}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
                           ) : null}
                           {showCol('mlScore') && isLeadManager ? (
@@ -1780,9 +1846,22 @@ function TelecallerCrmLeadsContent() {
                               style={colWidthStyle('customer')}
                               title={formatLeadName(lead.customer_name)}
                             >
-                              <span className="block truncate whitespace-nowrap">
-                                {formatLeadName(lead.customer_name)}
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <span className="truncate whitespace-nowrap">{formatLeadName(lead.customer_name)}</span>
+                                {lead.repeat_customer ? (
+                                  <span
+                                    title={lead.repeat_remark || 'Repeat Customer'}
+                                    className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900"
+                                  >
+                                    Repeat
+                                  </span>
+                                ) : null}
                               </span>
+                              {lead.repeat_customer && lead.repeat_remark ? (
+                                <span className="mt-0.5 block truncate text-[10px] font-medium text-amber-800" title={lead.repeat_remark}>
+                                  {lead.repeat_remark}
+                                </span>
+                              ) : null}
                             </td>
                           ) : null}
                           {showCol('phone') ? (
@@ -1857,16 +1936,21 @@ function TelecallerCrmLeadsContent() {
                             <td
                               className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-600"
                               style={colWidthStyle('date')}
-                              title={lead.created_at || undefined}
+                              title={leadDateTitle(lead.created_at)}
                             >
                               <StackedDateTime iso={lead.created_at} />
+                            </td>
+                          ) : null}
+                          {showCol('serviceDoneDate') ? (
+                            <td className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-700">
+                              {leadServiceDoneDate(lead) || '—'}
                             </td>
                           ) : null}
                           {showCol('modified') ? (
                             <td
                               className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-600"
                               style={colWidthStyle('modified')}
-                              title={lead.updated_at || undefined}
+                              title={leadDateTitle(lead.updated_at || lead.created_at)}
                             >
                               <StackedDateTime iso={lead.updated_at || lead.created_at} />
                             </td>
@@ -1882,15 +1966,15 @@ function TelecallerCrmLeadsContent() {
                               }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex flex-nowrap items-center justify-end gap-2">
                                 {lead.customer_phone ? (
                                   <a
                                     href={`tel:${lead.customer_phone}`}
                                     title="Call"
                                     aria-label="Call"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
                                   >
-                                    <Phone className="h-4 w-4 fill-current" strokeWidth={0} />
+                                    <Phone className="h-5 w-5 shrink-0 fill-current" strokeWidth={0} />
                                   </a>
                                 ) : null}
                                 {lead.customer_phone ? (
@@ -1899,9 +1983,9 @@ function TelecallerCrmLeadsContent() {
                                     onClick={() => openLeadWhatsApp(lead)}
                                     title="WhatsApp"
                                     aria-label="WhatsApp"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#25D366] text-white shadow-sm hover:bg-[#1ebe5c]"
+                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm hover:bg-[#1ebe5c]"
                                   >
-                                    <WhatsAppIcon className="h-4 w-4" />
+                                    <WhatsAppIcon className="h-5 w-5 shrink-0" />
                                   </button>
                                 ) : null}
                                 <button
@@ -1909,9 +1993,9 @@ function TelecallerCrmLeadsContent() {
                                   onClick={() => openShare(lead)}
                                   title="Transfer to another telecaller"
                                   aria-label="Transfer to another telecaller"
-                                  className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg bg-[#004AAD] px-2 text-[11px] font-bold text-white shadow-sm hover:bg-[#023D95]"
+                                  className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white shadow-sm hover:bg-[#023D95]"
                                 >
-                                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                                  <ArrowRightLeft className="h-4 w-4 shrink-0" />
                                   Transfer
                                 </button>
                               </div>
@@ -1925,7 +2009,7 @@ function TelecallerCrmLeadsContent() {
             </div>
 
             {/* Mobile / tablet cards */}
-            <div className="grid grid-cols-1 gap-2 lg:hidden">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:hidden">
               {displayedLeads.map((lead) => {
                 const tint = leadStatusCardColors(lead);
                 const statusLabel = leadDisplayStatus(lead);
@@ -1964,6 +2048,11 @@ function TelecallerCrmLeadsContent() {
                         <p className="font-bold text-slate-900 leading-snug truncate">
                           {formatLeadName(lead.customer_name)}
                         </p>
+                        {lead.repeat_customer ? (
+                          <p className="mt-1 text-[11px] font-semibold text-amber-800" title={lead.repeat_remark || ''}>
+                            Repeat Customer{lead.repeat_remark ? ` · ${lead.repeat_remark}` : ''}
+                          </p>
+                        ) : null}
                         <p className="mt-1 text-sm font-semibold text-slate-700">
                           {lead.customer_phone || '—'}
                         </p>
@@ -1976,12 +2065,24 @@ function TelecallerCrmLeadsContent() {
                             temperature={lead.ml_score?.temperature}
                           />
                         ) : null}
-                        <span
-                          className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                        <select
+                          aria-label="Change lead status"
+                          value={resolveAdminCrmStatusId(lead)}
+                          disabled={statusSavingId === String(lead.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            void changeLeadStatus(lead, e.target.value);
+                          }}
+                          className="max-w-[132px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-5 text-[11px] font-bold focus:outline-none disabled:opacity-60"
                           style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
                         >
-                          {statusLabel}
-                        </span>
+                          {crmStatusChoices.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                         {isLeadManager ? (
                           <span
                             className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-violet-700 text-[10px] font-extrabold text-white"

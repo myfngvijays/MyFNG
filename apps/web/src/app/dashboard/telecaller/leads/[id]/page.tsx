@@ -68,6 +68,8 @@ export function LeadDetailContent({
   };
 
   const [lead, setLead] = useState<any>(null);
+  const [repeatCustomer, setRepeatCustomer] = useState(false);
+  const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
@@ -218,6 +220,27 @@ export function LeadDetailContent({
     if (leadId) {
       fetchLeadDetails();
     }
+  }, [leadId]);
+
+  useEffect(() => {
+    if (!leadId) return;
+    let cancelled = false;
+    setRepeatCustomer(false);
+    setRepeatRemark(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/crm/repeat-customer?lead_id=${encodeURIComponent(leadId)}`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        setRepeatCustomer(Boolean(json.repeat_customer));
+        setRepeatRemark(json.repeat_remark ? String(json.repeat_remark) : null);
+      } catch {
+        /* badge stays hidden */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [leadId]);
 
   // TeleCRM-style: open lead directly in edit form (no separate Edit button / view mode)
@@ -653,6 +676,41 @@ export function LeadDetailContent({
     return 0;
   }
 
+  const sendPricingWhatsApp = async () => {
+    const pincode = String(lead?.pincode || '').replace(/\D/g, '').slice(0, 6);
+    const carModel = [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ').trim();
+    const serviceTypeIds = parseIds(lead?.service_type_ids);
+    const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+    const savedCategories = Array.isArray((meta as any).pricing_categories)
+      ? (meta as any).pricing_categories.map((c: any) => String(c || '').trim()).filter(Boolean)
+      : [];
+    const pricingCategories = savedCategories.length ? savedCategories : ['Car Periodic Service'];
+    if (!/^\d{6}$/.test(pincode)) { alert('Fill 6-digit pincode on the lead first.'); return; }
+    if (!carModel) { alert('Fill car model on the lead first.'); return; }
+    const modeHint = serviceTypeIds.length ? 'selected plan(s) only' : `all ${pricingCategories.join(', ')} plans`;
+    if (!confirm(`Send pricing (${modeHint}) · ${carModel} · PIN ${pincode}?`)) return;
+    setSendingPricing(true);
+    try {
+      const res = await fetch(`/api/telecaller/leads/${leadId}/send-pricing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pincode,
+          carModel,
+          serviceTypeIds: serviceTypeIds.length ? serviceTypeIds : undefined,
+          categories: serviceTypeIds.length ? (pricingCategories.length ? pricingCategories : undefined) : pricingCategories,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) throw new Error(json?.message || json?.error || 'Failed to send pricing');
+      alert(json.message || 'Pricing sent on WhatsApp.');
+    } catch (e: any) {
+      alert(e?.message || 'Could not send pricing link.');
+    } finally {
+      setSendingPricing(false);
+    }
+  };
+
   if (loading) {
     return wrap(
       <div className="flex items-center justify-center h-48 sm:h-64">
@@ -727,6 +785,15 @@ export function LeadDetailContent({
                     />
                   ) : null}
                 </div>
+                <button
+                  type="button"
+                  disabled={sendingPricing}
+                  onClick={() => void sendPricingWhatsApp()}
+                  className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] text-white py-2.5 text-sm font-bold disabled:opacity-50"
+                >
+                  <WhatsAppIcon className="w-4 h-4" />
+                  {sendingPricing ? 'Sending…' : 'Send pricing on WhatsApp'}
+                </button>
               </div>
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
@@ -852,6 +919,11 @@ export function LeadDetailContent({
                     <span className="text-white/95">{lead.customer_phone}</span>
                     <span className="text-white/90">Created {formatDateTime(lead.created_at)}</span>
                   </p>
+                  {repeatCustomer ? (
+                    <p className="mt-2 inline-flex max-w-full rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-950">
+                      Repeat Customer{repeatRemark ? ` · ${repeatRemark}` : ''}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -1391,40 +1463,7 @@ export function LeadDetailContent({
               <button
                 type="button"
                 disabled={sendingPricing}
-                onClick={async () => {
-                  const pincode = String(lead?.pincode || '').replace(/\D/g, '').slice(0, 6);
-                  const carModel = [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ').trim();
-                  const serviceTypeIds = parseIds(lead?.service_type_ids);
-                  const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
-                  const savedCategories = Array.isArray((meta as any).pricing_categories)
-                    ? (meta as any).pricing_categories.map((c: any) => String(c || '').trim()).filter(Boolean)
-                    : [];
-                  const pricingCategories = savedCategories.length ? savedCategories : ['Car Periodic Service'];
-                  if (!/^\d{6}$/.test(pincode)) { alert('Fill 6-digit pincode on the lead first.'); return; }
-                  if (!carModel) { alert('Fill car model on the lead first.'); return; }
-                  const modeHint = serviceTypeIds.length ? 'selected plan(s) only' : `all ${pricingCategories.join(', ')} plans`;
-                  if (!confirm(`Send pricing (${modeHint}) · ${carModel} · PIN ${pincode}?`)) return;
-                  setSendingPricing(true);
-                  try {
-                    const res = await fetch(`/api/telecaller/leads/${leadId}/send-pricing`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        pincode,
-                        carModel,
-                        serviceTypeIds: serviceTypeIds.length ? serviceTypeIds : undefined,
-                        categories: serviceTypeIds.length ? (pricingCategories.length ? pricingCategories : undefined) : pricingCategories,
-                      }),
-                    });
-                    const json = await res.json().catch(() => ({}));
-                    if (!res.ok || !json?.success) throw new Error(json?.message || json?.error || 'Failed to send pricing');
-                    alert(json.message || 'Pricing sent on WhatsApp.');
-                  } catch (e: any) {
-                    alert(e?.message || 'Could not send pricing link.');
-                  } finally {
-                    setSendingPricing(false);
-                  }
-                }}
+                onClick={() => void sendPricingWhatsApp()}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#004AAD] text-white py-2.5 text-sm font-bold disabled:opacity-50"
               >
                 <TrendingUp className="w-4 h-4" />

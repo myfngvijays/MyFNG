@@ -10,6 +10,29 @@ import {
 import { resolveTelecallerUserId } from './resolveTelecallerUserId';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
+import { stampFreshOnMeta } from '@/lib/telecaller/crmLeadTagsApply';
+import {
+  addLeadTags,
+  ensureTagIdsByNames,
+  metaMessageTriggerTagNames,
+  resolveMetaAdTagNames,
+} from '@/lib/telecaller/crmLeadTagsApply';
+
+async function applyMetaTriggerTags(leadId: string, leadSource: string, triggerLabel: string | null, markAsMeta: boolean) {
+  const metaTags = resolveMetaAdTagNames({
+    leadSource,
+    triggerLabel,
+    markAsMeta,
+  });
+  const extraNames = metaMessageTriggerTagNames({ triggerLabel, markAsMeta });
+  const tagIds = [
+    ...(metaTags.names.length
+      ? await ensureTagIdsByNames(metaTags.names, { parentName: metaTags.parent })
+      : []),
+    ...(extraNames.length ? await ensureTagIdsByNames(extraNames) : []),
+  ];
+  if (tagIds.length) await addLeadTags(leadId, tagIds);
+}
 
 const OPEN_STATUSES = ['NEW', 'VALIDATED', 'HOLD', 'ACCEPTED', 'IN_PROGRESS', 'ASSIGNED'];
 
@@ -148,9 +171,12 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
         ? assignedTo
         : prevAssignee || assignedTo;
 
+    const prevResult = String(prevMeta.last_call_result || '').trim().toUpperCase();
+    const prevHistory = Array.isArray(prevMeta.profile_history) ? prevMeta.profile_history : [];
+    const becameFresh = prevResult !== 'FRESH';
     const patch: Record<string, unknown> = {
       updated_at: nowIso,
-      coupon_meta: {
+      coupon_meta: stampFreshOnMeta({
         ...prevMeta,
         whatsapp_inbound: true,
         whatsapp_enquiry: true,
@@ -158,11 +184,26 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
         wa_business_phone: businessPhone,
         wa_inbox: businessPhone,
         last_inbound_at: nowIso,
+        last_lost_reason: null,
         telecrm_id: input.telecrmId || prevMeta.telecrm_id || null,
         telecrm_disposition: input.disposition || prevMeta.telecrm_disposition || null,
         telecrm_lead_tag: telecrmLeadTag || prevMeta.telecrm_lead_tag || null,
         telecrm_lead_status: telecrmLeadStatus || prevMeta.telecrm_lead_status || null,
         telecrm_assignee_name: input.assigneeName || prevMeta.telecrm_assignee_name || null,
+        ...(becameFresh
+          ? {
+              profile_history: [
+                {
+                  at: nowIso,
+                  summary: `New enquiry — was ${String(prevMeta.last_call_label || prevResult || 'open')} → Fresh`,
+                  status: 'FRESH',
+                  event: 'REENQUIRY',
+                  previous_status: prevResult || null,
+                },
+                ...prevHistory,
+              ].slice(0, 50),
+            }
+          : {}),
         ...(triggerId
           ? {
               message_trigger_id: triggerId,
@@ -177,8 +218,12 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
               reassigned_at: nowIso,
             }
           : {}),
-      },
+      }),
     };
+    const pipeline = String(existing.status || '').trim().toUpperCase();
+    if (pipeline === 'REJECTED' || pipeline === 'CANCELLED') {
+      patch.status = 'NEW';
+    }
 
     if (msg) {
       patch.problem_description = msg;
@@ -234,6 +279,14 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
         assignedByName: 'TeleCRM / WhatsApp',
         notes: 'New WhatsApp lead',
       });
+    }
+
+    if (triggerId && createdFrom === 'WHATSAPP_META') {
+      try {
+        await applyMetaTriggerTags(String(existing.id), leadSource, triggerLabel, true);
+      } catch (e) {
+        console.warn('[telecrm→service_leads] tag apply failed', e);
+      }
     }
 
     return {
@@ -319,6 +372,14 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
       assignedByName: 'TeleCRM / WhatsApp',
       notes: 'New WhatsApp lead',
     });
+  }
+
+  if (inserted?.id && triggerId && createdFrom === 'WHATSAPP_META') {
+    try {
+      await applyMetaTriggerTags(String(inserted.id), leadSource, triggerLabel, true);
+    } catch (e) {
+      console.warn('[telecrm→service_leads] tag apply on create failed', e);
+    }
   }
 
   return {

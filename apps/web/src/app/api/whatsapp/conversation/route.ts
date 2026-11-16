@@ -211,6 +211,8 @@ export async function GET(request: NextRequest) {
               lead.updated_at ||
               lead.created_at ||
               new Date().toISOString();
+            const bizRaw = String(meta.wa_business_phone || meta.wa_inbox || '').replace(/\D/g, '');
+            const sourceSays9696 = /9167779696/.test(String(lead.lead_source || ''));
             seeds.push({
               id: `lead-seed-${lead.id}-${seeds.length}`,
               provider_message_id: null,
@@ -224,7 +226,11 @@ export async function GET(request: NextRequest) {
               media_mime_type: null,
               media_caption: null,
               payload: { source: 'service_lead', lead_id: lead.id },
-              meta: { seeded_from_lead: true, lead_id: lead.id },
+              meta: {
+                seeded_from_lead: true,
+                lead_id: lead.id,
+                business_phone: bizRaw || (sourceSays9696 ? '9167779696' : null),
+              },
               status: 'RECEIVED',
               error_message: null,
               status_at: at,

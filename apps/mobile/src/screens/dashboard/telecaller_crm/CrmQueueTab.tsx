@@ -184,6 +184,8 @@ export default function CrmQueueTab({
   managerOps = false,
 }: Props) {
   const [leads, setLeads] = useState<any[]>([]);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [scopeTotal, setScopeTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -192,6 +194,20 @@ export default function CrmQueueTab({
   const [appliedQ, setAppliedQ] = useState('');
   const [filter, setFilter] = useState(initialFilter);
   const [statusFilters, setStatusFilters] = useState(DEFAULT_STATUS_FILTERS);
+  const [crmStatusChoices, setCrmStatusChoices] = useState<Array<{ id: string; label: string }>>([
+    { id: 'FRESH', label: 'Fresh' },
+    { id: 'INTERESTED', label: 'Interested' },
+    { id: 'WILL_VISIT', label: 'He will visit' },
+    { id: 'CALLBACK', label: 'Follow-up' },
+    { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed' },
+    { id: 'IN_SERVICE', label: 'In Service' },
+    { id: 'RINGING', label: 'Ringing / No answer' },
+    { id: 'SERVICE_DONE', label: 'Service Done' },
+    { id: 'LOST', label: 'Lost' },
+    { id: 'OTHER', label: 'Other' },
+  ]);
+  const [statusLead, setStatusLead] = useState<any>(null);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [lostReason, setLostReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
@@ -241,6 +257,38 @@ export default function CrmQueueTab({
         const rows = Array.isArray(data?.statuses) ? data.statuses : [];
         if (cancelled || !rows.length) return;
         setStatusFilters(mergeCrmStatusFilters(rows));
+        const builtin = new Set([
+          'FRESH',
+          'INTERESTED',
+          'WILL_VISIT',
+          'CALLBACK',
+          'BOOKING_CONFIRMED',
+          'IN_SERVICE',
+          'RINGING',
+          'SERVICE_DONE',
+          'LOST',
+          'OTHER',
+        ]);
+        const extra = rows
+          .filter((row: any) => row?.is_active !== false)
+          .map((row: any) => ({
+            id: String(row.code || '').trim().toUpperCase(),
+            label: String(row.name || '').trim(),
+          }))
+          .filter((row: { id: string; label: string }) => row.id && row.label && !builtin.has(row.id));
+        setCrmStatusChoices([
+          { id: 'FRESH', label: 'Fresh' },
+          { id: 'INTERESTED', label: 'Interested' },
+          { id: 'WILL_VISIT', label: 'He will visit' },
+          { id: 'CALLBACK', label: 'Follow-up' },
+          { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed' },
+          { id: 'IN_SERVICE', label: 'In Service' },
+          { id: 'RINGING', label: 'Ringing / No answer' },
+          { id: 'SERVICE_DONE', label: 'Service Done' },
+          { id: 'LOST', label: 'Lost' },
+          { id: 'OTHER', label: 'Other' },
+          ...extra,
+        ]);
       } catch {
         /* keep defaults */
       }
@@ -425,6 +473,8 @@ export default function CrmQueueTab({
         timeoutMs: 25000,
       });
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
+      setTotalLeads(Number(data?.total || 0));
+      setScopeTotal(Number(data?.scope_total || data?.total || 0));
       setLoadError('');
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'Could not load leads';
@@ -648,10 +698,56 @@ export default function CrmQueueTab({
     );
   };
 
+  const applyQueueStatus = async (
+    lead: any,
+    statusId: string,
+    label: string,
+    lostReason: string | null,
+  ) => {
+    if (!lead?.id) return;
+    const shown =
+      statusId === 'LOST' && lostReason ? `Lost · ${lostReason}` : label;
+    setStatusSaving(true);
+    try {
+      const data = await apiFetch<any>(`/api/telecaller/leads/${lead.id}/heal-disposition`, {
+        method: 'POST',
+        body: JSON.stringify({
+          force: true,
+          last_call_result: statusId,
+          last_call_label: shown,
+          last_lost_reason: lostReason,
+          last_call_status: statusId === 'RINGING' ? 'NO_ANSWER' : 'ANSWERED',
+        }),
+      });
+      if (data?.error) throw new Error(data.error);
+      setLeads((prev) =>
+        prev.map((row) =>
+          String(row.id) === String(lead.id)
+            ? {
+                ...row,
+                coupon_meta: {
+                  ...(row.coupon_meta || {}),
+                  last_call_result: statusId,
+                  last_call_label: shown,
+                  last_lost_reason: lostReason,
+                },
+              }
+            : row,
+        ),
+      );
+      setStatusLead(null);
+    } catch (err: any) {
+      Alert.alert('Lead status', err?.message || 'Status update failed');
+    } finally {
+      setStatusSaving(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.searchRow}>
-        <Ionicons name="search" size={16} color={COLORS.textSecondary} />
+        <View style={styles.searchBox}>
+        <Ionicons name="search" size={16} color="#fff" />
         <TextInput
           style={styles.search}
           placeholder="Search name / phone / lead #"
@@ -662,7 +758,7 @@ export default function CrmQueueTab({
             setAppliedQ(nextQ);
             persistLocalFilters({ q: nextQ });
           }}
-          placeholderTextColor={COLORS.textSecondary}
+          placeholderTextColor="rgba(255,255,255,0.8)"
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="none"
@@ -681,9 +777,10 @@ export default function CrmQueueTab({
             accessibilityLabel="Clear search"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+            <Ionicons name="close-circle" size={18} color="#fff" />
           </TouchableOpacity>
         ) : null}
+        </View>
         {managerOps ? (
         <View style={styles.viewToggle}>
           <TouchableOpacity
@@ -710,6 +807,16 @@ export default function CrmQueueTab({
           </TouchableOpacity>
         </View>
         ) : null}
+        <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#F1F5F9' }}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.primary }}>
+            {totalLeads.toLocaleString('en-IN')}
+            {filter !== 'all' && scopeTotal > 0 ? (
+              <Text style={{ color: '#94A3B8', fontWeight: '700' }}>
+                {' '}of {scopeTotal.toLocaleString('en-IN')}
+              </Text>
+            ) : null}
+          </Text>
+        </View>
         <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.filterBtn}>
           <Ionicons name="options-outline" size={18} color={COLORS.primary} />
         </TouchableOpacity>
@@ -1079,11 +1186,31 @@ export default function CrmQueueTab({
                   {item.customer_phone || '—'}
                   {managerOps && assigneeName ? `  ·  ${assigneeName}` : ''}
                 </Text>
-                <View style={[styles.statusCornerInline, { backgroundColor: tint.badgeBg }]}>
+                {item.repeat_customer ? (
+                  <Text style={styles.repeatLine} numberOfLines={2}>
+                    Repeat Customer{item.repeat_remark ? ` · ${item.repeat_remark}` : ''}
+                  </Text>
+                ) : null}
+                {(() => {
+                  const coupon = item?.coupon_meta && typeof item.coupon_meta === 'object' ? item.coupon_meta : {};
+                  const meta = item?.meta && typeof item.meta === 'object' ? item.meta : {};
+                  const imported = meta.import_fields && typeof meta.import_fields === 'object' ? meta.import_fields : {};
+                  const raw = String(coupon.service_done_at || meta.service_date || imported['Service Date'] || '').trim();
+                  if (!raw) return null;
+                  return (
+                    <Text style={styles.meta} numberOfLines={1}>
+                      Service done: {raw.slice(0, 10)}
+                    </Text>
+                  );
+                })()}
+                <TouchableOpacity
+                  style={[styles.statusCornerInline, { backgroundColor: tint.badgeBg }]}
+                  onPress={() => setStatusLead(item)}
+                >
                   <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
                     {statusLabel}
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
               <View style={styles.iconActions}>
                   <TouchableOpacity
@@ -1397,6 +1524,44 @@ export default function CrmQueueTab({
           </View>
         </View>
       </Modal>
+
+      <Modal visible={!!statusLead} transparent animationType="slide" onRequestClose={() => setStatusLead(null)}>
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setStatusLead(null)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Lead status</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setStatusLead(null)}>
+                <Ionicons name="close" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }}>
+              {crmStatusChoices.map((opt) => (
+                <TouchableOpacity
+                  key={opt.id}
+                  disabled={statusSaving}
+                  style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}
+                  onPress={() => {
+                    if (opt.id === 'LOST') {
+                      Alert.alert('Lost reason', 'Select a reason', [
+                        ...['Not Interested', 'No-Response to Calls', 'Other Reasons'].map((reason) => ({
+                          text: reason,
+                          onPress: () => void applyQueueStatus(statusLead, opt.id, opt.label, reason),
+                        })),
+                        { text: 'Cancel', style: 'cancel' as const },
+                      ]);
+                      return;
+                    }
+                    void applyQueueStatus(statusLead, opt.id, opt.label, null);
+                  }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1410,12 +1575,17 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.md,
     marginTop: 4,
     marginBottom: 2,
-    backgroundColor: COLORS.white,
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#023D95',
     borderRadius: 12,
     paddingHorizontal: 12,
-    ...SHADOWS.small,
   },
-  search: { flex: 1, paddingVertical: 10, color: COLORS.textPrimary },
+  search: { flex: 1, paddingVertical: 10, color: '#fff', fontWeight: '600' },
   dropdownBackdrop: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 40,
@@ -1672,6 +1842,7 @@ const styles = StyleSheet.create({
   status: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: 120, flexShrink: 1 },
   statusText: { fontSize: 11, fontWeight: '700', lineHeight: 14, textAlign: 'center' },
   meta: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 16 },
+  repeatLine: { marginTop: 4, fontSize: 11, fontWeight: '700', color: '#92400E', lineHeight: 15 },
   msgRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

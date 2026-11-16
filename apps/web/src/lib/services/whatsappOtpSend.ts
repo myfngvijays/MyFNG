@@ -8,7 +8,7 @@ import {
 } from '@/lib/whatsappAgents/shared/envConfigStore';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import type { WhatsAppSendResult } from '@/lib/services/whatsappService';
-import { normalizePhoneNumber } from '@/lib/services/whatsappService';
+import { isOtpWhatsAppLine, normalizePhoneNumber } from '@/lib/services/whatsappService';
 import { loadOtpChannelConfig } from '@/lib/otp/channelConfig';
 import { archiveSentOtpMessage } from '@/lib/whatsapp/otpInbox';
 
@@ -18,6 +18,7 @@ type OtpCreds = {
   whatsapp_business_account_id: string;
   whatsapp_api_url: string;
   preferred: boolean;
+  otpLine?: boolean;
 };
 
 type SenderHealth = 'healthy' | 'down' | 'unknown';
@@ -316,20 +317,27 @@ async function loadOtpSenders(): Promise<OtpCreds[]> {
   if (!supabaseAdmin) return senders;
   const { data } = await (supabaseAdmin as any)
     .from('wa_bulk_accounts')
-    .select('phone_number_id, waba_id, access_token, api_url');
+    .select('display_phone, phone_number_id, waba_id, access_token, api_url');
   for (const row of data || []) {
     const phoneId = String(row.phone_number_id || '').trim();
     const token = String(row.access_token || '').trim();
     const wabaId = String(row.waba_id || '').trim();
     if (!phoneId || !token) continue;
     if (senders.some((sender) => sender.whatsapp_phone_number_id === phoneId)) continue;
+    const otpLine = isOtpWhatsAppLine(String(row.display_phone || ''), phoneId);
     senders.push({
       whatsapp_access_token: token,
       whatsapp_phone_number_id: phoneId,
       whatsapp_business_account_id: wabaId,
       whatsapp_api_url: String(row.api_url || primary.whatsapp_api_url || 'https://graph.facebook.com/v25.0'),
-      preferred: false,
+      preferred: otpLine,
+      otpLine,
     });
+  }
+  if (senders.some((sender) => sender.otpLine)) {
+    for (const sender of senders) {
+      if (!sender.otpLine) sender.preferred = false;
+    }
   }
   return senders;
 }
@@ -461,8 +469,10 @@ export async function sendWhatsAppOtpMessage(
       (row.health === 'healthy' ? 0 : row.health === 'unknown' ? 1 : 2) * 10 + (row.sender.preferred ? 0 : 1);
     return score(a) - score(b);
   });
-  const usable = ranked.filter((row) => row.health !== 'down');
-  const queue = usable.length ? usable : ranked;
+  const otpLines = ranked.filter((row) => row.sender.otpLine);
+  const pool = otpLines.length ? otpLines : ranked;
+  const usable = pool.filter((row) => row.health !== 'down');
+  const queue = usable.length ? usable : pool;
 
   const attemptErrors: Array<{ label: string; error?: string; statusCode?: number }> = [];
   const triedPhoneNumberIds: string[] = [];

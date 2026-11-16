@@ -3,7 +3,9 @@
  * Server-only service used by API routes.
  */
 
+import { AsyncLocalStorage } from 'async_hooks';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export type WhatsAppSendResult = {
   success: boolean;
@@ -29,6 +31,43 @@ type TemplateSender = {
   accessToken: string;
   apiUrl?: string;
 };
+
+const waSenderStore = new AsyncLocalStorage<TemplateSender | undefined>();
+
+/** Reply on the WhatsApp number that received the inbound message. */
+export function runWithWaSender<T>(sender: TemplateSender | undefined, fn: () => Promise<T>): Promise<T> {
+  return waSenderStore.run(sender, fn);
+}
+
+/** 95949 00505 — OTP line while 6161 quality is low. */
+export function isOtpWhatsAppLine(displayPhone: string, phoneNumberId: string): boolean {
+  const digits = String(displayPhone || '').replace(/\D/g, '');
+  const id = String(phoneNumberId || '').replace(/\D/g, '');
+  return digits.endsWith('9594900505') || id === '1475778828946008';
+}
+
+export async function resolveWaAccountSender(
+  phoneNumberId: string | null | undefined,
+): Promise<TemplateSender | undefined> {
+  const id = String(phoneNumberId || '').replace(/\D/g, '');
+  if (!id) return undefined;
+  const primary = await getResolvedWhatsAppAgentsCredentials();
+  if (String(primary.whatsapp_phone_number_id || '').replace(/\D/g, '') === id) return undefined;
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return undefined;
+  const { data } = await supabaseAdmin
+    .from('wa_bulk_accounts')
+    .select('phone_number_id, access_token, api_url')
+    .eq('phone_number_id', id)
+    .maybeSingle();
+  const token = String(data?.access_token || '').trim();
+  if (!token) return undefined;
+  return {
+    phoneNumberId: id,
+    accessToken: token,
+    apiUrl: String(data?.api_url || primary.whatsapp_api_url || 'https://graph.facebook.com/v25.0'),
+  };
+}
 
 type TemplateMessageInput = {
   phoneNumber: string;
@@ -71,11 +110,12 @@ async function parseCloudApiError(response: Response): Promise<{ message: string
 }
 
 async function sendMessagePayload(payload: unknown, sender?: TemplateSender): Promise<WhatsAppSendResult> {
-  const creds = sender?.phoneNumberId && sender?.accessToken
+  const active = sender?.phoneNumberId && sender?.accessToken ? sender : waSenderStore.getStore();
+  const creds = active?.phoneNumberId && active?.accessToken
     ? {
-        whatsapp_phone_number_id: sender.phoneNumberId,
-        whatsapp_access_token: sender.accessToken,
-        whatsapp_api_url: sender.apiUrl || 'https://graph.facebook.com/v25.0',
+        whatsapp_phone_number_id: active.phoneNumberId,
+        whatsapp_access_token: active.accessToken,
+        whatsapp_api_url: active.apiUrl || 'https://graph.facebook.com/v25.0',
       }
     : await getResolvedWhatsAppAgentsCredentials();
   const configError = assertWhatsAppConfig(creds);

@@ -479,6 +479,28 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     ]);
   };
 
+  const handleSetPriority = (followUpId: string) => {
+    const apply = async (priority: string) => {
+      const { error } = await supabase
+        .from('telecaller_follow_ups')
+        .update({ priority })
+        .eq('id', followUpId);
+      if (error) {
+        Alert.alert('Could not update priority');
+        return;
+      }
+      setFollowUps((prev) => prev.map((row) => (row.id === followUpId ? { ...row, priority } : row)));
+    };
+    Alert.alert('Priority', 'Flag this reminder', [
+      { text: 'Urgent', onPress: () => void apply('URGENT') },
+      { text: 'High', onPress: () => void apply('HIGH') },
+      { text: 'Medium', onPress: () => void apply('MEDIUM') },
+      { text: 'Low', onPress: () => void apply('LOW') },
+      { text: 'Clear', onPress: () => void apply('NORMAL') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const handleMarkMissed = async (followUpId: string) => {
     Alert.alert(
       'Cancel Follow-up',
@@ -671,16 +693,45 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           <Text style={styles.customerName} numberOfLines={1}>
             {item.lead?.customer_name || 'Customer'}
           </Text>
+          <Text style={styles.leadMeta} numberOfLines={2}>
+            {item.reason || item.follow_up_type || 'Follow-up'}
+          </Text>
           <Text style={styles.leadMeta} numberOfLines={1}>
+            {item.telecaller?.full_name || 'Unassigned'}
+            {'  ·  '}
             {phone || '—'}
+          </Text>
+          <Text style={styles.leadMeta} numberOfLines={1}>
+            Due {item.scheduled_time ? new Date(item.scheduled_time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
           </Text>
           <View style={[styles.statusPill, pillStyle]}>
             <Text style={[styles.statusPillText, pillTextStyle]} numberOfLines={1}>
-              {pillLabel}
+              {isOverdue ? 'LATE' : pillLabel}
             </Text>
           </View>
         </View>
         <View style={styles.iconActions}>
+          <TouchableOpacity
+            style={styles.iconAct}
+            onPress={() => handleSetPriority(item.id)}
+            accessibilityLabel="Priority"
+          >
+            <Icon
+              name="flag"
+              size={15}
+              color={
+                String(item.priority || '').toUpperCase() === 'URGENT'
+                  ? '#EF4444'
+                  : String(item.priority || '').toUpperCase() === 'HIGH'
+                    ? '#F97316'
+                    : String(item.priority || '').toUpperCase() === 'MEDIUM'
+                      ? '#2563EB'
+                      : String(item.priority || '').toUpperCase() === 'LOW'
+                        ? '#94A3B8'
+                        : '#CBD5E1'
+              }
+            />
+          </TouchableOpacity>
           {item.lead?.customer_phone ? (
             <TouchableOpacity
               style={[styles.iconAct, styles.iconActPrimary]}

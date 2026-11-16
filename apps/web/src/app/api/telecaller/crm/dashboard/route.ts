@@ -222,6 +222,8 @@ export async function GET(request: NextRequest) {
     const [
       totalLeads,
       newLeads,
+      ringing,
+      otherStatus,
       incomplete,
       interested,
       willVisit,
@@ -244,6 +246,8 @@ export async function GET(request: NextRequest) {
     ] = await runInChunks([
       () => applyCreatedRange(leadBase()),
       () => applyCreatedRange(applyCrmNewLeadFilter(leadBase())),
+      () => applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'RINGING')),
+      () => applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'OTHER')),
       () => applyCreatedRange(leadBase().eq('is_incomplete', true)),
       () =>
         applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED')),
@@ -427,6 +431,8 @@ export async function GET(request: NextRequest) {
       kpis: {
         total_leads: n(totalLeadsN),
         new_leads: n(newLeadsN),
+        ringing: n(countOf(ringing, countErrors)),
+        other: n(countOf(otherStatus, countErrors)),
         incomplete: n(countOf(incomplete, countErrors)),
         interested: n(countOf(interested, countErrors)),
         will_visit: n(countOf(willVisit, countErrors)),

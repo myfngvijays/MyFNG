@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { fetchMessageTriggers, saveMessageTriggers } from '@/lib/enquiry/assignment';
+import { fetchMessageTriggers, fetchSourceRoutes, saveMessageTriggers, saveSourceRoutes } from '@/lib/enquiry/assignment';
+import { normalizeSourceRoutes } from '@/lib/enquiry/sourceRoutes';
 import { normalizeMessageTriggers } from '@/lib/enquiry/messageTriggers';
 import { normalizeAllowedPincodes, normalizePincodeMode, pincodePayloadFromMode } from '@/lib/enquiry/pincodeAllocation';
 
@@ -63,10 +64,18 @@ export async function GET(request: NextRequest) {
       messageTriggers = [];
     }
 
+    let sourceRoutes: Awaited<ReturnType<typeof fetchSourceRoutes>> = [];
+    try {
+      sourceRoutes = await fetchSourceRoutes();
+    } catch {
+      sourceRoutes = [];
+    }
+
     return NextResponse.json({
       allocations: allocations || [],
       telecallers: onlyTelecallers,
       message_triggers: messageTriggers,
+      source_routes: sourceRoutes,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
@@ -83,6 +92,18 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const rows = Array.isArray(body?.allocations) ? body.allocations : [];
+    const hasSourceRoutes = Array.isArray(body?.source_routes);
+
+    if (hasSourceRoutes) {
+      try {
+        await saveSourceRoutes(normalizeSourceRoutes(body.source_routes));
+      } catch (err: any) {
+        return NextResponse.json({ error: err?.message || 'Invalid source routes' }, { status: 400 });
+      }
+      if (rows.length === 0) {
+        return NextResponse.json({ success: true, source_routes: normalizeSourceRoutes(body.source_routes) });
+      }
+    }
 
     if (rows.length === 0) {
       return NextResponse.json({ error: 'allocations array is required' }, { status: 400 });

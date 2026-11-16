@@ -20,7 +20,6 @@ import {
   Calendar,
   ClipboardList,
   MessageCircle,
-  BarChart3,
   ChevronDown,
   ChevronUp,
   Check,
@@ -48,6 +47,9 @@ import {
 } from 'recharts';
 
 type Kpis = {
+  total_leads?: number;
+  ringing?: number;
+  other?: number;
   new_leads?: number;
   incomplete?: number;
   interested?: number;
@@ -268,6 +270,8 @@ export default function TelecallerCrmHomePage() {
 
   // Same labels / filters as Leads — colors from leadStatusCardColors palette
   const kpiCards = [
+    { label: 'All', value: kpis.total_leads || 0, statusKey: 'All', filter: null as string | null, href: `${base}/leads?filter=all` },
+    { label: 'Ringing', value: kpis.ringing || 0, statusKey: 'Ringing', filter: 'ringing', href: `${base}/leads?filter=ringing` },
     { label: 'Fresh', value: kpis.new_leads || 0, statusKey: 'Fresh', filter: 'new', href: `${base}/leads?filter=new` },
     {
       label: 'Interested',
@@ -319,6 +323,13 @@ export default function TelecallerCrmHomePage() {
       href: `${base}/leads?filter=lost`,
     },
     {
+      label: 'Other',
+      value: kpis.other || 0,
+      statusKey: 'Other',
+      filter: 'other',
+      href: `${base}/leads?filter=other`,
+    },
+    {
       label: 'Today due',
       value: kpis.followups_today,
       statusKey: 'Follow-up',
@@ -333,7 +344,7 @@ export default function TelecallerCrmHomePage() {
     bookings: Number(t.leads_created || 0),
   }));
   const statusPie = kpiCards
-    .filter((k) => k.filter)
+    .filter((k) => k.filter && k.label !== 'All')
     .map((k) => {
       const tint = leadStatusKpiColors(k.statusKey);
       const fill = tint.badgeText === '#FFFFFF' ? tint.badgeBg : tint.badgeText;
@@ -459,8 +470,8 @@ export default function TelecallerCrmHomePage() {
           </div>
         ) : (
           <>
-            {/* KPI grid — 5×2 with Today due filling last cell */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-2.5">
+            {/* KPI grid — 6 and 6 */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
               {kpiCards.map((k) => {
                 const tint = leadStatusKpiColors(k.statusKey);
                 return (
@@ -674,13 +685,6 @@ export default function TelecallerCrmHomePage() {
                     color: '#F59E0B',
                   },
                   {
-                    href: '#whatsapp',
-                    label: 'WhatsApp',
-                    icon: MessageCircle,
-                    color: '#25D366',
-                    action: 'open-wa-inbox' as const,
-                  },
-                  {
                     href: `${base}/workshops`,
                     label: 'Workshops',
                     icon: MapPin,
@@ -707,11 +711,22 @@ export default function TelecallerCrmHomePage() {
                       ]
                     : []),
                   {
-                    href: isLeadManager ? `${base}/assignment` : `${base}/reports`,
-                    label: isLeadManager ? 'Assignment' : 'Reports',
-                    icon: isLeadManager ? MessageCircle : BarChart3,
-                    color: isLeadManager ? '#7C3AED' : '#023D95',
+                    href: '#whatsapp',
+                    label: 'WhatsApp',
+                    icon: MessageCircle,
+                    color: '#25D366',
+                    action: 'open-wa-inbox' as const,
                   },
+                  ...(isLeadManager
+                    ? [
+                        {
+                          href: `${base}/assignment`,
+                          label: 'Assignment',
+                          icon: MessageCircle,
+                          color: '#7C3AED',
+                        },
+                      ]
+                    : []),
                 ].map((a) =>
                   a.action === 'open-wa-inbox' ? (
                     <button
@@ -721,7 +736,7 @@ export default function TelecallerCrmHomePage() {
                         setWaUnread(0);
                         window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'));
                       }}
-                      className="relative flex flex-row items-center gap-1.5 rounded-xl border border-[#E6EDF5] bg-white px-2 py-2.5 shadow-sm transition hover:brightness-[0.98]"
+                      className="relative flex w-full flex-row items-center justify-start gap-1.5 rounded-xl border border-[#E6EDF5] bg-white px-2 py-2.5 text-left shadow-sm transition hover:brightness-[0.98]"
                     >
                       <span
                         className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center"
@@ -729,7 +744,7 @@ export default function TelecallerCrmHomePage() {
                       >
                         <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
                       </span>
-                      <span className="min-w-0 flex-1 text-[11px] font-bold leading-tight text-[#0F2744]">
+                      <span className="min-w-0 text-left text-[11px] font-bold leading-tight text-[#0F2744]">
                         {a.label}
                       </span>
                       {waUnread > 0 ? (
@@ -742,7 +757,7 @@ export default function TelecallerCrmHomePage() {
                     <Link
                       key={a.href + a.label}
                       href={a.href}
-                      className="flex flex-row items-center gap-1.5 rounded-xl border border-[#E6EDF5] bg-white px-2 py-2.5 shadow-sm transition hover:brightness-[0.98]"
+                      className="flex w-full flex-row items-center justify-start gap-1.5 rounded-xl border border-[#E6EDF5] bg-white px-2 py-2.5 text-left shadow-sm transition hover:brightness-[0.98]"
                     >
                       <span
                         className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center"
@@ -750,7 +765,7 @@ export default function TelecallerCrmHomePage() {
                       >
                         <a.icon className="w-4 h-4" style={{ color: a.color }} />
                       </span>
-                      <span className="min-w-0 flex-1 text-[11px] font-bold leading-tight text-[#0F2744]">
+                      <span className="min-w-0 text-left text-[11px] font-bold leading-tight text-[#0F2744]">
                         {a.label}
                       </span>
                     </Link>

@@ -436,38 +436,6 @@ const TC_NAV: NavRow[] = [
   },
   {
     type: 'group',
-    id: 'reports_group',
-    label: 'Reports',
-    icon: 'trophy-outline',
-    children: [
-      {
-        id: 'reports_lb',
-        label: 'Your leaderboard',
-        icon: 'trophy-outline',
-        kind: 'stack',
-        screen: 'CrmReports',
-        params: { tab: 'leaderboard' },
-      },
-      {
-        id: 'reports_calls',
-        label: 'Call activity',
-        icon: 'call-outline',
-        kind: 'stack',
-        screen: 'CrmReports',
-        params: { tab: 'calls' },
-      },
-      {
-        id: 'reports_dup',
-        label: 'Duplicates',
-        icon: 'git-network-outline',
-        kind: 'stack',
-        screen: 'CrmReports',
-        params: { tab: 'duplicates' },
-      },
-    ],
-  },
-  {
-    type: 'group',
     id: 'settings_group',
     label: 'Settings',
     icon: 'settings-outline',
@@ -1143,7 +1111,14 @@ export default function TelecallerAdvancedCRM() {
         ) : null}
       </View>
 
-      <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
+      <TelecallerWhatsAppInbox
+        visible={whatsAppOpen}
+        onClose={() => setWhatsAppOpen(false)}
+        onOpenLead={(leadId) => {
+          setWhatsAppOpen(false);
+          navigation.navigate('TelecallerLeadDetail', { leadId });
+        }}
+      />
 
       {preview && !detailLeadId ? (
         <View style={[styles.previewBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
@@ -1218,22 +1193,6 @@ export default function TelecallerAdvancedCRM() {
                 >
                   <Ionicons name="search-outline" size={22} color="#FFFFFF" />
                   <Text style={styles.tcQuickLbl}>Search</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.tcQuick}
-                  onPress={() =>
-                    runNavLeaf({
-                      id: 'reports',
-                      label: 'Reports',
-                      icon: 'trophy',
-                      kind: 'stack',
-                      screen: 'CrmReports',
-                      params: { tab: 'leaderboard' },
-                    })
-                  }
-                >
-                  <Ionicons name="trophy-outline" size={22} color="#FFFFFF" />
-                  <Text style={styles.tcQuickLbl}>Leaderboard</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.tcQuick}

@@ -19,6 +19,7 @@ import {
 import { applyBulkWhatsAppButtonReply, extractTemplateButtonLabel, markBulkAutoReply } from '@/lib/whatsapp/bulkButtonLead';
 import { continueWaitingBotFlow } from '@/lib/whatsappBotFlow/executor';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
+import { resolveWaAccountSender, runWithWaSender } from '@/lib/services/whatsappService';
 
 type WhatsAppStatus = {
   id?: string;
@@ -294,6 +295,7 @@ export async function POST(request: NextRequest) {
 
       const contacts = Array.isArray(change?.value?.contacts) ? change.value.contacts : [];
       const waMetadata = change?.value?.metadata || {};
+      const replySender = await resolveWaAccountSender(waMetadata?.phone_number_id);
       const inboundMessages: WhatsAppInboundMessage[] = Array.isArray(change?.value?.messages)
         ? change.value.messages
         : [];
@@ -433,12 +435,12 @@ export async function POST(request: NextRequest) {
             });
           }
           try {
-            const continued = await continueWaitingBotFlow({
+            const continued = await runWithWaSender(replySender, () => continueWaitingBotFlow({
               phone: senderPhone,
               message: extractTemplateButtonLabel(inbound) || brainText || textBody || '',
               profileName,
               inboundReceivedAt: statusAt || now,
-            });
+            }));
             if (continued.handled) campaignBotHandled = true;
           } catch (continueError: any) {
             console.error('[whatsapp-webhook] waiting flow failed:', continueError?.message || continueError);
@@ -466,12 +468,14 @@ export async function POST(request: NextRequest) {
           !campaignBotHandled
         ) {
           brainTasks.push(
+            runWithWaSender(replySender, () =>
             processInboundWhatsAppMessage({
               phone: senderPhone,
               message: brainText,
               profileName,
               inboundReceivedAt: statusAt || now,
             })
+            )
               .then((result) => ({
                 phone: senderPhone,
                 summary: summarizeInboundWhatsAppResult(result),

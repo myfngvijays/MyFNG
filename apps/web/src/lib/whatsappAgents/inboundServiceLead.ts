@@ -7,6 +7,7 @@ import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
 import {
   addLeadTags,
+  metaMessageTriggerTagNames,
   ensureTagIdsByNames,
   resolveMetaAdTagNames,
   stampFreshOnMeta,
@@ -465,25 +466,29 @@ export async function ensureWhatsAppInboundServiceLead(
       console.warn('[whatsapp-inbound-lead] enrich failed', e);
     }
 
-    // TeleCRM-style: common Meta Ads + specific ad tag (A/B/C…)
+    // TeleCRM-style: common Meta Ads + specific ad tag (A/B/C…) + META-MAY-2026
     try {
+      const triggerLabel = String(
+        (typeof patch.coupon_meta === 'object' &&
+          patch.coupon_meta &&
+          (patch.coupon_meta as any).message_trigger_label) ||
+          '',
+      );
+      const markAsMeta = /WHATSAPP_META/i.test(String(patch.created_from || labels.created_from || ''));
       const metaTags = resolveMetaAdTagNames({
         leadSource: String(patch.lead_source || labels.lead_source || existing.lead_source || ''),
-        triggerLabel: String(
-          (typeof patch.coupon_meta === 'object' &&
-            patch.coupon_meta &&
-            (patch.coupon_meta as any).message_trigger_label) ||
-            '',
-        ),
+        triggerLabel,
         referralHeadline: input.referral?.headline || null,
-        markAsMeta: /WHATSAPP_META/i.test(String(patch.created_from || labels.created_from || '')),
+        markAsMeta,
       });
-      if (metaTags.names.length) {
-        const tagIds = await ensureTagIdsByNames(metaTags.names, {
-          parentName: metaTags.parent,
-        });
-        await addLeadTags(String(existing.id), tagIds);
-      }
+      const extraNames = metaMessageTriggerTagNames({ triggerLabel, markAsMeta });
+      const tagIds = [
+        ...(metaTags.names.length
+          ? await ensureTagIdsByNames(metaTags.names, { parentName: metaTags.parent })
+          : []),
+        ...(extraNames.length ? await ensureTagIdsByNames(extraNames) : []),
+      ];
+      if (tagIds.length) await addLeadTags(String(existing.id), tagIds);
     } catch (e) {
       console.warn('[whatsapp-inbound-lead] tag apply failed', e);
     }
@@ -658,18 +663,21 @@ export async function ensureWhatsAppInboundServiceLead(
 
   if (inserted?.id) {
     try {
+      const markAsMeta = /WHATSAPP_META/i.test(labels.created_from);
       const metaTags = resolveMetaAdTagNames({
         leadSource: labels.lead_source,
         triggerLabel,
         referralHeadline: input.referral?.headline || null,
-        markAsMeta: /WHATSAPP_META/i.test(labels.created_from),
+        markAsMeta,
       });
-      if (metaTags.names.length) {
-        const tagIds = await ensureTagIdsByNames(metaTags.names, {
-          parentName: metaTags.parent,
-        });
-        await addLeadTags(String(inserted.id), tagIds);
-      }
+      const extraNames = metaMessageTriggerTagNames({ triggerLabel, markAsMeta });
+      const tagIds = [
+        ...(metaTags.names.length
+          ? await ensureTagIdsByNames(metaTags.names, { parentName: metaTags.parent })
+          : []),
+        ...(extraNames.length ? await ensureTagIdsByNames(extraNames) : []),
+      ];
+      if (tagIds.length) await addLeadTags(String(inserted.id), tagIds);
     } catch (e) {
       console.warn('[whatsapp-inbound-lead] tag apply on create failed', e);
     }

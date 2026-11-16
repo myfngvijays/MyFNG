@@ -16,6 +16,7 @@ const WHATSAPP_BOOKING_RULES = `
 - NEVER call get_service_pricing before mobile OTP verified (all services).
 - ALWAYS collect vehicle registration number just BEFORE booking summary — not before pricing.
 - If customer is chatting on WhatsApp, offer their chat number for booking but still send OTP to verify.
+- OTP is sent on this same WhatsApp chat. Never say SMS OTP is turned off. Ask for the 6-digit code from the WhatsApp OTP message.
 `;
 
 export function buildBookingSystemPrompt(

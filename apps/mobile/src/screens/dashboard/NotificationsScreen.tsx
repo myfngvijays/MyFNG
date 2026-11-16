@@ -3,7 +3,7 @@
  * Safe-area aware header + filters for reminders / unread.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -18,8 +18,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { formatDateDMY } from "@/lib/dateFormat";
 import { useNotifications, Notification } from '../../context/NotificationContext';
 import { COLORS, SIZES, SPACING } from '../../constants/theme';
+import { supabase } from '../../lib/supabase';
 
-type NotifFilter = 'all' | 'unread' | 'reminders';
+type NotifFilter = 'all' | 'missed_calls' | 'missed_reminders' | 'whatsapp';
 
 export default function NotificationsScreen({ navigation, hideChrome }: any) {
   const {
@@ -33,6 +34,53 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
 
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<NotifFilter>('all');
+  const [missedCalls, setMissedCalls] = useState<Notification[]>([]);
+  const [missedReminders, setMissedReminders] = useState<Notification[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) return;
+      const { data: calls } = await supabase
+        .from('telecaller_call_logs')
+        .select('id, customer_number, call_status, created_at')
+        .eq('telecaller_id', uid)
+        .neq('call_status', 'ANSWERED')
+        .order('created_at', { ascending: false })
+        .limit(40);
+      setMissedCalls(
+        (calls || []).map((call: any) => ({
+          id: `call-${call.id}`,
+          title: call.customer_number || 'Missed call',
+          message: call.call_status || 'MISSED',
+          created_at: call.created_at,
+          is_read: true,
+          type: 'SYSTEM_ALERT',
+          priority: 'MEDIUM',
+        })) as Notification[],
+      );
+      const { data: reminders } = await supabase
+        .from('telecaller_follow_ups')
+        .select('id, reason, scheduled_time, lead:service_leads(customer_name)')
+        .eq('telecaller_id', uid)
+        .eq('status', 'PENDING')
+        .lt('scheduled_time', new Date().toISOString())
+        .order('scheduled_time', { ascending: false })
+        .limit(40);
+      setMissedReminders(
+        (reminders || []).map((row: any) => ({
+          id: `rem-${row.id}`,
+          title: row.lead?.customer_name || 'Missed reminder',
+          message: row.reason || 'Follow-up overdue',
+          created_at: row.scheduled_time,
+          is_read: true,
+          type: 'FOLLOW_UP_DUE',
+          priority: 'HIGH',
+        })) as Notification[],
+      );
+    })();
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -42,23 +90,13 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
 
   const filtered = useMemo(() => {
     const rows = Array.isArray(notifications) ? notifications : [];
-    if (filter === 'unread') return rows.filter((n) => !n.is_read);
-    if (filter === 'reminders') {
-      return rows.filter((n) => {
-        const kind = String((n as any)?.metadata?.kind || '').toUpperCase();
-        const type = String((n as any)?.type || '').toUpperCase();
-        const title = String(n.title || '').toLowerCase();
-        return (
-          kind.includes('FOLLOWUP') ||
-          type.includes('FOLLOW_UP') ||
-          title.includes('callback') ||
-          title.includes('follow-up') ||
-          title.includes('reminder')
-        );
-      });
-    }
+    const blob = (n: Notification) =>
+      `${(n as any)?.type || ''} ${n.title || ''} ${(n as any)?.message || ''}`.toLowerCase();
+    if (filter === 'whatsapp') return rows.filter((n) => /whatsapp|\bwa\b/.test(blob(n)));
+    if (filter === 'missed_calls') return missedCalls;
+    if (filter === 'missed_reminders') return missedReminders;
     return rows;
-  }, [notifications, filter]);
+  }, [notifications, filter, missedCalls, missedReminders]);
 
   const getPriorityColor = (priority: string): string => {
     const colors: Record<string, string> = {
@@ -91,7 +129,9 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
   };
 
   const handleNotificationPress = async (notification: Notification) => {
-    if (!notification.is_read) await markAsRead(notification.id);
+    if (!notification.is_read && !String(notification.id).startsWith('call-') && !String(notification.id).startsWith('rem-')) {
+      await markAsRead(notification.id);
+    }
 
     const leadId = notification.lead_id;
     const actionUrl = notification.action_url || '';
@@ -344,8 +384,9 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
         {(
           [
             { id: 'all', label: 'All' },
-            { id: 'unread', label: `Unread${unreadCount ? ` (${unreadCount})` : ''}` },
-            { id: 'reminders', label: 'Reminders' },
+            { id: 'missed_calls', label: 'Missed calls' },
+            { id: 'missed_reminders', label: 'Missed reminders' },
+            { id: 'whatsapp', label: 'WhatsApp' },
           ] as const
         ).map((f) => (
           <TouchableOpacity
@@ -371,8 +412,12 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
             <Ionicons name="notifications-outline" size={56} color={COLORS.gray[300]} />
             <Text style={styles.emptyTitle}>No notifications</Text>
             <Text style={styles.emptySub}>
-              {filter === 'reminders'
-                ? 'Callback reminders yahan dikhenge jab due honge.'
+              {filter === 'missed_calls'
+                ? 'Missed calls yahan dikhenge.'
+                : filter === 'missed_reminders'
+                ? 'Overdue reminders yahan dikhenge.'
+                : filter === 'whatsapp'
+                ? 'WhatsApp notifications yahan dikhenge.'
                 : "You're all caught up!"}
             </Text>
           </View>

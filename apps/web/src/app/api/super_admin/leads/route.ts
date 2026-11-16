@@ -7,6 +7,7 @@ import { applyStuckRingingPatch } from '@/lib/telecaller/healLeadDispositions';
 import { getPostBookingMembershipConfig } from '@/lib/post-booking-membership-config';
 import { enrichServiceLeadPricingForAdmin } from '@/lib/post-booking-membership-offer';
 import { exportServiceLeadsCsv } from '@/lib/admin-exports';
+import { attachRepeatCustomerFlags } from '@/lib/crm/repeatCustomer';
 import { applyReportDateRangeFilter } from '@/lib/report-date-range';
 import { PANEL_ACCESS_ROLES } from '@/lib/super-admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
@@ -311,6 +312,12 @@ export async function GET(request: NextRequest) {
 
     const totalFetched = (data || []).length;
     const truncated = typeof totalInRange === 'number' ? totalFetched < totalInRange : false;
+
+    try {
+      leads = await attachRepeatCustomerFlags(supabaseAdmin, leads);
+    } catch (repeatErr) {
+      console.warn('[super_admin/leads] repeat customer skipped', repeatErr);
+    }
 
     return NextResponse.json({
       leads,

@@ -28,6 +28,36 @@ const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
 
+/** Free text is only allowed after the customer messages the line we send from (6161). */
+async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<boolean> {
+  try {
+    const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) return false;
+    const last10 = recipientPhone.replace(/\D/g, '').slice(-10);
+    if (last10.length !== 10) return false;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await supabaseAdmin
+      .from('whatsapp_messages')
+      .select('id, meta, created_at')
+      .eq('direction', 'INBOUND')
+      .gte('created_at', since)
+      .or(`sender_phone.eq.91${last10},sender_phone.eq.${last10}`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    return (data || []).some((row: { meta?: Record<string, unknown> | null }) => {
+      const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+      if (meta.seeded_from_lead) return false;
+      const biz = String(meta.business_phone || meta.display_phone_number || '').replace(/\D/g, '').slice(-10);
+      if (biz === '9167779696') return false;
+      if (biz && biz !== '9594996161') return false;
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -293,6 +323,17 @@ export async function POST(request: NextRequest) {
         message_type: 'text',
         text,
       };
+      const sessionOpen = await hasCustomerRepliedOnSenderLine(recipientPhone);
+      if (!sessionOpen) {
+        return NextResponse.json(
+          {
+            error:
+              'Customer ne is WhatsApp number (6161) pe last 24 hours mein reply nahi kiya. Unki baat 9696 pe hai, isliye seedha text nahi jayega. Template se bhejo.',
+            code: 'reengagement',
+          },
+          { status: 409 },
+        );
+      }
       result = await sendTextMessage(recipientPhone, text);
     } else if (messageType === 'media') {
       const mediaType = String(body?.media_type || '').trim().toLowerCase();

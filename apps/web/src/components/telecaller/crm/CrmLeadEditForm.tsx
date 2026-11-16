@@ -353,6 +353,8 @@ export default function CrmLeadEditForm({
 
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [repeatCustomer, setRepeatCustomer] = useState(false);
+  const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -371,6 +373,7 @@ export default function CrmLeadEditForm({
   const [couponSaving, setCouponSaving] = useState(false);
 
   const [cities, setCities] = useState<any[]>([]);
+  const [lostReasonOptions, setLostReasonOptions] = useState<string[]>(LOST_REASONS);
   const [carDisplay, setCarDisplay] = useState('');
   const [showSecondCar, setShowSecondCar] = useState(false);
   const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
@@ -433,6 +436,8 @@ export default function CrmLeadEditForm({
     activity_notes: '',
     callback_date: '',
     callback_time: '',
+    service_done_date: '',
+    repeat_customer: false,
   });
   const needsFullProfile = crmDispositionNeedsFullProfile(formData.activity_result);
 
@@ -441,6 +446,43 @@ export default function CrmLeadEditForm({
     if (SHOW_SERVICE_ADDONS) fetchServiceAddons();
     fetchCities();
   }, [leadId]);
+
+  useEffect(() => {
+    if (!leadId) return;
+    let cancelled = false;
+    setRepeatCustomer(false);
+    setRepeatRemark(null);
+    void fetch(`/api/crm/repeat-customer?lead_id=${encodeURIComponent(leadId)}`)
+      .then((res) => res.json().catch(() => ({})))
+      .then((json) => {
+        if (cancelled) return;
+        setRepeatCustomer(Boolean(json?.repeat_customer));
+        setRepeatRemark(json?.repeat_remark ? String(json.repeat_remark) : null);
+      })
+      .catch(() => {
+        /* badge stays off */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/lead-manager/statuses')
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const names = (Array.isArray(json?.lost_reasons) ? json.lost_reasons : [])
+          .map((r: { name?: string }) => String(r?.name || '').trim())
+          .filter(Boolean);
+        if (names.length) setLostReasonOptions(names);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -826,6 +868,38 @@ export default function CrmLeadEditForm({
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
         other_reason: String(leadData?.coupon_meta?.last_other_reason || ''),
         activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
+        repeat_customer: (() => {
+          const flag = leadData?.coupon_meta?.repeat_customer;
+          if (flag === true || flag === 1) return true;
+          const text = String(flag || '').trim().toLowerCase();
+          if (text === 'yes' || text === 'true' || text === '1' || text === 'checked') return true;
+          const imported =
+            leadData?.meta?.import_fields && typeof leadData.meta.import_fields === 'object'
+              ? leadData.meta.import_fields
+              : {};
+          const marked = String(imported['Repeat Customer'] || '').trim().toLowerCase();
+          return marked === 'yes' || marked === 'true' || marked === '1' || marked === 'checked';
+        })(),
+        service_done_date: (() => {
+          const imported =
+            leadData?.meta?.import_fields && typeof leadData.meta.import_fields === 'object'
+              ? leadData.meta.import_fields
+              : {};
+          const raw = String(
+            leadData?.coupon_meta?.service_done_at ||
+              leadData?.meta?.service_date ||
+              imported['Service Date'] ||
+              imported['Service Done Date'] ||
+              '',
+          ).trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+          const d = new Date(raw);
+          if (!raw || Number.isNaN(d.getTime())) return '';
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        })(),
         callback_date: (() => {
           const parts = isoToIstParts(leadData.next_follow_up_at);
           return parts?.ymd || '';
@@ -1000,6 +1074,11 @@ export default function CrmLeadEditForm({
       return;
     }
     
+    if (formData.activity_result === 'SERVICE_DONE' && !formData.service_done_date) {
+      alert('Service done date daalo.');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -1050,6 +1129,10 @@ export default function CrmLeadEditForm({
         last_other_reason:
           selectedActivity.id === 'OTHER' ? resolvedOther || null : (prevMeta as any).last_other_reason || null,
         custom_fields: customFieldValues,
+        service_done_at:
+          selectedActivity.id === 'SERVICE_DONE'
+            ? formData.service_done_date
+            : (prevMeta as any).service_done_at || null,
         profile_history: [historyEntry, ...prevHistory].slice(0, 50),
         flat_number: formData.flat_number.trim() || null,
         landmark: formData.landmark.trim() || null,
@@ -1060,6 +1143,7 @@ export default function CrmLeadEditForm({
         pickup_landmark: formData.pickup_landmark.trim() || null,
         second_car: showSecondCar ? serializeSecondCar(secondCar) : null,
         referred_by: serializeReferredBy(referredBy),
+        repeat_customer: Boolean(formData.repeat_customer),
       };
 
       const payload: any = {
@@ -1259,6 +1343,11 @@ export default function CrmLeadEditForm({
                     <span className="text-white/90">Created {formatDateTime(lead.created_at)}</span>
                   ) : null}
                 </p>
+                {repeatCustomer || formData.repeat_customer ? (
+                  <p className="mt-2 inline-flex max-w-full rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-950">
+                    Repeat Customer{repeatRemark ? ` · ${repeatRemark}` : ''}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
@@ -1370,6 +1459,26 @@ export default function CrmLeadEditForm({
           </div>
         </div>
       </div>
+
+      {formData.activity_result === 'LOST' ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 sm:p-4">
+          <FieldLabel required>Lost reason</FieldLabel>
+          <select name="lost_reason" value={formData.lost_reason} onChange={handleChange} className={fieldCls()}>
+            <option value="">Select lost reason</option>
+            {lostReasonOptions.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {formData.activity_result === 'OTHER' ? (
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 sm:p-4">
+          <OtherReasonField
+            value={formData.other_reason}
+            onChange={(name) => setFormData((prev) => ({ ...prev, other_reason: name }))}
+          />
+        </div>
+      ) : null}
 
       <form id="crm-lead-edit-form" onSubmit={handleSubmit} noValidate className="space-y-4">
         <SectionCard title="Customer Details" icon={User} tone="emerald">
@@ -1514,22 +1623,18 @@ export default function CrmLeadEditForm({
               referredTo={referredTo}
               leadHref={(id) => `${base}/leads/${id}`}
             />
-            {formData.activity_result === 'LOST' ? (
-              <div className="sm:col-span-2">
-                <FieldLabel>Lost Reason</FieldLabel>
-                <select name="lost_reason" value={formData.lost_reason} onChange={handleChange} className={fieldCls()}>
-                  <option value="">Select reason</option>
-                  {LOST_REASONS.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
+            {formData.activity_result === 'SERVICE_DONE' ? (
+              <div>
+                <FieldLabel>Service done date</FieldLabel>
+                <input
+                  type="date"
+                  name="service_done_date"
+                  value={formData.service_done_date}
+                  onChange={handleChange}
+                  className={fieldCls()}
+                  required
+                />
               </div>
-            ) : null}
-            {formData.activity_result === 'OTHER' ? (
-              <OtherReasonField
-                value={formData.other_reason}
-                onChange={(name) => setFormData((prev) => ({ ...prev, other_reason: name }))}
-              />
             ) : null}
             <CrmFollowUpDateTime
               date={formData.callback_date}
@@ -1557,6 +1662,18 @@ export default function CrmLeadEditForm({
                 ))}
               </div>
             ) : null}
+            <label className="col-span-2 lg:col-span-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(formData.repeat_customer)}
+                onChange={(e) => setFormData((prev) => ({ ...prev, repeat_customer: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">Repeat Customer</span>
+                <span className="block text-xs text-slate-500">Customer pehle hamari service le chuka hai aur dobara aaya hai</span>
+              </span>
+            </label>
             <div className="col-span-2 lg:col-span-4">
               <FieldLabel>Remarks</FieldLabel>
               <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Call notes / remarks for this lead" />

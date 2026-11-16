@@ -276,6 +276,12 @@ export function leadStatusKpiColors(leadOrLabel: any): {
   if (s.includes('INTERESTED')) {
     return { cardBg: '#FFF7ED', border: '#FED7AA', badgeBg: '#FFEDD5', badgeText: '#C2410C' };
   }
+  if (s.includes('RINGING')) {
+    return { cardBg: '#F8FAFC', border: '#CBD5E1', badgeBg: '#E2E8F0', badgeText: '#334155' };
+  }
+  if (s === 'OTHER' || s.startsWith('OTHER')) {
+    return { cardBg: '#F8FAFC', border: '#E2E8F0', badgeBg: '#F1F5F9', badgeText: '#475569' };
+  }
   if (incomplete) {
     return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#B45309', badgeText: '#FFFFFF' };
   }
@@ -314,6 +320,28 @@ export const ADMIN_CRM_STATUS_OPTIONS = [
 
 export type AdminCrmStatusId = (typeof ADMIN_CRM_STATUS_OPTIONS)[number]['id'];
 
+export type CrmStatusChoice = { id: string; label: string };
+
+/** Built-in labels stay. Extra rows from Lead Status (Attempted Contact, etc.) are appended. */
+export function mergeAdminStatusChoices(
+  rows: Array<{ code?: string; name?: string; is_active?: boolean | null }>,
+): CrmStatusChoice[] {
+  const out: CrmStatusChoice[] = ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({
+    id: opt.id,
+    label: opt.label,
+  }));
+  const seen = new Set(out.map((opt) => opt.id));
+  for (const row of rows) {
+    if (row?.is_active === false) continue;
+    const id = String(row?.code || '').trim().toUpperCase();
+    const label = String(row?.name || '').trim();
+    if (!id || !label || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, label });
+  }
+  return out;
+}
+
 /** Same workshop `status` mapping telecaller CRM uses (Service Done → COMPLETED). */
 export const ADMIN_CRM_TO_LEAD_STATUS: Record<string, string> = {
   BOOKING_CONFIRMED: 'VALIDATED',
@@ -339,7 +367,7 @@ export function adminCrmMappedWorkshopStatus(
   return undefined;
 }
 
-export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
+export function resolveAdminCrmStatusId(lead: any): string {
   const result = String(lead?.coupon_meta?.last_call_result || '').trim().toUpperCase();
   if (result === 'FRESH') return 'FRESH';
   if (result === 'COMPLETED') return 'SERVICE_DONE';
@@ -352,8 +380,9 @@ export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
   if (result === 'FRESH') return 'FRESH';
   if (result === 'RINGING') return 'RINGING';
   if (result && result !== 'FRESH' && ADMIN_CRM_STATUS_OPTIONS.some((o) => o.id === result)) {
-    return result as AdminCrmStatusId;
+    return result;
   }
+  if (result && /^[A-Z][A-Z0-9_]{1,39}$/.test(result)) return result;
   const label = String(leadDisplayStatus(lead) || '').trim().toLowerCase();
   if (label.startsWith('lost')) return 'LOST';
   if (label.startsWith('other')) return 'OTHER';
@@ -371,12 +400,15 @@ export function resolveAdminCrmStatusId(lead: any): AdminCrmStatusId {
 export function buildAdminCrmStatusCouponMeta(
   prevMeta: Record<string, unknown> | null | undefined,
   statusIdInput: string,
-  opts?: { lostReason?: string | null; note?: string | null; actor?: string | null },
+  opts?: { lostReason?: string | null; note?: string | null; actor?: string | null; label?: string | null },
 ): { ok: true; coupon_meta: Record<string, unknown>; label: string } | { ok: false; error: string } {
   const statusIdRaw = String(statusIdInput || '').trim().toUpperCase();
   const statusId = statusIdRaw === 'COMPLETED' ? 'SERVICE_DONE' : statusIdRaw;
   const spec = ADMIN_CRM_STATUS_OPTIONS.find((o) => o.id === statusId);
-  if (!spec) return { ok: false, error: 'Invalid lead status' };
+  const customLabel = String(opts?.label || '').trim();
+  if (!spec && !/^[A-Z][A-Z0-9_]{1,39}$/.test(statusId)) {
+    return { ok: false, error: 'Invalid lead status' };
+  }
 
   const lostReason = String(opts?.lostReason || '').trim();
   if (statusId === 'LOST' && !lostReason) {
@@ -386,7 +418,11 @@ export function buildAdminCrmStatusCouponMeta(
 
   const now = new Date().toISOString();
   const label =
-    statusId === 'LOST' ? `Lost · ${lostReason}` : otherItem ? `Other · ${otherItem}` : spec.label;
+    statusId === 'LOST'
+      ? `Lost · ${lostReason}`
+      : otherItem
+        ? `Other · ${otherItem}`
+        : spec?.label || customLabel || statusId.replace(/_/g, ' ');
   const prev = prevMeta && typeof prevMeta === 'object' && !Array.isArray(prevMeta) ? { ...prevMeta } : {};
   const prevHistory = Array.isArray(prev.profile_history) ? prev.profile_history : [];
   const historyEntry = {

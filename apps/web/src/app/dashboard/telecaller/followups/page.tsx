@@ -4,10 +4,24 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
-import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye, Flag } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { istYmd, istDayBounds } from '@/lib/telecaller/crmDateRange';
+
+function dueAgo(iso: string | null | undefined) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  const diff = Date.now() - d.getTime();
+  const abs = Math.abs(diff);
+  const min = Math.max(1, Math.round(abs / 60000));
+  const hr = Math.round(abs / 3600000);
+  const day = Math.round(abs / 86400000);
+  const month = Math.round(abs / (86400000 * 30));
+  const unit = month >= 1 ? `${month}M` : day >= 1 ? `${day}d` : hr >= 1 ? `${hr}h` : `${min}m`;
+  return diff >= 0 ? `${unit} ago` : `in ${unit}`;
+}
 
 function formatYmdShort(ymd: string) {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -68,6 +82,19 @@ export default function FollowUpsPage() {
   const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
   const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
   const [rangeTap, setRangeTap] = useState<'start' | 'end'>('start');
+  const [priorityMenuId, setPriorityMenuId] = useState<string | null>(null);
+
+  async function setFollowUpPriority(followUpId: string, priority: string) {
+    const supabase = createClient();
+    const next = priority || 'NORMAL';
+    const { error } = await supabase.from('telecaller_follow_ups').update({ priority: next }).eq('id', followUpId);
+    if (error) {
+      alert('Could not update priority');
+      return;
+    }
+    setFollowUps((prev) => prev.map((row) => (row.id === followUpId ? { ...row, priority: next } : row)));
+    setPriorityMenuId(null);
+  }
 
   useEffect(() => {
     fetchFollowUps();
@@ -471,7 +498,6 @@ export default function FollowUpsPage() {
           </div>
         </div>
 
-        {/* Follow-ups — single-column list (leads-style rows) */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
           {filteredFollowUps.length === 0 ? (
             <div className="py-10 text-center">
@@ -479,46 +505,99 @@ export default function FollowUpsPage() {
               <p className="text-gray-500 text-sm">No follow-ups found</p>
             </div>
           ) : (
-            filteredFollowUps.map((followUp, index) => {
+            <div className="overflow-x-auto">
+              <table className="min-w-[920px] w-full text-left text-sm">
+                <thead className="bg-[#004AAD] text-white">
+                  <tr>
+                    <th className="px-3 py-2 font-bold">Name</th>
+                    <th className="px-3 py-2 font-bold">Description</th>
+                    <th className="px-3 py-2 font-bold">Assignee</th>
+                    <th className="px-3 py-2 font-bold">Status</th>
+                    <th className="px-3 py-2 font-bold">Due date</th>
+                    <th className="px-3 py-2 font-bold">Priority</th>
+                    <th className="px-3 py-2 font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+            {filteredFollowUps.map((followUp) => {
               const timeStatus = getTimeStatus(followUp.scheduled_time);
               const pending = followUp.status === 'PENDING';
-              const pill =
-                followUp.status === 'COMPLETED'
-                  ? 'Done'
+              const late = pending && timeStatus.urgent && timeStatus.color === 'red';
+              const pill = late
+                ? 'LATE'
+                : followUp.status === 'COMPLETED'
+                  ? 'DONE'
                   : followUp.status === 'CANCELLED'
-                    ? 'Cancelled'
-                    : timeStatus.label;
-              const pillClass =
-                followUp.status === 'COMPLETED'
-                  ? 'bg-emerald-100 text-emerald-700'
+                    ? 'CANCELLED'
+                    : 'PENDING';
+              const pillClass = late
+                ? 'text-red-600'
+                : followUp.status === 'COMPLETED'
+                  ? 'text-emerald-700'
                   : followUp.status === 'CANCELLED'
-                    ? 'bg-slate-100 text-slate-500'
-                    : timeStatus.color === 'red'
-                      ? 'bg-red-100 text-red-700'
-                      : timeStatus.color === 'orange'
-                        ? 'bg-orange-100 text-orange-700'
-                        : timeStatus.color === 'blue'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-emerald-50 text-emerald-700';
+                    ? 'text-slate-500'
+                    : 'text-amber-700';
               return (
-                <div
-                  key={followUp.id}
-                  className={`flex items-center gap-2 px-3 py-2.5 ${
-                    index < filteredFollowUps.length - 1 ? 'border-b border-slate-100' : ''
-                  }`}
-                >
-                  <Link href={`${base}/leads/${followUp.lead_id}`} className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-slate-900">
+                <tr key={followUp.id} className="hover:bg-slate-50">
+                  <td className="px-3 py-2 align-top">
+                    <Link href={`${base}/leads/${followUp.lead_id}`} className="font-bold text-slate-900 hover:underline">
                       {followUp.lead?.customer_name || 'Unknown'}
-                    </p>
-                    <p className="truncate text-xs text-slate-500">
-                      {followUp.lead?.customer_phone || '—'}
-                    </p>
-                    <span className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-[11px] font-bold ${pillClass}`}>
-                      {pill}
-                    </span>
-                  </Link>
-                  <div className="flex shrink-0 items-center gap-1">
+                    </Link>
+                    <p className="text-xs text-slate-500">{followUp.lead?.customer_phone || '—'}</p>
+                  </td>
+                  <td className="max-w-[280px] px-3 py-2 align-top text-slate-700">
+                    {followUp.reason || followUp.follow_up_type || 'Follow-up'}
+                  </td>
+                  <td className="px-3 py-2 align-top font-semibold text-indigo-700">
+                    {followUp.telecaller?.full_name || '—'}
+                  </td>
+                  <td className={`px-3 py-2 align-top text-xs font-extrabold ${pillClass}`}>{pill}</td>
+                  <td className="whitespace-nowrap px-3 py-2 align-top text-slate-700">{dueAgo(followUp.scheduled_time)}</td>
+                  <td className="relative px-3 py-2 align-top">
+                    <button
+                      type="button"
+                      title="Priority"
+                      onClick={() => setPriorityMenuId((id) => (id === followUp.id ? null : followUp.id))}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100"
+                    >
+                      <Flag
+                        className={`h-4 w-4 ${
+                          String(followUp.priority || '').toUpperCase() === 'URGENT'
+                            ? 'fill-red-500 text-red-500'
+                            : String(followUp.priority || '').toUpperCase() === 'HIGH'
+                              ? 'fill-orange-500 text-orange-500'
+                              : String(followUp.priority || '').toUpperCase() === 'MEDIUM'
+                                ? 'fill-blue-500 text-blue-500'
+                                : String(followUp.priority || '').toUpperCase() === 'LOW'
+                                  ? 'fill-slate-400 text-slate-400'
+                                  : 'text-slate-300'
+                        }`}
+                      />
+                    </button>
+                    {priorityMenuId === followUp.id ? (
+                      <div className="absolute right-2 z-20 mt-1 w-36 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        {[
+                          { id: 'URGENT', label: 'Urgent', dot: 'bg-red-500' },
+                          { id: 'HIGH', label: 'High', dot: 'bg-orange-500' },
+                          { id: 'MEDIUM', label: 'Medium', dot: 'bg-blue-500' },
+                          { id: 'LOW', label: 'Low', dot: 'bg-slate-400' },
+                          { id: 'NORMAL', label: 'Clear', dot: 'bg-white border border-slate-300' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => void setFollowUpPriority(followUp.id, opt.id)}
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                          >
+                            <span className={`h-2.5 w-2.5 rounded-sm ${opt.dot}`} />
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                  <div className="flex shrink-0 items-center justify-end gap-1">
                     {followUp.lead?.customer_phone ? (
                       <a
                         href={`tel:${followUp.lead.customer_phone}`}
@@ -565,9 +644,13 @@ export default function FollowUpsPage() {
                       </button>
                     ) : null}
                   </div>
-                </div>
+                  </td>
+                </tr>
               );
-            })
+            })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>

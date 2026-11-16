@@ -89,6 +89,7 @@ export async function createLeadFromBody({ body, leadSourceOverride }: CreateLea
   const { telecallerId, reason } = await pickTelecallerWeightedRoundRobin(
     channelFromEnquiryLeadSource(leadSource),
     body?.customer_pincode ? String(body.customer_pincode) : null,
+    leadSource,
   );
   const assignedAt = telecallerId ? now : null;
   const leadStatus = telecallerId ? 'ASSIGNED' : 'NEW';

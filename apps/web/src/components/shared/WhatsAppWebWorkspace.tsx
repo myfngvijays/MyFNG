@@ -17,6 +17,7 @@ type ChatRow = {
   customer_name?: string | null;
   assigned_telecaller_id?: string | null;
   assigned_telecaller_name?: string | null;
+  wa_line?: '9696' | '6161' | null;
 };
 
 type PeerRow = { id: string; full_name?: string | null; phone?: string | null };
@@ -63,6 +64,12 @@ function saveClosedPhones(phones: Set<string>) {
 
 function isAwaitingReply(chat: ChatRow): boolean {
   return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
+}
+
+function chatInboxLabel(chat: ChatRow, closedPhones: Set<string>): 'Open' | 'Awaiting' | 'Closed' {
+  if (isInboxClosed(chat, closedPhones)) return 'Closed';
+  if (isAwaitingReply(chat)) return 'Awaiting';
+  return 'Open';
 }
 
 /** Closed tab = WhatsApp 24h window closed (template-only), or manually archived. */
@@ -280,7 +287,9 @@ export default function WhatsAppWebWorkspace({
     return { open, awaiting, closed };
   }, [rows, closedPhones]);
 
+  const searching = search.trim().length > 0;
   const filteredRows = useMemo(() => {
+    if (searching) return rows;
     return rows.filter((chat) => {
       const closed = isInboxClosed(chat, closedPhones);
       const awaiting = isAwaitingReply(chat);
@@ -290,7 +299,7 @@ export default function WhatsAppWebWorkspace({
       // open = session open and not awaiting
       return !awaiting;
     });
-  }, [rows, closedPhones, inboxTab]);
+  }, [rows, closedPhones, inboxTab, searching]);
 
   const selectedIsClosed = selectedPhone
     ? (() => {
@@ -685,7 +694,9 @@ export default function WhatsAppWebWorkspace({
                 <div className="px-4 py-10 text-center text-sm text-red-500">{loadError}</div>
               ) : filteredRows.length === 0 ? (
                 <div className="px-4 py-10 text-center text-sm" style={{ color: colors.muted }}>
-                  {inboxTab === 'closed'
+                  {searching
+                    ? 'No chats match this search.'
+                    : inboxTab === 'closed'
                     ? 'No window-closed chats.'
                     : inboxTab === 'awaiting'
                       ? 'No chats awaiting reply.'
@@ -700,6 +711,7 @@ export default function WhatsAppWebWorkspace({
                   const unreadCount = resolveUnreadCount(chat);
                   const unread = unreadCount > 0;
                   const name = String(chat.customer_name || '').trim();
+                  const bucket = searching ? chatInboxLabel(chat, closedPhones) : null;
                   return (
                     <button
                       key={phone}
@@ -730,10 +742,22 @@ export default function WhatsAppWebWorkspace({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p
-                            className={`truncate text-sm ${unread ? 'font-bold' : 'font-semibold'}`}
+                            className={`flex min-w-0 items-center gap-1.5 text-sm ${unread ? 'font-bold' : 'font-semibold'}`}
                             style={{ color: colors.text }}
                           >
-                            {name || formatPhone(phone)}
+                            <span className="truncate">{name || formatPhone(phone)}</span>
+                            {bucket ? (
+                              <span
+                                className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                                style={{
+                                  background:
+                                    bucket === 'Awaiting' ? '#004AAD' : bucket === 'Closed' ? '#E5E7EB' : '#DCFCE7',
+                                  color: bucket === 'Awaiting' ? '#fff' : bucket === 'Closed' ? '#374151' : '#166534',
+                                }}
+                              >
+                                {bucket}
+                              </span>
+                            ) : null}
                           </p>
                           <span
                             className="shrink-0 text-[11px] font-medium"
@@ -742,11 +766,18 @@ export default function WhatsAppWebWorkspace({
                             {formatTime(chat.last_message_at)}
                           </span>
                         </div>
-                        {name ? (
-                          <p className="truncate text-[11px]" style={{ color: colors.muted }}>
-                            {formatPhone(phone)}
-                          </p>
-                        ) : null}
+                        <p className="flex min-w-0 items-center gap-1.5 truncate text-[11px]" style={{ color: colors.muted }}>
+                          <span className="truncate">{formatPhone(phone)}</span>
+                          <span
+                            className="shrink-0 rounded px-1 py-px text-[9px] font-bold tracking-wide"
+                            style={{
+                              background: chat.wa_line === '9696' ? '#FEF3C7' : '#E0E7FF',
+                              color: chat.wa_line === '9696' ? '#92400E' : '#3730A3',
+                            }}
+                          >
+                            {chat.wa_line === '9696' ? '9696' : '6161'}
+                          </span>
+                        </p>
                         {showAssigneeFilter ? (
                           <p className="truncate text-[10px]" style={{ color: colors.muted }}>
                             {chat.assigned_telecaller_name

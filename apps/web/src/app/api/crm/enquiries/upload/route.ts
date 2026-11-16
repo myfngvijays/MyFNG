@@ -229,6 +229,7 @@ async function runEnquiryUpload(
         ...(fieldText(imported, 'Message') ? { inbound_message: fieldText(imported, 'Message') } : {}),
         ...(fieldText(imported, 'Rating') ? { rating: fieldText(imported, 'Rating') } : {}),
         ...(fieldText(imported, 'FEEDBACK') ? { feedback: fieldText(imported, 'FEEDBACK') } : {}),
+        ...(fieldText(imported, 'Service Date') ? { service_done_at: fieldText(imported, 'Service Date') } : {}),
       };
 
       for (const activity of activities) {

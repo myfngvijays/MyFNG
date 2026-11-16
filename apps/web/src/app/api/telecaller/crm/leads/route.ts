@@ -33,6 +33,7 @@ import {
   enrichBookingLead,
   filterBookingLeads,
 } from '@/lib/booking-lead-utils';
+import { attachRepeatCustomerFlags } from '@/lib/crm/repeatCustomer';
 
 export const dynamic = 'force-dynamic';
 
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
     const LEAD_LIST_SELECT = `
         id, lead_number, customer_name, customer_phone, status, city,
         lead_priority, is_incomplete, follow_up_required, next_follow_up_at, last_call_at,
-        total_calls, workshop_id, created_at, updated_at, coupon_code, coupon_meta, payment_mode,
+        total_calls, workshop_id, created_at, updated_at, coupon_code, coupon_meta, meta, payment_mode,
         vehicle_make, vehicle_model, vehicle_number, service_type, estimated_amount, problem_description,
         assigned_telecaller_id, lead_source, created_from,
         workshop:workshops(id, name, city),
@@ -413,6 +414,13 @@ export async function GET(request: NextRequest) {
       return ml ? { ...row, ml_score: ml } : row;
     });
 
+    let leadsWithRepeat = leadsWithScores;
+    try {
+      leadsWithRepeat = await attachRepeatCustomerFlags(db, leadsWithScores);
+    } catch (repeatErr) {
+      console.warn('[crm/leads] repeat customer skipped', repeatErr);
+    }
+
     void healStaleFollowUps(db, {
       telecallerId: seesAll ? telecallerFilter || null : teleCallerId,
       completedBy: teleCallerId,
@@ -420,10 +428,26 @@ export async function GET(request: NextRequest) {
       console.warn('[crm/leads] stale follow-up heal skipped', fuHealErr);
     });
 
+    let scopeTotal = filteredTotal;
+    if (!searching && filter && filter !== 'all') {
+      let scopeQuery = db
+        .from('service_leads')
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null);
+      scopeQuery = applyAssigneeScope(scopeQuery);
+      if (city) scopeQuery = scopeQuery.ilike('city', `%${city}%`);
+      if (priority) scopeQuery = scopeQuery.eq('lead_priority', priority.toUpperCase());
+      if (workshopId) scopeQuery = scopeQuery.eq('workshop_id', workshopId);
+      scopeQuery = applyCrmLeadDateRange(scopeQuery, null, from, to, dateField);
+      const scopeRes = await scopeQuery;
+      if (!scopeRes.error && typeof scopeRes.count === 'number') scopeTotal = scopeRes.count;
+    }
+
     return NextResponse.json({
       success: true,
-      leads: leadsWithScores,
+      leads: leadsWithRepeat,
       total: filteredTotal,
+      scope_total: scopeTotal,
       page,
       page_size: pageSize,
       scope: seesAll ? 'all' : 'mine',

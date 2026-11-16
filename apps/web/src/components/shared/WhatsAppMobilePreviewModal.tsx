@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import {
   ArrowLeft,
   Camera,
@@ -784,6 +786,44 @@ export default function WhatsAppMobilePreviewModal({
   const isWeb = variant === 'web';
   const isDark = isWeb && theme === 'dark';
   const waPhone = normalizePhone(phoneNumber);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [openingLead, setOpeningLead] = useState(false);
+
+  const openLeadFromChat = useCallback(async () => {
+    const phone10 = String(phoneNumber || '').replace(/\D/g, '').slice(-10);
+    if (phone10.length !== 10 && !leadId) {
+      toast.error('Is chat ka phone number nahi mila');
+      return;
+    }
+    setOpeningLead(true);
+    try {
+      let id = String(leadId || '').trim();
+      if (!id) {
+        const res = await fetch(`/api/telecaller/crm/leads?q=${encodeURIComponent(phone10)}&limit=10`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Lead nahi mila');
+        const rows = Array.isArray(json?.leads) ? json.leads : [];
+        const match =
+          rows.find(
+            (row: { customer_phone?: string | null; id?: string }) =>
+              String(row?.customer_phone || '').replace(/\D/g, '').slice(-10) === phone10,
+          ) || rows[0];
+        id = String(match?.id || '').trim();
+      }
+      if (!id) {
+        toast.error('Is number ka lead nahi mila');
+        return;
+      }
+      const { base } = getCrmDashboardBase(pathname);
+      onClose();
+      router.push(`${base}/leads?lead=${encodeURIComponent(id)}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Lead nahi khul paya');
+    } finally {
+      setOpeningLead(false);
+    }
+  }, [leadId, onClose, pathname, phoneNumber, router]);
 
   const [resolvedCustomerName, setResolvedCustomerName] = useState('');
   const customerName = (customerNameProp || resolvedCustomerName || '').trim();
@@ -1020,14 +1060,33 @@ export default function WhatsAppMobilePreviewModal({
     return map;
   }, [templateOptions]);
   const isTemplateOnlyMode = useMemo(() => {
-    const lastInbound = [...messages]
-      .reverse()
-      .find((row) => String(row?.direction || '').trim().toUpperCase() === 'INBOUND');
+    const lastInbound = [...messages].reverse().find((row) => {
+      if (String(row?.direction || '').trim().toUpperCase() !== 'INBOUND') return false;
+      const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+      const payload = row?.payload && typeof row.payload === 'object' ? row.payload : {};
+      // CRM/TeleCRM copies are not a reply on the 6161 line. Meta rejects free text as re-engagement.
+      if (meta.seeded_from_lead || payload.source === 'service_lead') return false;
+      const biz = String(meta.business_phone || meta.display_phone_number || '').replace(/\D/g, '').slice(-10);
+      if (biz === '9167779696') return false;
+      return true;
+    });
     if (!lastInbound) return true;
     const lastInboundMs = new Date(lastInbound?.created_at || lastInbound?.status_at || '').getTime();
     if (!Number.isFinite(lastInboundMs)) return true;
     return Date.now() - lastInboundMs > 24 * 60 * 60 * 1000;
   }, [messages]);
+  const cameFrom9696 = useMemo(
+    () =>
+      messages.some((row) => {
+        const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+        const biz = String(meta.business_phone || meta.wa_business_phone || meta.display_phone_number || '').replace(
+          /\D/g,
+          '',
+        );
+        return biz.endsWith('9167779696');
+      }),
+    [messages],
+  );
   const activeCall = useMemo(() => {
     const now = Date.now();
     const STALE_PRE_CONNECT_MS = 2 * 60 * 1000; // 2 min
@@ -2912,10 +2971,22 @@ export default function WhatsAppMobilePreviewModal({
               </div>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold truncate">{customerName || title || 'WhatsApp Chat'}</p>
-                <p className="text-[11px] text-white/85 truncate">{phoneNumber || '—'}</p>
+                <p className="text-[11px] text-white/85 truncate">
+                  {phoneNumber || '—'}
+                  {cameFrom9696 ? ' · 6161 se bhejo' : ''}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="rounded-md px-2 py-1 text-[11px] font-bold hover:bg-white/10 disabled:opacity-60"
+                onClick={() => void openLeadFromChat()}
+                disabled={openingLead}
+                title="Open this customer's lead"
+              >
+                {openingLead ? 'Opening…' : 'Open lead'}
+              </button>
               {onMarkClosed ? (
                 <button
                   type="button"
@@ -3649,7 +3720,9 @@ export default function WhatsAppMobilePreviewModal({
                       ) : null}
                       {outbound && failedReason ? (
                         <div className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700">
-                          Failed reason: {failedReason}
+                          {/re-engagement|131047/i.test(failedReason)
+                            ? 'Nahi gaya. Customer ne is number (6161) pe 24 ghante mein reply nahi kiya. Seedha text nahi chalta — template se bhejo.'
+                            : `Failed reason: ${failedReason}`}
                         </div>
                       ) : null}
                       <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-gray-500">
@@ -3842,11 +3915,21 @@ export default function WhatsAppMobilePreviewModal({
                     <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#f7f8fa] bg-[#ef4444]" />
                   </span>
                   <p className="min-w-0 flex-1 text-[12px] leading-snug text-[#3b4a54]">
-                    <span className="font-semibold text-[#111b21]">Send a message</span>
-                    {' '}to customer in{' '}
-                    <span className="font-semibold text-[#111b21]">closed window</span>
-                    {' '}using{' '}
-                    <span className="font-semibold text-[#111b21]">Frictionless messaging</span>
+                    {cameFrom9696 ? (
+                      <>
+                        Ye lead <span className="font-semibold text-[#111b21]">9696</span> pe aayi hai.
+                        Message <span className="font-semibold text-[#111b21]">6161</span> se jayega.
+                        Customer ne 6161 pe reply nahi kiya, isliye approved template se jaata hai.
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-semibold text-[#111b21]">Send a message</span>
+                        {' '}to customer in{' '}
+                        <span className="font-semibold text-[#111b21]">closed window</span>
+                        {' '}using{' '}
+                        <span className="font-semibold text-[#111b21]">Frictionless messaging</span>
+                      </>
+                    )}
                   </p>
                   <span title="Typed text sends as Utility template when 24h window is closed">
                     <Info className="h-4 w-4 shrink-0 text-[#8696a0]" />
@@ -3898,7 +3981,7 @@ export default function WhatsAppMobilePreviewModal({
                     onClick={() => void handleSend()}
                     disabled={sending || paymentGenerating || !textMessage.trim()}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#004AAD] text-white hover:bg-[#003A88] disabled:cursor-not-allowed disabled:bg-[#c5c9cc]"
-                    title="Send frictionless message"
+                    title={cameFrom9696 ? '6161 se bhejo' : 'Send frictionless message'}
                   >
                     {sending || paymentGenerating ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

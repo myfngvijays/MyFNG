@@ -32,6 +32,7 @@ import {
 import TelecallerPincodeEditor, {
   telecallerPincodeBadge,
 } from '@/components/admin/telecaller-distribution/TelecallerPincodeEditor';
+import SourceAssignPanel from '@/components/admin/telecaller-distribution/SourceAssignPanel';
 import {
   newTriggerId,
   type MessageTrigger,
@@ -56,7 +57,7 @@ type AllocationRow = {
   pincode_mode: PincodeRoutingMode;
 };
 
-type TabId = 'allocation' | 'triggers' | 'api' | 'whatsapp';
+type TabId = 'allocation' | 'sources' | 'triggers' | 'api' | 'whatsapp';
 type TriggerStatusFilter = 'active' | 'inactive' | 'all';
 
 type WaLeadAlertState = {
@@ -95,6 +96,8 @@ export default function TelecallerDistributionPage() {
   const [rows, setRows] = useState<AllocationRow[]>([]);
   const [triggers, setTriggers] = useState<MessageTrigger[]>([]);
   const [tab, setTab] = useState<TabId>('allocation');
+  const [showInactiveAlloc, setShowInactiveAlloc] = useState(false);
+  const [showInactiveTest, setShowInactiveTest] = useState(false);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [selectedOptionalFields, setSelectedOptionalFields] = useState<string[]>([]);
   const [selectedSourceSlug, setSelectedSourceSlug] = useState('google-ads');
@@ -682,7 +685,7 @@ export default function TelecallerDistributionPage() {
             Priority order
           </div>
           <div className="text-[11px] font-semibold text-slate-700 leading-snug mt-0.5">
-            1) Message trigger → 2) Pincode map → 3) Source filter → 4) % RR
+            1) Message trigger → 2) Source assign → 3) Pincode / % RR
           </div>
         </div>
       </div>
@@ -691,6 +694,7 @@ export default function TelecallerDistributionPage() {
         {(
           [
             { id: 'allocation' as const, label: 'Allocation & Sources', icon: Percent },
+            { id: 'sources' as const, label: 'Source Assign', icon: Filter },
             { id: 'triggers' as const, label: 'Message Triggers', icon: MessageSquareText },
             { id: 'whatsapp' as const, label: 'WhatsApp Alerts', icon: Bell },
             { id: 'api' as const, label: 'Lead Source API', icon: Link2 },
@@ -734,6 +738,8 @@ export default function TelecallerDistributionPage() {
         })}
       </div>
 
+      {tab === 'sources' && <SourceAssignPanel />}
+
       {tab === 'allocation' && (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -744,6 +750,18 @@ export default function TelecallerDistributionPage() {
                 A; website bookings skip WhatsApp-only rows.
               </p>
             </div>
+            <div className="flex items-center gap-2 self-start">
+              {telecallers.some((t) => !t.is_active) ? (
+                <button
+                  type="button"
+                  onClick={() => setShowInactiveAlloc((v) => !v)}
+                  className="text-xs font-semibold text-red-600 underline underline-offset-2"
+                >
+                  {showInactiveAlloc
+                    ? 'Hide inactive'
+                    : `Show inactive (${telecallers.filter((t) => !t.is_active).length})`}
+                </button>
+              ) : null}
             <button
               onClick={addRow}
               className="btn btn-secondary flex items-center gap-1 text-xs sm:text-sm self-start"
@@ -751,6 +769,7 @@ export default function TelecallerDistributionPage() {
               <Plus className="w-4 h-4" />
               Add Row
             </button>
+            </div>
           </div>
 
           <div className="px-4 py-3 border-b flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-xs sm:text-sm bg-slate-50/80">
@@ -790,7 +809,12 @@ export default function TelecallerDistributionPage() {
                         onChange={(e) => updateRow(index, { telecaller_id: e.target.value })}
                       >
                         <option value="">Select telecaller</option>
-                        {telecallers.map((t) => (
+                        {(showInactiveAlloc
+                          ? telecallers
+                          : telecallers.filter(
+                              (t) => t.is_active || t.id === row.telecaller_id,
+                            )
+                        ).map((t) => (
                           <option key={t.id} value={t.id}>
                             {telecallerLabel(t)}
                             {!t.is_active ? ' (inactive login)' : ''}
@@ -1445,10 +1469,13 @@ export default function TelecallerDistributionPage() {
                     }}
                   >
                     <option value="">Optional: pick telecaller…</option>
-                    {telecallers.map((t) => (
+                    {telecallers
+                      .filter((t) => showInactiveTest || t.is_active || t.id === waTestTelecallerId)
+                      .map((t) => (
                       <option key={t.id} value={t.id}>
                         {telecallerLabel(t)}
                         {t.phone ? ` · ${t.phone}` : ' · no phone'}
+                        {!t.is_active ? ' (inactive)' : ''}
                       </option>
                     ))}
                   </select>
@@ -1465,6 +1492,17 @@ export default function TelecallerDistributionPage() {
                     Send test WhatsApp
                   </button>
                 </div>
+                {telecallers.some((t) => !t.is_active) ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowInactiveTest((v) => !v)}
+                    className="text-xs font-semibold text-red-600 underline underline-offset-2"
+                  >
+                    {showInactiveTest
+                      ? 'Hide inactive'
+                      : `Show inactive (${telecallers.filter((t) => !t.is_active).length})`}
+                  </button>
+                ) : null}
                 {!waAlert.template_status.canSendTemplate ? (
                   <p className="text-[11px] text-amber-800">
                     Template must be APPROVED as UTILITY on Meta before test send or live alerts work.

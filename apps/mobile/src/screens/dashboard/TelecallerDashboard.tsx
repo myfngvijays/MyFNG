@@ -709,7 +709,14 @@ export default function TelecallerDashboard() {
       <TelecallerWhatsAppFab
         onPress={() => setWhatsAppOpen(true)}
       />
-      <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
+      <TelecallerWhatsAppInbox
+        visible={whatsAppOpen}
+        onClose={() => setWhatsAppOpen(false)}
+        onOpenLead={(leadId) => {
+          setWhatsAppOpen(false);
+          navigation.navigate('TelecallerLeadDetail', { leadId });
+        }}
+      />
 
       <BottomNav
         activeTab={getTabForScreen(currentScreen)}

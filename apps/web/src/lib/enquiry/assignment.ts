@@ -15,6 +15,12 @@ import {
   normalizeMessageTriggers,
   type MessageTrigger,
 } from '@/lib/enquiry/messageTriggers';
+import {
+  normalizeSourceRoutes,
+  resolveSourceAssignId,
+  sourceRouteReady,
+  type SourceRoute,
+} from '@/lib/enquiry/sourceRoutes';
 import { getClickToCallConfig } from '@/lib/telecaller/clickToCallConfig';
 import {
   getAssignmentAvailability,
@@ -39,6 +45,7 @@ type AllocatorState = {
   currentWeights?: Record<string, number>;
   lastPicked?: string | null;
   message_triggers?: MessageTrigger[];
+  source_routes?: SourceRoute[];
 };
 
 export async function fetchActiveAllocations(): Promise<AllocationRow[]> {
@@ -216,6 +223,21 @@ export async function saveMessageTriggers(triggers: MessageTrigger[]): Promise<v
   });
 }
 
+export async function fetchSourceRoutes(): Promise<SourceRoute[]> {
+  const state = await readAllocatorState();
+  return normalizeSourceRoutes(state.source_routes);
+}
+
+export async function saveSourceRoutes(routes: SourceRoute[]): Promise<void> {
+  const cleaned = normalizeSourceRoutes(routes);
+  const bad = cleaned.find((route) => !sourceRouteReady(route));
+  if (bad) {
+    const total = bad.assignees.reduce((sum, row) => sum + Number(row.percent || 0), 0);
+    throw new Error(`${bad.source} percentages must add up to 100 (now ${total})`);
+  }
+  await writeAllocatorState({ source_routes: cleaned });
+}
+
 function normalizeAllocations(rows: AllocationRow[]) {
   const active = rows.filter((r) => String(r.allocation_status || 'ACTIVE').toUpperCase() === 'ACTIVE');
   const total = active.reduce((sum, r) => sum + Number(r.allocation_percent || 0), 0);
@@ -231,6 +253,93 @@ export type PickTelecallerResult = {
   assignment_mode?: 'MESSAGE_TRIGGER' | 'WEIGHTED_RR';
 };
 
+async function pickDirectedAssignees(
+  assignees: { telecaller_id: string; percent: number }[],
+  channel: string | null | undefined,
+  weightPrefix: string,
+): Promise<PickTelecallerResult> {
+  const rows: AllocationRow[] = assignees
+    .filter((person) => person.telecaller_id && Number(person.percent) > 0)
+    .map((person) => ({
+      telecaller_id: person.telecaller_id,
+      allocation_percent: Number(person.percent),
+      allocation_status: 'ACTIVE',
+      daily_limit: null,
+      meta: {},
+      allowed_channels: null,
+      allowed_pincodes: null,
+      pincode_mode: 'all',
+    }));
+  if (!rows.length) return { telecallerId: null, reason: 'no_active_allocations', channel: channel || null };
+
+  let hoursCfg: Awaited<ReturnType<typeof getClickToCallConfig>> | null = null;
+  try {
+    hoursCfg = await getClickToCallConfig();
+  } catch {
+    hoursCfg = null;
+  }
+
+  const roster: AllocationRow[] = [];
+  if (hoursCfg) {
+    for (const row of rows) {
+      const id = String(row.telecaller_id);
+      const avail = getAssignmentAvailability(hoursCfg, id);
+      if (avail.available) {
+        roster.push({ ...row });
+        continue;
+      }
+      const coverId = resolveAvailableCoverId(hoursCfg, id);
+      if (!coverId || coverId === id) continue;
+      const existing = roster.find((item) => item.telecaller_id === coverId);
+      if (existing) existing.allocation_percent += Number(row.allocation_percent || 0);
+      else roster.push({ ...row, telecaller_id: coverId });
+    }
+  }
+  const pool = hoursCfg ? roster : rows;
+  if (!pool.length) return { telecallerId: null, reason: 'no_telecaller_on_duty', channel: channel || null };
+
+  const loginActive = await fetchLoginActiveIds(pool.map((row) => String(row.telecaller_id)));
+  const loginFiltered = pool.filter((row) => loginActive.has(String(row.telecaller_id)));
+  if (!loginFiltered.length) {
+    return { telecallerId: null, reason: 'no_active_telecaller_login', channel: channel || null };
+  }
+
+  const counts = await fetchAssignedCountsToday(loginFiltered.map((row) => String(row.telecaller_id)));
+  const eligible = loginFiltered.filter((row) => {
+    const limit = row.daily_limit == null ? null : Number(row.daily_limit);
+    if (!limit || limit <= 0) return true;
+    return (counts.get(String(row.telecaller_id)) || 0) < limit;
+  });
+  if (!eligible.length) return { telecallerId: null, reason: 'daily_limit_reached', channel: channel || null };
+
+  const totalEligibleWeight = eligible.reduce((sum, row) => sum + Number(row.allocation_percent || 0), 0);
+  if (totalEligibleWeight <= 0) return { telecallerId: null, reason: 'no_eligible_weight', channel: channel || null };
+
+  const state = await readAllocatorState();
+  const currentWeights = { ...(state.currentWeights || {}) } as Record<string, number>;
+  let pickedId: string | null = null;
+  let maxWeight = -Infinity;
+  for (const row of eligible) {
+    const id = String(row.telecaller_id);
+    const key = `${weightPrefix}:${id}`;
+    const next = Number(currentWeights[key] || 0) + Number(row.allocation_percent || 0);
+    currentWeights[key] = next;
+    if (next > maxWeight) {
+      maxWeight = next;
+      pickedId = id;
+    }
+  }
+  if (!pickedId) return { telecallerId: null, reason: 'no_pick', channel: channel || null };
+  currentWeights[`${weightPrefix}:${pickedId}`] = currentWeights[`${weightPrefix}:${pickedId}`] - totalEligibleWeight;
+  await writeAllocatorState({ currentWeights, lastPicked: pickedId });
+  return {
+    telecallerId: pickedId,
+    reason: null,
+    assignment_mode: 'WEIGHTED_RR',
+    channel: channel || null,
+  };
+}
+
 /**
  * Weighted round-robin pick.
  * @param channel — optional lead channel; telecallers with a restricted allowlist are skipped if channel not allowed.
@@ -238,7 +347,28 @@ export type PickTelecallerResult = {
 export async function pickTelecallerWeightedRoundRobin(
   channel?: string | null,
   pincode?: string | null,
+  leadSource?: string | null,
 ): Promise<PickTelecallerResult> {
+  const sourceId = resolveSourceAssignId(channel, leadSource);
+  if (sourceId) {
+    try {
+      const routes = await fetchSourceRoutes();
+      const route = routes.find((row) => row.source === sourceId);
+      if (route && sourceRouteReady(route)) {
+        const directed = await pickDirectedAssignees(
+          route.assignees,
+          channel,
+          `src:${sourceId}`,
+        );
+        if (directed.telecallerId || directed.reason !== 'no_active_allocations') {
+          return { ...directed, channel: channel || sourceId };
+        }
+      }
+    } catch (err) {
+      console.warn('[assignment] source route skipped', err);
+    }
+  }
+
   const rows = await fetchActiveAllocations();
   const { active, total } = normalizeAllocations(rows);
   if (active.length === 0) return { telecallerId: null, reason: 'no_active_allocations' };
@@ -353,10 +483,12 @@ export async function pickTelecallerForLead(opts?: {
   channel?: string | null;
   messageText?: string | null;
   pincode?: string | null;
+  leadSource?: string | null;
 }): Promise<PickTelecallerResult> {
   const channel = opts?.channel || null;
   const messageText = opts?.messageText || null;
   const pincode = opts?.pincode || null;
+  const leadSource = opts?.leadSource || null;
 
   if (messageText) {
     const triggers = await fetchMessageTriggers();
@@ -381,6 +513,7 @@ export async function pickTelecallerForLead(opts?: {
         return pickTelecallerWeightedRoundRobin(
           matched.mark_as_meta ? 'WHATSAPP_META' : channel,
           pincode,
+          leadSource,
         );
       }
 
@@ -394,5 +527,5 @@ export async function pickTelecallerForLead(opts?: {
     }
   }
 
-  return pickTelecallerWeightedRoundRobin(channel, pincode);
+  return pickTelecallerWeightedRoundRobin(channel, pincode, leadSource);
 }

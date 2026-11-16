@@ -4,6 +4,8 @@ import {
   resolveOtpLeadOptionsFromSource,
 } from '@/lib/service-lead-reopen';
 import { issueSmsOtp, SMS_OTP_EXPIRY_MINUTES } from '@/lib/sms/issueSmsOtp';
+import { loadOtpChannelConfig } from '@/lib/otp/channelConfig';
+import { sendWhatsAppOtpMessage, stampWhatsAppOtpRequest } from '@/lib/services/whatsappOtpSend';
 import type { SessionData } from './session';
 
 const OTP_EXPIRY_MINUTES = SMS_OTP_EXPIRY_MINUTES;
@@ -62,6 +64,19 @@ export async function sendBookingOtpForPhone(
   }
 
   const baseMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+  const channels = await loadOtpChannelConfig();
+  const requested = String(baseMetadata.channel || '').trim().toUpperCase();
+  const useWhatsapp = requested === 'WHATSAPP' || (!channels.sms_dlt && channels.whatsapp);
+  if (useWhatsapp) {
+    const wa = await issueWhatsAppBookingOtp(supabaseAdmin, normalized, baseMetadata);
+    if (!wa.ok) return { success: false, error: wa.error };
+    return {
+      success: true,
+      message: 'OTP sent on WhatsApp. Ask the customer for the 6-digit code from that WhatsApp message. Do not say it was sent by SMS.',
+      expiresInSeconds: wa.expiresInSeconds,
+    };
+  }
+
   const result = await issueSmsOtp(supabaseAdmin, normalized, { metadata: baseMetadata });
   if (!result.ok) {
     return { success: false, error: result.error };
@@ -72,6 +87,56 @@ export async function sendBookingOtpForPhone(
     message: 'OTP sent by SMS',
     expiresInSeconds: result.expiresInSeconds,
   };
+}
+
+const WA_OTP_WINDOW_MINUTES = 15;
+const WA_OTP_MAX_ATTEMPTS = 5;
+const WA_OTP_EXPIRY_MINUTES = 10;
+
+function generateWhatsAppOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function issueWhatsAppBookingOtp(
+  supabaseAdmin: any,
+  phone: string,
+  metadataIn: Record<string, unknown>,
+): Promise<{ ok: true; expiresInSeconds: number } | { ok: false; error: string }> {
+  const windowStart = new Date(Date.now() - WA_OTP_WINDOW_MINUTES * 60 * 1000).toISOString();
+  const { data: recent } = await supabaseAdmin
+    .from('otp_requests')
+    .select('id')
+    .eq('phone', phone)
+    .eq('channel', 'WHATSAPP')
+    .gte('created_at', windowStart);
+  if ((recent || []).length >= WA_OTP_MAX_ATTEMPTS) {
+    return { ok: false, error: 'Too many OTP requests. Try later.' };
+  }
+
+  const otpCode = generateWhatsAppOtp();
+  const expiresAt = new Date(Date.now() + WA_OTP_EXPIRY_MINUTES * 60 * 1000).toISOString();
+  const metadata = { ...metadataIn, otp_code: otpCode, expires_at: expiresAt };
+  const { data: inserted, error: insertError } = await supabaseAdmin
+    .from('otp_requests')
+    .insert({
+      phone,
+      provider: 'WHATSAPP',
+      status: 'SENT',
+      channel: 'WHATSAPP',
+      metadata,
+    })
+    .select('id')
+    .single();
+  if (insertError || !inserted?.id) {
+    return { ok: false, error: 'Failed to create OTP request' };
+  }
+
+  const waResult = await sendWhatsAppOtpMessage(phone, otpCode);
+  await stampWhatsAppOtpRequest(inserted.id, metadata, waResult);
+  if (!waResult.success) {
+    return { ok: false, error: waResult.error || 'Failed to send OTP on WhatsApp' };
+  }
+  return { ok: true, expiresInSeconds: WA_OTP_EXPIRY_MINUTES * 60 };
 }
 
 export async function verifyBookingOtpForPhone(

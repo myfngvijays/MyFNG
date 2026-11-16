@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { Bell, Check, CheckCheck, Trash2, Clock, Filter, ArrowLeft } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, Clock, Filter, ArrowLeft, Phone } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
+import { createClient } from '@/lib/supabase/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,11 +33,44 @@ function NotificationsContent() {
   const router = useRouter();
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   
-  const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
+  type NotifTab = 'all' | 'missed_calls' | 'missed_reminders' | 'whatsapp';
+  const [filter, setFilter] = useState<NotifTab>('all');
+  const [missedCalls, setMissedCalls] = useState<any[]>([]);
+  const [missedReminders, setMissedReminders] = useState<any[]>([]);
 
-  const filteredNotifications = notifications.filter(n => {
-    if (filter === 'unread') return !n.is_read;
-    if (filter === 'read') return n.is_read;
+  useEffect(() => {
+    const supabase = createClient();
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) return;
+      const { data: calls } = await supabase
+        .from('telecaller_call_logs')
+        .select('id, customer_number, call_status, created_at, call_duration')
+        .eq('telecaller_id', uid)
+        .neq('call_status', 'ANSWERED')
+        .order('created_at', { ascending: false })
+        .limit(40);
+      setMissedCalls(calls || []);
+      const { data: reminders } = await supabase
+        .from('telecaller_follow_ups')
+        .select('id, reason, scheduled_time, status, lead:service_leads(customer_name, lead_number)')
+        .eq('telecaller_id', uid)
+        .eq('status', 'PENDING')
+        .lt('scheduled_time', new Date().toISOString())
+        .order('scheduled_time', { ascending: false })
+        .limit(40);
+      setMissedReminders(reminders || []);
+    })();
+  }, []);
+
+  const blobOf = (n: any) => `${n?.type || ''} ${n?.title || ''} ${n?.message || ''}`.toLowerCase();
+  const whatsappNotes = notifications.filter((n) => /whatsapp|\bwa\b/.test(blobOf(n)));
+  const filteredNotifications = notifications.filter((n) => {
+    const blob = blobOf(n);
+    if (filter === 'whatsapp') return /whatsapp|\bwa\b/.test(blob);
+    if (filter === 'missed_calls') return /missed call|call missed|no answer|not answered/.test(blob);
+    if (filter === 'missed_reminders') return /reminder|follow-up|follow up|callback/.test(blob);
     return true;
   });
 
@@ -135,50 +169,79 @@ function NotificationsContent() {
         <div className="card p-3 sm:p-4">
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
-                filter === 'all'
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              All ({notifications.length})
-            </button>
-            <button
-              onClick={() => setFilter('unread')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
-                filter === 'unread'
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Unread ({unreadCount})
-            </button>
-            <button
-              onClick={() => setFilter('read')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
-                filter === 'read'
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Read ({notifications.length - unreadCount})
-            </button>
+            {(
+              [
+                { id: 'all' as const, label: 'All notifications', count: notifications.length },
+                { id: 'missed_calls' as const, label: 'Missed calls', count: missedCalls.length },
+                { id: 'missed_reminders' as const, label: 'Missed reminders', count: missedReminders.length },
+                { id: 'whatsapp' as const, label: 'WhatsApp', count: whatsappNotes.length },
+              ]
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFilter(tab.id)}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+                  filter === tab.id
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Notifications List */}
-        {filteredNotifications.length === 0 ? (
+        {filter === 'missed_calls' ? (
+          missedCalls.length === 0 ? (
+            <div className="card text-center py-10">
+              <Phone className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-700">No missed calls</h3>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {missedCalls.map((call) => (
+                <div key={call.id} className="card flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{call.customer_number || 'Unknown number'}</p>
+                    <p className="text-xs text-gray-500">{call.call_status || 'MISSED'}</p>
+                  </div>
+                  <span className="text-xs text-gray-400">{call.created_at ? getRelativeTime(call.created_at) : ''}</span>
+                </div>
+              ))}
+            </div>
+          )
+        ) : filter === 'missed_reminders' ? (
+          missedReminders.length === 0 ? (
+            <div className="card text-center py-10">
+              <Clock className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-700">No missed reminders</h3>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {missedReminders.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => router.push('/dashboard/telecaller/followups')}
+                  className="card flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{row.lead?.customer_name || 'Reminder'}</p>
+                    <p className="text-xs text-gray-500">{row.reason || 'Follow-up overdue'}</p>
+                  </div>
+                  <span className="text-xs text-red-500">{row.scheduled_time ? getRelativeTime(row.scheduled_time) : ''}</span>
+                </button>
+              ))}
+            </div>
+          )
+        ) : filteredNotifications.length === 0 ? (
           <div className="card text-center py-8 sm:py-10 md:py-12">
             <Bell className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto mb-3 sm:mb-4 text-gray-300" />
             <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">No Notifications</h3>
             <p className="text-gray-500 text-sm sm:text-base">
-              {filter === 'unread' 
-                ? "You're all caught up! No unread notifications."
-                : filter === 'read'
-                ? "No read notifications yet."
-                : "You don't have any notifications yet."}
+              {filter === 'whatsapp' ? 'No WhatsApp notifications yet.' : "You don't have any notifications yet."}
             </p>
           </div>
         ) : (

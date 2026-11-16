@@ -55,7 +55,7 @@ import { parseCustomRepairItems } from '@/lib/custom-repair-items';
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
-import { leadStatusCardColors, leadDisplayStatus, ADMIN_CRM_STATUS_OPTIONS, resolveAdminCrmStatusId, LOST_REASON_FILTERS, type AdminCrmStatusId } from '@/lib/telecaller/leadDisplayStatus';
+import { leadStatusCardColors, leadDisplayStatus, ADMIN_CRM_STATUS_OPTIONS, mergeAdminStatusChoices, resolveAdminCrmStatusId, LOST_REASON_FILTERS } from '@/lib/telecaller/leadDisplayStatus';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import BookingsSavedViews from '@/components/admin/bookings/BookingsSavedViews';
 import {
@@ -82,7 +82,7 @@ type ServiceLead = Record<string, any>;
 type CsvRow = Record<string, string>;
 
 const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
-type CrmLeadStatusFilter = 'ALL' | AdminCrmStatusId;
+type CrmLeadStatusFilter = 'ALL' | string;
 const CRM_LEAD_STATUS_IDS = new Set<string>(ADMIN_CRM_STATUS_OPTIONS.map((opt) => opt.id));
 const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const RECORDING_OPTIONS = ['ALL', 'YES', 'NO'] as const;
@@ -378,6 +378,7 @@ function importedPanelValueDirect(lead: Record<string, any>, key: string, phoneB
     case 'serviceDone':
       return status === 'COMPLETED' ? 'Yes' : '';
     case 'repeatCustomer':
+      if (lead.repeat_customer) return lead.repeat_remark ? `Yes — ${lead.repeat_remark}` : 'Yes';
       return phoneBookingCount > 1 ? 'Yes' : phoneBookingCount === 1 ? 'No' : '';
     case 'regDate':
       return textOf(meta.reg_date || meta.registration_date);
@@ -956,10 +957,12 @@ function TelecallerUpdateCell({
   lead,
   updating,
   onChange,
+  statusOptions = ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({ id: opt.id, label: opt.label })),
 }: {
   lead: Record<string, any>;
   updating?: boolean;
   onChange?: (statusId: string, lostReason?: string) => void;
+  statusOptions?: Array<{ id: string; label: string }>;
 }) {
   const [selectKey, setSelectKey] = useState(0);
   const latest = getLatestTelecallerUpdate(lead);
@@ -1031,7 +1034,10 @@ function TelecallerUpdateCell({
         className="max-w-[150px] text-[11px] font-semibold rounded-full pl-2 pr-6 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
         style={dispositionBadgeStyle(latest.status || value)}
       >
-        {ADMIN_CRM_STATUS_OPTIONS.map((opt) => (
+        {(statusOptions.some((opt) => opt.id === value)
+          ? statusOptions
+          : [...statusOptions, { id: value, label: latest.status || value }]
+        ).map((opt) => (
           <option key={opt.id} value={opt.id}>
             {opt.label}
           </option>
@@ -1677,6 +1683,7 @@ function FilterMultiSelect({
   onChange,
   allLabel,
   className = '',
+  footer,
 }: {
   label: string;
   options: { value: string; label: string }[];
@@ -1684,6 +1691,7 @@ function FilterMultiSelect({
   onChange: (next: string[]) => void;
   allLabel: string;
   className?: string;
+  footer?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1757,6 +1765,9 @@ function FilterMultiSelect({
               </button>
             );
           })}
+          {footer ? (
+            <div className="sticky bottom-0 border-t border-gray-100 bg-white px-3 py-2">{footer}</div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1771,6 +1782,9 @@ function SuperAdminBookingsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [leadStatusFilter, setLeadStatusFilter] = useState<CrmLeadStatusFilter>('ALL');
+  const [crmStatusOptions, setCrmStatusOptions] = useState(
+    ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({ id: opt.id, label: opt.label })),
+  );
   const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_OPTIONS)[number]>('ALL');
   const [sourceLabelFilter, setSourceLabelFilter] = useState('');
   const [leadTypeFilter, setLeadTypeFilter] = useState('');
@@ -1829,6 +1843,7 @@ function SuperAdminBookingsPage() {
   >([]);
   const [telecallersLoading, setTelecallersLoading] = useState(false);
   const [showInactiveTelecallers, setShowInactiveTelecallers] = useState(false);
+  const [showInactiveAssignees, setShowInactiveAssignees] = useState(false);
   const [assignTelecallerId, setAssignTelecallerId] = useState('');
   const [assigning, setAssigning] = useState(false);
   /** Quick assign modal from table Assignee column */
@@ -2026,6 +2041,24 @@ function SuperAdminBookingsPage() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/lead-manager/statuses', { credentials: 'include' });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const rows = Array.isArray(json?.statuses) ? json.statuses : [];
+        if (rows.length) setCrmStatusOptions(mergeAdminStatusChoices(rows));
+      } catch {
+        /* keep built-in statuses */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     let stop = false;
     const tick = async () => {
       try {
@@ -2135,13 +2168,39 @@ function SuperAdminBookingsPage() {
   }, [csvRows]);
 
   const assigneeOptions = useMemo(() => {
-    const names = new Set<string>();
+    const activeKeys = new Set(
+      telecallers
+        .filter((t) => t.is_active)
+        .map((t) => t.full_name.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    const active: string[] = [];
+    const inactive = new Set<string>();
+    const seenActive = new Set<string>();
+    for (const t of telecallers) {
+      const name = t.full_name.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (t.is_active) {
+        if (!seenActive.has(key)) {
+          seenActive.add(key);
+          active.push(name);
+        }
+      } else if (!activeKeys.has(key)) {
+        inactive.add(name);
+      }
+    }
     for (const lead of serviceLeads) {
       const name = String((lead as any).assigned_telecaller_name || '').trim();
-      if (name) names.add(name);
+      if (!name) continue;
+      if (!activeKeys.has(name.toLowerCase())) inactive.add(name);
     }
-    return [...names].sort((a, b) => a.localeCompare(b));
-  }, [serviceLeads]);
+    active.sort((a, b) => a.localeCompare(b));
+    return {
+      active,
+      inactive: [...inactive].sort((a, b) => a.localeCompare(b)),
+    };
+  }, [serviceLeads, telecallers]);
 
   const activeMessageTriggers = useMemo(
     () => messageTriggersCatalog.filter((trigger) => trigger.is_active !== false && trigger.id),
@@ -2495,7 +2554,9 @@ function SuperAdminBookingsPage() {
         : 'ALL',
     );
     setLeadStatusFilter(
-      next.leadStatus === 'ALL' || CRM_LEAD_STATUS_IDS.has(next.leadStatus)
+      next.leadStatus === 'ALL' ||
+        CRM_LEAD_STATUS_IDS.has(next.leadStatus) ||
+        /^[A-Z][A-Z0-9_]*$/.test(next.leadStatus)
         ? (next.leadStatus as CrmLeadStatusFilter)
         : 'ALL',
     );
@@ -2597,7 +2658,7 @@ function SuperAdminBookingsPage() {
     const leadStatus = String(searchParams.get('lead_status') || '')
       .trim()
       .toUpperCase();
-    if (leadStatus === 'ALL' || CRM_LEAD_STATUS_IDS.has(leadStatus)) {
+    if (leadStatus === 'ALL' || CRM_LEAD_STATUS_IDS.has(leadStatus) || /^[A-Z][A-Z0-9_]*$/.test(leadStatus)) {
       setLeadStatusFilter(leadStatus as CrmLeadStatusFilter);
     }
 
@@ -2775,8 +2836,14 @@ function SuperAdminBookingsPage() {
 
   const visibleTelecallers = useMemo(() => {
     if (showInactiveTelecallers) return telecallers;
-    return telecallers.filter((t) => t.is_active || t.id === assignTelecallerId);
-  }, [telecallers, showInactiveTelecallers, assignTelecallerId]);
+    return telecallers.filter(
+      (t) => t.is_active || t.id === assignTelecallerId || t.id === bulkAssignTcId,
+    );
+  }, [telecallers, showInactiveTelecallers, assignTelecallerId, bulkAssignTcId]);
+
+  useEffect(() => {
+    void loadTelecallers(null);
+  }, [loadTelecallers]);
 
   const openDetail = (title: string, item: Record<string, any>) => {
     const resolved = resolveCheckoutPrimary(item, serviceLeads, checkoutIndex);
@@ -2969,6 +3036,7 @@ function SuperAdminBookingsPage() {
         credentials: 'include',
         body: JSON.stringify({
           crm_status: statusId,
+          crm_status_label: crmStatusOptions.find((opt) => opt.id === statusId)?.label || statusId,
           lost_reason: lostReason || null,
           crm_note: 'Changed from Bookings admin',
         }),
@@ -2981,7 +3049,7 @@ function SuperAdminBookingsPage() {
       if (detailOpen && detailItem?.id === lead.id) {
         setDetailItem(updatedLead);
       }
-      toast.success(`Lead status updated to ${ADMIN_CRM_STATUS_OPTIONS.find((o) => o.id === statusId)?.label || statusId}`);
+      toast.success(`Lead status updated to ${crmStatusOptions.find((o) => o.id === statusId)?.label || statusId}`);
     } catch (err: any) {
       toast.error(err?.message || 'Lead status update failed');
     } finally {
@@ -3510,7 +3578,8 @@ function SuperAdminBookingsPage() {
                 }))}
                 assigneeOptions={[
                   { value: 'UNASSIGNED', label: 'Unassigned' },
-                  ...assigneeOptions.map((name) => ({ value: name, label: name })),
+                  ...assigneeOptions.active.map((name) => ({ value: name, label: name })),
+                  ...assigneeOptions.inactive.map((name) => ({ value: name, label: name })),
                 ]}
                 messageTriggerOptions={messageTriggerOptions}
               />
@@ -3572,7 +3641,7 @@ function SuperAdminBookingsPage() {
                       className="min-w-[160px]"
                     >
                       <option value="ALL">All lead statuses</option>
-                      {ADMIN_CRM_STATUS_OPTIONS.map((opt) => (
+                      {crmStatusOptions.map((opt) => (
                         <option key={opt.id} value={opt.id}>
                           {opt.label}
                         </option>
@@ -3605,8 +3674,30 @@ function SuperAdminBookingsPage() {
                       className="min-w-[150px]"
                       options={[
                         { value: 'UNASSIGNED', label: 'Unassigned' },
-                        ...assigneeOptions.map((name) => ({ value: name, label: name })),
+                        ...assigneeOptions.active.map((name) => ({ value: name, label: name })),
+                        ...(showInactiveAssignees
+                          ? assigneeOptions.inactive.map((name) => ({ value: name, label: `${name} (inactive)` }))
+                          : assigneeFilter
+                              .filter(
+                                (name) =>
+                                  name.toLowerCase() !== 'unassigned' &&
+                                  assigneeOptions.inactive.some((item) => item.toLowerCase() === name.toLowerCase()),
+                              )
+                              .map((name) => ({ value: name, label: `${name} (inactive)` }))),
                       ]}
+                      footer={
+                        assigneeOptions.inactive.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowInactiveAssignees((v) => !v)}
+                            className="text-xs font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
+                          >
+                            {showInactiveAssignees
+                              ? 'Hide inactive'
+                              : `Show inactive (${assigneeOptions.inactive.length})`}
+                          </button>
+                        ) : null
+                      }
                     />
 
                     <FilterMultiSelect
@@ -3765,13 +3856,22 @@ function SuperAdminBookingsPage() {
               }}
             >
               <option value="">Assign telecaller…</option>
-              {telecallers.map((t) => (
+              {visibleTelecallers.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.full_name}
                   {!t.is_active ? ' (inactive)' : ''}
                 </option>
               ))}
             </select>
+            {inactiveTelecallerCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowInactiveTelecallers((v) => !v)}
+                className="text-[11px] font-semibold text-red-600 underline underline-offset-2"
+              >
+                {showInactiveTelecallers ? 'Hide inactive' : `Show inactive (${inactiveTelecallerCount})`}
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={bulkAssigning}
@@ -3846,13 +3946,25 @@ function SuperAdminBookingsPage() {
                     }}
                   >
                     <option value="">Select…</option>
-                    {telecallers.map((t) => (
+                    {visibleTelecallers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.full_name}
+                        {!t.is_active ? ' (inactive)' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
+                {inactiveTelecallerCount > 0 ? (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowInactiveTelecallers((v) => !v)}
+                      className="text-[11px] font-semibold text-red-600 underline underline-offset-2"
+                    >
+                      {showInactiveTelecallers ? 'Hide inactive' : `Show inactive (${inactiveTelecallerCount})`}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -4344,6 +4456,7 @@ function SuperAdminBookingsPage() {
                               onChange={(statusId, lostReason) =>
                                 void updateCrmLeadStatus(lead, statusId, lostReason)
                               }
+                              statusOptions={crmStatusOptions}
                             />
                           </td>
                         ) : null}
@@ -4352,7 +4465,17 @@ function SuperAdminBookingsPage() {
                         ) : null}
                         {showCol('customer') ? (
                           <td className="px-3 py-3 text-sm text-gray-800 min-w-[180px] whitespace-normal break-words">
-                            {lead.customer_name || '-'}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span>{lead.customer_name || '-'}</span>
+                              {lead.repeat_customer ? (
+                                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                                  Repeat Customer
+                                </span>
+                              ) : null}
+                            </div>
+                            {lead.repeat_customer && lead.repeat_remark ? (
+                              <p className="mt-1 text-[11px] leading-snug text-amber-800">{lead.repeat_remark}</p>
+                            ) : null}
                           </td>
                         ) : null}
                         {showCol('message') ? (
@@ -4639,6 +4762,11 @@ function SuperAdminBookingsPage() {
                       <p className="text-sm font-bold text-gray-900 break-words">
                         {item.customer_name || item.lead_number || '-'}
                       </p>
+                      {item.repeat_customer ? (
+                        <p className="mt-1 text-[11px] font-semibold text-amber-800">
+                          Repeat Customer{item.repeat_remark ? ` · ${item.repeat_remark}` : ''}
+                        </p>
+                      ) : null}
                       <p className="text-xs text-gray-500 mt-0.5">{item.customer_phone || '-'}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <SourceCell lead={item} />
@@ -4707,6 +4835,7 @@ function SuperAdminBookingsPage() {
                       onChange={(statusId, lostReason) =>
                         void updateCrmLeadStatus(item, statusId, lostReason)
                       }
+                      statusOptions={crmStatusOptions}
                     />
                   </div>
                   {item.id ? (
@@ -5122,6 +5251,11 @@ function SuperAdminBookingsPage() {
                     {[detailItem.customer_name, detailItem.customer_phone].filter(Boolean).join(' · ')}
                   </p>
                 ) : null}
+                {detailItem.repeat_customer ? (
+                  <p className="mt-1 ml-7 text-[11px] font-semibold text-amber-800 truncate" title={detailItem.repeat_remark || ''}>
+                    Repeat Customer{detailItem.repeat_remark ? ` · ${detailItem.repeat_remark}` : ''}
+                  </p>
+                ) : null}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <TelecallerUpdateCell
@@ -5130,6 +5264,7 @@ function SuperAdminBookingsPage() {
                   onChange={(statusId, lostReason) =>
                     void updateCrmLeadStatus(detailItem, statusId, lostReason)
                   }
+                  statusOptions={crmStatusOptions}
                 />
                 {/* Compact TeleCRM-style assignee on the side */}
                 <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/80 pl-2 pr-1 py-1">

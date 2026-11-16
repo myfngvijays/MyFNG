@@ -253,12 +253,6 @@ export default function CrmHomeTab({
     },
     { label: 'Leads', icon: 'list' as const, color: COLORS.orange, go: () => onNavigate('queue') },
     {
-      label: 'Reports',
-      icon: 'bar-chart' as const,
-      color: COLORS.textHeading,
-      go: () => onNavigate('CrmReports'),
-    },
-    {
       label: 'Workshops',
       icon: 'map' as const,
       color: '#0EA5E9',
@@ -389,6 +383,8 @@ export default function CrmHomeTab({
 
       <View style={styles.kpiGrid}>
         {[
+          { label: 'All', value: kpis.total_leads || 0, statusKey: 'All', filter: 'all', icon: 'apps' as const },
+          { label: 'Ringing', value: kpis.ringing || 0, statusKey: 'Ringing', filter: 'ringing', icon: 'call' as const },
           { label: 'Fresh', value: kpis.new_leads || 0, statusKey: 'Fresh', filter: 'new', icon: 'flash' as const },
           {
             label: 'Interested',
@@ -445,6 +441,13 @@ export default function CrmHomeTab({
             statusKey: 'Lost',
             filter: 'lost',
             icon: 'close-circle' as const,
+          },
+          {
+            label: 'Other',
+            value: kpis.other || 0,
+            statusKey: 'Other',
+            filter: 'other',
+            icon: 'ellipsis-horizontal' as const,
           },
         ].map((k) => {
           const tint = leadStatusKpiColors(k.statusKey);

@@ -66,6 +66,7 @@ type Props = {
   phone: string;
   customerName?: string | null;
   onBack: () => void;
+  onOpenLead?: (leadId: string) => void;
 };
 
 function formatPhone(phone: string): string {
@@ -241,7 +242,7 @@ function avatarLetter(name?: string | null, phone?: string): string {
   return d.slice(-1) || '?';
 }
 
-export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: Props) {
+export default function TelecallerWhatsAppChat({ phone, customerName, onBack, onOpenLead }: Props) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -257,19 +258,63 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
   const [templateSearch, setTemplateSearch] = useState('');
   const [mediaAuth, setMediaAuth] = useState<string | undefined>();
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [openingLead, setOpeningLead] = useState(false);
+
+  const openLead = async () => {
+    const phone10 = String(phone || '').replace(/\D/g, '').slice(-10);
+    if (phone10.length !== 10) {
+      Alert.alert('Lead', 'Is chat ka phone number nahi mila');
+      return;
+    }
+    setOpeningLead(true);
+    try {
+      const data = await apiFetch<{ leads?: Array<{ id?: string; customer_phone?: string | null }> }>(
+        `/api/telecaller/crm/leads?q=${encodeURIComponent(phone10)}&limit=10`,
+      );
+      const rows = Array.isArray(data?.leads) ? data.leads : [];
+      const match =
+        rows.find((row) => String(row?.customer_phone || '').replace(/\D/g, '').slice(-10) === phone10) ||
+        rows[0];
+      if (!match?.id) {
+        Alert.alert('Lead', 'Is number ka lead nahi mila');
+        return;
+      }
+      if (!onOpenLead) return;
+      onOpenLead(String(match.id));
+    } catch (err: any) {
+      Alert.alert('Lead', err?.message || 'Lead nahi khul paya');
+    } finally {
+      setOpeningLead(false);
+    }
+  };
   const normalized = normalizePhone(phone);
   // Modal often reports insets.bottom=0 — force home-indicator room on iOS.
   const bottomSafe = Math.max(insets.bottom, Platform.OS === 'ios' ? 34 : 12);
 
   const isTemplateOnlyMode = useMemo(() => {
-    const lastInbound = messages.find(
-      (row) => String(row?.direction || '').trim().toUpperCase() === 'INBOUND',
-    );
+    const lastInbound = messages.find((row) => {
+      if (String(row?.direction || '').trim().toUpperCase() !== 'INBOUND') return false;
+      const meta = (row as { meta?: Record<string, unknown>; payload?: Record<string, unknown> }).meta || {};
+      const payload = (row as { payload?: Record<string, unknown> }).payload || {};
+      if (meta.seeded_from_lead || payload.source === 'service_lead') return false;
+      const biz = String(meta.business_phone || meta.display_phone_number || '').replace(/\D/g, '').slice(-10);
+      if (biz === '9167779696') return false;
+      return true;
+    });
     if (!lastInbound) return true;
     const lastInboundMs = new Date(lastInbound?.created_at || '').getTime();
     if (!Number.isFinite(lastInboundMs)) return true;
     return Date.now() - lastInboundMs > 24 * 60 * 60 * 1000;
   }, [messages]);
+  const cameFrom9696 = useMemo(
+    () =>
+      messages.some((row) => {
+        const meta = (row as { meta?: Record<string, unknown> }).meta || {};
+        const biz = String(meta.business_phone || meta.wa_business_phone || '').replace(/\D/g, '');
+        return biz.endsWith('9167779696');
+      }),
+    [messages],
+  );
 
   const filteredTemplates = useMemo(() => {
     const q = templateSearch.trim().toLowerCase();
@@ -489,6 +534,14 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
             {customerName ? formatPhone(phone) : 'tap here for contact info'}
           </Text>
         </View>
+        <TouchableOpacity
+          style={styles.openLeadBtn}
+          onPress={() => void openLead()}
+          disabled={openingLead}
+          accessibilityLabel="Open lead"
+        >
+          <Text style={styles.openLeadText}>{openingLead ? '…' : 'Lead'}</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.iconHit} onPress={openTemplatePicker} accessibilityLabel="Templates">
           <Ionicons name="document-text-outline" size={20} color="#fff" />
         </TouchableOpacity>
@@ -500,10 +553,14 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
       {isTemplateOnlyMode ? (
         <View style={styles.bannerClosed}>
           <Text style={styles.bannerClosedTitle}>
-            Send a message to customer in closed window using Frictionless messaging
+            {cameFrom9696
+              ? 'Ye lead 9696 pe aayi hai. Message 6161 se jayega.'
+              : 'Send a message to customer in closed window using Frictionless messaging'}
           </Text>
           <Text style={styles.bannerClosedSub}>
-            Type below · or Send a template
+            {cameFrom9696
+              ? 'Neeche likho. 6161 pe reply aane ke baad seedha chat khulegi.'
+              : 'Type below · or Send a template'}
           </Text>
         </View>
       ) : null}
@@ -778,6 +835,15 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: WA.chatBg },
+  openLeadBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 4,
+  },
+  openLeadText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   header: {
     backgroundColor: WA.header,
     paddingBottom: 10,

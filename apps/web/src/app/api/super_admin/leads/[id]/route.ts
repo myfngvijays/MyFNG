@@ -241,6 +241,7 @@ export async function PATCH(
           lostReason: typeof body.lost_reason === 'string' ? body.lost_reason : null,
           note: typeof body.crm_note === 'string' ? body.crm_note : 'Changed from admin panel',
           actor: 'Admin',
+          label: typeof body.crm_status_label === 'string' ? body.crm_status_label : null,
         },
       );
       if (!built.ok) {

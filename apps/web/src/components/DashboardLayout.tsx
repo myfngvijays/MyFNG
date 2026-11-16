@@ -1071,17 +1071,6 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           icon: <MessageSquare className="w-5 h-5" />,
           label: 'Call scripts',
         },
-        {
-          href: '/dashboard/telecaller/reports',
-          icon: <BarChart3 className="w-5 h-5" />,
-          label: 'Reports',
-          children: [
-            { href: '/dashboard/telecaller/reports', icon: <BarChart3 className="w-5 h-5" />, label: 'Overview' },
-            { href: '/dashboard/telecaller/reports/leaderboard', icon: <TrendingUp className="w-5 h-5" />, label: 'Your leaderboard' },
-            { href: '/dashboard/telecaller/reports/calls', icon: <Phone className="w-5 h-5" />, label: 'Call activity' },
-            { href: '/dashboard/telecaller/reports/duplicates', icon: <Users className="w-5 h-5" />, label: 'Duplicates' },
-          ],
-        },
         { href: '/dashboard/telecaller/me', icon: <User className="w-5 h-5" />, label: 'My Profile' },
         { href: '/dashboard/telecaller/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
       ],
@@ -1179,11 +1168,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
               {sidebarOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
 
-            <Link href={getRoleDashboardHome(role || 'lead_manager')} className="flex items-center min-w-0">
+            <Link href={getRoleDashboardHome(role || 'lead_manager')} className="flex items-center min-w-0 rounded-lg bg-[#023D95] px-2 py-1">
               <img
                 src="/logo.png"
                 alt="MyFNG"
-                className="h-8 sm:h-9 md:h-10 w-auto max-w-[140px] sm:max-w-none object-contain"
+                className="h-8 sm:h-9 md:h-10 w-auto max-w-[140px] sm:max-w-none object-contain brightness-0 invert"
               />
             </Link>
           </div>
