@@ -134,7 +134,7 @@ export default function WorkshopCrmShell({
         style: 'destructive',
         onPress: async () => {
           setMenuOpen(false);
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
         },
       },
     ]);

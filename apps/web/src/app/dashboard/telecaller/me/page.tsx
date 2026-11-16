@@ -250,7 +250,7 @@ export default function TelecallerMyProfilePage() {
       /* ignore */
     }
     const supabase = createClient();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     router.push('/login');
   };
 

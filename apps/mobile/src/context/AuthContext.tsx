@@ -210,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* best-effort */
     }
     try {
-      await withTimeout(supabase.auth.signOut(), 5000, 'Sign out');
+      await withTimeout(supabase.auth.signOut({ scope: 'local' }), 5000, 'Sign out');
     } catch {
       /* session already gone */
     }

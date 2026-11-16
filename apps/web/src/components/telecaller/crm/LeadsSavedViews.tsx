@@ -72,9 +72,11 @@ function asView(raw: unknown): CrmLeadsViewSnapshot | null {
 export default function LeadsSavedViews({
   snapshot,
   onApply,
+  onHeader = false,
 }: {
   snapshot: CrmLeadsViewSnapshot;
   onApply: (next: CrmLeadsViewSnapshot) => void;
+  onHeader?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<SavedViewRow[]>([]);
@@ -189,20 +191,28 @@ export default function LeadsSavedViews({
           setName(e.target.value);
           if (selected && e.target.value.trim() !== selected.name) setSelectedId(null);
         }}
-        placeholder="View name"
-        className="h-8 w-32 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:border-[#004AAD] focus:outline-none"
+        placeholder="Save view"
+        className={
+          onHeader
+            ? 'h-7 w-48 rounded-md border border-white/25 bg-[#003580] px-2.5 text-xs font-semibold text-white placeholder:text-white/60 focus:border-white/50 focus:outline-none'
+            : 'h-8 w-48 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:border-[#004AAD] focus:outline-none'
+        }
       />
       <button
         type="button"
         onClick={() => void save()}
         disabled={saving}
-        className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#004AAD] px-2.5 text-xs font-bold text-white disabled:opacity-60"
+        className={
+          onHeader
+            ? 'inline-flex h-7 items-center gap-1 rounded-md bg-white px-2.5 text-xs font-bold text-[#004AAD] disabled:opacity-60'
+            : 'inline-flex h-8 items-center gap-1 rounded-lg bg-[#004AAD] px-2.5 text-xs font-bold text-white disabled:opacity-60'
+        }
       >
         {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
         Save
       </button>
       {canShare ? (
-        <label className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+        <label className={`inline-flex items-center gap-1.5 text-xs font-semibold ${onHeader ? 'text-white/90' : 'text-sm text-slate-700'}`}>
           <input
             type="checkbox"
             className="rounded border-slate-300"

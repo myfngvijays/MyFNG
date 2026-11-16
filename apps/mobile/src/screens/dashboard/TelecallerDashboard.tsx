@@ -257,7 +257,7 @@ export default function TelecallerDashboard() {
     } catch {
       /* best-effort */
     }
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
   };
 
   const getTabForScreen = (screen: string) => {

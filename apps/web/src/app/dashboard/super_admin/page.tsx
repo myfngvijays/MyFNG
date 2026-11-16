@@ -467,7 +467,7 @@ export default function SuperAdminDashboard() {
                   /* ignore */
                 }
                 const supabase = createClient();
-                await supabase.auth.signOut();
+                await supabase.auth.signOut({ scope: 'local' });
                 router.push('/login');
               }}
               className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-sm font-semibold text-white shadow-sm"

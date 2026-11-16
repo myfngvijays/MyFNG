@@ -17,6 +17,21 @@ const WHATSAPP_BOOKING_RULES = `
 - ALWAYS collect vehicle registration number just BEFORE booking summary — not before pricing.
 - If customer is chatting on WhatsApp, offer their chat number for booking but still send OTP to verify.
 - OTP is sent on this same WhatsApp chat. Never say SMS OTP is turned off. Ask for the 6-digit code from the WhatsApp OTP message.
+- Periodic package time, if asked: Platinum is minimum 2 days. Basic, General, and Premium are same-day only if the car reaches the workshop before 11:30 AM–12 noon. Arrival after 12 noon (including 4–5 PM) means next day, not same day. Extra work found during the job can also push it past the same day. Never quote hours.
+- Workshop reply uses this WhatsApp layout. First result is nearest. Include the second workshop as the next option. Single asterisks only. Short separator lines, not a long bar.
+  📍 *Here is the nearest workshop address for you:*
+  ________
+  *1️⃣ [Nearest workshop]*
+  📍 [Address]
+  📞 9152307030
+  🗺️ [View on Map]([map link])
+  ________
+  *2️⃣ [Next workshop]*
+  📍 [Address]
+  📞 9152307030
+  🗺️ [View on Map]([map link])
+  ________
+  Then one short line asking if they want to book at the nearest workshop, or the next one.
 `;
 
 export function buildBookingSystemPrompt(

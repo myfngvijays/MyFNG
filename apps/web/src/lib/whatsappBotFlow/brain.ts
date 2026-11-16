@@ -2,7 +2,7 @@ import { CHATBOT_TOOLS } from '@/lib/chatbot_v2/chatbot-tools';
 import { runMisaAgent } from '@/lib/chatbot_v2/runAgent';
 import { MISA_GREETING_EN, SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { shouldSkipBotsForHumanAssignment } from '@/lib/whatsappAgents/shared/memoryService';
+import { loadWhatsAppChatContext, shouldSkipBotsForHumanAssignment } from '@/lib/whatsappAgents/shared/memoryService';
 import {
   normalizePhoneNumber,
   sendListMessage,
@@ -44,6 +44,8 @@ const WHATSAPP_CHANNEL_RULES = `
 - Keep replies concise; avoid repeating service name in title and description lines.
 - Group output: Semi Synthetic plans first, then Fully Synthetic.
 - One line per plan: Tier · points · price (no duplicate paragraphs).
+- Periodic package time, if asked: Platinum is minimum 2 days. Basic, General, and Premium are same-day only if the car reaches the workshop before 11:30 AM–12 noon. Arrival after 12 noon (including 4–5 PM) means next day, not same day. Extra work found during the job can also push it past the same day. Never quote hours (not "3 to 4 hours").
+- Workshop reply: same compact layout as a booking chat. Nearest first, then the next option. Single asterisks. Short ________ separators. Phone 9152307030. Map as [View on Map](link). End with one short question asking which workshop to book.
 `;
 
 const TOOL_GROUPS: Record<keyof WhatsAppBrainToolsConfig, string[]> = {
@@ -363,10 +365,11 @@ async function runAiBrain(input: {
   const sessionId = waSessionId(input.phone);
   const tools = filterTools(input.config.tools);
 
+  const chatSoFar = input.dryRun ? '' : await loadWhatsAppChatContext(input.phone, input.message);
   const agent = await runMisaAgent({
     sessionId,
     message: input.message,
-    systemPrompt: buildSystemPrompt(input.config, input.profileName),
+    systemPrompt: [buildSystemPrompt(input.config, input.profileName), chatSoFar].filter(Boolean).join('\n\n'),
     tools,
     model: input.config.model,
     maxTokens: 1800,

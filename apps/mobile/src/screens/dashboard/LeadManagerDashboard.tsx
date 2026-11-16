@@ -81,7 +81,7 @@ export default function LeadManagerDashboard({ navigation }: any) {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
   };
 
   const filteredLeads = useMemo(() => {

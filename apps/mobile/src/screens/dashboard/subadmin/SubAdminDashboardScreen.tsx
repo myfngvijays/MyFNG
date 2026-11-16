@@ -288,7 +288,7 @@ export default function SubAdminDashboardScreen({ navigation }: any) {
                       text: 'Logout',
                       style: 'destructive',
                       onPress: async () => {
-                        await supabase.auth.signOut();
+                        await supabase.auth.signOut({ scope: 'local' });
                         logout();
                       },
                     },

@@ -58,6 +58,65 @@ export async function saveMemory(memory: AgentMemory): Promise<void> {
   if (error) throw new Error(error.message || 'Failed to save memory');
 }
 
+/**
+ * Recent WhatsApp thread for this number, including the human agent's messages.
+ * MISA must read this before answering so she stays in line with the chat.
+ */
+export async function loadWhatsAppChatContext(phone: string, currentMessage?: string): Promise<string> {
+  try {
+    const db = getAdminDb();
+    const normalized = normalizePhoneNumber(phone);
+    const last10 = normalized.slice(-10);
+    if (!last10) return '';
+
+    const { data } = await db
+      .from('whatsapp_messages')
+      .select('direction, text_body, created_at, meta')
+      .or(
+        [
+          `sender_phone.eq.${normalized}`,
+          `sender_phone.eq.${last10}`,
+          `sender_phone.eq.91${last10}`,
+          `recipient_phone.eq.${normalized}`,
+          `recipient_phone.eq.${last10}`,
+          `recipient_phone.eq.91${last10}`,
+        ].join(','),
+      )
+      .order('created_at', { ascending: false })
+      .limit(24);
+
+    const rows = [...(data || [])].reverse();
+    const current = String(currentMessage || '').trim();
+    const lines: string[] = [];
+    for (const row of rows) {
+      const body = String((row as { text_body?: string }).text_body || '').replace(/\s+/g, ' ').trim();
+      if (!body || body === 'WhatsApp OTP sent' || body.startsWith('Template:')) continue;
+      const direction = String((row as { direction?: string }).direction || '').toUpperCase();
+      const meta = ((row as { meta?: Record<string, unknown> }).meta || {}) as Record<string, unknown>;
+      const actor = String(meta.actor_name || '').trim();
+      const source = String(meta.source || '');
+      const isBot = Boolean(meta.agent_auto_reply || meta.brain_auto_reply) || /booking_agent|brain|misa/i.test(source);
+      const speaker = direction === 'INBOUND' ? 'Customer' : actor ? `Human agent ${actor}` : isBot ? 'MISA' : 'Human agent';
+      lines.push(`${speaker}: ${body.slice(0, 400)}`);
+    }
+
+    while (lines.length && current && lines[lines.length - 1] === `Customer: ${current.replace(/\s+/g, ' ').trim().slice(0, 400)}`) {
+      lines.pop();
+    }
+    if (!lines.length) return '';
+
+    return [
+      '# WHATSAPP CHAT SO FAR',
+      'Read this before you reply. It includes the customer, MISA, and any human agent.',
+      'Stay consistent with it. If a human agent already gave a time, workshop, or price, follow the human and do not contradict them.',
+      'Do not ask again for something already answered in this chat. Continue from where the chat left off.',
+      lines.slice(-16).join('\n'),
+    ].join('\n');
+  } catch {
+    return '';
+  }
+}
+
 export async function loadConversationForPhone(phone: string, limit = 20): Promise<Array<{ direction: string; body: string; at: string }>> {
   const db = getAdminDb();
   const normalized = normalizePhoneNumber(phone);
@@ -189,17 +248,17 @@ function isManualHumanWhatsAppOutbound(row: {
 }
 
 /**
- * Only pause bots when a human is assigned AND recently sent a manual (non-bot) WhatsApp message.
- * Assignment alone (e.g. auto-map from admin panel) should not permanently silence MISA.
+ * Pause bots for 1 hour after a person types in this chat, even before the chat is assigned.
+ * Assignment alone (auto-map from the admin panel) does not silence MISA.
+ * Customer can bring MISA back by saying "Misa".
  */
 export async function shouldSkipBotsForHumanAssignment(phone: string): Promise<boolean> {
   if (await customerRequestedHumanAgent(phone)) return true;
-  if (!(await isChatAssignedToHuman(phone))) return false;
 
   const db = getAdminDb();
   const normalized = normalizePhoneNumber(phone);
   const last10 = normalized.slice(-10);
-  const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
 
   const { data: outbound } = await db
     .from('whatsapp_messages')

@@ -297,7 +297,7 @@ export default function CSEDashboardScreen({ navigation }: any) {
                     text: 'Logout',
                     style: 'destructive',
                     onPress: async () => {
-                      await supabase.auth.signOut();
+                      await supabase.auth.signOut({ scope: 'local' });
                       logout();
                     },
                   },

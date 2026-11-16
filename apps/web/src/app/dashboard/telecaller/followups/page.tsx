@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
@@ -8,6 +8,18 @@ import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, Che
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { istYmd, istDayBounds } from '@/lib/telecaller/crmDateRange';
+
+function formatFollowUpDate(iso: string | null | undefined) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
 
 function dueAgo(iso: string | null | undefined) {
   if (!iso) return '—';
@@ -74,6 +86,10 @@ export default function FollowUpsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'today' | 'calendar' | 'completed'>('pending');
   const [typeFilter, setTypeFilter] = useState<'all' | 'CALLBACK'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [noteOpenId, setNoteOpenId] = useState<string | null>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
   const [pickMode, setPickMode] = useState<'single' | 'range'>('single');
   const [customStart, setCustomStart] = useState(istYmd());
   const [customEnd, setCustomEnd] = useState(istYmd());
@@ -99,6 +115,15 @@ export default function FollowUpsPage() {
   useEffect(() => {
     fetchFollowUps();
   }, [filter, customStart, customEnd, pickMode, scopeAll]);
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+    const onDown = (event: MouseEvent) => {
+      if (!calendarRef.current?.contains(event.target as Node)) setCalendarOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [calendarOpen]);
 
   async function fetchFollowUps() {
     const supabase = createClient();
@@ -278,6 +303,7 @@ export default function FollowUpsPage() {
       if (typeFilter === 'CALLBACK') {
         if (String(fu.follow_up_type || '').toUpperCase() !== 'CALLBACK') return false;
       }
+      if (priorityFilter !== 'ALL' && String(fu.priority || 'NORMAL').toUpperCase() !== priorityFilter) return false;
       if (!searchTerm) return true;
       const search = searchTerm.toLowerCase();
       return (
@@ -287,7 +313,7 @@ export default function FollowUpsPage() {
         fu.reason?.toLowerCase().includes(search)
       );
     });
-  }, [followUps, searchTerm, typeFilter, filter, pendingLeadIds]);
+  }, [followUps, searchTerm, typeFilter, priorityFilter, filter, pendingLeadIds]);
 
   const calendarLabel =
     pickMode === 'single' || customStart === customEnd
@@ -331,7 +357,7 @@ export default function FollowUpsPage() {
         </div>
 
         {/* Filters & Search */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 min-w-0 overflow-hidden">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 min-w-0">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col lg:flex-row gap-3 min-w-0">
               <div className="flex-1 min-w-0 relative">
@@ -353,20 +379,138 @@ export default function FollowUpsPage() {
                     { id: 'calendar' as const, label: 'Calendar' },
                     { id: 'completed' as const, label: 'Done' },
                   ]
-                ).map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setFilter(f.id)}
-                    className={`px-3 py-1.5 rounded-lg font-semibold text-xs whitespace-nowrap ${
-                      filter === f.id
-                        ? 'bg-[#004AAD] text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
+                ).map((f) => {
+                  const button = (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (f.id === 'calendar') {
+                          setFilter('calendar');
+                          setCalendarOpen((open) => !open);
+                          return;
+                        }
+                        setCalendarOpen(false);
+                        setFilter(f.id);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg font-semibold text-xs whitespace-nowrap ${
+                        filter === f.id
+                          ? 'bg-[#004AAD] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {f.id === 'calendar' && filter === 'calendar' ? calendarLabel : f.label}
+                    </button>
+                  );
+                  if (f.id !== 'calendar') return <span key={f.id}>{button}</span>;
+                  return (
+                    <div key="calendar" ref={calendarRef} className="relative">
+                      {button}
+                      {calendarOpen ? (
+                        <div className="absolute right-0 top-full z-40 mt-2 w-[300px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                          <div className="mb-3 inline-flex rounded-lg border border-gray-200 bg-slate-50 p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPickMode('single');
+                                setCustomEnd(customStart);
+                                setRangeTap('start');
+                              }}
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
+                                pickMode === 'single' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
+                              }`}
+                            >
+                              Single date
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPickMode('range');
+                                setRangeTap('start');
+                              }}
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
+                                pickMode === 'range' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
+                              }`}
+                            >
+                              Date range
+                            </button>
+                          </div>
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg p-1.5 hover:bg-slate-100"
+                              onClick={() => {
+                                const next = addMonthsYm(viewYear, viewMonth0, -1);
+                                setViewYear(next.year);
+                                setViewMonth0(next.month0);
+                              }}
+                              aria-label="Previous month"
+                            >
+                              <ChevronLeft className="h-4 w-4 text-[#004AAD]" />
+                            </button>
+                            <p className="text-sm font-extrabold text-slate-800">
+                              {MONTH_NAMES[viewMonth0]} {viewYear}
+                            </p>
+                            <button
+                              type="button"
+                              className="rounded-lg p-1.5 hover:bg-slate-100"
+                              onClick={() => {
+                                const next = addMonthsYm(viewYear, viewMonth0, 1);
+                                setViewYear(next.year);
+                                setViewMonth0(next.month0);
+                              }}
+                              aria-label="Next month"
+                            >
+                              <ChevronRight className="h-4 w-4 text-[#004AAD]" />
+                            </button>
+                          </div>
+                          <div className="mb-1 grid grid-cols-7 gap-1">
+                            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                              <div key={`${d}-${i}`} className="py-1 text-center text-[11px] font-bold text-slate-400">
+                                {d}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {buildMonthCells(viewYear, viewMonth0).map((cell, idx) => {
+                              if (!cell.ymd) return <div key={`e-${idx}`} className="h-8" />;
+                              const ymd = cell.ymd;
+                              const lo = customStart <= customEnd ? customStart : customEnd;
+                              const hi = customStart <= customEnd ? customEnd : customStart;
+                              const selected = pickMode === 'single' ? ymd === customStart : ymd === lo || ymd === hi;
+                              const inRange = pickMode === 'range' && ymd > lo && ymd < hi;
+                              const isToday = ymd === todayYmd;
+                              return (
+                                <button
+                                  key={ymd}
+                                  type="button"
+                                  onClick={() => onCalendarDayPress(ymd)}
+                                  className={`h-8 rounded-lg text-sm font-semibold ${
+                                    selected
+                                      ? 'bg-[#004AAD] text-white shadow-sm'
+                                      : inRange
+                                        ? 'bg-blue-100 text-[#004AAD]'
+                                        : isToday
+                                          ? 'font-extrabold text-[#004AAD] hover:bg-slate-50'
+                                          : 'text-slate-800 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {cell.day}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="mt-2 text-center text-xs font-semibold text-slate-500">
+                            {pickMode === 'single'
+                              ? `Selected: ${formatYmdShort(customStart)}`
+                              : rangeTap === 'end' && customStart === customEnd
+                                ? `Start: ${formatYmdShort(customStart)} · ab end date choose karo`
+                                : calendarLabel}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
                 <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                   <Filter className="w-3.5 h-3.5 text-[#004AAD]" />
                   <select
@@ -378,123 +522,22 @@ export default function FollowUpsPage() {
                     <option value="CALLBACK">Follow-up only</option>
                   </select>
                 </label>
+                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                  <Flag className="w-3.5 h-3.5 text-[#004AAD]" />
+                  <select
+                    value={priorityFilter}
+                    onChange={(e) => setPriorityFilter(e.target.value as typeof priorityFilter)}
+                    className="max-w-[140px] rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-semibold"
+                  >
+                    <option value="ALL">All priorities</option>
+                    <option value="URGENT">Urgent</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+                </label>
               </div>
             </div>
-
-            {filter === 'calendar' ? (
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 sm:p-4 space-y-3">
-                <div className="inline-flex rounded-lg bg-white border border-gray-200 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPickMode('single');
-                      setCustomEnd(customStart);
-                      setRangeTap('start');
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold ${
-                      pickMode === 'single' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
-                    }`}
-                  >
-                    Single date
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPickMode('range');
-                      setRangeTap('start');
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold ${
-                      pickMode === 'range' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
-                    }`}
-                  >
-                    Date range
-                  </button>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 max-w-md">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 hover:bg-slate-100"
-                      onClick={() => {
-                        const next = addMonthsYm(viewYear, viewMonth0, -1);
-                        setViewYear(next.year);
-                        setViewMonth0(next.month0);
-                      }}
-                      aria-label="Previous month"
-                    >
-                      <ChevronLeft className="h-5 w-5 text-[#004AAD]" />
-                    </button>
-                    <p className="text-sm font-extrabold text-slate-800">
-                      {MONTH_NAMES[viewMonth0]} {viewYear}
-                    </p>
-                    <button
-                      type="button"
-                      className="rounded-lg p-2 hover:bg-slate-100"
-                      onClick={() => {
-                        const next = addMonthsYm(viewYear, viewMonth0, 1);
-                        setViewYear(next.year);
-                        setViewMonth0(next.month0);
-                      }}
-                      aria-label="Next month"
-                    >
-                      <ChevronRight className="h-5 w-5 text-[#004AAD]" />
-                    </button>
-                  </div>
-                  <div className="mb-1 grid grid-cols-7 gap-1">
-                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                      <div
-                        key={`${d}-${i}`}
-                        className="text-center text-[11px] font-bold text-slate-400 py-1"
-                      >
-                        {d}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-7 gap-1">
-                    {buildMonthCells(viewYear, viewMonth0).map((cell, idx) => {
-                      if (!cell.ymd) {
-                        return <div key={`e-${idx}`} className="aspect-square" />;
-                      }
-                      const ymd = cell.ymd;
-                      const lo = customStart <= customEnd ? customStart : customEnd;
-                      const hi = customStart <= customEnd ? customEnd : customStart;
-                      const selected =
-                        pickMode === 'single'
-                          ? ymd === customStart
-                          : ymd === lo || ymd === hi;
-                      const inRange = pickMode === 'range' && ymd > lo && ymd < hi;
-                      const isToday = ymd === todayYmd;
-                      return (
-                        <button
-                          key={ymd}
-                          type="button"
-                          onClick={() => onCalendarDayPress(ymd)}
-                          className={`aspect-square rounded-lg text-sm font-semibold flex items-center justify-center transition ${
-                            selected
-                              ? 'bg-[#004AAD] text-white shadow-sm'
-                              : inRange
-                                ? 'bg-blue-100 text-[#004AAD]'
-                                : isToday
-                                  ? 'text-[#004AAD] font-extrabold hover:bg-slate-50'
-                                  : 'text-slate-800 hover:bg-slate-50'
-                          }`}
-                        >
-                          {cell.day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-3 text-center text-xs font-semibold text-slate-500">
-                    {pickMode === 'single'
-                      ? `Selected: ${formatYmdShort(customStart)}`
-                      : rangeTap === 'end' && customStart === customEnd
-                        ? `Start: ${formatYmdShort(customStart)} · ab end date choose karo`
-                        : calendarLabel}
-                  </p>
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
 
@@ -506,13 +549,14 @@ export default function FollowUpsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[920px] w-full text-left text-sm">
+              <table className="min-w-[1040px] w-full text-left text-sm">
                 <thead className="bg-[#004AAD] text-white">
                   <tr>
                     <th className="px-3 py-2 font-bold">Name</th>
                     <th className="px-3 py-2 font-bold">Description</th>
                     <th className="px-3 py-2 font-bold">Assignee</th>
                     <th className="px-3 py-2 font-bold">Status</th>
+                    <th className="px-3 py-2 font-bold">Date</th>
                     <th className="px-3 py-2 font-bold">Due date</th>
                     <th className="px-3 py-2 font-bold">Priority</th>
                     <th className="px-3 py-2 font-bold text-right">Actions</th>
@@ -537,23 +581,50 @@ export default function FollowUpsPage() {
                   : followUp.status === 'CANCELLED'
                     ? 'text-slate-500'
                     : 'text-amber-700';
+              const note = String(followUp.reason || followUp.follow_up_type || 'Follow-up');
+              const noteLong = note.length > 72;
               return (
-                <tr key={followUp.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 align-top">
-                    <Link href={`${base}/leads/${followUp.lead_id}`} className="font-bold text-slate-900 hover:underline">
+                <tr key={followUp.id} className="h-16 hover:bg-slate-50">
+                  <td className="px-3 align-middle">
+                    <Link href={`${base}/leads/${followUp.lead_id}`} className="line-clamp-1 font-bold text-slate-900 hover:underline">
                       {followUp.lead?.customer_name || 'Unknown'}
                     </Link>
                     <p className="text-xs text-slate-500">{followUp.lead?.customer_phone || '—'}</p>
                   </td>
-                  <td className="max-w-[280px] px-3 py-2 align-top text-slate-700">
-                    {followUp.reason || followUp.follow_up_type || 'Follow-up'}
+                  <td className="max-w-[280px] px-3 align-middle text-slate-700">
+                    <p className="line-clamp-2 text-xs">{note}</p>
+                    {noteLong ? (
+                      <button
+                        type="button"
+                        className="mt-0.5 block text-[11px] font-bold text-[#004AAD]"
+                        onClick={() => setNoteOpenId((id) => (id === followUp.id ? null : followUp.id))}
+                      >
+                        {noteOpenId === followUp.id ? 'Less' : 'Read more'}
+                      </button>
+                    ) : (
+                      <span className="mt-0.5 block text-[11px] invisible">Read more</span>
+                    )}
+                    {noteOpenId === followUp.id ? (
+                      <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+                        onClick={() => setNoteOpenId(null)}
+                      >
+                        <div
+                          className="max-h-[60vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 text-sm text-slate-800 shadow-xl"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {note}
+                        </div>
+                      </div>
+                    ) : null}
                   </td>
-                  <td className="px-3 py-2 align-top font-semibold text-indigo-700">
+                  <td className="px-3 align-middle text-xs font-semibold text-indigo-700">
                     {followUp.telecaller?.full_name || '—'}
                   </td>
-                  <td className={`px-3 py-2 align-top text-xs font-extrabold ${pillClass}`}>{pill}</td>
-                  <td className="whitespace-nowrap px-3 py-2 align-top text-slate-700">{dueAgo(followUp.scheduled_time)}</td>
-                  <td className="relative px-3 py-2 align-top">
+                  <td className={`px-3 align-middle text-xs font-extrabold ${pillClass}`}>{pill}</td>
+                  <td className="whitespace-nowrap px-3 align-middle text-xs text-slate-700">{formatFollowUpDate(followUp.scheduled_time)}</td>
+                  <td className="whitespace-nowrap px-3 align-middle text-xs text-slate-700">{dueAgo(followUp.scheduled_time)}</td>
+                  <td className="relative px-3 align-middle">
                     <button
                       type="button"
                       title="Priority"
@@ -596,7 +667,7 @@ export default function FollowUpsPage() {
                       </div>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2 align-top">
+                  <td className="px-3 align-middle">
                   <div className="flex shrink-0 items-center justify-end gap-1">
                     {followUp.lead?.customer_phone ? (
                       <a

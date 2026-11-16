@@ -114,8 +114,8 @@ export const CHATBOT_TOOLS = [
           },
           limit: {
             type: 'number',
-            description: 'Maximum number of workshops to return (default: 5)',
-            default: 5,
+            description: 'Maximum workshops to return, nearest first (default: 2)',
+            default: 2,
           },
         },
         required: ['pincode'],
@@ -493,7 +493,7 @@ export async function executeToolCall(
       }
 
       case 'search_workshops': {
-        const { pincode, limit = 5 } = args;
+        const { pincode, limit = 2 } = args;
 
         const workshops = await getWorkshops({
           city: pincode,
@@ -512,7 +512,11 @@ export async function executeToolCall(
               phone: '9152307030',
               working_time: w.working_time,
               map_link: w.near_area_google_map || w.map_link || null,
+              distance_km: w.distance_km ?? null,
             })),
+            nearest_first: true,
+            instruction:
+              'List workshops in this order. The first one is the nearest. Also show the next workshop when it is returned. Do not replace the nearest workshop with one that is farther.',
           };
         } else {
           return {

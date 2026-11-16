@@ -291,7 +291,7 @@ function TelecallerCrmLeadsContent() {
   const [pageSize, setPageSize] = useState<25 | 50 | 75 | 100>(25);
   const [page, setPage] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
-  const [scopeTotal, setScopeTotal] = useState(0);
+  const [, setScopeTotal] = useState(0);
   const [visibleColumns, setVisibleColumns] = useState<LeadsColumnVisibility>(DEFAULT_LEADS_COLUMNS);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnsQuery, setColumnsQuery] = useState('');
@@ -968,6 +968,50 @@ function TelecallerCrmLeadsContent() {
   const safePage = Math.min(page, totalPages);
   const pageStart = totalLeads === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const pageEnd = Math.min(safePage * pageSize, totalLeads);
+  const leadsPager = (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200 bg-white px-3 py-3">
+      <p className="text-xs font-semibold text-slate-500">
+        {totalLeads === 0
+          ? 'No leads'
+          : `Showing ${pageStart}–${pageEnd} of ${totalLeads.toLocaleString('en-IN')}`}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
+          Per page
+          <select
+            className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value) as 25 | 50 | 75 | 100)}
+          >
+            {[25, 50, 75, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={safePage <= 1 || loading}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
+        >
+          Prev
+        </button>
+        <span className="text-xs font-bold text-slate-600 tabular-nums">
+          {safePage} / {totalPages}
+        </span>
+        <button
+          type="button"
+          disabled={safePage >= totalPages || loading}
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -1162,23 +1206,13 @@ function TelecallerCrmLeadsContent() {
     <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full min-w-0 max-w-none space-y-3 pb-24 sm:space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="flex shrink-0 flex-wrap items-center gap-2 text-2xl font-extrabold text-[#023D95] md:text-3xl">
-            Leads
-            <span className="inline-flex items-baseline gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-bold tabular-nums text-slate-500">
-              <span className="text-base text-[#023D95]">{totalLeads.toLocaleString('en-IN')}</span>
-              {filter !== 'all' && scopeTotal > 0 ? (
-                <span className="font-semibold text-slate-400">
-                  of {scopeTotal.toLocaleString('en-IN')}
-                </span>
-              ) : null}
-            </span>
-          </h1>
+          <h1 className="shrink-0 text-2xl font-extrabold text-[#023D95] md:text-3xl">Leads</h1>
           <div className="flex w-full min-w-0 items-center gap-2 sm:max-w-[36rem] sm:flex-1">
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
               <input
                 className="w-full rounded-xl border border-[#023D95] bg-[#023D95] py-2.5 pl-9 pr-3 text-sm font-semibold text-white placeholder:text-white/80 focus:outline-none focus:ring-2 focus:ring-white/40"
-                placeholder="Search name, phone, lead #"
+                placeholder="Search name, phone, lead #, vehicle"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && runSearch()}
@@ -1748,6 +1782,7 @@ function TelecallerCrmLeadsContent() {
           </div>
         ) : (
           <>
+            {leadsPager}
             {/* Desktop table — visible cols share width (no blank gaps when unchecked) */}
             <div className="hidden w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white xl:block">
               <table
@@ -2239,50 +2274,7 @@ function TelecallerCrmLeadsContent() {
               })}
             </div>
 
-            {viewMode === 'list' ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200 bg-white px-3 py-3">
-                <p className="text-xs font-semibold text-slate-500">
-                  {totalLeads === 0
-                    ? 'No leads'
-                    : `Showing ${pageStart}–${pageEnd} of ${totalLeads.toLocaleString('en-IN')}`}
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
-                    Per page
-                    <select
-                      className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value) as 25 | 50 | 75 | 100)}
-                    >
-                      {[25, 50, 75, 100].map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    disabled={safePage <= 1 || loading}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
-                  >
-                    Prev
-                  </button>
-                  <span className="text-xs font-bold text-slate-600 tabular-nums">
-                    {safePage} / {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={safePage >= totalPages || loading}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            ) : null}
+            {leadsPager}
           </>
         )}
       </div>

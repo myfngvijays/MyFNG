@@ -96,6 +96,8 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           : 'all',
   );
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const [customStart, setCustomStart] = useState(istYmd());
   const [customEnd, setCustomEnd] = useState(istYmd());
   const [showCalendarModal, setShowCalendarModal] = useState(false);
@@ -195,7 +197,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
 
   useEffect(() => {
     fetchFollowUps();
-  }, [filter, searchTerm, typeFilter, customStart, customEnd, role, user?.email]);
+  }, [filter, searchTerm, typeFilter, priorityFilter, customStart, customEnd, role, user?.email]);
 
   // Handle hardware back button
   useEffect(() => {
@@ -322,6 +324,11 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       if (typeFilter === 'CALLBACK') {
         list = list.filter(
           (fu: any) => String(fu.follow_up_type || '').toUpperCase() === 'CALLBACK',
+        );
+      }
+      if (priorityFilter !== 'ALL') {
+        list = list.filter(
+          (fu: any) => String(fu.priority || 'NORMAL').toUpperCase() === priorityFilter,
         );
       }
 
@@ -693,15 +700,24 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           <Text style={styles.customerName} numberOfLines={1}>
             {item.lead?.customer_name || 'Customer'}
           </Text>
-          <Text style={styles.leadMeta} numberOfLines={2}>
+          <Text style={styles.leadMeta} numberOfLines={expandedNoteId === item.id ? undefined : 2}>
             {item.reason || item.follow_up_type || 'Follow-up'}
           </Text>
+          {String(item.reason || item.follow_up_type || '').length > 72 ? (
+            <TouchableOpacity onPress={() => setExpandedNoteId((id) => (id === item.id ? null : item.id))}>
+              <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>
+                {expandedNoteId === item.id ? 'Less' : 'Read more'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <Text style={styles.leadMeta} numberOfLines={1}>
             {item.telecaller?.full_name || 'Unassigned'}
             {'  ·  '}
             {phone || '—'}
           </Text>
           <Text style={styles.leadMeta} numberOfLines={1}>
+            Date {item.scheduled_time ? new Date(item.scheduled_time).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
+            {'  ·  '}
             Due {item.scheduled_time ? new Date(item.scheduled_time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
           </Text>
           <View style={[styles.statusPill, pillStyle]}>
@@ -907,6 +923,27 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
                 </TouchableOpacity>
               ))}
             </View>
+            <Text style={styles.filterLabel}>Priority</Text>
+            {(
+              [
+                { id: 'ALL' as const, label: 'All priorities' },
+                { id: 'URGENT' as const, label: 'Urgent' },
+                { id: 'HIGH' as const, label: 'High' },
+                { id: 'MEDIUM' as const, label: 'Medium' },
+                { id: 'LOW' as const, label: 'Low' },
+              ]
+            ).map((opt) => (
+              <TouchableOpacity
+                key={opt.id}
+                style={styles.filterTypeRow}
+                onPress={() => setPriorityFilter(opt.id)}
+              >
+                <Text style={[styles.filterTypeText, priorityFilter === opt.id && styles.filterTypeTextOn]}>
+                  {opt.label}
+                </Text>
+                {priorityFilter === opt.id ? <Icon name="check" size={16} color={COLORS.primary} /> : null}
+              </TouchableOpacity>
+            ))}
             <Text style={styles.filterLabel}>Type</Text>
             {(
               [

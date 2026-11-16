@@ -51,6 +51,25 @@ function leadMessagePreview(lead: Record<string, any>): string | null {
   return null;
 }
 
+/** Name, phone, lead number, or vehicle number. Spaces in a plate still match. */
+function crmLeadSearchOr(q: string): string {
+  const raw = String(q || '').trim().replace(/[%_,]/g, '');
+  const compact = raw.replace(/[\s-]/g, '').toUpperCase();
+  const parts = [
+    `customer_name.ilike.%${raw}%`,
+    `customer_phone.ilike.%${raw}%`,
+    `lead_number.ilike.%${raw}%`,
+    `vehicle_number.ilike.%${raw}%`,
+  ];
+  if (compact && compact !== raw.toUpperCase()) {
+    parts.push(`vehicle_number.ilike.%${compact}%`);
+  }
+  if (compact.length >= 4 && compact.length <= 13 && /[0-9]/.test(compact) && /^[A-Z0-9]+$/.test(compact)) {
+    parts.push(`vehicle_number.ilike.%${compact.split('').join('%')}%`);
+  }
+  return parts.join(',');
+}
+
 /**
  * GET /api/telecaller/crm/leads
  * Advanced filtered queue for Service leads.
@@ -173,9 +192,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (q) {
-      query = query.or(
-        `customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,lead_number.ilike.%${q}%`,
-      );
+      query = query.or(crmLeadSearchOr(q));
     }
 
     let { data, error, count } = await query;
@@ -203,9 +220,7 @@ export async function GET(request: NextRequest) {
         retry = applyCrmQueueStatusFilter(retry, filter, lostReason);
       }
       if (q) {
-        retry = retry.or(
-          `customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,lead_number.ilike.%${q}%`,
-        );
+        retry = retry.or(crmLeadSearchOr(q));
       }
       ({ data, error, count } = await retry);
     }

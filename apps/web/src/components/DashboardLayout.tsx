@@ -739,7 +739,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       /* ignore */
     }
     const supabase = createClient();
-    await supabase.auth.signOut();
+    // This browser only. App and other web logins stay signed in.
+    await supabase.auth.signOut({ scope: 'local' });
     logout();
     router.push('/login');
   };

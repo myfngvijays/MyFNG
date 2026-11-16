@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { filterWorkshopsForPincode } from '../whatsappBotFlow/workshopPincode';
+import { rankWorkshopsByDistance } from '../whatsappBotFlow/pincodeGeo';
 import {
   fetchServicePriceForBooking,
   matchCategoryRow,
@@ -80,19 +81,22 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
       const { data, error } = await supabase
         .from('workshops')
         .select(
-          'id, name, workshop_name, short_address, address, city, pincode, service_pincode, mapping_pincodes, phone, working_time, map_link, near_area_google_map'
+          'id, name, workshop_name, short_address, address, city, pincode, service_pincode, mapping_pincodes, latitude, longitude, phone, working_time, map_link, near_area_google_map'
         )
         .eq('is_verified', true)
         .eq('is_active', true)
-        .limit(Math.max(limit * 4, 40));
+        .limit(200);
 
       if (error) {
         console.error('Error fetching workshops:', error);
         return [];
       }
 
-      const matched = filterWorkshopsForPincode(data || [], city).slice(0, limit);
-      console.log(`[DB] Found ${matched.length} workshops for PIN ${city}`);
+      const matched = await rankWorkshopsByDistance(data || [], city, limit);
+      console.log(
+        `[DB] Found ${matched.length} nearest workshops for PIN ${city}:`,
+        matched.map((w: any) => `${w.workshop_name || w.name} ${w.distance_km ?? '?'}km`).join(', '),
+      );
       return matched.map((w: any) => ({ ...w, phone: DEFAULT_WORKSHOP_PHONE }));
     }
 

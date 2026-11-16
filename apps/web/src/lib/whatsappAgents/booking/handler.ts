@@ -18,7 +18,7 @@ import {
   getActiveInstance,
   updateInstance,
 } from '../shared/instanceService';
-import { loadMemory, saveMemory, shouldSkipBotsForHumanAssignment, customerRequestedHumanAgent, clearCustomerHumanRequest } from '../shared/memoryService';
+import { loadMemory, saveMemory, shouldSkipBotsForHumanAssignment, customerRequestedHumanAgent, clearCustomerHumanRequest, loadWhatsAppChatContext } from '../shared/memoryService';
 import { sendAgentTextMessage } from '../shared/outbound';
 import { hasBookingIntent, isGreetingMessage } from './intent';
 import {
@@ -74,7 +74,8 @@ export async function shouldRouteToBookingAgent(phone: string, message: string):
   const config = await fetchAgentConfig('BOOKING');
   if (!config.enabled) return false;
 
-  if (parseMisaChoice(message) === 'misa' || isGreetingMessage(message)) return true;
+  // "Misa" can interrupt a human. A plain Hi cannot — the telecaller keeps the chat.
+  if (parseMisaChoice(message) === 'misa') return true;
   if (await customerRequestedHumanAgent(phone)) return false;
 
   if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
@@ -110,7 +111,7 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
     }
   }
 
-  const wakeMisa = parseMisaChoice(message) === 'misa' || isGreetingMessage(message);
+  const wakeMisa = parseMisaChoice(message) === 'misa';
   if (await customerRequestedHumanAgent(phone) && !wakeMisa) {
     return { handled: false, skippedReason: 'assigned_to_human' };
   }
@@ -295,10 +296,13 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
         },
       });
 
+  const chatSoFar = input.dryRun ? '' : await loadWhatsAppChatContext(phone, message);
   const agent = await runMisaAgent({
     sessionId,
     message,
-    systemPrompt: buildBookingSystemPrompt(config, input.profileName, phone, input.dryRun),
+    systemPrompt: [buildBookingSystemPrompt(config, input.profileName, phone, input.dryRun), chatSoFar]
+      .filter(Boolean)
+      .join('\n\n'),
     tools,
     model: config.model,
     maxTokens: 1800,

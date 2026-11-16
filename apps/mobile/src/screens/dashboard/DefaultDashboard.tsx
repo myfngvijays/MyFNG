@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function DefaultDashboard({ userProfile, onLogout }: { userProfile: any; onLogout?: () => void }) {
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     if (onLogout) onLogout();
   };
 

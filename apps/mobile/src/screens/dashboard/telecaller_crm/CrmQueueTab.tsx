@@ -849,7 +849,7 @@ export default function CrmQueueTab({
         <Ionicons name="search" size={16} color="#fff" />
         <TextInput
           style={styles.search}
-          placeholder="Search name / phone / lead #"
+          placeholder="Search name / phone / lead # / vehicle"
           value={q}
           onChangeText={setQ}
           onSubmitEditing={() => {

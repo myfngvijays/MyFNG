@@ -172,7 +172,7 @@ export default function DigitalMarketingProfilePage() {
 
   const logout = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     router.push('/login');
   };
 
