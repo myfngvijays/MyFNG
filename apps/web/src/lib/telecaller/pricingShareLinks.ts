@@ -14,7 +14,8 @@ import {
 } from '@/lib/whatsappBotFlow/periodicPlansUi';
 import { getPeriodicChecklistFallback } from '@/lib/services/periodicChecklistFallbacks';
 import { normalizePhoneNumber, sendTemplateMessage } from '@/lib/services/whatsappService';
-import { sendAgentTextMessage } from '@/lib/whatsappAgents/shared/outbound';
+import { sendAgentTextMessage, archiveAgentOutboundMessage } from '@/lib/whatsappAgents/shared/outbound';
+import { isSessionOpenForPhone } from '@/lib/whatsappBotFlow/sessionWindow';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 import { normalizePricingCategories } from '@/lib/telecaller/sendLeadPricingWhatsApp';
 
@@ -497,19 +498,23 @@ export async function sendPricingShareWhatsApp(input: {
     'Select plans on the page and send back on WhatsApp, or reply *BOOK*. — Team MyFNG',
   ].join('\n');
 
-  const textRes = await sendAgentTextMessage({
-    phone,
-    message: sessionMsg,
-    source: 'telecaller_pricing_share',
-    meta: {
-      lead_id: input.leadId || null,
-      lead_number: input.leadNumber || null,
-      kind: 'pricing_share_link',
-      url,
-    },
-  });
-  if (textRes.success) return { sent: true, channel: 'session_text' };
+  const sessionOpen = await isSessionOpenForPhone(phone);
+  if (sessionOpen) {
+    const textRes = await sendAgentTextMessage({
+      phone,
+      message: sessionMsg,
+      source: 'telecaller_pricing_share',
+      meta: {
+        lead_id: input.leadId || null,
+        lead_number: input.leadNumber || null,
+        kind: 'pricing_share_link',
+        url,
+      },
+    });
+    if (textRes.success) return { sent: true, channel: 'session_text' };
+  }
 
+  // Closed 24h window (9696 lead, no 6161 reply): approved template, no failed free-text bubble.
   // Must match whatsapp_templates.pricing_share_link: {{1}} name, {{2}} car, {{3}} expiry, {{4}} url
   const tplRes = await sendTemplateMessage({
     phoneNumber: phone,
@@ -517,11 +522,25 @@ export async function sendPricingShareWhatsApp(input: {
     templateParams: [name, car, expiresLabel, url],
     languageCode: 'en',
   });
+  await archiveAgentOutboundMessage({
+    phone,
+    text: sessionMsg,
+    sendResult: tplRes,
+    source: 'telecaller_pricing_share',
+    meta: {
+      lead_id: input.leadId || null,
+      lead_number: input.leadNumber || null,
+      kind: 'pricing_share_link',
+      url,
+      used_template: true,
+      template_name: SHARE_TEMPLATE,
+    },
+  });
   if (tplRes.success) return { sent: true, channel: 'pricing_share_link_template' };
 
   return {
     sent: false,
-    error: tplRes.error || textRes.error || 'whatsapp_send_failed',
+    error: tplRes.error || 'whatsapp_send_failed',
   };
 }
 
