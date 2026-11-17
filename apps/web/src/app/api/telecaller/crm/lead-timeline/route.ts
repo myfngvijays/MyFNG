@@ -95,9 +95,9 @@ export async function GET(request: NextRequest) {
     void detachForeignDidRecordingsThrottled();
 
     const leadSelectFull =
-      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model, service_type, meta';
+      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, vehicle_number, vehicle_make, vehicle_model, service_type, meta';
     const leadSelectLean =
-      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id';
+      'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta';
 
     let { data: lead, error: leadErr } = await supabaseAdmin
       .from('service_leads')
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
         const { data: refreshed } = await supabaseAdmin
           .from('service_leads')
           .select(
-            'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model, service_type, meta',
+            'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, vehicle_number, vehicle_make, vehicle_model, service_type, meta',
           )
           .eq('id', leadId)
           .maybeSingle();

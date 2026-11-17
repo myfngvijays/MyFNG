@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -11,7 +11,7 @@ import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import CrmReferredByField from '@/components/telecaller/crm/CrmReferredByField';
 import { serializeReferredBy, type CrmReferredBy } from '@/lib/telecaller/crmLeadReference';
 import { crmDispositionNeedsFullProfile } from '@/lib/telecaller/crmLeadFilters';
-import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '@/components/telecaller/crm/CrmFollowUpDateTime';
+import { snapTimeToTenMinutes } from '@/components/telecaller/crm/CrmFollowUpDateTime';
 import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
 import {
   emptySecondCar,
@@ -213,6 +213,7 @@ function TelecallerCrmBookContent() {
   const [otherDraft, setOtherDraft] = useState('');
   const [activityDate, setActivityDate] = useState(todayDateStr);
   const [activityTime, setActivityTime] = useState(nowTimeStr);
+  const whenInputRef = useRef<HTMLInputElement>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [referredBy, setReferredBy] = useState<CrmReferredBy | null>(null);
   const [showSecondCar, setShowSecondCar] = useState(false);
@@ -836,7 +837,7 @@ function TelecallerCrmBookContent() {
   return (
     <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full max-w-none pb-8">
-        <div className="mb-5 flex flex-wrap gap-2">
+        <div className={`flex flex-wrap gap-2 ${mode === 'lead' ? 'mb-3' : 'mb-5'}`}>
           <button
             type="button"
             onClick={() => {
@@ -870,38 +871,14 @@ function TelecallerCrmBookContent() {
             Add Lead
           </button>
         </div>
-        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-[#023D95] via-[#0346b0] to-indigo-700 p-5 text-white shadow-md">
-          {mode === 'book' ? (
-            <>
-              <div className="mb-3 flex gap-1.5">
-                {[0, 1, 2, 3, 4].map((s) => (
-                  <div
-                    key={s}
-                    className={`h-1 flex-1 rounded-full ${step >= s ? 'bg-white' : 'bg-white/25'}`}
-                  />
-                ))}
-              </div>
-              <p className="text-xs font-bold text-blue-100">Step {step + 1} of 5</p>
-              <h2 className="mt-1 text-xl font-extrabold text-white">{meta.title}</h2>
-              <p className="text-sm text-blue-100">{meta.subtitle}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-xs font-bold uppercase tracking-wide text-blue-100">Quick save</p>
-              <h2 className="mt-1 text-2xl font-black text-white">Add Lead</h2>
-              <p className="mt-1 text-sm text-blue-100">
-                Customer + car + status — booking later Lead Details se
-              </p>
-            </>
-          )}
-        </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-6 shadow-sm">
+        <div className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm ${mode === 'lead' ? 'p-3' : 'p-3 sm:p-4'}`}>
           {mode === 'lead' && (
-            <div className="space-y-4">
-              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Customer</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="space-y-3">
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#023D95]">Customer</p>
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                   <Field
                     label="Customer Name *"
                     value={form.customer_name}
@@ -955,9 +932,9 @@ function TelecallerCrmBookContent() {
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Vehicle</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#023D95]">Vehicle</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
                     <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">Car 1</p>
                     <CrmCarSearch
@@ -1034,9 +1011,9 @@ function TelecallerCrmBookContent() {
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Status & source</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#023D95]">Status & source</p>
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
                       Lead Status
@@ -1144,7 +1121,7 @@ function TelecallerCrmBookContent() {
                       </select>
                     </div>
                   ) : null}
-                  <div className="sm:col-span-2">
+                  <div>
                     <CrmReferredByField
                       leadId=""
                       value={referredBy}
@@ -1156,47 +1133,127 @@ function TelecallerCrmBookContent() {
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                <p className="mb-3 text-xs font-black uppercase tracking-wide text-[#023D95]">Call activity</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
-                    <Field
-                      label="Notes"
+              <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_240px]">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                      Notes
+                    </label>
+                    <textarea
                       value={form.problem_description}
-                      onChange={(v) => setField('problem_description', v)}
+                      onChange={(e) => setField('problem_description', e.target.value)}
                       placeholder="Kya baat hui — notes"
-                      multiline
-                      className=""
+                      rows={2}
+                      className="h-[52px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
                     />
                   </div>
-                  <div className="sm:col-span-2">
-                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-                      Call / next-call date & time (IST)
-                    </p>
-                    <CrmFollowUpDateTime
-                      date={activityDate}
-                      time={activityTime}
-                      required
-                      onChange={({ date, time }) => {
-                        setActivityDate(date);
-                        setActivityTime(time);
-                      }}
-                    />
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                      Date & time
+                    </label>
+                    <div className="relative">
+                      <div className="flex h-[52px] w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-semibold text-slate-800">
+                        <span>
+                          {activityDate && activityTime
+                            ? new Date(`${activityDate}T${activityTime}`).toLocaleString('en-GB', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : 'Date & time'}
+                        </span>
+                        <Calendar className="h-4 w-4 shrink-0 text-[#023D95]" />
+                      </div>
+                      <input
+                        ref={whenInputRef}
+                        type="datetime-local"
+                        step={600}
+                        value={activityDate && activityTime ? `${activityDate}T${activityTime}` : ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (!raw.includes('T')) {
+                            setActivityDate('');
+                            setActivityTime('');
+                            return;
+                          }
+                          const [ymd, hm] = raw.split('T');
+                          setActivityDate(ymd);
+                          setActivityTime(snapTimeToTenMinutes(hm.slice(0, 5)));
+                        }}
+                        className="absolute inset-0 cursor-pointer opacity-0"
+                        aria-label="Date and time"
+                      />
+                    </div>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  disabled={!canNext || saving}
+                  onClick={next}
+                  className="mt-3 w-full rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#023D95] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {saving ? 'Please wait…' : 'Save Lead'}
+                </button>
+                {!canNext ? (
+                  <p className="mt-1.5 text-xs font-semibold text-amber-600">
+                    {crmDispositionNeedsFullProfile(leadStatusId)
+                      ? 'Name, 10-digit phone, 6-digit pincode, status and call date/time required.'
+                      : 'Name, 10-digit phone, status and call date/time required.'}
+                  </p>
+                ) : null}
               </section>
-
-              <div className="rounded-xl bg-[#023D95]/10 px-4 py-3 text-sm font-semibold text-[#023D95]">
-                Incomplete lead save. Book later from Lead Details — Send Pricing bhi wahan se.
-                {selectedLeadStatus ? ` Status: ${selectedLeadStatus.label}.` : ''}
+            </div>
+            <aside className="overflow-hidden rounded-2xl bg-gradient-to-br from-[#012a66] via-[#023D95] to-[#1d4ed8] p-3.5 text-white shadow-lg lg:sticky lg:top-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-100">Preview</p>
+              <p className="mt-1 text-lg font-black leading-tight">
+                {form.customer_name.trim() || 'Customer name'}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-blue-100">
+                {form.customer_phone || 'Phone number'}
+              </p>
+              <div className="mt-4 space-y-2 rounded-xl bg-white/10 p-3 text-sm">
+                <p>
+                  <span className="text-blue-100">City </span>
+                  {form.city || '—'}
+                  {form.pincode ? ` · ${form.pincode}` : ''}
+                </p>
+                <p>
+                  <span className="text-blue-100">Car </span>
+                  {carDisplay || '—'}
+                </p>
+                {showSecondCar && secondCarDisplay ? (
+                  <p>
+                    <span className="text-blue-100">Car 2 </span>
+                    {secondCarDisplay}
+                  </p>
+                ) : null}
+                <p>
+                  <span className="text-blue-100">Status </span>
+                  {selectedLeadStatus?.label || '—'}
+                  {leadStatusId === 'LOST' && lostReason ? ` · ${lostReason}` : ''}
+                  {leadStatusId === 'OTHER' && otherReason ? ` · ${otherReason}` : ''}
+                </p>
+                <p className="line-clamp-3 text-blue-50">
+                  {form.problem_description.trim() || 'Notes will show here'}
+                </p>
               </div>
+              <p className="mt-3 text-xs font-semibold text-blue-100">
+                {activityDate && activityTime ? `${activityDate} · ${activityTime}` : 'Date & time'}
+              </p>
+            </aside>
             </div>
           )}
 
-          {mode === 'book' && step === 0 && (
+          {mode === 'book' && (
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="min-w-0">
+            <p className="mb-2 text-xs font-bold text-[#023D95]">Step {step + 1} of 5 · {meta.title}</p>
+          {step === 0 && (
             <>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Booking type</p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-4 gap-2">
                 {BOOKING_TYPES.map((t) => {
                   const active = form.booking_type === t.id;
                   const Icon = t.icon;
@@ -1218,7 +1275,7 @@ function TelecallerCrmBookContent() {
                         setCatalogMeta({});
                         setQuote(null);
                       }}
-                      className={`flex flex-col items-center gap-2 rounded-xl border-2 px-3 py-4 text-center transition ${
+                      className={`flex flex-col items-center gap-1 rounded-xl border-2 px-2 py-2 text-center transition ${
                         active
                           ? 'border-[#004AAD] bg-[#004AAD] text-white'
                           : 'border-gray-200 bg-white text-gray-800 hover:border-[#004AAD]/40'
@@ -1290,18 +1347,20 @@ function TelecallerCrmBookContent() {
             </>
           )}
 
-          {mode === 'book' && step === 1 && (
-            <>
+          {step === 1 && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <Field
                 label="Customer Name *"
                 value={form.customer_name}
                 onChange={(v) => setField('customer_name', v)}
+                className=""
               />
               <Field
                 label="Phone *"
                 value={form.customer_phone}
                 onChange={(v) => setField('customer_phone', v.replace(/\D/g, '').slice(0, 15))}
                 inputMode="tel"
+                className=""
               />
               <Field
                 label="Pincode *"
@@ -1309,15 +1368,12 @@ function TelecallerCrmBookContent() {
                 onChange={(v) => setField('pincode', v.replace(/\D/g, '').slice(0, 6))}
                 inputMode="numeric"
                 placeholder="e.g. 400601"
+                className=""
               />
-              <div className="mt-3 rounded-xl bg-[#004AAD]/10 px-4 py-3 text-sm font-semibold text-[#004AAD]">
-                OTP verification skipped for telecaller booking. City: {form.city || '—'} ·{' '}
-                {form.vehicle_make} {form.vehicle_model}
-              </div>
-            </>
+            </div>
           )}
 
-          {mode === 'book' && step === 2 && (
+          {step === 2 && (
             <CrmBookingCatalog
               bookingType={form.booking_type}
               selectedIds={form.service_type_ids}
@@ -1364,7 +1420,7 @@ function TelecallerCrmBookContent() {
             />
           )}
 
-          {mode === 'book' && step === 3 && (
+          {step === 3 && (
             <CrmPickupVisitStep
               city={form.city}
               cityId={form.city_id}
@@ -1401,7 +1457,7 @@ function TelecallerCrmBookContent() {
             />
           )}
 
-          {mode === 'book' && step === 4 && (
+          {step === 4 && (
             <>
               {PAYMENT_MODES.map((m) => {
                 const active = form.payment_mode === m.id;
@@ -1532,6 +1588,48 @@ function TelecallerCrmBookContent() {
               </div>
             </>
           )}
+          {!canNext ? (
+            <p className="mt-3 text-xs font-semibold text-amber-600">
+              {step === 0 && 'Select city and car model (type to search).'}
+              {step === 1 && 'Name, 10-digit phone and 6-digit pincode required.'}
+              {step === 2 && 'Select at least one service / plan.'}
+              {step === 3 &&
+                `Vehicle number, date, time${form.pickup_required ? ', address & landmark' : ''} required.`}
+            </p>
+          ) : null}
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={goBack}
+              className="flex-1 rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-bold text-gray-800 hover:bg-gray-200"
+            >
+              {step === 0 ? 'Close' : 'Back'}
+            </button>
+            <button
+              type="button"
+              disabled={!canNext || saving || quoting}
+              onClick={next}
+              className="flex-[2] rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#023D95] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {saving || quoting ? 'Please wait…' : step === 4 ? 'Create Booking' : 'Continue'}
+            </button>
+          </div>
+            </div>
+            <aside className="overflow-hidden rounded-2xl bg-gradient-to-br from-[#012a66] via-[#023D95] to-[#1d4ed8] p-3.5 text-white shadow-lg lg:sticky lg:top-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-100">Preview</p>
+              <p className="mt-1 text-lg font-black leading-tight">{form.customer_name.trim() || 'Customer name'}</p>
+              <p className="text-sm font-semibold text-blue-100">{form.customer_phone || 'Phone number'}</p>
+              <div className="mt-3 space-y-1.5 rounded-xl bg-white/10 p-3 text-sm">
+                {summaryRows.map((row) => (
+                  <p key={row.label}>
+                    <span className="text-blue-100">{row.label} </span>
+                    {row.value}
+                  </p>
+                ))}
+              </div>
+            </aside>
+            </div>
+          )}
         </div>
 
         {error ? (
@@ -1540,12 +1638,8 @@ function TelecallerCrmBookContent() {
           </div>
         ) : null}
 
-        {!canNext ? (
+        {!canNext && mode !== 'lead' && mode !== 'book' ? (
           <p className="mt-3 text-xs font-semibold text-amber-600">
-            {mode === 'lead' &&
-              (crmDispositionNeedsFullProfile(leadStatusId)
-                ? 'Name, 10-digit phone, 6-digit pincode, status and call date/time required.'
-                : 'Name, 10-digit phone, status and call date/time required.')}
             {mode === 'book' && step === 0 && 'Select city and car model (type to search).'}
             {mode === 'book' && step === 1 && 'Name, 10-digit phone and 6-digit pincode required.'}
             {mode === 'book' && step === 2 && 'Select at least one service / plan.'}
@@ -1555,6 +1649,7 @@ function TelecallerCrmBookContent() {
           </p>
         ) : null}
 
+        {mode === 'lead' || mode === 'book' ? null : (
         <div className="mt-5 flex gap-3">
           <button
             type="button"
@@ -1583,6 +1678,7 @@ function TelecallerCrmBookContent() {
             )}
           </button>
         </div>
+        )}
       </div>
 
       {showAllCoupons ? (

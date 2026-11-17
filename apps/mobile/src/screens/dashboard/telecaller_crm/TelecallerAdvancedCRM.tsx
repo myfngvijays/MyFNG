@@ -589,6 +589,7 @@ export default function TelecallerAdvancedCRM() {
   const [previewGate, setPreviewGate] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
+  const [queueQuery, setQueueQuery] = useState('');
   const [engageSegment, setEngageSegment] = useState('followups');
   const [bookMode, setBookMode] = useState<'book' | 'lead' | null>(null);
   const [bookPrefillPhone, setBookPrefillPhone] = useState<string | null>(null);
@@ -939,6 +940,7 @@ export default function TelecallerAdvancedCRM() {
       }
       if (screen === 'queue' || screen === 'leads' || screen === 'TelecallerLeads') {
         setQueueFilter(params?.filter || 'all');
+        if (typeof params?.q === 'string') setQueueQuery(params.q);
         setTab('queue');
         return;
       }
@@ -1180,6 +1182,7 @@ export default function TelecallerAdvancedCRM() {
                 }
                 if (screen === 'queue') {
                   setQueueFilter(params?.filter || 'all');
+                  if (typeof params?.q === 'string') setQueueQuery(params.q);
                   setTab('queue');
                   return;
                 }
@@ -1219,6 +1222,7 @@ export default function TelecallerAdvancedCRM() {
               {...dateProps}
               managerOps={isLeadManager}
               initialFilter={queueFilter}
+              initialQuery={queueQuery}
               onFilterChange={persistQueueFilter}
               onOpenLead={(id) => openLead(id, true)}
               onEditLead={(id) => openLead(id, true)}

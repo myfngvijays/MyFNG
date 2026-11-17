@@ -55,12 +55,19 @@ function leadMessagePreview(lead: Record<string, any>): string | null {
 function crmLeadSearchOr(q: string): string {
   const raw = String(q || '').trim().replace(/[%_,]/g, '');
   const compact = raw.replace(/[\s-]/g, '').toUpperCase();
+  const digits = raw.replace(/\D/g, '');
+  const phone10 = digits.length >= 10 ? digits.slice(-10) : '';
   const parts = [
     `customer_name.ilike.%${raw}%`,
     `customer_phone.ilike.%${raw}%`,
+    `customer_alternate_phone.ilike.%${raw}%`,
     `lead_number.ilike.%${raw}%`,
     `vehicle_number.ilike.%${raw}%`,
   ];
+  if (phone10 && phone10 !== raw) {
+    parts.push(`customer_phone.ilike.%${phone10}%`);
+    parts.push(`customer_alternate_phone.ilike.%${phone10}%`);
+  }
   if (compact && compact !== raw.toUpperCase()) {
     parts.push(`vehicle_number.ilike.%${compact}%`);
   }

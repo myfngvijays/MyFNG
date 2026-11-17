@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
-import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye, Flag } from 'lucide-react';
+import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye, Flag, RefreshCw } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { istYmd, istDayBounds } from '@/lib/telecaller/crmDateRange';
@@ -381,11 +381,22 @@ export default function FollowUpsPage() {
     <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full min-w-0 max-w-none space-y-3 sm:space-y-4">
         {/* Header */}
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Reminders / Follow-ups</h1>
-          <p className="text-text-body text-xs sm:text-sm mt-1">
-            {scopeAll ? 'Team reminders & follow-ups' : 'Your scheduled follow-ups'}
-          </p>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Reminders / Follow-ups</h1>
+            <p className="text-text-body text-xs sm:text-sm mt-1">
+              {scopeAll ? 'Team reminders & follow-ups' : 'Your scheduled follow-ups'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchFollowUps()}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#023D95] hover:bg-slate-50"
+            aria-label="Refresh"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
 
         {/* Filters & Search */}

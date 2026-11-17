@@ -36,13 +36,71 @@ function inr(n: number) {
   return `₹${Math.round(Number(n || 0)).toLocaleString('en-IN')}`;
 }
 
-function isPackageLike(name: string) {
-  const n = String(name || '').toLowerCase();
+function oilGroup(name: string, description?: string | null): 'full' | 'semi' | 'other' {
+  const text = `${name} ${description || ''}`.toLowerCase();
+  const semi =
+    text.includes('semi synthetic') ||
+    text.includes('semi-synthetic') ||
+    text.includes('(semi)') ||
+    /\bsemi\b/.test(text);
+  const full =
+    text.includes('fully synthetic') ||
+    text.includes('full synthetic') ||
+    text.includes('(fully)') ||
+    text.includes('(full)') ||
+    /\bfully\b/.test(text);
+  if (semi && !full) return 'semi';
+  if (full && !semi) return 'full';
+  return 'other';
+}
+
+function ServiceCards({
+  items,
+  selectedIds,
+  priceMap,
+  showQuotePrices,
+  onPick,
+}: {
+  items: ServiceTypeRow[];
+  selectedIds: string[];
+  priceMap: Record<string, number>;
+  showQuotePrices?: boolean;
+  onPick: (id: string) => void;
+}) {
+  if (items.length === 0) return null;
   return (
-    n.includes('package') ||
-    /\b(basic|general|premium|platinum)\s+service\b/.test(n) ||
-    n.includes('tune up') ||
-    n.includes('wheel care')
+    <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-4">
+      {items.map((svc) => {
+        const selected = selectedIds.includes(svc.id);
+        const price = priceMap[svc.id];
+        return (
+          <button
+            key={svc.id}
+            type="button"
+            onClick={() => onPick(svc.id)}
+            className={`flex min-h-[88px] flex-col rounded-xl border-2 p-3 text-left transition ${
+              selected
+                ? 'border-[#004AAD] bg-[#004AAD]/5'
+                : 'border-gray-200 bg-white hover:border-[#004AAD]/40'
+            }`}
+          >
+            <span className="flex items-start gap-2">
+              <span
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 ${
+                  selected ? 'border-[#004AAD] bg-[#004AAD]' : 'border-gray-300 bg-white'
+                }`}
+              >
+                {selected ? <Check className="h-3 w-3 text-white" /> : null}
+              </span>
+              <span className="text-sm font-bold leading-snug text-gray-900">{svc.name}</span>
+            </span>
+            {showQuotePrices && price != null && price > 0 ? (
+              <span className="mt-auto pt-2 text-sm font-bold text-[#004AAD]">{inr(price)}</span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -118,18 +176,9 @@ export default function CrmBookingCatalog({
         }));
 
         if (type === 'PERIODIC') {
-          const periodic = rows.filter(
-            (s) =>
-              String(s.category || '').includes('PERIODIC') ||
-              isPackageLike(s.name),
-          );
-          rows = periodic.length > 0 ? periodic : rows.filter((s) => isPackageLike(s.name));
+          rows = rows.filter((s) => String(s.category || '').includes('PERIODIC'));
         } else if (type === 'OTHER_SERVICES') {
-          rows = rows.filter(
-            (s) =>
-              !String(s.category || '').includes('PERIODIC') &&
-              !isPackageLike(s.name),
-          );
+          rows = rows.filter((s) => !String(s.category || '').includes('PERIODIC'));
         }
 
         setServices(rows);
@@ -374,41 +423,51 @@ export default function CrmBookingCatalog({
         </div>
       ) : services.length === 0 ? (
         <p className="mt-4 text-sm text-gray-500">No services found for this category.</p>
-      ) : (
-        <div className="mt-4 space-y-2">
-          {services.map((svc) => {
-            const selected = selectedIds.includes(svc.id);
-            const price = priceMap[svc.id];
+      ) : type === 'PERIODIC' ? (
+        <div className="mt-3 space-y-4">
+          {(
+            [
+              ['Fully Synthetic', 'full'],
+              ['Semi Synthetic', 'semi'],
+            ] as const
+          ).map(([label, key]) => {
+            const items = services.filter((svc) => oilGroup(svc.name, svc.description) === key);
+            if (items.length === 0) return null;
             return (
-              <button
-                key={svc.id}
-                type="button"
-                onClick={() => toggleService(svc.id)}
-                className={`flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${
-                  selected
-                    ? 'border-[#004AAD] bg-[#004AAD]/5'
-                    : 'border-gray-200 bg-white hover:border-[#004AAD]/40'
-                }`}
-              >
-                <div
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
-                    selected ? 'border-[#004AAD] bg-[#004AAD]' : 'border-gray-300 bg-white'
-                  }`}
-                >
-                  {selected ? <Check className="h-3 w-3 text-white" /> : null}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-gray-900">{svc.name}</p>
-                  {svc.description ? (
-                    <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{svc.description}</p>
-                  ) : null}
-                </div>
-                {showQuotePrices && price != null && price > 0 ? (
-                  <span className="shrink-0 text-sm font-bold text-[#004AAD]">{inr(price)}</span>
-                ) : null}
-              </button>
+              <div key={key}>
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#023D95]">{label}</p>
+                <ServiceCards
+                  items={items}
+                  selectedIds={selectedIds}
+                  priceMap={priceMap}
+                  showQuotePrices={showQuotePrices}
+                  onPick={toggleService}
+                />
+              </div>
             );
           })}
+          {services.some((svc) => oilGroup(svc.name, svc.description) === 'other') ? (
+            <div>
+              <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#023D95]">Other periodic</p>
+              <ServiceCards
+                items={services.filter((svc) => oilGroup(svc.name, svc.description) === 'other')}
+                selectedIds={selectedIds}
+                priceMap={priceMap}
+                showQuotePrices={showQuotePrices}
+                onPick={toggleService}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-3">
+          <ServiceCards
+            items={services}
+            selectedIds={selectedIds}
+            priceMap={priceMap}
+            showQuotePrices={showQuotePrices}
+            onPick={toggleService}
+          />
         </div>
       )}
       {notesField}

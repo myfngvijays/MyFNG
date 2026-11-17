@@ -447,13 +447,10 @@ export default function ZonePricesPage() {
   };
 
   return (
-    <div className={fullWidth ? 'w-full bg-gray-50 p-4 sm:p-6' : 'min-h-screen bg-gray-50 p-4 sm:p-6'}>
+    <div className={fullWidth ? 'w-full bg-gray-50 px-3 py-3' : 'min-h-screen bg-gray-50 p-4 sm:p-6'}>
       <div className={fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto max-w-6xl'}>
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Zone Prices</h1>
-            <p className="mt-1 text-sm text-gray-500">Pick a zone, then a car class, then a service.</p>
-          </div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-bold text-gray-900">Zone Prices</h1>
           <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-gray-700">
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -527,7 +524,7 @@ export default function ZonePricesPage() {
 
             <section className="mb-3">
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Car class</h2>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-6 gap-2">
                 {classChoices.map((name) => {
                   const meta = classMeta(name);
                   const selected = carClass === name;
@@ -536,10 +533,10 @@ export default function ZonePricesPage() {
                       key={name}
                       type="button"
                       onClick={() => setCarClass(name)}
-                      className={`flex flex-col items-center rounded-2xl border bg-white px-2 py-2 text-center text-gray-900 ${selected ? 'border-blue-600 ring-2 ring-blue-200 shadow-sm' : 'border-gray-200 hover:border-gray-300'}`}
+                      className={`flex flex-col items-center rounded-xl border bg-white px-1.5 py-1.5 text-center text-gray-900 ${selected ? 'border-blue-600 ring-2 ring-blue-200 shadow-sm' : 'border-gray-200 hover:border-gray-300'}`}
                     >
-                      <img src={meta.image} alt="" className="h-10 w-full object-contain" />
-                      <span className="mt-1 text-[11px] font-extrabold leading-tight">{meta.label}</span>
+                      <img src={meta.image} alt="" className="h-12 w-full object-contain" />
+                      <span className="mt-0.5 text-[11px] font-extrabold leading-tight">{meta.label}</span>
                     </button>
                   );
                 })}
@@ -547,16 +544,17 @@ export default function ZonePricesPage() {
             </section>
 
             <section>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Service</h2>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500">Service</h2>
                 <button
                   type="button"
                   onClick={() => setCategory(SHOW_ALL)}
-                  className={`rounded-2xl border bg-white p-2 text-center ${showAll ? 'border-blue-300 ring-2 ring-blue-200/70 shadow-md' : 'border-gray-100 hover:border-gray-200'}`}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-bold ${showAll ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 ring-1 ring-gray-200'}`}
                 >
-                  <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-gray-50 text-[10px] font-extrabold text-blue-700">All</div>
-                  <div className="mt-1 text-[11px] font-extrabold leading-tight text-gray-900">Show all</div>
+                  Show all
                 </button>
+              </div>
+              <div className="grid grid-cols-6 gap-2">
                 {visibleCategories.map((item) => {
                   const selected = category === item.name;
                   return (

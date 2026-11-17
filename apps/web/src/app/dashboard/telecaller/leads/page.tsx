@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, Suspense, useRef, useMemo, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, Suspense, useRef, useMemo, useLayoutEffect, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
@@ -44,6 +44,7 @@ import {
   Download,
   Upload,
   UserPlus,
+  RefreshCw,
 } from 'lucide-react';
 import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel';
 import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkActionsBar';
@@ -238,6 +239,7 @@ function TelecallerCrmLeadsContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const bootedRef = useRef(false);
+  const loadGen = useRef(0);
   const [q, setQ] = useState(qParam || '');
   const [appliedQ, setAppliedQ] = useState(qParam || '');
   const [filter, setFilter] = useState(filterParam || 'all');
@@ -303,7 +305,10 @@ function TelecallerCrmLeadsContent() {
   const [columnsMenuBox, setColumnsMenuBox] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const [columnsPortalReady, setColumnsPortalReady] = useState(false);
   const advancedMenuRef = useRef<HTMLDivElement>(null);
+  const advancedPanelRef = useRef<HTMLDivElement>(null);
+  const dateBtnRef = useRef<HTMLButtonElement>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [advancedBox, setAdvancedBox] = useState<{ top: number; left: number } | null>(null);
   const [selectedOnly, setSelectedOnly] = useState(false);
 
   useEffect(() => {
@@ -318,11 +323,36 @@ function TelecallerCrmLeadsContent() {
       if (columnsMenuOpen && !columnsMenuRef.current?.contains(t) && !menu?.contains(t)) {
         setColumnsMenuOpen(false);
       }
-      if (showAdvanced && !advancedMenuRef.current?.contains(t)) setShowAdvanced(false);
+      if (
+        showAdvanced &&
+        !advancedMenuRef.current?.contains(t) &&
+        !advancedPanelRef.current?.contains(t)
+      ) {
+        setShowAdvanced(false);
+      }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [columnsMenuOpen, showAdvanced]);
+
+  useLayoutEffect(() => {
+    if (!showAdvanced) return;
+    const place = () => {
+      const el = advancedMenuRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = 288;
+      const left = Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8);
+      setAdvancedBox({ top: r.bottom + 6, left });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [showAdvanced]);
 
   useEffect(() => {
     setColumnsPortalReady(true);
@@ -908,8 +938,19 @@ function TelecallerCrmLeadsContent() {
     });
   };
 
+  const switchView = (next: 'list' | 'chart') => {
+    if (next === viewMode) return;
+    loadGen.current += 1;
+    setViewMode(next);
+    if (next === 'list') {
+      setLeads([]);
+      setLoading(true);
+    }
+  };
+
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!prefsReady) return;
+    const gen = ++loadGen.current;
     const silent = Boolean(opts?.silent);
     if (!silent) {
       if (bootedRef.current) setRefreshing(true);
@@ -946,29 +987,35 @@ function TelecallerCrmLeadsContent() {
         let pageNum = 1;
         let all: any[] = [];
         let total = 0;
+        let scope = 0;
         for (;;) {
+          if (loadGen.current !== gen) return;
           const params = new URLSearchParams(baseParams);
           params.set('for_chart', '1');
           params.set('limit', String(pageLimit));
           params.set('page', String(pageNum));
           const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
           const data = await res.json();
+          if (loadGen.current !== gen) return;
           if (!res.ok) throw new Error(data?.error || 'Failed');
           const batch = Array.isArray(data?.leads) ? data.leads : [];
           total = Number(data?.total || 0);
+          scope = Number(data?.scope_total || 0);
           all = all.concat(batch);
           if (batch.length < pageLimit || all.length >= total || pageNum >= 40) break;
           pageNum += 1;
         }
+        if (loadGen.current !== gen) return;
         setLeads(all);
         setTotalLeads(total || all.length);
-        setScopeTotal(Number(data?.scope_total || total || all.length));
+        setScopeTotal(scope || total || all.length);
       } else {
         const params = new URLSearchParams(baseParams);
         params.set('limit', String(pageSize));
         params.set('page', String(page));
         const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
         const data = await res.json();
+        if (loadGen.current !== gen) return;
         if (!res.ok) throw new Error(data?.error || 'Failed');
         setLeads(Array.isArray(data?.leads) ? data.leads : []);
         setTotalLeads(Number(data?.total || 0));
@@ -982,11 +1029,13 @@ function TelecallerCrmLeadsContent() {
         setScopeTotal(0);
       }
     } finally {
-      if (!silent) {
-        setLoading(false);
-        setRefreshing(false);
+      if (loadGen.current === gen) {
+        if (!silent) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+        bootedRef.current = true;
       }
-      bootedRef.current = true;
     }
   }, [
     prefsReady,
@@ -1318,6 +1367,15 @@ function TelecallerCrmLeadsContent() {
             >
               Clear
             </button>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#023D95] hover:bg-slate-50"
+              aria-label="Refresh"
+              title="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
           </div>
           <div className="ml-auto shrink-0">
             <LeadsSavedViews snapshot={viewSnapshot} onApply={applySavedView} />
@@ -1381,8 +1439,12 @@ function TelecallerCrmLeadsContent() {
             </div>
 
             <button
+              ref={dateBtnRef}
               type="button"
-              onClick={() => setDatePickerOpen(true)}
+              onClick={() => {
+                setShowAdvanced(false);
+                setDatePickerOpen((v) => !v);
+              }}
               className={`${FILTER_FIELD} inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-left text-xs font-semibold text-slate-800 hover:border-blue-300`}
               title="Select date"
             >
@@ -1474,7 +1536,10 @@ function TelecallerCrmLeadsContent() {
             <div className={FILTER_FIELD} ref={advancedMenuRef}>
               <button
                 type="button"
-                onClick={() => setShowAdvanced((v) => !v)}
+                onClick={() => {
+                  setDatePickerOpen(false);
+                  setShowAdvanced((v) => !v);
+                }}
                 className="inline-flex h-8 w-full items-center justify-between gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-800"
                 aria-expanded={showAdvanced}
               >
@@ -1491,8 +1556,13 @@ function TelecallerCrmLeadsContent() {
                   className={`h-4 w-4 shrink-0 text-slate-500 transition ${showAdvanced ? 'rotate-180' : ''}`}
                 />
               </button>
-              {showAdvanced ? (
-                <div className="absolute right-0 z-40 mt-1.5 max-h-[70vh] w-72 max-w-[80vw] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+              {showAdvanced && advancedBox
+                ? createPortal(
+                <div
+                  ref={advancedPanelRef}
+                  className="fixed z-[80] max-h-[70vh] w-72 max-w-[80vw] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg"
+                  style={{ top: advancedBox.top, left: advancedBox.left }}
+                >
                   {isLeadManager ? (
                     <div className="mb-2 space-y-2 border-b border-slate-100 pb-2">
                       <label className="block px-2 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
@@ -1666,8 +1736,10 @@ function TelecallerCrmLeadsContent() {
                       {opt.label}
                     </label>
                   ))}
-                </div>
-              ) : null}
+                </div>,
+                document.body,
+              )
+                : null}
             </div>
 
             <div className="contents">
@@ -1706,7 +1778,7 @@ function TelecallerCrmLeadsContent() {
               <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
                 <button
                   type="button"
-                  onClick={() => setViewMode('chart')}
+                  onClick={() => switchView('chart')}
                   title="Chart view"
                   aria-pressed={viewMode === 'chart'}
                   style={
@@ -1722,7 +1794,7 @@ function TelecallerCrmLeadsContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode('list')}
+                  onClick={() => switchView('list')}
                   title="List view"
                   aria-pressed={viewMode === 'list'}
                   style={
@@ -1841,6 +1913,7 @@ function TelecallerCrmLeadsContent() {
 
         <CrmDatePickerModal
           open={datePickerOpen}
+          anchorRef={dateBtnRef}
           onClose={() => setDatePickerOpen(false)}
           value={{ datePreset, customStart, customEnd }}
           onApply={(next) => {

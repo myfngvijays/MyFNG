@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
@@ -28,6 +28,8 @@ import {
   MapPin,
   Tag,
   TrendingUp,
+  Search,
+  RefreshCw,
 } from 'lucide-react';
 import { shouldKeepPreviousDashboardKpis } from '@/lib/telecaller/crmDashboardGuard';
 import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
@@ -156,7 +158,9 @@ function formatReminderClock(iso?: string | null): string {
 
 export default function TelecallerCrmHomePage() {
   const pathname = usePathname();
+  const router = useRouter();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
+  const [leadQ, setLeadQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [kpis, setKpis] = useState<Kpis>({});
@@ -382,6 +386,61 @@ export default function TelecallerCrmHomePage() {
                   Floor status
                 </Link>
               ) : null}
+            </div>
+
+            <form
+              className="flex min-w-0 w-full flex-1 items-center gap-2 lg:max-w-md"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const q = leadQ.trim();
+                if (!q) return;
+                router.push(`${base}/leads?q=${encodeURIComponent(q)}`);
+              }}
+            >
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#004AAD]" />
+                <input
+                  value={leadQ}
+                  onChange={(e) => setLeadQ(e.target.value)}
+                  placeholder="Search lead by name, phone, vehicle"
+                  className="w-full rounded-xl border border-white bg-white py-2.5 pl-9 pr-3 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                className="inline-flex h-10 shrink-0 items-center rounded-xl bg-white px-3 text-xs font-bold text-[#023D95]"
+              >
+                Search
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRefreshing(true);
+                  void load(true);
+                }}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#023D95]"
+                aria-label="Refresh"
+                title="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </form>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href={`${base}/book?mode=book`}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-white/40 bg-white/10 px-3 text-xs font-bold text-white hover:bg-white/20"
+              >
+                <Calendar className="h-4 w-4" />
+                Book
+              </Link>
+              <Link
+                href={`${base}/book?mode=lead`}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-bold text-[#023D95]"
+              >
+                <Phone className="h-4 w-4" />
+                Add Lead
+              </Link>
             </div>
 
             <div className="relative z-20 w-full sm:ml-auto sm:w-44 sm:shrink-0">

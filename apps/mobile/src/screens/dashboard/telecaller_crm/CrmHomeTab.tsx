@@ -8,6 +8,7 @@ import {
   RefreshControl,
   AppState,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isPartnerPreview } from '../../../lib/partnerPreview';
@@ -118,6 +119,7 @@ export default function CrmHomeTab({
   isActive = true,
   onRemindersCount,
 }: Props) {
+  const [leadQ, setLeadQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<any>(null);
@@ -290,6 +292,40 @@ export default function CrmHomeTab({
           </TouchableOpacity>
         </View>
       ) : null}
+      <View style={styles.searchRow}>
+        <TextInput
+          value={leadQ}
+          onChangeText={setLeadQ}
+          placeholder="Search lead by name, phone, vehicle"
+          placeholderTextColor="#94A3B8"
+          style={styles.searchInput}
+          returnKeyType="search"
+          onSubmitEditing={() => {
+            const q = leadQ.trim();
+            if (!q) return;
+            onNavigate('queue', { q });
+          }}
+        />
+        <TouchableOpacity
+          style={styles.searchBtn}
+          onPress={() => {
+            const q = leadQ.trim();
+            if (!q) return;
+            onNavigate('queue', { q });
+          }}
+        >
+          <Ionicons name="search" size={18} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={() => {
+            setRefreshing(true);
+            void load(true);
+          }}
+        >
+          <Ionicons name="refresh" size={18} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
       {loading && !data ? (
         <View style={{ paddingVertical: 12 }}>
           <CarLoading size="compact" label="Loading MyFNG CRM..." />
@@ -686,6 +722,36 @@ export default function CrmHomeTab({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { paddingHorizontal: SPACING.md, paddingTop: 12, paddingBottom: 40 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  searchInput: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D6E4FF',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  searchBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D6E4FF',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   muted: { color: COLORS.textSecondary },
   loadBanner: {

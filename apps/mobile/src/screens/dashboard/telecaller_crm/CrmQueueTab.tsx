@@ -46,6 +46,7 @@ const PRIORITY_OPTIONS = [
 
 type Props = {
   initialFilter?: string;
+  initialQuery?: string;
   onOpenLead: (leadId: string) => void;
   onEditLead?: (leadId: string) => void;
   onFilterChange?: (filter: string) => void;
@@ -172,6 +173,7 @@ function assigneeInitials(name: string): string {
 
 export default function CrmQueueTab({
   initialFilter = 'all',
+  initialQuery = '',
   onOpenLead,
   onEditLead,
   onFilterChange,
@@ -189,10 +191,15 @@ export default function CrmQueueTab({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(initialQuery);
   /** Debounced search text (matches web ~350ms) — drives API loads */
-  const [appliedQ, setAppliedQ] = useState('');
+  const [appliedQ, setAppliedQ] = useState(initialQuery);
   const [filter, setFilter] = useState(initialFilter);
+  useEffect(() => {
+    if (!initialQuery.trim()) return;
+    setQ(initialQuery);
+    setAppliedQ(initialQuery);
+  }, [initialQuery]);
   const [statusFilters, setStatusFilters] = useState(DEFAULT_STATUS_FILTERS);
   const [crmStatusChoices, setCrmStatusChoices] = useState<Array<{ id: string; label: string }>>([
     { id: 'FRESH', label: 'Fresh' },

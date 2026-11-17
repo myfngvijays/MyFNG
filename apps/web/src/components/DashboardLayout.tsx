@@ -1373,7 +1373,9 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
 
       {/* Main: padding (not margin) so width:100% is not clipped on the right */}
       <main
-        className="admin-main min-h-[100dvh] w-full max-w-full pb-[env(safe-area-inset-bottom)] lg:pl-20"
+        className={`admin-main min-h-[100dvh] w-full max-w-full pb-[env(safe-area-inset-bottom)] transition-[padding] duration-300 ${
+          waWorkspaceOpen || sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
+        }`}
         style={{ paddingTop: headerHeightPx }}
       >
         <div className="admin-page dashboard-page">{children}</div>

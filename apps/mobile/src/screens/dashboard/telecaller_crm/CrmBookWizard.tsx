@@ -792,9 +792,7 @@ export default function CrmBookWizard({
           <>
             <Text style={styles.stepOf}>Quick save</Text>
             <Text style={styles.stepTitle}>Add Lead</Text>
-            <Text style={styles.stepSub}>
-              Name, phone, pin → city auto · call notes & status
-            </Text>
+            <Text style={styles.stepSub}>Name, phone, pin. Preview neeche update hota rahega.</Text>
           </>
         )}
       </View>
@@ -807,6 +805,16 @@ export default function CrmBookWizard({
       >
         {mode === 'lead' && (
           <>
+            <View style={styles.previewCard}>
+              <Text style={styles.previewLabel}>Preview</Text>
+              <Text style={styles.previewName}>{form.customer_name.trim() || 'Customer name'}</Text>
+              <Text style={styles.previewPhone}>{form.customer_phone || 'Phone number'}</Text>
+              <Text style={styles.previewMeta}>
+                {form.city || 'City'}{form.pincode ? ` · ${form.pincode}` : ''}
+              </Text>
+              <Text style={styles.previewMeta}>{carDisplay || 'Car'}</Text>
+              <Text style={styles.previewMeta}>{selectedLeadStatus?.label || 'Status'}</Text>
+            </View>
             <Field
               label="Customer Name *"
               value={form.customer_name}
@@ -1077,7 +1085,7 @@ export default function CrmBookWizard({
               style={[styles.input, { minHeight: 72, textAlignVertical: 'top' }]}
             />
 
-            <Text style={styles.sectionLabel}>Call / next-call date & time (IST)</Text>
+            <Text style={styles.sectionLabel}>Date & time</Text>
             <CrmFollowUpDateTime
               date={activityDate}
               time={activityTime}
@@ -1729,6 +1737,18 @@ const styles = StyleSheet.create({
   stepOf: { fontSize: 12, fontWeight: '700', color: COLORS.primary, marginBottom: 2 },
   stepTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textHeading },
   stepSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
+  previewCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    padding: 12,
+    marginBottom: 12,
+  },
+  previewLabel: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, letterSpacing: 0.4 },
+  previewName: { fontSize: 18, fontWeight: '800', color: COLORS.textHeading, marginTop: 4 },
+  previewPhone: { fontSize: 14, fontWeight: '700', color: COLORS.primary, marginTop: 2 },
+  previewMeta: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
   scroll: { flex: 1, minHeight: 0 },
   content: { paddingHorizontal: SPACING.md, paddingBottom: 16, flexGrow: 1 },
   sectionLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6, marginTop: 4 },
