@@ -539,17 +539,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // - booking_confirmed ONLY when telecaller sets Booking Confirmed (explicit flag / new VALIDATED)
     // - booking_updated ONLY for already-confirmed leads when services change (never booking_confirmed)
     // - Interested / Lost / etc. → save only, no booking WhatsApp
-    const nextStatus = String(update.status || updated?.status || existingLead.status || '')
+    const bookingNextStatus = String(update.status || updated?.status || existingLead.status || '')
       .trim()
       .toUpperCase();
-    const prevStatus = String(existingLead.status || '').trim().toUpperCase();
+    const bookingPrevStatus = String(existingLead.status || '').trim().toUpperCase();
     const sendBookingConfirmedWa =
       body?.send_booking_confirmed_whatsapp === true ||
-      (nextStatus === 'VALIDATED' && prevStatus !== 'VALIDATED');
+      (bookingNextStatus === 'VALIDATED' && bookingPrevStatus !== 'VALIDATED');
     const sendBookingUpdatedWa =
       !sendBookingConfirmedWa &&
       servicesChanged &&
-      (prevStatus === 'VALIDATED' || nextStatus === 'VALIDATED') &&
+      (bookingPrevStatus === 'VALIDATED' || bookingNextStatus === 'VALIDATED') &&
       body?.send_booking_updated_whatsapp !== false;
 
     let whatsapp: any = null;
