@@ -29,7 +29,7 @@ async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClient
 }
 
 function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
-  return roleCode === 'SUPER_ADMIN' || roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR';
+  return roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN' || roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR';
 }
 
 export async function PATCH(
@@ -56,7 +56,7 @@ export async function PATCH(
     if (getErr) return NextResponse.json({ error: getErr.message }, { status: 500 });
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
     const viewerWorkshopId = (profile.workshop_id as string | null) ?? null;
 
     if (!isSuperAdmin) {
@@ -144,7 +144,7 @@ export async function DELETE(request: NextRequest, { params }: any) {
     if (getErr) return NextResponse.json({ error: getErr.message }, { status: 500 });
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
     const viewerWorkshopId = (profile.workshop_id as string | null) ?? null;
 
     if (!isSuperAdmin) {

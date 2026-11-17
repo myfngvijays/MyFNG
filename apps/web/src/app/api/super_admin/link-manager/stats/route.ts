@@ -21,7 +21,7 @@ async function requireSuperAdmin(request: NextRequest) {
     .single();
 
   const roleCode = (userProfile?.role as any)?.role_code;
-  if (profileError || roleCode !== 'SUPER_ADMIN') {
+  if (profileError || roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 

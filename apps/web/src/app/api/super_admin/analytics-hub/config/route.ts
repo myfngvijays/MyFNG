@@ -25,7 +25,7 @@ export async function GET() {
 
     return NextResponse.json({
       config,
-      can_edit: auth.roleCode === 'SUPER_ADMIN',
+      can_edit: auth.roleCode === 'SUPER_ADMIN' || auth.roleCode === 'SUB_ADMIN',
       meta_pixel_id: DEFAULT_META_PIXEL_ID,
     });
   } catch (error: unknown) {
@@ -40,7 +40,7 @@ export async function PUT(request: NextRequest) {
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    if (auth.roleCode !== 'SUPER_ADMIN') {
+    if (auth.roleCode !== 'SUPER_ADMIN' && auth.roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only Super Admin can edit analytics settings' }, { status: 403 });
     }
 

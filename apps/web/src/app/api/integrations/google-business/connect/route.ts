@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     const userProfile = await resolveUserProfile(supabase as any, user as any);
     const roleCode = String((userProfile?.roles as any)?.role_code || '');
-    if (roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only SUPER_ADMIN can connect Google Business' }, { status: 403 });
     }
 

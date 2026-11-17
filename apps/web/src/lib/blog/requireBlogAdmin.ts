@@ -17,7 +17,7 @@ export async function requireBlogAdmin() {
     .eq('id', user.id)
     .maybeSingle();
   const roleCode = (profile?.roles as { role_code?: string } | null)?.role_code;
-  if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+  if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
     return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
   return { userId: user.id, roleCode };

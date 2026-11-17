@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const auth = await requireCompetitorIntelAccess(supabase);
     if (!auth.ok) return auth.res;
-    if (auth.roleCode !== 'SUPER_ADMIN') {
+    if (auth.roleCode !== 'SUPER_ADMIN' && auth.roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only Super Admin can add competitors' }, { status: 403 });
     }
 

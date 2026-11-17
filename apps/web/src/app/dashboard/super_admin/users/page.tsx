@@ -79,7 +79,7 @@ function UserActionButton({
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${ACTION_BTN_TONES[tone]} transition`}
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${ACTION_BTN_TONES[tone]} transition`}
     >
       {children}
     </button>
@@ -573,12 +573,40 @@ export default function UserManagementPage() {
     if (filterStatus === 'active') list = list.filter((u) => u.is_active);
     if (filterStatus === 'inactive') list = list.filter((u) => !u.is_active);
     list.sort((a, b) => {
-      const ta = new Date(a.created_at || 0).getTime();
-      const tb = new Date(b.created_at || 0).getTime();
-      return tb - ta;
+      const ac = String(a.role?.role_code || 'UNKNOWN').toUpperCase();
+      const bc = String(b.role?.role_code || 'UNKNOWN').toUpperCase();
+      const ai = roleSortIndex(ac);
+      const bi = roleSortIndex(bc);
+      if (ai !== bi) return ai - bi;
+      const roleName = String(a.role?.role_name || ac).localeCompare(String(b.role?.role_name || bc));
+      if (roleName !== 0) return roleName;
+      return String(a.full_name || a.email || '').localeCompare(String(b.full_name || b.email || ''), undefined, {
+        sensitivity: 'base',
+      });
     });
     return list;
   }, [roleScopedUsers, filterStatus]);
+
+  const tableRows = useMemo(() => {
+    const rows: Array<
+      | { kind: 'group'; code: string; name: string; count: number }
+      | { kind: 'user'; user: (typeof filteredUsers)[number] }
+    > = [];
+    let last = '';
+    for (const user of filteredUsers) {
+      const code = String(user.role?.role_code || 'UNKNOWN').toUpperCase();
+      if (filterRole === 'all' && code !== last) {
+        const name = user.role?.role_name || code;
+        const count = filteredUsers.filter(
+          (u) => String(u.role?.role_code || 'UNKNOWN').toUpperCase() === code,
+        ).length;
+        rows.push({ kind: 'group', code, name, count });
+        last = code;
+      }
+      rows.push({ kind: 'user', user });
+    }
+    return rows;
+  }, [filteredUsers, filterRole]);
 
   const filteredIds = useMemo(
     () => filteredUsers.map((u) => String(u.id)).filter(Boolean),
@@ -751,15 +779,16 @@ export default function UserManagementPage() {
               {filterRole !== 'all' ? ` · ${roleStatusCounts.total} in role` : ` of ${summary.total}`}
             </span>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <button
               type="button"
               onClick={() => selectRole('all')}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+              className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
                 filterRole === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
               }`}
             >
-              All ({summary.total})
+              <span className="truncate">All</span>
+              <span className="shrink-0 tabular-nums">{summary.total}</span>
             </button>
             {roleStats.map((r) => {
               const style = getRoleStyle(r.code);
@@ -769,12 +798,15 @@ export default function UserManagementPage() {
                   key={r.code}
                   type="button"
                   onClick={() => selectRole(selected ? 'all' : r.code)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                  className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition text-left min-w-0 ${
                     selected ? 'bg-blue-600 text-white border-blue-600' : `${style.badge} border-transparent hover:opacity-90`
                   }`}
                 >
-                  {r.name} · {r.count}
-                  {!selected ? <span className="opacity-70"> ({r.active} active)</span> : null}
+                  <span className="min-w-0 truncate">{r.name}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {r.count}
+                    {!selected ? <span className="opacity-70"> · {r.active}</span> : null}
+                  </span>
                 </button>
               );
             })}
@@ -824,8 +856,17 @@ export default function UserManagementPage() {
 
         {/* Users Table - Desktop */}
         <div className="bg-white rounded-lg shadow overflow-hidden hidden lg:block">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="overflow-x-hidden">
+            <table className="w-full table-fixed divide-y divide-gray-200">
+              <colgroup>
+                <col className="w-10" />
+                <col />
+                <col className="w-[20%]" />
+                <col className="w-[13%]" />
+                <col className="w-[92px]" />
+                <col className="w-[88px]" />
+                <col className="w-[228px]" />
+              </colgroup>
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 md:px-4 py-2 md:py-3 w-10">
@@ -860,13 +901,29 @@ export default function UserManagementPage() {
                   <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Joined
                   </th>
-                  <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[240px]">
+                  <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-[196px]">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredUsers.map((user) => {
+                {tableRows.map((row) => {
+                  if (row.kind === 'group') {
+                    const style = getRoleStyle(row.code);
+                    return (
+                      <tr key={`group-${row.code}`} className="bg-slate-100">
+                        <td colSpan={7} className="px-4 py-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${style.badge}`}>
+                              {row.name}
+                            </span>
+                            <span className="text-xs font-medium text-gray-500 tabular-nums">{row.count}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const user = row.user;
                   const roleStyle = getRoleStyle(user.role?.role_code || user.role_code);
                   const userId = String(user.id || '');
                   const isSelected = userId ? selectedIds.has(userId) : false;
@@ -886,33 +943,33 @@ export default function UserManagementPage() {
                           )}
                         </button>
                       </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4">
-                        <div className="flex items-center">
-                          <div className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${roleStyle.avatar}`}>
-                            <span className="font-bold text-sm sm:text-base md:text-lg">
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center min-w-0">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${roleStyle.avatar}`}>
+                            <span className="font-bold text-sm">
                               {user.full_name?.charAt(0).toUpperCase() || '?'}
                             </span>
                           </div>
-                          <div className="ml-3 sm:ml-4 min-w-0">
-                            <div className="font-medium text-sm sm:text-base text-gray-900 truncate">{user.full_name}</div>
-                            <div className="text-xs sm:text-sm text-gray-500 truncate">ID: {user.id.substring(0, 8)}...</div>
+                          <div className="ml-2.5 min-w-0">
+                            <div className="font-medium text-sm text-gray-900 truncate">{user.full_name}</div>
+                            <div className="text-[10px] leading-3 text-gray-500 font-mono break-all select-all">{user.id}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4">
-                        <div className="text-xs sm:text-sm">
-                          <div className="text-gray-900 truncate max-w-[200px]">{user.email}</div>
+                      <td className="px-3 py-2.5">
+                        <div className="text-xs min-w-0">
+                          <div className="text-gray-900 truncate">{user.email}</div>
                           <div className="text-gray-500 truncate">{user.phone || 'N/A'}</div>
                         </div>
                       </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4">
-                        <span className={`px-2 sm:px-3 py-0.5 sm:py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${roleStyle.badge}`}>
+                      <td className="px-3 py-2.5">
+                        <span className={`px-2 py-0.5 inline-flex max-w-full text-[11px] leading-4 font-semibold rounded-full whitespace-normal ${roleStyle.badge}`}>
                           {user.role?.role_name || user.role?.role_code || user.role_code}
                         </span>
                       </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4">
+                      <td className="px-2 py-2.5">
                         <span
-                          className={`px-2 py-0.5 sm:py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          className={`px-2 py-0.5 inline-flex text-[11px] leading-4 font-semibold rounded-full ${
                             user.is_active
                               ? 'bg-green-100 text-green-800'
                               : 'bg-red-100 text-red-800'
@@ -921,11 +978,11 @@ export default function UserManagementPage() {
                           {user.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm text-gray-500">
+                      <td className="px-2 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">
                         {formatDateDMY(user.created_at)}
                       </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center justify-end gap-1.5">
+                      <td className="px-2 py-2.5 text-right">
+                        <div className="inline-flex items-center justify-end gap-0.5">
                           <UserActionButton title="Edit User" tone="indigo" onClick={() => openEditModal(user)}>
                             <Pencil className="h-4 w-4" />
                           </UserActionButton>
@@ -978,7 +1035,17 @@ export default function UserManagementPage() {
 
         {/* Users Cards - Mobile/Tablet */}
         <div className="lg:hidden space-y-3 sm:space-y-4">
-          {filteredUsers.map((user) => {
+          {tableRows.map((row) => {
+            if (row.kind === 'group') {
+              const style = getRoleStyle(row.code);
+              return (
+                <div key={`group-${row.code}`} className="flex items-center justify-between gap-3 px-1 pt-1">
+                  <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${style.badge}`}>{row.name}</span>
+                  <span className="text-xs font-medium text-gray-500 tabular-nums">{row.count}</span>
+                </div>
+              );
+            }
+            const user = row.user;
             const roleStyle = getRoleStyle(user.role?.role_code || user.role_code);
             const userId = String(user.id || '');
             const isSelected = userId ? selectedIds.has(userId) : false;
@@ -1012,8 +1079,9 @@ export default function UserManagementPage() {
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm sm:text-base text-gray-900 truncate">{user.full_name}</div>
-                      <div className="text-xs text-gray-500 truncate">{user.email}</div>
+                      <div className="font-medium text-sm sm:text-base text-gray-900">{user.full_name}</div>
+                      <div className="text-xs text-gray-500 break-all">{user.email}</div>
+                      <div className="text-[11px] leading-4 text-gray-500 font-mono break-all select-all">{user.id}</div>
                     </div>
                   </div>
                   <span

@@ -52,7 +52,7 @@ export async function GET() {
 
     const roleCode = String((me as any)?.roles?.role_code || '').trim().toUpperCase();
     const allowed =
-      roleCode === 'SUPER_ADMIN' ||
+      roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN' ||
       roleCode === 'SUB_ADMIN' ||
       roleCode.startsWith('WORKSHOP_') ||
       roleCode === 'PICKUP_BOY';

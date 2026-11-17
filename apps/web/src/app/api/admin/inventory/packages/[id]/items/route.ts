@@ -25,7 +25,7 @@ export async function POST(
       .single();
 
     // @ts-ignore
-    if (userRole?.roles?.role_code !== 'SUPER_ADMIN') {
+    if (userRole?.roles?.role_code !== 'SUPER_ADMIN' && role_code !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -84,7 +84,7 @@ export async function DELETE(
       .single();
 
     // @ts-ignore
-    if (userRole?.roles?.role_code !== 'SUPER_ADMIN') {
+    if (userRole?.roles?.role_code !== 'SUPER_ADMIN' && role_code !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

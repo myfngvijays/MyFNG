@@ -91,7 +91,7 @@ export async function GET(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    if (roleCode !== 'SUPER_ADMIN' && profile.workshop_id && lead.workshop_id !== profile.workshop_id) {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN' && profile.workshop_id && lead.workshop_id !== profile.workshop_id) {
       return NextResponse.json({ error: 'Forbidden: Lead not in your workshop' }, { status: 403 });
     }
 

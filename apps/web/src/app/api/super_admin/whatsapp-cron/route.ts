@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'ensure-google-ads-funds-template') {
-      if (auth.role !== 'SUPER_ADMIN') {
+      if (auth.role !== 'SUPER_ADMIN' && auth.role !== 'SUB_ADMIN') {
         return NextResponse.json({ error: 'Only Super Admin can create templates' }, { status: 403 });
       }
       const result = await createGoogleAdsFundsAlertTemplate(auth.userId);
@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'ensure-telecaller-leads-template') {
-      if (auth.role !== 'SUPER_ADMIN') {
+      if (auth.role !== 'SUPER_ADMIN' && auth.role !== 'SUB_ADMIN') {
         return NextResponse.json({ error: 'Only Super Admin can create templates' }, { status: 403 });
       }
       const result = await createTelecallerLeadsShiftTemplate(auth.userId);
@@ -268,7 +268,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'run-smartflo-recordings-cron') {
-      if (auth.role !== 'SUPER_ADMIN') {
+      if (auth.role !== 'SUPER_ADMIN' && auth.role !== 'SUB_ADMIN') {
         return NextResponse.json({ error: 'Only Super Admin can run cron jobs' }, { status: 403 });
       }
       const settings = await getSmartfloRecordingsCronSettings();
@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Default: run now
-    if (auth.role !== 'SUPER_ADMIN') {
+    if (auth.role !== 'SUPER_ADMIN' && auth.role !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only Super Admin can run cron jobs' }, { status: 403 });
     }
 

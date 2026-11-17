@@ -285,6 +285,11 @@ export default function UserRoleManagementScreen({ navigation }: any) {
             {item.phone && (
               <Text style={styles.userPhone}>📞 {item.phone}</Text>
             )}
+            {item.id ? (
+              <Text style={styles.userId} selectable>
+                {item.id}
+              </Text>
+            ) : null}
           </View>
           <View style={[
             styles.statusIndicator,
@@ -342,11 +347,48 @@ export default function UserRoleManagementScreen({ navigation }: any) {
     );
   };
 
-  const visibleUsers = users.filter((u) => {
-    if (filterStatus === 'active') return !!u.is_active;
-    if (filterStatus === 'inactive') return !u.is_active;
-    return true;
-  });
+  const visibleUsers = [...users]
+    .filter((u) => {
+      if (filterStatus === 'active') return !!u.is_active;
+      if (filterStatus === 'inactive') return !u.is_active;
+      return true;
+    })
+    .sort((a, b) => {
+      const ac = String(a.role?.role_code || a.role_code || 'UNKNOWN').toUpperCase();
+      const bc = String(b.role?.role_code || b.role_code || 'UNKNOWN').toUpperCase();
+      const ai = AVAILABLE_ROLES.findIndex((r) => r.code === ac);
+      const bi = AVAILABLE_ROLES.findIndex((r) => r.code === bc);
+      const ao = ai === -1 ? AVAILABLE_ROLES.length + 1 : ai;
+      const bo = bi === -1 ? AVAILABLE_ROLES.length + 1 : bi;
+      if (ao !== bo) return ao - bo;
+      const roleName = String(a.role?.role_name || ac).localeCompare(String(b.role?.role_name || bc));
+      if (roleName !== 0) return roleName;
+      return String(a.full_name || a.email || '').localeCompare(String(b.full_name || b.email || ''));
+    });
+
+  const listRows = (() => {
+    if (filterRole !== 'all') {
+      return visibleUsers.map((user) => ({ kind: 'user' as const, user }));
+    }
+    const rows: Array<
+      | { kind: 'group'; code: string; name: string; count: number }
+      | { kind: 'user'; user: any }
+    > = [];
+    let last = '';
+    for (const user of visibleUsers) {
+      const code = String(user.role?.role_code || user.role_code || 'UNKNOWN').toUpperCase();
+      if (code !== last) {
+        const name = user.role?.role_name || code;
+        const count = visibleUsers.filter(
+          (u) => String(u.role?.role_code || u.role_code || 'UNKNOWN').toUpperCase() === code,
+        ).length;
+        rows.push({ kind: 'group', code, name, count });
+        last = code;
+      }
+      rows.push({ kind: 'user', user });
+    }
+    return rows;
+  })();
 
   if (loading) {
     return (
@@ -464,9 +506,19 @@ export default function UserRoleManagementScreen({ navigation }: any) {
 
       {/* Users List */}
       <FlatList
-        data={visibleUsers}
-        renderItem={renderUserCard}
-        keyExtractor={(item) => item.id}
+        data={listRows}
+        renderItem={({ item }) => {
+          if (item.kind === 'group') {
+            return (
+              <View style={styles.groupHeader}>
+                <Text style={styles.groupTitle}>{item.name}</Text>
+                <Text style={styles.groupCount}>{item.count}</Text>
+              </View>
+            );
+          }
+          return renderUserCard({ item: item.user });
+        }}
+        keyExtractor={(item) => (item.kind === 'group' ? `group-${item.code}` : item.user.id)}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
@@ -826,6 +878,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  userId: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+    paddingHorizontal: 2,
+  },
+  groupTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  groupCount: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
   },
   statusIndicator: {
     width: 12,

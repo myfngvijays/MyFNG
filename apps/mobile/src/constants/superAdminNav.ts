@@ -220,6 +220,20 @@ export const SA_NAV: SaNavRow[] = [
   },
 ];
 
+const MAIN_ADMIN_ONLY_IDS = new Set(['users', 'settings', 'admin_users']);
+
+/** Sub Admin sees the same panel, without Users & Roles and System Settings. */
+export function saNavForRole(roleCode?: string | null): SaNavRow[] {
+  if (String(roleCode || '').toUpperCase() !== 'SUB_ADMIN') return SA_NAV;
+  return SA_NAV.flatMap((row) => {
+    if (row.type === 'item') return MAIN_ADMIN_ONLY_IDS.has(row.id) ? [] : [row];
+    if (MAIN_ADMIN_ONLY_IDS.has(row.id)) return [];
+    const children = row.children.filter((child) => !MAIN_ADMIN_ONLY_IDS.has(child.id));
+    if (!children.length) return [];
+    return [{ ...row, children }];
+  });
+}
+
 export const SA_QUICK = [
   { id: 'leads', label: 'Leads', icon: 'search-outline' as const, target: 'LeadManagerAppBookings', kind: 'stack' as const },
   { id: 'workshops', label: 'Workshops', icon: 'storefront-outline' as const, target: 'WorkshopManagement', kind: 'stack' as const },

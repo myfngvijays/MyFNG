@@ -40,7 +40,7 @@ async function assertReferralViewer() {
 async function assertReferralEditor() {
   const auth = await assertReferralViewer();
   if (!auth.ok) return auth;
-  if (auth.roleCode !== 'SUPER_ADMIN') {
+  if (auth.roleCode !== 'SUPER_ADMIN' && auth.roleCode !== 'SUB_ADMIN') {
     return { ok: false as const, status: 403, error: 'Forbidden - Super Admin only', user: auth.user, roleCode: auth.roleCode };
   }
   return auth;
@@ -205,7 +205,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      can_edit: auth.roleCode === 'SUPER_ADMIN',
+      can_edit: auth.roleCode === 'SUPER_ADMIN' || auth.roleCode === 'SUB_ADMIN',
       config: {
         referral_first_reward: settings?.referral_first_reward ?? 500,
         referral_repeat_reward: settings?.referral_repeat_reward ?? 250,

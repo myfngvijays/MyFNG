@@ -86,7 +86,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const userProfile = await resolveUserProfile(supabase, user);
     const roleCode = (userProfile?.roles as any)?.role_code || null;
-    if (roleCode !== 'TELECALLER' && roleCode !== 'LEAD_MANAGER' && roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'TELECALLER' && roleCode !== 'LEAD_MANAGER' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

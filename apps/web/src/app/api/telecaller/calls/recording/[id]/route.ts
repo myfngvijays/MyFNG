@@ -136,7 +136,7 @@ export async function GET(
       const roleCode = String((profile as any)?.roles?.role_code || '').toUpperCase();
       const canExposeDirectUrl =
         roleCode === 'LEAD_MANAGER' ||
-        roleCode === 'SUPER_ADMIN' ||
+        roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN' ||
         roleCode === 'SUB_ADMIN';
 
       return NextResponse.json({

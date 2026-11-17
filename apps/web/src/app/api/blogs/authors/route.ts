@@ -20,7 +20,7 @@ export async function GET(_request: NextRequest) {
       .single();
 
     const roleCode = (userProfile?.roles as { role_code?: string } | null)?.role_code;
-    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'DIGITAL_AUTHOR') {
+    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN' && roleCode !== 'DIGITAL_AUTHOR') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

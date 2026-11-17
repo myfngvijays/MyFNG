@@ -161,7 +161,7 @@ export async function GET() {
 
     const roleCode = String((auth.userProfile as any)?.roles?.role_code || '').toUpperCase();
     const useAdminRead =
-      roleCode === 'SUPER_ADMIN' ||
+      roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN' ||
       roleCode === 'SUB_ADMIN' ||
       roleCode === 'LEAD_MANAGER' ||
       roleCode === 'TELECALLER' ||

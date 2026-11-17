@@ -30,7 +30,7 @@ async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClient
 }
 
 function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
-  return roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR' || roleCode === 'SUPER_ADMIN';
+  return roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
 
-    if (roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       if (!profile.workshop_id) return NextResponse.json({ error: 'User has no workshop' }, { status: 400 });
       if (String(lead.workshop_id || '') !== String(profile.workshop_id || '')) {
         return NextResponse.json({ error: 'Lead not in your workshop' }, { status: 403 });

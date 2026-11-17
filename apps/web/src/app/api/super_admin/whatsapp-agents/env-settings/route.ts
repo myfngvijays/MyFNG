@@ -23,7 +23,7 @@ export async function GET() {
     return NextResponse.json({
       config,
       health,
-      can_edit: roleCode === 'SUPER_ADMIN',
+      can_edit: roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN',
       version: '1.0',
     });
   } catch (error: unknown) {
@@ -40,7 +40,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const roleCode = (auth.userProfile as { roles?: { role_code?: string } } | null)?.roles?.role_code || '';
-    if (roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only Super Admin can edit agent credentials' }, { status: 403 });
     }
 

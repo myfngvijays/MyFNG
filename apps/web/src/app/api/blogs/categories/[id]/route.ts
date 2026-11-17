@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 function isAllowedRole(roleCode: unknown) {
-  return roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN';
+  return roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
 }
 
 async function requireManagerRole(supabase: Awaited<ReturnType<typeof createClient>>) {

@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       }
 
       const roleCode = (userData as any).roles?.role_code;
-      if (roleCode !== 'SUPER_ADMIN') {
+      if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
         return NextResponse.json({ error: 'Forbidden - Not super admin' }, { status: 403 });
       }
     }
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     const roleCode = (userData as any).roles?.role_code;
-    if (roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden - Not super admin' }, { status: 403 });
     }
 

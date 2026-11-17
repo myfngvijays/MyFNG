@@ -43,7 +43,7 @@ export async function GET() {
         message: health.message || health.error || null,
         credentials_source: health.credentialsSource,
       },
-      can_edit: auth.roleCode === 'SUPER_ADMIN',
+      can_edit: auth.roleCode === 'SUPER_ADMIN' || auth.roleCode === 'SUB_ADMIN',
       protocol: 'FCM HTTP v1',
       version: '1.0',
     });
@@ -59,7 +59,7 @@ export async function PUT(request: NextRequest) {
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    if (auth.roleCode !== 'SUPER_ADMIN') {
+    if (auth.roleCode !== 'SUPER_ADMIN' && auth.roleCode !== 'SUB_ADMIN') {
       return NextResponse.json(
         { error: 'Only Super Admin can edit Firebase credentials' },
         { status: 403 },

@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     const workshopId = profile.workshop_id;
-    if (!workshopId && roleCode !== 'SUPER_ADMIN') {
+    if (!workshopId && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'No workshop assigned' }, { status: 400 });
     }
 

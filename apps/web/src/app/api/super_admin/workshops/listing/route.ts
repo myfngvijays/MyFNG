@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     const profile = await resolveUserProfile(supabase, auth.user, supabaseAdmin);
     const roleCode = normalizeRoleCode((profile as { roles?: { role_code?: string } })?.roles?.role_code);
-    if (roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

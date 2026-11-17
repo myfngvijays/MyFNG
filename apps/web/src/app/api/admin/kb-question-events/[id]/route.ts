@@ -26,7 +26,7 @@ async function requireSuperAdmin(supabase: any) {
     .single();
 
   // @ts-ignore
-  if (userRole?.roles?.role_code !== 'SUPER_ADMIN') return { ok: false as const, status: 403, error: 'Forbidden' };
+  if (userRole?.roles?.role_code !== 'SUPER_ADMIN' && role_code !== 'SUB_ADMIN') return { ok: false as const, status: 403, error: 'Forbidden' };
   return { ok: true as const, userId: session.user.id };
 }
 

@@ -100,17 +100,6 @@ import CSETicketsScreen from '../screens/dashboard/cse/CSETicketsScreen';
 import CSECreateTicketScreen from '../screens/dashboard/cse/CSECreateTicketScreen';
 import CSETicketDetailScreen from '../screens/dashboard/cse/CSETicketDetailScreen';
 
-// SUB_ADMIN screens
-import SubAdminDashboardScreen from '../screens/dashboard/subadmin/SubAdminDashboardScreen';
-import SubAdminTeamScreen from '../screens/dashboard/subadmin/SubAdminTeamScreen';
-import SubAdminLeadsScreen from '../screens/dashboard/subadmin/SubAdminLeadsScreen';
-import SubAdminEscalationsScreen from '../screens/dashboard/subadmin/SubAdminEscalationsScreen';
-import SubAdminPerformanceScreen from '../screens/dashboard/subadmin/SubAdminPerformanceScreen';
-import SubAdminProfileScreen from '../screens/dashboard/subadmin/SubAdminProfileScreen';
-import SubAdminTicketsScreen from '../screens/dashboard/subadmin/SubAdminTicketsScreen';
-import SubAdminCallbacksScreen from '../screens/dashboard/subadmin/SubAdminCallbacksScreen';
-import SubAdminAuditsScreen from '../screens/dashboard/subadmin/SubAdminAuditsScreen';
-
 // Auditor screens
 import AuditQueueScreen from '../screens/dashboard/auditor/AuditQueueScreen';
 import FraudDetectionScreenAuditor from '../screens/dashboard/auditor/FraudDetectionScreen';
@@ -722,59 +711,6 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     );
   }
 
-  // SUB_ADMIN Navigation
-  if (roleCode === 'SUB_ADMIN') {
-    return (
-      <Stack.Navigator screenOptions={screenOptions}>
-        <Stack.Screen 
-          name="SubAdminDashboard" 
-          component={SubAdminDashboardScreen}
-          options={{ title: 'Sub Admin Dashboard' }}
-        />
-        <Stack.Screen 
-          name="SubAdminTeam" 
-          component={SubAdminTeamScreen}
-          options={{ title: 'Team Management' }}
-        />
-        <Stack.Screen 
-          name="SubAdminLeads" 
-          component={SubAdminLeadsScreen}
-          options={{ title: 'Leads' }}
-        />
-        <Stack.Screen 
-          name="SubAdminEscalations" 
-          component={SubAdminEscalationsScreen}
-          options={{ title: 'Escalations' }}
-        />
-        <Stack.Screen 
-          name="SubAdminPerformance" 
-          component={SubAdminPerformanceScreen}
-          options={{ title: 'Performance' }}
-        />
-        <Stack.Screen 
-          name="SubAdminProfile" 
-          component={SubAdminProfileScreen}
-          options={{ title: 'Profile' }}
-        />
-        <Stack.Screen 
-          name="SubAdminTickets" 
-          component={SubAdminTicketsScreen}
-          options={{ title: 'Tickets' }}
-        />
-        <Stack.Screen 
-          name="SubAdminCallbacks" 
-          component={SubAdminCallbacksScreen}
-          options={{ title: 'Callbacks' }}
-        />
-        <Stack.Screen 
-          name="SubAdminAudits" 
-          component={SubAdminAuditsScreen}
-          options={{ title: 'Audits' }}
-        />
-      </Stack.Navigator>
-    );
-  }
-
   // Auditor Navigation
   if (roleCode === 'AUDITOR') {
     const AuditorWorkshopsScreen = require('../screens/dashboard/auditor/AuditorWorkshopsScreen').default;
@@ -1289,8 +1225,9 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     );
   }
 
-  // Super Admin Navigation
-  if (roleCode === 'SUPER_ADMIN') {
+  // System Administrator and Sub Admin share this panel.
+  // Users & Roles and System Settings stay on the main admin only.
+  if (roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN') {
     const SuperAdminAnalyticsScreen = require('../screens/dashboard/superadmin/SuperAdminAnalyticsScreen').default;
     const SecurityEventsScreen = require('../screens/dashboard/superadmin/SecurityEventsScreen').default;
     const ConfigChangesScreen = require('../screens/dashboard/superadmin/ConfigChangesScreen').default;

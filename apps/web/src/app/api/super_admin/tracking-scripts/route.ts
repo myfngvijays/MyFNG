@@ -45,7 +45,7 @@ export async function GET() {
       snippets: builtInSnippets(analytics),
       custom: scripts.custom,
       pages: PUBLIC_TRACKING_PAGES,
-      can_edit: auth.roleCode === 'SUPER_ADMIN',
+      can_edit: auth.roleCode === 'SUPER_ADMIN' || auth.roleCode === 'SUB_ADMIN',
       updated_at: scripts.updated_at || analytics.updated_at || null,
     });
   } catch (error: unknown) {
@@ -60,7 +60,7 @@ export async function PUT(request: NextRequest) {
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    if (auth.roleCode !== 'SUPER_ADMIN') {
+    if (auth.roleCode !== 'SUPER_ADMIN' && auth.roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only Super Admin can edit tracking scripts' }, { status: 403 });
     }
 

@@ -280,8 +280,48 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       });
 
       let list: any[] = [];
+      const searchText = searchTerm.trim();
 
-      if (filter === 'completed') {
+      if (searchText.length >= 2) {
+        const safe = searchText.replace(/[%_,]/g, ' ').trim();
+        const digits = safe.replace(/\D/g, '');
+        const phone = digits.length >= 10 ? digits.slice(-10) : digits;
+        const quote = (value: string) => `"%${value.replace(/"/g, '')}%"`;
+        const parts = [
+          `customer_name.ilike.${quote(safe)}`,
+          `lead_number.ilike.${quote(safe)}`,
+        ];
+        if (phone.length >= 4) parts.push(`customer_phone.ilike.${quote(phone)}`);
+        let searchQuery = supabase
+          .from('telecaller_follow_ups')
+          .select(`
+            *,
+            lead:lead_id!inner(
+              lead_number,
+              customer_name,
+              customer_phone,
+              status,
+              service_type,
+              coupon_meta,
+              deleted_at
+            ),
+            telecaller:telecaller_id(full_name)
+          `)
+          .eq('status', filter === 'completed' ? 'COMPLETED' : 'PENDING')
+          .or(parts.join(','), { referencedTable: 'lead' })
+          .order('scheduled_time', { ascending: true });
+        if (!canSeeTeam && profile?.id) {
+          searchQuery = searchQuery.eq('telecaller_id', profile.id);
+        }
+        const { data: searched, error: searchErr } = await searchQuery.limit(50);
+        if (searchErr) throw searchErr;
+        list = (searched || []).filter((fu: any) => !fu.lead?.deleted_at);
+        if (filter === 'completed') {
+          list = list.filter((fu: any) => !pendingLeadIds.has(String(fu.lead_id)));
+        } else {
+          list = list.filter((fu: any) => !crmLeadClosedForFollowUp(fu.lead));
+        }
+      } else if (filter === 'completed') {
         let doneQuery = supabase
           .from('telecaller_follow_ups')
           .select(`
@@ -701,9 +741,9 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             {item.lead?.customer_name || 'Customer'}
           </Text>
           <Text style={styles.leadMeta} numberOfLines={expandedNoteId === item.id ? undefined : 2}>
-            {item.reason || item.follow_up_type || 'Follow-up'}
+            {String(item.reason || '').trim()}
           </Text>
-          {String(item.reason || item.follow_up_type || '').length > 72 ? (
+          {String(item.reason || '').trim().length > 72 ? (
             <TouchableOpacity onPress={() => setExpandedNoteId((id) => (id === item.id ? null : item.id))}>
               <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>
                 {expandedNoteId === item.id ? 'Less' : 'Read more'}

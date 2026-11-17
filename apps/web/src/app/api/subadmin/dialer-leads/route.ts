@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     const roleCode = ((profile as any).roles)?.role_code;
     const department = (profile as any).department;
 
-    const isSuper = roleCode === 'SUPER_ADMIN';
+    const isSuper = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
     const isCseSubAdmin = roleCode === 'SUB_ADMIN' && department === 'CSE';
     if (!isSuper && !isCseSubAdmin) {
       return NextResponse.json(

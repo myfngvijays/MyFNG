@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
     const roleCode = (userProfile.roles as any)?.role_code;
 
     // Check permissions
-    if (roleCode !== 'DIGITAL_AUTHOR' && roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'DIGITAL_AUTHOR' && roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
     }
 
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
 
     // If creating as published (DM/SUPER only), enrich Local SEO (best-effort)
     try {
-      if (finalStatus === 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN')) {
+      if (finalStatus === 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN')) {
         const city = String(finalSeoData?.local_city || '').trim();
         const isPune = isPuneOrPcmcCity(city);
         const key = String(process.env.GOOGLE_MAPS_API_KEY || '').trim();
@@ -363,7 +363,7 @@ export async function POST(request: NextRequest) {
         status: finalStatus,
         is_featured: finalIsFeatured,
         is_premium: finalIsPremium,
-        published_at: (finalStatus === 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN')) 
+        published_at: (finalStatus === 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN')) 
           ? new Date().toISOString() 
           : null
       })

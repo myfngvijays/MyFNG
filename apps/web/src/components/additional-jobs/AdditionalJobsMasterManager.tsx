@@ -35,7 +35,7 @@ export default function AdditionalJobsMasterManager({
   mode: 'SUPER_ADMIN' | 'WORKSHOP_ADMIN' | 'WORKSHOP_SUPERVISOR';
   hideHeading?: boolean;
 }) {
-  const isSuperAdmin = mode === 'SUPER_ADMIN';
+  const isSuperAdmin = mode === 'SUPER_ADMIN' || mode === 'SUB_ADMIN';
   const isSupervisor = mode === 'WORKSHOP_SUPERVISOR';
   const [viewerWorkshopId, setViewerWorkshopId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

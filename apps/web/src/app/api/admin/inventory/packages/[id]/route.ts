@@ -104,7 +104,7 @@ export async function DELETE(
       .single();
 
     // @ts-ignore
-    if (userData?.roles?.role_code !== 'SUPER_ADMIN') {
+    if (userData?.roles?.role_code !== 'SUPER_ADMIN' && role_code !== 'SUB_ADMIN') {
        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

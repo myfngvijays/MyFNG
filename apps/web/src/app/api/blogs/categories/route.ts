@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       }
 
       const roleCode = (userProfile.roles as any)?.role_code;
-      if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+      if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
 
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     const roleCode = (userProfile.roles as any)?.role_code;
 
     // Only DIGITAL_MARKETING and SUPER_ADMIN can manage categories
-    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden: Only Digital Marketing can manage categories' }, { status: 403 });
     }
 

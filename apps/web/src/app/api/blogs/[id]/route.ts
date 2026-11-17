@@ -147,7 +147,7 @@ export async function PUT(
       if (body.is_featured !== undefined || body.is_premium !== undefined) {
         return NextResponse.json({ error: 'Forbidden: Digital Authors cannot set featured or premium status' }, { status: 403 });
       }
-    } else if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+    } else if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
     }
     const {
@@ -265,7 +265,7 @@ export async function PUT(
     }
     if (status !== undefined) {
       // Only Digital Marketing and Super Admin can change status to published
-      if (status === 'published' && roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+      if (status === 'published' && roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
         return NextResponse.json({ error: 'Forbidden: Only Digital Marketing can publish blogs' }, { status: 403 });
       }
       updateData.status = status;
@@ -280,7 +280,7 @@ export async function PUT(
     }
     if (is_featured !== undefined) updateData.is_featured = is_featured;
     if (is_premium !== undefined) updateData.is_premium = is_premium;
-    if (requestedAuthorId !== undefined && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN')) {
+    if (requestedAuthorId !== undefined && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN')) {
       updateData.author_id = await resolveBlogAuthorId(
         supabase,
         roleCode,
@@ -291,7 +291,7 @@ export async function PUT(
 
     // If we're transitioning to published, run publish-time Local SEO enrichment (best-effort)
     try {
-      if (status === 'published' && existingBlog.status !== 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN')) {
+      if (status === 'published' && existingBlog.status !== 'published' && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN')) {
         const baseSeo = (seo_data !== undefined ? seo_data : (existingBlog.seo_data || {})) as any;
         let nextSeo = { ...baseSeo };
 
@@ -534,7 +534,7 @@ export async function DELETE(
     const blogId = params.id;
 
     // Only DIGITAL_MARKETING and SUPER_ADMIN can delete blogs
-    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden: Only Digital Marketing and Super Admin can delete blogs' }, { status: 403 });
     }
 

@@ -27,7 +27,7 @@ export function crmSeesAllLeads(role: unknown): boolean {
 
 export function canCreateCrmBooking(role: unknown): boolean {
   const code = normalizeRoleCode(role);
-  return code === 'TELECALLER' || code === 'LEAD_MANAGER' || code === 'SUPER_ADMIN';
+  return code === 'TELECALLER' || code === 'LEAD_MANAGER' || code === 'SUPER_ADMIN' || code === 'SUB_ADMIN';
 }
 
 /** ML / DL Lead Brain — Lead Manager + admin only. Telecaller must not see scores. */

@@ -29,7 +29,7 @@ async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClient
 }
 
 function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
-  return roleCode === 'SUPER_ADMIN' || roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR';
+  return roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN' || roleCode === 'WORKSHOP_ADMIN' || roleCode === 'WORKSHOP_SUPERVISOR';
 }
 
 export async function GET(request: NextRequest) {
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const includeInactive = searchParams.get('include_inactive') === '1'; // default false
     const q = (searchParams.get('q') || '').trim();
 
-    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
     const workshopId =
       isSuperAdmin && workshopIdParam
         ? workshopIdParam
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     const name = String(body?.name || '').trim();
     if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 });
 
-    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
     const workshopId = isSuperAdmin ? (body?.workshop_id ?? null) : (profile.workshop_id ?? null);
 
     // Prevent duplicates (case-insensitive) within same scope (workshop/global)

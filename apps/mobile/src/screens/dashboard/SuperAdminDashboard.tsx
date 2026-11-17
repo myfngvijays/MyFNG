@@ -95,7 +95,7 @@ export default function SuperAdminDashboard() {
     if (user) {
       const { data } = await supabase
         .from('users_login')
-        .select('*')
+        .select('*, roles!role_id(role_code)')
         .eq('id', user.id)
         .single();
       if (data) setUserProfile(data);
@@ -401,7 +401,10 @@ export default function SuperAdminDashboard() {
   const [screenParams, setScreenParams] = useState<any>({});
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const isSubAdmin = String(userProfile?.roles?.role_code || '').toUpperCase() === 'SUB_ADMIN';
+
   const handleNavigation = (screen: string, params?: any) => {
+    if (isSubAdmin && (screen === 'users' || screen === 'settings')) return;
     if (screen === 'dashboard') {
       setCurrentScreen('dashboard');
       setScreenParams({});
@@ -637,11 +640,15 @@ export default function SuperAdminDashboard() {
           <View style={styles.quickLinkRow}>
             <AdminQuickLink icon="call-outline" label="Bookings & Leads" onPress={() => handleNavigation('leads')} />
             <AdminQuickLink icon="storefront-outline" label="Workshops" onPress={() => handleNavigation('workshops')} />
-            <AdminQuickLink icon="people-outline" label="Users & Roles" onPress={() => handleNavigation('users')} />
+            {isSubAdmin ? null : (
+              <AdminQuickLink icon="people-outline" label="Users & Roles" onPress={() => handleNavigation('users')} />
+            )}
             <AdminQuickLink icon="heart-outline" label="Monitor" onPress={() => (navigation as any).navigate('SuperAdminSystemMonitor')} />
             <AdminQuickLink icon="newspaper-outline" label="Daily Blogs" onPress={() => (navigation as any).navigate('SuperAdminDailyBlogs')} />
             <AdminQuickLink icon="scan-outline" label="Competitors" onPress={() => (navigation as any).navigate('SuperAdminCompetitors')} />
-            <AdminQuickLink icon="settings-outline" label="Settings" onPress={() => handleNavigation('settings')} />
+            {isSubAdmin ? null : (
+              <AdminQuickLink icon="settings-outline" label="Settings" onPress={() => handleNavigation('settings')} />
+            )}
           </View>
         </View>
 
@@ -754,7 +761,9 @@ export default function SuperAdminDashboard() {
         <View style={styles.section}>
           <AdminSectionTitle>Admin users</AdminSectionTitle>
           <View style={styles.quickActionsGrid}>
-            <AdminMenuTile icon="people-outline" label="Users & roles" onPress={() => handleNavigation('users')} />
+            {isSubAdmin ? null : (
+              <AdminMenuTile icon="people-outline" label="Users & roles" onPress={() => handleNavigation('users')} />
+            )}
             <AdminMenuTile icon="shield-outline" label="Fraud cases" onPress={() => (navigation as any).navigate('SuperAdminSystemMonitor', { tab: 'fraud' })} />
             <AdminMenuTile icon="document-text-outline" label="Audit logs" onPress={() => handleNavigation('audit')} />
           </View>
@@ -776,8 +785,9 @@ export default function SuperAdminDashboard() {
       <AdminHamburgerDrawer
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
-        userName={userProfile?.full_name || 'Super Admin'}
-        userEmail={userProfile?.email || 'Super Admin Control Panel'}
+        userName={userProfile?.full_name || (isSubAdmin ? 'Sub Admin' : 'Super Admin')}
+        userEmail={userProfile?.email || (isSubAdmin ? 'Sub Admin Control Panel' : 'Super Admin Control Panel')}
+        roleCode={String(userProfile?.roles?.role_code || '')}
         activeId="home"
         onSelect={runSaNav}
         onLogout={() => {

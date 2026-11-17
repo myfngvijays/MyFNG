@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     const roleCode = (profile?.roles as any)?.role_code as string | undefined;
     if (!roleCode) return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
-    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'DIGITAL_AUTHOR') {
+    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN' && roleCode !== 'DIGITAL_AUTHOR') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

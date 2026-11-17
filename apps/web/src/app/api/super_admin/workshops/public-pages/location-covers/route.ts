@@ -19,7 +19,7 @@ async function requireSuperAdmin(request: NextRequest) {
   const { supabaseAdmin } = getSupabaseAdmin();
   const profile = await resolveUserProfile(supabase, auth.user, supabaseAdmin);
   const roleCode = normalizeRoleCode((profile as { roles?: { role_code?: string } })?.roles?.role_code);
-  if (roleCode !== 'SUPER_ADMIN') {
+  if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
     return { ok: false as const, res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
   return { ok: true as const, db: (supabaseAdmin ?? supabase) as any };

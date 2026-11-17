@@ -2,6 +2,7 @@
 export function getRoleDashboardHome(roleCode: string): string {
   const code = String(roleCode || '').toUpperCase();
   if (code === 'APP_OPERATIONS') return '/dashboard/lead_manager';
+  if (code === 'SUB_ADMIN') return '/dashboard/super_admin';
   if (code === 'WORKSHOP_SUPERVISOR' || code === 'WORKSHOP_ADVISOR') {
     return '/dashboard/workshop-advisor';
   }

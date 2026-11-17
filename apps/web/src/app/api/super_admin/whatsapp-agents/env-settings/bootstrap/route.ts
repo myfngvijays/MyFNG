@@ -21,7 +21,7 @@ export async function POST() {
     }
 
     const roleCode = (auth.userProfile as { roles?: { role_code?: string } } | null)?.roles?.role_code || '';
-    if (roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only Super Admin can bootstrap agent credentials' }, { status: 403 });
     }
 

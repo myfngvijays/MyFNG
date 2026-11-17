@@ -923,6 +923,52 @@ const navigationItems: NavItem[] = [
   }
 ];
 
+const MAIN_ADMIN_ONLY_PATHS = [
+  '/dashboard/super_admin/users',
+  '/dashboard/super_admin/roles',
+  '/dashboard/super_admin/settings',
+];
+
+function isMainAdminOnlyPath(pathname: string) {
+  return MAIN_ADMIN_ONLY_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+function navigationForRole(role: string): NavItem[] {
+  if (role !== 'SUB_ADMIN') return navigationItems;
+  const kept: NavItem[] = [];
+  for (const item of navigationItems) {
+    if (item.isSection) {
+      kept.push(item);
+      continue;
+    }
+    const href = String(item.href || '').split('?')[0];
+    if (href && isMainAdminOnlyPath(href)) continue;
+    if (item.children?.length) {
+      const children = item.children.filter((child) => !isMainAdminOnlyPath(String(child.href || '').split('?')[0]));
+      if (!item.href && children.length === 0) continue;
+      kept.push({ ...item, children });
+      continue;
+    }
+    kept.push(item);
+  }
+  const visible: NavItem[] = [];
+  for (let i = 0; i < kept.length; i++) {
+    const item = kept[i];
+    if (!item.isSection) {
+      visible.push(item);
+      continue;
+    }
+    let hasItem = false;
+    for (let j = i + 1; j < kept.length; j++) {
+      if (kept[j].isSection) break;
+      hasItem = true;
+      break;
+    }
+    if (hasItem) visible.push(item);
+  }
+  return visible;
+}
+
 export default function SuperAdminLayout({
   children,
 }: {
@@ -953,6 +999,7 @@ function SuperAdminLayoutInner({
   const searchParams = useSearchParams();
   const supabase = useMemo(() => getBrowserClient(), []);
   const [authReady, setAuthReady] = useState(false);
+  const [panelRole, setPanelRole] = useState<'SUPER_ADMIN' | 'SUB_ADMIN'>('SUPER_ADMIN');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -994,10 +1041,12 @@ function SuperAdminLayoutInner({
     });
   }, []);
 
+  const visibleNav = useMemo(() => navigationForRole(panelRole), [panelRole]);
+
   const hiddenNavNames = useMemo(() => {
     const hidden = new Set<string>();
     let closed = false;
-    for (const item of navigationItems) {
+    for (const item of visibleNav) {
       if (item.isSection) {
         closed = Boolean(closedSections[item.name]);
         continue;
@@ -1005,7 +1054,7 @@ function SuperAdminLayoutInner({
       if (closed) hidden.add(item.name);
     }
     return hidden;
-  }, [closedSections]);
+  }, [closedSections, visibleNav]);
 
   React.useEffect(() => {
     setMobileMenuOpen(false);
@@ -1044,18 +1093,25 @@ function SuperAdminLayoutInner({
           router.replace('/dashboard/lead_manager');
           return;
         }
-        if (roleCode !== 'SUPER_ADMIN') {
+        if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
           const { getRoleDashboardHome } = await import('@/lib/dashboard/roleHome');
           router.replace(getRoleDashboardHome(roleCode));
           return;
         }
-        if (active) setAuthReady(true);
+        if (roleCode === 'SUB_ADMIN' && isMainAdminOnlyPath(pathname || '')) {
+          router.replace('/dashboard/super_admin');
+          return;
+        }
+        if (active) {
+          setPanelRole(roleCode === 'SUB_ADMIN' ? 'SUB_ADMIN' : 'SUPER_ADMIN');
+          setAuthReady(true);
+        }
       } catch {
         if (active) router.replace('/login');
       }
     })();
     return () => { active = false; };
-  }, [router, supabase]);
+  }, [router, supabase, pathname]);
 
   React.useEffect(() => {
     if (
@@ -1143,7 +1199,7 @@ function SuperAdminLayoutInner({
     }
   }, [pathname]);
 
-  const flatNavItems = useMemo(() => flattenNavigationItems(navigationItems), []);
+  const flatNavItems = useMemo(() => flattenNavigationItems(visibleNav), [visibleNav]);
 
   const searchResults = useMemo(() => {
     const q = searchQuery.trim();
@@ -1274,7 +1330,9 @@ function SuperAdminLayoutInner({
                       className="h-9 w-auto max-w-[140px] object-contain"
                     />
                   </div>
-                  <p className="text-yellow-200 text-sm mt-2 font-semibold">Super Admin Control Panel</p>
+                  <p className="text-yellow-200 text-sm mt-2 font-semibold">
+                    {panelRole === 'SUB_ADMIN' ? 'Sub Admin Control Panel' : 'Super Admin Control Panel'}
+                  </p>
                 </div>
                 <button
                   onClick={() => {
@@ -1376,7 +1434,7 @@ function SuperAdminLayoutInner({
         ) : (
         <nav className="flex-1 min-h-0 overflow-y-auto py-4 px-3">
           <div className="space-y-1">
-            {navigationItems.map((item) => {
+            {visibleNav.map((item) => {
               if (item.isSection) {
                 const closed = Boolean(closedSections[item.name]);
                 return sidebarOpen ? (
@@ -1638,7 +1696,7 @@ function SuperAdminLayoutInner({
             ) : (
             <nav className="flex-1 min-h-0 overflow-y-auto py-4 px-3">
               <div className="space-y-1">
-                {navigationItems.map((item) => {
+                {visibleNav.map((item) => {
                   if (item.isSection) {
                     const closed = Boolean(closedSections[item.name]);
                     return (

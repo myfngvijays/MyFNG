@@ -18,7 +18,7 @@ export async function POST() {
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    if (auth.roleCode !== 'SUPER_ADMIN') {
+    if (auth.roleCode !== 'SUPER_ADMIN' && auth.roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Only Super Admin can bootstrap Firebase settings' }, { status: 403 });
     }
 

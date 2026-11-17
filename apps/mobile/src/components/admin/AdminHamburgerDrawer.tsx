@@ -12,13 +12,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import { SA_NAV, SA_QUICK, type SaNavLeaf } from '../../constants/superAdminNav';
+import { SA_QUICK, saNavForRole, type SaNavLeaf } from '../../constants/superAdminNav';
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   userName?: string;
   userEmail?: string;
+  roleCode?: string;
   activeId?: string;
   onSelect: (leaf: SaNavLeaf) => void;
   onLogout: () => void;
@@ -29,11 +30,13 @@ export default function AdminHamburgerDrawer({
   onClose,
   userName,
   userEmail,
+  roleCode,
   activeId,
   onSelect,
   onLogout,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const navRows = saNavForRole(roleCode);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     operations: true,
   });
@@ -94,7 +97,7 @@ export default function AdminHamburgerDrawer({
               contentContainerStyle={[styles.drawerList, { paddingBottom: 32 + insets.bottom }]}
               keyboardShouldPersistTaps="handled"
             >
-              {SA_NAV.map((row) => {
+              {navRows.map((row) => {
                 if (row.type === 'item') {
                   const active = activeId === row.id || (row.kind === 'home' && activeId === 'home');
                   return (

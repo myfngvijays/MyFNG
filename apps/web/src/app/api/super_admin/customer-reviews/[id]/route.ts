@@ -20,7 +20,7 @@ async function requireSuperAdmin(supabase: any) {
   }
 
   const roleCode = (userData as any).roles?.role_code;
-  if (roleCode !== 'SUPER_ADMIN') {
+  if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
     return { ok: false, res: NextResponse.json({ error: 'Forbidden - Not super admin' }, { status: 403 }) };
   }
 

@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const gate = await requireAdmin(request);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
-  if (gate.roleCode !== 'SUPER_ADMIN') {
+  if (gate.roleCode !== 'SUPER_ADMIN' && gate.roleCode !== 'SUB_ADMIN') {
     return NextResponse.json({ error: 'Only Super Admin can edit DLT SMS' }, { status: 403 });
   }
 

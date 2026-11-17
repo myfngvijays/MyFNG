@@ -221,7 +221,7 @@ export async function POST(
     const actorId = userProfile.id;
     const isAssignedMechanic = jobData.mechanic_id === actorId;
     const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === actorId;
-    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
 
     if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
       return NextResponse.json({ 
@@ -639,7 +639,7 @@ export async function GET(
     const actorId = userProfile.id;
     const isAssignedMechanic = jobData.mechanic_id === actorId;
     const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === actorId;
-    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
 
     if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
       return NextResponse.json({ 
@@ -788,7 +788,7 @@ export async function DELETE(
     const actorId = userProfile.id;
     const isAssignedMechanic = photo.mechanic_jobs.mechanic_id === actorId;
     const isAssignedSupervisor = roleCode === 'WORKSHOP_SUPERVISOR' && leadData.assigned_supervisor_id === actorId;
-    const isSuperAdmin = roleCode === 'SUPER_ADMIN';
+    const isSuperAdmin = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
 
     if (!isAssignedMechanic && !isAssignedSupervisor && !isSuperAdmin) {
       return NextResponse.json({ 

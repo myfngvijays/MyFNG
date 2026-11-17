@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     if (!['WORKSHOP_SUPERVISOR', 'WORKSHOP_ADMIN', 'SUPER_ADMIN'].includes(roleCode)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (!profile.workshop_id && roleCode !== 'SUPER_ADMIN') {
+    if (!profile.workshop_id && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Workshop not set' }, { status: 400 });
     }
 

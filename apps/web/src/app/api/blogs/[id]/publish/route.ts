@@ -40,7 +40,7 @@ export async function POST(
     const blogId = params.id;
 
     // Only DIGITAL_MARKETING and SUPER_ADMIN can publish blogs
-    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden: Only Digital Marketing can publish blogs' }, { status: 403 });
     }
 

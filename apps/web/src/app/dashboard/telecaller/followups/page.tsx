@@ -47,6 +47,10 @@ function addMonthsYm(year: number, month0: number, delta: number) {
   return { year: d.getFullYear(), month0: d.getMonth() };
 }
 
+function quoteIlike(value: string) {
+  return `"%${value.replace(/"/g, '')}%"`;
+}
+
 function ymdFromParts(y: number, m0: number, day: number) {
   return `${y}-${String(m0 + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
@@ -94,6 +98,7 @@ export default function FollowUpsPage() {
   const [customStart, setCustomStart] = useState(istYmd());
   const [customEnd, setCustomEnd] = useState(istYmd());
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const todayYmd = istYmd();
   const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
   const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
@@ -113,8 +118,13 @@ export default function FollowUpsPage() {
   }
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
     fetchFollowUps();
-  }, [filter, customStart, customEnd, pickMode, scopeAll]);
+  }, [filter, customStart, customEnd, pickMode, scopeAll, debouncedSearch]);
 
   useEffect(() => {
     if (!calendarOpen) return;
@@ -127,7 +137,7 @@ export default function FollowUpsPage() {
 
   async function fetchFollowUps() {
     const supabase = createClient();
-    setLoading(true);
+    if (!debouncedSearch.trim()) setLoading(true);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -139,23 +149,32 @@ export default function FollowUpsPage() {
         .eq('email', user.email)
         .single();
 
-      // Lead Manager / admin: all team reminders. Telecaller: only own.
-      let pendingQ = supabase
-        .from('telecaller_follow_ups')
-        .select('lead_id')
-        .eq('status', 'PENDING');
-      if (!scopeAll && userProfile?.id) {
-        pendingQ = pendingQ.eq('telecaller_id', userProfile.id);
+      const searchText = debouncedSearch.replace(/[%_,]/g, ' ').trim();
+      const searching = searchText.length >= 2;
+
+      // Name/phone search only looks at this caller's reminders. Skip the full pending scan.
+      if (!searching) {
+        let pendingQ = supabase
+          .from('telecaller_follow_ups')
+          .select('lead_id')
+          .eq('status', 'PENDING');
+        if (!scopeAll && userProfile?.id) {
+          pendingQ = pendingQ.eq('telecaller_id', userProfile.id);
+        }
+        const { data: pendingRows } = await pendingQ.limit(500);
+        const pendingIds = new Set((pendingRows || []).map((r: any) => String(r.lead_id)));
+        setPendingLeadIds(pendingIds);
       }
-      const { data: pendingRows } = await pendingQ;
-      const pendingIds = new Set((pendingRows || []).map((r: any) => String(r.lead_id)));
-      setPendingLeadIds(pendingIds);
+
+      const leadEmbed = searching
+        ? 'lead:service_leads!inner(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model, status, coupon_meta)'
+        : 'lead:service_leads(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model, status, coupon_meta)';
 
       let query = supabase
         .from('telecaller_follow_ups')
         .select(`
           *,
-          lead:service_leads(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model, status, coupon_meta),
+          ${leadEmbed},
           telecaller:users_login!telecaller_id(id, full_name)
         `);
 
@@ -165,15 +184,26 @@ export default function FollowUpsPage() {
 
       const todayBounds = istDayBounds(istYmd());
 
+      if (searching) {
+        const digits = searchText.replace(/\D/g, '');
+        const phone = digits.length >= 10 ? digits.slice(-10) : digits;
+        const parts = [
+          `customer_name.ilike.${quoteIlike(searchText)}`,
+          `lead_number.ilike.${quoteIlike(searchText)}`,
+        ];
+        if (phone.length >= 4) parts.push(`customer_phone.ilike.${quoteIlike(phone)}`);
+        query = query.or(parts.join(','), { referencedTable: 'lead' });
+      }
+
       if (filter === 'completed') {
         query = query.eq('status', 'COMPLETED').order('completed_at', { ascending: false });
       } else {
         query = query.eq('status', 'PENDING');
-        if (filter === 'today') {
+        if (!searching && filter === 'today') {
           query = query
             .gte('scheduled_time', todayBounds.start)
             .lte('scheduled_time', todayBounds.end);
-        } else if (filter === 'calendar') {
+        } else if (!searching && filter === 'calendar') {
           let start = customStart;
           let end = pickMode === 'single' ? customStart : customEnd;
           if (start > end) {
@@ -188,7 +218,7 @@ export default function FollowUpsPage() {
         query = query.order('scheduled_time', { ascending: true });
       }
 
-      const { data, error } = await query.limit(scopeAll ? 500 : 200);
+      const { data, error } = await query.limit(searching ? 50 : scopeAll ? 500 : 200);
 
       if (error) throw error;
       const { crmLeadClosedForFollowUp } = await import('@/lib/telecaller/crmFollowUpClose');
@@ -304,11 +334,13 @@ export default function FollowUpsPage() {
         if (String(fu.follow_up_type || '').toUpperCase() !== 'CALLBACK') return false;
       }
       if (priorityFilter !== 'ALL' && String(fu.priority || 'NORMAL').toUpperCase() !== priorityFilter) return false;
-      if (!searchTerm) return true;
-      const search = searchTerm.toLowerCase();
+      if (!searchTerm.trim()) return true;
+      const search = searchTerm.trim().toLowerCase();
+      const searchDigits = search.replace(/\D/g, '');
+      const phoneDigits = String(fu.lead?.customer_phone || '').replace(/\D/g, '');
       return (
         fu.lead?.customer_name?.toLowerCase().includes(search) ||
-        fu.lead?.customer_phone?.includes(search) ||
+        (searchDigits.length >= 4 && phoneDigits.includes(searchDigits.slice(-10))) ||
         fu.lead?.lead_number?.toLowerCase().includes(search) ||
         fu.reason?.toLowerCase().includes(search)
       );
@@ -581,7 +613,7 @@ export default function FollowUpsPage() {
                   : followUp.status === 'CANCELLED'
                     ? 'text-slate-500'
                     : 'text-amber-700';
-              const note = String(followUp.reason || followUp.follow_up_type || 'Follow-up');
+              const note = String(followUp.reason || '').trim();
               const noteLong = note.length > 72;
               return (
                 <tr key={followUp.id} className="h-16 hover:bg-slate-50">

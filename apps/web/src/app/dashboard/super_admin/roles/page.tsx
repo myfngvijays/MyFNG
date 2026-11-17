@@ -27,9 +27,11 @@ const GROUP_LABELS: Record<RoleGroup, { label: string; color: string; bg: string
   customers: { label: 'Customers', color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' },
 };
 
+const SUPER_ADMIN_MENUS = ['Dashboard', 'User Management', 'Workshops', 'Bookings & Leads', 'RSA', 'Telecaller Distribution', 'Manual Invoices', 'Products & Inventory', 'Service Packages', 'Workshop Pricing', 'Service Pricing', 'Zone Prices', 'Zones', 'App Customers', 'Membership Customers', 'Home Carousel', 'Promo Banners', 'Customer Reviews', 'Membership Plans', 'Advance Coupon Management', 'Notifications', 'WhatsApp Templates', 'WhatsApp Dashboard', 'Bot Flow', 'Blogs', 'All Leads', 'Lead History', 'KB Manager', 'Analytics', 'System Monitor', 'Compliance', 'OTP', 'System Settings', 'Roles & Permissions'];
+
 const ROLE_MENU_ITEMS: Record<string, string[]> = {
-  SUPER_ADMIN: ['Dashboard', 'User Management', 'Workshops', 'Bookings & Leads', 'RSA', 'Telecaller Distribution', 'Manual Invoices', 'Products & Inventory', 'Service Packages', 'Workshop Pricing', 'Service Pricing', 'Zone Prices', 'Zones', 'App Customers', 'Membership Customers', 'Home Carousel', 'Promo Banners', 'Customer Reviews', 'Membership Plans', 'Advance Coupon Management', 'Notifications', 'WhatsApp Templates', 'WhatsApp Dashboard', 'Bot Flow', 'Blogs', 'All Leads', 'Lead History', 'KB Manager', 'Analytics', 'System Monitor', 'Compliance', 'OTP', 'System Settings', 'Roles & Permissions'],
-  SUB_ADMIN: ['Dashboard', 'Team Management', 'WhatsApp Templates', 'Leads', 'Dialer Leads (CSE only)', 'Escalations', 'Performance', 'Profile'],
+  SUPER_ADMIN: SUPER_ADMIN_MENUS,
+  SUB_ADMIN: SUPER_ADMIN_MENUS.filter((item) => !['User Management', 'Roles & Permissions', 'System Settings'].includes(item)),
   LEAD_MANAGER: ['Dashboard', 'Manage Leads', 'Bookings & Leads', 'App Customers', 'Workshop Proximity', 'Membership Customers', 'Refer & Rise', 'Workshops', 'Reports'],
   RSA_MANAGER: ['Dashboard', 'View All Complaints', 'Create Complaint', 'Car Service Enquiry', 'View Registered', 'Active Aansh Sessions', 'Payment', 'Manage Mechanics', 'Service Partners', 'Membership Customer', 'Reports', 'Settings'],
   HOME_SERVICE_MANAGER: ['Dashboard', 'Leads', 'Service Vans', 'Technicians', 'Reports'],

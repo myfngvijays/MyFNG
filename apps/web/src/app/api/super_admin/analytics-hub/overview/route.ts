@@ -48,7 +48,7 @@ export async function GET() {
           config.platforms.web.clarity_enabled,
         last_updated: config.updated_at ?? null,
       },
-      can_edit: auth.roleCode === 'SUPER_ADMIN',
+      can_edit: auth.roleCode === 'SUPER_ADMIN' || auth.roleCode === 'SUB_ADMIN',
       admin: {
         name: auth.userName,
         role: auth.roleCode,

@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
 
     const userProfile = await resolveUserProfile(supabase as any, user as any);
     const roleCode = String((userProfile?.roles as any)?.role_code || '');
-    if (roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       responseBase.searchParams.set('gmb_connect', 'error');
       responseBase.searchParams.set('msg', 'forbidden');
       const res = NextResponse.redirect(responseBase);

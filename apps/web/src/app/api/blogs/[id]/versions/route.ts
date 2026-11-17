@@ -36,7 +36,7 @@ export async function GET(
     const blogId = params.id;
 
     // Check permissions - only DIGITAL_MARKETING and SUPER_ADMIN can view versions
-    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden: Only Digital Marketing can view versions' }, { status: 403 });
     }
 
@@ -91,7 +91,7 @@ export async function POST(
     const blogId = params.id;
 
     // Only DIGITAL_MARKETING and SUPER_ADMIN can restore versions
-    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {
+    if (roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       return NextResponse.json({ error: 'Forbidden: Only Digital Marketing can restore versions' }, { status: 403 });
     }
 

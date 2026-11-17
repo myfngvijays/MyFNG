@@ -64,7 +64,7 @@ export async function POST(
     }
 
     // 3. Check CSE follow-up (optional but recommended)
-    if (!lead.cse_followup_completed && roleCode !== 'SUPER_ADMIN') {
+    if (!lead.cse_followup_completed && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN') {
       errors.push('CSE follow-up not completed (override with SUPER_ADMIN)');
     }
 

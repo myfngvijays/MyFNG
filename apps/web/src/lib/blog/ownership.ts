@@ -46,7 +46,7 @@ export async function resolveBlogAuthorId(
 ): Promise<string> {
   if (roleCode === 'DIGITAL_AUTHOR') return actingUserId;
 
-  if (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN') {
+  if (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN') {
     const picked = String(requestedAuthorId || '').trim();
     if (picked && (await isDigitalAuthorId(supabase, picked))) return picked;
 

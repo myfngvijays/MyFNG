@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     const profile = await resolveUserProfile(supabase, user);
     const roleCode = String((profile as any)?.roles?.role_code || '');
-    if (roleCode !== 'TELECALLER' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'LEAD_MANAGER') {
+    if (roleCode !== 'TELECALLER' && roleCode !== 'SUPER_ADMIN' && roleCode !== 'SUB_ADMIN' && roleCode !== 'LEAD_MANAGER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

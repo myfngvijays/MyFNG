@@ -31,7 +31,7 @@ async function getAuthedProfile(supabase: Awaited<ReturnType<typeof createClient
 }
 
 function isRoleAllowed(roleCode: string | null): roleCode is RoleCode {
-  return roleCode === 'SUPER_ADMIN';
+  return roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
 }
 
 function normalizeFuelType(v: any): 'PETROL' | 'DIESEL' | 'CNG' {
