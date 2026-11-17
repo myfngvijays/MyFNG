@@ -45,7 +45,6 @@ import {
 } from '../../../lib/crmLeadReference';
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
-import { crmDispositionNeedsFullProfile } from '../../../lib/telecaller/crmStatusFilters';
 import {
   ADMIN_CRM_STATUS_OPTIONS,
   resolveAdminCrmStatusId,
@@ -445,6 +444,7 @@ export default function TelecallerLeadDetailScreen({
   const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
+  const [showAllReminders, setShowAllReminders] = useState(false);
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
   const [activityShowAll, setActivityShowAll] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
@@ -802,59 +802,6 @@ export default function TelecallerLeadDetailScreen({
       Alert.alert('Missing info', 'Valid 10-digit phone required');
       return;
     }
-    if (crmDispositionNeedsFullProfile(activityData.result)) {
-      if (!editForm.city_id && !editForm.city) {
-        Alert.alert('Missing info', 'City required');
-        return;
-      }
-      if (!editForm.vehicle_make || !editForm.vehicle_model) {
-        Alert.alert('Missing info', 'Select car model');
-        return;
-      }
-      if (showSecondCar && (!secondCar.vehicle_make || !secondCar.vehicle_model)) {
-        Alert.alert('Missing info', 'Select second car model');
-        return;
-      }
-    }
-
-    const bookingConfirmed = activityData.result === 'BOOKING_CONFIRMED';
-    if (bookingConfirmed) {
-      if (!editForm.vehicle_number.trim()) {
-        Alert.alert('Missing info', 'Registration required');
-        return;
-      }
-      if (editForm.pickup_required) {
-        if (!editForm.pickup_date || !editForm.pickup_time) {
-          Alert.alert('Missing info', 'Select date & time');
-          return;
-        }
-        if (editForm.pickup_address.trim().length < 4) {
-          Alert.alert('Missing info', 'Address required');
-          return;
-        }
-        if (editForm.landmark.trim().length < 2) {
-          Alert.alert('Missing info', 'Landmark required');
-          return;
-        }
-      } else if (!editForm.workshop_id) {
-        Alert.alert('Missing info', 'Select a workshop');
-        return;
-      }
-    }
-    const selectedForSave =
-      statusOptions.find((r) => r.id === activityData.result) || RINGING;
-    if (
-      (activityData.result === 'CALLBACK' || selectedForSave.requires_follow_up) &&
-      (!activityData.date || !activityData.time)
-    ) {
-      Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
-      return;
-    }
-    if (activityData.result === 'SERVICE_DONE' && !activityData.serviceDate) {
-      Alert.alert('Service done', 'Service done date daalo.');
-      return;
-    }
-
     setSaving(true);
     try {
       const start = slotIso(editForm.pickup_date, editForm.pickup_time);
@@ -918,36 +865,45 @@ export default function TelecallerLeadDetailScreen({
       const changeBits: string[] = [];
       if (lead?.customer_name !== editForm.customer_name.trim()) changeBits.push('name');
       if (String(lead?.customer_phone || '').slice(-10) !== editForm.customer_phone) changeBits.push('phone');
+      if (String(lead?.customer_alternate_phone || '') !== String(editForm.customer_alternate_phone || '')) {
+        changeBits.push('alternate phone');
+      }
+      if (String(lead?.customer_email || '') !== String(editForm.customer_email || '')) changeBits.push('email');
       if (String(lead?.city || '') !== String(editForm.city || '')) changeBits.push('city');
       if (String(lead?.pincode || '') !== String(editForm.pincode || '')) changeBits.push('pincode');
       if (String(lead?.vehicle_number || '') !== String(editForm.vehicle_number || '')) {
-        changeBits.push('registration');
+        changeBits.push('car number');
       }
       if (
         String(lead?.vehicle_make || '') !== editForm.vehicle_make ||
         String(lead?.vehicle_model || '') !== editForm.vehicle_model
       ) {
-        changeBits.push('vehicle');
+        changeBits.push('car model');
       }
+      if (String(lead?.vehicle_year || '') !== String(editForm.vehicle_year || '')) changeBits.push('year');
+      if (String(lead?.lead_priority || '') !== String(editForm.lead_priority || '')) changeBits.push('priority');
       if (String(lead?.workshop_id || '') !== String(editForm.workshop_id || '')) changeBits.push('workshop');
       if (servicesChangedLocal) changeBits.push('services');
-      const lbl =
-        statusOptions.find((r) => r.id === activityData.result)?.label || activityData.result;
-      changeBits.push(lbl);
+      if (String(couponMeta.last_call_result || '') !== String(activityData.result || '')) {
+        changeBits.push(statusLabel);
+      }
+      if (String(couponMeta.telecaller_remarks || '') !== activityData.notes.trim()) changeBits.push('remarks');
       if (bookingConfirmed) changeBits.push('booking');
 
-      const historyEntry = {
-        at: new Date().toISOString(),
-        summary: changeBits.length ? `Updated ${changeBits.join(', ')}` : 'Profile updated',
-        remark: activityData.notes.trim() || null,
-        status: activityData.result,
-        workshop_id: editForm.workshop_id || null,
-        workshop_name: editForm.workshop_name || null,
-        city: editForm.city || null,
-        pincode: editForm.pincode || null,
-      };
+      const historyEntry = changeBits.length
+        ? {
+            at: new Date().toISOString(),
+            summary: `Updated ${changeBits.join(', ')}`,
+            remark: activityData.notes.trim() || null,
+            status: activityData.result,
+            workshop_id: editForm.workshop_id || null,
+            workshop_name: editForm.workshop_name || null,
+            city: editForm.city || null,
+            pincode: editForm.pincode || null,
+          }
+        : null;
       const prevHistory = Array.isArray(couponMeta.profile_history) ? couponMeta.profile_history : [];
-      nextMeta.profile_history = [historyEntry, ...prevHistory].slice(0, 50);
+      nextMeta.profile_history = historyEntry ? [historyEntry, ...prevHistory].slice(0, 50) : prevHistory;
 
       let quotePayload: any = null;
       const hasServices =
@@ -961,7 +917,7 @@ export default function TelecallerLeadDetailScreen({
               service_type_ids: editForm.service_types,
               addon_ids: editForm.service_addons,
               city_id: editForm.city_id || null,
-              workshop_id: editForm.pickup_required ? null : editForm.workshop_id || null,
+              workshop_id: editForm.workshop_id || null,
               vehicle_class: editForm.vehicle_class || null,
             }),
           });
@@ -1272,7 +1228,11 @@ export default function TelecallerLeadDetailScreen({
                 .trim(),
         badgeColor: isCall
           ? getCallStatusColor(item?.meta?.call_status, item?.meta?.outcome)
-          : COLORS.orange + '22',
+          : /whatsapp received/i.test(String(item.title || ''))
+            ? '#D1FAE5'
+            : /whatsapp sent/i.test(String(item.title || ''))
+              ? '#E0F2FE'
+              : COLORS.orange + '22',
         timeLabel: item.at
           ? `${formatDateTime(item.at)}${item?.meta?.by ? ` · ${item.meta.by}` : ''}`
           : '',
@@ -1371,6 +1331,15 @@ export default function TelecallerLeadDetailScreen({
       (a, b) => new Date(b.sortAt || 0).getTime() - new Date(a.sortAt || 0).getTime(),
     );
   }, [timelineItems, callLogs, followUps, profileHistory]);
+
+  const detailActivity = React.useMemo(
+    () => activityItems.filter((item) => !/whatsapp/i.test(item.title)),
+    [activityItems],
+  );
+  const whatsappActivity = React.useMemo(
+    () => activityItems.filter((item) => /whatsapp/i.test(item.title)),
+    [activityItems],
+  );
 
   const fetchLeadIq = async () => {
     if (!leadId) return;
@@ -2337,6 +2306,36 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
+      <View style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Call reminders</Text>
+        </View>
+        <View style={styles.sectionContent}>
+          {followUps.length === 0 ? (
+            <Text style={styles.fieldCaption}>No reminders yet</Text>
+          ) : (
+            <>
+              {(showAllReminders ? followUps : followUps.slice(0, 2)).map((fu) => (
+                <View key={String(fu.id)} style={{ marginBottom: 8 }}>
+                  <Text style={styles.repeatTitle}>{fu.follow_up_type || 'Reminder'}</Text>
+                  <Text style={styles.fieldCaption}>
+                    {fu.scheduled_time ? formatDateTime(fu.scheduled_time) : '—'}
+                    {fu.reason ? ` · ${fu.reason}` : ''}
+                  </Text>
+                </View>
+              ))}
+              {followUps.length > 2 ? (
+                <TouchableOpacity onPress={() => setShowAllReminders((v) => !v)}>
+                  <Text style={[styles.repeatTitle, { color: COLORS.primary }]}>
+                    {showAllReminders ? 'Show less' : 'Show all reminders'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          )}
+        </View>
+      </View>
+
       {showLeadIq ? (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Lead IQ</Text>
@@ -2681,210 +2680,6 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
-      {/* Lead Overview — no source / UTM */}
-      <View style={styles.section}>
-        <View style={styles.sectionTitleRow}>
-          <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-            <Icon name="clipboard-list" size={16} color="#B45309" />
-          </View>
-          <Text style={styles.sectionTitle}>Lead Overview</Text>
-        </View>
-        <View style={styles.sectionContent}>
-          <View style={styles.detailGrid}>
-            <DetailRow icon="pound" label="Lead #" value={lead?.lead_number || '—'} compact />
-            <DetailRow
-              icon="flag"
-              label="Status"
-              value={String(lead?.status || '—').replace(/_/g, ' ')}
-              compact
-            />
-          </View>
-          {editing ? (
-            <View style={{ marginBottom: 10 }}>
-              <Text style={styles.fieldCaption}>Priority</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-                {(['NORMAL', 'HIGH', 'URGENT'] as const).map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    onPress={() => setEditField('lead_priority', p)}
-                    style={[
-                      styles.fuelChip,
-                      String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.fuelChipText,
-                        String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipTextActive,
-                      ]}
-                    >
-                      {p}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          ) : (
-            <DetailRow icon="flag-outline" label="Priority" value={lead?.lead_priority || 'NORMAL'} />
-          )}
-          {leadId ? (
-            <LeadTagsPicker
-              leadId={leadId}
-              canManage={['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
-                String(
-                  (user as any)?.role?.role_code ||
-                    (user as any)?.roles?.role_code ||
-                    '',
-                ).toUpperCase(),
-              )}
-            />
-          ) : null}
-          <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', marginTop: 12, marginBottom: 6 }}>
-            REFERRED BY
-          </Text>
-          {referredBy ? (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: '#F5F3FF',
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: '#DDD6FE',
-                padding: 10,
-                gap: 8,
-              }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>
-                  {referredByLabel(referredBy)}
-                </Text>
-                {referredBy.lead_number ? (
-                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{referredBy.lead_number}</Text>
-                ) : null}
-              </View>
-              {referredBy.lead_id ? (
-                <TouchableOpacity
-                  onPress={() => navigation?.navigate?.('TelecallerLeadDetail', { leadId: referredBy.lead_id })}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#5B21B6' }}>Open</Text>
-                </TouchableOpacity>
-              ) : null}
-              {editing ? (
-                <TouchableOpacity onPress={() => setReferredBy(null)}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Clear</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : editing ? (
-            <View>
-              <TextInput
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#E2E8F0',
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  backgroundColor: '#fff',
-                  color: '#0F172A',
-                }}
-                placeholder="Search referrer — CRM lead or app customer"
-                placeholderTextColor="#94A3B8"
-                value={referrerQuery}
-                onChangeText={setReferrerQuery}
-                keyboardType="default"
-              />
-              {referrerSearching ? (
-                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>Searching…</Text>
-              ) : null}
-              {referrerHits.map((hit) => (
-                <TouchableOpacity
-                  key={hit.id}
-                  style={{
-                    paddingVertical: 10,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: '#E2E8F0',
-                  }}
-                  onPress={() => {
-                    setReferredBy(referredByFromSearchHit(hit));
-                    setReferrerQuery('');
-                    setReferrerHits([]);
-                  }}
-                >
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
-                    {hit.customer_name || 'Unknown'}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#64748B' }}>
-                    {hit.customer_phone}
-                    {hit.lead_number ? ` · ${hit.lead_number}` : ''}
-                    {hit.source === 'customer' ? ' · app' : ''}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <Text style={{ fontSize: 13, color: '#94A3B8' }}>Not set</Text>
-          )}
-          {referredTo.length > 0 ? (
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', marginBottom: 6 }}>
-                THEY REFERRED
-              </Text>
-              {referredTo.map((row) => (
-                <TouchableOpacity
-                  key={row.id}
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    paddingVertical: 8,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: '#E2E8F0',
-                  }}
-                  onPress={() => navigation?.navigate?.('TelecallerLeadDetail', { leadId: row.id })}
-                >
-                  <View>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
-                      {row.customer_name || '—'}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: '#64748B' }}>{row.customer_phone || '—'}</Text>
-                  </View>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.primary }}>
-                    {row.lead_number || 'Open'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : null}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setEditField('repeat_customer', !editForm.repeat_customer)}
-            style={styles.repeatCheck}
-          >
-            <View style={[styles.repeatBox, editForm.repeat_customer && styles.repeatBoxOn]}>
-              {editForm.repeat_customer ? <Text style={styles.repeatTick}>✓</Text> : null}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.repeatTitle}>Repeat Customer</Text>
-              <Text style={styles.repeatHint}>Pehle service le chuka hai aur dobara aaya hai</Text>
-            </View>
-          </TouchableOpacity>
-          <DetailRow
-            icon="clock-outline"
-            label="Created"
-            value={
-              lead?.created_at
-                ? new Date(lead.created_at).toLocaleString('en-IN', {
-                    day: '2-digit',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : '—'
-            }
-          />
-        </View>
-      </View>
-
       {/* Vehicle Information */}
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
@@ -3133,6 +2928,210 @@ export default function TelecallerLeadDetailScreen({
               <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>Add second car</Text>
             </TouchableOpacity>
           ) : null}
+        </View>
+      </View>
+
+      {/* Lead Overview — no source / UTM */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+            <Icon name="clipboard-list" size={16} color="#B45309" />
+          </View>
+          <Text style={styles.sectionTitle}>Lead Overview</Text>
+        </View>
+        <View style={styles.sectionContent}>
+          <View style={styles.detailGrid}>
+            <DetailRow icon="pound" label="Lead #" value={lead?.lead_number || '—'} compact />
+            <DetailRow
+              icon="flag"
+              label="Status"
+              value={String(lead?.status || '—').replace(/_/g, ' ')}
+              compact
+            />
+          </View>
+          {editing ? (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={styles.fieldCaption}>Priority</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                {(['NORMAL', 'HIGH', 'URGENT'] as const).map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setEditField('lead_priority', p)}
+                    style={[
+                      styles.fuelChip,
+                      String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.fuelChipText,
+                        String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipTextActive,
+                      ]}
+                    >
+                      {p}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <DetailRow icon="flag-outline" label="Priority" value={lead?.lead_priority || 'NORMAL'} />
+          )}
+          {leadId ? (
+            <LeadTagsPicker
+              leadId={leadId}
+              canManage={['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+                String(
+                  (user as any)?.role?.role_code ||
+                    (user as any)?.roles?.role_code ||
+                    '',
+                ).toUpperCase(),
+              )}
+            />
+          ) : null}
+          <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', marginTop: 12, marginBottom: 6 }}>
+            REFERRED BY
+          </Text>
+          {referredBy ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#F5F3FF',
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#DDD6FE',
+                padding: 10,
+                gap: 8,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#1E293B' }}>
+                  {referredByLabel(referredBy)}
+                </Text>
+                {referredBy.lead_number ? (
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{referredBy.lead_number}</Text>
+                ) : null}
+              </View>
+              {referredBy.lead_id ? (
+                <TouchableOpacity
+                  onPress={() => navigation?.navigate?.('TelecallerLeadDetail', { leadId: referredBy.lead_id })}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#5B21B6' }}>Open</Text>
+                </TouchableOpacity>
+              ) : null}
+              {editing ? (
+                <TouchableOpacity onPress={() => setReferredBy(null)}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Clear</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : editing ? (
+            <View>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  backgroundColor: '#fff',
+                  color: '#0F172A',
+                }}
+                placeholder="Search referrer — CRM lead or app customer"
+                placeholderTextColor="#94A3B8"
+                value={referrerQuery}
+                onChangeText={setReferrerQuery}
+                keyboardType="default"
+              />
+              {referrerSearching ? (
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>Searching…</Text>
+              ) : null}
+              {referrerHits.map((hit) => (
+                <TouchableOpacity
+                  key={hit.id}
+                  style={{
+                    paddingVertical: 10,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: '#E2E8F0',
+                  }}
+                  onPress={() => {
+                    setReferredBy(referredByFromSearchHit(hit));
+                    setReferrerQuery('');
+                    setReferrerHits([]);
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
+                    {hit.customer_name || 'Unknown'}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>
+                    {hit.customer_phone}
+                    {hit.lead_number ? ` · ${hit.lead_number}` : ''}
+                    {hit.source === 'customer' ? ' · app' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, color: '#94A3B8' }}>Not set</Text>
+          )}
+          {referredTo.length > 0 ? (
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', marginBottom: 6 }}>
+                THEY REFERRED
+              </Text>
+              {referredTo.map((row) => (
+                <TouchableOpacity
+                  key={row.id}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingVertical: 8,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: '#E2E8F0',
+                  }}
+                  onPress={() => navigation?.navigate?.('TelecallerLeadDetail', { leadId: row.id })}
+                >
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
+                      {row.customer_name || '—'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#64748B' }}>{row.customer_phone || '—'}</Text>
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.primary }}>
+                    {row.lead_number || 'Open'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setEditField('repeat_customer', !editForm.repeat_customer)}
+            style={styles.repeatCheck}
+          >
+            <View style={[styles.repeatBox, editForm.repeat_customer && styles.repeatBoxOn]}>
+              {editForm.repeat_customer ? <Text style={styles.repeatTick}>✓</Text> : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.repeatTitle}>Repeat Customer</Text>
+              <Text style={styles.repeatHint}>Pehle service le chuka hai aur dobara aaya hai</Text>
+            </View>
+          </TouchableOpacity>
+          <DetailRow
+            icon="clock-outline"
+            label="Created"
+            value={
+              lead?.created_at
+                ? new Date(lead.created_at).toLocaleString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '—'
+            }
+          />
         </View>
       </View>
 
@@ -3649,14 +3648,24 @@ export default function TelecallerLeadDetailScreen({
             <Text style={styles.emptyText}>No activity yet</Text>
           ) : (
             <>
-              {(activityShowAll ? activityItems : activityItems.slice(0, 10)).map((item) => {
+              {(activityShowAll ? detailActivity : detailActivity.slice(0, 10)).map((item) => {
               const isPlaying =
                 item.kind === 'call' &&
                 item.hasRecording &&
                 item.callLogId &&
                 playingCallLogId === item.callLogId;
               return (
-                <View key={item.id} style={styles.logCard}>
+                <View
+                  key={item.id}
+                  style={[
+                    styles.logCard,
+                    /whatsapp received/i.test(item.title)
+                      ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
+                      : /whatsapp sent/i.test(item.title)
+                        ? { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }
+                        : null,
+                  ]}
+                >
                   <View style={styles.logHeader}>
                     <View style={[styles.logBadge, { backgroundColor: item.badgeColor }]}>
                       <Text style={styles.logBadgeText}>{item.title}</Text>
@@ -3698,7 +3707,7 @@ export default function TelecallerLeadDetailScreen({
                 </View>
               );
             })}
-              {activityItems.length > 10 ? (
+              {detailActivity.length > 10 ? (
                 <TouchableOpacity
                   onPress={() => setActivityShowAll((v) => !v)}
                   style={{ paddingVertical: 10, alignItems: 'center' }}
@@ -3706,11 +3715,36 @@ export default function TelecallerLeadDetailScreen({
                   <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
                     {activityShowAll
                       ? 'View less'
-                      : `View more (${activityItems.length - 10})`}
+                      : `View more (${detailActivity.length - 10})`}
                   </Text>
                 </TouchableOpacity>
               ) : null}
             </>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>WhatsApp{whatsappActivity.length ? ` (${whatsappActivity.length})` : ''}</Text>
+        <View style={styles.sectionContent}>
+          {whatsappActivity.length === 0 ? (
+            <Text style={styles.emptyText}>No WhatsApp messages</Text>
+          ) : (
+            whatsappActivity.slice(0, 8).map((item) => (
+              <View
+                key={item.id}
+                style={[
+                  styles.logCard,
+                  /received/i.test(item.title)
+                    ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
+                    : { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' },
+                ]}
+              >
+                <Text style={styles.logBadgeText}>{item.title}</Text>
+                {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
+                <Text style={styles.logTime}>{item.timeLabel}</Text>
+              </View>
+            ))
           )}
         </View>
       </View>

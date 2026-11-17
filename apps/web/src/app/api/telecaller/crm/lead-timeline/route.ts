@@ -213,15 +213,23 @@ export async function GET(request: NextRequest) {
             .order('created_at', { ascending: false })
             .limit(80),
       ),
-      safeSelect(() =>
-        supabaseAdmin
-          .from('telecaller_follow_ups')
-          .select(
-            'id, lead_id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
-          )
-          .in('lead_id', relatedLeadIds)
-          .order('scheduled_time', { ascending: false })
-          .limit(60),
+      safeSelect(
+        () =>
+          supabaseAdmin
+            .from('telecaller_follow_ups')
+            .select(
+              'id, lead_id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
+            )
+            .in('lead_id', relatedLeadIds)
+            .order('scheduled_time', { ascending: false })
+            .limit(60),
+        () =>
+          supabaseAdmin
+            .from('telecaller_follow_ups')
+            .select('id, lead_id, follow_up_type, status, scheduled_time, reason, priority, created_at, telecaller_id')
+            .in('lead_id', relatedLeadIds)
+            .order('scheduled_time', { ascending: false })
+            .limit(60),
       ),
       phone
         ? safeSelect(
@@ -380,7 +388,10 @@ export async function GET(request: NextRequest) {
       const isMerge = event === 'PHONE_DUPLICATE_MERGED';
       if (isMerge && h.previous_label) histMergeIds.add(String(h.previous_label));
       const statusLabel = friendlyPipelineStatus(h.status || h.previous_status);
-      const histBody = isMerge
+      const isFieldLog = event === 'FIELDS' || String(h.summary || '').includes('→');
+      const histBody = isFieldLog
+        ? String(h.summary || '').trim() || null
+        : isMerge
         ? [
             h.previous_label ? `Lead # ${h.previous_label}` : null,
             `Status: ${statusLabel}`,
@@ -405,7 +416,9 @@ export async function GET(request: NextRequest) {
         at,
         title: isMerge
           ? `Earlier booking merged · was ${statusLabel}`
-          : String(h.summary || h.event || 'History').slice(0, 160),
+          : isFieldLog
+            ? 'Details updated'
+            : String(h.summary || h.event || 'History').slice(0, 160),
         body: histBody,
         meta: {
           event: h.event || null,

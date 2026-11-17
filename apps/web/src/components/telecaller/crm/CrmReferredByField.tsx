@@ -14,12 +14,14 @@ export default function CrmReferredByField({
   onChange,
   referredTo,
   leadHref,
+  className,
 }: {
   leadId: string;
   value: CrmReferredBy | null;
   onChange: (next: CrmReferredBy | null) => void;
   referredTo: Hit[];
   leadHref: (id: string) => string;
+  className?: string;
 }) {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<Hit[]>([]);
@@ -53,7 +55,7 @@ export default function CrmReferredByField({
   }, [q, leadId]);
 
   return (
-    <div className="sm:col-span-2 lg:col-span-4 space-y-3">
+    <div className={className || 'sm:col-span-2 lg:col-span-4 space-y-3'}>
       <div>
         <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-600">
           Referred by

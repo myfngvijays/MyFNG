@@ -256,15 +256,21 @@ export async function sendListMessage(input: {
   });
 }
 
-export async function sendTextMessage(phoneNumber: string, message: string): Promise<WhatsAppSendResult> {
+export async function sendTextMessage(
+  phoneNumber: string,
+  message: string,
+  replyToMessageId?: string | null,
+): Promise<WhatsAppSendResult> {
   const to = normalizePhoneNumber(phoneNumber);
   if (!to) return { success: false, error: 'Invalid recipient phone number' };
   if (!message?.trim()) return { success: false, error: 'Message body is required' };
+  const replyId = String(replyToMessageId || '').trim();
 
   return sendMessagePayload({
     messaging_product: 'whatsapp',
     to,
     type: 'text',
+    ...(replyId ? { context: { message_id: replyId } } : {}),
     text: { body: message.trim() },
   });
 }

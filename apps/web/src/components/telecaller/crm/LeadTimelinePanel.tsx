@@ -253,13 +253,34 @@ export default function LeadTimelinePanel({
   const pinnedStatusAt = String(
     couponMeta.last_call_at || (lead as any)?.updated_at || profileHistory[0]?.at || '',
   );
+  const latestFieldLog = profileHistory.find((entry) => {
+    const summary = String(entry.summary || '');
+    return entry.event === 'FIELDS' || summary.includes('→');
+  });
+  const fieldLines = String(latestFieldLog?.summary || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const statusChangeLine = fieldLines.find((line) => /^status:/i.test(line)) || '';
+  const detailLines = fieldLines.filter((line) => line !== statusChangeLine);
+  const statusTransition = statusChangeLine.replace(/^status:\s*/i, '');
   const pinnedStatusRow = pinnedStatusLabel
     ? {
         id: `disp-pinned-${leadId}`,
         kind: 'system' as const,
         at: pinnedStatusAt || new Date().toISOString(),
-        title: `Lead updated · ${pinnedStatusLabel}`,
-        body: latestRemark,
+        title: statusTransition || `Lead updated · ${pinnedStatusLabel}`,
+        body: [
+          ...detailLines,
+          latestRemark &&
+          latestRemark !== statusTransition.split('→')[0]?.trim() &&
+          latestRemark !== pinnedStatusLabel &&
+          !detailLines.includes(latestRemark)
+            ? latestRemark
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n'),
         meta: { status: crmStatusId || 'RINGING', status_label: pinnedStatusLabel },
       }
     : null;
@@ -268,14 +289,20 @@ export default function LeadTimelinePanel({
     return timelineItems.filter((it) => {
       const title = String(it.title || '').toLowerCase();
       const id = String(it.id || '');
-      return !(id.startsWith('disp-') || title.startsWith('lead updated ·'));
+      return !(id.startsWith('disp-') || title.startsWith('lead updated ·') || it.kind === 'whatsapp' || it.kind === 'followup');
     });
   }, [timelineItems]);
 
+  const whatsappItems = useMemo(
+    () => timelineItems.filter((it) => it.kind === 'whatsapp'),
+    [timelineItems],
+  );
+  const [whatsappShowAll, setWhatsappShowAll] = useState(false);
   const usingApiFeed = timelineItems.length > 0;
   const feedCount =
     (usingApiFeed ? displayTimelineItems.length : activityFeed.length) + (pinnedStatusRow ? 1 : 0);
-  const visibleApiItems = activityShowAll ? displayTimelineItems : displayTimelineItems.slice(0, 10);
+  const visibleApiItems = activityShowAll ? displayTimelineItems : displayTimelineItems.slice(0, 8);
+  const visibleWhatsapp = whatsappShowAll ? whatsappItems : whatsappItems.slice(0, 6);
   const hasAny =
     feedCount > 0 || Boolean(latestLabel) || Boolean(latestRemark);
 
@@ -527,6 +554,8 @@ export default function LeadTimelinePanel({
               {usingApiFeed
                 ? visibleApiItems.map((row) => {
                     const kind = row.kind;
+                    const waReceived = kind === 'whatsapp' && /received/i.test(row.title);
+                    const waSent = kind === 'whatsapp' && /sent/i.test(row.title);
                     const iconWrap =
                       kind === 'call'
                         ? 'bg-violet-100 text-violet-800'
@@ -606,7 +635,15 @@ export default function LeadTimelinePanel({
                               {inner}
                             </CallRecordingCardRow>
                           ) : (
-                            <div className="rounded-lg border border-teal-100 bg-white px-2.5 py-2 shadow-sm">
+                            <div
+                              className={`rounded-lg border px-2.5 py-2 shadow-sm ${
+                                waReceived
+                                  ? 'border-emerald-200 bg-emerald-50'
+                                  : waSent
+                                    ? 'border-sky-200 bg-sky-50'
+                                    : 'border-teal-100 bg-white'
+                              }`}
+                            >
                               {inner}
                             </div>
                           )}
@@ -724,7 +761,7 @@ export default function LeadTimelinePanel({
                 );
               })}
               </ul>
-              {feedCount > 10 ? (
+              {feedCount > 8 ? (
                 <button
                   type="button"
                   onClick={() => setActivityShowAll((v) => !v)}
@@ -732,7 +769,7 @@ export default function LeadTimelinePanel({
                 >
                   {activityShowAll
                     ? 'View less'
-                    : `View more (${feedCount - 10})`}
+                    : `View more (${Math.max(0, feedCount - 8)})`}
                 </button>
               ) : null}
             </div>
@@ -789,6 +826,52 @@ export default function LeadTimelinePanel({
           {renderTaskGroup('Closed', 'text-emerald-700', taskBuckets.closed)}
         </div>
       )}
+
+      <div className="mt-3 rounded-xl border border-emerald-100 bg-white p-2.5">
+        <p className="mb-2 flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800">
+          <MessageCircle className="h-3.5 w-3.5" />
+          WhatsApp
+          {whatsappItems.length > 0 ? (
+            <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] text-emerald-800">
+              {whatsappItems.length}
+            </span>
+          ) : null}
+        </p>
+        {whatsappItems.length === 0 ? (
+          <p className="px-1 pb-1 text-[11px] text-slate-400">No WhatsApp messages</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {visibleWhatsapp.map((row) => {
+              const received = /received/i.test(row.title);
+              return (
+                <li
+                  key={row.id}
+                  className={`rounded-lg border px-2.5 py-2 ${
+                    received ? 'border-emerald-200 bg-emerald-50' : 'border-sky-200 bg-sky-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[11px] font-semibold text-slate-900">{row.title}</p>
+                    <span className="shrink-0 text-[9px] text-slate-400">{fmtAt(row.at)}</span>
+                  </div>
+                  {row.body ? (
+                    <p className="mt-0.5 whitespace-pre-line text-[11px] leading-snug text-slate-700">{row.body}</p>
+                  ) : null}
+                </li>
+              );
+            })}
+            {whatsappItems.length > 6 ? (
+              <button
+                type="button"
+                onClick={() => setWhatsappShowAll((v) => !v)}
+                className="w-full py-1 text-center text-[12px] font-bold text-[#004AAD]"
+              >
+                {whatsappShowAll ? 'Show less' : `Show all WhatsApp (${whatsappItems.length})`}
+              </button>
+            ) : null}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

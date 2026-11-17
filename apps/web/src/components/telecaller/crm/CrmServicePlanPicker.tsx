@@ -262,11 +262,11 @@ export default function CrmServicePlanPicker({
   };
 
   return (
-    <div className="space-y-3 sm:space-y-4">
+    <div className="space-y-2">
       {title ? (
         <div>
           <label className="block text-xs sm:text-sm font-medium text-text-body">
-            {title} <span className="text-red-500">*</span>
+            {title}
           </label>
           {subtitle ? <p className="mt-0.5 text-[11px] sm:text-xs text-gray-500">{subtitle}</p> : null}
         </div>
@@ -300,9 +300,7 @@ export default function CrmServicePlanPicker({
           ))}
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
-          No services selected yet — choose a category below
-        </div>
+        <p className="text-[11px] text-gray-500">No services selected</p>
       )}
 
       {loading ? (
@@ -382,7 +380,8 @@ export default function CrmServicePlanPicker({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+          <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1.5">
             {servicesInCategory.length === 0 ? (
               <p className="text-xs sm:text-sm text-gray-500 sm:col-span-2 py-4 text-center">
                 No plans in this category
@@ -395,7 +394,7 @@ export default function CrmServicePlanPicker({
                 return (
                   <div
                     key={service.id}
-                    className={`flex flex-col gap-2 p-3 sm:p-4 border rounded-lg transition ${
+                    className={`flex flex-col gap-1.5 p-2.5 border rounded-lg transition ${
                       selected
                         ? 'border-brand-primary bg-blue-50/50'
                         : 'border-gray-200 hover:bg-gray-50'
@@ -436,6 +435,7 @@ export default function CrmServicePlanPicker({
                 );
               })
             )}
+          </div>
           </div>
         </>
       )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode, type ComponentType } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
@@ -39,11 +39,11 @@ import {
   type CrmReferredBy,
 } from '@/lib/telecaller/crmLeadReference';
 import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
+import CrmWorkshopPicker from '@/components/telecaller/crm/CrmWorkshopPicker';
 import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '@/components/telecaller/crm/CrmFollowUpDateTime';
 import { isoToIstParts, istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import { formatDateTime } from '@/lib/utils';
-import { crmDispositionNeedsFullProfile } from '@/lib/telecaller/crmLeadFilters';
 
 const PIPELINE = [
   { id: 'FRESH', label: 'Fresh' },
@@ -323,23 +323,67 @@ export type CrmLeadEditFormProps = {
   embedded?: boolean;
   onCancel?: () => void;
   onSaved?: () => void;
+  onActivity?: () => void;
   onCall?: () => void;
   onWhatsApp?: () => void;
   onShare?: () => void;
   calling?: boolean;
   isLeadManagerRole?: boolean;
+  seedLead?: Record<string, any> | null;
 };
+
+function YearPicker({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (year: string) => void;
+  className: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const thisYear = new Date().getFullYear();
+  const years = Array.from({ length: thisYear - 1994 }, (_, index) => String(thisYear + 1 - index));
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((current) => !current)} className={`${className} text-left`}>
+        {value || 'Select year'}
+      </button>
+      {open ? (
+        <div className="absolute z-30 mt-1 grid max-h-48 w-full grid-cols-3 gap-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+          {years.map((year) => (
+            <button
+              key={year}
+              type="button"
+              onClick={() => {
+                onChange(year);
+                setOpen(false);
+              }}
+              className={`rounded-lg px-1 py-1.5 text-xs font-bold ${
+                value === year ? 'bg-[#004AAD] text-white' : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              {year}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function CrmLeadEditForm({
   leadId,
   embedded = false,
   onCancel,
   onSaved,
+  onActivity,
   onCall,
   onWhatsApp,
   onShare,
   calling = false,
   isLeadManagerRole,
+  seedLead = null,
 }: CrmLeadEditFormProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -439,8 +483,6 @@ export default function CrmLeadEditForm({
     service_done_date: '',
     repeat_customer: false,
   });
-  const needsFullProfile = crmDispositionNeedsFullProfile(formData.activity_result);
-
   useEffect(() => {
     fetchLeadDetails();
     if (SHOW_SERVICE_ADDONS) fetchServiceAddons();
@@ -710,18 +752,22 @@ export default function CrmLeadEditForm({
 
   async function fetchLeadDetails() {
     const supabase = createClient();
-    setLoading(true);
+    const seeded = seedLead && String(seedLead.id || '') === String(leadId) ? seedLead : null;
+    if (!seeded) setLoading(true);
 
     try {
-      const { data: leadData, error: leadError } = await supabase
-        .from('service_leads')
-        .select(
-          `*, assigned_telecaller:assigned_telecaller_id(id, full_name, phone), workshop:workshops(name)`,
-        )
-        .eq('id', leadId)
-        .single();
-
-      if (leadError) throw leadError;
+      let leadData = seeded;
+      if (!leadData) {
+        const { data, error: leadError } = await supabase
+          .from('service_leads')
+          .select(
+            `*, assigned_telecaller:assigned_telecaller_id(id, full_name, phone), workshop:workshops(name)`,
+          )
+          .eq('id', leadId)
+          .single();
+        if (leadError) throw leadError;
+        leadData = data;
+      }
 
       setLead(leadData);
 
@@ -808,10 +854,17 @@ export default function CrmLeadEditForm({
             return fromMeta;
           }
           const parsed = parseAddressParts(String(leadData.pickup_address || ''), null);
+          if (parsed.flat_number || parsed.area || parsed.landmark) {
+            return {
+              pickup_flat: parsed.flat_number,
+              pickup_area: parsed.area,
+              pickup_landmark: parsed.landmark,
+            };
+          }
           return {
-            pickup_flat: parsed.flat_number,
-            pickup_area: parsed.area,
-            pickup_landmark: parsed.landmark,
+            pickup_flat: addrParts.flat_number,
+            pickup_area: addrParts.area || String(leadData.customer_address || ''),
+            pickup_landmark: addrParts.landmark,
           };
         })(),
         pickup_date: (() => {
@@ -929,14 +982,13 @@ export default function CrmLeadEditForm({
         setSecondCarDisplay('');
       }
       setReferredBy(parseReferredBy(meta));
-      try {
-        const refRes = await fetch(`/api/telecaller/crm/lead-reference?lead_id=${encodeURIComponent(leadId)}`);
-        const refJson = await refRes.json().catch(() => ({}));
-        if (refJson?.referred_by) setReferredBy(refJson.referred_by);
-        setReferredTo(Array.isArray(refJson?.referred_to) ? refJson.referred_to : []);
-      } catch {
-        setReferredTo([]);
-      }
+      void fetch(`/api/telecaller/crm/lead-reference?lead_id=${encodeURIComponent(leadId)}`)
+        .then((refRes) => refRes.json().catch(() => ({})))
+        .then((refJson) => {
+          if (refJson?.referred_by) setReferredBy(refJson.referred_by);
+          setReferredTo(Array.isArray(refJson?.referred_to) ? refJson.referred_to : []);
+        })
+        .catch(() => setReferredTo([]));
 
       // Initialize coupons from stored data (best-effort)
       const existingSelected = Array.isArray((leadData as any)?.coupon_meta?.selected_codes)
@@ -959,11 +1011,20 @@ export default function CrmLeadEditForm({
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-      ...(name === 'activity_result' && value === 'BOOKING_CONFIRMED' ? { pickup_required: true } : {}),
-    }));
+    setFormData((prev) => {
+      const pickupKey =
+        name === 'area' ? 'pickup_area' : name === 'flat_number' ? 'pickup_flat' : name === 'landmark' ? 'pickup_landmark' : '';
+      const keepPickup =
+        pickupKey &&
+        (String(prev[pickupKey as 'pickup_area'] || '').trim() === '' ||
+          String(prev[pickupKey as 'pickup_area'] || '') === String(prev[name as 'area'] || ''));
+      return {
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value,
+        ...(name === 'activity_result' && value === 'BOOKING_CONFIRMED' ? { pickup_required: true } : {}),
+        ...(keepPickup && pickupKey ? { [pickupKey]: value } : {}),
+      };
+    });
 
     if (errors[name]) {
       setErrors((prev) => {
@@ -1004,78 +1065,11 @@ export default function CrmLeadEditForm({
     return regex.test(cleanNumber);
   }
 
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
+  const validateForm = (): boolean => true;
 
-    const needsFullProfile = crmDispositionNeedsFullProfile(formData.activity_result);
-
-    // Customer validation
-    if (!formData.customer_name.trim()) newErrors.customer_name = 'Customer name is required';
-    if (!formData.customer_phone.trim()) newErrors.customer_phone = 'Phone number is required';
-    if (formData.customer_phone && formData.customer_phone.replace(/\D/g, '').length < 10) {
-      newErrors.customer_phone = 'Please enter valid 10-digit phone number';
-    }
-    if (needsFullProfile) {
-      if (!formData.area.trim() && !formData.flat_number.trim()) {
-        newErrors.area = 'Address (flat / area) is required';
-      }
-      if (!formData.city_id && !formData.city) newErrors.city_id = 'City is required (enter pincode)';
-      if (!formData.pincode || formData.pincode.replace(/\D/g, '').length !== 6) {
-        newErrors.pincode = '6-digit pincode required';
-      }
-
-      // Vehicle validation — NA allowed for soft leads
-      const vNum = formData.vehicle_number.trim().toUpperCase();
-      if (!vNum) newErrors.vehicle_number = 'Vehicle number is required (or NA)';
-      if (!formData.vehicle_make.trim() || !formData.vehicle_model.trim()) {
-        newErrors.vehicle_make = 'Search and select car model';
-      }
-
-      if (showSecondCar) {
-        const sNum = secondCar.vehicle_number.trim().toUpperCase();
-        if (!sNum) newErrors.second_vehicle_number = 'Second car number is required (or NA)';
-        if (!secondCar.vehicle_make.trim() || !secondCar.vehicle_model.trim()) {
-          newErrors.second_vehicle_make = 'Search and select second car model';
-        }
-        if (sNum && sNum !== 'NA' && !validateVehicleNumber(sNum)) {
-          newErrors.second_vehicle_number = 'Enter valid second car number (e.g., MH12AB1234) or NA';
-        }
-      }
-
-      if (vNum && vNum !== 'NA' && !validateVehicleNumber(vNum)) {
-        newErrors.vehicle_number = 'Please enter valid vehicle number (e.g., MH12AB1234) or NA';
-      }
-
-    }
-
-    // Soft leads: date/time not mandatory. Only when marking Booking confirmed.
-    if (formData.activity_result === 'BOOKING_CONFIRMED') {
-      if (!formData.pickup_date) newErrors.pickup_date = 'Pickup / visit date required for booking';
-      if (!formData.pickup_time) newErrors.pickup_time = 'Pickup / visit time required for booking';
-    }
-
-    if (formData.activity_result === 'CALLBACK') {
-      if (!formData.callback_date) newErrors.callback_date = 'Follow-up date required';
-      if (!formData.callback_time) newErrors.callback_time = 'Follow-up time required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validate form
-    if (!validateForm()) {
-      alert('Please fill all required fields correctly');
-      return;
-    }
-    
-    if (formData.activity_result === 'SERVICE_DONE' && !formData.service_done_date) {
-      alert('Service done date daalo.');
-      return;
-    }
+  const handleSubmit = async (e?: React.FormEvent, quiet = false) => {
+    e?.preventDefault();
+    if (!quiet && !validateForm()) return;
 
     setSaving(true);
 
@@ -1100,12 +1094,52 @@ export default function CrmLeadEditForm({
           : resolvedOther
             ? `Other · ${resolvedOther}`
             : selectedActivity.label;
-      const historyEntry = {
-        at: new Date().toISOString(),
-        summary: `Updated ${statusLabel}`,
-        remark: formData.activity_notes.trim() || null,
-        status: selectedActivity.id,
-      };
+      const nextSnap = currentActivitySnap();
+      const prevSnap = activityBase.current;
+      const bits: string[] = [];
+      if (prevSnap) {
+        const labels: Record<string, string> = {
+          name: 'name',
+          phone: 'phone',
+          alt: 'alternate phone',
+          email: 'email',
+          pin: 'pincode',
+          city: 'city',
+          workshop: 'workshop',
+          flat: 'flat',
+          area: 'area',
+          landmark: 'landmark',
+          reg: 'car number',
+          car: 'car model',
+          year: 'year',
+          fuel: 'fuel',
+          odo: 'odometer',
+          priority: 'priority',
+          pickup: 'pickup',
+          slot: 'pickup time',
+          pickupAddr: 'pickup address',
+          repeat: 'repeat customer',
+          remarks: 'remarks',
+          notes: 'notes',
+          services: 'services',
+          status: statusLabel,
+          custom: 'custom fields',
+          second: 'second car',
+          referred: 'referred by',
+        };
+        for (const key of Object.keys(nextSnap)) {
+          if (prevSnap[key] !== nextSnap[key]) bits.push(labels[key] || key);
+        }
+      }
+      pendingActivitySnap.current = nextSnap;
+      const historyEntry = bits.length
+        ? {
+            at: new Date().toISOString(),
+            summary: `Updated ${bits.join(', ')}`,
+            remark: formData.activity_notes.trim() || null,
+            status: selectedActivity.id,
+          }
+        : null;
       const prevHistory = Array.isArray((prevMeta as any).profile_history)
         ? (prevMeta as any).profile_history
         : [];
@@ -1131,7 +1165,7 @@ export default function CrmLeadEditForm({
           selectedActivity.id === 'SERVICE_DONE'
             ? formData.service_done_date
             : (prevMeta as any).service_done_at || null,
-        profile_history: [historyEntry, ...prevHistory].slice(0, 50),
+        profile_history: historyEntry ? [historyEntry, ...prevHistory].slice(0, 50) : prevHistory,
         flat_number: formData.flat_number.trim() || null,
         landmark: formData.landmark.trim() || null,
         area: formData.area.trim() || null,
@@ -1171,7 +1205,7 @@ export default function CrmLeadEditForm({
         description: customerMessage,
 
         pickup_required: formData.pickup_required,
-        workshop_id: formData.pickup_required ? null : formData.workshop_id || null,
+        workshop_id: formData.workshop_id || null,
         pickup_address: formData.pickup_required
           ? composeSmartAddress({
               flat_number: formData.pickup_flat,
@@ -1227,6 +1261,8 @@ export default function CrmLeadEditForm({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to update lead');
+      if (pendingActivitySnap.current) activityBase.current = pendingActivitySnap.current;
+      if (historyEntry) onActivity?.();
 
       if (payload.next_follow_up_at) {
         try {
@@ -1246,16 +1282,78 @@ export default function CrmLeadEditForm({
         }
       }
 
-      if (onSaved) onSaved();
-      else router.push(`${base}/leads/${leadId}`);
+      if (!quiet) {
+        if (onSaved) onSaved();
+        else router.push(`${base}/leads/${leadId}`);
+      }
 
     } catch (error: any) {
       console.error('Error updating lead:', error);
-      alert('Failed to update lead: ' + (error?.message || String(error)));
+      if (!quiet) alert('Failed to update lead: ' + (error?.message || String(error)));
     } finally {
       setSaving(false);
     }
   };
+
+  const [saveSlot, setSaveSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!embedded) return;
+    setSaveSlot(document.getElementById('lead-sidebar-save'));
+  }, [embedded, leadId]);
+
+  const saveRef = useRef(handleSubmit);
+  saveRef.current = handleSubmit;
+  const skipAutoSave = useRef(true);
+  const activityBase = useRef<Record<string, string> | null>(null);
+  const pendingActivitySnap = useRef<Record<string, string> | null>(null);
+  const currentActivitySnap = () => {
+    const n = (v: unknown) => String(v ?? '').trim();
+    return {
+      name: n(formData.customer_name),
+      phone: n(formData.customer_phone).replace(/\D/g, '').slice(-10),
+      alt: n(formData.customer_alternate_phone),
+      email: n(formData.customer_email),
+      pin: n(formData.pincode),
+      city: n(formData.city),
+      workshop: n(formData.workshop_id),
+      flat: n(formData.flat_number),
+      area: n(formData.area),
+      landmark: n(formData.landmark),
+      reg: n(formData.vehicle_number).toUpperCase(),
+      car: `${n(formData.vehicle_make)} ${n(formData.vehicle_model)}`.trim(),
+      year: n(formData.vehicle_year),
+      fuel: n(formData.vehicle_fuel_type),
+      odo: n(formData.odometer_km),
+      priority: n(formData.lead_priority),
+      pickup: formData.pickup_required ? '1' : '0',
+      slot: `${n(formData.pickup_date)} ${n(formData.pickup_time)}`.trim(),
+      pickupAddr: `${n(formData.pickup_flat)}|${n(formData.pickup_area)}|${n(formData.pickup_landmark)}`,
+      repeat: formData.repeat_customer ? '1' : '0',
+      remarks: n(formData.activity_notes),
+      notes: n(formData.notes),
+      services: JSON.stringify(formData.service_types || []),
+      status: n(formData.activity_result),
+      custom: JSON.stringify(customFieldValues || {}),
+      second: showSecondCar ? JSON.stringify(secondCar) : '',
+      referred: JSON.stringify(referredBy || null),
+    };
+  };
+  useEffect(() => {
+    skipAutoSave.current = true;
+    activityBase.current = null;
+  }, [leadId]);
+  useEffect(() => {
+    if (loading) return;
+    if (skipAutoSave.current) {
+      skipAutoSave.current = false;
+      activityBase.current = currentActivitySnap();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveRef.current(undefined, true);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [formData, secondCar, showSecondCar, referredBy, customFieldValues, couponCodes, appliedCoupon, loading]);
 
   if (loading) {
     return (
@@ -1280,24 +1378,23 @@ export default function CrmLeadEditForm({
     );
   }
 
-  const dockFooter =
-    embedded && typeof document !== 'undefined'
-      ? document.getElementById('lead-drawer-actions')
-      : null;
+  const dockFooter = saveSlot;
   const inDrawer = Boolean(dockFooter);
 
   const saveBar = (
     <div
       className={
         inDrawer
-          ? 'flex gap-2 bg-white px-3 py-2.5'
+          ? 'flex flex-col gap-2'
           : 'fixed bottom-3 sm:bottom-4 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(12px,env(safe-area-inset-bottom,0px))] sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]'
       }
     >
-      <div className={inDrawer ? 'flex w-full gap-2' : 'mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3'}>
-        <button type="button" onClick={handleCancel} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-          <X className="w-4 h-4" /> Back
-        </button>
+      <div className={inDrawer ? 'flex w-full' : 'mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3'}>
+        {inDrawer ? null : (
+          <button type="button" onClick={handleCancel} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            <X className="w-4 h-4" /> Back
+          </button>
+        )}
         <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
           {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
         </button>
@@ -1309,6 +1406,7 @@ export default function CrmLeadEditForm({
     <div
       className={`${embedded ? 'w-full' : 'max-w-5xl mx-auto'} ${inDrawer ? 'space-y-3 pb-2' : 'space-y-4 pb-28'} ${embedded ? '' : 'px-3 sm:px-4'}`}
     >
+      <div className={inDrawer ? 'sticky top-0 z-30 space-y-2 bg-[#f4f7fb] pb-2' : ''}>
       <div
         className={`relative overflow-hidden rounded-2xl text-white shadow-lg transition-colors ${headerCardClass(formData.activity_result)} ${inDrawer ? 'p-3' : 'p-4 sm:p-6'}`}
       >
@@ -1457,6 +1555,7 @@ export default function CrmLeadEditForm({
           </div>
         </div>
       </div>
+      </div>
 
       {formData.activity_result === 'LOST' ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 sm:p-4">
@@ -1530,7 +1629,7 @@ export default function CrmLeadEditForm({
               </div>
             </div>
             <div>
-              <FieldLabel required={needsFullProfile}>Pincode</FieldLabel>
+              <FieldLabel>Pincode</FieldLabel>
               <div className="relative">
                 <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -1562,12 +1661,24 @@ export default function CrmLeadEditForm({
                 <p className="mt-1 text-xs text-rose-600">{errors.pincode || errors.city_id}</p>
               ) : null}
             </div>
+            <div className="sm:col-span-3">
+              <CrmWorkshopPicker
+                pincode={formData.pincode}
+                city={formData.city}
+                cityId={formData.city_id}
+                workshopId={formData.workshop_id}
+                workshopName={formData.workshop_name}
+                onPick={(id, name) =>
+                  setFormData((prev) => ({ ...prev, workshop_id: id, workshop_name: name }))
+                }
+              />
+            </div>
             <div>
               <FieldLabel>Flat / Building</FieldLabel>
               <input type="text" name="flat_number" value={formData.flat_number} onChange={handleChange} className={fieldCls()} placeholder="Flat / house no." />
             </div>
             <div>
-              <FieldLabel required={needsFullProfile}>Area / Street</FieldLabel>
+              <FieldLabel>Area / Street</FieldLabel>
               <input type="text" name="area" value={formData.area} onChange={handleChange} className={fieldCls(Boolean(errors.area))} placeholder="Society, road, locality" />
               {errors.area ? <p className="mt-1 text-xs text-rose-600">{errors.area}</p> : null}
             </div>
@@ -1576,6 +1687,223 @@ export default function CrmLeadEditForm({
               <input type="text" name="landmark" value={formData.landmark} onChange={handleChange} className={fieldCls()} placeholder="Near …" />
             </div>
           </div>
+        </SectionCard>
+
+        <SectionCard title="Vehicle Details" icon={Car} tone="sky">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="col-span-2 lg:col-span-1">
+              <FieldLabel>Vehicle Number</FieldLabel>
+              <input
+                type="text"
+                name="vehicle_number"
+                value={formData.vehicle_number}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    vehicle_number: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12),
+                  }))
+                }
+                className={`${fieldCls(Boolean(errors.vehicle_number))} uppercase tracking-wide font-semibold`}
+                placeholder="MH12AB1234 or NA"
+              />
+              {errors.vehicle_number ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_number}</p> : null}
+            </div>
+            <div className="col-span-2 lg:col-span-2">
+              <CrmCarSearch
+                label="Car Model"
+                placeholder="Type model (e.g. Swift, City, Rapid)"
+                displayValue={carDisplay}
+                onSelect={(car) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    vehicle_make: car.make,
+                    vehicle_model: car.model,
+                    model_id: car.id,
+                    vehicle_variant: '',
+                    vehicle_class: car.vehicleClass || '',
+                  }));
+                  setCarDisplay([car.make, car.model].filter(Boolean).join(' '));
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.vehicle_make;
+                    delete next.model_id;
+                    return next;
+                  });
+                }}
+                onClear={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    vehicle_make: '',
+                    vehicle_model: '',
+                    model_id: '',
+                    vehicle_class: '',
+                  }));
+                  setCarDisplay('');
+                }}
+              />
+              {errors.vehicle_make ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_make}</p> : null}
+            </div>
+            {!showSecondCar ? (
+              <div className="col-span-2 flex items-end lg:col-span-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSecondCar(true);
+                    setSecondCar(emptySecondCar());
+                    setSecondCarDisplay('');
+                  }}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-sm font-bold text-sky-800 hover:bg-sky-100"
+                >
+                  <Car className="h-4 w-4" />
+                  Add second car
+                </button>
+              </div>
+            ) : null}
+            <div>
+              <FieldLabel>Year</FieldLabel>
+              <YearPicker
+                value={formData.vehicle_year}
+                className={fieldCls()}
+                onChange={(year) => setFormData((prev) => ({ ...prev, vehicle_year: year }))}
+              />
+            </div>
+            <div>
+              <FieldLabel>Fuel Type</FieldLabel>
+              <select name="vehicle_fuel_type" value={formData.vehicle_fuel_type} onChange={handleChange} className={fieldCls(Boolean(errors.vehicle_fuel_type))}>
+                <option value="">Select (optional)</option>
+                <option value="PETROL">Petrol</option>
+                <option value="DIESEL">Diesel</option>
+                <option value="CNG">CNG</option>
+                <option value="ELECTRIC">Electric</option>
+                <option value="HYBRID">Hybrid</option>
+              </select>
+              {errors.vehicle_fuel_type ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_fuel_type}</p> : null}
+            </div>
+            <div>
+              <FieldLabel>Odometer (km)</FieldLabel>
+              <input type="number" name="odometer_km" value={formData.odometer_km} onChange={handleChange} className={fieldCls()} />
+            </div>
+            <div>
+              <FieldLabel>Make / Model</FieldLabel>
+              <input
+                type="text"
+                value={[formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ') || '—'}
+                disabled
+                className={fieldCls(false, true)}
+              />
+            </div>
+          </div>
+
+          {showSecondCar ? (
+            <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/70 p-3 sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-sm font-black text-sky-900">Second car</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSecondCar(false);
+                    setSecondCar(emptySecondCar());
+                    setSecondCarDisplay('');
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.second_vehicle_number;
+                      delete next.second_vehicle_make;
+                      return next;
+                    });
+                  }}
+                  className="text-xs font-bold text-slate-600 hover:text-rose-600"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="col-span-2 lg:col-span-1">
+                  <FieldLabel>Vehicle Number</FieldLabel>
+                  <input
+                    type="text"
+                    value={secondCar.vehicle_number}
+                    onChange={(e) =>
+                      setSecondCar((prev) => ({
+                        ...prev,
+                        vehicle_number: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12),
+                      }))
+                    }
+                    className={`${fieldCls(Boolean(errors.second_vehicle_number))} uppercase tracking-wide font-semibold`}
+                    placeholder="MH12AB1234 or NA"
+                  />
+                  {errors.second_vehicle_number ? (
+                    <p className="mt-1 text-xs text-rose-600">{errors.second_vehicle_number}</p>
+                  ) : null}
+                </div>
+                <div className="col-span-2 lg:col-span-3">
+                  <CrmCarSearch
+                    label="Car Model"
+                    placeholder="Type second car model"
+                    displayValue={secondCarDisplay}
+                    onSelect={(car) => {
+                      setSecondCar((prev) => ({
+                        ...prev,
+                        vehicle_make: car.make,
+                        vehicle_model: car.model,
+                        model_id: car.id,
+                        vehicle_class: car.vehicleClass || '',
+                      }));
+                      setSecondCarDisplay([car.make, car.model].filter(Boolean).join(' '));
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.second_vehicle_make;
+                        return next;
+                      });
+                    }}
+                    onClear={() => {
+                      setSecondCar((prev) => ({
+                        ...prev,
+                        vehicle_make: '',
+                        vehicle_model: '',
+                        model_id: '',
+                        vehicle_class: '',
+                      }));
+                      setSecondCarDisplay('');
+                    }}
+                  />
+                  {errors.second_vehicle_make ? (
+                    <p className="mt-1 text-xs text-rose-600">{errors.second_vehicle_make}</p>
+                  ) : null}
+                </div>
+                <div>
+                  <FieldLabel>Year</FieldLabel>
+                  <YearPicker
+                    value={secondCar.vehicle_year}
+                    className={fieldCls()}
+                    onChange={(year) => setSecondCar((prev) => ({ ...prev, vehicle_year: year }))}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Fuel Type</FieldLabel>
+                  <select
+                    value={secondCar.vehicle_fuel_type}
+                    onChange={(e) => setSecondCar((prev) => ({ ...prev, vehicle_fuel_type: e.target.value }))}
+                    className={fieldCls()}
+                  >
+                    <option value="PETROL">Petrol</option>
+                    <option value="DIESEL">Diesel</option>
+                    <option value="CNG">CNG</option>
+                    <option value="ELECTRIC">Electric</option>
+                    <option value="HYBRID">Hybrid</option>
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel>Odometer (km)</FieldLabel>
+                  <input
+                    type="number"
+                    value={secondCar.odometer_km}
+                    onChange={(e) => setSecondCar((prev) => ({ ...prev, odometer_km: e.target.value }))}
+                    className={fieldCls()}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
         </SectionCard>
 
         <SectionCard title="Lead Overview" icon={FileText} tone="slate">
@@ -1614,36 +1942,28 @@ export default function CrmLeadEditForm({
             <div>
               <LeadTagsPanel leadId={leadId} canManage={isLeadManager} variant="field" />
             </div>
-            <CrmReferredByField
-              leadId={leadId}
-              value={referredBy}
-              onChange={setReferredBy}
-              referredTo={referredTo}
-              leadHref={(id) => `${base}/leads/${id}`}
-            />
-            {formData.activity_result === 'SERVICE_DONE' ? (
-              <div>
-                <FieldLabel>Service done date</FieldLabel>
+            <div className="col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4">
+              <CrmReferredByField
+                leadId={leadId}
+                value={referredBy}
+                onChange={setReferredBy}
+                referredTo={referredTo}
+                leadHref={(id) => `${base}/leads/${id}`}
+                className="space-y-3"
+              />
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer">
                 <input
-                  type="date"
-                  name="service_done_date"
-                  value={formData.service_done_date}
-                  onChange={handleChange}
-                  className={fieldCls()}
-                  required
+                  type="checkbox"
+                  checked={Boolean(formData.repeat_customer)}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, repeat_customer: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
                 />
-              </div>
-            ) : null}
-            <CrmFollowUpDateTime
-              date={formData.callback_date}
-              time={formData.callback_time}
-              required={formData.activity_result === 'CALLBACK'}
-              dateError={Boolean(errors.callback_date)}
-              timeError={Boolean(errors.callback_time)}
-              onChange={({ date, time }) =>
-                setFormData((prev) => ({ ...prev, callback_date: date, callback_time: time }))
-              }
-            />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-900">Repeat Customer</span>
+                  <span className="block text-xs text-slate-500">Customer pehle hamari service le chuka hai aur dobara aaya hai</span>
+                </span>
+              </label>
+            </div>
             {customFieldDefs.length > 0 ? (
               <div className="sm:col-span-2 lg:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {customFieldDefs.map((field) => (
@@ -1660,241 +1980,11 @@ export default function CrmLeadEditForm({
                 ))}
               </div>
             ) : null}
-            <label className="col-span-2 lg:col-span-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={Boolean(formData.repeat_customer)}
-                onChange={(e) => setFormData((prev) => ({ ...prev, repeat_customer: e.target.checked }))}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300"
-              />
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">Repeat Customer</span>
-                <span className="block text-xs text-slate-500">Customer pehle hamari service le chuka hai aur dobara aaya hai</span>
-              </span>
-            </label>
             <div className="col-span-2 lg:col-span-4">
               <FieldLabel>Remarks</FieldLabel>
               <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Call notes / remarks for this lead" />
             </div>
           </div>
-        </SectionCard>
-
-        <SectionCard title="Vehicle Details" icon={Car} tone="sky">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="col-span-2 lg:col-span-1">
-              <FieldLabel required={needsFullProfile}>Vehicle Number</FieldLabel>
-              <input
-                type="text"
-                name="vehicle_number"
-                value={formData.vehicle_number}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    vehicle_number: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12),
-                  }))
-                }
-                className={`${fieldCls(Boolean(errors.vehicle_number))} uppercase tracking-wide font-semibold`}
-                placeholder="MH12AB1234 or NA"
-              />
-              {errors.vehicle_number ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_number}</p> : null}
-            </div>
-            <div className="col-span-2 lg:col-span-3">
-              <CrmCarSearch
-                label={needsFullProfile ? 'Car Model *' : 'Car Model'}
-                placeholder="Type model (e.g. Swift, City, Rapid)"
-                displayValue={carDisplay}
-                onSelect={(car) => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    vehicle_make: car.make,
-                    vehicle_model: car.model,
-                    model_id: car.id,
-                    vehicle_variant: '',
-                    vehicle_class: car.vehicleClass || '',
-                  }));
-                  setCarDisplay([car.make, car.model].filter(Boolean).join(' '));
-                  setErrors((prev) => {
-                    const next = { ...prev };
-                    delete next.vehicle_make;
-                    delete next.model_id;
-                    return next;
-                  });
-                }}
-                onClear={() => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    vehicle_make: '',
-                    vehicle_model: '',
-                    model_id: '',
-                    vehicle_class: '',
-                  }));
-                  setCarDisplay('');
-                }}
-              />
-              {errors.vehicle_make ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_make}</p> : null}
-            </div>
-            <div>
-              <FieldLabel>Year</FieldLabel>
-              <input type="number" name="vehicle_year" value={formData.vehicle_year} onChange={handleChange} className={fieldCls()} min="1900" max={new Date().getFullYear() + 1} />
-            </div>
-            <div>
-              <FieldLabel>Fuel Type</FieldLabel>
-              <select name="vehicle_fuel_type" value={formData.vehicle_fuel_type} onChange={handleChange} className={fieldCls(Boolean(errors.vehicle_fuel_type))}>
-                <option value="">Select (optional)</option>
-                <option value="PETROL">Petrol</option>
-                <option value="DIESEL">Diesel</option>
-                <option value="CNG">CNG</option>
-                <option value="ELECTRIC">Electric</option>
-                <option value="HYBRID">Hybrid</option>
-              </select>
-              {errors.vehicle_fuel_type ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_fuel_type}</p> : null}
-            </div>
-            <div>
-              <FieldLabel>Odometer (km)</FieldLabel>
-              <input type="number" name="odometer_km" value={formData.odometer_km} onChange={handleChange} className={fieldCls()} />
-            </div>
-            <div>
-              <FieldLabel>Make / Model</FieldLabel>
-              <input
-                type="text"
-                value={[formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ') || '—'}
-                disabled
-                className={fieldCls(false, true)}
-              />
-            </div>
-          </div>
-
-          {!showSecondCar ? (
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSecondCar(true);
-                  setSecondCar(emptySecondCar());
-                  setSecondCarDisplay('');
-                }}
-                className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2 text-sm font-bold text-sky-800 hover:bg-sky-100"
-              >
-                <Car className="h-4 w-4" />
-                Add second car
-              </button>
-              <p className="mt-1.5 text-[11px] text-slate-500">
-                Same customer — second car stays on this lead. Booking/workshop still uses Car 1.
-              </p>
-            </div>
-          ) : (
-            <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/70 p-3 sm:p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <p className="text-sm font-black text-sky-900">Second car</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSecondCar(false);
-                    setSecondCar(emptySecondCar());
-                    setSecondCarDisplay('');
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.second_vehicle_number;
-                      delete next.second_vehicle_make;
-                      return next;
-                    });
-                  }}
-                  className="text-xs font-bold text-slate-600 hover:text-rose-600"
-                >
-                  Remove
-                </button>
-              </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div className="col-span-2 lg:col-span-1">
-                  <FieldLabel required={needsFullProfile}>Vehicle Number</FieldLabel>
-                  <input
-                    type="text"
-                    value={secondCar.vehicle_number}
-                    onChange={(e) =>
-                      setSecondCar((prev) => ({
-                        ...prev,
-                        vehicle_number: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12),
-                      }))
-                    }
-                    className={`${fieldCls(Boolean(errors.second_vehicle_number))} uppercase tracking-wide font-semibold`}
-                    placeholder="MH12AB1234 or NA"
-                  />
-                  {errors.second_vehicle_number ? (
-                    <p className="mt-1 text-xs text-rose-600">{errors.second_vehicle_number}</p>
-                  ) : null}
-                </div>
-                <div className="col-span-2 lg:col-span-3">
-                  <CrmCarSearch
-                    label={needsFullProfile ? 'Car Model *' : 'Car Model'}
-                    placeholder="Type second car model"
-                    displayValue={secondCarDisplay}
-                    onSelect={(car) => {
-                      setSecondCar((prev) => ({
-                        ...prev,
-                        vehicle_make: car.make,
-                        vehicle_model: car.model,
-                        model_id: car.id,
-                        vehicle_class: car.vehicleClass || '',
-                      }));
-                      setSecondCarDisplay([car.make, car.model].filter(Boolean).join(' '));
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.second_vehicle_make;
-                        return next;
-                      });
-                    }}
-                    onClear={() => {
-                      setSecondCar((prev) => ({
-                        ...prev,
-                        vehicle_make: '',
-                        vehicle_model: '',
-                        model_id: '',
-                        vehicle_class: '',
-                      }));
-                      setSecondCarDisplay('');
-                    }}
-                  />
-                  {errors.second_vehicle_make ? (
-                    <p className="mt-1 text-xs text-rose-600">{errors.second_vehicle_make}</p>
-                  ) : null}
-                </div>
-                <div>
-                  <FieldLabel>Year</FieldLabel>
-                  <input
-                    type="number"
-                    value={secondCar.vehicle_year}
-                    onChange={(e) => setSecondCar((prev) => ({ ...prev, vehicle_year: e.target.value }))}
-                    className={fieldCls()}
-                    min="1900"
-                    max={new Date().getFullYear() + 1}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Fuel Type</FieldLabel>
-                  <select
-                    value={secondCar.vehicle_fuel_type}
-                    onChange={(e) => setSecondCar((prev) => ({ ...prev, vehicle_fuel_type: e.target.value }))}
-                    className={fieldCls()}
-                  >
-                    <option value="PETROL">Petrol</option>
-                    <option value="DIESEL">Diesel</option>
-                    <option value="CNG">CNG</option>
-                    <option value="ELECTRIC">Electric</option>
-                    <option value="HYBRID">Hybrid</option>
-                  </select>
-                </div>
-                <div>
-                  <FieldLabel>Odometer (km)</FieldLabel>
-                  <input
-                    type="number"
-                    value={secondCar.odometer_km}
-                    onChange={(e) => setSecondCar((prev) => ({ ...prev, odometer_km: e.target.value }))}
-                    className={fieldCls()}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
         </SectionCard>
 
         <SectionCard title="Service Details" icon={Wrench} tone="amber">
@@ -1911,8 +2001,8 @@ export default function CrmLeadEditForm({
                   });
                 }
               }}
-              title="Service Types"
-              subtitle="Segregated by category — Periodic, Engine, AC, Brake, Battery…"
+              title=""
+              subtitle=""
             />
             {errors.service_types ? <p className="text-xs text-rose-600">{errors.service_types}</p> : null}
 
@@ -1934,39 +2024,41 @@ export default function CrmLeadEditForm({
             )}
 
             <div>
-              <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <FieldLabel>Coupons</FieldLabel>
                 <button type="button" className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-200" onClick={saveCouponsOnly} disabled={couponSaving}>
                   {couponSaving ? 'Saving…' : 'Save coupons'}
                 </button>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 max-h-44 overflow-auto">
-                {couponsLoading ? (
-                  <div className="text-xs text-slate-500 p-2">Loading coupons…</div>
-                ) : availableCoupons.length === 0 ? (
-                  <div className="text-xs text-slate-500 p-2">{couponsError ? `Unable to load coupons: ${couponsError}` : 'No active coupons available.'}</div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {availableCoupons.map((c) => {
-                      const code = String(c.code || '').toUpperCase();
-                      const label =
-                        c.coupon_kind === 'TOTAL_DISCOUNT'
-                          ? `${code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
-                          : `${code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
-                      const checked = selectedCodes.includes(code);
-                      return (
-                        <label key={c.id} className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer ${checked ? 'bg-blue-50 text-[#023D95]' : 'hover:bg-slate-50 text-slate-800'}`}>
-                          <input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => { if (e.target.checked) addCouponCode(code); else removeCouponCode(code); }} />
-                          <span className="font-medium">{label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2 mt-2">
-                <input className={`${fieldCls()} flex-1`} placeholder="Add coupon code manually" value={manualCoupon} onChange={(e) => setManualCoupon((e.target.value || '').toUpperCase())} />
-                <button type="button" className="rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50" onClick={() => { addCouponCode(manualCoupon); setManualCoupon(''); }} disabled={!manualCoupon.trim()}>Add</button>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-stretch">
+                <div className="max-h-24 overflow-auto rounded-xl border border-slate-200 bg-white p-1.5">
+                  {couponsLoading ? (
+                    <div className="p-2 text-xs text-slate-500">Loading coupons…</div>
+                  ) : availableCoupons.length === 0 ? (
+                    <div className="p-2 text-xs text-slate-500">{couponsError ? `Unable to load coupons: ${couponsError}` : 'No active coupons available.'}</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {availableCoupons.map((c) => {
+                        const code = String(c.code || '').toUpperCase();
+                        const label =
+                          c.coupon_kind === 'TOTAL_DISCOUNT'
+                            ? `${code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
+                            : `${code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
+                        const checked = selectedCodes.includes(code);
+                        return (
+                          <label key={c.id} className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-sm ${checked ? 'bg-blue-50 text-[#023D95]' : 'text-slate-800 hover:bg-slate-50'}`}>
+                            <input type="checkbox" checked={checked} onChange={(e) => { if (e.target.checked) addCouponCode(code); else removeCouponCode(code); }} />
+                            <span className="truncate font-medium">{label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input className={`${fieldCls()} min-w-0 flex-1`} placeholder="Add coupon code" value={manualCoupon} onChange={(e) => setManualCoupon((e.target.value || '').toUpperCase())} />
+                  <button type="button" className="h-10 shrink-0 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50" onClick={() => { addCouponCode(manualCoupon); setManualCoupon(''); }} disabled={!manualCoupon.trim()}>Add</button>
+                </div>
               </div>
               {selectedCodes.length > 0 ? (
                 <div className="mt-2 space-y-2">
@@ -2039,7 +2131,7 @@ export default function CrmLeadEditForm({
             cityId={formData.city_id}
             pincode={formData.pincode}
             hideVehicleNumber
-            requireSchedule={formData.activity_result === 'BOOKING_CONFIRMED'}
+            hideWorkshops
           />
         </div>
 

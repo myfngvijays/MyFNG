@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
+  Animated,
   StatusBar,
   Modal,
   Pressable,
@@ -19,6 +20,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../../lib/supabase';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -38,7 +40,8 @@ import CrmWorkshopLocatorTab from './CrmWorkshopLocatorTab';
 import CrmMeTab from './CrmMeTab';
 import { COLORS } from '../../../constants/theme';
 import { isPartnerPreview, exitPartnerPreview } from '../../../lib/partnerPreview';
-import { istYmd, type CrmDatePreset } from '../../../lib/crmDateRange';
+import { istDayBounds, istYmd, type CrmDatePreset } from '../../../lib/crmDateRange';
+import { crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
 import {
   defaultTelecallerCrmFilterPrefs,
   loadTelecallerCrmFilterPrefs,
@@ -457,11 +460,121 @@ const TC_NAV: NavRow[] = [
  * Advanced Telecaller CRM — hamburger menu + Home | Leads | Book | Workshops | Me
  * Date + status filters are shared between Home and Leads and persisted.
  */
+function chimeWavBase64() {
+  const rate = 16000;
+  const n = Math.floor(rate * 0.36);
+  const pcm = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    const env = Math.exp(-t * 5.5);
+    const a = Math.sin(2 * Math.PI * 740 * t);
+    const b = t > 0.1 ? Math.sin(2 * Math.PI * 988 * (t - 0.1)) : 0;
+    const s = Math.max(-1, Math.min(1, (a * 0.55 + b * 0.4) * env));
+    pcm[i] = (s * 28000) | 0;
+  }
+  const dataLen = pcm.length * 2;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(buf);
+  const writeStr = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataLen, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataLen, true);
+  let offset = 44;
+  for (let i = 0; i < pcm.length; i++) {
+    view.setInt16(offset, pcm[i], true);
+    offset += 2;
+  }
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+let chimePlayer: { play: () => void; remove?: () => void } | null = null;
+let chimeReady: Promise<string> | null = null;
+
+async function playFollowUpChime() {
+  try {
+    const FileSystem = await import('expo-file-system');
+    const audio = (await import('expo-audio')) as {
+      createAudioPlayer: (source: { uri: string }) => { play: () => void; remove?: () => void };
+    };
+    if (!chimeReady) {
+      chimeReady = (async () => {
+        const uri = `${FileSystem.cacheDirectory}fu-chime.wav`;
+        const info = await FileSystem.getInfoAsync(uri);
+        if (!info.exists) {
+          await FileSystem.writeAsStringAsync(uri, chimeWavBase64(), {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        }
+        return uri;
+      })();
+    }
+    const uri = await chimeReady;
+    chimePlayer?.remove?.();
+    const player = audio.createAudioPlayer({ uri });
+    chimePlayer = player;
+    player.play();
+  } catch {
+    /* sound is optional */
+  }
+}
+
+function FollowUpFloatCard({
+  note,
+  onOpen,
+  onClose,
+}: {
+  note: { key: string; name: string; reason: string; whenLabel: string; title: string };
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const slide = useRef(new Animated.Value(28)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.spring(slide, { toValue: 0, useNativeDriver: true, friction: 8, tension: 80 }),
+    ]).start();
+  }, [fade, slide]);
+  return (
+    <Animated.View style={[styles.floatCard, { opacity: fade, transform: [{ translateX: slide }] }]}>
+      <View style={styles.floatAccent} />
+      <View style={styles.floatIcon}>
+        <Ionicons name="time-outline" size={16} color="#8A6A2F" />
+      </View>
+      <TouchableOpacity style={{ flex: 1 }} onPress={onOpen}>
+        <Text style={styles.floatKicker}>{note.title}</Text>
+        <Text style={styles.floatName} numberOfLines={1}>{note.name}</Text>
+        <Text style={styles.floatReason} numberOfLines={1}>
+          {note.whenLabel}{note.reason ? ` · ${note.reason}` : ''}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <Ionicons name="close" size={16} color="#A8A29E" />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 export default function TelecallerAdvancedCRM() {
   const stackNav = useNavigation<any>();
   const route = useRoute();
   const { unreadCount, refreshNotifications } = useNotifications();
-  const { logout: authLogout } = useAuth();
+  const { logout: authLogout, user } = useAuth();
   const isLeadManager = String(route?.name || '').includes('LeadManager');
   const preview = isPartnerPreview();
   const insets = useSafeAreaInsets();
@@ -494,6 +607,102 @@ export default function TelecallerAdvancedCRM() {
     email: string;
   } | null>(null);
   const [reminderBadge, setReminderBadge] = useState(0);
+  const [floatNotes, setFloatNotes] = useState<
+    Array<{ key: string; leadId: string; name: string; reason: string; whenLabel: string; title: string }>
+  >([]);
+  const firedSlots = useRef(new Set<string>());
+
+  const checkSameDayFloats = useCallback(async () => {
+    if (preview) {
+      setFloatNotes([]);
+      setReminderBadge(0);
+      return;
+    }
+    try {
+      const email = String(user?.email || '').trim();
+      let profileId: string | null = null;
+      if (email) {
+        const { data: profile } = await supabase
+          .from('users_login')
+          .select('id')
+          .ilike('email', email)
+          .maybeSingle();
+        profileId = profile?.id ? String(profile.id) : null;
+      }
+      const ymd = istYmd();
+      const bounds = istDayBounds(ymd);
+      let q = supabase
+        .from('telecaller_follow_ups')
+        .select(
+          'id, lead_id, reason, scheduled_time, lead:lead_id(customer_name, status, coupon_meta, deleted_at)',
+        )
+        .eq('status', 'PENDING')
+        .gte('scheduled_time', bounds.start)
+        .lte('scheduled_time', bounds.end)
+        .order('scheduled_time', { ascending: true })
+        .limit(60);
+      if (!isLeadManager && profileId) q = q.eq('telecaller_id', profileId);
+      const { data } = await q;
+      const now = Date.now();
+      const morningKey = `myfng-fu-morning:${ymd}`;
+      const showMorning = (await AsyncStorage.getItem(morningKey)) !== '1';
+      if (showMorning) await AsyncStorage.setItem(morningKey, '1');
+      const fresh: Array<{ key: string; leadId: string; name: string; reason: string; whenLabel: string; title: string }> = [];
+      let upcoming = 0;
+      for (const row of data || []) {
+        const lead = (row as any).lead;
+        if (!lead || lead.deleted_at || crmLeadClosedForFollowUp(lead)) continue;
+        const at = String((row as any).scheduled_time || '');
+        const when = new Date(at).getTime();
+        if (!Number.isFinite(when)) continue;
+        const remaining = when - now;
+        if (remaining <= 0) continue;
+        upcoming += 1;
+        const slot: 30 | 15 | 5 | null =
+          remaining <= 5 * 60 * 1000 ? 5 : remaining <= 15 * 60 * 1000 ? 15 : remaining <= 30 * 60 * 1000 ? 30 : null;
+        const id = String((row as any).id || '');
+        const whenLabel = new Date(at).toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        });
+        const leadId = String((row as any).lead_id || '');
+        const name = String(lead.customer_name || 'Customer');
+        const reason = String((row as any).reason || 'Follow-up');
+        if (showMorning && id) {
+          const key = `${id}:morning`;
+          if (!firedSlots.current.has(key)) {
+            firedSlots.current.add(key);
+            fresh.push({ key, leadId, name, reason, whenLabel, title: "Today's follow-up" });
+          }
+          if (slot) firedSlots.current.add(`${id}:${slot}`);
+        }
+        if (!slot || !id) continue;
+        const key = `${id}:${slot}`;
+        if (firedSlots.current.has(key)) continue;
+        firedSlots.current.add(key);
+        fresh.push({ key, leadId, name, reason, whenLabel, title: `Follow-up in ${slot} min` });
+      }
+      if (fresh.length) {
+        void playFollowUpChime();
+        setFloatNotes((prev) => [...fresh, ...prev].slice(0, 8));
+        const drop = new Set(fresh.map((note) => note.key));
+        setTimeout(() => {
+          setFloatNotes((prev) => prev.filter((row) => !drop.has(row.key)));
+        }, 30_000);
+      }
+      setReminderBadge(Math.min(upcoming, 99));
+    } catch {
+      /* keep last cards */
+    }
+  }, [isLeadManager, preview, user?.email]);
+
+  useEffect(() => {
+    void checkSameDayFloats();
+    const t = setInterval(() => void checkSameDayFloats(), 20_000);
+    return () => clearInterval(t);
+  }, [checkSameDayFloats]);
 
   useFocusEffect(
     useCallback(() => {
@@ -899,13 +1108,7 @@ export default function TelecallerAdvancedCRM() {
             <>
             <TouchableOpacity
               style={styles.menuBtn}
-              onPress={() => {
-                try {
-                  stackNav.navigate('TelecallerFollowUps');
-                } catch {
-                  /* Follow-ups screen unavailable */
-                }
-              }}
+              onPress={() => navigation.navigate('TelecallerFollowUps')}
               accessibilityLabel="Reminders"
             >
               <Ionicons name="alarm-outline" size={22} color={COLORS.primary} />
@@ -967,7 +1170,7 @@ export default function TelecallerAdvancedCRM() {
               {...dateProps}
               embedInShell
               isActive={homeActive}
-              onRemindersCount={setReminderBadge}
+              onRemindersCount={undefined}
               onNavigate={(screen, params) => {
                 if (preview) {
                   if (screen === 'queue' || screen === 'engage' || screen === 'me') {
@@ -1145,6 +1348,22 @@ export default function TelecallerAdvancedCRM() {
               </TouchableOpacity>
             );
           })}
+        </View>
+      ) : null}
+
+      {floatNotes.length > 0 ? (
+        <View style={styles.floatStack} pointerEvents="box-none">
+          {floatNotes.map((note) => (
+            <FollowUpFloatCard
+              key={note.key}
+              note={note}
+              onOpen={() => {
+                setFloatNotes((prev) => prev.filter((row) => row.key !== note.key));
+                if (note.leadId) navigation.navigate('TelecallerLeadDetail', { leadId: note.leadId });
+              }}
+              onClose={() => setFloatNotes((prev) => prev.filter((row) => row.key !== note.key))}
+            />
+          ))}
         </View>
       ) : null}
 
@@ -1551,6 +1770,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 4,
   },
+  floatStack: {
+    position: 'absolute',
+    top: 72,
+    left: 28,
+    right: 36,
+    zIndex: 40,
+    gap: 8,
+  },
+  floatCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FFFDF8',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#EADFC4',
+    overflow: 'hidden',
+    shadowColor: '#1C1917',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  floatAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#C4A35A',
+  },
+  floatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginLeft: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F6EFE0',
+  },
+  floatKicker: { fontSize: 10, fontWeight: '800', color: '#8A6A2F', textTransform: 'uppercase', letterSpacing: 0.8 },
+  floatName: { fontSize: 14, fontWeight: '700', color: '#1C1917', marginTop: 2 },
+  floatReason: { fontSize: 12, color: '#78716C', marginTop: 2 },
   tcLogoutText: {
     flex: 1,
     fontSize: 14,

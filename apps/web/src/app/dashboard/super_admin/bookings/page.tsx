@@ -1812,7 +1812,6 @@ function SuperAdminBookingsPage() {
 
   const [serviceLeads, setServiceLeads] = useState<ServiceLead[]>([]);
   const [totalInRange, setTotalInRange] = useState<number | null>(null);
-  const [leadsTruncated, setLeadsTruncated] = useState(false);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Record<string, any> | null>(null);
@@ -1868,6 +1867,7 @@ function SuperAdminBookingsPage() {
     key: string;
   } | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement>(null);
+  const leadsFetchGen = useRef(0);
 
   // CSV upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2597,37 +2597,77 @@ function SuperAdminBookingsPage() {
     if (showUploadCrm) return;
     if (datePreset === 'custom' && (!customStart || !customEnd)) return;
 
+    const generation = leadsFetchGen.current + 1;
+    leadsFetchGen.current = generation;
     setLoading(true);
     setError(null);
 
-    try {
+    const FIRST_BATCH = 400;
+    const NEXT_BATCH = 1500;
+    const MAX_ROWS = 10000;
+
+    const loadSlice = async (offset: number, limit: number, fast: boolean) => {
       const query = new URLSearchParams();
-      // Paginated API — fetch up to 10k for the selected date range (was hard-capped at 200).
-      query.set('limit', '10000');
+      query.set('limit', String(limit));
+      query.set('offset', String(offset));
       query.set('preset', datePreset);
+      if (fast) query.set('skip_repeat', '1');
+      if (offset > 0) query.set('skip_count', '1');
       if (datePreset === 'custom') {
         if (customStart) query.set('start', customStart);
         if (customEnd) query.set('end', customEnd);
       }
-
       const res = await fetch(`/api/super_admin/leads?${query.toString()}`);
       const text = await res.text();
       const payload = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(payload?.error || 'Failed to load bookings data');
+      const rows = Array.isArray(payload?.leads) ? payload.leads : [];
+      return {
+        rows: rows.map((lead: ServiceLead) => withOtpFlags(enrichBookingLead(lead))),
+        totalInRange:
+          typeof payload?.summary?.total_in_range === 'number' ? payload.summary.total_in_range : null,
+      };
+    };
 
-      if (!res.ok) {
-        throw new Error(payload?.error || 'Failed to load bookings data');
+    const mergeLeads = (incoming: ServiceLead[]) => {
+      setServiceLeads((prev) => {
+        if (!prev.length) return incoming;
+        const seen = new Set(prev.map((lead) => String(lead.id || '')));
+        const extra = incoming.filter((lead) => !seen.has(String(lead.id || '')));
+        return extra.length ? [...prev, ...extra] : prev;
+      });
+    };
+
+    try {
+      const first = await loadSlice(0, FIRST_BATCH, true);
+      if (leadsFetchGen.current !== generation) return;
+      setServiceLeads(first.rows);
+      const inRange = first.totalInRange ?? first.rows.length;
+      setTotalInRange(inRange);
+      const cap = Math.min(inRange, MAX_ROWS);
+      setLoading(false);
+
+      let offset = first.rows.length;
+      while (offset < cap && leadsFetchGen.current === generation) {
+        const next = await loadSlice(offset, Math.min(NEXT_BATCH, cap - offset), false);
+        if (leadsFetchGen.current !== generation) return;
+        if (!next.rows.length) break;
+        mergeLeads(next.rows);
+        offset += next.rows.length;
+        if (next.rows.length < Math.min(NEXT_BATCH, cap - (offset - next.rows.length))) break;
       }
 
-      const rows = Array.isArray(payload?.leads) ? payload.leads : [];
-      setServiceLeads(rows.map((lead: ServiceLead) => withOtpFlags(enrichBookingLead(lead))));
-      const summary = payload?.summary || {};
-      const inRange =
-        typeof summary.total_in_range === 'number' ? summary.total_in_range : rows.length;
-      setTotalInRange(inRange);
-      setLeadsTruncated(Boolean(summary.truncated));
+      if (leadsFetchGen.current === generation && first.rows.length > 0) {
+        const flagged = await loadSlice(0, Math.min(FIRST_BATCH, cap), false);
+        if (leadsFetchGen.current !== generation) return;
+        setServiceLeads((prev) => {
+          const byId = new Map(flagged.rows.map((lead) => [String(lead.id || ''), lead]));
+          return prev.map((lead) => byId.get(String(lead.id || '')) || lead);
+        });
+      }
     } catch (err: any) {
+      if (leadsFetchGen.current !== generation) return;
       setError(err?.message || 'Something went wrong');
-    } finally {
       setLoading(false);
     }
   }, [showUploadCrm, datePreset, customStart, customEnd]);
@@ -3755,12 +3795,6 @@ function SuperAdminBookingsPage() {
                   </div>
                 </label>
 
-                {leadsTruncated ? (
-                  <p className="text-[11px] font-medium text-amber-600 shrink-0 pb-2">
-                    Showing latest {serviceLeads.length.toLocaleString('en-IN')} of{' '}
-                    {(totalInRange || 0).toLocaleString('en-IN')} — narrow the date range for the rest
-                  </p>
-                ) : null}
               </div>
 
               {chartDrill && viewMode === 'list' ? (
@@ -3987,11 +4021,6 @@ function SuperAdminBookingsPage() {
               <p className="mb-3 text-xs font-medium text-amber-700">
                 Overview for filtered results · {displayedServiceLeads.length} of {serviceLeads.length} loaded
                 {typeof totalInRange === 'number' ? ` · ${totalInRange.toLocaleString('en-IN')} in date range` : ''}
-              </p>
-            ) : leadsTruncated ? (
-              <p className="mb-3 text-xs font-medium text-amber-700">
-                Showing latest {serviceLeads.length.toLocaleString('en-IN')} of{' '}
-                {(totalInRange || 0).toLocaleString('en-IN')} leads in range — use a shorter date filter for full list
               </p>
             ) : datePreset !== 'all_time' ? (
               <p className="mb-3 text-xs font-medium text-gray-500">Overview for {dateRangeLabel}</p>

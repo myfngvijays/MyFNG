@@ -62,6 +62,37 @@ export function normalizeSourceRoutes(raw: unknown): SourceRoute[] {
   return out;
 }
 
+export type CatchAllAssignees = {
+  enabled: boolean;
+  assignees: SourceAssignee[];
+};
+
+export function normalizeCatchAll(raw: unknown): CatchAllAssignees {
+  if (!raw || typeof raw !== 'object') return { enabled: false, assignees: [] };
+  const enabled = Boolean((raw as { enabled?: unknown }).enabled);
+  const people = Array.isArray((raw as { assignees?: unknown }).assignees)
+    ? (raw as { assignees: unknown[] }).assignees
+    : [];
+  const assignees: SourceAssignee[] = [];
+  const seen = new Set<string>();
+  for (const person of people) {
+    if (!person || typeof person !== 'object') continue;
+    const id = String((person as { telecaller_id?: string }).telecaller_id || '').trim();
+    if (!id || seen.has(id)) continue;
+    const percent = Math.max(0, Math.round(Number((person as { percent?: number }).percent) || 0));
+    seen.add(id);
+    assignees.push({ telecaller_id: id, percent });
+  }
+  if (assignees.length === 1) assignees[0].percent = 100;
+  return { enabled, assignees };
+}
+
+export function catchAllReady(route: CatchAllAssignees | null | undefined): boolean {
+  if (!route?.enabled || route.assignees.length === 0) return false;
+  const total = route.assignees.reduce((sum, row) => sum + Number(row.percent || 0), 0);
+  return Math.abs(total - 100) < 0.001;
+}
+
 export function sourceRouteReady(route: SourceRoute | null | undefined): boolean {
   if (!route || route.assignees.length === 0) return false;
   const total = route.assignees.reduce((sum, row) => sum + Number(row.percent || 0), 0);

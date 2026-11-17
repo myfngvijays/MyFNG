@@ -13,6 +13,7 @@ import {
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
+import { appendBookingConfirmedToSheet } from '@/lib/telecaller/bookingWonSheet';
 
 const LEAD_SELECT_FULL =
   'id, lead_number, status, customer_name, customer_phone, customer_id, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, service_type, service_type_ids, subservice_ids, estimated_amount, discount_amount, coupon_code, preferred_slot_start, preferred_slot_end, pickup_required, pickup_address, customer_address, city, city_id, pincode, workshop_id, coupon_meta';
@@ -30,6 +31,17 @@ function normalizeIdList(value: unknown): string[] {
 function listsEqual(a: string[], b: string[]) {
   if (a.length !== b.length) return false;
   return a.every((v, i) => v === b[i]);
+}
+
+function clipVal(value: unknown) {
+  return String(value ?? '').trim();
+}
+
+function pushFieldChange(lines: string[], label: string, before: unknown, after: unknown) {
+  const prev = clipVal(before);
+  const next = clipVal(after);
+  if (prev === next) return;
+  lines.push(`${label}: ${prev || '—'} → ${next || '—'}`);
 }
 
 async function loadLead(db: any, leadId: string) {
@@ -372,6 +384,86 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           : update.coupon_meta ?? null;
     }
 
+    const prevMeta =
+      (existingLead as any)?.coupon_meta && typeof (existingLead as any).coupon_meta === 'object'
+        ? (existingLead as any).coupon_meta
+        : {};
+    let extraRow: Record<string, unknown> = {};
+    {
+      const extra = await db
+        .from('service_leads')
+        .select(
+          'customer_alternate_phone, customer_email, notes, lead_priority, vehicle_year, vehicle_fuel_type, odometer_km',
+        )
+        .eq('id', leadId)
+        .maybeSingle();
+      if (!extra.error && extra.data) extraRow = extra.data as Record<string, unknown>;
+    }
+    const beforeRow = { ...(existingLead as any), ...extraRow };
+    const nextMeta =
+      update.coupon_meta && typeof update.coupon_meta === 'object'
+        ? (update.coupon_meta as Record<string, any>)
+        : (nextMetaBase as Record<string, any>);
+    const fieldLines: string[] = [];
+    const watch = (key: string, label: string) => {
+      if (body?.[key] === undefined) return;
+      pushFieldChange(fieldLines, label, beforeRow[key], body[key]);
+    };
+    watch('customer_name', 'Name');
+    watch('customer_phone', 'Phone');
+    watch('customer_alternate_phone', 'Alternate phone');
+    watch('customer_email', 'Email');
+    watch('pincode', 'Pincode');
+    watch('city', 'City');
+    watch('customer_address', 'Address');
+    watch('notes', 'Notes');
+    watch('lead_priority', 'Priority');
+    if (body?.pickup_required !== undefined && Boolean(beforeRow.pickup_required) !== Boolean(body.pickup_required)) {
+      fieldLines.push(`Pickup: ${beforeRow.pickup_required ? 'Yes' : 'No'} → ${body.pickup_required ? 'Yes' : 'No'}`);
+    }
+    if (body?.workshop_id !== undefined && clipVal(beforeRow.workshop_id) !== clipVal(body.workshop_id)) {
+      fieldLines.push('Workshop updated');
+    }
+    const prevReg = clipVal(beforeRow.vehicle_number).toUpperCase();
+    const nextReg = body?.vehicle_number !== undefined ? clipVal(body.vehicle_number).toUpperCase() : prevReg;
+    if (body?.vehicle_number !== undefined && prevReg !== nextReg && !(prevReg === 'PENDING' && !nextReg)) {
+      fieldLines.push(`Car number: ${prevReg || '—'} → ${nextReg || '—'}`);
+    }
+    if (
+      body?.vehicle_make !== undefined &&
+      (clipVal(beforeRow.vehicle_make) !== clipVal(body.vehicle_make) ||
+        clipVal(beforeRow.vehicle_model) !== clipVal(body.vehicle_model))
+    ) {
+      const fromCar = [beforeRow.vehicle_make, beforeRow.vehicle_model].map(clipVal).filter(Boolean).join(' ') || '—';
+      const toCar = [body.vehicle_make, body.vehicle_model].map(clipVal).filter(Boolean).join(' ') || '—';
+      if (fromCar !== toCar) fieldLines.push(`Car: ${fromCar} → ${toCar}`);
+    }
+    watch('vehicle_year', 'Year');
+    watch('vehicle_fuel_type', 'Fuel');
+    watch('odometer_km', 'Odometer');
+    pushFieldChange(fieldLines, 'Flat', prevMeta.flat_number, nextMeta.flat_number);
+    pushFieldChange(fieldLines, 'Area', prevMeta.area, nextMeta.area);
+    pushFieldChange(fieldLines, 'Landmark', prevMeta.landmark, nextMeta.landmark);
+    const prevStatus = clipVal(prevMeta.last_call_label || prevMeta.last_call_result);
+    const nextStatus = clipVal(nextMeta.last_call_label || nextMeta.last_call_result);
+    if (prevStatus !== nextStatus && nextStatus) {
+      fieldLines.unshift(`Status: ${prevStatus || '—'} → ${nextStatus}`);
+    }
+    if (fieldLines.length) {
+      const prevHistory = Array.isArray(prevMeta.profile_history) ? prevMeta.profile_history : [];
+      const historyEntry = {
+        at: nowIso,
+        summary: fieldLines.join('\n'),
+        event: 'FIELDS',
+        previous_label: prevStatus || null,
+        status: nextStatus || null,
+      };
+      update.coupon_meta = {
+        ...nextMeta,
+        profile_history: [historyEntry, ...prevHistory].slice(0, 50),
+      };
+    }
+
     // Prefer admin update; fall back to user client if admin fails
     let updated: any = null;
     let updateErr: any = null;
@@ -545,6 +637,62 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         (updated?.coupon_meta as { last_call_result?: string } | undefined) ||
         ((existingLead as any).coupon_meta as { last_call_result?: string } | undefined),
     };
+    const prevCall = String((existingLead as any).coupon_meta?.last_call_result || '').toUpperCase();
+    const nextMetaForSheet =
+      (update.coupon_meta && typeof update.coupon_meta === 'object'
+        ? (update.coupon_meta as Record<string, unknown>)
+        : {}) || {};
+    const nextCall = String(nextMetaForSheet.last_call_result || '').toUpperCase();
+    const alreadyOnSheet = Boolean((existingLead as any).coupon_meta?.won_sheet_at);
+    if (nextCall === 'BOOKING_CONFIRMED' && prevCall !== 'BOOKING_CONFIRMED' && !alreadyOnSheet) {
+      try {
+        let workshopName = '';
+        const workshopId = update.workshop_id || updated?.workshop_id || null;
+        if (workshopId) {
+          const { data: ws } = await db.from('workshops').select('name').eq('id', workshopId).maybeSingle();
+          workshopName = String(ws?.name || '').trim();
+        }
+        const savedAddress = String(update.customer_address || updated?.customer_address || '').trim();
+        const addressBits = savedAddress
+          ? [savedAddress]
+          : [
+              nextMetaForSheet.flat_number,
+              nextMetaForSheet.area,
+              nextMetaForSheet.landmark,
+              update.city || updated?.city,
+              update.pincode || updated?.pincode,
+            ]
+              .map((v) => String(v || '').trim())
+              .filter(Boolean);
+        const sheet = await appendBookingConfirmedToSheet({
+          name: String(update.customer_name || updated?.customer_name || ''),
+          phone: String(update.customer_phone || updated?.customer_phone || ''),
+          address: addressBits.join(', '),
+          carNo: String(update.vehicle_number || updated?.vehicle_number || ''),
+          make: String(update.vehicle_make || updated?.vehicle_make || ''),
+          carModel: String(update.vehicle_model || updated?.vehicle_model || ''),
+          packageName: String(nextServiceLabel || update.service_type || updated?.service_type || ''),
+          packageAmount: update.estimated_amount ?? updated?.estimated_amount ?? '',
+          workshop: workshopName,
+          agent: String(userProfile?.full_name || '').trim(),
+          remark: String(nextMetaForSheet.telecaller_remarks || '').trim(),
+          customerRemark: String(update.notes || '').trim(),
+        });
+        if (sheet.ok) {
+          await db
+            .from('service_leads')
+            .update({
+              coupon_meta: { ...nextMetaForSheet, won_sheet_at: new Date().toISOString() },
+            })
+            .eq('id', leadId);
+        } else {
+          console.warn('[telecaller/leads PATCH] won sheet skipped:', sheet.error);
+        }
+      } catch (sheetErr: any) {
+        console.warn('[telecaller/leads PATCH] won sheet failed:', sheetErr?.message || sheetErr);
+      }
+    }
+
     if (crmLeadClosedForFollowUp(closedLead)) {
       try {
         await closeLeadFollowUps(db, leadId, {

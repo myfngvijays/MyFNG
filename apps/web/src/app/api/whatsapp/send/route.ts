@@ -370,7 +370,9 @@ export async function POST(request: NextRequest) {
           { status: 409 },
         );
       }
-      result = await sendTextMessage(recipientPhone, text);
+      const replyToMessageId = String(body?.reply_to_message_id || '').trim();
+      if (replyToMessageId) requestPayload.reply_to_message_id = replyToMessageId;
+      result = await sendTextMessage(recipientPhone, text, replyToMessageId || null);
     } else if (messageType === 'media') {
       const mediaType = String(body?.media_type || '').trim().toLowerCase();
       const mediaUrl = String(body?.media_url || '').trim();
@@ -621,6 +623,8 @@ export async function POST(request: NextRequest) {
         role_code: roleCode,
         actor_id: userProfile.id,
         actor_name: userProfile.full_name || null,
+        reply_to_message_id: String(body?.reply_to_message_id || '').trim() || null,
+        reply_preview: String(body?.reply_preview || '').trim() || null,
         template_params: templateParamsForArchive,
       },
       created_by: userProfile.id,

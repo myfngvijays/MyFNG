@@ -27,6 +27,7 @@ import {
   Volume2,
   Video,
   Share2,
+  CornerUpLeft,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -847,6 +848,7 @@ export default function WhatsAppMobilePreviewModal({
   const [messages, setMessages] = useState<any[]>([]);
   const [activeType, setActiveType] = useState<'text' | 'media' | 'template' | 'payment'>('text');
   const [textMessage, setTextMessage] = useState('');
+  const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video' | 'document' | 'audio'>('document');
   const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
   const [caption, setCaption] = useState('');
@@ -2501,7 +2503,13 @@ export default function WhatsAppMobilePreviewModal({
           template_params: [text],
         };
       } else {
-        payload = { ...payload, text };
+        payload = {
+          ...payload,
+          text,
+          ...(replyTo?.id
+            ? { reply_to_message_id: replyTo.id, reply_preview: replyTo.preview }
+            : {}),
+        };
       }
     } else if (activeType === 'media') {
       if (!selectedMediaFile) {
@@ -2733,6 +2741,7 @@ export default function WhatsAppMobilePreviewModal({
         setMessages((prev) => mergeMessages(prev, [data.message]));
       }
       setTextMessage('');
+      setReplyTo(null);
       setCaption('');
       setSelectedMediaFile(null);
       setPaymentAmount('');
@@ -3599,6 +3608,26 @@ export default function WhatsAppMobilePreviewModal({
                         </div>
                       </button>
                     ) : null}
+                    {!outbound && !isStatus && !selectMode ? (
+                      <button
+                        type="button"
+                        title="Reply"
+                        aria-label="Reply to this message"
+                        className="order-last inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#004AAD] shadow-sm hover:bg-slate-50"
+                        onClick={() => {
+                          const wamid = String(msg.provider_message_id || '').trim();
+                          if (!wamid) {
+                            toast.error('Is message pe reply nahi ja sakta');
+                            return;
+                          }
+                          const preview = String(bubbleText || mediaLabel || 'Message').replace(/\s+/g, ' ').slice(0, 80);
+                          setReplyTo({ id: wamid, preview });
+                          setActiveType('text');
+                        }}
+                      >
+                        <CornerUpLeft className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                     <div
                       className={`max-w-[85%] rounded-xl px-3 py-2 text-sm shadow-sm ${
                         isStatus
@@ -3609,6 +3638,11 @@ export default function WhatsAppMobilePreviewModal({
                       } ${selectMode && !isStatus ? 'cursor-pointer' : ''}`}
                       onClick={selectMode && !isStatus ? () => toggleMsgSelect(msgId) : undefined}
                     >
+                      {String(msg?.meta?.reply_preview || '').trim() ? (
+                        <div className="mb-1 rounded-md border-l-2 border-[#004AAD] bg-black/5 px-2 py-1 text-[11px] text-slate-600">
+                          {String(msg.meta.reply_preview)}
+                        </div>
+                      ) : null}
                       {outbound && actorName ? (
                         <div className="mb-1 text-[11px] font-semibold text-[#0f4c3a]">Sent by: {actorName}</div>
                       ) : null}
@@ -4427,6 +4461,15 @@ export default function WhatsAppMobilePreviewModal({
                   </div>
                 ) : null}
               </div>
+              {replyTo ? (
+                <div className="mb-1 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <CornerUpLeft className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#004AAD]" />
+                  <p className="min-w-0 flex-1 truncate text-xs text-slate-600">{replyTo.preview}</p>
+                  <button type="button" aria-label="Cancel reply" onClick={() => setReplyTo(null)}>
+                    <X className="h-3.5 w-3.5 text-slate-400" />
+                  </button>
+                </div>
+              ) : null}
               <textarea
                 value={activeType === 'payment' ? '' : textMessage}
                 onChange={(e) => setTextMessage(e.target.value)}

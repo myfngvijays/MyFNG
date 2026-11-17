@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  UserRound,
 } from 'lucide-react';
 import {
   ALL_LEAD_CHANNEL_IDS,
@@ -33,6 +34,7 @@ import TelecallerPincodeEditor, {
   telecallerPincodeBadge,
 } from '@/components/admin/telecaller-distribution/TelecallerPincodeEditor';
 import SourceAssignPanel from '@/components/admin/telecaller-distribution/SourceAssignPanel';
+import AnyLeadPanel from '@/components/admin/telecaller-distribution/AnyLeadPanel';
 import {
   newTriggerId,
   type MessageTrigger,
@@ -57,7 +59,7 @@ type AllocationRow = {
   pincode_mode: PincodeRoutingMode;
 };
 
-type TabId = 'allocation' | 'sources' | 'triggers' | 'api' | 'whatsapp';
+type TabId = 'allocation' | 'sources' | 'anyone' | 'triggers' | 'api' | 'whatsapp';
 type TriggerStatusFilter = 'active' | 'inactive' | 'all';
 
 type WaLeadAlertState = {
@@ -685,7 +687,7 @@ export default function TelecallerDistributionPage() {
             Priority order
           </div>
           <div className="text-[11px] font-semibold text-slate-700 leading-snug mt-0.5">
-            1) Message trigger → 2) Source assign → 3) Pincode / % RR
+            1) Message trigger → 2) Any-lead list → 3) Source assign → 4) % RR
           </div>
         </div>
       </div>
@@ -695,6 +697,7 @@ export default function TelecallerDistributionPage() {
           [
             { id: 'allocation' as const, label: 'Allocation & Sources', icon: Percent },
             { id: 'sources' as const, label: 'Source Assign', icon: Filter },
+            { id: 'anyone' as const, label: 'Any lead', icon: UserRound },
             { id: 'triggers' as const, label: 'Message Triggers', icon: MessageSquareText },
             { id: 'whatsapp' as const, label: 'WhatsApp Alerts', icon: Bell },
             { id: 'api' as const, label: 'Lead Source API', icon: Link2 },
@@ -739,6 +742,8 @@ export default function TelecallerDistributionPage() {
       </div>
 
       {tab === 'sources' && <SourceAssignPanel />}
+
+      {tab === 'anyone' && <AnyLeadPanel />}
 
       {tab === 'allocation' && (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">

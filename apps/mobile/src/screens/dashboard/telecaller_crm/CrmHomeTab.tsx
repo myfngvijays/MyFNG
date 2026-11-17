@@ -33,7 +33,15 @@ function formatReminderClock(iso?: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const time = d.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const day = d.toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
+  const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
+  return day === today ? time : `${day} ${time}`;
 }
 
 function leadInitials(name?: string | null): string {
@@ -210,7 +218,7 @@ export default function CrmHomeTab({
       : [];
   const freshLeads: FreshLead[] = Array.isArray(data?.fresh_leads) ? data.fresh_leads : [];
   const reminders: HomeReminder[] = Array.isArray(data?.upcoming_reminders)
-    ? data.upcoming_reminders.slice(0, 3)
+    ? data.upcoming_reminders.slice(0, 5)
     : [];
   const punchedIn = Boolean(data?.attendance?.is_punched_in);
   const onFloor = punchedIn;
@@ -558,7 +566,7 @@ export default function CrmHomeTab({
           </TouchableOpacity>
         </View>
         {reminders.length === 0 ? (
-          <Text style={styles.navyEmpty}>No reminders today</Text>
+          <Text style={styles.navyEmpty}>No reminders</Text>
         ) : (
           reminders.map((r, idx) => {
             const leadId = String(r.lead_id || r.lead?.id || '');

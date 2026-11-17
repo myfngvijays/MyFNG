@@ -22,7 +22,7 @@ const HEADER: Record<string, MenuHelpEntry> = {
   reminders: {
     title: 'Reminders',
     body:
-      'Ye clock icon aaj ke pending follow-ups / callbacks dikhata hai.\n\nClick se Reminders page khulta hai jahan overdue aur scheduled callbacks list hoti hain. Badge count = aaj due / overdue reminders.',
+      'Clock Reminders page kholta hai.\n\nSubah login pe aaj ke bache follow-ups 30 second dikhte hain. Phir har reminder 30 min, 15 min aur 5 min pehle dubara aata hai, aur 30 second baad hat jata hai.',
     tips: [
       'Lead Manager team-wide reminders dekh sakta hai.',
       'Telecaller ko apni assigned reminders dikhti hain.',

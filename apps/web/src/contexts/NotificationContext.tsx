@@ -333,23 +333,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ 
-          is_read: true, 
-          read_at: new Date().toISOString() 
-        })
-        .eq('id', notificationId);
-
-      if (error) {
-        console.error('Error marking notification as read:', error);
+      const res = await fetch('/api/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: notificationId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error('Error marking notification as read:', body?.error || res.status);
+        toast.error('Could not mark as read');
         return;
       }
 
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      setNotifications(prev => {
+        const next = prev.map(n => n.id === notificationId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n);
+        setUnreadCount(next.filter(n => !n.is_read).length);
+        return next;
+      });
     } catch (error) {
       console.error('Error:', error);
     }
@@ -359,17 +359,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!userId) return;
 
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ 
-          is_read: true, 
-          read_at: new Date().toISOString() 
-        })
-        .eq('user_id', userId)
-        .eq('is_read', false);
-
-      if (error) {
-        console.error('Error marking all as read:', error);
+      const res = await fetch('/api/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      });
+      if (!res.ok) {
+        toast.error('Could not mark all as read');
         return;
       }
 

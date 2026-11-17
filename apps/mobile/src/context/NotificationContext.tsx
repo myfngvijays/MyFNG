@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { Alert, DeviceEventEmitter } from 'react-native';
 import { isNotificationWithinRetention, notificationRetentionCutoffIso } from '../../../../shared/types/notifications';
 
@@ -288,25 +289,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({
-          is_read: true,
-          read_at: new Date().toISOString()
-        })
-        .eq('id', notificationId);
+      await apiFetch('/api/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: notificationId }),
+      });
 
-      if (error) {
-        if (__DEV__) console.error('Error marking notification as read:', error);
-        return;
-      }
-
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      setNotifications(prev => {
+        const next = prev.map(n => n.id === notificationId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n);
+        setUnreadCount(next.filter(n => !n.is_read).length);
+        return next;
+      });
     } catch (error) {
       if (__DEV__) console.error('Error:', error);
+      Alert.alert('Could not mark as read');
     }
   };
 
@@ -314,19 +310,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({
-          is_read: true,
-          read_at: new Date().toISOString()
-        })
-        .eq('user_id', userId)
-        .eq('is_read', false);
-
-      if (error) {
-        if (__DEV__) console.error('Error marking all as read:', error);
-        return;
-      }
+      await apiFetch('/api/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      });
 
       setNotifications(prev =>
         prev.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() }))

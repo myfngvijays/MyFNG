@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { Bell, Check, CheckCheck, Trash2, Clock, Filter, ArrowLeft, Phone } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, Clock, Filter, Phone, MessageCircle } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
 import { createClient } from '@/lib/supabase/client';
+import DashboardLayout from '@/components/DashboardLayout';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,12 +19,16 @@ export default function NotificationsPage() {
   }, []);
   
   if (!mounted) {
-    return <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
-        <p>Loading notifications...</p>
-      </div>
-    </div>;
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center py-24">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
+            <p className="text-slate-600">Loading notifications...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
   }
   
   return <NotificationsContent />;
@@ -37,6 +42,7 @@ function NotificationsContent() {
   const [filter, setFilter] = useState<NotifTab>('all');
   const [missedCalls, setMissedCalls] = useState<any[]>([]);
   const [missedReminders, setMissedReminders] = useState<any[]>([]);
+  const [waMessages, setWaMessages] = useState<any[]>([]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -62,13 +68,15 @@ function NotificationsContent() {
         .limit(40);
       setMissedReminders(reminders || []);
     })();
+    void fetch('/api/whatsapp/recent-inbound')
+      .then((res) => res.json())
+      .then((json) => setWaMessages(Array.isArray(json?.messages) ? json.messages : []))
+      .catch(() => setWaMessages([]));
   }, []);
 
   const blobOf = (n: any) => `${n?.type || ''} ${n?.title || ''} ${n?.message || ''}`.toLowerCase();
-  const whatsappNotes = notifications.filter((n) => /whatsapp|\bwa\b/.test(blobOf(n)));
   const filteredNotifications = notifications.filter((n) => {
     const blob = blobOf(n);
-    if (filter === 'whatsapp') return /whatsapp|\bwa\b/.test(blob);
     if (filter === 'missed_calls') return /missed call|call missed|no answer|not answered/.test(blob);
     if (filter === 'missed_reminders') return /reminder|follow-up|follow up|callback/.test(blob);
     return true;
@@ -121,48 +129,33 @@ function NotificationsContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-3 sm:p-4 md:p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-center h-48 sm:h-64">
-            <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-brand-primary"></div>
-          </div>
+      <DashboardLayout>
+        <div className="flex items-center justify-center py-24">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#004AAD]"></div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 md:p-6">
-      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
-                <button
-                  onClick={() => router.back()}
-                  className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition flex-shrink-0"
-                >
-                  <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <Bell className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 flex-shrink-0" />
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">Notifications</h1>
-              </div>
-              <p className="text-white/90 text-xs sm:text-sm">
-                {unreadCount > 0 ? `You have ${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
-              </p>
-            </div>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-1.5 sm:gap-2 transition text-xs sm:text-sm w-full sm:w-auto justify-center"
-              >
-                <CheckCheck className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">Mark all as read</span>
-                <span className="sm:hidden">Mark all read</span>
-              </button>
-            )}
+    <DashboardLayout>
+      <div className="mx-auto w-full max-w-4xl space-y-4">
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Notifications</h1>
+            <p className="text-sm text-slate-500">
+              {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+            </p>
           </div>
+          {unreadCount > 0 ? (
+            <button
+              onClick={markAllAsRead}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+            >
+              <CheckCheck className="h-4 w-4" />
+              Mark all as read
+            </button>
+          ) : null}
         </div>
 
         {/* Filter Tabs */}
@@ -174,7 +167,7 @@ function NotificationsContent() {
                 { id: 'all' as const, label: 'All notifications', count: notifications.length },
                 { id: 'missed_calls' as const, label: 'Missed calls', count: missedCalls.length },
                 { id: 'missed_reminders' as const, label: 'Missed reminders', count: missedReminders.length },
-                { id: 'whatsapp' as const, label: 'WhatsApp', count: whatsappNotes.length },
+                { id: 'whatsapp' as const, label: 'WhatsApp', count: waMessages.length },
               ]
             ).map((tab) => (
               <button
@@ -209,6 +202,36 @@ function NotificationsContent() {
                   </div>
                   <span className="text-xs text-gray-400">{call.created_at ? getRelativeTime(call.created_at) : ''}</span>
                 </div>
+              ))}
+            </div>
+          )
+        ) : filter === 'whatsapp' ? (
+          waMessages.length === 0 ? (
+            <div className="card text-center py-10">
+              <MessageCircle className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-700">No WhatsApp messages</h3>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {waMessages.map((msg) => (
+                <button
+                  key={msg.id}
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent('myfng:open-wa-chat', {
+                        detail: { phone: msg.phone, preview: msg.text },
+                      }),
+                    );
+                  }}
+                  className="card flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-gray-900">{msg.name || msg.phone}</p>
+                    <p className="truncate text-xs text-gray-500">{msg.text}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-gray-400">{msg.created_at ? getRelativeTime(msg.created_at) : ''}</span>
+                </button>
               ))}
             </div>
           )
@@ -335,7 +358,7 @@ function NotificationsContent() {
           </div>
         )}
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 

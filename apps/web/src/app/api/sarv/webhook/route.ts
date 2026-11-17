@@ -469,6 +469,31 @@ export async function POST(request: NextRequest) {
           ? effectiveAssignedUserId
           : existingCall?.telecaller_id || null;
 
+      // Lead pehle banao. Recording URL baad mein lagti hai, isliye call report
+      // aate hi CRM lead dikhe — DeepCall download ka wait nahi.
+      const mobileEarly = phone10 || digits10(getValue(payload, ['cNumber', 'cnumber']));
+      if (mobileEarly) {
+        try {
+          const { upsertServiceLeadFromIncomingSarvCall } = await import(
+            '@/lib/sarv/upsertServiceLeadFromIncomingCall'
+          );
+          await upsertServiceLeadFromIncomingSarvCall({
+            db,
+            phone10: mobileEarly,
+            callid,
+            ctype: getValue(payload, ['cType', 'ctype']),
+            did: String(getValue(payload, ['did']) || '') || null,
+            talkDuration: toInt(getValue(payload, ['talkDuration', 'talkduration'])),
+            recordingUrl: recordingUrl || null,
+            disposition: String(getValue(payload, ['disposition']) || '') || null,
+            assignedUserId: effectiveAssignedUserId,
+            assignedRole: effectiveAssignedRole,
+          });
+        } catch (leadErr: any) {
+          console.error('[sarv-webhook] early service_leads sync failed:', leadErr?.message || leadErr);
+        }
+      }
+
       const upsertPayload: Record<string, any> = {
         callid,
         userid: getValue(payload, ['userId', 'userid']),

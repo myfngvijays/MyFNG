@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, Suspense, useRef, useMemo, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import MlScoreBadge from '@/components/telecaller/crm/MlScoreBadge';
@@ -296,6 +297,11 @@ function TelecallerCrmLeadsContent() {
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnsQuery, setColumnsQuery] = useState('');
   const columnsMenuRef = useRef<HTMLDivElement>(null);
+  const columnsBtnRef = useRef<HTMLButtonElement>(null);
+  const leadsTableRef = useRef<HTMLDivElement>(null);
+  const [lockedWidths, setLockedWidths] = useState<Partial<Record<'check' | LeadsColumnKey, number>> | null>(null);
+  const [columnsMenuBox, setColumnsMenuBox] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  const [columnsPortalReady, setColumnsPortalReady] = useState(false);
   const advancedMenuRef = useRef<HTMLDivElement>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedOnly, setSelectedOnly] = useState(false);
@@ -308,12 +314,19 @@ function TelecallerCrmLeadsContent() {
     if (!columnsMenuOpen && !showAdvanced) return;
     const onDoc = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (columnsMenuOpen && !columnsMenuRef.current?.contains(t)) setColumnsMenuOpen(false);
+      const menu = document.getElementById('leads-columns-menu');
+      if (columnsMenuOpen && !columnsMenuRef.current?.contains(t) && !menu?.contains(t)) {
+        setColumnsMenuOpen(false);
+      }
       if (showAdvanced && !advancedMenuRef.current?.contains(t)) setShowAdvanced(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [columnsMenuOpen, showAdvanced]);
+
+  useEffect(() => {
+    setColumnsPortalReady(true);
+  }, []);
 
   useEffect(() => {
     if (!columnsMenuOpen) setColumnsQuery('');
@@ -348,16 +361,73 @@ function TelecallerCrmLeadsContent() {
     actions: 268,
   };
 
-  const tableMinPx = useMemo(() => {
-    return 48 + visibleTableCols.reduce((sum, col) => sum + COL_MIN_PX[col.key], 0);
-  }, [visibleTableCols]);
+  const EXTRA_COL_KEYS: LeadsColumnKey[] = [
+    'leadNumber',
+    'mlScore',
+    'message',
+    'regNo',
+    'makeModel',
+    'city',
+    'priority',
+    'source',
+    'serviceDoneDate',
+  ];
+  const hasExtraCols = EXTRA_COL_KEYS.some((key) => showCol(key));
+  const BASE_COL_KEYS: LeadsColumnKey[] = ['status', 'customer', 'phone', 'assignee', 'date', 'modified'];
 
-  /** Few columns fill the row. Many columns keep a readable width and slide sideways. */
-  const slideColumns = tableMinPx > 1180;
+  useEffect(() => {
+    if (hasExtraCols) return;
+    const root = leadsTableRef.current;
+    if (!root) return;
+    const measure = () => {
+      const next: Partial<Record<'check' | LeadsColumnKey, number>> = {};
+      root.querySelectorAll<HTMLElement>('thead th[data-col]').forEach((cell) => {
+        const key = cell.dataset.col as 'check' | LeadsColumnKey;
+        const w = Math.round(cell.getBoundingClientRect().width);
+        if (w > 24) next[key] = w;
+      });
+      if (next.customer && next.actions) {
+        setLockedWidths((prev) => {
+          if (
+            prev &&
+            prev.check === next.check &&
+            prev.status === next.status &&
+            prev.customer === next.customer &&
+            prev.phone === next.phone &&
+            prev.assignee === next.assignee &&
+            prev.date === next.date &&
+            prev.modified === next.modified &&
+            prev.actions === next.actions
+          ) {
+            return prev;
+          }
+          return next;
+        });
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [hasExtraCols, visibleColumns, loading]);
+
+  const baseLock = lockedWidths;
+  const pxFor = (key: 'check' | LeadsColumnKey) => {
+    if (key !== 'check' && EXTRA_COL_KEYS.includes(key)) return COL_MIN_PX[key];
+    if (key === 'check') return baseLock?.check ?? 40;
+    if (key === 'actions') return baseLock?.actions ?? 268;
+    return baseLock?.[key] ?? COL_MIN_PX[key];
+  };
+  const tableWidthPx =
+    pxFor('check') +
+    BASE_COL_KEYS.reduce((sum, key) => (showCol(key) ? sum + pxFor(key) : sum), 0) +
+    EXTRA_COL_KEYS.reduce((sum, key) => (showCol(key) ? sum + pxFor(key) : sum), 0) +
+    (showCol('actions') ? pxFor('actions') : 0);
 
   const colWidthStyle = (key: LeadsColumnKey): CSSProperties => {
-    if (slideColumns) {
-      return { width: COL_MIN_PX[key], minWidth: COL_MIN_PX[key] };
+    if (hasExtraCols) {
+      const px = pxFor(key);
+      return { width: px, minWidth: px, maxWidth: px };
     }
     const weight: Record<LeadsColumnKey, number> = {
       leadNumber: 1.15,
@@ -377,9 +447,10 @@ function TelecallerCrmLeadsContent() {
       modified: 1.15,
       actions: 1.05,
     };
-    const total = visibleTableCols.reduce((sum, col) => sum + weight[col.key], 0) || 1;
-    const pct = (weight[key] / total) * 96;
-    if (key === 'actions') return { width: 268, minWidth: 268 };
+    const total =
+      visibleTableCols.reduce((sum, col) => (col.key === 'actions' ? sum : sum + weight[col.key]), 0) || 1;
+    const pct = (weight[key] / total) * 94;
+    if (key === 'actions') return { width: 268, minWidth: 268, maxWidth: 268 };
     return { width: `${pct.toFixed(2)}%` };
   };
 
@@ -837,10 +908,13 @@ function TelecallerCrmLeadsContent() {
     });
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!prefsReady) return;
-    if (bootedRef.current) setRefreshing(true);
-    else setLoading(true);
+    const silent = Boolean(opts?.silent);
+    if (!silent) {
+      if (bootedRef.current) setRefreshing(true);
+      else setLoading(true);
+    }
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const baseParams = new URLSearchParams();
@@ -908,8 +982,10 @@ function TelecallerCrmLeadsContent() {
         setScopeTotal(0);
       }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
       bootedRef.current = true;
     }
   }, [
@@ -937,6 +1013,15 @@ function TelecallerCrmLeadsContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (viewMode === 'chart') return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void load({ silent: true });
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [load, viewMode]);
 
   // Reset to page 1 when filters change (not when page itself changes)
   useEffect(() => {
@@ -969,7 +1054,7 @@ function TelecallerCrmLeadsContent() {
   const pageStart = totalLeads === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const pageEnd = Math.min(safePage * pageSize, totalLeads);
   const leadsPager = (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200 bg-white px-3 py-3">
+    <div data-leads-pager className="relative z-30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200 bg-white px-3 py-3">
       <p className="text-xs font-semibold text-slate-500">
         {totalLeads === 0
           ? 'No leads'
@@ -1655,8 +1740,25 @@ function TelecallerCrmLeadsContent() {
               {viewMode === 'list' ? (
                 <div className="relative shrink-0" ref={columnsMenuRef}>
                   <button
+                    ref={columnsBtnRef}
                     type="button"
-                    onClick={() => setColumnsMenuOpen((o) => !o)}
+                    onClick={() => {
+                      const rect = columnsBtnRef.current?.getBoundingClientRect();
+                      if (rect) {
+                        const width = 288;
+                        const margin = 12;
+                        const viewH = window.visualViewport?.height || window.innerHeight;
+                        const top = rect.bottom + 8;
+                        const maxHeight = Math.max(320, Math.min(520, viewH - top - 16));
+                        let left = rect.right - width;
+                        if (left < margin) left = margin;
+                        if (left + width > window.innerWidth - margin) {
+                          left = Math.max(margin, window.innerWidth - margin - width);
+                        }
+                        setColumnsMenuBox({ top, left, maxHeight });
+                      }
+                      setColumnsMenuOpen((o) => !o);
+                    }}
                     className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700"
                     aria-expanded={columnsMenuOpen}
                   >
@@ -1664,8 +1766,13 @@ function TelecallerCrmLeadsContent() {
                     Columns
                     <ChevronDown className={`h-4 w-4 transition ${columnsMenuOpen ? 'rotate-180' : ''}`} />
                   </button>
-                  {columnsMenuOpen ? (
-                    <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                  {columnsMenuOpen && columnsMenuBox && columnsPortalReady
+                    ? createPortal(
+                    <div
+                      id="leads-columns-menu"
+                      className="fixed z-[200] flex w-72 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+                      style={{ top: columnsMenuBox.top, left: columnsMenuBox.left, maxHeight: columnsMenuBox.maxHeight }}
+                    >
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                           Show columns
@@ -1694,7 +1801,7 @@ function TelecallerCrmLeadsContent() {
                           autoFocus
                         />
                       </label>
-                      <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
                         {LEADS_TABLE_COLUMNS.filter(
                           (c) =>
                             (c.key !== 'source' && c.key !== 'mlScore') || isLeadManager,
@@ -1722,8 +1829,10 @@ function TelecallerCrmLeadsContent() {
                           </label>
                         ))}
                       </div>
-                    </div>
-                  ) : null}
+                    </div>,
+                    document.body,
+                  )
+                    : null}
                 </div>
               ) : null}
             </div>
@@ -1783,366 +1892,264 @@ function TelecallerCrmLeadsContent() {
         ) : (
           <>
             {leadsPager}
-            {/* Desktop table — visible cols share width (no blank gaps when unchecked) */}
-            <div className="hidden w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white xl:block">
+            {/* One table, TeleCRM style: extra columns append after Modified and the row slides */}
+            <div ref={leadsTableRef} className="leads-hscroll hidden w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white xl:block">
               <table
-                className={`text-left text-sm ${slideColumns ? 'w-max' : 'w-full table-fixed'}`}
-                style={slideColumns ? { minWidth: tableMinPx } : undefined}
+                className="w-full table-fixed border-separate border-spacing-0 text-left text-sm [&_td]:overflow-hidden [&_th]:overflow-hidden"
+                style={hasExtraCols ? { width: tableWidthPx, minWidth: tableWidthPx, maxWidth: tableWidthPx } : { width: '100%' }}
               >
-                  <thead className="bg-[#004AAD] text-[11px] font-bold uppercase tracking-wide text-white [&_th]:!py-[9px]">
-                    <tr>
-                      <th className="px-2 py-2 w-10">
-                        <input
-                          type="checkbox"
-                          checked={allPageSelected}
-                          onChange={toggleSelectPage}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Select all on page"
-                        />
+                {hasExtraCols ? (
+                  <colgroup>
+                    <col style={{ width: pxFor('check') }} />
+                    {showCol('status') ? <col style={{ width: pxFor('status') }} /> : null}
+                    {showCol('customer') ? <col style={{ width: pxFor('customer') }} /> : null}
+                    {showCol('phone') ? <col style={{ width: pxFor('phone') }} /> : null}
+                    {showCol('assignee') ? <col style={{ width: pxFor('assignee') }} /> : null}
+                    {showCol('date') ? <col style={{ width: pxFor('date') }} /> : null}
+                    {showCol('modified') ? <col style={{ width: pxFor('modified') }} /> : null}
+                    {showCol('leadNumber') ? <col style={{ width: pxFor('leadNumber') }} /> : null}
+                    {showCol('mlScore') && isLeadManager ? <col style={{ width: pxFor('mlScore') }} /> : null}
+                    {showCol('message') ? <col style={{ width: pxFor('message') }} /> : null}
+                    {showCol('regNo') ? <col style={{ width: pxFor('regNo') }} /> : null}
+                    {showCol('makeModel') ? <col style={{ width: pxFor('makeModel') }} /> : null}
+                    {showCol('city') ? <col style={{ width: pxFor('city') }} /> : null}
+                    {showCol('priority') ? <col style={{ width: pxFor('priority') }} /> : null}
+                    {showCol('source') && isLeadManager ? <col style={{ width: pxFor('source') }} /> : null}
+                    {showCol('serviceDoneDate') ? <col style={{ width: pxFor('serviceDoneDate') }} /> : null}
+                    {showCol('actions') ? <col style={{ width: pxFor('actions') }} /> : null}
+                  </colgroup>
+                ) : null}
+                <thead className="bg-[#004AAD] text-[11px] font-bold uppercase tracking-wide text-white">
+                  <tr>
+                    <th data-col="check" className="w-10 bg-[#004AAD] px-2 py-2" style={hasExtraCols ? { width: pxFor('check'), minWidth: pxFor('check'), maxWidth: pxFor('check') } : undefined}>
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={toggleSelectPage}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Select all on page"
+                      />
+                    </th>
+                    {showCol('status') ? (
+                      <th data-col="status" className="truncate bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('status')}>Status</th>
+                    ) : null}
+                    {showCol('customer') ? (
+                      <th data-col="customer" className="whitespace-nowrap bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('customer')}>Customer</th>
+                    ) : null}
+                    {showCol('phone') ? (
+                      <th data-col="phone" className="truncate bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('phone')}>Phone</th>
+                    ) : null}
+                    {showCol('assignee') ? (
+                      <th data-col="assignee" className="whitespace-nowrap bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('assignee')}>Assignee</th>
+                    ) : null}
+                    {showCol('date') ? (
+                      <th data-col="date" className="whitespace-nowrap bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('date')}>Created on</th>
+                    ) : null}
+                    {showCol('modified') ? (
+                      <th data-col="modified" className="whitespace-nowrap bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('modified')}>Modified</th>
+                    ) : null}
+                    {showCol('leadNumber') ? (
+                      <th className="truncate bg-[#004AAD] px-2 py-2" style={colWidthStyle('leadNumber')}>Lead #</th>
+                    ) : null}
+                    {showCol('mlScore') && isLeadManager ? (
+                      <th className="truncate bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('mlScore')}>ML</th>
+                    ) : null}
+                    {showCol('message') ? (
+                      <th className="truncate bg-[#004AAD] px-2 py-2" style={colWidthStyle('message')}>Message</th>
+                    ) : null}
+                    {showCol('regNo') ? (
+                      <th className="truncate bg-[#004AAD] px-2 py-2" style={colWidthStyle('regNo')}>Reg. No</th>
+                    ) : null}
+                    {showCol('makeModel') ? (
+                      <th className="truncate bg-[#004AAD] px-2 py-2" style={colWidthStyle('makeModel')}>Make / Model</th>
+                    ) : null}
+                    {showCol('city') ? (
+                      <th className="truncate bg-[#004AAD] px-2 py-2" style={colWidthStyle('city')}>City</th>
+                    ) : null}
+                    {showCol('priority') ? (
+                      <th className="truncate bg-[#004AAD] px-2 py-2" style={colWidthStyle('priority')}>Priority</th>
+                    ) : null}
+                    {showCol('source') && isLeadManager ? (
+                      <th className="truncate bg-[#004AAD] px-2 py-2" style={colWidthStyle('source')}>Source</th>
+                    ) : null}
+                    {showCol('serviceDoneDate') ? (
+                      <th className="whitespace-nowrap bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('serviceDoneDate')}>Service done date</th>
+                    ) : null}
+                    {showCol('actions') ? (
+                      <th
+                        className="bg-[#004AAD] px-2 py-2 text-right"
+                        data-col="actions"
+                        style={hasExtraCols ? { width: pxFor('actions'), minWidth: pxFor('actions'), maxWidth: pxFor('actions') } : { width: 268, minWidth: 268, maxWidth: 268 }}
+                      >
+                        Actions
                       </th>
-                      {showCol('leadNumber') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('leadNumber')}>
-                          Lead #
-                        </th>
-                      ) : null}
-                      {showCol('status') ? (
-                        <th className="px-1.5 py-2 truncate" style={colWidthStyle('status')}>
-                          Status
-                        </th>
-                      ) : null}
-                      {showCol('mlScore') && isLeadManager ? (
-                        <th className="px-1.5 py-2 truncate" style={colWidthStyle('mlScore')}>
-                          ML
-                        </th>
-                      ) : null}
-                      {showCol('customer') ? (
-                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('customer')}>
-                          Customer
-                        </th>
-                      ) : null}
-                      {showCol('phone') ? (
-                        <th className="px-1.5 py-2 truncate" style={colWidthStyle('phone')}>
-                          Phone
-                        </th>
-                      ) : null}
-                      {showCol('message') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('message')}>
-                          Message
-                        </th>
-                      ) : null}
-                      {showCol('regNo') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('regNo')}>
-                          Reg. No
-                        </th>
-                      ) : null}
-                      {showCol('makeModel') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('makeModel')}>
-                          Make / Model
-                        </th>
-                      ) : null}
-                      {showCol('city') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('city')}>
-                          City
-                        </th>
-                      ) : null}
-                      {showCol('priority') ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('priority')}>
-                          Priority
-                        </th>
-                      ) : null}
-                      {showCol('source') && isLeadManager ? (
-                        <th className="px-2 py-2 truncate" style={colWidthStyle('source')}>
-                          Source
-                        </th>
-                      ) : null}
-                      {showCol('assignee') ? (
-                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('assignee')}>
-                          Assignee
-                        </th>
-                      ) : null}
-                      {showCol('date') ? (
-                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('date')}>
-                          Created on
-                        </th>
-                      ) : null}
-                      {showCol('serviceDoneDate') ? (
-                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('serviceDoneDate')}>
-                          Service done date
-                        </th>
-                      ) : null}
-                      {showCol('modified') ? (
-                        <th className="px-1.5 py-2 whitespace-nowrap" style={colWidthStyle('modified')}>
-                          Modified
-                        </th>
-                      ) : null}
-                      {showCol('actions') ? (
-                        <th
-                          className="sticky right-0 z-20 bg-[#004AAD] px-2 py-2 text-right text-white shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.18)]"
-                          style={colWidthStyle('actions')}
-                        >
-                          Actions
-                        </th>
-                      ) : null}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayedLeads.map((lead) => {
-                      const tint = leadStatusCardColors(lead);
-                      const statusLabel = leadDisplayStatus(lead);
-                      const msg =
-                        lead.message_preview ||
-                        lead.coupon_meta?.last_inbound_message ||
-                        lead.problem_description ||
-                        '—';
-                      const regNo = String(lead.vehicle_number || '')
-                        .trim()
-                        .toUpperCase();
-                      const regDisplay = regNo && regNo !== 'NA' ? regNo : '—';
-                      const makeModel =
-                        [lead.vehicle_make, lead.vehicle_model]
-                          .map((v) => String(v || '').trim())
-                          .filter((v) => v && v.toUpperCase() !== 'NA')
-                          .join(' ') || '—';
-                      return (
-                        <tr
-                          key={lead.id}
-                          className={`group cursor-pointer transition ${
-                            openLeadId === String(lead.id)
-                              ? 'ring-2 ring-inset ring-[#004AAD]'
-                              : selectedIds.has(String(lead.id))
-                                ? 'ring-2 ring-inset ring-blue-400'
-                                : ''
-                          }`}
-                          style={{
-                            backgroundColor:
-                              selectedIds.has(String(lead.id))
-                                ? '#DBEAFE'
-                                : tint.cardBg,
-                          }}
-                          onClick={() => openLead(String(lead.id))}
-                        >
-                          <td
-                            className="px-2 py-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSelect(String(lead.id));
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(String(lead.id))}
-                              onChange={() => toggleSelect(String(lead.id))}
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedLeads.map((lead) => {
+                    const tint = leadStatusCardColors(lead);
+                    const rowBg = selectedIds.has(String(lead.id)) ? '#DBEAFE' : tint.cardBg;
+                    const msg =
+                      lead.message_preview ||
+                      lead.coupon_meta?.last_inbound_message ||
+                      lead.problem_description ||
+                      '—';
+                    const regNo = String(lead.vehicle_number || '').trim().toUpperCase();
+                    const regDisplay = regNo && regNo !== 'NA' ? regNo : '—';
+                    const makeModel =
+                      [lead.vehicle_make, lead.vehicle_model]
+                        .map((v) => String(v || '').trim())
+                        .filter((v) => v && v.toUpperCase() !== 'NA')
+                        .join(' ') || '—';
+                    return (
+                      <tr
+                        key={lead.id}
+                        className={`cursor-pointer border-b border-slate-100 ${
+                          openLeadId === String(lead.id)
+                            ? 'ring-2 ring-inset ring-[#004AAD]'
+                            : selectedIds.has(String(lead.id))
+                              ? 'ring-2 ring-inset ring-blue-400'
+                              : ''
+                        }`}
+                        style={{ backgroundColor: rowBg }}
+                        onClick={() => openLead(String(lead.id))}
+                      >
+                        <td className="border-b border-slate-100 px-2 py-2 align-middle" style={{ backgroundColor: rowBg }} onClick={(e) => { e.stopPropagation(); toggleSelect(String(lead.id)); }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(String(lead.id))}
+                            onChange={() => toggleSelect(String(lead.id))}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Select ${lead.lead_number || lead.id}`}
+                          />
+                        </td>
+                        {showCol('status') ? (
+                          <td className="border-b border-slate-100 px-1.5 py-2 align-middle" style={{ ...colWidthStyle('status'), backgroundColor: rowBg }} onClick={(e) => e.stopPropagation()}>
+                            <select
+                              aria-label="Change lead status"
+                              value={resolveAdminCrmStatusId(lead)}
+                              disabled={statusSavingId === String(lead.id)}
                               onClick={(e) => e.stopPropagation()}
-                              aria-label={`Select ${lead.lead_number || lead.id}`}
-                            />
-                          </td>
-                          {showCol('leadNumber') ? (
-                            <td
-                              className="whitespace-nowrap px-2 py-2 font-extrabold text-[#023D95] text-[13px]"
-                              style={colWidthStyle('leadNumber')}
-                            >
-                              {lead.lead_number || lead.id?.slice(0, 8)}
-                            </td>
-                          ) : null}
-                          {showCol('status') ? (
-                            <td className="px-1.5 py-2" style={colWidthStyle('status')} onClick={(e) => e.stopPropagation()}>
-                              <select
-                                aria-label="Change lead status"
-                                value={resolveAdminCrmStatusId(lead)}
-                                disabled={statusSavingId === String(lead.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  void changeLeadStatus(lead, e.target.value);
-                                }}
-                                className="max-w-[148px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-6 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
-                                style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
-                              >
-                                {crmStatusChoices.map((opt) => (
-                                  <option key={opt.id} value={opt.id}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                          ) : null}
-                          {showCol('mlScore') && isLeadManager ? (
-                            <td className="px-1.5 py-2" style={colWidthStyle('mlScore')}>
-                              <MlScoreBadge
-                                compact
-                                score={lead.ml_score?.conversion_score}
-                                temperature={lead.ml_score?.temperature}
-                              />
-                            </td>
-                          ) : null}
-                          {showCol('customer') ? (
-                            <td
-                              className="overflow-hidden px-1.5 py-2 font-semibold text-slate-900 text-[13px]"
-                              style={colWidthStyle('customer')}
-                              title={formatLeadName(lead.customer_name)}
-                            >
-                              <span className="flex items-center gap-1.5 min-w-0">
-                                <span className="truncate whitespace-nowrap">{formatLeadName(lead.customer_name)}</span>
-                                {lead.repeat_customer ? (
-                                  <span
-                                    title={lead.repeat_remark || 'Repeat Customer'}
-                                    className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900"
-                                  >
-                                    Repeat
-                                  </span>
-                                ) : null}
-                              </span>
-                              {lead.repeat_customer && lead.repeat_remark ? (
-                                <span className="mt-0.5 block truncate text-[10px] font-medium text-amber-800" title={lead.repeat_remark}>
-                                  {lead.repeat_remark}
-                                </span>
-                              ) : null}
-                            </td>
-                          ) : null}
-                          {showCol('phone') ? (
-                            <td
-                              className="px-1.5 py-2 text-slate-700 text-[13px] whitespace-nowrap"
-                              style={colWidthStyle('phone')}
-                            >
-                              {lead.customer_phone || '—'}
-                            </td>
-                          ) : null}
-                          {showCol('message') ? (
-                            <td className="px-2 py-2 text-slate-600 max-w-[320px] align-top">
-                              <span className="block whitespace-pre-wrap break-words text-[11px] leading-snug">
-                                {String(msg)}
-                              </span>
-                            </td>
-                          ) : null}
-                          {showCol('regNo') ? (
-                            <td
-                              className="px-2 py-2 text-slate-800 font-semibold whitespace-nowrap uppercase text-[12px]"
-                              title={regDisplay}
-                            >
-                              {regDisplay}
-                            </td>
-                          ) : null}
-                          {showCol('makeModel') ? (
-                            <td className="px-2 py-2 text-slate-700 text-[12px]" title={makeModel}>
-                              {(() => {
-                                const make = String(lead.vehicle_make || '')
-                                  .trim()
-                                  .toUpperCase();
-                                const model = String(lead.vehicle_model || '')
-                                  .trim()
-                                  .toUpperCase();
-                                const makeOk = make && make !== 'NA';
-                                const modelOk = model && model !== 'NA';
-                                if (!makeOk && !modelOk) return '—';
-                                return (
-                                  <span className="inline-flex flex-col leading-snug">
-                                    {makeOk ? <span>{make}</span> : null}
-                                    {modelOk ? <span className="text-slate-500">{model}</span> : null}
-                                  </span>
-                                );
-                              })()}
-                            </td>
-                          ) : null}
-                          {showCol('city') ? (
-                            <td className="px-2 py-2 text-slate-700 truncate text-[12px]">
-                              {lead.city || lead.workshop?.city || '—'}
-                            </td>
-                          ) : null}
-                          {showCol('priority') ? (
-                            <td className="px-2 py-2 text-slate-700 truncate text-[12px] font-semibold">
-                              {lead.lead_priority || lead.priority || 'NORMAL'}
-                            </td>
-                          ) : null}
-                          {showCol('source') && isLeadManager ? (
-                            <td className="px-2 py-2 text-slate-600 truncate text-[12px]">
-                              {lead.booking_source_label || lead.lead_source || '—'}
-                            </td>
-                          ) : null}
-                          {showCol('assignee') ? (
-                            <td
-                              className="px-1.5 py-2 text-indigo-700 font-semibold text-xs whitespace-nowrap truncate"
-                              style={colWidthStyle('assignee')}
-                              title={formatLeadName(lead.assigned_telecaller?.full_name || 'Unassigned')}
-                            >
-                              {formatLeadName(lead.assigned_telecaller?.full_name || 'Unassigned')}
-                            </td>
-                          ) : null}
-                          {showCol('date') ? (
-                            <td
-                              className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-600"
-                              style={colWidthStyle('date')}
-                              title={leadDateTitle(lead.created_at)}
-                            >
-                              <StackedDateTime iso={lead.created_at} />
-                            </td>
-                          ) : null}
-                          {showCol('serviceDoneDate') ? (
-                            <td className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-700">
-                              {leadServiceDoneDate(lead) || '—'}
-                            </td>
-                          ) : null}
-                          {showCol('modified') ? (
-                            <td
-                              className="whitespace-nowrap px-1.5 py-2 text-[11px] text-slate-600"
-                              style={colWidthStyle('modified')}
-                              title={leadDateTitle(lead.updated_at || lead.created_at)}
-                            >
-                              <StackedDateTime iso={lead.updated_at || lead.created_at} />
-                            </td>
-                          ) : null}
-                          {showCol('actions') ? (
-                            <td
-                              className="sticky right-0 z-10 px-2 py-2 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)]"
-                              style={{
-                                backgroundColor:
-                                  selectedIds.has(String(lead.id))
-                                    ? '#DBEAFE'
-                                    : tint.cardBg,
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                void changeLeadStatus(lead, e.target.value);
                               }}
-                              onClick={(e) => e.stopPropagation()}
+                              className="max-w-[148px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-6 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
+                              style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
                             >
-                              <div className="flex flex-nowrap items-center justify-end gap-2">
-                                {lead.customer_phone ? (
-                                  <a
-                                    href={`tel:${lead.customer_phone}`}
-                                    title="Call"
-                                    aria-label="Call"
-                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-                                  >
-                                    <Phone className="h-5 w-5 shrink-0 fill-current" strokeWidth={0} />
-                                  </a>
-                                ) : null}
-                                {lead.customer_phone ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => openLeadWhatsApp(lead)}
-                                    title="WhatsApp"
-                                    aria-label="WhatsApp"
-                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm hover:bg-[#1ebe5c]"
-                                  >
-                                    <WhatsAppIcon className="h-5 w-5 shrink-0" />
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => openShare(lead)}
-                                  title="Transfer to another telecaller"
-                                  aria-label="Transfer to another telecaller"
-                                  className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white shadow-sm hover:bg-[#023D95]"
-                                >
-                                  <ArrowRightLeft className="h-4 w-4 shrink-0" />
-                                  Transfer
+                              {crmStatusChoices.map((opt) => (
+                                <option key={opt.id} value={opt.id}>{opt.label}</option>
+                              ))}
+                            </select>
+                          </td>
+                        ) : null}
+                        {showCol('customer') ? (
+                          <td className="border-b border-slate-100 px-1.5 py-2 align-middle text-[13px] font-semibold text-slate-900" style={{ ...colWidthStyle('customer'), backgroundColor: rowBg }} title={formatLeadName(lead.customer_name)}>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate whitespace-nowrap">{formatLeadName(lead.customer_name)}</span>
+                              {lead.repeat_customer ? (
+                                <span title={lead.repeat_remark || 'Repeat Customer'} className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">Repeat</span>
+                              ) : null}
+                            </span>
+                            {lead.repeat_customer && lead.repeat_remark ? (
+                              <span className="mt-0.5 block truncate text-[10px] font-medium text-amber-800" title={lead.repeat_remark}>{lead.repeat_remark}</span>
+                            ) : null}
+                          </td>
+                        ) : null}
+                        {showCol('phone') ? (
+                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[13px] text-slate-700" style={{ ...colWidthStyle('phone'), backgroundColor: rowBg }}>{lead.customer_phone || '—'}</td>
+                        ) : null}
+                        {showCol('assignee') ? (
+                          <td className="truncate whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-xs font-semibold text-indigo-700" style={{ ...colWidthStyle('assignee'), backgroundColor: rowBg }} title={formatLeadName(lead.assigned_telecaller?.full_name || 'Unassigned')}>
+                            {formatLeadName(lead.assigned_telecaller?.full_name || 'Unassigned')}
+                          </td>
+                        ) : null}
+                        {showCol('date') ? (
+                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[11px] text-slate-600" style={{ ...colWidthStyle('date'), backgroundColor: rowBg }} title={leadDateTitle(lead.created_at)}>
+                            <StackedDateTime iso={lead.created_at} />
+                          </td>
+                        ) : null}
+                        {showCol('modified') ? (
+                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[11px] text-slate-600" style={{ ...colWidthStyle('modified'), backgroundColor: rowBg }} title={leadDateTitle(lead.updated_at || lead.created_at)}>
+                            <StackedDateTime iso={lead.updated_at || lead.created_at} />
+                          </td>
+                        ) : null}
+                        {showCol('leadNumber') ? (
+                          <td className="whitespace-nowrap border-b border-slate-100 px-2 py-2 align-middle text-[13px] font-extrabold text-[#023D95]" style={{ ...colWidthStyle('leadNumber'), backgroundColor: rowBg }}>{lead.lead_number || lead.id?.slice(0, 8)}</td>
+                        ) : null}
+                        {showCol('mlScore') && isLeadManager ? (
+                          <td className="border-b border-slate-100 px-1.5 py-2 align-middle" style={{ ...colWidthStyle('mlScore'), backgroundColor: rowBg }}>
+                            <MlScoreBadge compact score={lead.ml_score?.conversion_score} temperature={lead.ml_score?.temperature} />
+                          </td>
+                        ) : null}
+                        {showCol('message') ? (
+                          <td className="overflow-hidden border-b border-slate-100 px-2 py-2 align-middle text-[11px] text-slate-600" style={{ ...colWidthStyle('message'), backgroundColor: rowBg }}>
+                            <span className="line-clamp-2 break-words leading-snug">{String(msg)}</span>
+                          </td>
+                        ) : null}
+                        {showCol('regNo') ? (
+                          <td className="whitespace-nowrap border-b border-slate-100 px-2 py-2 align-middle text-[12px] font-semibold uppercase text-slate-800" style={{ ...colWidthStyle('regNo'), backgroundColor: rowBg }} title={regDisplay}>{regDisplay}</td>
+                        ) : null}
+                        {showCol('makeModel') ? (
+                          <td className="border-b border-slate-100 px-2 py-2 align-middle text-[12px] text-slate-700" style={{ ...colWidthStyle('makeModel'), backgroundColor: rowBg }} title={makeModel}>
+                            {(() => {
+                              const make = String(lead.vehicle_make || '').trim().toUpperCase();
+                              const model = String(lead.vehicle_model || '').trim().toUpperCase();
+                              const makeOk = make && make !== 'NA';
+                              const modelOk = model && model !== 'NA';
+                              if (!makeOk && !modelOk) return '—';
+                              return (
+                                <span className="inline-flex max-w-full flex-col leading-snug">
+                                  {makeOk ? <span className="truncate">{make}</span> : null}
+                                  {modelOk ? <span className="truncate text-slate-500">{model}</span> : null}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                        ) : null}
+                        {showCol('city') ? (
+                          <td className="truncate border-b border-slate-100 px-2 py-2 align-middle text-[12px] text-slate-700" style={{ ...colWidthStyle('city'), backgroundColor: rowBg }}>{lead.city || lead.workshop?.city || '—'}</td>
+                        ) : null}
+                        {showCol('priority') ? (
+                          <td className="truncate border-b border-slate-100 px-2 py-2 align-middle text-[12px] font-semibold text-slate-700" style={{ ...colWidthStyle('priority'), backgroundColor: rowBg }}>{lead.lead_priority || lead.priority || 'NORMAL'}</td>
+                        ) : null}
+                        {showCol('source') && isLeadManager ? (
+                          <td className="truncate border-b border-slate-100 px-2 py-2 align-middle text-[12px] text-slate-600" style={{ ...colWidthStyle('source'), backgroundColor: rowBg }}>{lead.booking_source_label || lead.lead_source || '—'}</td>
+                        ) : null}
+                        {showCol('serviceDoneDate') ? (
+                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[11px] text-slate-700" style={{ ...colWidthStyle('serviceDoneDate'), backgroundColor: rowBg }}>{leadServiceDoneDate(lead) || '—'}</td>
+                        ) : null}
+                        {showCol('actions') ? (
+                          <td
+                            className="border-b border-slate-100 px-2 py-2 align-middle"
+                            style={{ width: 268, backgroundColor: rowBg }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex flex-nowrap items-center justify-end gap-2">
+                              {lead.customer_phone ? (
+                                <a href={`tel:${lead.customer_phone}`} title="Call" aria-label="Call" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700">
+                                  <Phone className="h-5 w-5 shrink-0 fill-current" strokeWidth={0} />
+                                </a>
+                              ) : null}
+                              {lead.customer_phone ? (
+                                <button type="button" onClick={() => openLeadWhatsApp(lead)} title="WhatsApp" aria-label="WhatsApp" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm hover:bg-[#1ebe5c]">
+                                  <WhatsAppIcon className="h-5 w-5 shrink-0" />
                                 </button>
-                              </div>
-                            </td>
-                          ) : null}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                              ) : null}
+                              <button type="button" onClick={() => openShare(lead)} title="Transfer to another telecaller" aria-label="Transfer to another telecaller" className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white shadow-sm hover:bg-[#023D95]">
+                                <ArrowRightLeft className="h-4 w-4 shrink-0" />
+                                Transfer
+                              </button>
+                            </div>
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-
             {/* Mobile / tablet cards */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:hidden">
               {displayedLeads.map((lead) => {
@@ -2301,7 +2308,9 @@ function TelecallerCrmLeadsContent() {
                     className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 p-3"
                   >
                     <div>
-                      <p className="text-sm font-bold text-slate-800">{p.name || p.email || 'Telecaller'}</p>
+                      <p className="text-sm font-bold text-slate-800">
+                        {String(p.full_name || p.name || '').trim() || 'Telecaller'}
+                      </p>
                     </div>
                     <div className="flex gap-1.5">
                       <button
@@ -2330,24 +2339,10 @@ function TelecallerCrmLeadsContent() {
             onClick={closeLead}
           />
           <div className="telecaller-lead-drawer relative flex h-full w-full min-w-0 flex-col bg-[#f4f7fb] shadow-2xl min-[1100px]:w-[calc(100vw-7rem)] min-[1536px]:w-[min(1360px,calc(100vw-9rem))]">
-            <div className="flex shrink-0 items-center justify-end border-b border-slate-200 bg-white px-2 py-1">
-              <button
-                type="button"
-                onClick={closeLead}
-                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-bold text-slate-600 hover:bg-slate-100"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-                Close
-              </button>
-            </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               <LeadDetailContent panelLeadId={openLeadId} onPanelClose={closeLead} />
             </div>
-            <div
-              id="lead-drawer-actions"
-              className="shrink-0 border-t border-slate-200 bg-white shadow-[0_-6px_16px_rgba(15,23,42,0.06)]"
-            />
+            <div id="lead-drawer-actions" className="hidden" />
           </div>
         </div>
       ) : null}

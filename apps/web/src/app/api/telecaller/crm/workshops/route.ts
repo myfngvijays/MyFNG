@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const pincode = String(url.searchParams.get('pincode') || '').trim();
     const city = String(url.searchParams.get('city') || '').trim();
+    const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
@@ -71,7 +72,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (/^\d{6}$/.test(pincode)) {
+    if (q.length >= 2) {
+      list = list
+        .filter((w: any) =>
+          `${w.name || ''} ${w.workshop_name || ''} ${w.workshop_area || ''} ${w.city || ''} ${w.pincode || ''}`
+            .toLowerCase()
+            .includes(q),
+        )
+        .slice(0, 20);
+    } else if (/^\d{6}$/.test(pincode)) {
       const nearby = filterWorkshopsForPincode(list, pincode);
       if (nearby.length > 0) {
         list = nearby;

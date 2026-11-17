@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { fetchMessageTriggers, fetchSourceRoutes, saveMessageTriggers, saveSourceRoutes } from '@/lib/enquiry/assignment';
-import { normalizeSourceRoutes } from '@/lib/enquiry/sourceRoutes';
+import { fetchCatchAll, fetchMessageTriggers, fetchSourceRoutes, saveCatchAll, saveMessageTriggers, saveSourceRoutes } from '@/lib/enquiry/assignment';
+import { normalizeCatchAll, normalizeSourceRoutes } from '@/lib/enquiry/sourceRoutes';
 import { normalizeMessageTriggers } from '@/lib/enquiry/messageTriggers';
 import { normalizeAllowedPincodes, normalizePincodeMode, pincodePayloadFromMode } from '@/lib/enquiry/pincodeAllocation';
 
@@ -71,11 +71,19 @@ export async function GET(request: NextRequest) {
       sourceRoutes = [];
     }
 
+    let catchAll: Awaited<ReturnType<typeof fetchCatchAll>> = { enabled: false, assignees: [] };
+    try {
+      catchAll = await fetchCatchAll();
+    } catch {
+      catchAll = { enabled: false, assignees: [] };
+    }
+
     return NextResponse.json({
       allocations: allocations || [],
       telecallers: onlyTelecallers,
       message_triggers: messageTriggers,
       source_routes: sourceRoutes,
+      catch_all: catchAll,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
@@ -93,6 +101,18 @@ export async function PUT(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const rows = Array.isArray(body?.allocations) ? body.allocations : [];
     const hasSourceRoutes = Array.isArray(body?.source_routes);
+    const hasCatchAll = body?.catch_all && typeof body.catch_all === 'object';
+
+    if (hasCatchAll) {
+      try {
+        const saved = await saveCatchAll(normalizeCatchAll(body.catch_all));
+        if (rows.length === 0 && !hasSourceRoutes) {
+          return NextResponse.json({ success: true, catch_all: saved });
+        }
+      } catch (err: any) {
+        return NextResponse.json({ error: err?.message || 'Invalid any-lead list' }, { status: 400 });
+      }
+    }
 
     if (hasSourceRoutes) {
       try {

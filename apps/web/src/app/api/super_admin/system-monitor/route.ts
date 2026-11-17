@@ -2353,6 +2353,45 @@ async function checkSSL(): Promise<HealthCheck> {
   }
 }
 
+async function checkBookingWonSheet(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const { bookingWonSheetReadable } = await import('@/lib/telecaller/bookingWonSheet');
+    const result = await checkWithTimeout(() => bookingWonSheetReadable(), 8000);
+    const responseTime = Date.now() - start;
+    if (result.ok) {
+      return {
+        name: 'Booking confirmed sheet',
+        category: 'Third Party',
+        status: 'healthy',
+        responseTime,
+        message: 'Today tab is writable',
+        reason: 'Booking confirmed leads can be appended to the DAILY Telecrm Won Records sheet.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Booking confirmed sheet',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime,
+      message: 'Sheet not writable',
+      reason: result.error || 'Could not read the booking sheet. Share it with the MyFNG service account as Editor.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'Booking confirmed sheet',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Sheet check failed',
+      reason: e?.message || 'Could not reach Google Sheets.',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkSARVTelephony(): Promise<HealthCheck> {
   const start = Date.now();
   const deepcallUserId = process.env.DEEPCALL_USER_ID || '11965974';
@@ -4499,6 +4538,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkWhatsAppWorkflows(),
     checkWhatsAppChatReads(),
     checkGoogleMaps(),
+    checkBookingWonSheet(),
     checkCronJobs(),
     checkFeatureCrons(),
     checkDailyBlog(),

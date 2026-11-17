@@ -112,10 +112,10 @@ function isAwaitingReply(chat: ChatRow): boolean {
   return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
 }
 
-function chatInboxLabel(chat: ChatRow): 'Open' | 'Awaiting' | 'Closed' {
+function chatInboxLabel(chat: ChatRow): 'All' | 'Pending' | 'Closed' {
   if (isWhatsAppSessionWindowClosed(chat)) return 'Closed';
-  if (isAwaitingReply(chat)) return 'Awaiting';
-  return 'Open';
+  if (isAwaitingReply(chat)) return 'Pending';
+  return 'All';
 }
 
 export default function TelecallerWhatsAppInbox({ visible, onClose, onOpenLead }: Props) {
@@ -211,9 +211,8 @@ export default function TelecallerWhatsAppInbox({ visible, onClose, onOpenLead }
       const closed = isWhatsAppSessionWindowClosed(chat);
       const awaiting = isAwaitingReply(chat);
       if (inboxTab === 'closed') return closed;
-      if (closed) return false;
-      if (inboxTab === 'awaiting') return awaiting;
-      return !awaiting;
+      if (inboxTab === 'awaiting') return !closed && awaiting;
+      return true;
     });
   }, [rows, inboxTab, searching]);
 
@@ -306,8 +305,8 @@ export default function TelecallerWhatsAppInbox({ visible, onClose, onOpenLead }
           <View style={styles.tabsRow}>
             {(
               [
-                { id: 'open' as const, label: 'Open', count: inboxCounts.open },
-                { id: 'awaiting' as const, label: 'Awaiting', count: inboxCounts.awaiting },
+                { id: 'open' as const, label: 'All', count: rows.length },
+                { id: 'awaiting' as const, label: 'Pending', count: inboxCounts.awaiting },
                 { id: 'closed' as const, label: 'Closed', count: inboxCounts.closed },
               ] as const
             ).map((t) => {
@@ -347,7 +346,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose, onOpenLead }
                       : inboxTab === 'closed'
                       ? 'No window-closed chats'
                       : inboxTab === 'awaiting'
-                        ? 'No chats awaiting reply'
+                        ? 'No pending chats'
                         : 'No open chats'}
                   </Text>
                 </View>

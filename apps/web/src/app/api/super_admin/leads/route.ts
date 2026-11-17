@@ -188,19 +188,25 @@ export async function GET(request: NextRequest) {
       return typeof countRes.count === 'number' ? countRes.count : null;
     };
 
-    const totalInRange = await countInRange();
+    const offset = Math.max(0, Number(searchParams.get('offset') || 0) || 0);
+    const skipCount = offset > 0 || searchParams.get('skip_count') === '1';
+    const skipRepeat = searchParams.get('skip_repeat') === '1';
+    const totalInRange = skipCount ? null : await countInRange();
     const rowsToFetch =
-      typeof totalInRange === 'number' ? Math.min(totalInRange, maxRows) : maxRows;
-    const maxPages = Math.max(1, Math.ceil(rowsToFetch / PAGE_SIZE));
+      typeof totalInRange === 'number'
+        ? Math.min(Math.max(totalInRange - offset, 0), maxRows)
+        : maxRows;
 
     const fetchPaged = async (opts: {
       select: string;
       withDeletedAtFilter: boolean;
     }) => {
+      if (rowsToFetch <= 0) return { rows: [] as any[], error: null };
+      const pageCount = Math.max(1, Math.ceil(rowsToFetch / PAGE_SIZE));
       const pages = await Promise.all(
-        Array.from({ length: maxPages }, async (_, page) => {
-          const from = page * PAGE_SIZE;
-          const to = Math.min(from + PAGE_SIZE - 1, rowsToFetch - 1);
+        Array.from({ length: pageCount }, async (_, page) => {
+          const from = offset + page * PAGE_SIZE;
+          const to = Math.min(from + PAGE_SIZE - 1, offset + rowsToFetch - 1);
           let q = supabaseAdmin
             .from('service_leads')
             .select(opts.select)
@@ -221,7 +227,7 @@ export async function GET(request: NextRequest) {
         rows.push(...page.data);
         if (page.data.length < PAGE_SIZE) break;
       }
-      return { rows: rows.slice(0, maxRows), error: null };
+      return { rows: rows.slice(0, rowsToFetch), error: null };
     };
 
     let { rows: data, error } = await fetchPaged({
@@ -313,10 +319,12 @@ export async function GET(request: NextRequest) {
     const totalFetched = (data || []).length;
     const truncated = typeof totalInRange === 'number' ? totalFetched < totalInRange : false;
 
-    try {
-      leads = await attachRepeatCustomerFlags(supabaseAdmin, leads);
-    } catch (repeatErr) {
-      console.warn('[super_admin/leads] repeat customer skipped', repeatErr);
+    if (!skipRepeat) {
+      try {
+        leads = await attachRepeatCustomerFlags(supabaseAdmin, leads);
+      } catch (repeatErr) {
+        console.warn('[super_admin/leads] repeat customer skipped', repeatErr);
+      }
     }
 
     return NextResponse.json({

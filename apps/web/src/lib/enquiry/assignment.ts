@@ -16,9 +16,12 @@ import {
   type MessageTrigger,
 } from '@/lib/enquiry/messageTriggers';
 import {
+  catchAllReady,
+  normalizeCatchAll,
   normalizeSourceRoutes,
   resolveSourceAssignId,
   sourceRouteReady,
+  type CatchAllAssignees,
   type SourceRoute,
 } from '@/lib/enquiry/sourceRoutes';
 import { getClickToCallConfig } from '@/lib/telecaller/clickToCallConfig';
@@ -46,6 +49,7 @@ type AllocatorState = {
   lastPicked?: string | null;
   message_triggers?: MessageTrigger[];
   source_routes?: SourceRoute[];
+  catch_all?: CatchAllAssignees;
 };
 
 export async function fetchActiveAllocations(): Promise<AllocationRow[]> {
@@ -226,6 +230,21 @@ export async function saveMessageTriggers(triggers: MessageTrigger[]): Promise<v
 export async function fetchSourceRoutes(): Promise<SourceRoute[]> {
   const state = await readAllocatorState();
   return normalizeSourceRoutes(state.source_routes);
+}
+
+export async function fetchCatchAll(): Promise<CatchAllAssignees> {
+  const state = await readAllocatorState();
+  return normalizeCatchAll(state.catch_all);
+}
+
+export async function saveCatchAll(next: CatchAllAssignees): Promise<CatchAllAssignees> {
+  const cleaned = normalizeCatchAll(next);
+  if (cleaned.enabled && !catchAllReady(cleaned)) {
+    const total = cleaned.assignees.reduce((sum, row) => sum + Number(row.percent || 0), 0);
+    throw new Error(`Percentages must add up to 100 (now ${total})`);
+  }
+  await writeAllocatorState({ catch_all: cleaned });
+  return cleaned;
 }
 
 export async function saveSourceRoutes(routes: SourceRoute[]): Promise<void> {
@@ -525,6 +544,18 @@ export async function pickTelecallerForLead(opts?: {
         channel: matched.mark_as_meta ? 'WHATSAPP_META' : channel,
       };
     }
+  }
+
+  try {
+    const catchAll = await fetchCatchAll();
+    if (catchAllReady(catchAll)) {
+      const directed = await pickDirectedAssignees(catchAll.assignees, channel, 'any');
+      if (directed.telecallerId || directed.reason !== 'no_active_allocations') {
+        return { ...directed, channel: channel || null };
+      }
+    }
+  } catch (err) {
+    console.warn('[assignment] any-lead list skipped', err);
   }
 
   return pickTelecallerWeightedRoundRobin(channel, pincode, leadSource);

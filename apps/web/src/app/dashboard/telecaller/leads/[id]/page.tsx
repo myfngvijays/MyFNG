@@ -31,7 +31,7 @@ import { parseReferredBy, referredByLabel } from '@/lib/telecaller/crmLeadRefere
 import { requestClickToCall } from '@/lib/telecaller/clickToCall';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
-import CrmFollowUpDateTime from '@/components/telecaller/crm/CrmFollowUpDateTime';
+import CallReminderForm from '@/components/telecaller/crm/CallReminderForm';
 import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
 
 export function LeadDetailContent({
@@ -77,6 +77,7 @@ export function LeadDetailContent({
   const [editing, setEditing] = useState(true);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  const [showAllReminders, setShowAllReminders] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [sendingPricing, setSendingPricing] = useState(false);
   const [calling, setCalling] = useState(false);
@@ -283,6 +284,7 @@ export function LeadDetailContent({
       if (leadError) throw leadError;
       const raw = leadData as Record<string, any>;
       setLead(sanitizeLead(raw));
+      setLoading(false);
       try {
         const refRes = await fetch(`/api/telecaller/crm/lead-reference?lead_id=${encodeURIComponent(leadId)}`);
         const refJson = await refRes.json().catch(() => ({}));
@@ -594,6 +596,7 @@ export function LeadDetailContent({
           priority: 'NORMAL'
         });
         setShowFollowUpForm(false);
+        setTimelineRefreshKey((k) => k + 1);
         fetchLeadDetails();
         setTimelineRefreshKey((k) => k + 1);
         alert('Follow-up scheduled successfully!');
@@ -749,11 +752,13 @@ export function LeadDetailContent({
             <div className={isPanel ? 'min-w-0' : 'min-w-0 lg:col-span-2'}>
               <CrmLeadEditForm
                 leadId={leadId}
+                seedLead={lead}
                 embedded
                 isLeadManagerRole={isLeadManager}
                 calling={calling}
                 onCancel={exitEditing}
                 onSaved={() => void finishEditing()}
+                onActivity={() => setTimelineRefreshKey((k) => k + 1)}
                 onCall={() => void handleClickToCall()}
                 onWhatsApp={() => {
                   window.dispatchEvent(
@@ -768,7 +773,8 @@ export function LeadDetailContent({
                 onShare={() => void openSharePanel()}
               />
             </div>
-            <div className="space-y-4 min-w-0">
+            <div className="sticky top-0 z-20 min-w-0 space-y-3 self-start">
+              <div id="lead-sidebar-save" />
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                 <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
                 <div className="space-y-2.5">
@@ -810,59 +816,17 @@ export function LeadDetailContent({
                   </button>
                 </div>
                 {showFollowUpForm && (
-                  <div className="mb-3 space-y-2 rounded-xl bg-slate-50 p-3 border border-slate-100">
-                    <select
-                      value={followUpData.follow_up_type}
-                      onChange={(e) => setFollowUpData({ ...followUpData, follow_up_type: e.target.value })}
-                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
-                    >
-                      <option value="CALLBACK">Follow-up / Reminder</option>
-                      <option value="PRICE_CONFIRMATION">Price Confirmation</option>
-                      <option value="INFO_PENDING">Info Pending</option>
-                      <option value="SLOT_CONFIRMATION">Slot Confirmation</option>
-                    </select>
-                    <CrmFollowUpDateTime
-                      date={followUpData.scheduled_time.slice(0, 10)}
-                      time={followUpData.scheduled_time.includes('T') ? followUpData.scheduled_time.slice(11, 16) : ''}
-                      required
-                      onChange={({ date, time }) =>
-                        setFollowUpData({
-                          ...followUpData,
-                          scheduled_time: date && time ? `${date}T${time}` : '',
-                        })
-                      }
-                    />
-                    <textarea
-                      placeholder="Reason / notes..."
-                      value={followUpData.reason}
-                      onChange={(e) => setFollowUpData({ ...followUpData, reason: e.target.value })}
-                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
-                      rows={2}
-                    />
-                    <select
-                      value={followUpData.priority}
-                      onChange={(e) => setFollowUpData({ ...followUpData, priority: e.target.value })}
-                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
-                    >
-                      <option value="LOW">Low</option>
-                      <option value="NORMAL">Normal</option>
-                      <option value="HIGH">High</option>
-                      <option value="URGENT">Urgent</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAddFollowUp}
-                      className="w-full rounded-lg bg-[#004AAD] text-white py-1.5 text-xs font-bold"
-                    >
-                      Schedule reminder
-                    </button>
-                  </div>
+                  <CallReminderForm
+                    value={followUpData}
+                    onChange={setFollowUpData}
+                    onSubmit={() => void handleAddFollowUp()}
+                  />
                 )}
                 {followUps.length === 0 ? (
                   <p className="text-sm text-slate-400">No reminders yet</p>
                 ) : (
                   <div className="space-y-2">
-                    {followUps.map((fu: any) => (
+                    {(showAllReminders ? followUps : followUps.slice(0, 2)).map((fu: any) => (
                       <div
                         key={fu.id}
                         className={`rounded-lg p-2.5 text-xs border ${
@@ -878,6 +842,15 @@ export function LeadDetailContent({
                         {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
                       </div>
                     ))}
+                    {followUps.length > 2 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllReminders((v) => !v)}
+                        className="w-full pt-1 text-center text-xs font-bold text-[#004AAD]"
+                      >
+                        {showAllReminders ? 'Show less' : 'Show all reminders'}
+                      </button>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -1414,43 +1387,31 @@ export function LeadDetailContent({
                 <button type="button" onClick={() => setShowFollowUpForm(!showFollowUpForm)} className="text-xs font-bold text-[#004AAD]">+ Add</button>
               </div>
               {showFollowUpForm && (
-                <div className="mb-3 space-y-2 rounded-xl bg-slate-50 p-3 border border-slate-100">
-                  <select value={followUpData.follow_up_type} onChange={(e) => setFollowUpData({ ...followUpData, follow_up_type: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-lg">
-                    <option value="CALLBACK">Follow-up</option>
-                    <option value="PRICE_CONFIRMATION">Price Confirmation</option>
-                    <option value="INFO_PENDING">Info Pending</option>
-                    <option value="SLOT_CONFIRMATION">Slot Confirmation</option>
-                  </select>
-                  <CrmFollowUpDateTime
-                    date={followUpData.scheduled_time.slice(0, 10)}
-                    time={followUpData.scheduled_time.includes('T') ? followUpData.scheduled_time.slice(11, 16) : ''}
-                    required
-                    onChange={({ date, time }) =>
-                      setFollowUpData({
-                        ...followUpData,
-                        scheduled_time: date && time ? `${date}T${time}` : '',
-                      })
-                    }
-                  />
-                  <textarea placeholder="Reason..." value={followUpData.reason} onChange={(e) => setFollowUpData({ ...followUpData, reason: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-lg" rows={2} />
-                  <select value={followUpData.priority} onChange={(e) => setFollowUpData({ ...followUpData, priority: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-lg">
-                    <option value="LOW">Low</option>
-                    <option value="NORMAL">Normal</option>
-                    <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent</option>
-                  </select>
-                  <button type="button" onClick={handleAddFollowUp} className="w-full rounded-lg bg-[#004AAD] text-white py-1.5 text-xs font-bold">Schedule</button>
-                </div>
+                <CallReminderForm
+                  value={followUpData}
+                  onChange={setFollowUpData}
+                  onSubmit={() => void handleAddFollowUp()}
+                  submitLabel="Schedule"
+                />
               )}
               {followUps.length === 0 ? <p className="text-sm text-slate-400">No follow-ups</p> : (
                 <div className="space-y-2">
-                  {followUps.map((fu: any) => (
+                  {(showAllReminders ? followUps : followUps.slice(0, 2)).map((fu: any) => (
                     <div key={fu.id} className={`rounded-lg p-2.5 text-xs border ${fu.status === 'PENDING' ? 'border-violet-200 bg-violet-50' : 'border-slate-200'}`}>
                       <p className="font-bold text-violet-900">{fu.follow_up_type || 'Follow-up'}</p>
                       <p className="text-violet-800">{fu.scheduled_time ? formatDateTimeIST(fu.scheduled_time) : '—'}</p>
                       {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
                     </div>
                   ))}
+                  {followUps.length > 2 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllReminders((v) => !v)}
+                      className="w-full pt-1 text-center text-xs font-bold text-[#004AAD]"
+                    >
+                      {showAllReminders ? 'Show less' : 'Show all reminders'}
+                    </button>
+                  ) : null}
                 </div>
               )}
             </div>

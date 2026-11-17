@@ -344,10 +344,8 @@ export async function GET(request: NextRequest) {
             'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, customer_name, customer_phone)',
           )
           .eq('status', 'PENDING')
-          .gte('scheduled_time', todayStartIso)
-          .lte('scheduled_time', todayEndIso)
-          .order('scheduled_time', { ascending: true })
-          .limit(3);
+          .order('scheduled_time', { ascending: false })
+          .limit(5);
         if (!seesAll) remQ = remQ.eq('telecaller_id', teleCallerId);
         return remQ;
       },

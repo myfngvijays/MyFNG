@@ -607,6 +607,14 @@ export default function CrmQueueTab({
   }, [load, localPrefsReady]);
 
   useEffect(() => {
+    if (!localPrefsReady || viewMode === 'chart') return;
+    const id = setInterval(() => {
+      if (AppState.currentState === 'active') void load();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [load, localPrefsReady, viewMode]);
+
+  useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active' && localPrefsReady) void load();
     });

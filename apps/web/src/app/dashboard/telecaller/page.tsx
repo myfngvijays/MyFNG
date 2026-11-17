@@ -143,7 +143,15 @@ function formatReminderClock(iso?: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const time = d.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const day = d.toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
+  const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
+  return day === today ? time : `${day} ${time}`;
 }
 
 export default function TelecallerCrmHomePage() {
@@ -616,10 +624,10 @@ export default function TelecallerCrmHomePage() {
                 </Link>
               </div>
               {upcomingReminders.length === 0 ? (
-                <p className="py-4 text-center text-sm text-slate-500">No reminders today</p>
+                <p className="py-4 text-center text-sm text-slate-500">No reminders</p>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {upcomingReminders.slice(0, 3).map((r) => {
+                  {upcomingReminders.slice(0, 5).map((r) => {
                     const overdue = r.scheduled_time
                       ? new Date(r.scheduled_time).getTime() < Date.now()
                       : false;
@@ -640,7 +648,7 @@ export default function TelecallerCrmHomePage() {
                             </span>
                           </span>
                         </Link>
-                        <span className={`w-16 shrink-0 text-right text-[11px] font-semibold ${overdue ? 'text-red-600' : 'text-[#C2410C]'}`}>
+                        <span className={`w-24 shrink-0 text-right text-[11px] font-semibold ${overdue ? 'text-red-600' : 'text-[#C2410C]'}`}>
                           {formatReminderClock(r.scheduled_time)}
                         </span>
                         {phone ? (

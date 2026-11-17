@@ -66,10 +66,10 @@ function isAwaitingReply(chat: ChatRow): boolean {
   return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
 }
 
-function chatInboxLabel(chat: ChatRow, closedPhones: Set<string>): 'Open' | 'Awaiting' | 'Closed' {
+function chatInboxLabel(chat: ChatRow, closedPhones: Set<string>): 'All' | 'Pending' | 'Closed' {
   if (isInboxClosed(chat, closedPhones)) return 'Closed';
-  if (isAwaitingReply(chat)) return 'Awaiting';
-  return 'Open';
+  if (isAwaitingReply(chat)) return 'Pending';
+  return 'All';
 }
 
 /** Closed tab = WhatsApp 24h window closed (template-only), or manually archived. */
@@ -294,10 +294,8 @@ export default function WhatsAppWebWorkspace({
       const closed = isInboxClosed(chat, closedPhones);
       const awaiting = isAwaitingReply(chat);
       if (inboxTab === 'closed') return closed;
-      if (closed) return false;
-      if (inboxTab === 'awaiting') return awaiting;
-      // open = session open and not awaiting
-      return !awaiting;
+      if (inboxTab === 'awaiting') return !closed && awaiting;
+      return true;
     });
   }, [rows, closedPhones, inboxTab, searching]);
 
@@ -620,8 +618,8 @@ export default function WhatsAppWebWorkspace({
               >
                 {(
                   [
-                    { id: 'open' as const, label: 'Open', count: inboxCounts.open },
-                    { id: 'awaiting' as const, label: 'Awaiting', count: inboxCounts.awaiting },
+                    { id: 'open' as const, label: 'All', count: rows.length },
+                    { id: 'awaiting' as const, label: 'Pending', count: inboxCounts.awaiting },
                     { id: 'closed' as const, label: 'Closed', count: inboxCounts.closed },
                   ] as const
                 ).map((tab) => {
@@ -699,10 +697,8 @@ export default function WhatsAppWebWorkspace({
                     : inboxTab === 'closed'
                     ? 'No window-closed chats.'
                     : inboxTab === 'awaiting'
-                      ? 'No chats awaiting reply.'
-                      : hideLeadPool
-                        ? 'No open chats yet.'
-                        : 'No open chats. Leads with phone numbers will show here.'}
+                      ? 'No pending chats.'
+                      : 'No chats yet.'}
                 </div>
               ) : (
                 filteredRows.map((chat) => {
@@ -751,8 +747,8 @@ export default function WhatsAppWebWorkspace({
                                 className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
                                 style={{
                                   background:
-                                    bucket === 'Awaiting' ? '#004AAD' : bucket === 'Closed' ? '#E5E7EB' : '#DCFCE7',
-                                  color: bucket === 'Awaiting' ? '#fff' : bucket === 'Closed' ? '#374151' : '#166534',
+                                    bucket === 'Pending' ? '#004AAD' : bucket === 'Closed' ? '#E5E7EB' : '#DCFCE7',
+                                  color: bucket === 'Pending' ? '#fff' : bucket === 'Closed' ? '#374151' : '#166534',
                                 }}
                               >
                                 {bucket}

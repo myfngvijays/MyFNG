@@ -112,7 +112,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
             : 0;
 
       if (filter === 'closed') return closed;
-      if (filter === 'open') return !closed && !awaiting;
+      if (filter === 'open') return true;
       if (filter === 'awaiting') return !closed && awaiting;
       if (filter === 'unread') return !closed && unreadN > 0;
       if (filter === 'read') return !closed && unreadN <= 0;
@@ -310,8 +310,8 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
           <div className="flex flex-wrap gap-1.5">
             {(
               [
-                ['open', 'Open', inboxCounts.open],
-                ['awaiting', 'Awaiting', inboxCounts.awaiting],
+                ['open', 'All', activeRows.length],
+                ['awaiting', 'Pending', inboxCounts.awaiting],
                 ['closed', 'Closed', inboxCounts.closed],
                 ['unread', 'Unread', unreadCount],
               ] as const

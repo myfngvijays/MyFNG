@@ -19,6 +19,7 @@ import { formatDateDMY } from "@/lib/dateFormat";
 import { useNotifications, Notification } from '../../context/NotificationContext';
 import { COLORS, SIZES, SPACING } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+import { apiFetch } from '../../lib/api';
 
 type NotifFilter = 'all' | 'missed_calls' | 'missed_reminders' | 'whatsapp';
 
@@ -36,6 +37,7 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
   const [filter, setFilter] = useState<NotifFilter>('all');
   const [missedCalls, setMissedCalls] = useState<Notification[]>([]);
   const [missedReminders, setMissedReminders] = useState<Notification[]>([]);
+  const [waMessages, setWaMessages] = useState<Notification[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -80,6 +82,29 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
         })) as Notification[],
       );
     })();
+    void apiFetch<{ messages?: Array<{ id: string; name?: string; phone?: string; text?: string; created_at?: string }> }>(
+      '/api/whatsapp/recent-inbound',
+    )
+      .then((json) => {
+        setWaMessages(
+          (json?.messages || []).map((msg) => ({
+            id: `wa-${msg.id}`,
+            title: msg.name || msg.phone || 'WhatsApp',
+            message: msg.text || 'Message',
+            created_at: msg.created_at || new Date().toISOString(),
+            is_read: true,
+            type: 'WHATSAPP',
+            priority: 'MEDIUM',
+            user_id: '',
+            read_at: null,
+            action_url: null,
+            lead_number: null,
+            lead_id: null,
+            metadata: { phone: msg.phone },
+          })),
+        );
+      })
+      .catch(() => setWaMessages([]));
   }, []);
 
   const onRefresh = async () => {
@@ -90,13 +115,11 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
 
   const filtered = useMemo(() => {
     const rows = Array.isArray(notifications) ? notifications : [];
-    const blob = (n: Notification) =>
-      `${(n as any)?.type || ''} ${n.title || ''} ${(n as any)?.message || ''}`.toLowerCase();
-    if (filter === 'whatsapp') return rows.filter((n) => /whatsapp|\bwa\b/.test(blob(n)));
+    if (filter === 'whatsapp') return waMessages;
     if (filter === 'missed_calls') return missedCalls;
     if (filter === 'missed_reminders') return missedReminders;
     return rows;
-  }, [notifications, filter, missedCalls, missedReminders]);
+  }, [notifications, filter, missedCalls, missedReminders, waMessages]);
 
   const getPriorityColor = (priority: string): string => {
     const colors: Record<string, string> = {

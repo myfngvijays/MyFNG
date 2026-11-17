@@ -119,7 +119,11 @@ export async function GET(request: NextRequest) {
       if (profile?.id && roleCode === 'TELECALLER') query = query.neq('id', profile.id);
 
       const { data } = await query;
-      return NextResponse.json({ success: true, peers: data || [] });
+      const peers = (data || []).map((row: any) => ({
+        ...row,
+        name: String(row?.full_name || '').trim(),
+      }));
+      return NextResponse.json({ success: true, peers });
     }
 
     const leadId = searchParams.get('lead_id');

@@ -87,6 +87,8 @@ type Props = {
   hideVehicleNumber?: boolean;
   /** When true, show * on date/time (booking confirmed). Soft leads = optional. */
   requireSchedule?: boolean;
+  /** Workshop is chosen next to the customer pincode instead. */
+  hideWorkshops?: boolean;
 };
 
 export default function CrmPickupVisitStep({
@@ -99,6 +101,7 @@ export default function CrmPickupVisitStep({
   quoteTotal,
   hideVehicleNumber = false,
   requireSchedule = false,
+  hideWorkshops = false,
 }: Props) {
   const pickupRequired = forcePickup ? true : value.pickup_required;
   const [workshops, setWorkshops] = useState<any[]>([]);
@@ -141,7 +144,7 @@ export default function CrmPickupVisitStep({
   }, [todayStr]);
 
   useEffect(() => {
-    if (pickupRequired) return;
+    if (pickupRequired || hideWorkshops) return;
     let cancelled = false;
     (async () => {
       setLoadingWs(true);
@@ -165,7 +168,7 @@ export default function CrmPickupVisitStep({
     return () => {
       cancelled = true;
     };
-  }, [pickupRequired, city, cityId, pincode]);
+  }, [pickupRequired, hideWorkshops, city, cityId, pincode]);
 
   const setMode = (pickup: boolean) => {
     if (forcePickup && !pickup) return;
@@ -398,7 +401,7 @@ export default function CrmPickupVisitStep({
             </>
           ) : null}
         </div>
-      ) : value.pickup_time ? (
+      ) : value.pickup_time && !hideWorkshops ? (
         <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
           <p className="mb-2 text-sm font-bold text-gray-800">Nearby Workshops</p>
           {!/^\d{6}$/.test(String(pincode || '').trim()) ? (
