@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { is6161SessionInbound } from '@/lib/whatsapp/sessionLine';
+import {
+  sendMediaMessage,
+  sendTemplateMessage,
+  sendTextMessage,
+  uploadWhatsAppMedia,
+} from '@/lib/services/whatsappService';
 
 type MessageType = 'text' | 'media' | 'template';
 type ParsedSendBody = Record<string, any> & { __file?: File | null };
@@ -35,12 +41,6 @@ async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<b
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data } = await supabaseAdmin
       .from('whatsapp_messages')
-      .select('id, meta, created_at')
-      .eq('direction', 'INBOUND')
-      .gte('created_at', since)
-      .or(`sender_phone.eq.91${last10},sender_phone.eq.${last10}`)
-      .order('created_at', { ascending: false })
-      .limit(20);
       .select('id, meta, payload, recipient_phone, direction, created_at')
       .eq('direction', 'INBOUND')
       .gte('created_at', since)
@@ -48,6 +48,12 @@ async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<b
       .order('created_at', { ascending: false })
       .limit(20);
     return (data || []).some((row) => is6161SessionInbound(row));
+  } catch {
+    return false;
+  }
+}
+
+function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
   const last10 = digits.slice(-10);
@@ -340,11 +346,6 @@ export async function POST(request: NextRequest) {
     let templateLineSends: Array<{ params: string[]; result: any }> | null = null;
     let mediaMimeTypeForLog: string | null = null;
 
-    if (messageType === 'text') {
-      const text = String(body?.text || '').trim();
-      if (!text) return NextResponse.json({ error: 'text is required for text message type' }, { status: 400 });
-      messageForLog = text;
-      requestPayload = {
     let sentViaTemplateName: string | null = null;
 
     if (messageType === 'text') {
@@ -383,18 +384,24 @@ export async function POST(request: NextRequest) {
           result = await sendClosedWindowNote();
         }
       }
+    } else if (messageType === 'media') {
+      const mediaType = String(body?.media_type || '').trim().toLowerCase();
+      const mediaUrl = String(body?.media_url || '').trim();
+      let mediaId = String(body?.media_id || '').trim();
+      const uploadFile = body?.__file instanceof File ? body.__file : null;
+      const caption = body?.caption ? String(body.caption) : undefined;
       const filename = body?.filename ? String(body.filename) : undefined;
       const requestedMime = String(body?.media_mime_type || '').trim();
       if (mediaType !== 'image' && mediaType !== 'document' && mediaType !== 'video' && mediaType !== 'audio') {
         return NextResponse.json(
           { error: 'media_type must be one of: image, document, video, audio' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       if (!mediaUrl && !mediaId && !uploadFile) {
         return NextResponse.json(
           { error: 'Provide media_url, media_id, or upload file for media type' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       let storagePublicUrl = '';
@@ -402,40 +409,28 @@ export async function POST(request: NextRequest) {
         const uploaded = await uploadMediaToSupabase(uploadFile);
         storagePublicUrl = uploaded.publicUrl;
         mediaMimeTypeForLog = uploaded.mimeType || null;
-      }
-      const sessionOpen = await hasCustomerRepliedOnSenderLine(recipientPhone);
-      if (!sessionOpen) {
-        return NextResponse.json(
-          {
-            error:
-              'Image tabhi jayegi jab customer ne 6161 pe last 24 hours mein reply kiya ho. 9696 wala reply is window ko nahi kholta. Pehle template bhejo, ya unka 6161 reply aane do.',
-            code: 'reengagement',
-          },
-          { status: 409 },
-        );
-      }
-      const effectiveMediaUrl = mediaUrl || storagePublicUrl;
-
-      if (!mediaMimeTypeForLog) {
-        mediaMimeTypeForLog =
-          (uploadFile?.type && String(uploadFile.type).trim()) ||
         const graph = await uploadWhatsAppMedia({
           bytes: Buffer.from(await uploadFile.arrayBuffer()),
           mimeType: uploaded.mimeType || uploadFile.type || 'application/octet-stream',
           filename: filename || uploadFile.name || 'file',
         });
         if (graph.id) mediaId = graph.id;
+      }
+      if (!mediaMimeTypeForLog) {
+        mediaMimeTypeForLog =
+          (uploadFile?.type && String(uploadFile.type).trim()) ||
           (requestedMime ? requestedMime : null) ||
           (mediaType === 'image'
             ? 'image/*'
             : mediaType === 'video'
-            ? 'video/*'
-            : mediaType === 'audio'
-            ? 'audio/*'
-            : 'application/octet-stream');
+              ? 'video/*'
+              : mediaType === 'audio'
+                ? 'audio/*'
+                : 'application/octet-stream');
       }
-
-      const mediaUrlForLog = effectiveMediaUrl || (mediaId ? `/api/whatsapp/media/${encodeURIComponent(mediaId)}` : '');
+      const effectiveMediaUrl = mediaUrl || storagePublicUrl;
+      const mediaUrlForLog =
+        effectiveMediaUrl || (mediaId ? `/api/whatsapp/media/${encodeURIComponent(mediaId)}` : '');
       messageForLog = caption || `[${mediaType}] ${mediaUrlForLog || mediaId}`;
       requestPayload = {
         message_type: 'media',
@@ -451,20 +446,19 @@ export async function POST(request: NextRequest) {
       if (sendUrl && !sendUrl.startsWith('https://')) {
         return NextResponse.json(
           { error: 'Media URL must be a publicly accessible HTTPS URL, got: ' + sendUrl.slice(0, 60) },
-          { status: 400 }
+          { status: 400 },
         );
       }
       if (!sendUrl && !sendId) {
         return NextResponse.json(
           { error: 'No media URL or media ID available. Storage upload may have failed.' },
-          { status: 500 }
+          { status: 500 },
         );
       }
-      console.log('[WA Media Send] Sending:', { mediaType, mediaUrl: sendUrl, mediaId: sendId });
       result = await sendMediaMessage({
         phoneNumber: recipientPhone,
         mediaType: mediaType as 'image' | 'document' | 'video' | 'audio',
-        mediaUrl: sendUrl,
+        mediaUrl: sendId ? undefined : sendUrl,
         mediaId: sendId,
         caption,
         filename,
@@ -472,6 +466,7 @@ export async function POST(request: NextRequest) {
       if (!result.success) {
         console.error('[WA Media Send] Failed:', { error: result.error, raw: result.raw });
       }
+
     } else {
       const templateName = String(body?.template_name || '').trim();
       const languageCode = String(body?.language || 'en').trim() || 'en';
@@ -568,14 +563,14 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const templateNameForLog = messageType === 'template' ? String(body?.template_name || '').trim() : null;
+    const templateNameForLog =
+      sentViaTemplateName || (messageType === 'template' ? String(body?.template_name || '').trim() : null);
     const mediaUrlForArchive =
       messageType === 'media'
         ? String(requestPayload?.media_url || '').trim() ||
           (String(requestPayload?.media_id || '').trim()
             ? `/api/whatsapp/media/${encodeURIComponent(String(requestPayload.media_id).trim())}`
-    const templateNameForLog =
-      sentViaTemplateName || (messageType === 'template' ? String(body?.template_name || '').trim() : null);
+            : null)
         : null;
 
     if (invoiceId) {
@@ -623,7 +618,6 @@ export async function POST(request: NextRequest) {
     const archivePayload = {
       provider_message_id: result.messageId || null,
       direction: 'OUTBOUND',
-      message_type: messageType.toUpperCase(),
       lead_id: leadId || null,
       invoice_id: invoiceId,
       sender_phone: null,

@@ -3,6 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { getRequestUser } from '@/lib/supabase/requestUser';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { attachRepeatCustomerFlags } from '@/lib/crm/repeatCustomer';
+import { attachMembershipFlags } from '@/lib/crm/membershipCustomer';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,9 +29,11 @@ export async function GET(request: NextRequest) {
     if (!data) return NextResponse.json({ repeat_customer: false, repeat_remark: null });
 
     const [flagged] = await attachRepeatCustomerFlags(supabaseAdmin, [data]);
+    const [withMembership] = await attachMembershipFlags(supabaseAdmin, [data]);
     return NextResponse.json({
       repeat_customer: Boolean(flagged?.repeat_customer),
       repeat_remark: flagged?.repeat_remark || null,
+      has_membership: Boolean(withMembership?.has_membership),
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

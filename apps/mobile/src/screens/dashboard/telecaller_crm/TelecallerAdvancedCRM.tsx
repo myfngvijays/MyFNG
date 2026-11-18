@@ -86,12 +86,16 @@ type NavGroup = {
   children: NavLeaf[];
 };
 
+type NavSection = { type: 'section'; id: string; label: string };
+
 type NavRow =
   | ({ type: 'item' } & NavLeaf)
-  | ({ type: 'group' } & NavGroup);
+  | ({ type: 'group' } & NavGroup)
+  | NavSection;
 
 /** TeleCRM-style: flat rows + expandable dropdowns (Lead Manager). */
 const LM_NAV: NavRow[] = [
+  { type: 'section', id: 'sec-daily', label: 'Daily' },
   { type: 'item', id: 'home', label: 'Home', icon: 'home-outline', kind: 'tab' },
   { type: 'item', id: 'queue', label: 'Leads', icon: 'clipboard-outline', kind: 'tab' },
   {
@@ -102,6 +106,25 @@ const LM_NAV: NavRow[] = [
     kind: 'stack',
     screen: 'TelecallerFollowUps',
   },
+  { type: 'item', id: 'book', label: 'Add lead / Book', icon: 'person-add-outline', kind: 'tab' },
+  { type: 'section', id: 'sec-calls', label: 'Calls' },
+  {
+    type: 'item',
+    id: 'recordings',
+    label: 'Recordings',
+    icon: 'headset-outline',
+    kind: 'stack',
+    screen: 'LeadManagerRecordings',
+  },
+  { type: 'section', id: 'sec-whatsapp', label: 'WhatsApp' },
+  {
+    type: 'item',
+    id: 'whatsapp',
+    label: 'WhatsApp Chat',
+    icon: 'logo-whatsapp',
+    kind: 'whatsapp',
+  },
+  { type: 'section', id: 'sec-team', label: 'Team' },
   {
     type: 'item',
     id: 'assignment',
@@ -118,14 +141,7 @@ const LM_NAV: NavRow[] = [
     kind: 'stack',
     screen: 'LeadManagerEscalations',
   },
-  {
-    type: 'item',
-    id: 'recordings',
-    label: 'Recordings',
-    icon: 'headset-outline',
-    kind: 'stack',
-    screen: 'LeadManagerRecordings',
-  },
+  { type: 'section', id: 'sec-insights', label: 'Insights' },
   {
     type: 'item',
     id: 'ai_suite',
@@ -150,14 +166,7 @@ const LM_NAV: NavRow[] = [
     kind: 'stack',
     screen: 'LeadManagerLeadIq',
   },
-  {
-    type: 'item',
-    id: 'whatsapp',
-    label: 'WhatsApp Chat',
-    icon: 'logo-whatsapp',
-    kind: 'whatsapp',
-  },
-  { type: 'item', id: 'book', label: 'Add lead / Book', icon: 'person-add-outline', kind: 'tab' },
+  { type: 'section', id: 'sec-customers', label: 'Customers' },
   {
     type: 'item',
     id: 'workshops_stack',
@@ -209,6 +218,7 @@ const LM_NAV: NavRow[] = [
       },
     ],
   },
+  { type: 'section', id: 'sec-team-more', label: 'Team' },
   {
     type: 'group',
     id: 'team_group',
@@ -266,6 +276,7 @@ const LM_NAV: NavRow[] = [
       },
     ],
   },
+  { type: 'section', id: 'sec-setup', label: 'Setup' },
   {
     type: 'group',
     id: 'labels_group',
@@ -310,6 +321,7 @@ const LM_NAV: NavRow[] = [
       },
     ],
   },
+  { type: 'section', id: 'sec-reports', label: 'Reports' },
   {
     type: 'group',
     id: 'reports_group',
@@ -1440,6 +1452,13 @@ export default function TelecallerAdvancedCRM() {
                 keyboardShouldPersistTaps="handled"
               >
                 {drawerNav.map((row) => {
+                  if (row.type === 'section') {
+                    return (
+                      <Text key={row.id} style={styles.drawerSection}>
+                        {row.label}
+                      </Text>
+                    );
+                  }
                   if (row.type === 'item') {
                     const active = row.kind === 'tab' && tab === row.id && !detailLeadId;
                     return (
@@ -1466,6 +1485,7 @@ export default function TelecallerAdvancedCRM() {
                       </TouchableOpacity>
                     );
                   }
+                  if (row.type !== 'group') return null;
                   const open = Boolean(drawerOpenGroups[row.id]);
                   return (
                     <View key={row.id}>
@@ -1703,6 +1723,16 @@ const styles = StyleSheet.create({
   },
   drawerSafe: { flex: 1, backgroundColor: COLORS.primary },
   drawerList: { paddingBottom: 32, paddingTop: 4 },
+  drawerSection: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 4,
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
   tcHeader: {
     flexDirection: 'row',
     alignItems: 'center',

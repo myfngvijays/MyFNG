@@ -1,5 +1,5 @@
 import React from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
@@ -234,6 +234,9 @@ interface IconProps {
 }
 
 export function Icon({ name, size = 24, color = '#000', style }: IconProps) {
+  if (name === 'crown') {
+    return <MaterialCommunityIcons name="crown" size={size} color={color} style={style} />;
+  }
   return (
     <Ionicons
       name={resolveIconName(name)}

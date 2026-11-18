@@ -13,48 +13,48 @@ function statusTintFromLabel(label: string): StatusTint {
   const s = String(label || '').toUpperCase();
 
   if (s.includes('NOT INTERESTED') || s.includes('LOST') || s === 'REJECTED') {
-    return statusTint('#FECACA', '#B91C1C');
+    return statusTint('#FECACA', '#7F1D1D');
   }
   if (s.includes('OTP')) {
-    return statusTint('#F5D0FE', '#A21CAF');
+    return statusTint('#F5D0FE', '#701A75');
   }
   if (s.includes('RINGING') || s.includes('NO ANSWER') || s.includes('NO-RESPONSE')) {
-    return statusTint('#FDE68A', '#B45309');
+    return statusTint('#FDE68A', '#451A03');
   }
   if (s.includes('WILL VISIT')) {
-    return statusTint('#DDD6FE', '#6D28D9');
+    return statusTint('#DDD6FE', '#4C1D95');
   }
   if (s.includes('INTERESTED')) {
-    return statusTint('#FDBA74', '#C2410C');
+    return statusTint('#FDBA74', '#7C2D12');
   }
   if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) {
-    return statusTint('#BAE6FD', '#0369A1');
+    return statusTint('#BAE6FD', '#0C4A6E');
   }
   if (s.includes('BOOKING') || s.includes('CONFIRMED') || s.includes('VALIDATED')) {
-    return statusTint('#A7F3D0', '#047857');
+    return statusTint('#A7F3D0', '#064E3B');
   }
   if (s.includes('IN SERVICE') || s === 'IN_PROGRESS' || s.includes('IN PROGRESS')) {
-    return statusTint('#C7D2FE', '#3730A3');
+    return statusTint('#C7D2FE', '#312E81');
   }
   if (s.includes('SERVICE DONE') || s === 'SERVICE_DONE' || s === 'COMPLETED' || s === 'DONE') {
-    return statusTint('#BBF7D0', '#15803D');
+    return statusTint('#BBF7D0', '#14532D');
   }
   if (s.includes('ASSIGNED')) {
-    return statusTint('#E9D5FF', '#7E22CE');
+    return statusTint('#E9D5FF', '#581C87');
   }
   if (s.includes('CONTACTED')) {
-    return statusTint('#A5F3FC', '#0E7490');
+    return statusTint('#A5F3FC', '#155E75');
   }
   if (s.includes('ACCEPTED')) {
-    return statusTint('#D9F99D', '#3F6212');
+    return statusTint('#D9F99D', '#365314');
   }
   if (s.includes('PENDING')) {
-    return statusTint('#FEF08A', '#A16207');
+    return statusTint('#FEF08A', '#713F12');
   }
   if (s === 'NEW' || s.includes('FRESH') || s.includes('INCOMPLETE')) {
-    return statusTint('#BFDBFE', '#1D4ED8');
+    return statusTint('#BFDBFE', '#1E3A8A');
   }
-  return statusTint('#E2E8F0', '#334155');
+  return statusTint('#E2E8F0', '#0F172A');
 }
 
 /** Lead list cards and status pills. */

@@ -64,10 +64,12 @@ export function mergeCrmStatusFilters(
   };
 
   for (const r of rows) {
-    const id = String(r.id || r.code || '')
+    const code = String(r.code || '')
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_');
+    const rawId = String(r.id || '').trim();
+    const id = code && !/^[0-9a-f]{8}-/i.test(code) ? code : rawId && !/^[0-9a-f]{8}-/i.test(rawId) ? rawId.toLowerCase().replace(/\s+/g, '_') : '';
     if (!id || skipIds.has(id)) continue;
     const label = normalizeLabel(id, String(r.label || r.name || r.code || id));
     const labelKey = label.toLowerCase();
@@ -190,48 +192,48 @@ function statusTintFromLabel(label: string): StatusTint {
   const s = String(label || '').toUpperCase();
 
   if (s.includes('NOT INTERESTED') || s.includes('LOST') || s === 'REJECTED') {
-    return statusTint('#FEF2F2', '#FECACA', '#FECACA', '#B91C1C');
+    return statusTint('#FEF2F2', '#FECACA', '#FECACA', '#7F1D1D');
   }
   if (s.includes('OTP')) {
-    return statusTint('#FFFFFF', '#E5E7EB', '#F5D0FE', '#A21CAF');
+    return statusTint('#FFFFFF', '#E5E7EB', '#F5D0FE', '#701A75');
   }
   if (s.includes('RINGING') || s.includes('NO ANSWER') || s.includes('NO-RESPONSE')) {
-    return statusTint('#FFFBEB', '#FDE68A', '#FDE68A', '#B45309');
+    return statusTint('#FFFBEB', '#FDE68A', '#FDE68A', '#451A03');
   }
   if (s.includes('WILL VISIT')) {
-    return statusTint('#F5F3FF', '#DDD6FE', '#DDD6FE', '#6D28D9');
+    return statusTint('#F5F3FF', '#DDD6FE', '#DDD6FE', '#4C1D95');
   }
   if (s.includes('INTERESTED')) {
-    return statusTint('#FFF7ED', '#FDBA74', '#FDBA74', '#C2410C');
+    return statusTint('#FFF7ED', '#FDBA74', '#FDBA74', '#7C2D12');
   }
   if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) {
-    return statusTint('#F0F9FF', '#7DD3FC', '#BAE6FD', '#0369A1');
+    return statusTint('#F0F9FF', '#7DD3FC', '#BAE6FD', '#0C4A6E');
   }
   if (s.includes('BOOKING') || s.includes('CONFIRMED') || s.includes('VALIDATED')) {
-    return statusTint('#ECFDF5', '#6EE7B7', '#A7F3D0', '#047857');
+    return statusTint('#ECFDF5', '#6EE7B7', '#A7F3D0', '#064E3B');
   }
   if (s.includes('IN SERVICE') || s === 'IN_PROGRESS' || s.includes('IN PROGRESS')) {
-    return statusTint('#EEF2FF', '#A5B4FC', '#C7D2FE', '#3730A3');
+    return statusTint('#EEF2FF', '#A5B4FC', '#C7D2FE', '#312E81');
   }
   if (s.includes('SERVICE DONE') || s === 'SERVICE_DONE' || s === 'COMPLETED' || s === 'DONE') {
-    return statusTint('#F0FDF4', '#86EFAC', '#BBF7D0', '#15803D');
+    return statusTint('#F0FDF4', '#86EFAC', '#BBF7D0', '#14532D');
   }
   if (s.includes('ASSIGNED')) {
-    return statusTint('#FAF5FF', '#E9D5FF', '#E9D5FF', '#7E22CE');
+    return statusTint('#FAF5FF', '#E9D5FF', '#E9D5FF', '#581C87');
   }
   if (s.includes('CONTACTED')) {
-    return statusTint('#ECFEFF', '#A5F3FC', '#A5F3FC', '#0E7490');
+    return statusTint('#ECFEFF', '#A5F3FC', '#A5F3FC', '#155E75');
   }
   if (s.includes('ACCEPTED')) {
-    return statusTint('#F7FEE7', '#BEF264', '#D9F99D', '#3F6212');
+    return statusTint('#F7FEE7', '#BEF264', '#D9F99D', '#365314');
   }
   if (s.includes('PENDING')) {
-    return statusTint('#FEFCE8', '#FDE047', '#FEF08A', '#A16207');
+    return statusTint('#FEFCE8', '#FDE047', '#FEF08A', '#713F12');
   }
   if (s === 'NEW' || s.includes('FRESH') || s.includes('INCOMPLETE')) {
-    return statusTint('#EFF6FF', '#93C5FD', '#BFDBFE', '#1D4ED8');
+    return statusTint('#EFF6FF', '#93C5FD', '#BFDBFE', '#1E3A8A');
   }
-  return statusTint('#F8FAFC', '#E2E8F0', '#E2E8F0', '#334155');
+  return statusTint('#F8FAFC', '#E2E8F0', '#E2E8F0', '#0F172A');
 }
 
 /** Lead list cards and status pills. */

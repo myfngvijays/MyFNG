@@ -109,7 +109,11 @@ function avatarColor(seed: string): string {
 }
 
 function isAwaitingReply(chat: ChatRow): boolean {
-  return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
+  if (String(chat.last_direction || '').toUpperCase() !== 'INBOUND') return false;
+  if (typeof chat.unread_count === 'number' && Number.isFinite(chat.unread_count)) {
+    return chat.unread_count > 0;
+  }
+  return true;
 }
 
 function chatInboxLabel(chat: ChatRow): 'All' | 'Pending' | 'Closed' {

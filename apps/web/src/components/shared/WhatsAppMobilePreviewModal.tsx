@@ -936,6 +936,7 @@ export default function WhatsAppMobilePreviewModal({
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const mediaFileInputRef = useRef<HTMLInputElement | null>(null);
+  const closedMediaInputRef = useRef<HTMLInputElement | null>(null);
   const isAtBottomRef = useRef(true);
   const pendingPrependHeightRef = useRef<number | null>(null);
   const previousLastMessageKeyRef = useRef<string>('');
@@ -1541,9 +1542,8 @@ export default function WhatsAppMobilePreviewModal({
 
     if (isTemplateOnlyMode) {
       setShowAttachMenu(false);
-      // Always land on DoubleTick-style free-text composer for closed window
-      // (unless user already opened template picker).
-      if (activeType !== 'template') {
+      // Keep an attached image/video on screen. Only text and template are the closed-window composers.
+      if (activeType !== 'template' && activeType !== 'media') {
         setActiveType('text');
       }
       return;
@@ -4022,15 +4022,69 @@ export default function WhatsAppMobilePreviewModal({
                       </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowAttachMenu((prev) => !prev)}
-                    disabled
-                    title="Attachments unavailable in closed window"
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#8696a0] opacity-50"
-                  >
-                    <Paperclip className="h-5 w-5" />
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowAttachMenu((prev) => !prev)}
+                      title="Attach image or video"
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] hover:bg-white"
+                    >
+                      <Paperclip className="h-5 w-5" />
+                    </button>
+                    {showAttachMenu ? (
+                      <div
+                        ref={attachMenuRef}
+                        className="absolute bottom-12 right-0 z-[100] min-w-[150px] rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl"
+                      >
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const input = closedMediaInputRef.current;
+                            if (!input) return;
+                            input.accept = 'image/*';
+                            input.click();
+                            setMediaType('image');
+                            setShowAttachMenu(false);
+                          }}
+                          className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                          Image
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const input = closedMediaInputRef.current;
+                            if (!input) return;
+                            input.accept = 'video/*';
+                            input.click();
+                            setMediaType('video');
+                            setShowAttachMenu(false);
+                          }}
+                          className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                          Video
+                        </button>
+                      </div>
+                    ) : null}
+                    <input
+                      ref={closedMediaInputRef}
+                      type="file"
+                      className="pointer-events-none absolute h-px w-px opacity-0"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (!file) return;
+                        const inferred = inferMediaTypeFromFile(file);
+                        setSelectedMediaFile(file);
+                        setMediaType(inferred === 'video' ? 'video' : 'image');
+                        setActiveType('media');
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => void handleSend()}
@@ -4406,17 +4460,11 @@ export default function WhatsAppMobilePreviewModal({
                   ref={attachButtonRef}
                   type="button"
                   onClick={() => {
-                    if (isTemplateOnlyMode) {
-                      toast.error(
-                        'Image tabhi jayegi jab customer ne 6161 pe last 24 hours mein reply kiya ho. 9696 wala reply se file nahi jaati. Abhi template se message bhejo.',
-                      );
-                      return;
-                    }
                     setShowAttachMenu((prev) => !prev);
                   }}
                   disabled={sending}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  title={isTemplateOnlyMode ? '24 hour window band hai — image nahi jayegi' : 'Attach file'}
+                  title="Attach image or video"
                 >
                   <Paperclip className="h-4 w-4" />
                 </button>
@@ -4427,11 +4475,16 @@ export default function WhatsAppMobilePreviewModal({
                   >
                     <button
                       type="button"
-                      onClick={() => {
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const input = mediaFileInputRef.current;
+                        if (!input) return;
+                        input.accept = 'image/*';
+                        input.click();
                         setActiveType('media');
                         setMediaType('image');
                         setShowAttachMenu(false);
-                        requestAnimationFrame(() => mediaFileInputRef.current?.click());
                       }}
                       className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                     >
@@ -4439,11 +4492,16 @@ export default function WhatsAppMobilePreviewModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const input = mediaFileInputRef.current;
+                        if (!input) return;
+                        input.accept = 'video/*';
+                        input.click();
                         setActiveType('media');
                         setMediaType('video');
                         setShowAttachMenu(false);
-                        requestAnimationFrame(() => mediaFileInputRef.current?.click());
                       }}
                       className="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                     >
@@ -4535,7 +4593,7 @@ export default function WhatsAppMobilePreviewModal({
               <input
                 ref={mediaFileInputRef}
                 type="file"
-                className="hidden"
+                className="pointer-events-none absolute h-px w-px opacity-0"
                 accept={
                   mediaType === 'image'
                     ? 'image/*'

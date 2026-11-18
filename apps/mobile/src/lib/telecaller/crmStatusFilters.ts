@@ -47,10 +47,12 @@ export function mergeCrmStatusFilters(
   };
 
   for (const r of rows) {
-    const id = String(r.id || r.code || '')
+    const code = String(r.code || '')
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_');
+    const rawId = String(r.id || '').trim();
+    const id = code && !/^[0-9a-f]{8}-/i.test(code) ? code : rawId && !/^[0-9a-f]{8}-/i.test(rawId) ? rawId.toLowerCase().replace(/\s+/g, '_') : '';
     if (!id || skipIds.has(id)) continue;
     const label = normalizeLabel(id, String(r.label || r.name || r.code || id));
     const labelKey = label.toLowerCase();

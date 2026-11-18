@@ -441,6 +441,7 @@ export default function TelecallerLeadDetailScreen({
 
   const [lead, setLead] = useState<any>(null);
   const [repeatCustomer, setRepeatCustomer] = useState(false);
+  const [hasMembership, setHasMembership] = useState(false);
   const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
@@ -519,18 +520,21 @@ export default function TelecallerLeadDetailScreen({
     let cancelled = false;
     setRepeatCustomer(false);
     setRepeatRemark(null);
-    apiFetch<{ repeat_customer?: boolean; repeat_remark?: string | null }>(
+    setHasMembership(false);
+    apiFetch<{ repeat_customer?: boolean; repeat_remark?: string | null; has_membership?: boolean }>(
       `/api/crm/repeat-customer?lead_id=${encodeURIComponent(String(leadId))}`,
     )
       .then((data) => {
         if (cancelled) return;
         setRepeatCustomer(Boolean(data?.repeat_customer));
         setRepeatRemark(data?.repeat_remark ? String(data.repeat_remark) : null);
+        setHasMembership(Boolean(data?.has_membership));
       })
       .catch(() => {
         if (!cancelled) {
           setRepeatCustomer(false);
           setRepeatRemark(null);
+          setHasMembership(false);
         }
       });
     return () => {
@@ -830,7 +834,7 @@ export default function TelecallerLeadDetailScreen({
           couponMeta.first_message ||
           lead?.problem_description ||
           null,
-        telecaller_remarks: activityData.notes.trim() || couponMeta.telecaller_remarks || null,
+        telecaller_remarks: activityData.notes.trim() || null,
         repeat_customer: Boolean(editForm.repeat_customer),
         service_done_at:
           activityData.result === 'SERVICE_DONE'
@@ -863,40 +867,89 @@ export default function TelecallerLeadDetailScreen({
         initialServiceAddons,
         editForm.service_addons,
       );
+      const bookingConfirmed = selected.id === 'BOOKING_CONFIRMED';
 
-      const changeBits: string[] = [];
-      if (lead?.customer_name !== editForm.customer_name.trim()) changeBits.push('name');
-      if (String(lead?.customer_phone || '').slice(-10) !== editForm.customer_phone) changeBits.push('phone');
-      if (String(lead?.customer_alternate_phone || '') !== String(editForm.customer_alternate_phone || '')) {
-        changeBits.push('alternate phone');
-      }
-      if (String(lead?.customer_email || '') !== String(editForm.customer_email || '')) changeBits.push('email');
-      if (String(lead?.city || '') !== String(editForm.city || '')) changeBits.push('city');
-      if (String(lead?.pincode || '') !== String(editForm.pincode || '')) changeBits.push('pincode');
-      if (String(lead?.vehicle_number || '') !== String(editForm.vehicle_number || '')) {
-        changeBits.push('car number');
-      }
+      const originalForm = buildFormFromLead(lead);
+      const changeLines: string[] = [];
+      const changedTo = (label: string, before: unknown, after: unknown) => {
+        const prev = String(before ?? '').trim();
+        const next = String(after ?? '').trim();
+        if (prev === next) return;
+        changeLines.push(next ? `${label} updated to ${next}` : `${label} removed`);
+      };
+      changedTo('Name', lead?.customer_name, editForm.customer_name.trim());
+      changedTo('Phone', String(lead?.customer_phone || '').slice(-10), editForm.customer_phone);
+      changedTo('Alternate phone', lead?.customer_alternate_phone, editForm.customer_alternate_phone);
+      changedTo('Email', lead?.customer_email, editForm.customer_email);
+      changedTo('City', lead?.city, editForm.city);
+      changedTo('Pincode', lead?.pincode, editForm.pincode);
+      changedTo('Car number', lead?.vehicle_number, editForm.vehicle_number);
       if (
         String(lead?.vehicle_make || '') !== editForm.vehicle_make ||
         String(lead?.vehicle_model || '') !== editForm.vehicle_model
       ) {
-        changeBits.push('car model');
+        changeLines.push(`Car model updated to ${`${editForm.vehicle_make} ${editForm.vehicle_model}`.trim()}`);
       }
-      if (String(lead?.vehicle_year || '') !== String(editForm.vehicle_year || '')) changeBits.push('year');
-      if (String(lead?.lead_priority || '') !== String(editForm.lead_priority || '')) changeBits.push('priority');
-      if (String(lead?.workshop_id || '') !== String(editForm.workshop_id || '')) changeBits.push('workshop');
-      if (servicesChangedLocal) changeBits.push('services');
+      changedTo('Year', lead?.vehicle_year, editForm.vehicle_year);
+      changedTo('Priority', lead?.lead_priority, editForm.lead_priority);
+      if (String(lead?.workshop_id || '') !== String(editForm.workshop_id || '')) {
+        changeLines.push(
+          editForm.workshop_name
+            ? `Workshop updated to ${editForm.workshop_name}`
+            : 'Workshop updated',
+        );
+      }
+      if (originalForm.pickup_date !== editForm.pickup_date) {
+        changeLines.push(
+          editForm.pickup_date ? `Pickup date selected: ${editForm.pickup_date}` : 'Pickup date removed',
+        );
+      }
+      if (originalForm.pickup_time !== editForm.pickup_time) {
+        changeLines.push(
+          editForm.pickup_time ? `Pickup time selected: ${editForm.pickup_time}` : 'Pickup time removed',
+        );
+      }
+      if (servicesChangedLocal) {
+        const prevIds = initialServiceTypes || [];
+        const nextIds = editForm.service_types || [];
+        const prevSet = new Set(prevIds);
+        const nextSet = new Set(nextIds);
+        const changedIds = [
+          ...nextIds.filter((id) => !prevSet.has(id)),
+          ...prevIds.filter((id) => !nextSet.has(id)),
+        ];
+        const nameById: Record<string, string> = {};
+        if (changedIds.length) {
+          const { data: serviceRows } = await supabase
+            .from('service_types')
+            .select('id, name')
+            .in('id', changedIds);
+          for (const row of serviceRows || []) nameById[String(row.id)] = String(row.name || 'Package');
+        }
+        for (const id of nextIds) {
+          if (!prevSet.has(id)) changeLines.push(`Package selected: ${nameById[id] || 'Package'}`);
+        }
+        for (const id of prevIds) {
+          if (!nextSet.has(id)) changeLines.push(`Package removed: ${nameById[id] || 'Package'}`);
+        }
+      }
       if (String(couponMeta.last_call_result || '') !== String(activityData.result || '')) {
-        changeBits.push(statusLabel);
+        changeLines.push(`Status set to ${statusLabel}`);
       }
-      if (String(couponMeta.telecaller_remarks || '') !== activityData.notes.trim()) changeBits.push('remarks');
-      if (bookingConfirmed) changeBits.push('booking');
+      const prevRemark = String(couponMeta.telecaller_remarks || '').trim();
+      const nextRemark = activityData.notes.trim();
+      if (prevRemark !== nextRemark) {
+        if (!prevRemark && nextRemark) changeLines.push(`Workshop remark added: ${nextRemark}`);
+        else if (prevRemark && !nextRemark) changeLines.push('Workshop remark removed');
+        else changeLines.push(`Workshop remark updated: ${nextRemark}`);
+      }
+      if (bookingConfirmed) changeLines.push('Booking confirmed');
 
-      const historyEntry = changeBits.length
+      const historyEntry = changeLines.length
         ? {
             at: new Date().toISOString(),
-            summary: `Updated ${changeBits.join(', ')}`,
-            remark: activityData.notes.trim() || null,
+            summary: changeLines.join('\n'),
+            remark: null,
             status: activityData.result,
             workshop_id: editForm.workshop_id || null,
             workshop_name: editForm.workshop_name || null,
@@ -1313,6 +1366,7 @@ export default function TelecallerLeadDetailScreen({
     }
 
     for (const fu of followUps || []) {
+      if (out.some((row) => row.id === `fu-created-${fu.id}` || row.id === `fu-done-${fu.id}`)) continue;
       pushUnique(out, {
         id: `fu-${fu.id}`,
         kind: 'followup',
@@ -1750,6 +1804,10 @@ export default function TelecallerLeadDetailScreen({
   };
 
   const beginEditFollowUp = (fu: any) => {
+    if (editingFollowUpId === String(fu.id)) {
+      setEditingFollowUpId(null);
+      return;
+    }
     const when = fu?.scheduled_time ? new Date(fu.scheduled_time) : null;
     const ok = when && !Number.isNaN(when.getTime());
     setEditFollowUp({
@@ -1828,10 +1886,23 @@ export default function TelecallerLeadDetailScreen({
       const prevMeta =
         lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? { ...lead.coupon_meta } : {};
       const prevHistory = Array.isArray(prevMeta.profile_history) ? prevMeta.profile_history : [];
+      const prevRemark = String(
+        (lead?.coupon_meta && lead.coupon_meta.telecaller_remarks) || '',
+      ).trim();
+      const nextRemark = activityData.notes.trim();
+      const remarkLine = !nextRemark
+        ? prevRemark
+          ? 'Workshop remark removed'
+          : ''
+        : prevRemark === nextRemark
+          ? ''
+          : prevRemark
+            ? `Workshop remark updated: ${nextRemark}`
+            : `Workshop remark added: ${nextRemark}`;
       const historyEntry = {
         at: new Date().toISOString(),
-        summary: statusLabel,
-        remark: activityData.notes.trim() || null,
+        summary: [statusLabel, remarkLine].filter(Boolean).join('\n'),
+        remark: null,
         status: selected.id,
         event: 'STATUS',
         previous_status: lead?.status || null,
@@ -2195,9 +2266,12 @@ export default function TelecallerLeadDetailScreen({
       >
             <View style={[styles.header, { backgroundColor: headerBg }]}>
               <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                <Text style={styles.headerTitle} numberOfLines={2}>
-                  {editing ? editForm.customer_name || lead.customer_name : lead.customer_name}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {hasMembership ? <Icon name="crown" size={18} color="#E9D5FF" /> : null}
+                  <Text style={[styles.headerTitle, { flex: 1 }]} numberOfLines={2}>
+                    {editing ? editForm.customer_name || lead.customer_name : lead.customer_name}
+                  </Text>
+                </View>
                 <Text style={styles.headerSubtitle} numberOfLines={1}>
                   Lead #{lead.lead_number}
                 </Text>
@@ -2366,9 +2440,36 @@ export default function TelecallerLeadDetailScreen({
                         {fu.reason ? ` · ${fu.reason}` : ''}
                       </Text>
                     </View>
-                    <TouchableOpacity onPress={() => beginEditFollowUp(fu)}>
-                      <Text style={[styles.repeatTitle, { color: COLORS.primary }]}>Modify</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TouchableOpacity onPress={() => beginEditFollowUp(fu)}>
+                        <Text style={[styles.repeatTitle, { color: COLORS.primary }]}>Modify</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        accessibilityLabel="Delete reminder"
+                        onPress={() => {
+                          Alert.alert('Delete reminder', 'Remove this reminder?', [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Delete',
+                              style: 'destructive',
+                              onPress: () => {
+                                void (async () => {
+                                  const id = String(fu.id);
+                                  const { error } = await supabase.from('telecaller_follow_ups').delete().eq('id', id);
+                                  if (error) {
+                                    await supabase.from('telecaller_follow_ups').update({ status: 'CANCELLED' }).eq('id', id);
+                                  }
+                                  if (editingFollowUpId === id) setEditingFollowUpId(null);
+                                  fetchLeadDetails();
+                                })();
+                              },
+                            },
+                          ]);
+                        }}
+                      >
+                        <Icon name="trash" size={16} color="#E11D48" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                   {editingFollowUpId === String(fu.id) ? (
                     <View style={{ marginTop: 8, gap: 6 }}>

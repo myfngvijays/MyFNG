@@ -21,6 +21,7 @@ import {
   Loader2,
   PhoneCall,
   Share2,
+  Crown,
 } from 'lucide-react';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 import {
@@ -179,6 +180,149 @@ function fieldCls(hasError?: boolean, disabled?: boolean) {
     disabled ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : 'bg-white hover:border-slate-300',
     hasError ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200',
   ].join(' ');
+}
+
+function clipActivity(value: string, max = 90) {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
+function prettyActivityDate(ymd: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!match) return ymd;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (!Number.isFinite(date.getTime())) return ymd;
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function prettyActivityTime(hm: string) {
+  const match = /^(\d{1,2}):(\d{2})/.exec(hm);
+  if (!match) return hm;
+  const hour = Number(match[1]);
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 || 12;
+  return `${h12}:${match[2]} ${suffix}`;
+}
+
+function pushRemarkChange(lines: string[], label: string, before: string, after: string) {
+  if (before === after) return;
+  if (!before && after) lines.push(`${label} added: ${clipActivity(after)}`);
+  else if (before && !after) lines.push(`${label} removed`);
+  else lines.push(`${label} updated: ${clipActivity(after)}`);
+}
+
+async function serviceNameMap(ids: string[]) {
+  const unique = Array.from(new Set(ids.map((id) => String(id || '').trim()).filter(Boolean)));
+  const map: Record<string, string> = {};
+  if (!unique.length) return map;
+  const { data } = await createClient().from('service_types').select('id, name').in('id', unique);
+  for (const row of data || []) {
+    map[String(row.id)] = String(row.name || '').trim() || 'Package';
+  }
+  return map;
+}
+
+async function describeLeadActivity(
+  prev: Record<string, string>,
+  next: Record<string, string>,
+  statusLabel: string,
+) {
+  const lines: string[] = [];
+  pushRemarkChange(lines, 'Workshop remark', prev.remarks || '', next.remarks || '');
+  pushRemarkChange(lines, 'Telecaller remark', prev.notes || '', next.notes || '');
+
+  if ((prev.pickupDate || '') !== (next.pickupDate || '')) {
+    lines.push(
+      next.pickupDate
+        ? `Pickup date selected: ${prettyActivityDate(next.pickupDate)}`
+        : 'Pickup date removed',
+    );
+  }
+  if ((prev.pickupTime || '') !== (next.pickupTime || '')) {
+    lines.push(
+      next.pickupTime
+        ? `Pickup time selected: ${prettyActivityTime(next.pickupTime)}`
+        : 'Pickup time removed',
+    );
+  }
+  if ((prev.pickup || '') !== (next.pickup || '')) {
+    lines.push(next.pickup === '1' ? 'Pickup turned on' : 'Pickup turned off');
+  }
+
+  let prevIds: string[] = [];
+  let nextIds: string[] = [];
+  try {
+    prevIds = JSON.parse(prev.services || '[]');
+  } catch {
+    prevIds = [];
+  }
+  try {
+    nextIds = JSON.parse(next.services || '[]');
+  } catch {
+    nextIds = [];
+  }
+  const prevSet = new Set(prevIds);
+  const nextSet = new Set(nextIds);
+  const changedIds = [
+    ...nextIds.filter((id) => !prevSet.has(id)),
+    ...prevIds.filter((id) => !nextSet.has(id)),
+  ];
+  if (changedIds.length) {
+    const names = await serviceNameMap(changedIds);
+    for (const id of nextIds) {
+      if (!prevSet.has(id)) lines.push(`Package selected: ${names[id] || 'Package'}`);
+    }
+    for (const id of prevIds) {
+      if (!nextSet.has(id)) lines.push(`Package removed: ${names[id] || 'Package'}`);
+    }
+  }
+
+  const beforeCoupons = new Set(String(prev.coupons || '').split(', ').filter(Boolean));
+  const afterCoupons = new Set(String(next.coupons || '').split(', ').filter(Boolean));
+  for (const code of afterCoupons) {
+    if (!beforeCoupons.has(code)) lines.push(`Coupon selected: ${code}`);
+  }
+  for (const code of beforeCoupons) {
+    if (!afterCoupons.has(code)) lines.push(`Coupon removed: ${code}`);
+  }
+
+  const simple: Array<[string, string]> = [
+    ['name', 'Name'],
+    ['phone', 'Phone'],
+    ['alt', 'Alternate phone'],
+    ['email', 'Email'],
+    ['pin', 'Pincode'],
+    ['city', 'City'],
+    ['workshop', 'Workshop'],
+    ['flat', 'Flat'],
+    ['area', 'Area'],
+    ['landmark', 'Landmark'],
+    ['reg', 'Car number'],
+    ['car', 'Car model'],
+    ['year', 'Year'],
+    ['fuel', 'Fuel'],
+    ['odo', 'Odometer'],
+    ['priority', 'Priority'],
+    ['pickupAddr', 'Pickup address'],
+  ];
+  for (const [key, label] of simple) {
+    if ((prev[key] || '') === (next[key] || '')) continue;
+    const after = String(next[key] || '').trim();
+    if (!after) lines.push(`${label} removed`);
+    else if (key === 'pickupAddr') lines.push(`${label} updated`);
+    else lines.push(`${label} updated to ${clipActivity(after)}`);
+  }
+  if ((prev.status || '') !== (next.status || '')) {
+    lines.push(`Status set to ${statusLabel}`);
+  }
+  if ((prev.repeat || '') !== (next.repeat || '')) {
+    lines.push(next.repeat === '1' ? 'Marked repeat customer' : 'Repeat customer removed');
+  }
+  if ((prev.custom || '') !== (next.custom || '')) lines.push('Custom fields updated');
+  if ((prev.second || '') !== (next.second || '')) lines.push('Second car updated');
+  if ((prev.referred || '') !== (next.referred || '')) lines.push('Referred by updated');
+  return lines;
 }
 
 function FieldLabel({
@@ -399,6 +543,7 @@ export default function CrmLeadEditForm({
   const [loading, setLoading] = useState(true);
   const [repeatCustomer, setRepeatCustomer] = useState(false);
   const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
+  const [hasMembership, setHasMembership] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -494,12 +639,14 @@ export default function CrmLeadEditForm({
     let cancelled = false;
     setRepeatCustomer(false);
     setRepeatRemark(null);
+    setHasMembership(false);
     void fetch(`/api/crm/repeat-customer?lead_id=${encodeURIComponent(leadId)}`)
       .then((res) => res.json().catch(() => ({})))
       .then((json) => {
         if (cancelled) return;
         setRepeatCustomer(Boolean(json?.repeat_customer));
         setRepeatRemark(json?.repeat_remark ? String(json.repeat_remark) : null);
+        setHasMembership(Boolean(json?.has_membership));
       })
       .catch(() => {
         /* badge stays off */
@@ -1096,47 +1243,13 @@ export default function CrmLeadEditForm({
             : selectedActivity.label;
       const nextSnap = currentActivitySnap();
       const prevSnap = activityBase.current;
-      const bits: string[] = [];
-      if (prevSnap) {
-        const labels: Record<string, string> = {
-          name: 'name',
-          phone: 'phone',
-          alt: 'alternate phone',
-          email: 'email',
-          pin: 'pincode',
-          city: 'city',
-          workshop: 'workshop',
-          flat: 'flat',
-          area: 'area',
-          landmark: 'landmark',
-          reg: 'car number',
-          car: 'car model',
-          year: 'year',
-          fuel: 'fuel',
-          odo: 'odometer',
-          priority: 'priority',
-          pickup: 'pickup',
-          slot: 'pickup time',
-          pickupAddr: 'pickup address',
-          repeat: 'repeat customer',
-          remarks: 'remarks',
-          notes: 'notes',
-          services: 'services',
-          status: statusLabel,
-          custom: 'custom fields',
-          second: 'second car',
-          referred: 'referred by',
-        };
-        for (const key of Object.keys(nextSnap)) {
-          if (prevSnap[key] !== nextSnap[key]) bits.push(labels[key] || key);
-        }
-      }
+      const lines = prevSnap ? await describeLeadActivity(prevSnap, nextSnap, statusLabel) : [];
       pendingActivitySnap.current = nextSnap;
-      const historyEntry = bits.length
+      const historyEntry = lines.length
         ? {
             at: new Date().toISOString(),
-            summary: `Updated ${bits.join(', ')}`,
-            remark: formData.activity_notes.trim() || null,
+            summary: lines.join('\n'),
+            remark: null,
             status: selectedActivity.id,
           }
         : null;
@@ -1315,7 +1428,7 @@ export default function CrmLeadEditForm({
       email: n(formData.customer_email),
       pin: n(formData.pincode),
       city: n(formData.city),
-      workshop: n(formData.workshop_id),
+      workshop: n(formData.workshop_name) || n(formData.workshop_id),
       flat: n(formData.flat_number),
       area: n(formData.area),
       landmark: n(formData.landmark),
@@ -1326,12 +1439,14 @@ export default function CrmLeadEditForm({
       odo: n(formData.odometer_km),
       priority: n(formData.lead_priority),
       pickup: formData.pickup_required ? '1' : '0',
-      slot: `${n(formData.pickup_date)} ${n(formData.pickup_time)}`.trim(),
+      pickupDate: n(formData.pickup_date),
+      pickupTime: n(formData.pickup_time),
       pickupAddr: `${n(formData.pickup_flat)}|${n(formData.pickup_area)}|${n(formData.pickup_landmark)}`,
       repeat: formData.repeat_customer ? '1' : '0',
       remarks: n(formData.activity_notes),
       notes: n(formData.notes),
       services: JSON.stringify(formData.service_types || []),
+      coupons: [...selectedCodes].map((code) => String(code || '').trim().toUpperCase()).filter(Boolean).sort().join(', '),
       status: n(formData.activity_result),
       custom: JSON.stringify(customFieldValues || {}),
       second: showSecondCar ? JSON.stringify(secondCar) : '',
@@ -1427,8 +1542,9 @@ export default function CrmLeadEditForm({
                   {isLeadManager ? 'Lead Manager · Service Lead Details' : 'Telecaller · Service Lead Details'}
                 </p>
                 )}
-                <h1 className={`font-black text-white ${inDrawer ? 'text-lg leading-tight break-words' : 'text-xl sm:text-2xl md:text-3xl truncate mt-0.5'}`}>
-                  {formData.customer_name || lead.customer_name || 'Lead'}
+                <h1 className={`flex items-center gap-2 font-black text-white ${inDrawer ? 'text-lg leading-tight break-words' : 'text-xl sm:text-2xl md:text-3xl mt-0.5'}`}>
+                  {hasMembership ? <Crown className="h-6 w-6 shrink-0 text-purple-200" aria-label="Membership customer" /> : null}
+                  <span className={inDrawer ? '' : 'truncate'}>{formData.customer_name || lead.customer_name || 'Lead'}</span>
                 </h1>
                 <p className="text-sm text-white/90 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                   <span className="font-mono font-bold text-white">#{lead.lead_number}</span>
@@ -1980,9 +2096,15 @@ export default function CrmLeadEditForm({
                 ))}
               </div>
             ) : null}
-            <div className="col-span-2 lg:col-span-4">
-              <FieldLabel>Remarks</FieldLabel>
-              <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Call notes / remarks for this lead" />
+            <div className="col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4">
+              <div>
+                <FieldLabel>Workshop Remark</FieldLabel>
+                <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Workshop remark" />
+              </div>
+              <div>
+                <FieldLabel>Telecaller Remark</FieldLabel>
+                <textarea name="notes" value={formData.notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Telecaller remark" />
+              </div>
             </div>
           </div>
         </SectionCard>
@@ -2134,13 +2256,6 @@ export default function CrmLeadEditForm({
             hideWorkshops
           />
         </div>
-
-        <SectionCard title="Additional Information" icon={FileText} tone="indigo">
-          <div>
-            <FieldLabel>Notes</FieldLabel>
-            <textarea name="notes" value={formData.notes} onChange={handleChange} className={fieldCls()} rows={inDrawer ? 2 : 3} placeholder="Any additional notes or comments" />
-          </div>
-        </SectionCard>
 
         {inDrawer && dockFooter ? createPortal(saveBar, dockFooter) : saveBar}
       </form>

@@ -15,6 +15,7 @@ import {
   AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../../../components/Icon';
 import { apiFetch } from '../../../lib/api';
 import { isPartnerPreview } from '../../../lib/partnerPreview';
 import CarLoading from '../../../components/CarLoading';
@@ -1289,9 +1290,12 @@ export default function CrmQueueTab({
             >
             <View style={styles.cardBody}>
               <View style={styles.cardCopy}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {String(item.customer_name || 'Unknown').trim()}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {item.has_membership ? <Icon name="crown" size={14} color="#7E22CE" /> : null}
+                  <Text style={[styles.name, { flex: 1 }]} numberOfLines={1}>
+                    {String(item.customer_name || 'Unknown').trim()}
+                  </Text>
+                </View>
                 <Text style={styles.meta} numberOfLines={1}>
                   {item.customer_phone || '—'}
                   {managerOps && assigneeName ? `  ·  ${assigneeName}` : ''}

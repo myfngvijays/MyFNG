@@ -218,7 +218,7 @@ export async function GET(request: NextRequest) {
           supabaseAdmin
             .from('telecaller_follow_ups')
             .select(
-              'id, lead_id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
+              'id, lead_id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, completed_by, telecaller_id',
             )
             .in('lead_id', relatedLeadIds)
             .order('scheduled_time', { ascending: false })
@@ -347,15 +347,64 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const reminderNameIds = new Set<string>();
     for (const fu of fuRes.data || []) {
-      items.push({
-        id: `fu-hist-${(fu as any).id}`,
-        kind: 'followup',
-        at: String((fu as any).completed_at || (fu as any).scheduled_time || (fu as any).created_at),
-        title: `Task · ${(fu as any).follow_up_type || 'Follow-up'} · ${(fu as any).status || ''}`,
-        body: (fu as any).reason || (fu as any).notes || null,
-        meta: { scheduled_time: (fu as any).scheduled_time },
-      });
+      if ((fu as any).telecaller_id) reminderNameIds.add(String((fu as any).telecaller_id));
+      if ((fu as any).completed_by) reminderNameIds.add(String((fu as any).completed_by));
+    }
+    const reminderNames = new Map<string, string>();
+    if (reminderNameIds.size) {
+      const { data: people } = await supabaseAdmin
+        .from('users_login')
+        .select('id, full_name')
+        .in('id', Array.from(reminderNameIds));
+      for (const person of people || []) {
+        reminderNames.set(String(person.id), String(person.full_name || '').trim());
+      }
+    }
+    const reminderStamp = (iso: string) => {
+      const date = new Date(iso);
+      if (!Number.isFinite(date.getTime())) return '';
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+      }).formatToParts(date);
+      const day = Number(parts.find((part) => part.type === 'day')?.value || '0');
+      const month = parts.find((part) => part.type === 'month')?.value || '';
+      const year = parts.find((part) => part.type === 'year')?.value || '';
+      const teen = day % 100;
+      const suffix =
+        teen >= 11 && teen <= 13 ? 'th' : day % 10 === 1 ? 'st' : day % 10 === 2 ? 'nd' : day % 10 === 3 ? 'rd' : 'th';
+      return `${day}${suffix} ${month} ${year}`;
+    };
+    for (const fu of fuRes.data || []) {
+      const row = fu as any;
+      const assignee = reminderNames.get(String(row.telecaller_id || '')) || 'telecaller';
+      const when = reminderStamp(String(row.scheduled_time || row.created_at || ''));
+      const reason = String(row.reason || row.notes || '').trim();
+      if (row.created_at || row.scheduled_time) {
+        items.push({
+          id: `fu-created-${row.id}`,
+          kind: 'followup',
+          at: String(row.created_at || row.scheduled_time),
+          title: `Call Reminder of ${when} is created for ${assignee}`,
+          body: reason || null,
+          meta: { scheduled_time: row.scheduled_time, status: row.status },
+        });
+      }
+      if (String(row.status || '').toUpperCase() === 'COMPLETED' && row.completed_at) {
+        const doneBy = reminderNames.get(String(row.completed_by || '')) || assignee;
+        items.push({
+          id: `fu-done-${row.id}`,
+          kind: 'followup',
+          at: String(row.completed_at),
+          title: `Call Reminder Done by ${doneBy} at ${reminderStamp(String(row.completed_at))}`,
+          body: reason || null,
+          meta: { scheduled_time: row.scheduled_time, status: 'COMPLETED' },
+        });
+      }
     }
 
     for (const msg of waRes.data || []) {

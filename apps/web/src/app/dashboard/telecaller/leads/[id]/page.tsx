@@ -8,7 +8,7 @@ import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
 import {
   Phone, Mail, MapPin, Car, Calendar, Clock, FileText,
   User, Building2, PhoneCall, MessageSquare, ArrowLeft,
-  CheckCircle, AlertCircle, TrendingUp, ArrowRightLeft, Users, Wrench, X
+  CheckCircle, AlertCircle, TrendingUp, ArrowRightLeft, Users, Wrench, X, Trash2, Crown
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -69,6 +69,7 @@ export function LeadDetailContent({
 
   const [lead, setLead] = useState<any>(null);
   const [repeatCustomer, setRepeatCustomer] = useState(false);
+  const [hasMembership, setHasMembership] = useState(false);
   const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
@@ -229,6 +230,7 @@ export function LeadDetailContent({
     let cancelled = false;
     setRepeatCustomer(false);
     setRepeatRemark(null);
+    setHasMembership(false);
     (async () => {
       try {
         const res = await fetch(`/api/crm/repeat-customer?lead_id=${encodeURIComponent(leadId)}`);
@@ -236,6 +238,7 @@ export function LeadDetailContent({
         if (!res.ok || cancelled) return;
         setRepeatCustomer(Boolean(json.repeat_customer));
         setRepeatRemark(json.repeat_remark ? String(json.repeat_remark) : null);
+        setHasMembership(Boolean(json.has_membership));
       } catch {
         /* badge stays hidden */
       }
@@ -464,7 +467,7 @@ export function LeadDetailContent({
         .eq('lead_id', leadId)
         .order('scheduled_time', { ascending: false });
 
-      setFollowUps(followUpsData || []);
+      setFollowUps((followUpsData || []).filter((fu: any) => String(fu.status || '').toUpperCase() !== 'CANCELLED'));
 
     } catch (error) {
       console.error('Error fetching lead details:', error);
@@ -547,6 +550,10 @@ export function LeadDetailContent({
   }
 
   function beginEditFollowUp(fu: any) {
+    if (editingFollowUpId === String(fu.id)) {
+      setEditingFollowUpId(null);
+      return;
+    }
     const when = fu?.scheduled_time ? new Date(fu.scheduled_time) : null;
     const stamp =
       when && !Number.isNaN(when.getTime()) ? `${istYmd(when)}T${istHm(when).slice(0, 5)}` : '';
@@ -558,6 +565,24 @@ export function LeadDetailContent({
     });
     setEditingFollowUpId(String(fu.id));
     setShowFollowUpForm(false);
+  }
+
+  async function deleteFollowUp(id: string) {
+    if (!window.confirm('Delete this reminder?')) return;
+    const supabase = createClient();
+    const { error } = await supabase.from('telecaller_follow_ups').delete().eq('id', id);
+    if (error) {
+      const { error: cancelErr } = await supabase
+        .from('telecaller_follow_ups')
+        .update({ status: 'CANCELLED' })
+        .eq('id', id);
+      if (cancelErr) {
+        alert(cancelErr.message || 'Could not delete reminder');
+        return;
+      }
+    }
+    if (editingFollowUpId === id) setEditingFollowUpId(null);
+    fetchLeadDetails();
   }
 
   async function handleAddFollowUp() {
@@ -880,13 +905,23 @@ export function LeadDetailContent({
                             </p>
                             {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => beginEditFollowUp(fu)}
-                            className="shrink-0 text-[11px] font-bold text-[#004AAD]"
-                          >
-                            Modify
-                          </button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => beginEditFollowUp(fu)}
+                              className="text-[11px] font-bold text-[#004AAD]"
+                            >
+                              Modify
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Delete reminder"
+                              onClick={() => void deleteFollowUp(String(fu.id))}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded text-rose-600 hover:bg-rose-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
                         {editingFollowUpId === fu.id ? (
                           <div className="mt-2">
@@ -942,8 +977,9 @@ export function LeadDetailContent({
                   <p className="text-[11px] font-bold uppercase tracking-wider text-blue-100">
                     {isLeadManager ? 'Lead Manager · Service Lead Details' : 'Telecaller · Service Lead Details'}
                   </p>
-                  <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate mt-0.5 text-white">
-                    {lead.customer_name || 'Unknown customer'}
+                  <h1 className="mt-0.5 flex items-center gap-2 text-xl font-black text-white sm:text-2xl md:text-3xl">
+                    {hasMembership ? <Crown className="h-6 w-6 shrink-0 text-purple-300" aria-label="Membership customer" /> : null}
+                    <span className="truncate">{lead.customer_name || 'Unknown customer'}</span>
                   </h1>
                   <p className="text-sm text-blue-50 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                     <span className="font-mono font-bold text-white">#{lead.lead_number}</span>
@@ -1471,13 +1507,23 @@ export function LeadDetailContent({
                           <p className="text-violet-800">{fu.scheduled_time ? formatDateTimeIST(fu.scheduled_time) : '—'}</p>
                           {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => beginEditFollowUp(fu)}
-                          className="shrink-0 text-[11px] font-bold text-[#004AAD]"
-                        >
-                          Modify
-                        </button>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => beginEditFollowUp(fu)}
+                            className="text-[11px] font-bold text-[#004AAD]"
+                          >
+                            Modify
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete reminder"
+                            onClick={() => void deleteFollowUp(String(fu.id))}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded text-rose-600 hover:bg-rose-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       {editingFollowUpId === fu.id ? (
                         <div className="mt-2">

@@ -34,6 +34,7 @@ import {
   filterBookingLeads,
 } from '@/lib/booking-lead-utils';
 import { attachRepeatCustomerFlags } from '@/lib/crm/repeatCustomer';
+import { attachMembershipFlags } from '@/lib/crm/membershipCustomer';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +133,8 @@ export async function GET(request: NextRequest) {
     const q = sp.get('q');
     const filter = sp.get('filter'); // new|interested|will_visit|booking_confirmed|in_service|service_done|lost|callback|incomplete|follow_up|booked|rejected|all
     const lostReason = String(sp.get('lost_reason') || '').trim();
+    const otherReason = String(sp.get('other_reason') || '').trim();
+    const statusReason = String(filter || '').toLowerCase() === 'other' ? otherReason : lostReason;
     const telecallerFilter = String(sp.get('telecaller_id') || '').trim();
     const unassignedOnly = sp.get('unassigned') === '1';
     const sourceFilter = seesAll ? String(sp.get('source') || 'ALL').trim().toUpperCase() : 'ALL';
@@ -194,7 +197,7 @@ export async function GET(request: NextRequest) {
     if (priority) query = query.eq('lead_priority', priority.toUpperCase());
     if (workshopId) query = query.eq('workshop_id', workshopId);
     query = applyCrmLeadDateRange(query, filter, from, to, dateField);
-    query = applyCrmQueueStatusFilter(query, filter, lostReason);
+    query = applyCrmQueueStatusFilter(query, filter, statusReason);
 
     if (q) {
       query = query.or(crmLeadSearchOr(q));
@@ -221,7 +224,7 @@ export async function GET(request: NextRequest) {
       if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
       retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
-      retry = applyCrmQueueStatusFilter(retry, filter, lostReason);
+      retry = applyCrmQueueStatusFilter(retry, filter, statusReason);
       if (q) {
         retry = retry.or(crmLeadSearchOr(q));
       }
@@ -437,6 +440,11 @@ export async function GET(request: NextRequest) {
       leadsWithRepeat = await attachRepeatCustomerFlags(db, leadsWithScores);
     } catch (repeatErr) {
       console.warn('[crm/leads] repeat customer skipped', repeatErr);
+    }
+    try {
+      leadsWithRepeat = await attachMembershipFlags(db, leadsWithRepeat);
+    } catch (memberErr) {
+      console.warn('[crm/leads] membership flag skipped', memberErr);
     }
 
     void healStaleFollowUps(db, {

@@ -46,6 +46,7 @@ import {
   Upload,
   UserPlus,
   RefreshCw,
+  Crown,
 } from 'lucide-react';
 import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel';
 import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkActionsBar';
@@ -154,19 +155,77 @@ function formatLeadName(name: string | null | undefined): string {
     .join(' ');
 }
 
-function leadDateTitle(iso: string | null | undefined) {
-  const parts = formatLeadDateParts(iso);
-  return parts ? `${parts.date}, ${parts.time}` : undefined;
+function formatRelativeLeadTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const ms = d.getTime();
+  if (!Number.isFinite(ms)) return '—';
+  const diff = Date.now() - ms;
+  const min = Math.max(0, Math.round(diff / 60000));
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+
+function formatHoverLeadTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const day = d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: '2-digit' });
+  return `${time} ${day}`;
 }
 
 function StackedDateTime({ iso }: { iso: string | null | undefined }) {
-  const parts = formatLeadDateParts(iso);
-  if (!parts) return <span>—</span>;
+  const label = formatRelativeLeadTime(iso);
+  const hover = formatHoverLeadTime(iso);
+  const [tip, setTip] = useState<{ x: number; y: number; below: boolean } | null>(null);
+  if (!hover) return <span>—</span>;
   return (
-    <span className="inline-flex flex-col leading-tight">
-      <span>{parts.date}</span>
-      <span className="text-slate-400">{parts.time}</span>
+    <span
+      className="inline-flex cursor-default"
+      onMouseEnter={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const half = 120;
+        const x = Math.min(window.innerWidth - half, Math.max(half, rect.left + rect.width / 2));
+        setTip({
+          x,
+          y: rect.top < 56 ? rect.bottom + 6 : rect.top - 6,
+          below: rect.top < 56,
+        });
+      }}
+      onMouseLeave={() => setTip(null)}
+    >
+      <span>{label}</span>
+      {tip
+        ? createPortal(
+            <span
+              className="pointer-events-none fixed z-[80] whitespace-nowrap rounded-md bg-violet-100 px-2 py-1 text-[11px] font-medium text-violet-900 shadow"
+              style={{
+                left: tip.x,
+                top: tip.y,
+                transform: tip.below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+              }}
+            >
+              {hover}
+            </span>,
+            document.body,
+          )
+        : null}
     </span>
+  );
+}
+
+function MembershipCrown() {
+  return (
+    <Crown
+      className="h-3.5 w-3.5 shrink-0 text-purple-600"
+      aria-label="Membership customer"
+    />
   );
 }
 
@@ -252,6 +311,9 @@ function TelecallerCrmLeadsContent() {
     () => LEAD_STATUS_FILTERS.map((f) => ({ id: f.id, label: f.label })),
   );
   const [lostReason, setLostReason] = useState(lostParam || '');
+  const otherParam = searchParams?.get('other_reason');
+  const [otherReason, setOtherReason] = useState(otherParam || '');
+  const [otherReasonOptions, setOtherReasonOptions] = useState<string[]>([]);
   const [city, setCity] = useState(cityParam || '');
   const [priority, setPriority] = useState(priorityParam || '');
   const [telecallerId, setTelecallerId] = useState(telecallerParam || '');
@@ -525,6 +587,16 @@ function TelecallerCrmLeadsContent() {
         if (!rows.length) return;
         setStatusFilters(mergeCrmStatusFilters(rows, 'All'));
         setCrmStatusChoices(mergeAdminStatusChoices(rows));
+        const currentFilter = String(filterParam || '');
+        if (/^[0-9a-f]{8}-/i.test(currentFilter)) {
+          const match = rows.find((row: { id?: string; code?: string }) => String(row.id || '') === currentFilter);
+          const code = String(match?.code || '').trim().toLowerCase();
+          if (code) setFilter(code);
+        }
+        const reasons = (Array.isArray(json?.other_reasons) ? json.other_reasons : [])
+          .map((row: { name?: string } | string) => String(typeof row === 'string' ? row : row?.name || '').trim())
+          .filter(Boolean);
+        setOtherReasonOptions(reasons);
       } catch {
         /* keep defaults */
       }
@@ -627,7 +699,9 @@ function TelecallerCrmLeadsContent() {
 
   useEffect(() => {
     if (!prefsReady) return;
-    setFilter(filterParam || 'all');
+    const next = filterParam || 'all';
+    if (/^[0-9a-f]{8}-/i.test(next)) return;
+    setFilter(next);
   }, [filterParam, prefsReady]);
 
   const syncFiltersToUrl = useCallback(
@@ -639,6 +713,7 @@ function TelecallerCrmLeadsContent() {
       priority?: string;
       q?: string;
       lostReason?: string;
+      otherReason?: string;
       telecallerId?: string;
       unassignedOnly?: boolean;
       source?: string;
@@ -673,6 +748,9 @@ function TelecallerCrmLeadsContent() {
       else params.set('q', query);
       if (f === 'lost' && lr) params.set('lost_reason', lr);
       else params.delete('lost_reason');
+      const or = next.otherReason ?? otherReason;
+      if (f === 'other' && or) params.set('other_reason', or);
+      else params.delete('other_reason');
       if (isLeadManager && tid) params.set('telecaller_id', tid);
       else params.delete('telecaller_id');
       if (isLeadManager && una) params.set('unassigned', '1');
@@ -696,6 +774,7 @@ function TelecallerCrmLeadsContent() {
       priority,
       appliedQ,
       lostReason,
+      otherReason,
       telecallerId,
       unassignedOnly,
       sourceFilter,
@@ -961,6 +1040,7 @@ function TelecallerCrmLeadsContent() {
       if (appliedQ.trim()) baseParams.set('q', appliedQ.trim());
       if (filter && filter !== 'all') baseParams.set('filter', filter);
       if (filter === 'lost' && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
+      if (filter === 'other' && otherReason.trim()) baseParams.set('other_reason', otherReason.trim());
       if (city.trim()) baseParams.set('city', city.trim());
       if (priority.trim()) baseParams.set('priority', priority.trim());
       if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
@@ -997,7 +1077,7 @@ function TelecallerCrmLeadsContent() {
           total = Number(data?.total || 0);
           scope = Number(data?.scope_total || 0);
           all = all.concat(batch);
-          if (batch.length < pageLimit || all.length >= total || pageNum >= 40) break;
+          if (batch.length === 0 || pageNum * pageLimit >= total || pageNum >= 80) break;
           pageNum += 1;
         }
         if (loadGen.current !== gen) return;
@@ -1039,6 +1119,7 @@ function TelecallerCrmLeadsContent() {
     pageSize,
     filter,
     lostReason,
+    otherReason,
     appliedQ,
     city,
     priority,
@@ -1214,8 +1295,13 @@ function TelecallerCrmLeadsContent() {
   const setFilterAndUrl = (id: string) => {
     setFilter(id);
     if (id !== 'lost') setLostReason('');
+    if (id !== 'other') setOtherReason('');
     persistAll({ statusFilter: id, lostReason: id === 'lost' ? lostReason : '' });
-    syncFiltersToUrl({ filter: id, lostReason: id === 'lost' ? lostReason : '' });
+    syncFiltersToUrl({
+      filter: id,
+      lostReason: id === 'lost' ? lostReason : '',
+      otherReason: id === 'other' ? otherReason : '',
+    });
   };
 
   const viewSnapshot: CrmLeadsViewSnapshot = {
@@ -1507,6 +1593,29 @@ function TelecallerCrmLeadsContent() {
                   {LOST_REASON_FILTERS.map((f) => (
                     <option key={f.id || 'all-lost'} value={f.id}>
                       {f.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              </div>
+            ) : null}
+
+            {filter === 'other' ? (
+              <div className={FILTER_FIELD}>
+                <select
+                  className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                  value={otherReason}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setOtherReason(v);
+                    syncFiltersToUrl({ otherReason: v });
+                  }}
+                  aria-label="Other reason"
+                >
+                  <option value="">All other reasons</option>
+                  {otherReasonOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
                   ))}
                 </select>
@@ -2104,7 +2213,7 @@ function TelecallerCrmLeadsContent() {
                                 void changeLeadStatus(lead, e.target.value);
                               }}
                               className="max-w-[148px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-6 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
-                              style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
+                              style={{ backgroundColor: tint.badgeBg, color: tint.badgeText, WebkitTextFillColor: tint.badgeText }}
                             >
                               {crmStatusChoices.map((opt) => (
                                 <option key={opt.id} value={opt.id}>{opt.label}</option>
@@ -2115,6 +2224,7 @@ function TelecallerCrmLeadsContent() {
                         {showCol('customer') ? (
                           <td className="border-b border-slate-100 px-1.5 py-2 align-middle text-[13px] font-semibold text-slate-900" style={{ ...colWidthStyle('customer'), backgroundColor: rowBg }} title={formatLeadName(lead.customer_name)}>
                             <span className="flex min-w-0 items-center gap-1.5">
+                              {lead.has_membership ? <MembershipCrown /> : null}
                               <span className="truncate whitespace-nowrap">{formatLeadName(lead.customer_name)}</span>
                               {lead.repeat_customer ? (
                                 <span title={lead.repeat_remark || 'Repeat Customer'} className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">Repeat</span>
@@ -2134,12 +2244,12 @@ function TelecallerCrmLeadsContent() {
                           </td>
                         ) : null}
                         {showCol('date') ? (
-                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[11px] text-slate-600" style={{ ...colWidthStyle('date'), backgroundColor: rowBg }} title={leadDateTitle(lead.created_at)}>
+                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[11px] text-slate-600" style={{ ...colWidthStyle('date'), backgroundColor: rowBg }}>
                             <StackedDateTime iso={lead.created_at} />
                           </td>
                         ) : null}
                         {showCol('modified') ? (
-                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[11px] text-slate-600" style={{ ...colWidthStyle('modified'), backgroundColor: rowBg }} title={leadDateTitle(lead.updated_at || lead.created_at)}>
+                          <td className="whitespace-nowrap border-b border-slate-100 px-1.5 py-2 align-middle text-[11px] text-slate-600" style={{ ...colWidthStyle('modified'), backgroundColor: rowBg }}>
                             <StackedDateTime iso={lead.updated_at || lead.created_at} />
                           </td>
                         ) : null}
@@ -2255,8 +2365,9 @@ function TelecallerCrmLeadsContent() {
                     </div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-slate-900 leading-snug truncate">
-                          {formatLeadName(lead.customer_name)}
+                        <p className="flex items-center gap-1 font-bold text-slate-900 leading-snug truncate">
+                          {lead.has_membership ? <MembershipCrown /> : null}
+                          <span className="truncate">{formatLeadName(lead.customer_name)}</span>
                         </p>
                         {lead.repeat_customer ? (
                           <p className="mt-1 text-[11px] font-semibold text-amber-800" title={lead.repeat_remark || ''}>
@@ -2285,7 +2396,7 @@ function TelecallerCrmLeadsContent() {
                             void changeLeadStatus(lead, e.target.value);
                           }}
                           className="max-w-[132px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-5 text-[11px] font-bold focus:outline-none disabled:opacity-60"
-                          style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
+                          style={{ backgroundColor: tint.badgeBg, color: tint.badgeText, WebkitTextFillColor: tint.badgeText }}
                         >
                           {crmStatusChoices.map((opt) => (
                             <option key={opt.id} value={opt.id}>

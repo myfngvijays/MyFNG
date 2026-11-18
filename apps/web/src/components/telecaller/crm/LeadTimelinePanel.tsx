@@ -289,7 +289,7 @@ export default function LeadTimelinePanel({
     return timelineItems.filter((it) => {
       const title = String(it.title || '').toLowerCase();
       const id = String(it.id || '');
-      return !(id.startsWith('disp-') || title.startsWith('lead updated ·') || it.kind === 'whatsapp' || it.kind === 'followup');
+      return !(id.startsWith('disp-') || title.startsWith('lead updated ·') || it.kind === 'whatsapp');
     });
   }, [timelineItems]);
 
@@ -682,7 +682,7 @@ export default function LeadTimelinePanel({
                           </span>
                         </div>
                         {entry.summary ? (
-                          <p className="mt-1 break-words text-[11px] font-medium leading-snug text-gray-900">
+                          <p className="mt-1 whitespace-pre-line break-words text-[11px] font-medium leading-snug text-gray-900">
                             {entry.summary}
                           </p>
                         ) : null}

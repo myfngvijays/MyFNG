@@ -121,6 +121,8 @@ type MenuItem = {
   children?: MenuItem[];
   /** Special action instead of navigation (e.g. open WhatsApp workspace). */
   action?: 'open-wa-inbox';
+  /** Sidebar group label. A header shows when this changes from the previous item. */
+  section?: string;
 };
 
 export default function DashboardLayout({ children, role: roleProp }: DashboardLayoutProps) {
@@ -930,55 +932,37 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/workshop_pickup_boy/profile', icon: <Users className="w-5 h-5" />, label: 'Profile' },
       ],
       'LEAD_MANAGER': [
-        { href: '/dashboard/lead_manager', icon: <Home className="w-5 h-5" />, label: 'Home' },
-        { href: '/dashboard/lead_manager/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
-        { href: '/dashboard/lead_manager/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
+        { section: 'Daily', href: '/dashboard/lead_manager', icon: <Home className="w-5 h-5" />, label: 'Home' },
+        { section: 'Daily', href: '/dashboard/lead_manager/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        { section: 'Daily', href: '/dashboard/lead_manager/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
+        { section: 'Daily', href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
+        { section: 'Calls', href: '/dashboard/lead_manager/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
+        { section: 'Calls', href: '/dashboard/lead_manager/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         {
-          href: '/dashboard/lead_manager/ai-suite',
-          icon: <Sparkles className="w-5 h-5" />,
-          label: 'AI Suite',
-          children: [
-            { href: '/dashboard/lead_manager/ai-suite', icon: <Sparkles className="w-5 h-5" />, label: 'Overview' },
-            { href: '/dashboard/lead_manager/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call IQ' },
-            { href: '/dashboard/lead_manager/lead-iq', icon: <Sparkles className="w-5 h-5" />, label: 'Lead IQ' },
-            { href: '/dashboard/lead_manager/ai-suite/workflow', icon: <GitBranch className="w-5 h-5" />, label: 'Workflow' },
-            { href: '/dashboard/lead_manager/ai-suite/playbook', icon: <BookOpen className="w-5 h-5" />, label: 'Sales Playbook' },
-          ],
-        },
-        { href: '/dashboard/lead_manager/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
-        {
+          section: 'WhatsApp',
           href: '#whatsapp',
           icon: <MessageCircle className="w-5 h-5" />,
           label: 'WhatsApp',
           action: 'open-wa-inbox',
         },
-        { href: '/dashboard/lead_manager/team-whatsapp', icon: <MessageCircle className="w-5 h-5" />, label: 'Team WA' },
-        { href: '/dashboard/lead_manager/floor', icon: <Activity className="w-5 h-5" />, label: 'Live floor' },
+        { section: 'WhatsApp', href: '/dashboard/lead_manager/team-whatsapp', icon: <MessageCircle className="w-5 h-5" />, label: 'Team WA' },
+        { section: 'WhatsApp', href: '/dashboard/lead_manager/whatsapp-dnd', icon: <AlertTriangle className="w-5 h-5" />, label: 'WA DND' },
+        { section: 'Team', href: '/dashboard/lead_manager/floor', icon: <Activity className="w-5 h-5" />, label: 'Live floor' },
+        { section: 'Team', href: '/dashboard/lead_manager/login-activity', icon: <Clock className="w-5 h-5" />, label: 'Login activity' },
+        { section: 'Team', href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
+        { section: 'Team', href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
+        { section: 'Team', href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
+        { section: 'Team', href: '/dashboard/lead_manager/telecallers', icon: <UserPlus className="w-5 h-5" />, label: 'Telecaller IDs' },
+        { section: 'Customers', href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
+        { section: 'Customers', href: '/dashboard/lead_manager/customer-insights', icon: <Smartphone className="w-5 h-5" />, label: 'App Customers' },
+        { section: 'Customers', href: '/dashboard/lead_manager/workshop-proximity', icon: <MapPin className="w-5 h-5" />, label: 'Workshop Proximity' },
+        { section: 'Customers', href: '/dashboard/lead_manager/membership-customers', icon: <Crown className="w-5 h-5" />, label: 'Membership Customers' },
+        { section: 'Customers', href: '/dashboard/lead_manager/refer-and-rise', icon: <Gift className="w-5 h-5" />, label: 'Refer & Rise' },
+        { section: 'Setup', href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
+        { section: 'Setup', href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
+        { section: 'Setup', href: '/dashboard/lead_manager/fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead fields' },
         {
-          href: '/dashboard/lead_manager/login-activity',
-          icon: <Clock className="w-5 h-5" />,
-          label: 'Login activity',
-        },
-        { href: '/dashboard/lead_manager/whatsapp-dnd', icon: <AlertTriangle className="w-5 h-5" />, label: 'WA DND' },
-        { href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
-        { href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
-        { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
-        { href: '/dashboard/lead_manager/customer-insights', icon: <Smartphone className="w-5 h-5" />, label: 'App Customers' },
-        { href: '/dashboard/lead_manager/workshop-proximity', icon: <MapPin className="w-5 h-5" />, label: 'Workshop Proximity' },
-        { href: '/dashboard/lead_manager/membership-customers', icon: <Crown className="w-5 h-5" />, label: 'Membership Customers' },
-        { href: '/dashboard/lead_manager/refer-and-rise', icon: <Gift className="w-5 h-5" />, label: 'Refer & Rise' },
-        { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
-        { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
-        {
-          href: '/dashboard/lead_manager/telecallers',
-          icon: <UserPlus className="w-5 h-5" />,
-          label: 'Telecaller IDs',
-        },
-        { href: '/dashboard/lead_manager/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
-        { href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
-        { href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
-        { href: '/dashboard/lead_manager/fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead fields' },
-        {
+          section: 'Setup',
           href: '/dashboard/lead_manager/templates',
           icon: <MessageSquare className="w-5 h-5" />,
           label: 'Msg Templates',
@@ -991,8 +975,22 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             },
           ],
         },
-        { href: '/dashboard/lead_manager/reports/pipeline', icon: <BarChart3 className="w-5 h-5" />, label: 'Pipeline' },
         {
+          section: 'Insights',
+          href: '/dashboard/lead_manager/ai-suite',
+          icon: <Sparkles className="w-5 h-5" />,
+          label: 'AI Suite',
+          children: [
+            { href: '/dashboard/lead_manager/ai-suite', icon: <Sparkles className="w-5 h-5" />, label: 'Overview' },
+            { href: '/dashboard/lead_manager/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call IQ' },
+            { href: '/dashboard/lead_manager/lead-iq', icon: <Sparkles className="w-5 h-5" />, label: 'Lead IQ' },
+            { href: '/dashboard/lead_manager/ai-suite/workflow', icon: <GitBranch className="w-5 h-5" />, label: 'Workflow' },
+            { href: '/dashboard/lead_manager/ai-suite/playbook', icon: <BookOpen className="w-5 h-5" />, label: 'Sales Playbook' },
+          ],
+        },
+        { section: 'Insights', href: '/dashboard/lead_manager/reports/pipeline', icon: <BarChart3 className="w-5 h-5" />, label: 'Pipeline' },
+        {
+          section: 'Insights',
           href: '/dashboard/lead_manager/reports',
           icon: <TrendingUp className="w-5 h-5" />,
           label: 'Reports',
@@ -1004,8 +1002,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             { href: '/dashboard/lead_manager/reports/duplicates', icon: <Users className="w-5 h-5" />, label: 'Duplicates' },
           ],
         },
-        { href: '/dashboard/lead_manager/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
-        { href: '/dashboard/lead_manager/me', icon: <User className="w-5 h-5" />, label: 'My Profile' },
+        { section: 'Account', href: '/dashboard/lead_manager/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
+        { section: 'Account', href: '/dashboard/lead_manager/me', icon: <User className="w-5 h-5" />, label: 'My Profile' },
       ],
       'RSA_MANAGER': [
         { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -1255,11 +1253,25 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             alignContent: 'start',
           }}
         >
-            {menuItems.map((item) => {
+            {menuItems.map((item, index) => {
+              const showSection =
+                Boolean(item.section) &&
+                item.section !== menuItems[index - 1]?.section &&
+                !(sidebarCollapsed || waWorkspaceOpen);
+              const sectionLabel = showSection ? (
+                <p
+                  key={`${item.section}-label`}
+                  className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-white/45"
+                >
+                  {item.section}
+                </p>
+              ) : null;
               if (item.children && item.children.length > 0) {
                 const childActive = item.children.some((child) => pathname === child.href);
                 return (
-                  <div key={item.label} className="space-y-1">
+                  <div key={item.label}>
+                    {sectionLabel}
+                  <div className="space-y-1">
                     <div
                       className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg text-sm sm:text-base ${
                         childActive ? 'bg-white/15 text-white font-semibold' : 'text-white/90 font-medium'
@@ -1291,11 +1303,14 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                       ))}
                     </div>
                   </div>
+                  </div>
                 );
               }
 
               return (
-                item.action === 'open-wa-inbox' ? (
+                <div key={item.href || item.label}>
+                {sectionLabel}
+                {item.action === 'open-wa-inbox' ? (
                   <button
                     key={item.label}
                     type="button"
@@ -1351,7 +1366,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                   <CrmSavedFiltersNav leadsHref={item.href} collapsed={sidebarCollapsed} />
                 ) : null}
                 </div>
-                )
+                )}
+                </div>
               );
             })}
         </nav>

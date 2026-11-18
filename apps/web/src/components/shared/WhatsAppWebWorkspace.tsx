@@ -63,7 +63,8 @@ function saveClosedPhones(phones: Set<string>) {
 }
 
 function isAwaitingReply(chat: ChatRow): boolean {
-  return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
+  if (String(chat.last_direction || '').toUpperCase() !== 'INBOUND') return false;
+  return resolveUnreadCount(chat) > 0;
 }
 
 function chatInboxLabel(chat: ChatRow, closedPhones: Set<string>): 'All' | 'Pending' | 'Closed' {

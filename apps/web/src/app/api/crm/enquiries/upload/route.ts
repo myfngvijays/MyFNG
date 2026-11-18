@@ -14,7 +14,6 @@ import {
   parseEnquiryActivities,
   parseLeadTagTokens,
   primaryLeadSourceFromTags,
-  isBuiltinCrmStatus,
 } from '@/lib/crm/normalizeEnquiryCsv';
 import { patchEnquiryUploadJob, readEnquiryUploadJob, writeEnquiryUploadJob } from '@/lib/crm/enquiryUploadJob';
 
@@ -160,36 +159,72 @@ async function runEnquiryUpload(
     let updated = 0;
     let reminders = 0;
 
-    const otherStatuses = new Map<string, string>();
+    const otherNames = new Map<string, string>();
     for (const row of valid) {
-      const code = String(row.crm_status || '').trim().toUpperCase();
-      if (!code || isBuiltinCrmStatus(code)) continue;
-      otherStatuses.set(code, String(row.crm_status_label || code).trim() || code);
+      const reason = String(row.crm_other_reason || '').trim();
+      if (!reason) continue;
+      const key = reason.toLowerCase();
+      if (!otherNames.has(key)) otherNames.set(key, reason);
     }
-    if (otherStatuses.size) {
-      const { data: existingStatuses } = await writer
-        .from('crm_lead_statuses')
-        .select('code')
-        .in('code', [...otherStatuses.keys()]);
-      const have = new Set((existingStatuses || []).map((row: { code?: string }) => String(row.code || '').toUpperCase()));
-      const missing = [...otherStatuses.entries()].filter(([code]) => !have.has(code));
-      if (missing.length) {
-        await writer.from('crm_lead_statuses').insert(
-          missing.map(([code, name], index) => ({
-            code,
-            name,
-            color: '#EDE9FE',
-            sort_order: 90 + index,
-            is_system: false,
-            is_active: true,
-            requires_follow_up: false,
-            requires_lost_reason: false,
-            call_status: 'ANSWERED',
-            outcome: 'INFO_COLLECTED',
-            pipeline_status: null,
-            stage_group: 'other',
-          })),
-        );
+    if (otherNames.size) {
+      const { data: existingReasons, error: reasonErr } = await writer
+        .from('crm_other_reasons')
+        .select('id, name, sort_order, is_active');
+      const reasonMissing =
+        reasonErr?.code === '42P01' ||
+        reasonErr?.code === 'PGRST205' ||
+        String(reasonErr?.message || '').toLowerCase().includes('schema cache');
+      if (!reasonErr) {
+        const have = new Set((existingReasons || []).map((row: { name?: string }) => String(row.name || '').trim().toLowerCase()));
+        const missing = [...otherNames.values()].filter((name) => !have.has(name.toLowerCase()));
+        if (missing.length) {
+          const start = (existingReasons || []).length;
+          await writer.from('crm_other_reasons').insert(
+            missing.map((name, index) => ({
+              name,
+              sort_order: (start + index + 1) * 10,
+              is_active: true,
+            })),
+          );
+        }
+      } else if (reasonMissing) {
+        const { data: setting } = await writer
+          .from('system_settings')
+          .select('setting_value')
+          .eq('setting_key', 'crm_other_reasons')
+          .maybeSingle();
+        let rows: Array<{ id: string; name: string; sort_order: number; is_active: boolean }> = [];
+        try {
+          const parsed = JSON.parse(String(setting?.setting_value || '[]'));
+          if (Array.isArray(parsed)) rows = parsed;
+        } catch {
+          rows = [];
+        }
+        const have = new Set(rows.map((row) => String(row.name || '').trim().toLowerCase()));
+        const missing = [...otherNames.values()].filter((name) => !have.has(name.toLowerCase()));
+        if (missing.length) {
+          const next = [
+            ...rows,
+            ...missing.map((name, index) => ({
+              id: crypto.randomUUID(),
+              name,
+              sort_order: (rows.length + index + 1) * 10,
+              is_active: true,
+            })),
+          ];
+          await writer.from('system_settings').upsert(
+            {
+              setting_key: 'crm_other_reasons',
+              setting_value: JSON.stringify(next),
+              setting_type: 'JSON',
+              category: 'SYSTEM',
+              description: 'Items shown when a lead status is Other',
+              is_editable: true,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'setting_key' },
+          );
+        }
       }
     }
 
@@ -251,6 +286,7 @@ async function runEnquiryUpload(
               last_call_at: updatedAt,
               last_lost_reason:
                 crmStatus === 'LOST' ? r.lost_reason || 'Other Reasons' : prevMeta.last_lost_reason || null,
+              last_other_reason: crmStatus === 'OTHER' ? r.crm_other_reason || null : null,
               telecrm_status: r.disposition || null,
             }
           : {}),

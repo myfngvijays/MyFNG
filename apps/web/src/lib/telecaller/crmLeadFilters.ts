@@ -100,7 +100,8 @@ export function leadMatchesCrmQueueFilter(lead: any, filter: string | null | und
     return result === 'CALLBACK' && !['IN_PROGRESS', 'COMPLETED', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(status);
   }
   if (f === 'incomplete') return Boolean(lead?.is_incomplete);
-  return !result || result === f.toUpperCase();
+  if (f === 'other') return result === 'OTHER';
+  return result === f.toUpperCase();
 }
 
 /** Status / disposition tiles for the CRM queue. Search does not skip these. */
@@ -145,5 +146,11 @@ export function applyCrmQueueStatusFilter(
       .not('status', 'in', '(IN_PROGRESS,COMPLETED,READY_FOR_DELIVERY,DELIVERED,CLOSED,CANCELLED,REJECTED)');
   }
   if (f === 'incomplete') return query.eq('is_incomplete', true);
+  if (f === 'other') {
+    let next = query.filter('coupon_meta->>last_call_result', 'eq', 'OTHER');
+    const reason = String(lostReason || '').trim();
+    if (reason) next = next.filter('coupon_meta->>last_other_reason', 'eq', reason);
+    return next;
+  }
   return query.filter('coupon_meta->>last_call_result', 'eq', f.toUpperCase());
 }
