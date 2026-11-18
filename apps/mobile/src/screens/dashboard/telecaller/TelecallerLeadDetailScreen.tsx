@@ -445,6 +445,8 @@ export default function TelecallerLeadDetailScreen({
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [showAllReminders, setShowAllReminders] = useState(false);
+  const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
+  const [editFollowUp, setEditFollowUp] = useState({ type: 'CALLBACK', date: '', time: '', reason: '' });
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
   const [activityShowAll, setActivityShowAll] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
@@ -1747,6 +1749,45 @@ export default function TelecallerLeadDetailScreen({
     void fetchActivityTimeline();
   };
 
+  const beginEditFollowUp = (fu: any) => {
+    const when = fu?.scheduled_time ? new Date(fu.scheduled_time) : null;
+    const ok = when && !Number.isNaN(when.getTime());
+    setEditFollowUp({
+      type: String(fu?.follow_up_type || 'CALLBACK'),
+      date: ok ? istYmd(when) : '',
+      time: ok ? istHm(when).slice(0, 5) : '',
+      reason: String(fu?.reason || ''),
+    });
+    setEditingFollowUpId(String(fu.id));
+  };
+
+  const saveEditedFollowUp = async () => {
+    if (!editingFollowUpId) return;
+    const scheduledIso = istDateTimeToIso(editFollowUp.date, editFollowUp.time);
+    if (!scheduledIso) {
+      Alert.alert('Date and time', 'Pick a valid date and time');
+      return;
+    }
+    const { error } = await supabase
+      .from('telecaller_follow_ups')
+      .update({
+        follow_up_type: editFollowUp.type || 'CALLBACK',
+        scheduled_time: scheduledIso,
+        reason: editFollowUp.reason,
+      })
+      .eq('id', editingFollowUpId);
+    if (error) {
+      Alert.alert('Could not update', error.message || 'Try again');
+      return;
+    }
+    await supabase
+      .from('service_leads')
+      .update({ follow_up_required: true, next_follow_up_at: scheduledIso })
+      .eq('id', leadId);
+    setEditingFollowUpId(null);
+    fetchLeadDetails();
+  };
+
   const handleSaveActivity = async () => {
     try {
       const selected = selectedResult;
@@ -2317,11 +2358,43 @@ export default function TelecallerLeadDetailScreen({
             <>
               {(showAllReminders ? followUps : followUps.slice(0, 2)).map((fu) => (
                 <View key={String(fu.id)} style={{ marginBottom: 8 }}>
-                  <Text style={styles.repeatTitle}>{fu.follow_up_type || 'Reminder'}</Text>
-                  <Text style={styles.fieldCaption}>
-                    {fu.scheduled_time ? formatDateTime(fu.scheduled_time) : '—'}
-                    {fu.reason ? ` · ${fu.reason}` : ''}
-                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.repeatTitle}>{fu.follow_up_type || 'Reminder'}</Text>
+                      <Text style={styles.fieldCaption}>
+                        {fu.scheduled_time ? formatDateTime(fu.scheduled_time) : '—'}
+                        {fu.reason ? ` · ${fu.reason}` : ''}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => beginEditFollowUp(fu)}>
+                      <Text style={[styles.repeatTitle, { color: COLORS.primary }]}>Modify</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {editingFollowUpId === String(fu.id) ? (
+                    <View style={{ marginTop: 8, gap: 6 }}>
+                      <TextInput
+                        value={editFollowUp.date}
+                        onChangeText={(date) => setEditFollowUp((prev) => ({ ...prev, date }))}
+                        placeholder="YYYY-MM-DD"
+                        style={styles.input}
+                      />
+                      <TextInput
+                        value={editFollowUp.time}
+                        onChangeText={(time) => setEditFollowUp((prev) => ({ ...prev, time }))}
+                        placeholder="HH:MM"
+                        style={styles.input}
+                      />
+                      <TextInput
+                        value={editFollowUp.reason}
+                        onChangeText={(reason) => setEditFollowUp((prev) => ({ ...prev, reason }))}
+                        placeholder="Note"
+                        style={styles.input}
+                      />
+                      <TouchableOpacity onPress={() => void saveEditedFollowUp()} style={styles.actionButtonPrimary}>
+                        <Text style={styles.actionButtonTextPrimary}>Update</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </View>
               ))}
               {followUps.length > 2 ? (

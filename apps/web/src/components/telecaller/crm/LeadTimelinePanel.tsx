@@ -248,7 +248,7 @@ export default function LeadTimelinePanel({
     crmStatusId && crmStatusId !== 'FRESH'
       ? latestLabel
       : looksLikeRingingText(latestRemark)
-        ? 'Ringing / No answer'
+        ? 'Ringing'
         : null;
   const pinnedStatusAt = String(
     couponMeta.last_call_at || (lead as any)?.updated_at || profileHistory[0]?.at || '',

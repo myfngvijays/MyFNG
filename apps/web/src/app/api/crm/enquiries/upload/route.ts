@@ -14,6 +14,7 @@ import {
   parseEnquiryActivities,
   parseLeadTagTokens,
   primaryLeadSourceFromTags,
+  isBuiltinCrmStatus,
 } from '@/lib/crm/normalizeEnquiryCsv';
 import { patchEnquiryUploadJob, readEnquiryUploadJob, writeEnquiryUploadJob } from '@/lib/crm/enquiryUploadJob';
 
@@ -158,6 +159,39 @@ async function runEnquiryUpload(
     let inserted = 0;
     let updated = 0;
     let reminders = 0;
+
+    const otherStatuses = new Map<string, string>();
+    for (const row of valid) {
+      const code = String(row.crm_status || '').trim().toUpperCase();
+      if (!code || isBuiltinCrmStatus(code)) continue;
+      otherStatuses.set(code, String(row.crm_status_label || code).trim() || code);
+    }
+    if (otherStatuses.size) {
+      const { data: existingStatuses } = await writer
+        .from('crm_lead_statuses')
+        .select('code')
+        .in('code', [...otherStatuses.keys()]);
+      const have = new Set((existingStatuses || []).map((row: { code?: string }) => String(row.code || '').toUpperCase()));
+      const missing = [...otherStatuses.entries()].filter(([code]) => !have.has(code));
+      if (missing.length) {
+        await writer.from('crm_lead_statuses').insert(
+          missing.map(([code, name], index) => ({
+            code,
+            name,
+            color: '#EDE9FE',
+            sort_order: 90 + index,
+            is_system: false,
+            is_active: true,
+            requires_follow_up: false,
+            requires_lost_reason: false,
+            call_status: 'ANSWERED',
+            outcome: 'INFO_COLLECTED',
+            pipeline_status: null,
+            stage_group: 'other',
+          })),
+        );
+      }
+    }
 
     for (let i = 0; i < valid.length; i++) {
       const r = valid[i];

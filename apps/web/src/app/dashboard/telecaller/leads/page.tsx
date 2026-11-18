@@ -27,6 +27,7 @@ import {
   resolveAdminCrmStatusId,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
+import { leadMatchesCrmQueueFilter } from '@/lib/telecaller/crmLeadFilters';
 import { createClient } from '@/lib/supabase/client';
 import {
   Phone,
@@ -570,22 +571,22 @@ function TelecallerCrmLeadsContent() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Status update failed');
-      setLeads((prev) =>
-        prev.map((row) =>
-          String(row.id) === String(lead.id)
-            ? {
-                ...row,
-                ...(json.lead && typeof json.lead === 'object' ? json.lead : {}),
-                coupon_meta: {
-                  ...(row.coupon_meta || {}),
-                  last_call_result: statusId,
-                  last_call_label: label,
-                  last_lost_reason: lostReason,
-                },
-              }
-            : row,
-        ),
-      );
+      const nextLead = {
+        ...lead,
+        ...(json.lead && typeof json.lead === 'object' ? json.lead : {}),
+        coupon_meta: {
+          ...(lead.coupon_meta || {}),
+          last_call_result: statusId,
+          last_call_label: label,
+          last_lost_reason: lostReason,
+        },
+      };
+      setLeads((prev) => {
+        if (!leadMatchesCrmQueueFilter(nextLead, filter)) {
+          return prev.filter((row) => String(row.id) !== String(lead.id));
+        }
+        return prev.map((row) => (String(row.id) === String(lead.id) ? { ...row, ...nextLead } : row));
+      });
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Status update failed');
     } finally {
@@ -744,9 +745,7 @@ function TelecallerCrmLeadsContent() {
   }, [openLeadId, closeLead]);
 
   const displayedLeads = useMemo(() => {
-    const base = appliedQ.trim()
-      ? leads
-      : leads.filter((lead) => {
+    const base = leads.filter((lead) => {
       if (advIncomplete && !lead.is_incomplete) return false;
       if (advFollowUp) {
         if (crmLeadClosedForFollowUp(lead)) return false;
@@ -770,13 +769,12 @@ function TelecallerCrmLeadsContent() {
         const at = lead.reminder?.at || lead.next_follow_up_at;
         if (!at || new Date(at).getTime() >= Date.now()) return false;
       }
-      return true;
+      return leadMatchesCrmQueueFilter(lead, filter);
     });
     if (!selectedOnly || selectedIds.size === 0) return base;
     return base.filter((lead) => selectedIds.has(String(lead.id)));
   }, [
     leads,
-    appliedQ,
     advIncomplete,
     advFollowUp,
     advHasVehicle,
@@ -786,6 +784,7 @@ function TelecallerCrmLeadsContent() {
     advOverdueReminder,
     selectedOnly,
     selectedIds,
+    filter,
   ]);
 
   const persistDate = (next: {
@@ -959,26 +958,22 @@ function TelecallerCrmLeadsContent() {
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const baseParams = new URLSearchParams();
-      const searching = Boolean(appliedQ.trim());
-      if (searching) {
-        baseParams.set('q', appliedQ.trim());
-      } else {
-        if (filter && filter !== 'all') baseParams.set('filter', filter);
-        if (filter === 'lost' && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
-        if (city.trim()) baseParams.set('city', city.trim());
-        if (priority.trim()) baseParams.set('priority', priority.trim());
-        if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
-        if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
-        if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
-        if (isLeadManager && sourceFilter && sourceFilter !== 'ALL') baseParams.set('source', sourceFilter);
-        if (isLeadManager && couponFilter && couponFilter !== 'ALL') {
-          baseParams.set('has_coupon', couponFilter);
-        }
-        if (isLeadManager && triggerFilter) baseParams.set('trigger', triggerFilter);
-        if (!range.allTime) {
-          baseParams.set('from', range.start);
-          baseParams.set('to', range.end);
-        }
+      if (appliedQ.trim()) baseParams.set('q', appliedQ.trim());
+      if (filter && filter !== 'all') baseParams.set('filter', filter);
+      if (filter === 'lost' && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
+      if (city.trim()) baseParams.set('city', city.trim());
+      if (priority.trim()) baseParams.set('priority', priority.trim());
+      if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
+      if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
+      if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
+      if (isLeadManager && sourceFilter && sourceFilter !== 'ALL') baseParams.set('source', sourceFilter);
+      if (isLeadManager && couponFilter && couponFilter !== 'ALL') {
+        baseParams.set('has_coupon', couponFilter);
+      }
+      if (isLeadManager && triggerFilter) baseParams.set('trigger', triggerFilter);
+      if (!range.allTime) {
+        baseParams.set('from', range.start);
+        baseParams.set('to', range.end);
       }
 
       if (viewMode === 'chart') {

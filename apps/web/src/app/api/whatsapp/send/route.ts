@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import {
-  sendMediaMessage,
-  sendTemplateMessage,
-  sendTextMessage,
-} from '@/lib/services/whatsappService';
+import { is6161SessionInbound } from '@/lib/whatsapp/sessionLine';
 
 type MessageType = 'text' | 'media' | 'template';
 type ParsedSendBody = Record<string, any> & { __file?: File | null };
@@ -45,20 +41,13 @@ async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<b
       .or(`sender_phone.eq.91${last10},sender_phone.eq.${last10}`)
       .order('created_at', { ascending: false })
       .limit(20);
-    return (data || []).some((row: { meta?: Record<string, unknown> | null }) => {
-      const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
-      if (meta.seeded_from_lead) return false;
-      const biz = String(meta.business_phone || meta.display_phone_number || '').replace(/\D/g, '').slice(-10);
-      if (biz === '9167779696') return false;
-      if (biz && biz !== '9594996161') return false;
-      return true;
-    });
-  } catch {
-    return false;
-  }
-}
-
-function normalizePhone(phone: string): string {
+      .select('id, meta, payload, recipient_phone, direction, created_at')
+      .eq('direction', 'INBOUND')
+      .gte('created_at', since)
+      .or(`sender_phone.eq.91${last10},sender_phone.eq.${last10}`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    return (data || []).some((row) => is6161SessionInbound(row));
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
   const last10 = digits.slice(-10);
@@ -356,29 +345,44 @@ export async function POST(request: NextRequest) {
       if (!text) return NextResponse.json({ error: 'text is required for text message type' }, { status: 400 });
       messageForLog = text;
       requestPayload = {
-        message_type: 'text',
-        text,
-      };
+    let sentViaTemplateName: string | null = null;
+
+    if (messageType === 'text') {
+      const text = String(body?.text || '').trim();
+      if (!text) return NextResponse.json({ error: 'text is required for text message type' }, { status: 400 });
+      messageForLog = text;
       const sessionOpen = await hasCustomerRepliedOnSenderLine(recipientPhone);
-      if (!sessionOpen) {
-        return NextResponse.json(
-          {
-            error:
-              'Customer ne is WhatsApp number (6161) pe last 24 hours mein reply nahi kiya. Unki baat 9696 pe hai, isliye seedha text nahi jayega. Template se bhejo.',
-            code: 'reengagement',
-          },
-          { status: 409 },
-        );
-      }
       const replyToMessageId = String(body?.reply_to_message_id || '').trim();
-      if (replyToMessageId) requestPayload.reply_to_message_id = replyToMessageId;
-      result = await sendTextMessage(recipientPhone, text, replyToMessageId || null);
-    } else if (messageType === 'media') {
-      const mediaType = String(body?.media_type || '').trim().toLowerCase();
-      const mediaUrl = String(body?.media_url || '').trim();
-      let mediaId = String(body?.media_id || '').trim();
-      const uploadFile = body?.__file instanceof File ? body.__file : null;
-      const caption = body?.caption ? String(body.caption) : undefined;
+      const sendClosedWindowNote = async () => {
+        const templateName = 'myfng_quick_note';
+        const laid = layoutTemplateParam(text);
+        sentViaTemplateName = templateName;
+        requestPayload = {
+          message_type: 'template',
+          template_name: templateName,
+          language: 'en',
+          template_params: [laid],
+        };
+        return sendTemplateMessage({
+          phoneNumber: recipientPhone,
+          templateName,
+          templateParams: [laid],
+          languageCode: 'en',
+        });
+      };
+      if (!sessionOpen) {
+        result = await sendClosedWindowNote();
+      } else {
+        requestPayload = {
+          message_type: 'text',
+          text,
+          ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+        };
+        result = await sendTextMessage(recipientPhone, text, replyToMessageId || null);
+        if (!result.success && /re-engagement|131047|24.hour/i.test(String(result.error || ''))) {
+          result = await sendClosedWindowNote();
+        }
+      }
       const filename = body?.filename ? String(body.filename) : undefined;
       const requestedMime = String(body?.media_mime_type || '').trim();
       if (mediaType !== 'image' && mediaType !== 'document' && mediaType !== 'video' && mediaType !== 'audio') {
@@ -399,11 +403,28 @@ export async function POST(request: NextRequest) {
         storagePublicUrl = uploaded.publicUrl;
         mediaMimeTypeForLog = uploaded.mimeType || null;
       }
+      const sessionOpen = await hasCustomerRepliedOnSenderLine(recipientPhone);
+      if (!sessionOpen) {
+        return NextResponse.json(
+          {
+            error:
+              'Image tabhi jayegi jab customer ne 6161 pe last 24 hours mein reply kiya ho. 9696 wala reply is window ko nahi kholta. Pehle template bhejo, ya unka 6161 reply aane do.',
+            code: 'reengagement',
+          },
+          { status: 409 },
+        );
+      }
       const effectiveMediaUrl = mediaUrl || storagePublicUrl;
 
       if (!mediaMimeTypeForLog) {
         mediaMimeTypeForLog =
           (uploadFile?.type && String(uploadFile.type).trim()) ||
+        const graph = await uploadWhatsAppMedia({
+          bytes: Buffer.from(await uploadFile.arrayBuffer()),
+          mimeType: uploaded.mimeType || uploadFile.type || 'application/octet-stream',
+          filename: filename || uploadFile.name || 'file',
+        });
+        if (graph.id) mediaId = graph.id;
           (requestedMime ? requestedMime : null) ||
           (mediaType === 'image'
             ? 'image/*'
@@ -553,7 +574,8 @@ export async function POST(request: NextRequest) {
         ? String(requestPayload?.media_url || '').trim() ||
           (String(requestPayload?.media_id || '').trim()
             ? `/api/whatsapp/media/${encodeURIComponent(String(requestPayload.media_id).trim())}`
-            : null)
+    const templateNameForLog =
+      sentViaTemplateName || (messageType === 'template' ? String(body?.template_name || '').trim() : null);
         : null;
 
     if (invoiceId) {
@@ -607,13 +629,13 @@ export async function POST(request: NextRequest) {
       sender_phone: null,
       recipient_phone: recipientPhone,
       template_name: templateNameForLog,
-      template_language: messageType === 'template' ? String(body?.language || 'en') : null,
+      message_type: (sentViaTemplateName ? 'template' : messageType).toUpperCase(),
       text_body: messageType === 'text' ? messageForLog : templateBodyPreview,
       media_url: mediaUrlForArchive,
       media_mime_type: messageType === 'media' ? mediaMimeTypeForLog : null,
       media_caption: messageType === 'media' ? String(body?.caption || '') || null : null,
       status: result.success ? 'SENT' : 'FAILED',
-      status_at: now,
+      template_language: sentViaTemplateName || messageType === 'template' ? String(body?.language || 'en') : null,
       error_message: result.success ? null : result.error || 'Unknown WhatsApp error',
       payload: {
         request: requestPayload,

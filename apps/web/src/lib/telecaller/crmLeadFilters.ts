@@ -76,12 +76,34 @@ export function resolveCrmLeadOrderColumn(dateField?: string | null): 'created_a
   return 'created_at';
 }
 
-/** Name / phone / lead# lookup should ignore status + date tiles. */
+/** Name / phone / lead# lookup. Status tiles still apply on top of the search. */
 export function isCrmLeadLookupQuery(q: string | null | undefined): boolean {
   return Boolean(String(q || '').trim());
 }
 
-/** Status / disposition tiles for the CRM queue (skipped while searching). */
+/** Same rules as applyCrmQueueStatusFilter, for a row already loaded in the list. */
+export function leadMatchesCrmQueueFilter(lead: any, filter: string | null | undefined): boolean {
+  const f = String(filter || '').trim().toLowerCase();
+  if (!f || f === 'all') return true;
+  const result = String(lead?.coupon_meta?.last_call_result || '').trim().toUpperCase();
+  const status = String(lead?.status || '').trim().toUpperCase();
+  if (f === 'new' || f === 'fresh') return status === 'NEW' && (!result || result === 'FRESH');
+  if (f === 'ringing') return result === 'RINGING';
+  if (f === 'interested') return result === 'INTERESTED';
+  if (f === 'will_visit') return result === 'WILL_VISIT';
+  if (f === 'booking_confirmed') return status === 'VALIDATED';
+  if (f === 'booked') return ['VALIDATED', 'ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(status);
+  if (f === 'in_service') return status === 'IN_PROGRESS';
+  if (f === 'service_done') return status === 'COMPLETED';
+  if (f === 'lost' || f === 'rejected') return status === 'REJECTED';
+  if (f === 'callback' || f === 'followup' || f === 'follow_up') {
+    return result === 'CALLBACK' && !['IN_PROGRESS', 'COMPLETED', 'READY_FOR_DELIVERY', 'DELIVERED', 'CLOSED', 'CANCELLED', 'REJECTED'].includes(status);
+  }
+  if (f === 'incomplete') return Boolean(lead?.is_incomplete);
+  return !result || result === f.toUpperCase();
+}
+
+/** Status / disposition tiles for the CRM queue. Search does not skip these. */
 export function applyCrmQueueStatusFilter(
   query: any,
   filter: string | null | undefined,

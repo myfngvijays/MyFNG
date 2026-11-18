@@ -108,6 +108,7 @@ function shortLeadStatusLabel(label: string): string {
   const s = String(label || '').trim();
   if (/^lost\b/i.test(s) || /^lost\s*[·•\-:|]/i.test(s)) return 'Lost';
   if (/^callback\b/i.test(s)) return 'Follow-up';
+  if (/^ringing\b/i.test(s)) return 'Ringing';
   // Strip "Status · detail" for list badges (keep primary status only)
   const beforeDot = s.split(/\s*[·•|]\s*/)[0]?.trim();
   if (beforeDot && /^lost\b/i.test(beforeDot)) return 'Lost';
@@ -315,7 +316,7 @@ export const ADMIN_CRM_STATUS_OPTIONS = [
   { id: 'SERVICE_DONE', label: 'Service Done' },
   { id: 'LOST', label: 'Lost' },
   { id: 'OTHER', label: 'Other' },
-  { id: 'RINGING', label: 'Ringing / No answer' },
+  { id: 'RINGING', label: 'Ringing' },
 ] as const;
 
 export type AdminCrmStatusId = (typeof ADMIN_CRM_STATUS_OPTIONS)[number]['id'];

@@ -133,7 +133,13 @@ function formatMessageTime(value: string | null | undefined): string {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 function formatMessageDateTime(value: string | null | undefined): string {
@@ -2340,7 +2346,7 @@ export default function SuperAdminWhatsAppChatPage() {
                       text: bubbleText,
                     });
                     const callPermissionBadge = callPermissionBadgeMeta(callPermissionState);
-                    const timeLabel = formatMessageTime(msg?.status_at || msg?.updated_at || msg?.created_at);
+                    const timeLabel = formatMessageTime(msg?.created_at || msg?.status_at || msg?.updated_at);
                     const messageKey = String(msg?.id || msg?.provider_message_id || '');
                     return (
                       <div key={msg.id} className={`flex ${outbound ? 'justify-end' : 'justify-start'}`}>

@@ -32,7 +32,7 @@ import { requestClickToCall } from '@/lib/telecaller/clickToCall';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
 import CallReminderForm from '@/components/telecaller/crm/CallReminderForm';
-import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
+import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
 
 export function LeadDetailContent({
   panelLeadId,
@@ -216,6 +216,7 @@ export function LeadDetailContent({
     reason: '',
     priority: 'NORMAL'
   });
+  const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
 
   useEffect(() => {
     if (leadId) {
@@ -249,12 +250,22 @@ export function LeadDetailContent({
     setEditing(true);
   }, [leadId]);
 
-  const exitEditing = () => {
+  const leaveLead = () => {
     if (onPanelClose) {
       onPanelClose();
       return;
     }
+    if (searchParams?.get('from') === 'followups') {
+      const view = String(searchParams.get('view') || '');
+      const q = view && view !== 'pending' ? `?view=${encodeURIComponent(view)}` : '';
+      router.push(`${base}/followups${q}`);
+      return;
+    }
     router.push(`${base}/leads`);
+  };
+
+  const exitEditing = () => {
+    leaveLead();
   };
 
   const finishEditing = async () => {
@@ -535,6 +546,20 @@ export function LeadDetailContent({
     }
   }
 
+  function beginEditFollowUp(fu: any) {
+    const when = fu?.scheduled_time ? new Date(fu.scheduled_time) : null;
+    const stamp =
+      when && !Number.isNaN(when.getTime()) ? `${istYmd(when)}T${istHm(when).slice(0, 5)}` : '';
+    setFollowUpData({
+      follow_up_type: String(fu.follow_up_type || 'CALLBACK'),
+      scheduled_time: stamp,
+      reason: String(fu.reason || ''),
+      priority: String(fu.priority || 'NORMAL'),
+    });
+    setEditingFollowUpId(String(fu.id));
+    setShowFollowUpForm(false);
+  }
+
   async function handleAddFollowUp() {
     const supabase = createClient();
 
@@ -567,20 +592,23 @@ export function LeadDetailContent({
         return;
       }
 
-      const { error } = await supabase
-        .from('telecaller_follow_ups')
-        .insert([{
-          lead_id: leadId,
-          telecaller_id: userProfile?.id,
-          follow_up_type: followUpData.follow_up_type,
-          scheduled_time: scheduledIso,
-          reason: followUpData.reason,
-          priority: followUpData.priority,
-          status: 'PENDING'
-        }]);
+      const payload = {
+        follow_up_type: followUpData.follow_up_type,
+        scheduled_time: scheduledIso,
+        reason: followUpData.reason,
+        priority: followUpData.priority,
+      };
+
+      const { error } = editingFollowUpId
+        ? await supabase.from('telecaller_follow_ups').update(payload).eq('id', editingFollowUpId)
+        : await supabase.from('telecaller_follow_ups').insert([{
+            ...payload,
+            lead_id: leadId,
+            telecaller_id: userProfile?.id,
+            status: 'PENDING',
+          }]);
 
       if (!error) {
-        // Update lead's follow_up flags
         await supabase
           .from('service_leads')
           .update({
@@ -595,11 +623,11 @@ export function LeadDetailContent({
           reason: '',
           priority: 'NORMAL'
         });
+        setEditingFollowUpId(null);
         setShowFollowUpForm(false);
         setTimelineRefreshKey((k) => k + 1);
         fetchLeadDetails();
-        setTimelineRefreshKey((k) => k + 1);
-        alert('Follow-up scheduled successfully!');
+        alert(editingFollowUpId ? 'Reminder updated' : 'Follow-up scheduled successfully!');
       }
     } catch (error) {
       console.error('Error adding follow-up:', error);
@@ -809,7 +837,16 @@ export function LeadDetailContent({
                   </h3>
                   <button
                     type="button"
-                    onClick={() => setShowFollowUpForm(!showFollowUpForm)}
+                    onClick={() => {
+                      setEditingFollowUpId(null);
+                      setFollowUpData({
+                        follow_up_type: 'CALLBACK',
+                        scheduled_time: '',
+                        reason: '',
+                        priority: 'NORMAL',
+                      });
+                      setShowFollowUpForm(!showFollowUpForm);
+                    }}
                     className="text-xs font-bold text-[#004AAD]"
                   >
                     + Create
@@ -835,11 +872,32 @@ export function LeadDetailContent({
                             : 'border-slate-200'
                         }`}
                       >
-                        <p className="font-bold text-violet-900">{fu.follow_up_type || 'Reminder'}</p>
-                        <p className="text-violet-800">
-                          {fu.scheduled_time ? formatDateTimeIST(fu.scheduled_time) : '—'}
-                        </p>
-                        {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-violet-900">{fu.follow_up_type || 'Reminder'}</p>
+                            <p className="text-violet-800">
+                              {fu.scheduled_time ? formatDateTimeIST(fu.scheduled_time) : '—'}
+                            </p>
+                            {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => beginEditFollowUp(fu)}
+                            className="shrink-0 text-[11px] font-bold text-[#004AAD]"
+                          >
+                            Modify
+                          </button>
+                        </div>
+                        {editingFollowUpId === fu.id ? (
+                          <div className="mt-2">
+                            <CallReminderForm
+                              value={followUpData}
+                              onChange={setFollowUpData}
+                              onSubmit={() => void handleAddFollowUp()}
+                              submitLabel="Update"
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                     {followUps.length > 2 ? (
@@ -876,7 +934,7 @@ export function LeadDetailContent({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0">
                 {!isEmbed ? (
-                  <button type="button" onClick={() => router.push(`${base}/leads`)} className="rounded-xl bg-white/15 hover:bg-white/25 p-2 shrink-0">
+                  <button type="button" onClick={leaveLead} className="rounded-xl bg-white/15 hover:bg-white/25 p-2 shrink-0">
                     <ArrowLeft className="w-5 h-5" />
                   </button>
                 ) : null}
@@ -1384,7 +1442,16 @@ export function LeadDetailContent({
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-black text-[#023D95] flex items-center gap-1.5"><Clock className="w-4 h-4" /> Follow-ups</h3>
-                <button type="button" onClick={() => setShowFollowUpForm(!showFollowUpForm)} className="text-xs font-bold text-[#004AAD]">+ Add</button>
+                <button type="button" onClick={() => {
+                  setEditingFollowUpId(null);
+                  setFollowUpData({
+                    follow_up_type: 'CALLBACK',
+                    scheduled_time: '',
+                    reason: '',
+                    priority: 'NORMAL',
+                  });
+                  setShowFollowUpForm(!showFollowUpForm);
+                }} className="text-xs font-bold text-[#004AAD]">+ Add</button>
               </div>
               {showFollowUpForm && (
                 <CallReminderForm
@@ -1398,9 +1465,30 @@ export function LeadDetailContent({
                 <div className="space-y-2">
                   {(showAllReminders ? followUps : followUps.slice(0, 2)).map((fu: any) => (
                     <div key={fu.id} className={`rounded-lg p-2.5 text-xs border ${fu.status === 'PENDING' ? 'border-violet-200 bg-violet-50' : 'border-slate-200'}`}>
-                      <p className="font-bold text-violet-900">{fu.follow_up_type || 'Follow-up'}</p>
-                      <p className="text-violet-800">{fu.scheduled_time ? formatDateTimeIST(fu.scheduled_time) : '—'}</p>
-                      {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-violet-900">{fu.follow_up_type || 'Follow-up'}</p>
+                          <p className="text-violet-800">{fu.scheduled_time ? formatDateTimeIST(fu.scheduled_time) : '—'}</p>
+                          {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => beginEditFollowUp(fu)}
+                          className="shrink-0 text-[11px] font-bold text-[#004AAD]"
+                        >
+                          Modify
+                        </button>
+                      </div>
+                      {editingFollowUpId === fu.id ? (
+                        <div className="mt-2">
+                          <CallReminderForm
+                            value={followUpData}
+                            onChange={setFollowUpData}
+                            onSubmit={() => void handleAddFollowUp()}
+                            submitLabel="Update"
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                   {followUps.length > 2 ? (

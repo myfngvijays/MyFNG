@@ -110,7 +110,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
   const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
   const [searchTerm, setSearchTerm] = useState('');
-  const [, setStats] = useState({ pending: 0, today: 0, overdue: 0 });
+  const [stats, setStats] = useState({ pending: 0, today: 0, overdue: 0 });
   const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
   const [showReschedulePicker, setShowReschedulePicker] = useState(false);
   const [rescheduleDraft, setRescheduleDraft] = useState(new Date());
@@ -958,7 +958,13 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
                   }}
                 >
                   <Text style={[styles.scopeChipText, filter === f.id && styles.scopeChipTextActive]}>
-                    {f.id === 'calendar' && filter === 'calendar' ? calendarLabel : f.label}
+                    {f.id === 'calendar' && filter === 'calendar'
+                      ? calendarLabel
+                      : f.id === 'today'
+                        ? `Today (${stats.today})`
+                        : f.id === 'all'
+                          ? `All Pending (${stats.pending})`
+                          : f.label}
                   </Text>
                 </TouchableOpacity>
               ))}

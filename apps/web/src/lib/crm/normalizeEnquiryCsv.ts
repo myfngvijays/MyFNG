@@ -278,22 +278,51 @@ const TELECRM_STATUS_MAP: Array<{ keys: string[]; code: string; label: string; p
   { keys: ['interested'], code: 'INTERESTED', label: 'Interested', pipeline: 'NEW' },
   { keys: ['followup', 'follow-up', 'callback'], code: 'CALLBACK', label: 'Follow-up', pipeline: 'NEW' },
   { keys: ['hewillvisit', 'he will visit', 'willvisit'], code: 'WILL_VISIT', label: 'He will visit', pipeline: 'NEW' },
-  { keys: ['appointmentscheduled', 'bookingconfirmed', 'won'], code: 'BOOKING_CONFIRMED', label: 'Booking confirmed', pipeline: 'VALIDATED' },
+  { keys: ['bookingconfirmed', 'won'], code: 'BOOKING_CONFIRMED', label: 'Booking confirmed', pipeline: 'VALIDATED' },
   { keys: ['convertedservicedone', 'servicedone'], code: 'SERVICE_DONE', label: 'Service Done', pipeline: 'COMPLETED' },
   { keys: ['inservice'], code: 'IN_SERVICE', label: 'In Service', pipeline: 'IN_PROGRESS' },
-  { keys: ['ringing', 'ringingnoanswer'], code: 'RINGING', label: 'Ringing / No answer', pipeline: 'NEW' },
+  { keys: ['ringing', 'ringingnoanswer'], code: 'RINGING', label: 'Ringing', pipeline: 'NEW' },
   { keys: ['fresh', 'fresh2', 'new'], code: 'FRESH', label: 'Fresh', pipeline: 'NEW' },
   { keys: ['servicedue'], code: 'CALLBACK', label: 'Follow-up', pipeline: 'NEW' },
   { keys: ['sendtotl', 'sendtotlmanager', 'sendtomanager'], code: 'INTERESTED', label: 'Interested', pipeline: 'NEW' },
-  { keys: ['roadserversa', 'rsa'], code: 'FRESH', label: 'Fresh', pipeline: 'NEW' },
 ];
+
+const BUILTIN_CRM_CODES = new Set([
+  'FRESH',
+  'INTERESTED',
+  'WILL_VISIT',
+  'CALLBACK',
+  'BOOKING_CONFIRMED',
+  'IN_SERVICE',
+  'SERVICE_DONE',
+  'LOST',
+  'RINGING',
+  'OTHER',
+]);
+
+/** TeleCRM statuses that are not the core pipeline get their own Other-stage code. */
+export function telecrmOtherStatusCode(label: string): string {
+  const code = String(label || '')
+    .toUpperCase()
+    .replace(/&/g, ' AND ')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  if (!code || BUILTIN_CRM_CODES.has(code)) return 'OTHER';
+  return code;
+}
+
+export function isBuiltinCrmStatus(code: string): boolean {
+  return BUILTIN_CRM_CODES.has(String(code || '').trim().toUpperCase());
+}
 
 export function mapTelecrmStatus(raw: string): TelecrmCrmStatus {
   const key = tokenKey(raw);
   if (!key) return { code: 'FRESH', label: 'Fresh', pipeline: 'NEW' };
   const hit = TELECRM_STATUS_MAP.find((row) => row.keys.some((k) => tokenKey(k) === key));
   if (hit) return { code: hit.code, label: hit.label, pipeline: hit.pipeline };
-  return { code: 'FRESH', label: String(raw || '').trim() || 'Fresh', pipeline: 'NEW' };
+  const label = String(raw || '').trim();
+  return { code: telecrmOtherStatusCode(label), label, pipeline: 'NEW' };
 }
 
 export function mapTelecrmLostReason(raw: string, catalog: string[] = []): string {

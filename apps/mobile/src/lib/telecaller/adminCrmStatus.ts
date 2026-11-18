@@ -8,7 +8,7 @@ export const ADMIN_CRM_STATUS_OPTIONS = [
   { id: 'SERVICE_DONE', label: 'Service Done' },
   { id: 'LOST', label: 'Lost' },
   { id: 'OTHER', label: 'Other' },
-  { id: 'RINGING', label: 'Ringing / No answer' },
+  { id: 'RINGING', label: 'Ringing' },
 ] as const;
 
 export type AdminCrmStatusId = (typeof ADMIN_CRM_STATUS_OPTIONS)[number]['id'];

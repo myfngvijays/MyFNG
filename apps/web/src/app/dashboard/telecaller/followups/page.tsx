@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye, Flag, RefreshCw } from 'lucide-react';
@@ -84,11 +84,17 @@ const MONTH_NAMES = [
 
 export default function FollowUpsPage() {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { base, layoutRole, scopeAll } = getCrmDashboardBase(pathname);
+  const viewParam = searchParams?.get('view');
   const [followUps, setFollowUps] = useState<any[]>([]);
+  const [resultCount, setResultCount] = useState(0);
   const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'pending' | 'today' | 'calendar' | 'completed'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'today' | 'calendar' | 'completed'>(
+    viewParam === 'today' || viewParam === 'calendar' || viewParam === 'completed' ? viewParam : 'pending',
+  );
   const [typeFilter, setTypeFilter] = useState<'all' | 'CALLBACK'>('all');
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -116,6 +122,27 @@ export default function FollowUpsPage() {
     setFollowUps((prev) => prev.map((row) => (row.id === followUpId ? { ...row, priority: next } : row)));
     setPriorityMenuId(null);
   }
+
+  useEffect(() => {
+    const view = searchParams?.get('view');
+    if (view === 'today' || view === 'calendar' || view === 'completed' || view === 'pending') {
+      setFilter(view);
+    }
+  }, [searchParams]);
+
+  const openFilter = (next: 'pending' | 'today' | 'calendar' | 'completed') => {
+    setFilter(next);
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    if (next === 'pending') params.delete('view');
+    else params.set('view', next);
+    const qs = params.toString();
+    router.replace(`${base}/followups${qs ? `?${qs}` : ''}`, { scroll: false });
+  };
+
+  const leadHref = (leadId: string) => {
+    const params = new URLSearchParams({ from: 'followups', view: filter });
+    return `${base}/leads/${leadId}?${params.toString()}`;
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 250);
@@ -176,7 +203,7 @@ export default function FollowUpsPage() {
           *,
           ${leadEmbed},
           telecaller:users_login!telecaller_id(id, full_name)
-        `);
+        `, { count: 'exact' });
 
       if (!scopeAll && userProfile?.id) {
         query = query.eq('telecaller_id', userProfile.id);
@@ -218,7 +245,7 @@ export default function FollowUpsPage() {
         query = query.order('scheduled_time', { ascending: true });
       }
 
-      const { data, error } = await query.limit(searching ? 50 : scopeAll ? 500 : 200);
+      const { data, error, count } = await query.limit(searching ? 50 : scopeAll ? 500 : 200);
 
       if (error) throw error;
       const { crmLeadClosedForFollowUp } = await import('@/lib/telecaller/crmFollowUpClose');
@@ -246,6 +273,7 @@ export default function FollowUpsPage() {
         );
       }
       setFollowUps(rows);
+      setResultCount(typeof count === 'number' ? count : rows.length);
     } catch (error) {
       console.error('Error fetching follow-ups:', error);
     } finally {
@@ -386,6 +414,7 @@ export default function FollowUpsPage() {
             <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Reminders / Follow-ups</h1>
             <p className="text-text-body text-xs sm:text-sm mt-1">
               {scopeAll ? 'Team reminders & follow-ups' : 'Your scheduled follow-ups'}
+              {` · ${resultCount}`}
             </p>
           </div>
           <button
@@ -428,12 +457,12 @@ export default function FollowUpsPage() {
                       type="button"
                       onClick={() => {
                         if (f.id === 'calendar') {
-                          setFilter('calendar');
+                          openFilter('calendar');
                           setCalendarOpen((open) => !open);
                           return;
                         }
                         setCalendarOpen(false);
-                        setFilter(f.id);
+                        openFilter(f.id);
                       }}
                       className={`px-3 py-1.5 rounded-lg font-semibold text-xs whitespace-nowrap ${
                         filter === f.id
@@ -441,7 +470,11 @@ export default function FollowUpsPage() {
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                     >
-                      {f.id === 'calendar' && filter === 'calendar' ? calendarLabel : f.label}
+                      {f.id === 'calendar' && filter === 'calendar'
+                        ? `${calendarLabel} (${resultCount})`
+                        : filter === f.id
+                          ? `${f.label} (${resultCount})`
+                          : f.label}
                     </button>
                   );
                   if (f.id !== 'calendar') return <span key={f.id}>{button}</span>;
@@ -629,7 +662,7 @@ export default function FollowUpsPage() {
               return (
                 <tr key={followUp.id} className="h-16 hover:bg-slate-50">
                   <td className="px-3 align-middle">
-                    <Link href={`${base}/leads/${followUp.lead_id}`} className="line-clamp-1 font-bold text-slate-900 hover:underline">
+                    <Link href={leadHref(followUp.lead_id)} className="line-clamp-1 font-bold text-slate-900 hover:underline">
                       {followUp.lead?.customer_name || 'Unknown'}
                     </Link>
                     <p className="text-xs text-slate-500">{followUp.lead?.customer_phone || '—'}</p>
@@ -723,7 +756,7 @@ export default function FollowUpsPage() {
                       </a>
                     ) : null}
                     <Link
-                      href={`${base}/leads/${followUp.lead_id}`}
+                      href={leadHref(followUp.lead_id)}
                       title="Open"
                       aria-label="Open"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#004AAD]"

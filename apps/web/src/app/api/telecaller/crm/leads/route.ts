@@ -188,15 +188,13 @@ export async function GET(request: NextRequest) {
     query = query.is('deleted_at', null);
 
     const searching = isCrmLeadLookupQuery(q);
-    if (!searching) {
-      if (status) query = query.eq('status', status.toUpperCase());
-      if (city) query = query.ilike('city', `%${city}%`);
-      // Intentionally ignore `source` filter — telecallers must not segment by lead origin
-      if (priority) query = query.eq('lead_priority', priority.toUpperCase());
-      if (workshopId) query = query.eq('workshop_id', workshopId);
-      query = applyCrmLeadDateRange(query, filter, from, to, dateField);
-      query = applyCrmQueueStatusFilter(query, filter, lostReason);
-    }
+    if (status) query = query.eq('status', status.toUpperCase());
+    if (city) query = query.ilike('city', `%${city}%`);
+    // Intentionally ignore `source` filter — telecallers must not segment by lead origin
+    if (priority) query = query.eq('lead_priority', priority.toUpperCase());
+    if (workshopId) query = query.eq('workshop_id', workshopId);
+    query = applyCrmLeadDateRange(query, filter, from, to, dateField);
+    query = applyCrmQueueStatusFilter(query, filter, lostReason);
 
     if (q) {
       query = query.or(crmLeadSearchOr(q));
@@ -218,14 +216,12 @@ export async function GET(request: NextRequest) {
         retry = retry.range(rangeFrom, rangeTo);
       }
 
-      if (!searching) {
-        if (status) retry = retry.eq('status', status.toUpperCase());
-        if (city) retry = retry.ilike('city', `%${city}%`);
-        if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
-        if (workshopId) retry = retry.eq('workshop_id', workshopId);
-        retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
-        retry = applyCrmQueueStatusFilter(retry, filter, lostReason);
-      }
+      if (status) retry = retry.eq('status', status.toUpperCase());
+      if (city) retry = retry.ilike('city', `%${city}%`);
+      if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
+      if (workshopId) retry = retry.eq('workshop_id', workshopId);
+      retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
+      retry = applyCrmQueueStatusFilter(retry, filter, lostReason);
       if (q) {
         retry = retry.or(crmLeadSearchOr(q));
       }
@@ -251,7 +247,7 @@ export async function GET(request: NextRequest) {
         const patch = applyStuckRingingPatch(row);
         if (!patch) return true;
         ringingWrites.push(db.from('service_leads').update(patch).eq('id', row.id));
-        if (!searching && (filter === 'new' || filter === 'fresh')) return false;
+        if (filter === 'new' || filter === 'fresh') return false;
         return true;
       });
       if (ringingWrites.length) void Promise.allSettled(ringingWrites);
@@ -336,7 +332,7 @@ export async function GET(request: NextRequest) {
 
     let visible = deduped;
     const followFilter = String(filter || '').trim().toLowerCase();
-    if (!searching && (followFilter === 'callback' || followFilter === 'followup' || followFilter === 'follow_up')) {
+    if (followFilter === 'callback' || followFilter === 'followup' || followFilter === 'follow_up') {
       visible = deduped.filter((row: any) => !crmLeadClosedForFollowUp(row));
     }
 

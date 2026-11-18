@@ -208,7 +208,7 @@ export default function CrmQueueTab({
     { id: 'CALLBACK', label: 'Follow-up' },
     { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed' },
     { id: 'IN_SERVICE', label: 'In Service' },
-    { id: 'RINGING', label: 'Ringing / No answer' },
+    { id: 'RINGING', label: 'Ringing' },
     { id: 'SERVICE_DONE', label: 'Service Done' },
     { id: 'LOST', label: 'Lost' },
     { id: 'OTHER', label: 'Other' },
@@ -389,7 +389,7 @@ export default function CrmQueueTab({
           { id: 'CALLBACK', label: 'Follow-up' },
           { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed' },
           { id: 'IN_SERVICE', label: 'In Service' },
-          { id: 'RINGING', label: 'Ringing / No answer' },
+          { id: 'RINGING', label: 'Ringing' },
           { id: 'SERVICE_DONE', label: 'Service Done' },
           { id: 'LOST', label: 'Lost' },
           { id: 'OTHER', label: 'Other' },
@@ -561,19 +561,15 @@ export default function CrmQueueTab({
         limit: viewMode === 'chart' ? '500' : '80',
       });
       if (viewMode === 'chart') params.set('for_chart', '1');
-      const searching = Boolean(appliedQ.trim());
-      if (searching) {
-        params.set('q', appliedQ.trim());
-      } else {
-        if (filter && filter !== 'all') params.set('filter', filter);
-        if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
-        if (city.trim()) params.set('city', city.trim());
-        if (priority.trim()) params.set('priority', priority.trim());
-        if (dateField === 'modified') params.set('date_field', 'updated_at');
-        if (!range.allTime) {
-          params.set('from', range.start);
-          params.set('to', range.end);
-        }
+      if (appliedQ.trim()) params.set('q', appliedQ.trim());
+      if (filter && filter !== 'all') params.set('filter', filter);
+      if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
+      if (city.trim()) params.set('city', city.trim());
+      if (priority.trim()) params.set('priority', priority.trim());
+      if (dateField === 'modified') params.set('date_field', 'updated_at');
+      if (!range.allTime) {
+        params.set('from', range.start);
+        params.set('to', range.end);
       }
       const data = await apiFetch<any>(`/api/telecaller/crm/leads?${params.toString()}`, {
         timeoutMs: 25000,

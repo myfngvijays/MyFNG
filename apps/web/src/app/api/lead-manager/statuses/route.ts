@@ -120,7 +120,7 @@ export const DEFAULT_CRM_STATUSES = [
   },
   {
     code: 'RINGING',
-    name: 'Ringing / No answer',
+    name: 'Ringing',
     color: '#F1F5F9',
     sort_order: 55,
     is_system: true,

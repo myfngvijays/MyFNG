@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { is6161SessionInbound } from '@/lib/whatsapp/sessionLine';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import {
   ArrowLeft,
@@ -185,7 +186,30 @@ function formatMessageTime(value: string | null | undefined): string {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function formatDayChip(ts: number): string {
+  if (!ts) return '';
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return '';
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function sameCalendarDay(a: number, b: number): boolean {
+  if (!a || !b) return false;
+  return new Date(a).toDateString() === new Date(b).toDateString();
 }
 
 function formatMessageDateTime(value: string | null | undefined): string {
@@ -1062,16 +1086,7 @@ export default function WhatsAppMobilePreviewModal({
     return map;
   }, [templateOptions]);
   const isTemplateOnlyMode = useMemo(() => {
-    const lastInbound = [...messages].reverse().find((row) => {
-      if (String(row?.direction || '').trim().toUpperCase() !== 'INBOUND') return false;
-      const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
-      const payload = row?.payload && typeof row.payload === 'object' ? row.payload : {};
-      // CRM/TeleCRM copies are not a reply on the 6161 line. Meta rejects free text as re-engagement.
-      if (meta.seeded_from_lead || payload.source === 'service_lead') return false;
-      const biz = String(meta.business_phone || meta.display_phone_number || '').replace(/\D/g, '').slice(-10);
-      if (biz === '9167779696') return false;
-      return true;
-    });
+    const lastInbound = [...messages].reverse().find((row) => is6161SessionInbound(row));
     if (!lastInbound) return true;
     const lastInboundMs = new Date(lastInbound?.created_at || lastInbound?.status_at || '').getTime();
     if (!Number.isFinite(lastInboundMs)) return true;
@@ -3332,7 +3347,14 @@ export default function WhatsAppMobilePreviewModal({
                 );
               }
 
-              return timeline.map((item) => {
+              return timeline.map((item, index) => {
+                const prevTs = index > 0 ? timeline[index - 1].ts : 0;
+                const dayChip =
+                  item.ts && !sameCalendarDay(item.ts, prevTs) ? (
+                    <div className="mx-auto w-fit rounded-lg bg-white/90 px-3 py-1 text-[11px] font-semibold text-[#54656f] shadow-sm">
+                      {formatDayChip(item.ts)}
+                    </div>
+                  ) : null;
                 if (item.type === 'call') {
                   const call = item.call;
                   const status = normalizeCallStatus(call.call_status);
@@ -3371,7 +3393,9 @@ export default function WhatsAppMobilePreviewModal({
                     : `${inbound ? 'Incoming' : 'Outgoing'} call · ${status}`;
 
                   return (
-                    <div key={`call-${call.id}`} className="flex justify-center">
+                    <div key={`call-${call.id}`} className="space-y-2">
+                      {dayChip}
+                    <div className="flex justify-center">
                       <div className={`flex w-[280px] flex-col rounded-xl border ${bgColor} px-4 py-2.5 text-[12px] shadow-sm`}>
                         <button
                           type="button"
@@ -3418,6 +3442,7 @@ export default function WhatsAppMobilePreviewModal({
                           )
                         ) : null}
                       </div>
+                    </div>
                     </div>
                   );
                 }
@@ -3550,7 +3575,7 @@ export default function WhatsAppMobilePreviewModal({
                   text: bubbleText,
                 });
                 const callPermissionBadge = callPermissionBadgeMeta(callPermissionState);
-                const timeLabel = formatMessageTime(msg?.status_at || msg?.updated_at || msg?.created_at);
+                const timeLabel = formatMessageTime(msg?.created_at || msg?.status_at || msg?.updated_at);
                 const messageKey = String(msg?.id || msg?.provider_message_id || '');
 
                 const rawAudioId = msg.payload?.audio?.id || msg.payload?.messages?.[0]?.audio?.id || null;
@@ -3585,8 +3610,9 @@ export default function WhatsAppMobilePreviewModal({
                 const isSelected = selectMode && selectedMsgIds.has(msgId);
 
                 return (
+                  <div key={msg.id} className="space-y-2">
+                    {dayChip}
                   <div
-                    key={msg.id}
                     className={`flex items-center gap-1.5 ${isStatus ? 'justify-center' : outbound ? 'justify-end' : 'justify-start'} ${isSelected ? 'bg-[#004AAD]/10 -mx-2 px-2 rounded-lg' : ''}`}
                     onContextMenu={(e) => {
                       if (isStatus) return;
@@ -3798,6 +3824,7 @@ export default function WhatsAppMobilePreviewModal({
                         ) : null}
                       </div>
                     </div>
+                  </div>
                   </div>
                 );
               });
@@ -4378,10 +4405,18 @@ export default function WhatsAppMobilePreviewModal({
                 <button
                   ref={attachButtonRef}
                   type="button"
-                  onClick={() => setShowAttachMenu((prev) => !prev)}
-                  disabled={sending || isTemplateOnlyMode}
+                  onClick={() => {
+                    if (isTemplateOnlyMode) {
+                      toast.error(
+                        'Image tabhi jayegi jab customer ne 6161 pe last 24 hours mein reply kiya ho. 9696 wala reply se file nahi jaati. Abhi template se message bhejo.',
+                      );
+                      return;
+                    }
+                    setShowAttachMenu((prev) => !prev);
+                  }}
+                  disabled={sending}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Attach file"
+                  title={isTemplateOnlyMode ? '24 hour window band hai — image nahi jayegi' : 'Attach file'}
                 >
                   <Paperclip className="h-4 w-4" />
                 </button>

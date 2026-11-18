@@ -256,6 +256,40 @@ export async function sendListMessage(input: {
   });
 }
 
+export async function uploadWhatsAppMedia(input: {
+  bytes: Buffer;
+  mimeType: string;
+  filename: string;
+}): Promise<{ id?: string; error?: string }> {
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const configError = assertWhatsAppConfig(creds);
+  if (configError) return { error: configError };
+  try {
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', input.mimeType || 'application/octet-stream');
+    const bytes = new Uint8Array(input.bytes);
+    form.append('file', new Blob([bytes], { type: input.mimeType || 'application/octet-stream' }), input.filename || 'file');
+    const response = await fetch(`${creds.whatsapp_api_url}/${creds.whatsapp_phone_number_id}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${creds.whatsapp_access_token}` },
+      body: form,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message =
+        payload?.error?.error_user_msg ||
+        payload?.error?.message ||
+        `WhatsApp media upload failed (${response.status})`;
+      return { error: message };
+    }
+    const id = String(payload?.id || '').trim();
+    return id ? { id } : { error: 'WhatsApp did not return a media id' };
+  } catch (error: any) {
+    return { error: error?.message || 'WhatsApp media upload failed' };
+  }
+}
+
 export async function sendTextMessage(
   phoneNumber: string,
   message: string,
