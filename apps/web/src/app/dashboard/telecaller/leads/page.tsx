@@ -418,6 +418,15 @@ function TelecallerCrmLeadsContent() {
   const otherParam = searchParams?.get('other_reason');
   const [otherReason, setOtherReason] = useState(otherParam || '');
   const [otherReasonOptions, setOtherReasonOptions] = useState<string[]>([]);
+  const [lostReasonChoices, setLostReasonChoices] = useState<string[]>(
+    LOST_REASON_FILTERS.map((item) => item.id).filter(Boolean),
+  );
+  const [reasonMenu, setReasonMenu] = useState<{
+    lead: any;
+    top: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
   const [city, setCity] = useState(cityParam || '');
   const [priority, setPriority] = useState(priorityParam || '');
   const [telecallerId, setTelecallerId] = useState(telecallerParam || '');
@@ -701,6 +710,10 @@ function TelecallerCrmLeadsContent() {
           .map((row: { name?: string } | string) => String(typeof row === 'string' ? row : row?.name || '').trim())
           .filter(Boolean);
         setOtherReasonOptions(reasons);
+        const lostNames = (Array.isArray(json?.lost_reasons) ? json.lost_reasons : [])
+          .map((row: { name?: string } | string) => String(typeof row === 'string' ? row : row?.name || '').trim())
+          .filter(Boolean);
+        if (lostNames.length) setLostReasonChoices(lostNames);
       } catch {
         /* keep defaults */
       }
@@ -710,14 +723,53 @@ function TelecallerCrmLeadsContent() {
     };
   }, []);
 
-  const changeLeadStatus = async (lead: any, statusId: string) => {
+  useEffect(() => {
+    if (!reasonMenu) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setReasonMenu(null);
+    };
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-lost-reason-menu]')) return;
+      setReasonMenu(null);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [reasonMenu]);
+
+  const openLostReasonMenu = (lead: any, anchor: HTMLElement) => {
+    const rect = anchor.getBoundingClientRect();
+    const width = 260;
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(140, Math.min(280, openUp ? spaceAbove : spaceBelow));
+    const top = openUp ? Math.max(8, rect.top - 6 - maxHeight) : rect.bottom + 6;
+    setReasonMenu({ lead, top, left, maxHeight });
+  };
+
+  const changeLeadStatus = async (
+    lead: any,
+    statusId: string,
+    anchor?: HTMLElement,
+    chosenReason?: string,
+  ) => {
     const current = resolveAdminCrmStatusId(lead);
     if (current === statusId && statusId !== 'LOST' && statusId !== 'OTHER') return;
     let lostReason: string | null = null;
+    if (statusId === 'LOST' && chosenReason === undefined) {
+      if (anchor) openLostReasonMenu(lead, anchor);
+      return;
+    }
     if (statusId === 'LOST') {
-      const reason = window.prompt('Lost reason', 'Not Interested');
-      if (!reason?.trim()) return;
-      lostReason = reason.trim();
+      const reason = String(chosenReason || '').trim();
+      if (!reason) return;
+      lostReason = reason;
     }
     if (statusId === 'OTHER') {
       const reason = window.prompt('Other item (optional). Leave blank to mark Other only.', '');
@@ -2269,7 +2321,7 @@ function TelecallerCrmLeadsContent() {
                               onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
                                 e.stopPropagation();
-                                void changeLeadStatus(lead, e.target.value);
+                                void changeLeadStatus(lead, e.target.value, e.currentTarget);
                               }}
                               className="max-w-[148px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-6 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
                               style={{ backgroundColor: tint.badgeBg, color: tint.badgeText, WebkitTextFillColor: tint.badgeText }}
@@ -2452,7 +2504,7 @@ function TelecallerCrmLeadsContent() {
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             e.stopPropagation();
-                            void changeLeadStatus(lead, e.target.value);
+                            void changeLeadStatus(lead, e.target.value, e.currentTarget);
                           }}
                           className="max-w-[132px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-5 text-[11px] font-bold focus:outline-none disabled:opacity-60"
                           style={{ backgroundColor: tint.badgeBg, color: tint.badgeText, WebkitTextFillColor: tint.badgeText }}
@@ -2567,6 +2619,33 @@ function TelecallerCrmLeadsContent() {
           </div>
         </div>
       ) : null}
+
+      {reasonMenu
+        ? createPortal(
+            <div
+              data-lost-reason-menu
+              className="fixed z-[90] w-[260px] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+              style={{ top: reasonMenu.top, left: reasonMenu.left, maxHeight: reasonMenu.maxHeight }}
+            >
+              <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Lost reason</p>
+              {lostReasonChoices.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="block w-full truncate px-3 py-1.5 text-left text-xs font-semibold text-slate-800 hover:bg-[#E7F0FF] hover:text-[#023D95]"
+                  onClick={() => {
+                    const lead = reasonMenu.lead;
+                    setReasonMenu(null);
+                    void changeLeadStatus(lead, 'LOST', undefined, name);
+                  }}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
 
       {openLeadId ? (
         <div className="fixed inset-0 z-[80] flex justify-end">

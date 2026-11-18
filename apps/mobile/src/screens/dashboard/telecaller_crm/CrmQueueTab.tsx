@@ -215,6 +215,7 @@ export default function CrmQueueTab({
     { id: 'OTHER', label: 'Other' },
   ]);
   const [statusLead, setStatusLead] = useState<any>(null);
+  const [pickingLost, setPickingLost] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [lostReason, setLostReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -1664,39 +1665,70 @@ export default function CrmQueueTab({
         </View>
       </Modal>
 
-      <Modal visible={!!statusLead} transparent animationType="slide" onRequestClose={() => setStatusLead(null)}>
+      <Modal
+        visible={!!statusLead}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setStatusLead(null);
+          setPickingLost(false);
+        }}
+      >
         <View style={styles.overlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setStatusLead(null)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setStatusLead(null);
+              setPickingLost(false);
+            }}
+          />
           <View style={styles.sheet}>
             <View style={styles.sheetHead}>
-              <Text style={styles.sheetTitle}>Lead status</Text>
-              <TouchableOpacity style={styles.closeBtn} onPress={() => setStatusLead(null)}>
-                <Ionicons name="close" size={18} color="#fff" />
+              <Text style={styles.sheetTitle}>{pickingLost ? 'Lost reason' : 'Lead status'}</Text>
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => {
+                  if (pickingLost) {
+                    setPickingLost(false);
+                    return;
+                  }
+                  setStatusLead(null);
+                }}
+              >
+                <Ionicons name={pickingLost ? 'arrow-back' : 'close'} size={18} color="#fff" />
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 420 }}>
-              {crmStatusChoices.map((opt) => (
-                <TouchableOpacity
-                  key={opt.id}
-                  disabled={statusSaving}
-                  style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}
-                  onPress={() => {
-                    if (opt.id === 'LOST') {
-                      Alert.alert('Lost reason', 'Select a reason', [
-                        ...['Not Interested', 'No-Response to Calls', 'Other Reasons'].map((reason) => ({
-                          text: reason,
-                          onPress: () => void applyQueueStatus(statusLead, opt.id, opt.label, reason),
-                        })),
-                        { text: 'Cancel', style: 'cancel' as const },
-                      ]);
-                      return;
-                    }
-                    void applyQueueStatus(statusLead, opt.id, opt.label, null);
-                  }}
-                >
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
+              {pickingLost
+                ? LOST_REASON_FILTERS.filter((reason) => reason.id).map((reason) => (
+                    <TouchableOpacity
+                      key={reason.id}
+                      disabled={statusSaving}
+                      style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}
+                      onPress={() => {
+                        setPickingLost(false);
+                        void applyQueueStatus(statusLead, 'LOST', 'Lost', reason.id);
+                      }}
+                    >
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>{reason.label}</Text>
+                    </TouchableOpacity>
+                  ))
+                : crmStatusChoices.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      disabled={statusSaving}
+                      style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}
+                      onPress={() => {
+                        if (opt.id === 'LOST') {
+                          setPickingLost(true);
+                          return;
+                        }
+                        void applyQueueStatus(statusLead, opt.id, opt.label, null);
+                      }}
+                    >
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  ))}
             </ScrollView>
           </View>
         </View>
