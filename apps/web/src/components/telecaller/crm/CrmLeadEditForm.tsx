@@ -718,6 +718,7 @@ export default function CrmLeadEditForm({
   );
 
   const addCouponCode = (codeRaw: string) => {
+    touchLead();
     const code = String(codeRaw || '').trim().toUpperCase();
     if (!code) return;
     setCouponCodes((prev) => {
@@ -728,6 +729,7 @@ export default function CrmLeadEditForm({
   };
 
   const removeCouponCode = (codeRaw: string) => {
+    touchLead();
     const code = String(codeRaw || '').trim().toUpperCase();
     if (!code) return;
     setCouponCodes((prev) => {
@@ -1217,6 +1219,13 @@ export default function CrmLeadEditForm({
   const handleSubmit = async (e?: React.FormEvent, quiet = false) => {
     e?.preventDefault();
     if (!quiet && !validateForm()) return;
+    const openedSnap = currentActivitySnap();
+    const savedSnap = activityBase.current;
+    const nothingChanged = Boolean(savedSnap && JSON.stringify(savedSnap) === JSON.stringify(openedSnap));
+    if (nothingChanged || (quiet && !userEdited.current)) {
+      activityBase.current = openedSnap;
+      return;
+    }
 
     setSaving(true);
 
@@ -1417,7 +1426,11 @@ export default function CrmLeadEditForm({
   const saveRef = useRef(handleSubmit);
   saveRef.current = handleSubmit;
   const skipAutoSave = useRef(true);
+  const userEdited = useRef(false);
   const activityBase = useRef<Record<string, string> | null>(null);
+  const touchLead = () => {
+    userEdited.current = true;
+  };
   const pendingActivitySnap = useRef<Record<string, string> | null>(null);
   const currentActivitySnap = () => {
     const n = (v: unknown) => String(v ?? '').trim();
@@ -1455,11 +1468,12 @@ export default function CrmLeadEditForm({
   };
   useEffect(() => {
     skipAutoSave.current = true;
+    userEdited.current = false;
     activityBase.current = null;
   }, [leadId]);
   useEffect(() => {
     if (loading) return;
-    if (skipAutoSave.current) {
+    if (!userEdited.current) {
       skipAutoSave.current = false;
       activityBase.current = currentActivitySnap();
       return;
@@ -1637,13 +1651,14 @@ export default function CrmLeadEditForm({
                   <div key={step.id} className="flex items-center flex-1 min-w-0">
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        touchLead();
                         setFormData((prev) => ({
                           ...prev,
                           activity_result: activityId,
                           ...(activityId === 'BOOKING_CONFIRMED' ? { pickup_required: true } : {}),
-                        }))
-                      }
+                        }));
+                      }}
                       className={`flex-1 rounded-lg px-2 py-1.5 text-center text-[10px] sm:text-[11px] font-bold truncate transition ${
                         lost
                           ? 'bg-rose-500/40 text-white'
@@ -1693,7 +1708,7 @@ export default function CrmLeadEditForm({
         </div>
       ) : null}
 
-      <form id="crm-lead-edit-form" onSubmit={handleSubmit} noValidate className="space-y-4">
+      <form id="crm-lead-edit-form" onSubmit={handleSubmit} onChangeCapture={touchLead} noValidate className="space-y-4">
         <SectionCard title="Customer Details" icon={User} tone="emerald">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1830,6 +1845,7 @@ export default function CrmLeadEditForm({
                 placeholder="Type model (e.g. Swift, City, Rapid)"
                 displayValue={carDisplay}
                 onSelect={(car) => {
+                  touchLead();
                   setFormData((prev) => ({
                     ...prev,
                     vehicle_make: car.make,
@@ -1864,6 +1880,7 @@ export default function CrmLeadEditForm({
                 <button
                   type="button"
                   onClick={() => {
+                    touchLead();
                     setShowSecondCar(true);
                     setSecondCar(emptySecondCar());
                     setSecondCarDisplay('');
@@ -1917,6 +1934,7 @@ export default function CrmLeadEditForm({
                 <button
                   type="button"
                   onClick={() => {
+                    touchLead();
                     setShowSecondCar(false);
                     setSecondCar(emptySecondCar());
                     setSecondCarDisplay('');
@@ -1957,6 +1975,7 @@ export default function CrmLeadEditForm({
                     placeholder="Type second car model"
                     displayValue={secondCarDisplay}
                     onSelect={(car) => {
+                      touchLead();
                       setSecondCar((prev) => ({
                         ...prev,
                         vehicle_make: car.make,
@@ -2062,7 +2081,10 @@ export default function CrmLeadEditForm({
               <CrmReferredByField
                 leadId={leadId}
                 value={referredBy}
-                onChange={setReferredBy}
+                onChange={(next) => {
+                  touchLead();
+                  setReferredBy(next);
+                }}
                 referredTo={referredTo}
                 leadHref={(id) => `${base}/leads/${id}`}
                 className="space-y-3"
@@ -2114,6 +2136,7 @@ export default function CrmLeadEditForm({
             <CrmServicePlanPicker
               selectedIds={formData.service_types}
               onChange={(ids) => {
+                touchLead();
                 setFormData((prev) => ({ ...prev, service_types: ids }));
                 if (errors.service_types) {
                   setErrors((prev) => {
@@ -2193,7 +2216,7 @@ export default function CrmLeadEditForm({
                     <option value="">Applied coupon (optional)</option>
                     {selectedCodes.map((c) => (<option key={c} value={c}>{c}</option>))}
                   </select>
-                  <button type="button" className="w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50" onClick={() => { setCouponCodes([]); setAppliedCoupon(''); setManualCoupon(''); }}>Clear all coupons</button>
+                  <button type="button" className="w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50" onClick={() => { touchLead(); setCouponCodes([]); setAppliedCoupon(''); setManualCoupon(''); }}>Clear all coupons</button>
                 </div>
               ) : null}
             </div>
@@ -2227,6 +2250,7 @@ export default function CrmLeadEditForm({
               workshop_name: formData.workshop_name || '',
             }}
             onChange={(patch) => {
+              touchLead();
               setFormData((prev) => ({
                 ...prev,
                 ...(patch.pickup_required !== undefined

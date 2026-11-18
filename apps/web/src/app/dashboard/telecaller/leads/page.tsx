@@ -58,6 +58,110 @@ import { LeadDetailContent } from './[id]/page';
 /** Compact filters — same size on 14", 15.6", and wide monitors. Two-up only on phones. */
 const FILTER_FIELD = 'relative shrink-0 w-auto min-w-[6.5rem]';
 
+function FilterSelect({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  ariaLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+
+  const place = () => {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.max(r.width, 190);
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8);
+    const spaceBelow = window.innerHeight - r.bottom - 12;
+    const spaceAbove = r.top - 12;
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(140, Math.min(320, openUp ? spaceAbove : spaceBelow));
+    const top = openUp ? Math.max(8, r.top - 6 - maxHeight) : r.bottom + 6;
+    setBox({ top, left, width, maxHeight });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (btnRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const current = options.find((option) => option.value === value);
+
+  return (
+    <div className={FILTER_FIELD}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        onClick={() => setOpen((next) => !next)}
+        className="inline-flex h-8 w-max min-w-[6.5rem] max-w-[12rem] items-center justify-between gap-1 rounded-lg border border-slate-200 bg-white px-2 text-left text-xs font-semibold text-slate-800"
+      >
+        <span className="truncate">{current?.label || 'Select'}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && box
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="fixed z-[80] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+              style={{ top: box.top, left: box.left, width: box.width, maxHeight: box.maxHeight }}
+            >
+              {options.map((option) => (
+                <button
+                  key={option.value || 'empty'}
+                  type="button"
+                  className={`block w-full truncate px-3 py-1.5 text-left text-xs font-semibold hover:bg-slate-50 ${
+                    option.value === value ? 'bg-[#E7F0FF] text-[#023D95]' : 'text-slate-800'
+                  }`}
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
 const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v6';
 
 const BOOKING_SOURCE_OPTIONS = [
@@ -1503,21 +1607,15 @@ function TelecallerCrmLeadsContent() {
 
         <div>
           <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto">
-            <div className={FILTER_FIELD}>
-              <select
-                className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                value={filter}
-                onChange={(e) => setFilterAndUrl(e.target.value)}
-                aria-label="Lead Status"
-              >
-                {statusFilters.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.id === 'all' ? 'Lead Status' : f.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            </div>
+            <FilterSelect
+              ariaLabel="Lead Status"
+              value={filter}
+              onChange={setFilterAndUrl}
+              options={statusFilters.map((f) => ({
+                value: f.id,
+                label: f.id === 'all' ? 'Lead Status' : f.label,
+              }))}
+            />
 
             <button
               ref={dateBtnRef}
@@ -1534,93 +1632,54 @@ function TelecallerCrmLeadsContent() {
               <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
             </button>
 
-            <div className={FILTER_FIELD}>
-              <select
-                className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                value={city}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setCity(v);
-                  persistAll({ city: v });
-                  syncFiltersToUrl({ city: v });
-                }}
-                aria-label="City"
-              >
-                <option value="">All cities</option>
-                {cities.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            </div>
+            <FilterSelect
+              ariaLabel="City"
+              value={city}
+              onChange={(v) => {
+                setCity(v);
+                persistAll({ city: v });
+                syncFiltersToUrl({ city: v });
+              }}
+              options={[{ value: '', label: 'All cities' }, ...cities.map((c) => ({ value: c, label: c }))]}
+            />
 
-            <div className={FILTER_FIELD}>
-              <select
-                className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                value={priority}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPriority(v);
-                  persistAll({ priority: v });
-                  syncFiltersToUrl({ priority: v });
-                }}
-                aria-label="Priority"
-              >
-                {PRIORITY_OPTIONS.map((o) => (
-                  <option key={o.value || 'all'} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            </div>
+            <FilterSelect
+              ariaLabel="Priority"
+              value={priority}
+              onChange={(v) => {
+                setPriority(v);
+                persistAll({ priority: v });
+                syncFiltersToUrl({ priority: v });
+              }}
+              options={PRIORITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
 
             {filter === 'lost' ? (
-              <div className={FILTER_FIELD}>
-                <select
-                  className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                  value={lostReason}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setLostReason(v);
-                    persistAll({ lostReason: v });
-                    syncFiltersToUrl({ lostReason: v });
-                  }}
-                  aria-label="Lost reason"
-                >
-                  {LOST_REASON_FILTERS.map((f) => (
-                    <option key={f.id || 'all-lost'} value={f.id}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              </div>
+              <FilterSelect
+                ariaLabel="Lost reason"
+                value={lostReason}
+                onChange={(v) => {
+                  setLostReason(v);
+                  persistAll({ lostReason: v });
+                  syncFiltersToUrl({ lostReason: v });
+                }}
+                options={LOST_REASON_FILTERS.map((f) => ({ value: f.id, label: f.label }))}
+              />
             ) : null}
 
             {filter === 'other' ? (
-              <div className={FILTER_FIELD}>
-                <select
-                  className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-8 text-xs font-semibold text-slate-800 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-                  value={otherReason}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setOtherReason(v);
-                    syncFiltersToUrl({ otherReason: v });
-                  }}
-                  aria-label="Other reason"
-                >
-                  <option value="">All other reasons</option>
-                  {otherReasonOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              </div>
+              <FilterSelect
+                ariaLabel="Other reason"
+                value={otherReason}
+                onChange={(v) => {
+                  setOtherReason(v);
+                  syncFiltersToUrl({ otherReason: v });
+                }}
+                options={[
+                  { value: '', label: 'All other reasons' },
+                  ...otherReasonOptions.map((name) => ({ value: name, label: name })),
+                ]}
+              />
             ) : null}
 
             <button
