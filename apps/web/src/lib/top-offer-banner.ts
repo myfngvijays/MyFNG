@@ -19,17 +19,17 @@ export type TopOfferBannerConfig = {
 export const DEFAULT_TOP_OFFER_BANNER: TopOfferBannerConfig = {
   enabled: true,
   headline: 'Download MyFNG App & Get 10% OFF',
-  offer_label: 'Book Car Service →',
+  offer_label: 'Limited-Time Launch Offer →',
   show_countdown: true,
   button_label: 'Download App',
   button_href: '/go/myfngapp',
   text_color: '#ffffff',
-  offer_color: '#fde68a',
-  background_from: '#6b1224',
-  background_via: '#9a3412',
-  background_to: '#c2410c',
-  button_background: '#fff7d6',
-  button_text: '#6b1224',
+  offer_color: '#fef08a',
+  background_from: '#2563eb',
+  background_via: '#1d4ed8',
+  background_to: '#7e22ce',
+  button_background: '#ffffff',
+  button_text: '#1d4ed8',
 };
 
 const SETTING_KEY = 'website_top_offer_banner';

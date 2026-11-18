@@ -130,7 +130,7 @@ export const DEFAULT_WEBSITE_POPUP_COLORS: WebsitePopupColors = {
 export const DEFAULT_WEBSITE_OFFER_POPUP: WebsiteOfferPopupConfig = {
   id: 'popup-1',
   name: 'Diwali offer',
-  enabled: true,
+  enabled: false,
   starts_at: '2026-10-31T00:00',
   ends_at: '2026-11-07T15:57',
   pages: ['home', 'services', 'car-services'],

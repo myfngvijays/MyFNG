@@ -143,19 +143,14 @@ export default function HomePage() {
     []
   );
   const [homeReviews, setHomeReviews] = useState(dummyHomeReviews);
-  const heroServiceSlides = useMemo(() => {
-    const diwaliSlide = {
-      title: 'Diwali Offer',
-      image: '/media/banners/myfng-diwali-car-service-offer-1600x800.webp',
-      festive: true,
-    };
-    const serviceSlides = DEFAULT_SERVICES.filter((service) => Boolean(service.image)).map((service) => ({
-      title: service.title,
-      image: service.image,
-      festive: false,
-    }));
-    return serviceSlides.flatMap((service) => [service, diwaliSlide]);
-  }, []);
+  const heroServiceSlides = useMemo(
+    () =>
+      DEFAULT_SERVICES.filter((service) => Boolean(service.image)).map((service) => ({
+        title: service.title,
+        image: service.image,
+      })),
+    [],
+  );
   const [heroServiceSlideIdx, setHeroServiceSlideIdx] = useState(0);
   const [heroSlidesReady, setHeroSlidesReady] = useState(false);
   const activeHeroServiceSlide =
@@ -958,7 +953,7 @@ export default function HomePage() {
               <div className="relative z-10 perspective-1000">
                 {/* Main Image - Using the clean futuristic car image */}
                 <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/20 bg-white p-2 border border-white/50 backdrop-blur-sm">
-                  <div className={`rounded-2xl overflow-hidden relative aspect-[2/1] ${activeHeroServiceSlide?.festive ? 'bg-[#3b0a12]' : 'bg-gradient-to-b from-gray-100 to-white'}`}>
+                  <div className="rounded-2xl overflow-hidden relative aspect-[2/1] bg-gradient-to-b from-gray-100 to-white">
                      <img
                       src={
                         activeHeroServiceSlide?.image ||
@@ -969,20 +964,14 @@ export default function HomePage() {
                       height={800}
                       fetchPriority="high"
                       decoding="async"
-                      className={
-                        activeHeroServiceSlide?.festive
-                          ? 'absolute inset-0 h-full w-full object-cover object-center'
-                          : 'absolute inset-0 h-full w-full object-cover object-center sm:mix-blend-multiply sm:opacity-90 hover:opacity-100 transition-opacity duration-500'
-                      }
+                      className="absolute inset-0 h-full w-full object-cover object-center sm:mix-blend-multiply sm:opacity-90 hover:opacity-100 transition-opacity duration-500"
                     />
-                    {activeHeroServiceSlide?.festive ? null : (
-                      <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
-                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
                   </div>
                 </div>
                 
                 {/* Floating Card 1: AI Recommendation – keep inside right column to avoid overlapping left */}
-                <div className={`${activeHeroServiceSlide?.festive ? 'hidden' : 'hidden sm:block'} absolute -top-6 left-2 md:top-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]`}>
+                <div className="hidden sm:block absolute -top-6 left-2 md:top-8 md:left-0 bg-white p-4 rounded-2xl shadow-xl shadow-blue-900/5 border border-blue-50 animate-float z-20 max-w-[240px]">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-600/20">
                       <Bot className="w-5 h-5 text-white" />
@@ -995,7 +984,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating Card 2: Health Status */}
-                <div className={`${activeHeroServiceSlide?.festive ? 'hidden' : 'hidden sm:block'} absolute top-1/3 -right-6 md:-right-12 bg-white p-4 rounded-2xl shadow-xl shadow-green-900/5 border border-green-50 animate-float z-20 max-w-[200px]`} style={{animationDelay: '1s'}}>
+                <div className="hidden sm:block absolute top-1/3 -right-6 md:-right-12 bg-white p-4 rounded-2xl shadow-xl shadow-green-900/5 border border-green-50 animate-float z-20 max-w-[200px]" style={{animationDelay: '1s'}}>
                    <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/20">
                       <CheckCircle className="w-5 h-5 text-white" />
@@ -1011,7 +1000,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating Card 3: Nearest Workshop – keep inside right column */}
-                <div className={`${activeHeroServiceSlide?.festive ? 'hidden' : 'hidden sm:block'} absolute -bottom-8 left-4 md:bottom-8 md:left-2 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20`} style={{animationDelay: '2s'}}>
+                <div className="hidden sm:block absolute -bottom-8 left-4 md:bottom-8 md:left-2 bg-white p-4 rounded-2xl shadow-xl shadow-purple-900/5 border border-purple-50 animate-float z-20" style={{animationDelay: '2s'}}>
                    <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-600/20">
                       <MapPin className="w-5 h-5 text-white" />
