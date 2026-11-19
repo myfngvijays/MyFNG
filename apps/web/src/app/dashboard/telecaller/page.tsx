@@ -925,7 +925,7 @@ export default function TelecallerCrmHomePage() {
               {(() => {
                 const calls = Number(kpis.today_calls || 0);
                 const connected = Number(kpis.answered_calls || 0);
-                const bookings = Number(kpis.booking_confirmed ?? kpis.booked || 0);
+                const bookings = Number(kpis.booking_confirmed ?? kpis.booked ?? 0);
                 const talkSeconds = Number(kpis.talk_duration_seconds || 0);
                 const connectRatio = calls > 0 ? connected / calls : 0;
                 const talkRatio = Math.min(1, talkSeconds / (3 * 3600));

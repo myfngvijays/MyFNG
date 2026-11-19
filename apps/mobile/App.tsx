@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { startPhoneRecordingAutoSync } from './src/lib/callRecordingSync';
 import {
   AppState,
   Linking,
@@ -220,6 +221,10 @@ function AppContent() {
       unsubscribeHandlers();
       unsubscribeTokenRefresh();
     };
+  }, []);
+
+  useEffect(() => {
+    return startPhoneRecordingAutoSync();
   }, []);
 
   useEffect(() => {

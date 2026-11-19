@@ -39,6 +39,8 @@ import CrmBookChooser from './CrmBookChooser';
 import CrmEngageTab from './CrmEngageTab';
 import CrmWorkshopLocatorTab from './CrmWorkshopLocatorTab';
 import CrmMeTab from './CrmMeTab';
+import CallRecordingCard from '../../../components/telecaller/CallRecordingCard';
+import CallRecordingsList from '../../../components/telecaller/CallRecordingsList';
 import { COLORS } from '../../../constants/theme';
 import { isPartnerPreview, exitPartnerPreview } from '../../../lib/partnerPreview';
 import { istDayBounds, istYmd, type CrmDatePreset } from '../../../lib/crmDateRange';
@@ -380,6 +382,13 @@ const LM_NAV: NavRow[] = [
     params: { tab: 'pipeline' },
   },
   {
+    type: 'item',
+    id: 'recordings',
+    label: 'Call Tracking',
+    icon: 'mic-outline',
+    kind: 'tab',
+  },
+  {
     type: 'group',
     id: 'settings_group',
     label: 'Settings',
@@ -421,11 +430,10 @@ const TC_NAV: NavRow[] = [
   { type: 'item', id: 'book', label: 'Add lead / Book', icon: 'person-add-outline', kind: 'tab' },
   {
     type: 'item',
-    id: 'dialer',
-    label: 'Dialer',
-    icon: 'keypad-outline',
-    kind: 'stack',
-    screen: 'CrmDialer',
+    id: 'recording_list',
+    label: 'Recordings',
+    icon: 'headset-outline',
+    kind: 'tab',
   },
   {
     type: 'item',
@@ -449,6 +457,13 @@ const TC_NAV: NavRow[] = [
     icon: 'document-text-outline',
     kind: 'stack',
     screen: 'TelecallerScripts',
+  },
+  {
+    type: 'item',
+    id: 'recordings',
+    label: 'Call Tracking',
+    icon: 'mic-outline',
+    kind: 'tab',
   },
   {
     type: 'group',
@@ -1249,7 +1264,7 @@ export default function TelecallerAdvancedCRM() {
               route={{ params: { leadId: detailLeadId } }}
               embedded
               initialEditing={detailEditing}
-              showLeadIq={isLeadManager}
+              showLeadIq
             />
           </View>
         ) : null}
@@ -1277,9 +1292,23 @@ export default function TelecallerAdvancedCRM() {
             }}
           />
         )}
+        {tab === 'recording_list' && !detailLeadId && (
+          <View style={[styles.body, { padding: 16 }]}>
+            <CallRecordingsList />
+          </View>
+        )}
         {tab === 'workshops' && !detailLeadId && <CrmWorkshopLocatorTab navigation={navigation} />}
         {tab === 'engage' && !detailLeadId && (
           <CrmEngageTab navigation={navigation} initialSegment={engageSegment} />
+        )}
+        {tab === 'recordings' && !detailLeadId && (
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <CallRecordingCard />
+          </ScrollView>
         )}
         {tab === 'me' && !detailLeadId && (
           <CrmMeTab

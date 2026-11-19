@@ -60,12 +60,12 @@ export default function LeadIqCard({ leadId }: { leadId: string }) {
           <Sparkles className="h-4 w-4 text-violet-700" />
           Lead IQ
         </h3>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             disabled={running}
             onClick={() => void generate(false)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50"
+            className="inline-flex min-h-9 min-w-[96px] items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 disabled:opacity-50"
           >
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Generate'}
           </button>
@@ -73,7 +73,7 @@ export default function LeadIqCard({ leadId }: { leadId: string }) {
             type="button"
             disabled={running}
             onClick={() => void generate(true)}
-            className="rounded-lg bg-violet-700 px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+            className="inline-flex min-h-9 min-w-[96px] items-center justify-center rounded-lg bg-[#1D4ED8] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
           >
             Deep AI
           </button>

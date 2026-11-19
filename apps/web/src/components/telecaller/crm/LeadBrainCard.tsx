@@ -155,13 +155,13 @@ export default function LeadBrainCard({
 
   return (
     <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-          <Brain className="h-4 w-4 text-orange-700" />
-          Lead Brain
-          <span className="text-[10px] font-semibold text-slate-400">ML + DL</span>
-        </h3>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+            <Brain className="h-4 w-4 text-orange-700" />
+            Lead Brain
+            <span className="text-[10px] font-semibold text-slate-400">ML + DL</span>
+          </h3>
+          <div className="flex flex-wrap gap-2">
           <button
             type="button"
             disabled={running}

@@ -468,9 +468,12 @@ export default function TelecallerLeadDetailScreen({
   const { leadId } = route.params;
   const roleCode = String(userProfile?.role?.role_code || '').toUpperCase();
   const showLeadIq =
-    showLeadIqProp === true ||
-    (showLeadIqProp !== false &&
-      (roleCode === 'LEAD_MANAGER' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN'));
+    showLeadIqProp !== false &&
+    (roleCode === 'TELECALLER' ||
+      roleCode === 'LEAD_MANAGER' ||
+      roleCode === 'SUPER_ADMIN' ||
+      roleCode === 'SUB_ADMIN' ||
+      showLeadIqProp === true);
   const canSeeMlDl = showLeadIq;
 
   const [lead, setLead] = useState<any>(null);
@@ -2682,22 +2685,20 @@ export default function TelecallerLeadDetailScreen({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Lead IQ</Text>
         <View style={styles.sectionContent}>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+          <View style={styles.iqBtnRow}>
             <TouchableOpacity
-              style={[styles.actionButton, styles.actionButtonSecondary]}
+              style={styles.iqBtnGenerate}
               disabled={leadIqRunning}
               onPress={() => void generateLeadIq(false)}
             >
-              <Text style={styles.actionButtonTextSecondary}>
-                {leadIqRunning ? '…' : 'Generate'}
-              </Text>
+              <Text style={styles.iqBtnGenerateText}>{leadIqRunning ? '…' : 'Generate'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionButton, styles.actionButtonPrimary]}
+              style={styles.iqBtnDeep}
               disabled={leadIqRunning}
               onPress={() => void generateLeadIq(true)}
             >
-              <Text style={styles.actionButtonTextPrimary}>Deep AI</Text>
+              <Text style={styles.iqBtnDeepText}>Deep AI</Text>
             </TouchableOpacity>
           </View>
           {leadIq ? (
@@ -5198,6 +5199,27 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#34D399',
   },
+  iqBtnRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  iqBtnGenerate: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#34D399',
+  },
+  iqBtnGenerateText: { color: '#047857', fontWeight: '800', fontSize: 14 },
+  iqBtnDeep: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: '#1D4ED8',
+  },
+  iqBtnDeepText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   actionButtonEdit: {
     backgroundColor: '#EFF6FF',
     borderWidth: 1.5,

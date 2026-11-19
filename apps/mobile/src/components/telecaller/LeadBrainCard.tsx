@@ -104,11 +104,13 @@ export default function LeadBrainCard({
         padding: 14,
         borderWidth: 1,
         borderColor: '#ffedd5',
+        marginTop: 16,
+        marginHorizontal: 14,
         marginBottom: 12,
       }}
     >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={{ fontWeight: '800', color: COLORS.textPrimary }}>Lead Brain · ML + DL</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <Text style={{ fontWeight: '800', color: COLORS.textPrimary, flexShrink: 1 }}>Lead Brain · ML + DL</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
             disabled={running}

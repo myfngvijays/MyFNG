@@ -10,7 +10,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  BackHandler
+  BackHandler,
 } from 'react-native';
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
@@ -613,6 +613,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 4,
+    lineHeight: 18,
   },
   input: {
     borderWidth: 1,

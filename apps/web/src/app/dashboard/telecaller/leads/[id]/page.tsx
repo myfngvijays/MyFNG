@@ -914,7 +914,9 @@ export function LeadDetailContent({
             </div>
           </div>
         ) : null}
-        {isLeadManager ? <LeadBrainCard leadId={leadId} basePath={base} /> : null}
+        <div className="relative z-0 mt-4">
+          <LeadBrainCard leadId={leadId} basePath={base} />
+        </div>
         {editing ? (
           <div className={isPanel ? 'lead-detail-split min-w-0' : 'grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3'}>
             <div className={isPanel ? 'min-w-0' : 'min-w-0 lg:col-span-2'}>
@@ -941,7 +943,7 @@ export function LeadDetailContent({
                 onShare={() => void openSharePanel()}
               />
             </div>
-            <div className="sticky top-0 z-20 min-w-0 space-y-3 self-start">
+            <div className="lg:sticky lg:top-4 z-20 min-w-0 space-y-3 self-start">
               <div id="lead-sidebar-save" />
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                 <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
@@ -1546,7 +1548,7 @@ export function LeadDetailContent({
               </div>
             </div>
 
-            {isLeadManager ? <LeadIqCard leadId={leadId} /> : null}
+            <LeadIqCard leadId={leadId} />
             <LeadTagsPanel leadId={leadId} canManage={isLeadManager} />
             <LeadTimelinePanel
               leadId={leadId}
