@@ -63,6 +63,7 @@ import CarPartsPriceScreen from './src/screens/smartTools/CarPartsPriceScreen';
 import CustomerRegistrationScreen from './src/screens/dashboard/customer/CustomerRegistrationScreen';
 import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
 import SplashScreen from './src/screens/SplashScreen';
+import PartnerSplashScreen from './src/screens/PartnerSplashScreen';
 import CarLoading from './src/components/CarLoading';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
@@ -102,11 +103,13 @@ const Stack = createNativeStackNavigator();
 /** Hard cap so splash never exceeds ~2s even if auth/update is slow. */
 const SPLASH_MAX_MS = 2000;
 const SPLASH_ANIMATION_MS = 1800;
+/** Safety only. Login waits until the partner video ends; this stops a stuck splash. */
+const PARTNER_SPLASH_MAX_MS = 20000;
 
 function AppContent() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const partnerBuild = getAppVariant() === 'partner';
-  const [showSplash, setShowSplash] = useState(!partnerBuild);
+  const [showSplash, setShowSplash] = useState(true);
   const [authReady, setAuthReady] = useState(false);
   const [updateCheckDone, setUpdateCheckDone] = useState(__DEV__);
   const [forceUpdate, setForceUpdate] = useState<ForceUpdateResult | null>(null);
@@ -138,9 +141,9 @@ function AppContent() {
   useEffect(() => {
     const capTimer = setTimeout(() => {
       setShowSplash(false);
-    }, SPLASH_MAX_MS);
+    }, partnerBuild ? PARTNER_SPLASH_MAX_MS : SPLASH_MAX_MS);
     return () => clearTimeout(capTimer);
-  }, []);
+  }, [partnerBuild]);
 
   const syncCustomerPushToken = async (source = 'app') => {
     try {
@@ -533,6 +536,9 @@ function AppContent() {
 
   // Animated splash only — do not keep the full splash UI while auth/update finish.
   if (showSplash) {
+    if (partnerBuild) {
+      return <PartnerSplashScreen onComplete={handleSplashComplete} />;
+    }
     return <SplashScreen durationMs={SPLASH_ANIMATION_MS} onComplete={handleSplashComplete} />;
   }
 

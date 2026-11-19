@@ -128,7 +128,8 @@
           "contactsPermission": "Allow MyFNG to access your contacts to invite friends via Refer & Rise."
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-video"
     ],
     "owner": "myfngvijays",
     "extra": {

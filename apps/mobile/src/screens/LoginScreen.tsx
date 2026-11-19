@@ -48,8 +48,9 @@ import {
 
 export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview }: any) {
   const insets = useSafeAreaInsets();
+  const partnerLogin = getAppVariant() === 'partner';
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>(
-    getAppVariant() === 'partner' ? 'email' : 'phone',
+    partnerLogin ? 'email' : 'phone',
   );
   const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp' | 'email'>('whatsapp');
   const [otpEmail, setOtpEmail] = useState('');
@@ -673,22 +674,38 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.hero, { paddingTop: insets.top + 6 }]}>
-        <View style={styles.heroBase} />
-        <View style={styles.heroViolet} />
-        <View style={styles.heroCyan} />
-        {getAppVariant() === 'partner' ? (
-          <TouchableOpacity
-            style={[styles.skipButton, { top: insets.top + 8 }]}
-            onPress={() => onSkipPreview?.()}
-            activeOpacity={0.8}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.skipText}>Skip</Text>
-            <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-          </TouchableOpacity>
-        ) : (
+    <KeyboardAvoidingView style={[styles.container, partnerLogin && styles.partnerContainer]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {partnerLogin ? (
+        <View pointerEvents="none" style={styles.partnerBackdrop}>
+          <View style={styles.partnerBlobTop} />
+          <View style={styles.partnerBlobLeft} />
+          <View style={styles.partnerBlobRight} />
+          <View style={styles.partnerRing} />
+          <View style={styles.partnerDotA} />
+          <View style={styles.partnerDotB} />
+          <View style={styles.partnerDotC} />
+        </View>
+      ) : null}
+      {partnerLogin ? (
+        <TouchableOpacity
+          style={[styles.partnerSkipButton, { top: insets.top + 8 }]}
+          onPress={() => onSkipPreview?.()}
+          activeOpacity={0.8}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.partnerSkipText}>Skip</Text>
+          <Ionicons name="chevron-forward" size={16} color="#1E4ED8" />
+        </TouchableOpacity>
+      ) : null}
+      <View style={[styles.hero, partnerLogin && styles.partnerHero, { paddingTop: partnerLogin ? 0 : insets.top + 6 }]}>
+        {partnerLogin ? null : (
+          <>
+            <View style={styles.heroBase} />
+            <View style={styles.heroViolet} />
+            <View style={styles.heroCyan} />
+          </>
+        )}
+        {partnerLogin ? null : (
         <TouchableOpacity
           style={[styles.skipButton, { top: insets.top + 8 }]}
           onPress={() => navigation?.navigate?.('PublicHome')}
@@ -699,16 +716,30 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
           <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
         </TouchableOpacity>
         )}
-        <View style={styles.logoPill}>
-          <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
-        </View>
+        {partnerLogin ? null : (
+          <View style={styles.logoPill}>
+            <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
+          </View>
+        )}
       </View>
 
-      <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.sheet}>
+      <ScrollView style={[styles.sheetScroll, partnerLogin && styles.partnerSheetScroll]} contentContainerStyle={[styles.scrollContent, partnerLogin && styles.partnerScrollContent, partnerLogin && { paddingTop: insets.top + 64 }]} keyboardShouldPersistTaps="handled">
+        {partnerLogin ? (
+          <View style={styles.partnerHeader}>
+            <Image source={require('../../assets/logo.png')} style={styles.partnerLogo} resizeMode="contain" />
+            <View style={styles.partnerMascotWrap}>
+              <View style={styles.partnerMascotCircle} />
+              <Image source={require('../../assets/partner-mascot.png')} style={styles.partnerMascot} resizeMode="contain" />
+            </View>
+          </View>
+        ) : null}
+        <View style={[styles.sheet, partnerLogin && styles.partnerSheet]}>
+          {partnerLogin ? <Text style={styles.partnerCardTitle}>Partner App Login</Text> : null}
+          {partnerLogin ? null : (
           <Text style={[styles.brandTitle, loginMethod === 'email' && styles.partnerTitle]}>
             {loginMethod === 'email' ? 'Partner Login' : 'Welcome back'}
           </Text>
+          )}
           {loginMethod === 'phone' ? (
             <Text style={styles.brandSubTitle}>Enter your mobile number to continue</Text>
           ) : null}
@@ -719,12 +750,14 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
               {loginMethod === 'email' ? (
                 <>
                   <View style={styles.partnerField}>
-                    <Text style={styles.partnerFieldLabel}>Email Address</Text>
-                    <View style={[styles.inputContainer, styles.staffInput]}>
-                      <Ionicons name="mail-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
+                    {partnerLogin ? null : <Text style={styles.partnerFieldLabel}>Email Address</Text>}
+                    <View style={[styles.inputContainer, styles.staffInput, partnerLogin && styles.partnerInput]}>
+                      <View style={partnerLogin ? styles.partnerIconBubble : undefined}>
+                        <Ionicons name={partnerLogin ? 'person' : 'mail-outline'} size={partnerLogin ? 16 : 18} color={partnerLogin ? '#FFFFFF' : '#9CA3AF'} style={partnerLogin ? undefined : styles.fieldIcon} />
+                      </View>
                       <TextInput
                         style={styles.input}
-                        placeholder="your@email.com"
+                        placeholder={partnerLogin ? 'Email or Username' : 'your@email.com'}
                         placeholderTextColor="#9CA3AF"
                         value={email}
                         onChangeText={(text) => setEmail(text.trim())}
@@ -736,9 +769,11 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
                     </View>
                   </View>
                   <View style={styles.partnerField}>
-                    <Text style={styles.partnerFieldLabel}>Password</Text>
-                    <View style={[styles.inputContainer, styles.passwordContainer, styles.staffInput, styles.partnerPasswordBox]}>
-                      <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" style={styles.fieldIcon} />
+                    {partnerLogin ? null : <Text style={styles.partnerFieldLabel}>Password</Text>}
+                    <View style={[styles.inputContainer, styles.passwordContainer, styles.staffInput, styles.partnerPasswordBox, partnerLogin && styles.partnerInput]}>
+                      <View style={partnerLogin ? styles.partnerIconBubble : undefined}>
+                        <Ionicons name={partnerLogin ? 'lock-closed' : 'lock-closed-outline'} size={partnerLogin ? 15 : 18} color={partnerLogin ? '#FFFFFF' : '#9CA3AF'} style={partnerLogin ? undefined : styles.fieldIcon} />
+                      </View>
                       <TextInput
                         style={styles.input}
                         placeholder="••••••••"
@@ -852,12 +887,14 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
                   </View>
                 ) : (
                   <TouchableOpacity
-                    style={[styles.primaryButton, loading && styles.buttonDisabled]}
+                    style={[styles.primaryButton, partnerLogin && styles.partnerLoginButton, loading && styles.buttonDisabled]}
                     onPress={startEmailLogin}
                     disabled={loading}
                     activeOpacity={0.9}
                   >
-                    <Image pointerEvents="none" source={require('../../assets/logo-blue-gradient.png')} style={styles.btnGradient} resizeMode="stretch" />
+                    {partnerLogin ? null : (
+                      <Image pointerEvents="none" source={require('../../assets/logo-blue-gradient.png')} style={styles.btnGradient} resizeMode="stretch" />
+                    )}
                     {loading ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
@@ -929,17 +966,17 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
             )}
           </View>
 
-          <Text style={styles.termsText}>
+          <Text style={[styles.termsText, partnerLogin && styles.partnerTermsText]}>
             By continuing, you agree to MyFNG&apos;s{' '}
             <Text
-              style={styles.termsTextBold}
+              style={[styles.termsTextBold, partnerLogin && styles.partnerTermsBold]}
               onPress={() => { void Linking.openURL('https://myfng.in/terms-and-conditions'); }}
             >
               Terms of Service
             </Text>{' '}
             and{' '}
             <Text
-              style={styles.termsTextBold}
+              style={[styles.termsTextBold, partnerLogin && styles.partnerTermsBold]}
               onPress={() => { void Linking.openURL('https://myfng.in/privacy-policy'); }}
             >
               Privacy Policy
@@ -1038,6 +1075,195 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  partnerContainer: {
+    backgroundColor: '#D7EEFB',
+  },
+  partnerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  partnerBlobTop: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#B7DFF6',
+    top: -70,
+    left: -60,
+  },
+  partnerBlobLeft: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#C5E7FA',
+    top: 280,
+    left: -70,
+  },
+  partnerBlobRight: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    backgroundColor: '#B9DCF4',
+    top: 120,
+    right: -80,
+  },
+  partnerRing: {
+    position: 'absolute',
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    borderWidth: 8,
+    borderColor: '#C3E4F8',
+    backgroundColor: 'transparent',
+    bottom: 90,
+    right: 24,
+  },
+  partnerDotA: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#9FCFEF',
+    top: 150,
+    left: 28,
+  },
+  partnerDotB: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FFFFFF',
+    top: 210,
+    right: 36,
+  },
+  partnerDotC: {
+    position: 'absolute',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#A9D4F2',
+    bottom: 48,
+    left: 32,
+  },
+  partnerHero: {
+    height: 8,
+    backgroundColor: 'transparent',
+  },
+  partnerSkipButton: {
+    position: 'absolute',
+    right: 18,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  partnerSkipText: {
+    color: '#1E4ED8',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  partnerScrollContent: {
+    paddingTop: 4,
+  },
+  partnerHeader: {
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  partnerLogo: {
+    width: 168,
+    height: 46,
+    backgroundColor: 'transparent',
+  },
+  partnerCardTitle: {
+    color: '#1E4ED8',
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  partnerMascotWrap: {
+    width: 280,
+    height: 250,
+    marginTop: 2,
+    marginBottom: -36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partnerMascotCircle: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    backgroundColor: '#7EB6F0',
+  },
+  partnerMascot: {
+    width: 280,
+    height: 250,
+  },
+  partnerSheetScroll: {
+    marginTop: 0,
+  },
+  partnerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 22,
+    borderWidth: 0,
+    shadowColor: '#1E4ED8',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  partnerSubtitle: {
+    textAlign: 'center',
+    color: '#3B6FBF',
+    fontSize: 14,
+    marginTop: 4,
+    marginBottom: 0,
+  },
+  partnerIconBubble: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#2F6BFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  partnerInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6EEF8',
+    borderRadius: 28,
+    minHeight: 54,
+    shadowColor: '#1E4ED8',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  partnerLoginButton: {
+    borderRadius: 28,
+    backgroundColor: '#2F6BFF',
+    marginTop: 8,
+  },
+  partnerTitleOnBlue: {
+    color: '#0F172A',
+  },
+  partnerFieldLabelOnBlue: {
+    color: '#374151',
+  },
+  partnerTermsText: {
+    color: '#9CA3AF',
+  },
+  partnerTermsBold: {
+    color: '#1F2937',
   },
   logoPill: {
     backgroundColor: '#FFFFFF',

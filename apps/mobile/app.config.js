@@ -27,15 +27,23 @@ module.exports = ({ config }) => {
   const appVariantRaw = String(process.env.APP_VARIANT || 'unified').trim().toLowerCase();
   const appVariant =
     appVariantRaw === 'customer' || appVariantRaw === 'partner' ? appVariantRaw : 'unified';
+  const partner = appVariant === 'partner';
 
   return {
     ...base,
+    version: partner ? '1.0.1' : base.version,
+    splash: {
+      ...(base.splash || {}),
+      backgroundColor: partner ? '#021E6F' : base.splash && base.splash.backgroundColor,
+    },
     extra: {
       ...(base.extra || {}),
       appVariant,
     },
     android: {
       ...(base.android || {}),
+      package: partner ? 'com.myfng.partner' : base.android && base.android.package,
+      versionCode: partner ? 1 : base.android && base.android.versionCode,
       config: {
         ...((base.android && base.android.config) || {}),
         googleMaps: {
@@ -43,9 +51,10 @@ module.exports = ({ config }) => {
           apiKey: googleMapsApiKey,
         },
       },
-  },
-  ios: {
+    },
+    ios: {
       ...(base.ios || {}),
+      buildNumber: partner ? '1' : base.ios && base.ios.buildNumber,
       config: {
         ...((base.ios && base.ios.config) || {}),
         googleMapsApiKey: googleMapsApiKey,
