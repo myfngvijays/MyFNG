@@ -90,6 +90,8 @@ export function LeadDetailContent({
   const [showAllReminders, setShowAllReminders] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [sendingPricing, setSendingPricing] = useState(false);
+  const [pricingDraft, setPricingDraft] = useState({ pincode: '', carModel: '' });
+  const [pricingNotice, setPricingNotice] = useState('');
   const [calling, setCalling] = useState(false);
   const [serviceGroups, setServiceGroups] = useState<Array<{ category: string; names: string[] }>>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
@@ -747,17 +749,36 @@ export function LeadDetailContent({
     return 0;
   }
 
+  const draftPin = String(pricingDraft.pincode || '').replace(/\D/g, '').slice(0, 6);
+  const savedPin = String(lead?.pincode || '').replace(/\D/g, '').slice(0, 6);
+  const pricingPin = /^\d{6}$/.test(draftPin) ? draftPin : savedPin;
+  const draftCar = String(pricingDraft.carModel || '').trim();
+  const savedCar = [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ').trim();
+  const pricingCar = draftCar || savedCar;
+  const pricingGap = !/^\d{6}$/.test(pricingPin)
+    ? 'Pincode is empty on this lead. Send pricing stops until a 6-digit pincode is filled.'
+    : !pricingCar
+      ? 'Car model is empty on this lead. Send pricing stops until the car model is filled.'
+      : '';
+
   const sendPricingWhatsApp = async () => {
-    const pincode = String(lead?.pincode || '').replace(/\D/g, '').slice(0, 6);
-    const carModel = [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ').trim();
+    const pincode = pricingPin;
+    const carModel = pricingCar;
     const serviceTypeIds = parseIds(lead?.service_type_ids);
     const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
     const savedCategories = Array.isArray((meta as any).pricing_categories)
       ? (meta as any).pricing_categories.map((c: any) => String(c || '').trim()).filter(Boolean)
       : [];
     const pricingCategories = savedCategories.length ? savedCategories : ['Car Periodic Service'];
-    if (!/^\d{6}$/.test(pincode)) { alert('Fill 6-digit pincode on the lead first.'); return; }
-    if (!carModel) { alert('Fill car model on the lead first.'); return; }
+    if (!/^\d{6}$/.test(pincode)) {
+      setPricingNotice('Fill a 6-digit pincode on the lead first.');
+      return;
+    }
+    if (!carModel) {
+      setPricingNotice('Fill the car model on the lead first.');
+      return;
+    }
+    setPricingNotice('');
     const modeHint = serviceTypeIds.length ? 'selected plan(s) only' : `all ${pricingCategories.join(', ')} plans`;
     if (!confirm(`Send pricing (${modeHint}) · ${carModel} · PIN ${pincode}?`)) return;
     setSendingPricing(true);
@@ -773,10 +794,16 @@ export function LeadDetailContent({
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) throw new Error(json?.message || json?.error || 'Failed to send pricing');
-      alert(json.message || 'Pricing sent on WhatsApp.');
+      const message = String(json?.message || json?.error || '');
+      if (!res.ok || !json?.success || /whatsapp send failed|could not send/i.test(message)) {
+        throw new Error(message || 'Failed to send pricing');
+      }
+      setPricingNotice('');
+      alert(message || 'Pricing sent on WhatsApp.');
     } catch (e: any) {
-      alert(e?.message || 'Could not send pricing link.');
+      const message = e?.message || 'Could not send pricing link.';
+      setPricingNotice(message);
+      alert(message);
     } finally {
       setSendingPricing(false);
     }
@@ -811,7 +838,9 @@ export function LeadDetailContent({
         className={
           isPanel
             ? 'w-full min-w-0 space-y-3 px-2.5 py-2 sm:px-3'
-            : 'mx-auto w-full min-w-0 max-w-none space-y-4 pb-8 sm:space-y-5'
+            : editing
+              ? 'lead-page-frame mx-auto w-full min-w-0 max-w-none'
+              : 'mx-auto w-full min-w-0 max-w-none space-y-4 pb-8 sm:space-y-5'
         }
       >
         {!isPanel ? (
@@ -914,12 +943,19 @@ export function LeadDetailContent({
             </div>
           </div>
         ) : null}
-        <div className="relative z-0 mt-4">
-          <LeadBrainCard leadId={leadId} basePath={base} />
-        </div>
+        {!(editing && !isPanel) ? (
+          <div className="relative z-0 mt-4">
+            <LeadBrainCard leadId={leadId} basePath={base} />
+          </div>
+        ) : null}
         {editing ? (
-          <div className={isPanel ? 'lead-detail-split min-w-0' : 'grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3'}>
-            <div className={isPanel ? 'min-w-0' : 'min-w-0 lg:col-span-2'}>
+          <div className={isPanel ? 'lead-detail-split min-w-0' : 'lead-page-split'}>
+            <div className={isPanel ? 'min-w-0' : 'lead-page-col min-w-0 space-y-4'}>
+              {!isPanel ? (
+                <div className="relative z-0">
+                  <LeadBrainCard leadId={leadId} basePath={base} />
+                </div>
+              ) : null}
               <CrmLeadEditForm
                 leadId={leadId}
                 seedLead={lead}
@@ -941,10 +977,11 @@ export function LeadDetailContent({
                   );
                 }}
                 onShare={() => void openSharePanel()}
+                onDraftChange={setPricingDraft}
               />
             </div>
-            <div className="lg:sticky lg:top-4 z-20 min-w-0 space-y-3 self-start">
-              <div id="lead-sidebar-save" />
+            <div className={isPanel ? 'lg:sticky lg:top-4 z-20 min-w-0 space-y-3 self-start' : 'lead-page-col z-20 min-w-0 space-y-3'}>
+              <div id="lead-sidebar-save" className="lg:sticky lg:top-0 lg:z-20 lg:bg-[#f4f7fb] lg:pb-1" />
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                 <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
                 <div className="space-y-2.5">
@@ -970,6 +1007,9 @@ export function LeadDetailContent({
                   <WhatsAppIcon className="w-4 h-4" />
                   {sendingPricing ? 'Sending…' : 'Send pricing on WhatsApp'}
                 </button>
+                {pricingNotice || pricingGap ? (
+                  <p className="mt-2 text-xs font-semibold leading-snug text-rose-600">{pricingNotice || pricingGap}</p>
+                ) : null}
               </div>
 
               <div id="lead-call-reminders" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">

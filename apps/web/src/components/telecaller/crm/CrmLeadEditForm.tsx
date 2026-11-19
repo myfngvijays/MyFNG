@@ -314,7 +314,8 @@ async function describeLeadActivity(
     else lines.push(`${label} updated to ${clipActivity(after)}`);
   }
   if ((prev.status || '') !== (next.status || '')) {
-    lines.push(`Status set to ${statusLabel}`);
+    const previousLabel = ACTIVITY_OPTIONS.find((option) => option.id === prev.status)?.label || prev.status || '—';
+    lines.unshift(`Status: ${previousLabel} → ${statusLabel}`);
   }
   if ((prev.repeat || '') !== (next.repeat || '')) {
     lines.push(next.repeat === '1' ? 'Marked repeat customer' : 'Repeat customer removed');
@@ -473,6 +474,7 @@ export type CrmLeadEditFormProps = {
   onCall?: () => void;
   onWhatsApp?: () => void;
   onShare?: () => void;
+  onDraftChange?: (draft: { pincode: string; carModel: string }) => void;
   calling?: boolean;
   isLeadManagerRole?: boolean;
   seedLead?: Record<string, any> | null;
@@ -528,6 +530,7 @@ export default function CrmLeadEditForm({
   onCall,
   onWhatsApp,
   onShare,
+  onDraftChange,
   calling = false,
   isLeadManagerRole,
   seedLead = null,
@@ -1491,6 +1494,12 @@ export default function CrmLeadEditForm({
     userEdited.current = false;
     activityBase.current = null;
   }, [leadId]);
+  useEffect(() => {
+    onDraftChange?.({
+      pincode: String(formData.pincode || '').replace(/\D/g, '').slice(0, 6),
+      carModel: `${String(formData.vehicle_make || '').trim()} ${String(formData.vehicle_model || '').trim()}`.trim(),
+    });
+  }, [formData.pincode, formData.vehicle_make, formData.vehicle_model, onDraftChange]);
   useEffect(() => {
     if (loading) return;
     if (!userEdited.current) {

@@ -1398,11 +1398,18 @@ export default function TelecallerLeadDetailScreen({
       const h = profileHistory[i] || {};
       const at = String(h.at || '').trim();
       if (!at) continue;
-      const notes = h.remark ? String(h.remark).trim() : '';
-      let title = String(h.summary || h.event || 'Updated').slice(0, 80);
-      if (String(h.status || '').toUpperCase() === 'RINGING' || /\bringing\b/i.test(notes)) {
+      const remark = h.remark ? String(h.remark).trim() : '';
+      const summaryLines = String(h.summary || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const statusLine = summaryLines.find((line) => /^status\b/i.test(line)) || '';
+      const detailLines = summaryLines.filter((line) => line !== statusLine);
+      let title = statusLine || summaryLines[0] || String(h.event || 'Updated');
+      if (String(h.status || '').toUpperCase() === 'RINGING' || /\bringing\b/i.test(remark)) {
         title = 'Ringing';
       }
+      const notes = [remark, ...detailLines].filter(Boolean).join('\n');
       pushUnique(out, {
         id: `hist-local-${i}-${at}`,
         kind: 'update',

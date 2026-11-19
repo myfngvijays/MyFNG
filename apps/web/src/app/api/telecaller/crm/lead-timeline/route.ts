@@ -427,9 +427,15 @@ export async function GET(request: NextRequest) {
       const isMerge = event === 'PHONE_DUPLICATE_MERGED';
       if (isMerge && h.previous_label) histMergeIds.add(String(h.previous_label));
       const statusLabel = friendlyPipelineStatus(h.status || h.previous_status);
+      const summaryLines = String(h.summary || '')
+        .split('\n')
+        .map((line: string) => line.trim())
+        .filter(Boolean);
+      const statusLine = summaryLines.find((line) => /^status\b/i.test(line)) || '';
+      const detailLines = summaryLines.filter((line) => line !== statusLine);
       const isFieldLog = event === 'FIELDS' || String(h.summary || '').includes('→');
       const histBody = isFieldLog
-        ? String(h.summary || '').trim() || null
+        ? detailLines.join('\n') || null
         : isMerge
         ? [
             h.previous_label ? `Lead # ${h.previous_label}` : null,
@@ -455,9 +461,11 @@ export async function GET(request: NextRequest) {
         at,
         title: isMerge
           ? `Earlier booking merged · was ${statusLabel}`
-          : isFieldLog
-            ? 'Details updated'
-            : String(h.summary || h.event || 'History').slice(0, 160),
+          : statusLine
+            ? statusLine
+            : isFieldLog
+              ? 'Details updated'
+              : String(h.summary || h.event || 'History').slice(0, 160),
         body: histBody,
         meta: {
           event: h.event || null,
