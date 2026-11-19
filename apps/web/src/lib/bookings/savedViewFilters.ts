@@ -36,7 +36,7 @@ export const EMPTY_BOOKINGS_VIEW: BookingsViewSnapshot = {
   search: '',
   sourceLabel: '',
   leadType: '',
-  datePreset: 'all_time',
+  datePreset: 'last_30_days',
   customStart: '',
   customEnd: '',
   tagIds: [],
@@ -153,7 +153,7 @@ export function resetCondition(
     case 'lead_tag':
       return { ...snapshot, tagIds: [], tagMode: 'any' };
     case 'created_on':
-      return { ...snapshot, datePreset: 'all_time', customStart: '', customEnd: '' };
+      return { ...snapshot, datePreset: 'last_30_days', customStart: '', customEnd: '' };
     case 'assignee':
       return { ...snapshot, assignees: [] };
     case 'message_trigger':

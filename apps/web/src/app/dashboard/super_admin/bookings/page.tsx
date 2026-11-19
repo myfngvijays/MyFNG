@@ -1797,7 +1797,7 @@ function SuperAdminBookingsPage() {
   /** Empty = all message triggers. Values: trigger id or NONE. */
   const [messageTriggerFilter, setMessageTriggerFilter] = useState<string[]>([]);
   const [messageTriggersCatalog, setMessageTriggersCatalog] = useState<MessageTrigger[]>([]);
-  const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
+  const [datePreset, setDatePreset] = useState<ReportDatePreset>('last_30_days');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [tagIds, setTagIds] = useState<string[]>([]);
@@ -2604,7 +2604,7 @@ function SuperAdminBookingsPage() {
 
     const FIRST_BATCH = 400;
     const NEXT_BATCH = 1500;
-    const MAX_ROWS = 10000;
+    const MAX_ROWS = 20000;
 
     const loadSlice = async (offset: number, limit: number, fast: boolean) => {
       const query = new URLSearchParams();
@@ -4028,7 +4028,11 @@ function SuperAdminBookingsPage() {
             <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9">
               <StatCard
                 label={hasActiveLeadFilters ? 'Filtered Leads' : 'Total Leads'}
-                value={serviceLeadOverview.total}
+                value={
+                  !hasActiveLeadFilters && typeof totalInRange === 'number'
+                    ? totalInRange
+                    : serviceLeadOverview.total
+                }
                 icon={<ClipboardList className="h-4 w-4" />}
                 onClick={clearLeadFilters}
                 active={hasActiveLeadFilters}
