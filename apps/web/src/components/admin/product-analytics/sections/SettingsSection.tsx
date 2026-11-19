@@ -41,6 +41,11 @@ type ConfigForm = {
     min_version_ios: string;
     min_build_android: number;
     min_build_ios: number;
+    partner_force_update_enabled: boolean;
+    partner_min_version_android: string;
+    partner_min_version_ios: string;
+    partner_min_build_android: number;
+    partner_min_build_ios: number;
     update_message: string;
     analytics_min_version_code_android: number;
     analytics_min_build_ios: number;
@@ -90,6 +95,11 @@ const EMPTY: ConfigForm = {
     min_version_ios: '1.2.0',
     min_build_android: 23,
     min_build_ios: 23,
+    partner_force_update_enabled: false,
+    partner_min_version_android: '1.0.1',
+    partner_min_version_ios: '1.0.1',
+    partner_min_build_android: 1,
+    partner_min_build_ios: 1,
     update_message: 'A new version of MyFNG is available. Please update the app to continue.',
     analytics_min_version_code_android: 23,
     analytics_min_build_ios: 23,
@@ -434,14 +444,14 @@ export default function SettingsSection() {
         </div>
 
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-1">Mobile App Force Update</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-1">Customer app force update</p>
           <p className="text-xs text-gray-500 mb-4">
-            Same values as{' '}
+            MyFNG customer app (com.myfng.app). Same values as{' '}
             <a href="/dashboard/super_admin/settings" className="font-semibold text-violet-700 underline">
               System Settings
             </a>
             . Soft &quot;Update Available&quot; is automatic from Play Store / App Store — use these fields only to
-            force-block older apps.
+            force-block older customer apps.
           </p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3">
@@ -517,6 +527,91 @@ export default function SettingsSection() {
                   setForm((prev) => ({
                     ...prev,
                     mobile_build: { ...prev.mobile_build, min_build_ios: Number(e.target.value) || 0 },
+                  }))
+                }
+                disabled={!canEdit}
+              />
+            </div>
+            <div className="sm:col-span-2 border-t border-gray-100 pt-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Partner app force update</p>
+              <p className="text-xs text-gray-500 mt-1">
+                MyFNG Partner (com.myfng.partner). Current tester build is 1.0.2 / build 2, so leave force update off
+                until a newer partner build is on the store.
+              </p>
+            </div>
+            <div className="sm:col-span-2 flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Partner Force Update Enabled</p>
+                <p className="text-xs text-gray-500 mt-0.5">Show blocking update popup on old partner app versions</p>
+              </div>
+              <Toggle
+                checked={form.mobile_build.partner_force_update_enabled}
+                disabled={!canEdit}
+                onChange={(v) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, partner_force_update_enabled: v },
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="analytics-label">Partner Android Min Version</label>
+              <input
+                className="analytics-input"
+                value={form.mobile_build.partner_min_version_android}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, partner_min_version_android: e.target.value },
+                  }))
+                }
+                disabled={!canEdit}
+                placeholder="1.0.1"
+              />
+            </div>
+            <div>
+              <label className="analytics-label">Partner Android Min Build (versionCode)</label>
+              <input
+                className="analytics-input"
+                type="number"
+                min={0}
+                value={form.mobile_build.partner_min_build_android}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, partner_min_build_android: Number(e.target.value) || 0 },
+                  }))
+                }
+                disabled={!canEdit}
+              />
+            </div>
+            <div>
+              <label className="analytics-label">Partner iOS Min Version</label>
+              <input
+                className="analytics-input"
+                value={form.mobile_build.partner_min_version_ios}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, partner_min_version_ios: e.target.value },
+                  }))
+                }
+                disabled={!canEdit}
+                placeholder="1.0.1"
+              />
+            </div>
+            <div>
+              <label className="analytics-label">Partner iOS Min Build</label>
+              <input
+                className="analytics-input"
+                type="number"
+                min={0}
+                value={form.mobile_build.partner_min_build_ios}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile_build: { ...prev.mobile_build, partner_min_build_ios: Number(e.target.value) || 0 },
                   }))
                 }
                 disabled={!canEdit}

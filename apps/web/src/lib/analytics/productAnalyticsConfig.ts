@@ -43,6 +43,11 @@ export type ProductAnalyticsConfig = {
     min_version_ios: string;
     min_build_android: number;
     min_build_ios: number;
+    partner_force_update_enabled: boolean;
+    partner_min_version_android: string;
+    partner_min_version_ios: string;
+    partner_min_build_android: number;
+    partner_min_build_ios: number;
     update_message: string;
     analytics_min_version_code_android: number;
     analytics_min_build_ios: number;
@@ -134,6 +139,11 @@ export const DEFAULT_PRODUCT_ANALYTICS_CONFIG: ProductAnalyticsConfig = {
     min_version_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_version_ios,
     min_build_android: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_android,
     min_build_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_ios,
+    partner_force_update_enabled: DEFAULT_MOBILE_APP_VERSION_CONFIG.partner_force_update_enabled,
+    partner_min_version_android: DEFAULT_MOBILE_APP_VERSION_CONFIG.partner_min_version_android,
+    partner_min_version_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.partner_min_version_ios,
+    partner_min_build_android: DEFAULT_MOBILE_APP_VERSION_CONFIG.partner_min_build_android,
+    partner_min_build_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.partner_min_build_ios,
     update_message: DEFAULT_MOBILE_APP_VERSION_CONFIG.update_message,
     analytics_min_version_code_android: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_android,
     analytics_min_build_ios: DEFAULT_MOBILE_APP_VERSION_CONFIG.min_build_ios,
@@ -297,6 +307,11 @@ function applyMobileVersionFields(
     min_version_ios: minVersionIos,
     min_build_android: minBuildAndroid,
     min_build_ios: minBuildIos,
+    partner_force_update_enabled: toBool(raw.partner_force_update_enabled, fallback.partner_force_update_enabled),
+    partner_min_version_android: toText(raw.partner_min_version_android, fallback.partner_min_version_android, 16),
+    partner_min_version_ios: toText(raw.partner_min_version_ios, fallback.partner_min_version_ios, 16),
+    partner_min_build_android: toNumber(raw.partner_min_build_android, fallback.partner_min_build_android, 0, 999999),
+    partner_min_build_ios: toNumber(raw.partner_min_build_ios, fallback.partner_min_build_ios, 0, 999999),
     update_message: toText(raw.update_message, fallback.update_message, 280),
     analytics_min_version_code_android: minBuildAndroid,
     analytics_min_build_ios: minBuildIos,
@@ -319,6 +334,11 @@ export function applyMobileAppVersionToAnalytics(
       min_version_ios: version.min_version_ios,
       min_build_android: version.min_build_android,
       min_build_ios: version.min_build_ios,
+      partner_force_update_enabled: version.partner_force_update_enabled,
+      partner_min_version_android: version.partner_min_version_android,
+      partner_min_version_ios: version.partner_min_version_ios,
+      partner_min_build_android: version.partner_min_build_android,
+      partner_min_build_ios: version.partner_min_build_ios,
       update_message: version.update_message,
       analytics_min_version_code_android: version.min_build_android,
       analytics_min_build_ios: version.min_build_ios,
@@ -434,6 +454,11 @@ export async function saveProductAnalyticsConfig(
       min_version_ios: config.mobile_build.min_version_ios,
       min_build_android: config.mobile_build.min_build_android,
       min_build_ios: config.mobile_build.min_build_ios,
+      partner_force_update_enabled: config.mobile_build.partner_force_update_enabled,
+      partner_min_version_android: config.mobile_build.partner_min_version_android,
+      partner_min_version_ios: config.mobile_build.partner_min_version_ios,
+      partner_min_build_android: config.mobile_build.partner_min_build_android,
+      partner_min_build_ios: config.mobile_build.partner_min_build_ios,
       update_message: config.mobile_build.update_message,
     },
     updatedBy,

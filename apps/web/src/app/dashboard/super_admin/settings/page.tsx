@@ -21,6 +21,14 @@ const SLA_MIN = 1;
 const SLA_MAX = 99999;
 const GEOFENCE_RADIUS_KEY = 'workshop_geofence_radius_m';
 
+const PARTNER_SETTING_SEED: Record<string, { value: string | boolean; type: 'BOOLEAN' | 'STRING' | 'NUMBER' }> = {
+  mobile_app_partner_force_update_enabled: { value: false, type: 'BOOLEAN' },
+  mobile_app_partner_min_version_android: { value: '1.0.1', type: 'STRING' },
+  mobile_app_partner_min_build_android: { value: '1', type: 'NUMBER' },
+  mobile_app_partner_min_version_ios: { value: '1.0.1', type: 'STRING' },
+  mobile_app_partner_min_build_ios: { value: '1', type: 'NUMBER' },
+};
+
 export default function SystemSettingsPage() {
   const supabase = getBrowserClient();
   const [loading, setLoading] = useState(true);
@@ -49,6 +57,17 @@ export default function SystemSettingsPage() {
             : setting.setting_value,
         };
       });
+      for (const [key, seed] of Object.entries(PARTNER_SETTING_SEED)) {
+        if (!settingsMap[key]) {
+          settingsMap[key] = {
+            setting_key: key,
+            setting_type: seed.type,
+            category: 'MOBILE',
+            value: seed.value,
+            _pendingInsert: true,
+          };
+        }
+      }
       setSettings(settingsMap);
     } catch (e: any) {
       console.error('Error fetching settings:', e);
@@ -133,6 +152,24 @@ export default function SystemSettingsPage() {
       }));
 
       for (const update of updates) {
+        const row = settings[update.setting_key];
+        if (row?._pendingInsert) {
+          const { error: insertErr } = await supabase.from('system_settings').upsert(
+            {
+              setting_key: update.setting_key,
+              setting_value: update.setting_value,
+              setting_type: row.setting_type || 'STRING',
+              category: row.category || 'MOBILE',
+              is_editable: true,
+              updated_at: update.updated_at,
+              ...(update.updated_by && { updated_by: update.updated_by }),
+            },
+            { onConflict: 'setting_key' },
+          );
+          if (insertErr) throw insertErr;
+          continue;
+        }
+
         const { error: updateErr } = await supabase
           .from('system_settings')
           .update({
@@ -384,9 +421,9 @@ export default function SystemSettingsPage() {
           <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
             <h2 className="font-semibold text-base sm:text-lg">📱 Mobile App Force Update</h2>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
-              Soft &quot;Update Available&quot; is automatic from Play Store / App Store — no need to bump numbers for that.
-              Use the fields below only when you want to <span className="font-semibold">force-block</span> older apps.
-              Same values also show in{' '}
+              Customer app and partner app are checked separately. Soft &quot;Update Available&quot; stays on the customer
+              Play Store / App Store listing. Use the numbers below only when you want to{' '}
+              <span className="font-semibold">force-block</span> older apps. Customer values also show in{' '}
               <a
                 href="/dashboard/super_admin/analytics-hub?section=settings"
                 className="font-semibold text-blue-600 underline"
@@ -399,9 +436,9 @@ export default function SystemSettingsPage() {
           <div className="p-4 sm:p-5 md:p-6 space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
               <div className="min-w-0 flex-1">
-                <h3 className="font-medium text-sm sm:text-base">Force Update Enabled</h3>
+                <h3 className="font-medium text-sm sm:text-base">Customer app — Force Update Enabled</h3>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                  Show blocking update popup on old app versions
+                  com.myfng.app. Show blocking update popup on old customer app versions
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
@@ -418,7 +455,7 @@ export default function SystemSettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  Android Min Version
+                  Customer Android Min Version
                 </label>
                 <input
                   type="text"
@@ -430,7 +467,7 @@ export default function SystemSettingsPage() {
               </div>
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  Android Min Build (versionCode)
+                  Customer Android Min Build (versionCode)
                 </label>
                 <input
                   type="number"
@@ -442,7 +479,7 @@ export default function SystemSettingsPage() {
               </div>
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  iOS Min Version
+                  Customer iOS Min Version
                 </label>
                 <input
                   type="text"
@@ -454,7 +491,7 @@ export default function SystemSettingsPage() {
               </div>
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  iOS Min Build
+                  Customer iOS Min Build
                 </label>
                 <input
                   type="number"
@@ -479,6 +516,75 @@ export default function SystemSettingsPage() {
                 onChange={(e) => handleChange('mobile_app_force_update_message', e.target.value)}
                 className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
+            </div>
+
+            <div className="border-t pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base">Partner app — Force Update Enabled</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
+                  com.myfng.partner. Leave this off for the current 1.0.2 / build 2 tester build.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.mobile_app_partner_force_update_enabled?.value)}
+                  onChange={() => handleToggle('mobile_app_partner_force_update_enabled')}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  Partner Android Min Version
+                </label>
+                <input
+                  type="text"
+                  value={settings.mobile_app_partner_min_version_android?.value ?? '1.0.1'}
+                  onChange={(e) => handleChange('mobile_app_partner_min_version_android', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="1.0.1"
+                />
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  Partner Android Min Build (versionCode)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.mobile_app_partner_min_build_android?.value ?? '1'}
+                  onChange={(e) => handleChange('mobile_app_partner_min_build_android', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  Partner iOS Min Version
+                </label>
+                <input
+                  type="text"
+                  value={settings.mobile_app_partner_min_version_ios?.value ?? '1.0.1'}
+                  onChange={(e) => handleChange('mobile_app_partner_min_version_ios', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="1.0.1"
+                />
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  Partner iOS Min Build
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.mobile_app_partner_min_build_ios?.value ?? '1'}
+                  onChange={(e) => handleChange('mobile_app_partner_min_build_ios', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
             </div>
           </div>
         </div>

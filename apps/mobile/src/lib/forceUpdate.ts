@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { getAppVariant } from '../config/appVariant';
 import { ENV } from '../config/environment';
 
 const SOFT_DISMISS_KEY = 'myfng_soft_update_dismissed_version';
@@ -58,10 +59,12 @@ export async function checkForceUpdate(): Promise<ForceUpdateResult> {
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   const version = getInstalledAppVersion();
   const build = getInstalledAppBuild();
+  const app = getAppVariant() === 'partner' ? 'partner' : 'customer';
   const query = new URLSearchParams({
     platform,
     version,
     build: String(build),
+    app,
   });
 
   try {
@@ -73,6 +76,7 @@ export async function checkForceUpdate(): Promise<ForceUpdateResult> {
         'x-app-platform': platform,
         'x-app-version': version,
         'x-app-build': String(build),
+        'x-app-variant': app,
       },
       signal: controller.signal,
     });

@@ -1,6 +1,7 @@
 import {
   evaluateForceUpdate,
   getMobileAppVersionConfig,
+  type MobileAppKind,
   type MobilePlatform,
 } from '@/lib/mobile-app-version-config';
 import {
@@ -14,6 +15,13 @@ export const dynamic = 'force-dynamic';
 
 const SOFT_UPDATE_MESSAGE =
   'A new version of MyFNG is available on the store. Update now for the latest features and fixes.';
+
+function resolveAppKind(raw: string | null, version: string): MobileAppKind {
+  const explicit = String(raw || '').trim().toLowerCase();
+  if (explicit === 'partner' || explicit === 'customer') return explicit;
+  if (/^1\.0(?:\.|$)/.test(version)) return 'partner';
+  return 'customer';
+}
 
 function resolvePlatform(raw: string | null): MobilePlatform | null {
   const normalized = String(raw || '')
@@ -42,19 +50,29 @@ export async function GET(request: NextRequest) {
       search.get('build') || request.headers.get('x-app-build') || '0',
     );
 
+    const app = resolveAppKind(
+      search.get('app') || request.headers.get('x-app-variant'),
+      currentVersion,
+    );
+
     const { supabaseAdmin } = getSupabaseAdmin();
     const config = await getMobileAppVersionConfig(supabaseAdmin);
-    const force = evaluateForceUpdate(config, platform, currentVersion, currentBuild);
-    const store = await getStoreLatestVersion(platform);
-    const storeUpdateAvailable = isStoreUpdateAvailable(force.current_version, store.version);
+    const force = evaluateForceUpdate(config, platform, currentVersion, currentBuild, app);
+    const store =
+      app === 'customer'
+        ? await getStoreLatestVersion(platform)
+        : { version: null as string | null, storeUrl: force.store_url };
+    const storeUpdateAvailable =
+      app === 'customer' && isStoreUpdateAvailable(force.current_version, store.version);
 
     return NextResponse.json({
       success: true,
+      app: force.app,
       force_update: force.required,
       update_available: storeUpdateAvailable || force.required,
       soft_update: storeUpdateAvailable && !force.required,
       platform: force.platform,
-      store_url: store.storeUrl || force.store_url,
+      store_url: app === 'partner' ? force.store_url : store.storeUrl || force.store_url,
       message: force.required ? force.message : SOFT_UPDATE_MESSAGE,
       min_version: force.min_version,
       min_build: force.min_build,
