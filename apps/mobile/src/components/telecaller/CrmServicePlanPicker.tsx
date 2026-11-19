@@ -280,7 +280,9 @@ export default function CrmServicePlanPicker({
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {banner}
       {!hasPricingContext ? (
-        <Text style={styles.priceHint}>Select city & car model to load ₹ prices</Text>
+        <View style={styles.priceBanner}>
+          <Text style={styles.priceHint}>Select city & car model to load ₹ prices</Text>
+        </View>
       ) : null}
 
       {categories.length > 1 ? (
@@ -325,7 +327,7 @@ export default function CrmServicePlanPicker({
 
       {isPeriodicCategory ? (
         <View style={styles.oilRow}>
-          <Text style={styles.oilLabel}>Engine Oil:</Text>
+          <Text style={styles.oilLabel}>ENGINE OIL</Text>
           <View style={styles.oilToggle}>
             <TouchableOpacity
               style={[styles.oilTab, oilType === 'semi' && styles.oilTabActive]}
@@ -334,7 +336,7 @@ export default function CrmServicePlanPicker({
               <Text style={[styles.oilTabText, oilType === 'semi' && styles.oilTabTextActive]}>Semi Synthetic</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.oilTab, oilType === 'full' && styles.oilTabFull]}
+              style={[styles.oilTab, oilType === 'full' && styles.oilTabActive]}
               onPress={() => setOilType('full')}
             >
               <Text style={[styles.oilTabText, oilType === 'full' && styles.oilTabTextActive]}>Fully Synthetic</Text>
@@ -523,19 +525,28 @@ const styles = StyleSheet.create({
   },
   search: { flex: 1, paddingVertical: 10, color: COLORS.textPrimary },
   oilRow: { marginBottom: 10 },
-  oilLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
+  oilLabel: { fontSize: 11, fontWeight: '800', color: '#64748B', marginBottom: 6, letterSpacing: 0.4 },
   oilToggle: { flexDirection: 'row', gap: 8 },
   oilTab: {
     flex: 1,
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
     alignItems: 'center',
-    backgroundColor: COLORS.white,
+    backgroundColor: 'transparent',
   },
   oilTabActive: { backgroundColor: COLORS.primary },
-  oilTabFull: { backgroundColor: '#EA580C', borderColor: '#EA580C' },
+  priceBanner: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  priceHint: {
+    fontSize: 12,
+    color: '#B45309',
+    fontWeight: '700',
+  },
   oilTabText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
   oilTabTextActive: { color: '#fff' },
   cart: {
@@ -598,12 +609,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   planPrice: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary },
-  priceHint: {
-    fontSize: 12,
-    color: COLORS.orange,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
   planItems: { marginTop: 10, gap: 6 },
   planItemRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginBottom: 4 },
   planItemText: { flex: 1, fontSize: 12, color: COLORS.textSecondary, lineHeight: 17 },

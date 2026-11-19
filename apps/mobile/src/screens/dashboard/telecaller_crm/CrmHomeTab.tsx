@@ -107,6 +107,96 @@ function formatClockShort(seconds?: number | null) {
   return `${m}:${String(rem).padStart(2, '0')}`;
 }
 
+function PerfRing({ ratio, value, caption }: { ratio: number; value: string; caption: string }) {
+  const size = 104;
+  const stroke = 11;
+  const color = '#1D4ED8';
+  const p = Math.max(0, Math.min(1, Number(ratio) || 0));
+  const sweep = p * 360;
+  const half = size / 2;
+  const rightSweep = Math.min(sweep, 180);
+  const leftSweep = Math.max(sweep - 180, 0);
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          position: 'absolute',
+          width: size,
+          height: size,
+          borderRadius: half,
+          borderWidth: stroke,
+          borderColor: '#E7EEF8',
+        }}
+      />
+      {sweep > 0 ? (
+        <View style={{ position: 'absolute', width: size, height: size, transform: [{ rotate: '-90deg' }] }}>
+          <View style={{ position: 'absolute', left: half, width: half, height: size, overflow: 'hidden' }}>
+            <View
+              style={{
+                position: 'absolute',
+                left: -half,
+                width: size,
+                height: size,
+                borderRadius: half,
+                borderWidth: stroke,
+                borderColor: 'transparent',
+                borderTopColor: color,
+                borderRightColor: color,
+                transform: [{ rotate: `${rightSweep}deg` }],
+              }}
+            />
+          </View>
+          {leftSweep > 0 ? (
+            <View style={{ position: 'absolute', left: 0, width: half, height: size, overflow: 'hidden' }}>
+              <View
+                style={{
+                  width: size,
+                  height: size,
+                  borderRadius: half,
+                  borderWidth: stroke,
+                  borderColor: 'transparent',
+                  borderBottomColor: color,
+                  borderLeftColor: color,
+                  transform: [{ rotate: `${leftSweep}deg` }],
+                }}
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={{ alignItems: 'center' }}>
+        <Text style={styles.ringValue}>{value}</Text>
+        <Text style={styles.ringCaption}>{caption}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PerfBar({
+  label,
+  value,
+  ratio,
+  color,
+}: {
+  label: string;
+  value: string;
+  ratio: number;
+  color: string;
+}) {
+  const width = Math.max(0, Math.min(100, Math.round((Number(ratio) || 0) * 100)));
+  return (
+    <View style={styles.perfBar}>
+      <View style={styles.perfBarHead}>
+        <Text style={styles.perfBarLabel}>{label}</Text>
+        <Text style={styles.perfBarValue}>{value}</Text>
+      </View>
+      <View style={styles.perfTrack}>
+        <View style={[styles.perfFill, { width: `${width}%`, backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
 function reminderDay(iso?: string | null) {
   if (!iso) return { d: '—', m: '' };
   const date = new Date(iso);
@@ -824,26 +914,48 @@ export default function CrmHomeTab({
 
       <View style={styles.perfCard}>
         <View style={styles.cardHead}>
-          <Text style={styles.cardTitle}>Performance</Text>
+          <Text style={styles.perfTitle}>{datePreset === 'today' ? "Today's performance" : 'Performance'}</Text>
           <Text style={styles.perfHint}>{dateLabel}</Text>
         </View>
-        <View style={styles.perfTop}>
-          <View>
-            <Text style={styles.perfBig}>{kpis.today_calls ?? 0}</Text>
-            <Text style={styles.perfBigLabel}>calls</Text>
-          </View>
-          <View style={styles.perfSide}>
-            <Text style={styles.perfSideLine}>Connected  {kpis.answered_calls ?? 0}/{kpis.today_calls ?? 0}</Text>
-            <Text style={styles.perfSideLine}>Bookings  {kpis.booking_confirmed ?? kpis.booked ?? 0}</Text>
-            <Text style={styles.perfSideLine}>Follow-ups  {kpis.followups_today ?? 0}</Text>
-          </View>
-        </View>
-        <View style={styles.perfChips}>
-          <Text style={styles.perfChip}>{kpis.answer_rate ?? 0}% pickup</Text>
-          <Text style={styles.perfChip}>{formatClockShort(kpis.avg_call_seconds)} avg</Text>
-          <Text style={styles.perfChip}>{formatTalk(kpis.talk_duration_seconds)} talk</Text>
-          <Text style={styles.perfChip}>{kpis.overdue_callbacks ?? 0} overdue</Text>
-        </View>
+        {(() => {
+          const calls = Number(kpis.today_calls || 0);
+          const connected = Number(kpis.answered_calls || 0);
+          const bookings = Number(kpis.booking_confirmed ?? kpis.booked ?? 0);
+          const talkSeconds = Number(kpis.talk_duration_seconds || 0);
+          const connectRatio = calls > 0 ? connected / calls : 0;
+          const talkRatio = Math.min(1, talkSeconds / (3 * 3600));
+          const bookRatio = calls > 0 ? Math.min(1, bookings / Math.max(calls, 1)) : bookings > 0 ? 1 : 0;
+          return (
+            <>
+              <View style={styles.perfBody}>
+                <PerfRing ratio={connectRatio} value={String(calls)} caption="calls" />
+                <View style={styles.perfBars}>
+                  <PerfBar label="Connected" value={`${connected} / ${calls}`} ratio={connectRatio} color="#15803D" />
+                  <PerfBar label="Talk time" value={formatTalk(talkSeconds)} ratio={talkRatio} color="#1D4ED8" />
+                  <PerfBar label="Bookings" value={String(bookings)} ratio={bookRatio} color="#7C3AED" />
+                </View>
+              </View>
+              <View style={styles.perfStats}>
+                <View style={styles.perfStat}>
+                  <Text style={[styles.perfStatValue, { color: '#15803D' }]}>{kpis.answer_rate ?? 0}%</Text>
+                  <Text style={styles.perfStatLabel}>Answer rate</Text>
+                </View>
+                <View style={styles.perfStat}>
+                  <Text style={styles.perfStatValue}>{formatClockShort(kpis.avg_call_seconds)}</Text>
+                  <Text style={styles.perfStatLabel}>Avg call</Text>
+                </View>
+                <View style={styles.perfStat}>
+                  <Text style={[styles.perfStatValue, { color: '#1D4ED8' }]}>{kpis.new_leads ?? 0}</Text>
+                  <Text style={styles.perfStatLabel}>New leads</Text>
+                </View>
+                <View style={styles.perfStat}>
+                  <Text style={[styles.perfStatValue, { color: '#DC2626' }]}>{kpis.overdue_callbacks ?? 0}</Text>
+                  <Text style={styles.perfStatLabel}>Overdue</Text>
+                </View>
+              </View>
+            </>
+          );
+        })()}
       </View>
 
       <SimpleBarChart
@@ -1300,6 +1412,28 @@ const styles = StyleSheet.create({
   boardMeta: { fontSize: 11, fontWeight: '700', color: '#64748B' },
   boardMe: { color: '#004AAD' },
   perfHint: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  perfTitle: { fontSize: 18, fontWeight: '800', color: '#0F2744' },
+  perfBody: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  perfBars: { flex: 1, minWidth: 0 },
+  perfBar: { marginBottom: 10 },
+  perfBarHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  perfBarLabel: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  perfBarValue: { fontSize: 13, fontWeight: '800', color: '#0F2744' },
+  perfTrack: { height: 6, borderRadius: 99, backgroundColor: '#EEF2F7', marginTop: 5, overflow: 'hidden' },
+  perfFill: { height: 6, borderRadius: 99 },
+  ringValue: { fontSize: 26, fontWeight: '800', color: '#0F2744', lineHeight: 30 },
+  ringCaption: { fontSize: 11, fontWeight: '600', color: '#64748B', marginTop: 1 },
+  perfStats: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  perfStat: {
+    flex: 1,
+    backgroundColor: '#F4F7FB',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  perfStatValue: { fontSize: 18, fontWeight: '800', color: '#0F2744' },
+  perfStatLabel: { marginTop: 2, fontSize: 11, fontWeight: '600', color: '#64748B', textAlign: 'center' },
   perfTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 12 },
   perfBig: { fontSize: 36, fontWeight: '800', color: '#0F2744', lineHeight: 40 },
   perfBigLabel: { fontSize: 13, color: '#64748B', fontWeight: '600' },

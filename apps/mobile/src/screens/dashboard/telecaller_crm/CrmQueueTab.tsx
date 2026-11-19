@@ -14,6 +14,7 @@ import {
   Pressable,
   AppState,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Icon } from '../../../components/Icon';
 import { apiFetch } from '../../../lib/api';
@@ -59,9 +60,11 @@ type Props = {
   onCustomEndChange?: (v: string) => void;
   /** Lead Manager ops: multi-select, bulk assign, bulk WA */
   managerOps?: boolean;
+  onOpenMenu?: () => void;
+  onAddLead?: () => void;
 };
 
-type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'otherReason' | 'city' | 'priority' | null;
+type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'otherReason' | 'city' | 'priority' | 'quick' | null;
 
 /** Match lead detail "Select status" — one Fresh, one Follow-up. */
 const DEFAULT_STATUS_FILTERS = mergeCrmStatusFilters([]);
@@ -185,10 +188,14 @@ export default function CrmQueueTab({
   onCustomStartChange,
   onCustomEndChange,
   managerOps = false,
+  onOpenMenu,
+  onAddLead,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const [leads, setLeads] = useState<any[]>([]);
   const [totalLeads, setTotalLeads] = useState(0);
   const [scopeTotal, setScopeTotal] = useState(0);
+  const [notCalled, setNotCalled] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -592,6 +599,7 @@ export default function CrmQueueTab({
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
       setTotalLeads(Number(data?.total || 0));
       setScopeTotal(Number(data?.scope_total || data?.total || 0));
+      setNotCalled(Number(data?.not_called || 0));
       setLoadError('');
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'Could not load leads';
@@ -871,83 +879,109 @@ export default function CrmQueueTab({
     }
   };
 
+  const assignedCount = scopeTotal > 0 ? scopeTotal : totalLeads;
+  const shownCount = Math.min(leads.length, totalLeads || leads.length);
+  const sortLabel = dateField === 'modified' ? 'Recently updated' : 'Newest first';
+
   return (
     <View style={styles.container}>
-      <View style={styles.searchRow}>
-        <View style={styles.searchBox}>
-        <Ionicons name="search" size={16} color="#fff" />
-        <TextInput
-          style={styles.search}
-          placeholder="Search name / phone / lead # / vehicle"
-          value={q}
-          onChangeText={setQ}
-          onSubmitEditing={() => {
-            const nextQ = q.trim();
-            setAppliedQ(nextQ);
-            persistLocalFilters({ q: nextQ });
-          }}
-          placeholderTextColor="rgba(255,255,255,0.8)"
-          returnKeyType="search"
-          autoCorrect={false}
-          autoCapitalize="none"
-          autoComplete="off"
-          spellCheck={false}
-          blurOnSubmit={false}
-        />
-        {q.length > 0 ? (
-          <TouchableOpacity
-            onPress={() => {
-              setQ('');
-              setAppliedQ('');
-              persistLocalFilters({ q: '' });
-            }}
-            style={styles.searchClearBtn}
-            accessibilityLabel="Clear search"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="close-circle" size={18} color="#fff" />
-          </TouchableOpacity>
-        ) : null}
-        </View>
-        {managerOps ? (
-        <View style={styles.viewToggle}>
-          <TouchableOpacity
-            style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnOn]}
-            onPress={() => setViewMode('list')}
-            accessibilityLabel="List view"
-          >
-            <Ionicons
-              name="list"
-              size={16}
-              color={viewMode === 'list' ? '#fff' : COLORS.primary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.viewToggleBtn, viewMode === 'chart' && styles.viewToggleBtnOn]}
-            onPress={() => setViewMode('chart')}
-            accessibilityLabel="Chart view"
-          >
-            <Ionicons
-              name="bar-chart"
-              size={16}
-              color={viewMode === 'chart' ? '#fff' : COLORS.primary}
-            />
-          </TouchableOpacity>
-        </View>
-        ) : null}
-        <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#F1F5F9' }}>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.primary }}>
-            {totalLeads.toLocaleString('en-IN')}
-            {filter !== 'all' && scopeTotal > 0 ? (
-              <Text style={{ color: '#94A3B8', fontWeight: '700' }}>
-                {' '}of {scopeTotal.toLocaleString('en-IN')}
-              </Text>
-            ) : null}
+      <View style={styles.leadHero}>
+        <Text style={styles.leadHeroTitle}>Leads</Text>
+        <View style={styles.leadHeroMeta}>
+          <Text style={styles.leadHeroSub} numberOfLines={2}>
+            {assignedCount.toLocaleString('en-IN')} {managerOps ? 'leads' : 'assigned to you'} · {dateLabel}
           </Text>
+          {appliedQ.trim() ? null : (
+          <View style={styles.notCalledPill}>
+            <Text style={styles.notCalledText}>
+              {notCalled.toLocaleString('en-IN')} not called
+            </Text>
+          </View>
+          )}
         </View>
-        <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.filterBtn}>
-          <Ionicons name="options-outline" size={18} color={COLORS.primary} />
-        </TouchableOpacity>
+      </View>
+
+      <View style={styles.leadSearchWrap}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color="#64748B" />
+          <TextInput
+            style={styles.search}
+            placeholder="Search name, mobile, car model..."
+            value={q}
+            onChangeText={setQ}
+            onSubmitEditing={() => {
+              const nextQ = q.trim();
+              setAppliedQ(nextQ);
+              persistLocalFilters({ q: nextQ });
+            }}
+            placeholderTextColor="#94A3B8"
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            autoComplete="off"
+            spellCheck={false}
+            blurOnSubmit={false}
+          />
+          {q.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => {
+                setQ('');
+                setAppliedQ('');
+                persistLocalFilters({ q: '' });
+              }}
+              style={styles.searchClearBtn}
+              accessibilityLabel="Clear search"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.leadListMeta}>
+        <Text style={styles.showingText}>
+          Showing {shownCount.toLocaleString('en-IN')} of {(totalLeads || shownCount).toLocaleString('en-IN')}
+        </Text>
+        <View style={styles.leadMetaActions}>
+          {managerOps ? (
+            <View style={styles.viewToggle}>
+              <TouchableOpacity
+                style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnOn]}
+                onPress={() => setViewMode('list')}
+                accessibilityLabel="List view"
+              >
+                <Ionicons name="list" size={16} color={viewMode === 'list' ? '#fff' : COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.viewToggleBtn, viewMode === 'chart' && styles.viewToggleBtnOn]}
+                onPress={() => setViewMode('chart')}
+                accessibilityLabel="Chart view"
+              >
+                <Ionicons name="bar-chart" size={16} color={viewMode === 'chart' ? '#fff' : COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          <TouchableOpacity
+            style={styles.sortChip}
+            onPress={() => setShowFilters(true)}
+            accessibilityLabel="Filters"
+          >
+            <Ionicons name="options-outline" size={16} color="#0F172A" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.sortChip}
+            onPress={() => {
+              const next = dateField === 'modified' ? 'created' : 'modified';
+              setDateField(next);
+              persistLocalFilters({ dateField: next });
+            }}
+            accessibilityLabel={sortLabel}
+          >
+            <Ionicons name="swap-vertical" size={14} color="#0F172A" />
+            <Text style={styles.sortChipText}>{sortLabel}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {openDropdown ? (
@@ -1444,7 +1478,7 @@ export default function CrmQueueTab({
       <Modal visible={showFilters} transparent animationType="slide" onRequestClose={closeFilters}>
         <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeFilters} />
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 20 }]}>
             <View style={styles.sheetHead}>
               <Text style={styles.sheetTitle}>Advanced Filters</Text>
               <TouchableOpacity style={styles.closeBtn} onPress={closeFilters} activeOpacity={0.85}>
@@ -1478,21 +1512,41 @@ export default function CrmQueueTab({
                 </TouchableOpacity>
               ))}
               <View style={{ height: 12 }} />
-              {renderSelect(
-                'status',
-                'Lead status',
-                filter,
-                statusFilters.map((c) => ({ value: c.id, label: c.label })),
-                (v) => {
-                  setFilter(v);
-                  onFilterChange?.(v);
-                  const nextLost = v === 'lost' ? lostReason : '';
-                  const nextOther = v === 'other' ? otherReason : '';
-                  if (v !== 'lost') setLostReason('');
-                  if (v !== 'other') setOtherReason('');
-                  persistLocalFilters({ statusFilter: v, lostReason: nextLost, otherReason: nextOther });
-                },
-              )}
+              <View style={styles.filterPair}>
+                <View style={styles.filterHalf}>
+                  {renderSelect(
+                    'status',
+                    'Lead status',
+                    filter,
+                    statusFilters.map((c) => ({ value: c.id, label: c.label })),
+                    (v) => {
+                      setFilter(v);
+                      onFilterChange?.(v);
+                      const nextLost = v === 'lost' ? lostReason : '';
+                      const nextOther = v === 'other' ? otherReason : '';
+                      if (v !== 'lost') setLostReason('');
+                      if (v !== 'other') setOtherReason('');
+                      persistLocalFilters({ statusFilter: v, lostReason: nextLost, otherReason: nextOther });
+                    },
+                  )}
+                </View>
+                <View style={styles.filterHalf}>
+                  {renderSelect(
+                    'dateField',
+                    'Date type',
+                    dateField,
+                    [
+                      { value: 'created', label: 'Created on' },
+                      { value: 'modified', label: 'Modified' },
+                    ],
+                    (v) => {
+                      const next = v === 'modified' ? 'modified' : 'created';
+                      setDateField(next);
+                      persistLocalFilters({ dateField: next });
+                    },
+                  )}
+                </View>
+              </View>
               {filter === 'lost'
                 ? renderSelect(
                     'lostReason',
@@ -1520,50 +1574,44 @@ export default function CrmQueueTab({
                     },
                   )
                 : null}
-              {renderSelect(
-                'dateField',
-                'Date type',
-                dateField,
-                [
-                  { value: 'created', label: 'Created on' },
-                  { value: 'modified', label: 'Modified' },
-                ],
-                (v) => {
-                  const next = v === 'modified' ? 'modified' : 'created';
-                  setDateField(next);
-                  persistLocalFilters({ dateField: next });
-                },
-              )}
 
-              <View style={styles.selectWrap}>
-                <Text style={styles.filterLabel}>Date range</Text>
-                <TouchableOpacity
-                  style={styles.selectBtn}
-                  onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
-                >
-                  <Text style={styles.selectBtnText}>
-                    {datePreset === 'custom' ? dateRange.label : dateLabel}
-                  </Text>
-                  <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                {openDropdown === 'date' ? (
-                  <View style={styles.selectMenu}>
-                    {CRM_DATE_PRESETS.map((p) => (
-                      <TouchableOpacity
-                        key={p.value}
-                        style={[styles.selectItem, datePreset === p.value && styles.selectItemActive]}
-                        onPress={() => {
-                          setDatePreset(p.value);
-                          setOpenDropdown(null);
-                        }}
-                      >
-                        <Text style={[styles.selectItemText, datePreset === p.value && styles.selectItemTextActive]}>
-                          {p.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
+              <View style={styles.filterPair}>
+                <View style={[styles.filterHalf, styles.selectWrap]}>
+                  <Text style={styles.filterLabel}>Date range</Text>
+                  <TouchableOpacity
+                    style={styles.selectBtn}
+                    onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
+                  >
+                    <Text style={styles.selectBtnText} numberOfLines={1}>
+                      {datePreset === 'custom' ? dateRange.label : dateLabel}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                  {openDropdown === 'date' ? (
+                    <View style={styles.selectMenu}>
+                      {CRM_DATE_PRESETS.map((p) => (
+                        <TouchableOpacity
+                          key={p.value}
+                          style={[styles.selectItem, datePreset === p.value && styles.selectItemActive]}
+                          onPress={() => {
+                            setDatePreset(p.value);
+                            setOpenDropdown(null);
+                          }}
+                        >
+                          <Text style={[styles.selectItemText, datePreset === p.value && styles.selectItemTextActive]}>
+                            {p.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.filterHalf}>
+                  {renderSelect('city', 'City', city, cityOptions, (v) => {
+                    setCity(v);
+                    persistLocalFilters({ city: v });
+                  })}
+                </View>
               </View>
 
               {datePreset === 'custom' ? (
@@ -1579,62 +1627,61 @@ export default function CrmQueueTab({
                 </View>
               ) : null}
 
-              {renderSelect('city', 'City', city, cityOptions, (v) => {
-                setCity(v);
-                persistLocalFilters({ city: v });
-              })}
-              {renderSelect('priority', 'Priority', priority, PRIORITY_OPTIONS, (v) => {
-                setPriority(v);
-                persistLocalFilters({ priority: v });
-              })}
-
-              <Text style={[styles.filterLabel, { marginTop: 10 }]}>Quick filters</Text>
-              {(
-                [
-                  {
-                    key: 'advIncomplete' as const,
-                    label: 'Fresh only',
-                    value: advIncomplete,
-                    set: setAdvIncomplete,
-                  },
-                  {
-                    key: 'advFollowUp' as const,
-                    label: 'Follow-up / reminder',
-                    value: advFollowUp,
-                    set: setAdvFollowUp,
-                  },
-                  {
-                    key: 'advHasVehicle' as const,
-                    label: 'Has reg. number',
-                    value: advHasVehicle,
-                    set: setAdvHasVehicle,
-                  },
-                  {
-                    key: 'advHasCoupon' as const,
-                    label: 'Has coupon',
-                    value: advHasCoupon,
-                    set: setAdvHasCoupon,
-                  },
-                ] as const
-              ).map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.advChip, opt.value && styles.advChipOn]}
-                  onPress={() => {
-                    const next = !opt.value;
-                    opt.set(next);
-                    persistLocalFilters({ [opt.key]: next });
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons
-                    name={opt.value ? 'checkbox' : 'square-outline'}
-                    size={18}
-                    color={opt.value ? COLORS.primary : COLORS.textSecondary}
-                  />
-                  <Text style={[styles.advChipText, opt.value && styles.advChipTextOn]}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
+              <View style={styles.filterPair}>
+                <View style={styles.filterHalf}>
+                  {renderSelect('priority', 'Priority', priority, PRIORITY_OPTIONS, (v) => {
+                    setPriority(v);
+                    persistLocalFilters({ priority: v });
+                  })}
+                </View>
+                <View style={styles.filterHalf}>
+                  {(() => {
+                    const quickOptions = [
+                      { key: 'advIncomplete' as const, label: 'Fresh only', value: advIncomplete, set: setAdvIncomplete },
+                      { key: 'advFollowUp' as const, label: 'Follow-up / reminder', value: advFollowUp, set: setAdvFollowUp },
+                      { key: 'advHasVehicle' as const, label: 'Has reg. number', value: advHasVehicle, set: setAdvHasVehicle },
+                      { key: 'advHasCoupon' as const, label: 'Has coupon', value: advHasCoupon, set: setAdvHasCoupon },
+                    ];
+                    const picked = quickOptions.filter((opt) => opt.value);
+                    const quickLabel =
+                      picked.length === 0 ? 'All' : picked.length === 1 ? picked[0].label : `${picked.length} selected`;
+                    const open = openDropdown === 'quick';
+                    return (
+                      <View style={[styles.selectWrap, open && styles.dropdownOpen]}>
+                        <Text style={styles.filterLabel}>Quick filters</Text>
+                        <TouchableOpacity
+                          style={styles.selectBtn}
+                          onPress={() => setOpenDropdown(open ? null : 'quick')}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.selectBtnText} numberOfLines={1}>{quickLabel}</Text>
+                          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                        {open ? (
+                          <View style={styles.selectMenu}>
+                            {quickOptions.map((opt) => (
+                              <TouchableOpacity
+                                key={opt.key}
+                                style={[styles.selectItem, opt.value && styles.selectItemActive]}
+                                onPress={() => {
+                                  const next = !opt.value;
+                                  opt.set(next);
+                                  persistLocalFilters({ [opt.key]: next });
+                                }}
+                              >
+                                <Text style={[styles.selectItemText, opt.value && styles.selectItemTextActive]}>
+                                  {opt.label}
+                                </Text>
+                                {opt.value ? <Ionicons name="checkmark" size={16} color={COLORS.primary} /> : null}
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })()}
+                </View>
+              </View>
 
               <View style={styles.sheetActions}>
                 <TouchableOpacity
@@ -1835,25 +1882,134 @@ export default function CrmQueueTab({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, overflow: 'visible' },
-  searchRow: {
+  container: { flex: 1, backgroundColor: '#F4F7FB', overflow: 'visible' },
+  leadHero: {
+    backgroundColor: '#004AAD',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 28,
+  },
+  leadHeroTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginHorizontal: SPACING.md,
-    marginTop: 4,
-    marginBottom: 2,
   },
-  searchBox: {
+  heroIconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBrand: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#023D95',
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    minWidth: 0,
   },
-  search: { flex: 1, paddingVertical: 10, color: '#fff', fontWeight: '600' },
+  heroLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBrandText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  leadHeroTitle: {
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: '800',
+    marginTop: 6,
+    marginLeft: 10,
+  },
+  leadHeroMeta: {
+    marginTop: 4,
+    marginHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  leadHeroSub: {
+    flex: 1,
+    minWidth: 0,
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  notCalledPill: {
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  notCalledText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  leadSearchWrap: {
+    marginTop: -22,
+    marginHorizontal: SPACING.md,
+  },
+  leadListMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginHorizontal: SPACING.md,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  leadMetaActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  showingText: {
+    flex: 1,
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  sortChipText: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  search: { flex: 1, paddingVertical: 14, color: '#0F172A', fontSize: 15, fontWeight: '600' },
   dropdownBackdrop: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 40,
@@ -1982,6 +2138,8 @@ const styles = StyleSheet.create({
     maxHeight: 320,
   },
   selectWrap: { marginTop: 10, zIndex: 5 },
+  filterPair: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  filterHalf: { flex: 1, minWidth: 0 },
   selectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2223,7 +2381,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
     backgroundColor: '#EFF6FF',
   },
-  advChipText: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  advChipText: { flex: 1, fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
   advChipTextOn: { color: COLORS.primary },
   secondary: {
     flex: 1,

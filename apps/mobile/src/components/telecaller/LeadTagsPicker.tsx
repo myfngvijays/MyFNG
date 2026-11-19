@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -139,9 +138,9 @@ export default function LeadTagsPicker({
     <View style={styles.wrap}>
       <View style={styles.headerRow}>
         <Text style={styles.label}>Lead tags</Text>
+        <Text style={styles.hint}>Google / Meta / WhatsApp reference</Text>
         {saving ? <ActivityIndicator size="small" color="#004AAD" /> : null}
       </View>
-      <Text style={styles.hint}>Google / Meta / WhatsApp reference tags</Text>
 
       <View style={styles.pills}>
         {selectedTags.length === 0 ? (
@@ -170,11 +169,7 @@ export default function LeadTagsPicker({
       {loading ? (
         <ActivityIndicator style={{ marginTop: 8 }} color="#004AAD" />
       ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listRow}
-        >
+        <View style={styles.listRow}>
           {filtered.map((t) => {
             const on = selected.has(t.id);
             return (
@@ -188,13 +183,14 @@ export default function LeadTagsPicker({
                 ]}
               >
                 <Text style={[styles.choiceText, on && styles.choiceTextOn]}>
+                  {on ? '' : '+ '}
                   {t.name}
                   {isNewLeadTag(t.created_at) ? '  NEW' : ''}
                 </Text>
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
       )}
 
       {canManage ? (
@@ -221,6 +217,7 @@ export default function LeadTagsPicker({
 
 const styles = StyleSheet.create({
   wrap: {
+    marginTop: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -236,7 +233,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  hint: { fontSize: 11, color: '#94A3B8', marginTop: 2, marginBottom: 8 },
+  hint: { fontSize: 11, color: '#94A3B8', flex: 1 },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, minHeight: 28, marginBottom: 8 },
   empty: { fontSize: 12, color: '#94A3B8' },
   pill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
@@ -252,7 +249,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: '#F8FAFC',
   },
-  listRow: { gap: 8, paddingVertical: 4 },
+  listRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4 },
   choice: {
     borderWidth: 1.5,
     borderRadius: 999,

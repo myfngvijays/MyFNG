@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
   Image,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,6 +56,12 @@ export default function WorkshopCrmShell({
   const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuSlide = useRef(new Animated.Value(320)).current;
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuSlide.setValue(320);
+    Animated.timing(menuSlide, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+  }, [menuOpen, menuSlide]);
 
   const drawerTopPad =
     Math.max(
@@ -163,9 +170,9 @@ export default function WorkshopCrmShell({
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
 
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { backgroundColor: '#004AAD', borderBottomColor: 'transparent' }]}>
         <View style={styles.topSide} pointerEvents="box-none">
           {navigation?.canGoBack?.() && !isHome ? (
             <TouchableOpacity
@@ -176,21 +183,9 @@ export default function WorkshopCrmShell({
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
-              <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
+              <Ionicons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity
-            style={styles.menuBtn}
-            onPress={() => setMenuOpen(true)}
-            activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel="Open menu"
-          >
-            <Ionicons name="menu" size={26} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.topCenter} pointerEvents="box-none">
           <TouchableOpacity
             onPress={goHome}
             activeOpacity={0.7}
@@ -200,7 +195,7 @@ export default function WorkshopCrmShell({
           >
             <Image
               source={require('../../../assets/logo.png')}
-              style={styles.topLogo}
+              style={[styles.topLogo, { tintColor: '#FFFFFF', marginLeft: 8 }]}
               resizeMode="contain"
             />
           </TouchableOpacity>
@@ -219,7 +214,7 @@ export default function WorkshopCrmShell({
               unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'
             }
           >
-            <Ionicons name="notifications-outline" size={22} color={COLORS.primary} />
+            <Ionicons name="notifications-outline" size={22} color="#fff" />
             {unreadCount > 0 ? (
               <View style={styles.topBadge}>
                 <Text style={styles.topBadgeText}>
@@ -234,7 +229,17 @@ export default function WorkshopCrmShell({
             accessibilityLabel="Logout"
             accessibilityRole="button"
           >
-            <Ionicons name="log-out-outline" size={22} color="#DC2626" />
+            <Ionicons name="log-out-outline" size={22} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.menuBtn}
+            onPress={() => setMenuOpen(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+          >
+            <Ionicons name="menu" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -258,7 +263,7 @@ export default function WorkshopCrmShell({
         onRequestClose={() => setMenuOpen(false)}
       >
         <View style={styles.drawerRoot}>
-          <View style={styles.drawerPanel}>
+          <Animated.View style={[styles.drawerPanel, { transform: [{ translateX: menuSlide }] }]}>
             <View style={styles.drawerSafe}>
               <View style={[styles.tcHeader, { paddingTop: drawerTopPad }]}>
                 <TouchableOpacity
@@ -351,7 +356,7 @@ export default function WorkshopCrmShell({
                 </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
+          </Animated.View>
           <Pressable style={styles.drawerScrim} onPress={() => setMenuOpen(false)} />
         </View>
       </Modal>
@@ -360,8 +365,8 @@ export default function WorkshopCrmShell({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
-  body: { flex: 1, minHeight: 0 },
+  container: { flex: 1, backgroundColor: '#004AAD', position: 'relative' },
+  body: { flex: 1, minHeight: 0, backgroundColor: COLORS.background },
   topBar: {
     zIndex: 20,
     elevation: 4,
@@ -440,7 +445,7 @@ const styles = StyleSheet.create({
   },
   drawerRoot: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     backgroundColor: 'transparent',
   },
   drawerScrim: {
@@ -455,7 +460,7 @@ const styles = StyleSheet.create({
     shadowColor: '#0F172A',
     shadowOpacity: 0.28,
     shadowRadius: 18,
-    shadowOffset: { width: 4, height: 0 },
+    shadowOffset: { width: -4, height: 0 },
     overflow: 'hidden',
   },
   drawerSafe: { flex: 1, backgroundColor: COLORS.primary },

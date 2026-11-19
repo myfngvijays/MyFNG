@@ -70,6 +70,7 @@ type Kpis = {
   answered_calls?: number;
   answer_rate?: number;
   talk_duration_seconds?: number;
+  avg_call_seconds?: number;
   my_rank?: number | null;
   leaderboard_size?: number;
 };
@@ -914,60 +915,72 @@ export default function TelecallerCrmHomePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3">
-              <div className="rounded-2xl border border-[#C7D7F5] bg-[#F3F7FF] p-3.5 shadow-sm sm:p-4">
-                <h2 className="mb-2.5 text-[14px] font-bold text-[#023D95]">Calls in range</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div className="text-center">
-                    <div className="text-lg sm:text-xl font-extrabold text-[#004AAD] tabular-nums">
-                      {kpis.today_calls ?? 0}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Total</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg sm:text-xl font-extrabold text-[#004AAD] tabular-nums">
-                      {kpis.answered_calls ?? 0}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Answered</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg sm:text-xl font-extrabold text-emerald-600 tabular-nums">
-                      {kpis.answer_rate ?? 0}%
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Answer Rate</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg sm:text-xl font-extrabold text-slate-800 tabular-nums">
-                      {formatDurationShort(Number(kpis.talk_duration_seconds || 0))}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Talk time</div>
-                  </div>
-                </div>
-                {kpis.my_rank != null ? (
-                  <Link
-                    href={`${base}/reports/leaderboard`}
-                    className="mt-3 flex items-center justify-between rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-800 hover:bg-indigo-100"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                      Today rank #{kpis.my_rank}
-                      {kpis.leaderboard_size ? ` / ${kpis.leaderboard_size}` : ''}
-                    </span>
-                    <span className="text-indigo-500">→</span>
-                  </Link>
-                ) : (
-                  <Link
-                    href={`${base}/reports/leaderboard`}
-                    className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                      Your leaderboard
-                    </span>
-                    <span>→</span>
-                  </Link>
-                )}
+            <div className="rounded-2xl border border-[#E6EDF5] bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <h2 className="text-lg font-extrabold" style={{ color: '#0F2744' }}>
+                  {datePreset === 'today' ? "Today's performance" : 'Performance'}
+                </h2>
+                <span className="text-xs font-semibold text-slate-500">{dateLabel}</span>
               </div>
+              {(() => {
+                const calls = Number(kpis.today_calls || 0);
+                const connected = Number(kpis.answered_calls || 0);
+                const bookings = Number(kpis.booking_confirmed ?? kpis.booked || 0);
+                const talkSeconds = Number(kpis.talk_duration_seconds || 0);
+                const connectRatio = calls > 0 ? connected / calls : 0;
+                const talkRatio = Math.min(1, talkSeconds / (3 * 3600));
+                const bookRatio = calls > 0 ? Math.min(1, bookings / calls) : bookings > 0 ? 1 : 0;
+                const avg = Math.max(0, Math.floor(Number(kpis.avg_call_seconds || 0)));
+                const avgLabel = `${Math.floor(avg / 60)}:${String(avg % 60).padStart(2, '0')}`;
+                const bars = [
+                  { label: 'Connected', value: `${connected} / ${calls}`, ratio: connectRatio, color: '#15803D' },
+                  { label: 'Talk time', value: formatDurationShort(talkSeconds), ratio: talkRatio, color: '#1D4ED8' },
+                  { label: 'Bookings', value: String(bookings), ratio: bookRatio, color: '#7C3AED' },
+                ];
+                const stats = [
+                  { value: `${kpis.answer_rate ?? 0}%`, label: 'Answer rate', color: '#15803D' },
+                  { value: avgLabel, label: 'Avg call', color: '#0F2744' },
+                  { value: String(kpis.new_leads ?? 0), label: 'New leads', color: '#1D4ED8' },
+                  { value: String(kpis.overdue_callbacks ?? 0), label: 'Overdue', color: '#DC2626' },
+                ];
+                return (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <div className="relative h-[104px] w-[104px] shrink-0">
+                        <div
+                          className="h-full w-full rounded-full"
+                          style={{ background: `conic-gradient(#1D4ED8 ${Math.round(connectRatio * 100)}%, #E7EEF8 0)` }}
+                        />
+                        <div className="absolute inset-[11px] flex flex-col items-center justify-center rounded-full bg-white">
+                          <div className="text-[26px] font-extrabold leading-none text-[#0F2744]">{calls}</div>
+                          <div className="mt-1 text-[11px] font-semibold text-slate-500">calls</div>
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2.5">
+                        {bars.map((bar) => (
+                          <div key={bar.label}>
+                            <div className="flex items-center justify-between gap-2 text-[13px]">
+                              <span className="font-bold text-slate-700">{bar.label}</span>
+                              <span className="font-extrabold text-[#0F2744]">{bar.value}</span>
+                            </div>
+                            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#EEF2F7]">
+                              <div className="h-full rounded-full" style={{ width: `${Math.round(bar.ratio * 100)}%`, backgroundColor: bar.color }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-4 gap-2">
+                      {stats.map((stat) => (
+                        <div key={stat.label} className="rounded-xl bg-[#F4F7FB] px-1 py-2.5 text-center">
+                          <div className="text-lg font-extrabold" style={{ color: stat.color }}>{stat.value}</div>
+                          <div className="mt-0.5 text-[11px] font-semibold leading-tight text-slate-500">{stat.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </>
         )}

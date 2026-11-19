@@ -13,6 +13,7 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
 import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '../../../components/telecaller/CrmFollowUpDateTime';
@@ -138,6 +139,7 @@ export default function CrmBookWizard({
   hideModeSwitch = false,
   initialPhone = null,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const canManageTags = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
     String((user as any)?.roles?.role_code || (user as any)?.role_code || '').toUpperCase(),
@@ -805,16 +807,6 @@ export default function CrmBookWizard({
       >
         {mode === 'lead' && (
           <>
-            <View style={styles.previewCard}>
-              <Text style={styles.previewLabel}>Preview</Text>
-              <Text style={styles.previewName}>{form.customer_name.trim() || 'Customer name'}</Text>
-              <Text style={styles.previewPhone}>{form.customer_phone || 'Phone number'}</Text>
-              <Text style={styles.previewMeta}>
-                {form.city || 'City'}{form.pincode ? ` · ${form.pincode}` : ''}
-              </Text>
-              <Text style={styles.previewMeta}>{carDisplay || 'Car'}</Text>
-              <Text style={styles.previewMeta}>{selectedLeadStatus?.label || 'Status'}</Text>
-            </View>
             <Field
               label="Customer Name *"
               value={form.customer_name}
@@ -945,7 +937,7 @@ export default function CrmBookWizard({
               </View>
             )}
 
-            <Text style={styles.sectionLabel}>Lead Status</Text>
+            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Lead Status</Text>
             <TouchableOpacity
               style={styles.selectBtn}
               onPress={() => setStatusMenuOpen(true)}
@@ -1003,10 +995,12 @@ export default function CrmBookWizard({
               </>
             ) : null}
 
-            <LeadTagsPicker
-              canManage={canManageTags}
-              onSelectionChange={setSelectedTagIds}
-            />
+            <View style={{ marginTop: 16 }}>
+              <LeadTagsPicker
+                canManage={canManageTags}
+                onSelectionChange={setSelectedTagIds}
+              />
+            </View>
 
             <Text style={styles.sectionLabel}>Referred by</Text>
             {referredBy ? (
@@ -1441,6 +1435,19 @@ export default function CrmBookWizard({
             </View>
           </>
         )}
+
+        <View style={[styles.previewCard, { marginTop: 18 }]}>
+          <Text style={styles.previewLabel}>Preview</Text>
+          <Text style={styles.previewName}>{form.customer_name.trim() || 'Customer name'}</Text>
+          <Text style={styles.previewPhone}>{form.customer_phone || 'Phone number'}</Text>
+          <Text style={styles.previewMeta}>
+            {form.city || 'City'}{form.pincode ? ` · ${form.pincode}` : ''}
+          </Text>
+          <Text style={styles.previewMeta}>{carDisplay || 'Car'}</Text>
+          <Text style={styles.previewMeta}>
+            {mode === 'lead' ? selectedLeadStatus?.label || 'Status' : 'Booking'}
+          </Text>
+        </View>
       </ScrollView>
 
       <Modal
@@ -1493,7 +1500,7 @@ export default function CrmBookWizard({
         </View>
       </Modal>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 14 }]}>
         {mode === 'lead' && !canNext ? (
           <Text style={styles.footerHint}>Name and 10-digit phone required</Text>
         ) : null}
@@ -1750,7 +1757,7 @@ const styles = StyleSheet.create({
   previewPhone: { fontSize: 14, fontWeight: '700', color: COLORS.primary, marginTop: 2 },
   previewMeta: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
   scroll: { flex: 1, minHeight: 0 },
-  content: { paddingHorizontal: SPACING.md, paddingBottom: 16, flexGrow: 1 },
+  content: { paddingHorizontal: SPACING.md, paddingBottom: 28, flexGrow: 1 },
   sectionLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6, marginTop: 4 },
   typeGrid: {
     flexDirection: 'row',

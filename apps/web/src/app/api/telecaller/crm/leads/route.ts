@@ -454,6 +454,25 @@ export async function GET(request: NextRequest) {
       console.warn('[crm/leads] stale follow-up heal skipped', fuHealErr);
     });
 
+    let notCalled = 0;
+    if (!wantOverview && !searching) {
+      try {
+        let notCalledQuery = db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .is('deleted_at', null)
+          .is('last_call_at', null);
+        notCalledQuery = applyAssigneeScope(notCalledQuery);
+        notCalledQuery = applyCrmLeadDateRange(notCalledQuery, null, from, to, dateField);
+        const notCalledRes = await notCalledQuery;
+        if (!notCalledRes.error && typeof notCalledRes.count === 'number') {
+          notCalled = notCalledRes.count;
+        }
+      } catch {
+        /* count is optional */
+      }
+    }
+
     let scopeTotal = filteredTotal;
     if (!searching && filter && filter !== 'all') {
       let scopeQuery = db
@@ -474,6 +493,7 @@ export async function GET(request: NextRequest) {
       leads: leadsWithRepeat,
       total: filteredTotal,
       scope_total: scopeTotal,
+      not_called: notCalled,
       page,
       page_size: pageSize,
       scope: seesAll ? 'all' : 'mine',

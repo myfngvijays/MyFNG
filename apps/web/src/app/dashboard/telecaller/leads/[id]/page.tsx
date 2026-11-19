@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
 import {
   Phone, Mail, MapPin, Car, Calendar, Clock, FileText,
-  User, Building2, PhoneCall, MessageSquare, ArrowLeft,
+  User, Building2, PhoneCall, MessageSquare, ArrowLeft, Copy, Pencil, Bell,
   CheckCircle, AlertCircle, TrendingUp, ArrowRightLeft, Users, Wrench, X, Trash2, Crown
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -33,6 +33,13 @@ import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
 import CallReminderForm from '@/components/telecaller/crm/CallReminderForm';
 import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
+
+function webLeadInitials(name?: string | null) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '•';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+}
 
 export function LeadDetailContent({
   panelLeadId,
@@ -807,6 +814,106 @@ export function LeadDetailContent({
             : 'mx-auto w-full min-w-0 max-w-none space-y-4 pb-8 sm:space-y-5'
         }
       >
+        {!isPanel ? (
+          <div className="lg:hidden">
+            <div className="rounded-t-2xl bg-[#004AAD] px-4 pb-12 pt-4">
+              <div className="flex items-center gap-3">
+                {!isEmbed ? (
+                  <button type="button" onClick={leaveLead} className="rounded-full bg-white/15 p-2" aria-label="Back">
+                    <ArrowLeft className="h-5 w-5 text-white" />
+                  </button>
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-extrabold text-white" style={{ color: '#ffffff' }}>Lead details</p>
+                  <p className="text-xs font-semibold text-white/80">#{lead.lead_number || '—'}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => (editing ? exitEditing() : setEditing(true))}
+                  className="rounded-full bg-white/15 p-2"
+                  aria-label={editing ? 'Close edit' : 'Edit lead'}
+                >
+                  <Pencil className="h-4 w-4 text-white" />
+                </button>
+              </div>
+              <div className="mt-4 flex items-center gap-3">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-lg font-extrabold text-[#1E3A8A]">
+                  {webLeadInitials(lead.customer_name)}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-2xl font-extrabold text-white" style={{ color: '#ffffff' }}>
+                    {lead.customer_name || 'Customer'}
+                  </p>
+                  <span className="mt-1 inline-flex max-w-full items-center rounded-full bg-white px-2.5 py-1 text-xs font-bold text-indigo-900">
+                    {leadDisplayStatus(lead)}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2 rounded-2xl bg-white/15 px-3 py-3">
+                <Phone className="h-4 w-4 shrink-0 text-white" />
+                <span className="min-w-0 flex-1 truncate text-base font-bold text-white">{lead.customer_phone || 'No phone'}</span>
+                {lead.customer_phone ? (
+                  <button
+                    type="button"
+                    aria-label="Copy phone"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(String(lead.customer_phone));
+                      toast.success('Phone copied');
+                    }}
+                  >
+                    <Copy className="h-4 w-4 text-white" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="relative z-10 -mt-8 mx-2 rounded-2xl bg-white p-3 shadow-md">
+              <div className="grid grid-cols-4 gap-1">
+                <button type="button" disabled={calling || !lead.customer_phone} onClick={() => void handleClickToCall()} className="flex flex-col items-center gap-1.5 disabled:opacity-50">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1D4ED8] text-white"><PhoneCall className="h-5 w-5" /></span>
+                  <span className="text-[11px] font-bold text-slate-700">Call</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!lead.customer_phone}
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('myfng:open-wa-chat', {
+                      detail: { phone: String(lead.customer_phone || '').replace(/\D/g, ''), preview: lead.problem_description || undefined },
+                    }));
+                  }}
+                  className="flex flex-col items-center gap-1.5 disabled:opacity-50"
+                >
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><WhatsAppIcon className="h-5 w-5" /></span>
+                  <span className="text-[11px] font-bold text-slate-700">WhatsApp</span>
+                </button>
+                <button type="button" disabled={sendingPricing} onClick={() => void sendPricingWhatsApp()} className="flex flex-col items-center gap-1.5 disabled:opacity-50">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700"><MessageSquare className="h-5 w-5" /></span>
+                  <span className="text-[11px] font-bold text-slate-700">Pricing</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('lead-call-reminders')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  className="flex flex-col items-center gap-1.5"
+                >
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700"><Bell className="h-5 w-5" /></span>
+                  <span className="text-[11px] font-bold text-slate-700">Remind</span>
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                {[serviceGroups.flatMap((g) => g.names)[0] || lead.service_type, lead.city].filter(Boolean).length ? (
+                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                    {[serviceGroups.flatMap((g) => g.names)[0] || lead.service_type, lead.city].filter(Boolean).join(' · ')}
+                  </span>
+                ) : null}
+                {lead.created_at ? (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">Created {formatDateTime(lead.created_at)}</span>
+                ) : null}
+                {lead.assigned_telecaller?.full_name ? (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">Owner · {lead.assigned_telecaller.full_name}</span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
         {isLeadManager ? <LeadBrainCard leadId={leadId} basePath={base} /> : null}
         {editing ? (
           <div className={isPanel ? 'lead-detail-split min-w-0' : 'grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3'}>
@@ -863,7 +970,7 @@ export function LeadDetailContent({
                 </button>
               </div>
 
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <div id="lead-call-reminders" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-black text-[#023D95] flex items-center gap-1.5">
                     <Clock className="w-4 h-4" /> Call reminders

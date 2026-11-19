@@ -470,7 +470,8 @@ function TelecallerCrmLeadsContent() {
   const [pageSize, setPageSize] = useState<25 | 50 | 75 | 100>(25);
   const [page, setPage] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
-  const [, setScopeTotal] = useState(0);
+  const [scopeTotal, setScopeTotal] = useState(0);
+  const [notCalled, setNotCalled] = useState(0);
   const [visibleColumns, setVisibleColumns] = useState<LeadsColumnVisibility>(DEFAULT_LEADS_COLUMNS);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [columnsQuery, setColumnsQuery] = useState('');
@@ -1219,6 +1220,7 @@ function TelecallerCrmLeadsContent() {
         let all: any[] = [];
         let total = 0;
         let scope = 0;
+        let notCalledCount = 0;
         for (;;) {
           if (loadGen.current !== gen) return;
           const params = new URLSearchParams(baseParams);
@@ -1228,10 +1230,16 @@ function TelecallerCrmLeadsContent() {
           const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
           const data = await res.json();
           if (loadGen.current !== gen) return;
-          if (!res.ok) throw new Error(data?.error || 'Failed');
+          if (!res.ok) {
+            if (res.status === 401 && !silent && !bootedRef.current) {
+              window.location.assign('/login');
+            }
+            return;
+          }
           const batch = Array.isArray(data?.leads) ? data.leads : [];
           total = Number(data?.total || 0);
           scope = Number(data?.scope_total || 0);
+          if (pageNum === 1) notCalledCount = Number(data?.not_called || 0);
           all = all.concat(batch);
           if (batch.length === 0 || pageNum * pageLimit >= total || pageNum >= 80) break;
           pageNum += 1;
@@ -1240,6 +1248,7 @@ function TelecallerCrmLeadsContent() {
         setLeads(all);
         setTotalLeads(total || all.length);
         setScopeTotal(scope || total || all.length);
+        setNotCalled(notCalledCount);
       } else {
         const params = new URLSearchParams(baseParams);
         params.set('limit', String(pageSize));
@@ -1247,17 +1256,25 @@ function TelecallerCrmLeadsContent() {
         const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
         const data = await res.json();
         if (loadGen.current !== gen) return;
-        if (!res.ok) throw new Error(data?.error || 'Failed');
+        if (!res.ok) {
+          if (res.status === 401 && !silent && !bootedRef.current) {
+            window.location.assign('/login');
+          }
+          return;
+        }
         setLeads(Array.isArray(data?.leads) ? data.leads : []);
         setTotalLeads(Number(data?.total || 0));
         setScopeTotal(Number(data?.scope_total || data?.total || 0));
+        setNotCalled(Number(data?.not_called || 0));
       }
     } catch (e) {
-      console.error(e);
+      const message = e instanceof Error ? e.message : '';
+      if (!/unauthorized/i.test(message)) console.error(e);
       if (!bootedRef.current) {
         setLeads([]);
         setTotalLeads(0);
         setScopeTotal(0);
+        setNotCalled(0);
       }
     } finally {
       if (loadGen.current === gen) {
@@ -1576,48 +1593,64 @@ function TelecallerCrmLeadsContent() {
   return (
     <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full min-w-0 max-w-none space-y-3 pb-24 sm:space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="shrink-0 text-2xl font-extrabold text-[#023D95] md:text-3xl">Leads</h1>
-          <div className="flex w-full min-w-0 items-center gap-2 sm:max-w-[36rem] sm:flex-1">
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white" />
-              <input
-                className="w-full rounded-xl border border-[#023D95] bg-[#023D95] py-2.5 pl-9 pr-3 text-sm font-semibold text-white placeholder:text-white/80 focus:outline-none focus:ring-2 focus:ring-white/40"
-                placeholder="Search name, phone, lead #, vehicle"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-              />
+        <div className="overflow-hidden rounded-2xl bg-[#004AAD] px-4 pb-7 pt-4 text-white sm:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-3xl font-black leading-none text-white" style={{ color: '#ffffff' }}>Leads</h1>
+              <p className="mt-2 text-sm font-semibold text-white/85">
+                {(scopeTotal || totalLeads).toLocaleString('en-IN')}{' '}
+                {isLeadManager ? 'leads' : 'assigned to you'} · {dateRangeLabel}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setQ('');
-                setAppliedQ('');
-                persistAll({ q: '' });
-                syncFiltersToUrl({ q: '' });
-              }}
-              className="inline-flex h-10 shrink-0 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#023D95] hover:bg-slate-50"
-              aria-label="Refresh"
-              title="Refresh"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
+            <span className={`shrink-0 rounded-full bg-white/15 px-3 py-1.5 text-sm font-bold ${appliedQ.trim() ? 'invisible' : ''}`}>
+              {notCalled.toLocaleString('en-IN')} not called
+            </span>
           </div>
+        </div>
+        <div className="-mt-8 flex flex-wrap items-center gap-2 px-3 sm:px-4">
+          <div className="relative min-w-0 flex-1 sm:max-w-xl">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-9 pr-3 text-sm font-semibold text-slate-900 shadow-md placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
+              placeholder="Search name, mobile, car model..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setQ('');
+              setAppliedQ('');
+              persistAll({ q: '' });
+              syncFiltersToUrl({ q: '' });
+            }}
+            className="inline-flex h-11 shrink-0 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#023D95] shadow-sm hover:bg-slate-50"
+            aria-label="Refresh"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
           <div className="ml-auto shrink-0">
             <LeadsSavedViews snapshot={viewSnapshot} onApply={applySavedView} />
           </div>
         </div>
+        <p className="px-1 text-sm font-bold text-slate-700">
+          {totalLeads === 0
+            ? 'Showing 0 of 0'
+            : `Showing ${pageStart.toLocaleString('en-IN')}–${pageEnd.toLocaleString('en-IN')} of ${totalLeads.toLocaleString('en-IN')}`}
+        </p>
 
         {isLeadManager && overview ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">

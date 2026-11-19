@@ -601,6 +601,7 @@ export default function TelecallerAdvancedCRM() {
   const [tab, setTab] = useState('home');
   const [previewGate, setPreviewGate] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuSlide = useRef(new Animated.Value(320)).current;
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
   const [queueQuery, setQueueQuery] = useState('');
   const [engageSegment, setEngageSegment] = useState('followups');
@@ -821,6 +822,12 @@ export default function TelecallerAdvancedCRM() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuSlide.setValue(320);
+    Animated.timing(menuSlide, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+  }, [menuOpen, menuSlide]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -1059,50 +1066,31 @@ export default function TelecallerAdvancedCRM() {
   const queueActive = tab === 'queue' && !detailLeadId;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']} {...edgeSwipe.panHandlers}>
-      <StatusBar barStyle={detailLeadId ? 'light-content' : 'dark-content'} />
+    <SafeAreaView
+      style={[styles.container, !detailLeadId ? { backgroundColor: '#004AAD' } : null]}
+      edges={['top']}
+      {...edgeSwipe.panHandlers}
+    >
+      <StatusBar barStyle="light-content" />
 
       {!detailLeadId ? (
-        <View style={styles.topBar}>
+        <View style={[styles.topBar, styles.topBarQueue]}>
           <View style={styles.topSide} pointerEvents="box-none">
-            {preview ? (
-              <Image
-                source={require('../../../../assets/logo.png')}
-                style={styles.previewLogo}
-                resizeMode="contain"
-              />
-            ) : (
-            <>
             <TouchableOpacity
-              style={styles.menuBtn}
-              onPress={() => setMenuOpen(true)}
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Open menu"
-            >
-              <Ionicons name="menu" size={26} color={COLORS.primary} />
-            </TouchableOpacity>
-            </>
-            )}
-          </View>
-          {preview ? null : (
-          <View style={styles.topCenter} pointerEvents="box-none">
-            <TouchableOpacity
-              onPress={goHome}
+              onPress={preview ? undefined : goHome}
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityRole="button"
               accessibilityLabel="Go to home"
+              disabled={preview}
             >
               <Image
                 source={require('../../../../assets/logo.png')}
-                style={styles.topLogo}
+                style={[preview ? styles.previewLogo : styles.topLogo, styles.topLogoWhite, { marginLeft: 8 }]}
                 resizeMode="contain"
               />
             </TouchableOpacity>
           </View>
-          )}
           <View style={styles.topSideRight} pointerEvents="box-none">
             {preview ? (
               <TouchableOpacity
@@ -1121,7 +1109,7 @@ export default function TelecallerAdvancedCRM() {
               onPress={() => navigation.navigate('TelecallerFollowUps')}
               accessibilityLabel="Reminders"
             >
-              <Ionicons name="alarm-outline" size={22} color={COLORS.primary} />
+              <Ionicons name="alarm-outline" size={22} color="#fff" />
               {reminderBadge > 0 ? (
                 <View style={styles.topBadge}>
                   <Text style={styles.topBadgeText}>
@@ -1145,7 +1133,7 @@ export default function TelecallerAdvancedCRM() {
                   : 'Notifications'
               }
             >
-              <Ionicons name="notifications-outline" size={22} color={COLORS.primary} />
+              <Ionicons name="notifications-outline" size={22} color="#fff" />
               {unreadCount > 0 ? (
                 <View style={styles.topBadge}>
                   <Text style={styles.topBadgeText}>
@@ -1162,7 +1150,17 @@ export default function TelecallerAdvancedCRM() {
               accessibilityLabel="Logout"
               accessibilityRole="button"
             >
-              <Ionicons name="log-out-outline" size={22} color="#DC2626" />
+              <Ionicons name="log-out-outline" size={22} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuBtn}
+              onPress={() => setMenuOpen(true)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Open menu"
+            >
+              <Ionicons name="menu" size={26} color="#fff" />
             </TouchableOpacity>
             </>
             )}
@@ -1232,6 +1230,11 @@ export default function TelecallerAdvancedCRM() {
               initialFilter={queueFilter}
               initialQuery={queueQuery}
               onFilterChange={persistQueueFilter}
+              onOpenMenu={() => setMenuOpen(true)}
+              onAddLead={() => {
+                setBookMode('lead');
+                setTab('book');
+              }}
               onOpenLead={(id) => openLead(id, true)}
               onEditLead={(id) => openLead(id, true)}
             />
@@ -1389,7 +1392,7 @@ export default function TelecallerAdvancedCRM() {
         onRequestClose={() => setMenuOpen(false)}
       >
         <View style={styles.drawerRoot}>
-          <View style={styles.drawerPanel}>
+          <Animated.View style={[styles.drawerPanel, { transform: [{ translateX: menuSlide }] }]}>
             <View style={styles.drawerSafe}>
               {/* Brand avatar — always MyFNG icon for telecaller / LM CRM */}
               <View style={[styles.tcHeader, { paddingTop: drawerTopPad }]}>
@@ -1546,7 +1549,7 @@ export default function TelecallerAdvancedCRM() {
                 </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
+          </Animated.View>
           <Pressable style={styles.drawerScrim} onPress={() => setMenuOpen(false)} />
         </View>
       </Modal>
@@ -1611,7 +1614,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  body: { flex: 1, minHeight: 0, overflow: 'hidden' },
+  body: { flex: 1, minHeight: 0, overflow: 'hidden', backgroundColor: COLORS.background },
   activeTab: { zIndex: 2, overflow: 'visible' },
   topBar: {
     zIndex: 20,
@@ -1624,6 +1627,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
     backgroundColor: '#fff',
     position: 'relative',
+  },
+  topBarQueue: {
+    backgroundColor: '#004AAD',
+    borderBottomColor: 'transparent',
+  },
+  topLogoWhite: {
+    tintColor: '#FFFFFF',
   },
   menuBtn: {
     width: 44,
@@ -1699,7 +1709,7 @@ const styles = StyleSheet.create({
   },
   drawerRoot: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     backgroundColor: 'transparent',
   },
   drawerScrim: {
@@ -1714,7 +1724,7 @@ const styles = StyleSheet.create({
     shadowColor: '#0F172A',
     shadowOpacity: 0.28,
     shadowRadius: 18,
-    shadowOffset: { width: 4, height: 0 },
+    shadowOffset: { width: -4, height: 0 },
     overflow: 'hidden',
   },
   drawerSafe: { flex: 1, backgroundColor: COLORS.primary },

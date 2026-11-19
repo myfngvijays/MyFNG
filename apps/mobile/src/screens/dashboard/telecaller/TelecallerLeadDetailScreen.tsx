@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatDateTime } from "@/lib/dateFormat";
 import {
   View,
@@ -17,6 +17,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 import { Icon } from '../../../components/Icon';
 import { supabase, withTimeout } from '../../../lib/supabase';
 import CarLoading from '../../../components/CarLoading';
@@ -25,7 +26,6 @@ import { formatPreferredSlotLabel } from '../../../lib/preferredSlot';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
-import { leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
 import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
 import { parseIds } from '../../../lib/parseIds';
 import {
@@ -58,7 +58,7 @@ import CrmPickupVisitStep, {
   type CrmPickupVisitValue,
 } from '../../../components/telecaller/CrmPickupVisitStep';
 import CrmFollowUpDateTime, { snapTimeToTenMinutes } from '../../../components/telecaller/CrmFollowUpDateTime';
-import { isoToIstParts, istDateTimeToIso, istHm, istYmd } from '../../../lib/crmDateRange';
+import { isoToIstParts, istDateTimeToIso, istHm, istWeekday, istYmd } from '../../../lib/crmDateRange';
 import TelecallerWhatsAppChat from '../../../components/telecaller/TelecallerWhatsAppChat';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
 import {
@@ -462,6 +462,8 @@ export default function TelecallerLeadDetailScreen({
 }: any) {
   const { user, userProfile } = useAuth();
   const insets = useSafeAreaInsets();
+  const detailScrollRef = useRef<ScrollView>(null);
+  const remindersY = useRef(0);
   const saveBarBottomPad = Math.max(insets.bottom, 10) + 16;
   const { leadId } = route.params;
   const roleCode = String(userProfile?.role?.role_code || '').toUpperCase();
@@ -479,6 +481,7 @@ export default function TelecallerLeadDetailScreen({
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [showAllReminders, setShowAllReminders] = useState(false);
   const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
+  const [addingReminder, setAddingReminder] = useState(false);
   const [editFollowUp, setEditFollowUp] = useState({ type: 'CALLBACK', date: '', time: '', reason: '' });
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
   const [activityShowAll, setActivityShowAll] = useState(false);
@@ -495,6 +498,7 @@ export default function TelecallerLeadDetailScreen({
   const [editing, setEditing] = useState(true);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [statusDraftId, setStatusDraftId] = useState('');
   const [showLostMenu, setShowLostMenu] = useState(false);
   const [showOtherMenu, setShowOtherMenu] = useState(false);
   const [otherDraft, setOtherDraft] = useState('');
@@ -1269,6 +1273,30 @@ export default function TelecallerLeadDetailScreen({
   const selectedResult: CallDisposition =
     statusOptions.find((r) => r.id === activityData.result) || RINGING;
 
+  const openStatusMenu = () => {
+    setStatusDraftId(activityData.result || selectedResult.id);
+    setShowLostMenu(false);
+    setShowOtherMenu(false);
+    setEditing(true);
+    setShowStatusMenu(true);
+  };
+
+  const applyStatusChoice = (opt: CallDisposition) => {
+    setEditing(true);
+    setActivityData((prev) => ({
+      ...prev,
+      result: opt.id,
+      lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? prev.lostReason : '',
+      otherReason: opt.id === 'OTHER' ? prev.otherReason : '',
+    }));
+    if (opt.id === 'BOOKING_CONFIRMED') {
+      setEditForm((prev) => ({ ...prev, pickup_required: true }));
+    }
+    setShowStatusMenu(false);
+    if (opt.id === 'LOST' || opt.requires_lost_reason) setShowLostMenu(true);
+    if (opt.id === 'OTHER') setShowOtherMenu(true);
+  };
+
   const activityItems = React.useMemo(() => {
     type Item = {
       id: string;
@@ -1899,6 +1927,41 @@ export default function TelecallerLeadDetailScreen({
     fetchLeadDetails();
   };
 
+  const saveNewReminder = async () => {
+    const scheduledIso = istDateTimeToIso(editFollowUp.date, editFollowUp.time);
+    if (!scheduledIso) {
+      Alert.alert('Date and time', 'Pick a valid date and time');
+      return;
+    }
+    const { data: profile } = await supabase
+      .from('users_login')
+      .select('id')
+      .eq('email', user?.email)
+      .maybeSingle();
+    const { error } = await supabase.from('telecaller_follow_ups').insert([
+      {
+        lead_id: leadId,
+        telecaller_id: profile?.id,
+        follow_up_type: 'CALLBACK',
+        scheduled_time: scheduledIso,
+        reason: editFollowUp.reason || '',
+        priority: 'NORMAL',
+        status: 'PENDING',
+      },
+    ]);
+    if (error) {
+      Alert.alert('Could not add', error.message || 'Try again');
+      return;
+    }
+    await supabase
+      .from('service_leads')
+      .update({ follow_up_required: true, next_follow_up_at: scheduledIso })
+      .eq('id', leadId);
+    setAddingReminder(false);
+    setEditFollowUp({ type: 'CALLBACK', date: '', time: '', reason: '' });
+    fetchLeadDetails();
+  };
+
   const handleSaveActivity = async () => {
     try {
       const selected = selectedResult;
@@ -2274,41 +2337,21 @@ export default function TelecallerLeadDetailScreen({
 
   const headerStatus = resolveLeadDisplayStatus(lead, callLogs);
   const badge = getCallStatusBadge(headerStatus);
-  const headerBg = statusAccentColor(leadStatusKpiColors(headerStatus));
+  const shownName = editing ? editForm.customer_name || lead.customer_name : lead.customer_name;
+  const shownPhone = String(editing ? editForm.customer_phone : lead.customer_phone || '').trim();
+  const ownerName = String(
+    lead?.assigned_telecaller?.full_name || lead?.created_by?.full_name || '',
+  ).trim();
+  const serviceChip = [lead?.service_type, lead?.city].filter(Boolean).join(' · ');
+  const createdLabel = lead?.created_at ? activityStamp(lead.created_at) : '';
 
   return (
     <KeyboardAvoidingView
       style={styles.mainContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Header with Back Button */}
-      <View style={[styles.headerBar, embedded && styles.headerBarEmbedded, { backgroundColor: headerBg }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation?.goBack?.()}
-        >
-          <Icon name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerBarTitle}>Lead Details</Text>
-        {editing ? (
-          <TouchableOpacity
-            style={[styles.headerSaveBtn, saving && { opacity: 0.65 }]}
-            disabled={saving}
-            onPress={() => void saveLeadEdits()}
-            activeOpacity={0.85}
-          >
-            {saving ? (
-              <ActivityIndicator color="#023D95" size="small" />
-            ) : (
-              <Text style={styles.headerSaveBtnText}>Save</Text>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 56 }} />
-        )}
-      </View>
-
       <ScrollView
+        ref={detailScrollRef}
         style={styles.container}
         contentContainerStyle={[styles.scrollContent, editing && { paddingBottom: 88 + saveBarBottomPad }]}
         showsVerticalScrollIndicator={false}
@@ -2319,37 +2362,135 @@ export default function TelecallerLeadDetailScreen({
           )
         }
       >
-            <View style={[styles.header, { backgroundColor: headerBg }]}>
-              <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  {hasMembership ? <Icon name="crown" size={18} color="#E9D5FF" /> : null}
-                  <Text style={[styles.headerTitle, { flex: 1 }]} numberOfLines={2}>
-                    {editing ? editForm.customer_name || lead.customer_name : lead.customer_name}
-                  </Text>
-                </View>
-                <Text style={styles.headerSubtitle} numberOfLines={1}>
-                  Lead #{lead.lead_number}
-                </Text>
-                {repeatCustomer || editForm.repeat_customer ? (
-                  <Text style={styles.repeatBanner} numberOfLines={3}>
-                    Repeat Customer{repeatRemark ? ` · ${repeatRemark}` : ''}
-                  </Text>
-                ) : null}
+        <View style={[styles.leadHero, { backgroundColor: '#004AAD', paddingTop: embedded ? 12 : Math.max(insets.top, 12) }]}>
+          <View style={styles.leadHeroTop}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack?.()}>
+              <Icon name="arrow-left" size={22} color="#fff" />
+            </TouchableOpacity>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.leadHeroKicker}>Lead details</Text>
+              <Text style={styles.leadHeroNumber} numberOfLines={1}>#{lead.lead_number || '—'}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.leadHeroIconBtn}
+              onPress={() => setEditing((v) => !v)}
+              accessibilityLabel={editing ? 'Close edit' : 'Edit lead'}
+            >
+              <Icon name="pencil" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.leadIdentity}>
+            <View style={styles.leadAvatar}>
+              <Text style={styles.leadAvatarText}>{leadInitials(shownName)}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {hasMembership ? <Icon name="crown" size={16} color="#E9D5FF" /> : null}
+                <Text style={styles.leadHeroName} numberOfLines={2}>{shownName || 'Customer'}</Text>
               </View>
               <TouchableOpacity
-                style={[styles.statusBadge, { backgroundColor: badge.bg }]}
-                onPress={() => {
-                  setEditing(true);
-                  setShowLostMenu(false);
-                  setShowOtherMenu(false);
-                  setShowStatusMenu(true);
-                }}
+                style={styles.leadStatusPill}
+                onPress={openStatusMenu}
               >
-                <Text style={[styles.statusText, { color: badge.fg }]} numberOfLines={1}>
+                <View style={[styles.leadStatusDot, { backgroundColor: badge.fg }]} />
+                <Text style={styles.leadStatusPillText} numberOfLines={1}>
                   {editing ? selectedResult.label : formatStatusLabel(headerStatus)}
                 </Text>
+                <Icon name="chevron-down" size={12} color="#312E81" />
               </TouchableOpacity>
+              {repeatCustomer || editForm.repeat_customer ? (
+                <Text style={styles.leadRepeat} numberOfLines={2}>
+                  Repeat Customer{repeatRemark ? ` · ${repeatRemark}` : ''}
+                </Text>
+              ) : null}
             </View>
+          </View>
+
+          <View style={styles.leadPhoneBar}>
+            <Icon name="phone" size={16} color="#fff" />
+            <Text style={styles.leadPhoneText} numberOfLines={1}>{shownPhone || 'No phone'}</Text>
+            {shownPhone ? (
+              <TouchableOpacity
+                onPress={() => void Clipboard.setStringAsync(shownPhone)}
+                accessibilityLabel="Copy phone"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon name="content-copy" size={16} color="#fff" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.leadActionCard}>
+          <View style={styles.leadActionRow}>
+          <TouchableOpacity
+            style={styles.leadAction}
+            onPress={() =>
+              void clickToCallCustomer({
+                customerPhone: shownPhone,
+                leadId: lead?.id,
+              })
+            }
+          >
+            <View style={[styles.leadActionIcon, { backgroundColor: '#1D4ED8' }]}>
+              <Icon name="phone" size={20} color="#fff" />
+            </View>
+            <Text style={styles.leadActionLabel}>Call</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.leadAction} onPress={handleOpenWhatsApp}>
+            <View style={[styles.leadActionIcon, { backgroundColor: '#D1FAE5' }]}>
+              <Icon name="whatsapp" size={20} color="#059669" />
+            </View>
+            <Text style={styles.leadActionLabel}>WhatsApp</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.leadAction}
+            disabled={sendingPricing}
+            onPress={handleSendPricingWhatsApp}
+          >
+            <View style={[styles.leadActionIcon, { backgroundColor: '#EDE9FE' }]}>
+              {sendingPricing ? (
+                <ActivityIndicator color="#6D28D9" size="small" />
+              ) : (
+                <Icon name="cash" size={20} color="#6D28D9" />
+              )}
+            </View>
+            <Text style={styles.leadActionLabel}>Pricing</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.leadAction}
+            onPress={() => detailScrollRef.current?.scrollTo({ y: Math.max(remindersY.current - 8, 0), animated: true })}
+          >
+            <View style={[styles.leadActionIcon, { backgroundColor: '#FEF3C7' }]}>
+              <Icon name="alarm" size={20} color="#B45309" />
+            </View>
+            <Text style={styles.leadActionLabel}>Remind</Text>
+          </TouchableOpacity>
+          </View>
+
+          {serviceChip || createdLabel || ownerName ? (
+            <View style={styles.leadMetaBlock}>
+              {serviceChip ? (
+                <View style={styles.leadMetaChip}>
+                  <Text style={styles.leadMetaChipText} numberOfLines={1}>{serviceChip}</Text>
+                </View>
+              ) : null}
+              <View style={styles.leadMetaRow}>
+                {createdLabel ? (
+                  <View style={styles.leadMetaSoft}>
+                    <Text style={styles.leadMetaSoftText} numberOfLines={1}>Created {createdLabel}</Text>
+                  </View>
+                ) : null}
+                {ownerName ? (
+                  <View style={styles.leadMetaSoft}>
+                    <Text style={styles.leadMetaSoftText} numberOfLines={1}>Owner · {ownerName}</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+        </View>
             {activityData.result === 'LOST' ? (
               <View style={{ marginTop: 10 }}>
                 <Text style={styles.formLabel}>Lost reason</Text>
@@ -2406,84 +2547,55 @@ export default function TelecallerLeadDetailScreen({
         />
       ) : null}
 
-      {/* Quick Actions */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.actionButtonPrimary, styles.actionButtonCall]}
-          onPress={() =>
-            void clickToCallCustomer({
-              customerPhone: editing ? editForm.customer_phone : lead.customer_phone,
-              leadId: lead?.id,
-            })
-          }
-        >
-          <Icon name="phone" size={18} color="#fff" />
-          <Text style={styles.actionButtonTextPrimary}>Call</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.actionButtonSecondary, styles.actionButtonWa]}
-          onPress={handleOpenWhatsApp}
-        >
-          <Icon name="whatsapp" size={18} color={COLORS.green} />
-          <Text style={styles.actionButtonTextSecondary}>WhatsApp</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.pricingSendWrap}>
-        <TouchableOpacity
-          style={[styles.pricingSendBtn, sendingPricing && { opacity: 0.7 }]}
-          disabled={sendingPricing}
-          onPress={handleSendPricingWhatsApp}
-        >
-          {sendingPricing ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Icon name="cash" size={18} color="#fff" />
-              <Text style={styles.pricingSendBtnText}>Send Pricing on WhatsApp</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Quick Stats */}
-      <View style={styles.statsCard}>
-        <View style={styles.statItem}>
-          <View style={[styles.statIconWrap, { backgroundColor: COLORS.primary + '15' }]}>
-            <Icon name="phone" size={18} color={COLORS.primary} />
+      <View
+        style={styles.section}
+        onLayout={(e) => {
+          remindersY.current = e.nativeEvent.layout.y;
+        }}
+      >
+        <View style={styles.reminderHead}>
+          <View style={styles.reminderIcon}>
+            <Icon name="alarm" size={16} color="#B45309" />
           </View>
-          <Text style={styles.statValue}>{callLogs.length || lead.total_calls || 0}</Text>
-          <Text style={styles.statLabel}>Total Calls</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <View style={[styles.statIconWrap, { backgroundColor: COLORS.orange + '15' }]}>
-            <Icon name="priority-high" size={18} color={COLORS.orange} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.reminderTitle}>Call reminders</Text>
+            <Text style={styles.reminderSub} numberOfLines={1}>
+              {followUps.length === 0 ? 'No reminders yet' : `${followUps.length} reminder${followUps.length === 1 ? '' : 's'}`}
+            </Text>
           </View>
-          <Text style={styles.statValue} numberOfLines={1}>{lead.lead_priority || 'NORMAL'}</Text>
-          <Text style={styles.statLabel}>Priority</Text>
+          <TouchableOpacity
+            style={styles.reminderAddBtn}
+            onPress={() => {
+              setEditingFollowUpId(null);
+              setEditFollowUp({ type: 'CALLBACK', date: '', time: '', reason: '' });
+              setAddingReminder((v) => !v);
+            }}
+          >
+            <Text style={styles.reminderAddText}>{addingReminder ? 'Close' : '+ Add'}</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <View style={[styles.statIconWrap, { backgroundColor: COLORS.blue + '15' }]}>
-            <Icon name="location-on" size={18} color={COLORS.blue} />
-          </View>
-          <Text style={styles.statValue} numberOfLines={2}>
-            {lead.city || '—'}
-          </Text>
-          <Text style={styles.statLabel}>City</Text>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>Call reminders</Text>
-        </View>
+        {(addingReminder || followUps.length > 0) ? (
         <View style={styles.sectionContent}>
-          {followUps.length === 0 ? (
-            <Text style={styles.fieldCaption}>No reminders yet</Text>
-          ) : (
+          {addingReminder ? (
+            <View style={{ gap: 8, marginBottom: 8 }}>
+              <CrmFollowUpDateTime
+                date={editFollowUp.date}
+                time={editFollowUp.time}
+                onChange={({ date, time }) => setEditFollowUp((prev) => ({ ...prev, date, time }))}
+              />
+              <TextInput
+                value={editFollowUp.reason}
+                onChangeText={(reason) => setEditFollowUp((prev) => ({ ...prev, reason }))}
+                placeholder="Note"
+                placeholderTextColor={COLORS.textSecondary}
+                style={styles.input}
+              />
+              <TouchableOpacity onPress={() => void saveNewReminder()} style={styles.reminderSaveBtn}>
+                <Text style={styles.reminderSaveText}>Add reminder</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {followUps.length > 0 ? (
             <>
               {(showAllReminders ? followUps : followUps.slice(0, 2)).map((fu) => (
                 <View key={String(fu.id)} style={{ marginBottom: 8 }}>
@@ -2561,8 +2673,9 @@ export default function TelecallerLeadDetailScreen({
                 </TouchableOpacity>
               ) : null}
             </>
-          )}
+          ) : null}
         </View>
+        ) : null}
       </View>
 
       {showLeadIq ? (
@@ -2926,25 +3039,42 @@ export default function TelecallerLeadDetailScreen({
             <Icon name="car" size={16} color={COLORS.indigo} />
           </View>
           <Text style={styles.sectionTitle}>Vehicle</Text>
+          <View style={styles.fillPill}>
+            <Text style={styles.fillPillText}>
+              {[
+                editing ? editForm.vehicle_number : lead?.vehicle_number,
+                editing ? editForm.vehicle_model || carDisplay : lead?.vehicle_model,
+                editing ? editForm.vehicle_fuel_type : lead?.vehicle_fuel_type,
+                editing ? editForm.vehicle_year : lead?.vehicle_year,
+                editing ? editForm.odometer_km : lead?.odometer_km,
+              ].filter((v) => String(v || '').trim()).length}{' '}
+              of 5 filled
+            </Text>
+          </View>
         </View>
         <View style={styles.sectionContent}>
           {editing ? (
             <>
-              <DetailRow
-                icon="car"
-                label="Registration"
-                value={editForm.vehicle_number}
-                editing
-                autoCapitalize="characters"
-                maxLength={12}
-                onChangeText={(v) =>
-                  setEditField(
-                    'vehicle_number',
-                    v.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
-                  )
-                }
-                placeholder="e.g. MH01BJ7842"
-              />
+              <Text style={styles.fieldCaption}>Registration number</Text>
+              <View style={styles.plateRow}>
+                <View style={styles.plateInd}>
+                  <Text style={styles.plateIndText}>IND</Text>
+                </View>
+                <TextInput
+                  style={styles.plateInput}
+                  value={formatPlate(editForm.vehicle_number)}
+                  autoCapitalize="characters"
+                  maxLength={16}
+                  placeholder="MH 04 AB 1234"
+                  placeholderTextColor="#94A3B8"
+                  onChangeText={(v) =>
+                    setEditField(
+                      'vehicle_number',
+                      v.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
+                    )
+                  }
+                />
+              </View>
               <CarModelSearchField
                 label="CAR MODEL"
                 variant="default"
@@ -2975,7 +3105,7 @@ export default function TelecallerLeadDetailScreen({
                 }}
               />
               <Text style={styles.fieldCaption}>Fuel type</Text>
-              <View style={styles.fuelRow}>
+              <View style={styles.fuelTray}>
                 {FUEL_TYPES.map((fuel) => {
                   const active = editForm.vehicle_fuel_type === fuel;
                   return (
@@ -2992,27 +3122,32 @@ export default function TelecallerLeadDetailScreen({
                 })}
               </View>
               <View style={styles.detailGrid}>
-                <DetailRow
-                  icon="calendar"
-                  label="Year"
-                  value={editForm.vehicle_year}
-                  compact
-                  editing
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  onChangeText={(v) => setEditField('vehicle_year', v.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="YYYY"
-                />
-                <DetailRow
-                  icon="car"
-                  label="Odometer"
-                  value={editForm.odometer_km}
-                  compact
-                  editing
-                  keyboardType="number-pad"
-                  onChangeText={(v) => setEditField('odometer_km', v.replace(/\D/g, ''))}
-                  placeholder="km"
-                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldCaption}>Year</Text>
+                  <TextInput
+                    style={styles.softInput}
+                    value={editForm.vehicle_year}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    placeholder="YYYY"
+                    placeholderTextColor="#94A3B8"
+                    onChangeText={(v) => setEditField('vehicle_year', v.replace(/\D/g, '').slice(0, 4))}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldCaption}>Odometer</Text>
+                  <View style={styles.odoRow}>
+                    <TextInput
+                      style={[styles.softInput, { flex: 1, marginBottom: 0 }]}
+                      value={editForm.odometer_km}
+                      keyboardType="number-pad"
+                      placeholder="0"
+                      placeholderTextColor="#94A3B8"
+                      onChangeText={(v) => setEditField('odometer_km', v.replace(/\D/g, ''))}
+                    />
+                    <Text style={styles.odoUnit}>km</Text>
+                  </View>
+                </View>
               </View>
             </>
           ) : (
@@ -3060,22 +3195,14 @@ export default function TelecallerLeadDetailScreen({
           {editing ? (
             !showSecondCar ? (
               <TouchableOpacity
-                style={{
-                  marginTop: 12,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: '#BAE6FD',
-                  backgroundColor: '#F0F9FF',
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                }}
+                style={styles.secondCarBtn}
                 onPress={() => {
                   setShowSecondCar(true);
                   setSecondCar(emptySecondCar());
                   setSecondCarDisplay('');
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>Add second car</Text>
+                <Text style={styles.secondCarBtnText}>+ Add second car</Text>
               </TouchableOpacity>
             ) : (
               <View
@@ -3148,15 +3275,7 @@ export default function TelecallerLeadDetailScreen({
             )
           ) : !parseSecondCar(lead?.coupon_meta) ? (
             <TouchableOpacity
-              style={{
-                marginTop: 12,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: '#BAE6FD',
-                backgroundColor: '#F0F9FF',
-                paddingVertical: 10,
-                alignItems: 'center',
-              }}
+              style={styles.secondCarBtn}
               onPress={() => {
                 setEditing(true);
                 setShowSecondCar(true);
@@ -3164,7 +3283,7 @@ export default function TelecallerLeadDetailScreen({
                 setSecondCarDisplay('');
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>Add second car</Text>
+              <Text style={styles.secondCarBtnText}>+ Add second car</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -3179,38 +3298,57 @@ export default function TelecallerLeadDetailScreen({
           <Text style={styles.sectionTitle}>Lead Overview</Text>
         </View>
         <View style={styles.sectionContent}>
-          <View style={styles.detailGrid}>
-            <DetailRow icon="pound" label="Lead #" value={lead?.lead_number || '—'} compact />
-            <DetailRow
-              icon="flag"
-              label="Status"
-              value={String(lead?.status || '—').replace(/_/g, ' ')}
-              compact
-            />
+          <View style={styles.overviewTiles}>
+            <View style={styles.ovTile}>
+              <Text style={styles.ovLabel}>Lead #</Text>
+              <Text
+                style={styles.ovLeadId}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {lead?.lead_number || '—'}
+              </Text>
+            </View>
+            <View style={styles.ovTile}>
+              <Text style={styles.ovLabel}>Status</Text>
+              <Text style={[styles.ovValue, { color: '#1D4ED8' }]} numberOfLines={2}>
+                {formatStatusLabel(headerStatus)}
+              </Text>
+            </View>
+            <View style={styles.ovTile}>
+              <Text style={styles.ovLabel}>Created</Text>
+              <Text
+                style={styles.ovLeadId}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {lead?.created_at ? activityStamp(lead.created_at) : '—'}
+              </Text>
+            </View>
           </View>
           {editing ? (
-            <View style={{ marginBottom: 10 }}>
+            <View style={{ marginBottom: 4 }}>
               <Text style={styles.fieldCaption}>Priority</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-                {(['NORMAL', 'HIGH', 'URGENT'] as const).map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    onPress={() => setEditField('lead_priority', p)}
-                    style={[
-                      styles.fuelChip,
-                      String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.fuelChipText,
-                        String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipTextActive,
-                      ]}
+              <View style={styles.priorityRow}>
+                {([
+                  ['NORMAL', '#1D4ED8'],
+                  ['HIGH', '#B45309'],
+                  ['URGENT', '#DC2626'],
+                ] as const).map(([p, dot]) => {
+                  const active = String(editForm.lead_priority || 'NORMAL') === p;
+                  return (
+                    <TouchableOpacity
+                      key={p}
+                      onPress={() => setEditField('lead_priority', p)}
+                      style={[styles.priorityChip, active && { backgroundColor: '#1D4ED8', borderColor: '#1D4ED8' }]}
                     >
-                      {p}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <View style={[styles.priorityDot, { backgroundColor: active ? '#fff' : dot }]} />
+                      <Text style={[styles.priorityText, active && { color: '#fff' }]}>{p}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           ) : (
@@ -3277,7 +3415,7 @@ export default function TelecallerLeadDetailScreen({
                   backgroundColor: '#fff',
                   color: '#0F172A',
                 }}
-                placeholder="Search referrer — CRM lead or app customer"
+                placeholder="Search CRM lead or app customer"
                 placeholderTextColor="#94A3B8"
                 value={referrerQuery}
                 onChangeText={setReferrerQuery}
@@ -3344,29 +3482,19 @@ export default function TelecallerLeadDetailScreen({
               ))}
             </View>
           ) : null}
-          <View style={styles.repeatRow}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setEditField('repeat_customer', !editForm.repeat_customer)}
-              style={styles.repeatCheck}
-            >
-              <View style={[styles.repeatBox, editForm.repeat_customer && styles.repeatBoxOn]}>
-                {editForm.repeat_customer ? <Text style={styles.repeatTick}>✓</Text> : null}
-              </View>
-              <Text style={styles.repeatTitle}>Repeat Customer</Text>
-            </TouchableOpacity>
-            <View style={styles.createdSide}>
-              <Text style={styles.createdSideLabel}>Created at</Text>
-              {(() => {
-                const stamp = splitActivityStamp(activityStamp(lead?.created_at));
-                return (
-                  <>
-                    <Text style={styles.createdSideDate}>{stamp.date || '—'}</Text>
-                    {stamp.time ? <Text style={styles.createdSideTime}>{stamp.time}</Text> : null}
-                  </>
-                );
-              })()}
+          <View style={styles.repeatSwitchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.repeatTitle}>Repeat customer</Text>
+              <Text style={styles.repeatHint}>Has serviced with MyFNG before</Text>
             </View>
+            <TouchableOpacity
+              accessibilityRole="switch"
+              accessibilityState={{ checked: Boolean(editForm.repeat_customer) }}
+              onPress={() => setEditField('repeat_customer', !editForm.repeat_customer)}
+              style={[styles.switchTrack, editForm.repeat_customer && styles.switchTrackOn]}
+            >
+              <View style={[styles.switchThumb, editForm.repeat_customer && styles.switchThumbOn]} />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -3378,6 +3506,13 @@ export default function TelecallerLeadDetailScreen({
             <Icon name="wrench" size={16} color={COLORS.green} />
           </View>
           <Text style={styles.sectionTitle}>Service & Price</Text>
+          <View style={styles.nonePill}>
+            <Text style={styles.nonePillText}>
+              {(editing ? editForm.service_types : serviceTypeNames).length
+                ? `${(editing ? editForm.service_types : serviceTypeNames).length} added`
+                : 'None added'}
+            </Text>
+          </View>
         </View>
         <View style={styles.sectionContent}>
           {!editing ? (
@@ -3431,7 +3566,6 @@ export default function TelecallerLeadDetailScreen({
 
           {editing ? (
             <>
-              <Text style={styles.fieldCaption}>Packages</Text>
               <CrmServicePlanPicker
                 selectedIds={editForm.service_types}
                 onChange={(ids) => setEditField('service_types', ids)}
@@ -3443,21 +3577,24 @@ export default function TelecallerLeadDetailScreen({
                 title=""
               />
 
-              <View style={styles.callResultRow}>
-                <Text style={[styles.fieldCaption, styles.callResultLabel]}>Call result</Text>
+              <View style={styles.callResultCard}>
+                <View style={styles.sectionTitleRow}>
+                  <View style={[styles.sectionIconWrap, { backgroundColor: '#DBEAFE' }]}>
+                    <Icon name="phone" size={16} color="#1D4ED8" />
+                  </View>
+                  <Text style={styles.sectionTitle}>Call result</Text>
+                </View>
+                <Text style={styles.fieldCaption}>Status after this call</Text>
                 <TouchableOpacity
-                  style={[styles.selectBtn, styles.callResultStatus]}
-                  onPress={() => {
-                    setShowLostMenu(false);
-                    setShowStatusMenu(true);
-                  }}
+                  style={styles.statusSelect}
+                  onPress={openStatusMenu}
                 >
-                  <Text style={styles.selectBtnText} numberOfLines={1}>
+                  <View style={[styles.leadStatusDot, { backgroundColor: '#1D4ED8' }]} />
+                  <Text style={[styles.selectBtnText, { flex: 1 }]} numberOfLines={1}>
                     {selectedResult.label}
                   </Text>
-                  <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+                  <Icon name="chevron-down" size={18} color="#64748B" />
                 </TouchableOpacity>
-              </View>
 
               {activityData.result === 'LOST' || selectedResult.requires_lost_reason ? (
                 <>
@@ -3520,11 +3657,30 @@ export default function TelecallerLeadDetailScreen({
                   />
                 </>
               ) : null}
-              <Text style={styles.formLabel}>
+              <Text style={styles.fieldCaption}>
                 {activityData.result === 'CALLBACK'
                   ? 'Follow-up date & time (required)'
                   : 'Date & time (optional)'}
               </Text>
+              <View style={styles.quickSlotRow}>
+                {callQuickSlots().map((slot) => {
+                  const on = activityData.date === slot.date && activityData.time === slot.time;
+                  return (
+                    <TouchableOpacity
+                      key={slot.label}
+                      style={[styles.quickSlot, on && styles.quickSlotOn]}
+                      onPress={() => {
+                        activityTouchedRef.current = true;
+                        setActivityData((prev) => ({ ...prev, date: slot.date, time: slot.time }));
+                      }}
+                    >
+                      <Text style={[styles.quickSlotText, on && styles.quickSlotTextOn]} numberOfLines={1}>
+                        {slot.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               <CrmFollowUpDateTime
                 date={activityData.date}
                 time={activityData.time}
@@ -3540,24 +3696,25 @@ export default function TelecallerLeadDetailScreen({
                 </Text>
               ) : null}
 
-              <Text style={styles.formLabel}>Workshop Remark</Text>
+              <Text style={styles.fieldCaption}>Workshop remark</Text>
               <TextInput
                 style={styles.inlineNotes}
-                placeholder="Workshop remark"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholder="Visible to the workshop team"
+                placeholderTextColor="#94A3B8"
                 value={activityData.notes}
                 onChangeText={(v) => setActivityData({ ...activityData, notes: v })}
                 multiline
               />
-              <Text style={styles.formLabel}>Telecaller Remark</Text>
+              <Text style={styles.fieldCaption}>Telecaller remark</Text>
               <TextInput
                 style={styles.inlineNotes}
-                placeholder="Telecaller remark"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholder="What did the customer say?"
+                placeholderTextColor="#94A3B8"
                 value={editForm.telecaller_remark}
                 onChangeText={(v) => setEditField('telecaller_remark', v)}
                 multiline
               />
+              </View>
 
               {activityData.result === 'BOOKING_CONFIRMED' ? (
                 <>
@@ -3764,10 +3921,7 @@ export default function TelecallerLeadDetailScreen({
             <Text style={styles.formLabel}>Status</Text>
             <TouchableOpacity
               style={styles.selectBtn}
-              onPress={() => {
-                setShowLostMenu(false);
-                setShowStatusMenu(true);
-              }}
+              onPress={openStatusMenu}
             >
               <Text style={styles.selectBtnText}>
                 {selectedResult.label}
@@ -3975,10 +4129,19 @@ export default function TelecallerLeadDetailScreen({
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>WhatsApp{whatsappActivity.length ? ` (${whatsappActivity.length})` : ''}</Text>
+        <View style={styles.waHead}>
+          <Text style={styles.sectionTitle}>WhatsApp{whatsappActivity.length ? ` (${whatsappActivity.length})` : ''}</Text>
+          <TouchableOpacity onPress={handleOpenWhatsApp}>
+            <Text style={styles.waOpen}>Open chat</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.sectionContent}>
           {whatsappActivity.length === 0 ? (
-            <Text style={styles.emptyText}>No WhatsApp messages</Text>
+            <View style={styles.waEmpty}>
+              <Icon name="message-text" size={28} color="#94A3B8" />
+              <Text style={styles.waEmptyTitle}>No WhatsApp messages</Text>
+              <Text style={styles.waEmptySub}>Pricing and reminders you send will show here.</Text>
+            </View>
           ) : (
             whatsappActivity.slice(0, 8).map((item) => (
               <View
@@ -4051,42 +4214,57 @@ export default function TelecallerLeadDetailScreen({
       )}
     </ScrollView>
 
-    <Modal visible={showStatusMenu} transparent animationType="fade" onRequestClose={() => setShowStatusMenu(false)}>
+    <Modal visible={showStatusMenu} transparent animationType="slide" onRequestClose={() => setShowStatusMenu(false)}>
       <View style={styles.menuOverlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowStatusMenu(false)} />
-        <View style={[styles.menuSheet, { paddingBottom: Math.max(insets.bottom, 16) + 18, marginBottom: 10 }]}>
-          <Text style={styles.menuTitle}>Select status</Text>
+        <View style={[styles.statusSheet, { paddingBottom: Math.max(insets.bottom, 12) + 10 }]}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.statusSheetHead}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.statusSheetTitle}>Update status</Text>
+              <Text style={styles.statusSheetSub} numberOfLines={1}>
+                {[shownName, [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ') || carDisplay]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.statusClose} onPress={() => setShowStatusMenu(false)}>
+              <Icon name="close" size={18} color="#334155" />
+            </TouchableOpacity>
+          </View>
           <ScrollView
             style={styles.menuScroll}
-            contentContainerStyle={{ paddingBottom: 8 }}
+            contentContainerStyle={styles.statusGrid}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator
-            bounces
+            showsVerticalScrollIndicator={false}
           >
-            {statusOptions.map((opt) => (
-              <TouchableOpacity
-                key={opt.id}
-                style={styles.menuItem}
-                onPress={() => {
-                  setEditing(true);
-                  setActivityData({
-                    ...activityData,
-                    result: opt.id,
-                    lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? activityData.lostReason : '',
-                    otherReason: opt.id === 'OTHER' ? activityData.otherReason : '',
-                  });
-                  if (opt.id === 'BOOKING_CONFIRMED') {
-                    setEditForm((prev) => ({ ...prev, pickup_required: true }));
-                  }
-                  setShowStatusMenu(false);
-                  if (opt.id === 'LOST' || opt.requires_lost_reason) setShowLostMenu(true);
-                  if (opt.id === 'OTHER') setShowOtherMenu(true);
-                }}
-              >
-                <Text style={styles.menuItemText}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
+            {statusOptions.map((opt) => {
+              const active = statusDraftId === opt.id;
+              const dot = statusChoiceColor(opt.id);
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.statusChoice, active && { borderColor: dot, backgroundColor: '#F8FAFC' }]}
+                  onPress={() => setStatusDraftId(opt.id)}
+                >
+                  <View style={[styles.statusChoiceDot, { backgroundColor: dot }]} />
+                  <Text style={styles.statusChoiceText} numberOfLines={1}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
+          <TouchableOpacity
+            style={[styles.statusSaveBtn, !statusDraftId && { opacity: 0.5 }]}
+            disabled={!statusDraftId}
+            onPress={() => {
+              const opt = statusOptions.find((r) => r.id === statusDraftId);
+              if (opt) applyStatusChoice(opt);
+            }}
+          >
+            <Text style={styles.statusSaveText}>
+              Save · {statusOptions.find((r) => r.id === statusDraftId)?.label || 'status'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -4301,7 +4479,10 @@ export default function TelecallerLeadDetailScreen({
           {saving ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.saveBarBtnText}>Save & Update Booking</Text>
+            <>
+              <Icon name="check" size={16} color="#fff" />
+              <Text style={styles.saveBarBtnText}>Save & update booking</Text>
+            </>
           )}
         </TouchableOpacity>
       </View>
@@ -4363,6 +4544,45 @@ function DetailRow({
 
 function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
   return <DetailRow icon={icon} label={label} value={value} />;
+}
+
+function formatPlate(raw: string) {
+  const v = String(raw || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  if (!v) return '';
+  const head = v.slice(0, 4);
+  const tail = v.slice(4);
+  const num = tail.match(/\d{1,4}$/)?.[0] || '';
+  const series = num ? tail.slice(0, tail.length - num.length) : tail;
+  return [head.slice(0, 2), head.slice(2, 4), series, num].filter(Boolean).join(' ');
+}
+
+function shiftIstYmd(days: number) {
+  const today = istYmd();
+  const [y, m, d] = today.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + days));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function callQuickSlots() {
+  const today = istYmd();
+  const [y, m, d] = today.split('-').map(Number);
+  const dow = istWeekday(y, (m || 1) - 1, d || 1);
+  const daysToSat = (6 - dow + 7) % 7 || 7;
+  return [
+    { label: 'Today 6 PM', date: today, time: '18:00' },
+    { label: 'Tmrw 11 AM', date: shiftIstYmd(1), time: '11:00' },
+    { label: 'Sat 11 AM', date: shiftIstYmd(daysToSat), time: '11:00' },
+  ];
+}
+
+function leadInitials(name?: string | null) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '•';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
 }
 
 function formatStatusLabel(raw: string | null | undefined): string {
@@ -4540,6 +4760,21 @@ function getStatusFg(status: string): string {
   }
 }
 
+function statusChoiceColor(id: string) {
+  switch (id) {
+    case 'FRESH': return '#2563EB';
+    case 'INTERESTED': return '#D97706';
+    case 'WILL_VISIT': return '#7C3AED';
+    case 'CALLBACK': return '#1D4ED8';
+    case 'BOOKING_CONFIRMED': return '#16A34A';
+    case 'IN_SERVICE': return '#0F766E';
+    case 'SERVICE_DONE': return '#22C55E';
+    case 'LOST': return '#DC2626';
+    case 'RINGING': return '#F59E0B';
+    default: return '#64748B';
+  }
+}
+
 function getCallStatusBadge(status: string): { bg: string; fg: string } {
   const key = String(status || '').toUpperCase();
   if (key === 'ANSWERED' || key === 'CONNECTED') {
@@ -4612,6 +4847,176 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 14,
     paddingHorizontal: SPACING.md,
+  },
+  leadHero: {
+    paddingHorizontal: 16,
+    paddingBottom: 56,
+  },
+  leadHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  leadHeroKicker: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  leadHeroNumber: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  leadHeroIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  leadIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 16,
+  },
+  leadAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leadAvatarText: {
+    color: '#1E3A8A',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  leadHeroName: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  leadStatusPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    maxWidth: '100%',
+  },
+  leadStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  leadStatusPillText: {
+    color: '#312E81',
+    fontSize: 12,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  leadRepeat: {
+    marginTop: 6,
+    color: '#FDE68A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  leadPhoneBar: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  leadPhoneText: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  leadActionCard: {
+    marginTop: -40,
+    marginHorizontal: 14,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  leadActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  leadAction: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  leadActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leadActionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  leadMetaBlock: {
+    marginTop: 12,
+    paddingTop: 10,
+    paddingHorizontal: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F0',
+    gap: 8,
+  },
+  leadMetaChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: '100%',
+  },
+  leadMetaChipText: {
+    color: '#1D4ED8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  leadMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  leadMetaSoft: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: '100%',
+  },
+  leadMetaSoftText: {
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '700',
   },
   headerBarEmbedded: {
     paddingTop: 14,
@@ -4912,7 +5317,7 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: COLORS.textHeading,
   },
@@ -4987,6 +5392,212 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
+  fuelTray: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    padding: 4,
+    gap: 4,
+    marginBottom: 10,
+  },
+  plateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#0F172A',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#FFFBEB',
+    marginBottom: 8,
+  },
+  plateInd: {
+    backgroundColor: '#1D4ED8',
+    paddingHorizontal: 10,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  plateIndText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  plateInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+    letterSpacing: 0.4,
+  },
+  softInput: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    marginBottom: 8,
+  },
+  odoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  odoUnit: { color: '#64748B', fontSize: 13, fontWeight: '700' },
+  fillPill: {
+    marginLeft: 'auto',
+    backgroundColor: '#FEE2E2',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  fillPillText: { color: '#BE123C', fontSize: 11, fontWeight: '700' },
+  nonePill: {
+    marginLeft: 'auto',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  nonePillText: { color: '#64748B', fontSize: 11, fontWeight: '700' },
+  secondCarBtn: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#93C5FD',
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  secondCarBtnText: { fontSize: 13, fontWeight: '800', color: '#1D4ED8' },
+  overviewTiles: { flexDirection: 'row', gap: 8 },
+  ovTile: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 8,
+    minHeight: 64,
+  },
+  ovLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  ovValue: { marginTop: 4, fontSize: 12, fontWeight: '800', color: '#0F172A' },
+  ovLeadId: { marginTop: 4, fontSize: 11, fontWeight: '800', color: '#0F172A' },
+  priorityRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  priorityChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  priorityDot: { width: 7, height: 7, borderRadius: 4 },
+  priorityText: { fontSize: 11, fontWeight: '800', color: '#334155' },
+  repeatSwitchRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+  },
+  repeatHint: { marginTop: 2, fontSize: 11, color: '#94A3B8' },
+  switchTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#CBD5E1',
+    padding: 3,
+    justifyContent: 'center',
+  },
+  switchTrackOn: { backgroundColor: '#1D4ED8' },
+  switchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  switchThumbOn: { alignSelf: 'flex-end' },
+  callResultCard: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: '#fff',
+    gap: 8,
+  },
+  statusSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: '#1D4ED8',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+  },
+  quickSlotRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 6 },
+  quickSlot: {
+    flex: 1,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  quickSlotOn: { backgroundColor: '#1D4ED8', borderColor: '#1D4ED8' },
+  quickSlotText: { fontSize: 11, fontWeight: '700', color: '#334155' },
+  quickSlotTextOn: { color: '#fff' },
+  reminderHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8EEF7',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  reminderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  reminderSub: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  reminderAddBtn: { paddingHorizontal: 4, paddingVertical: 6 },
+  reminderAddText: { color: '#1D4ED8', fontSize: 14, fontWeight: '800' },
+  reminderSaveBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#1D4ED8',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  reminderSaveText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  waHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  waOpen: { color: '#059669', fontSize: 13, fontWeight: '800' },
+  waEmpty: { alignItems: 'center', paddingVertical: 18, gap: 4 },
+  waEmptyTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginTop: 6 },
+  waEmptySub: { fontSize: 12, color: '#64748B', textAlign: 'center' },
   fuelChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -5035,6 +5646,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   saveBarBtnText: {
     color: '#fff',
@@ -5448,6 +6061,60 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.35)',
     justifyContent: 'flex-end',
   },
+  statusSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    maxHeight: '82%',
+  },
+  statusSheetHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 12,
+  },
+  statusSheetTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  statusSheetSub: { marginTop: 2, fontSize: 12, color: '#64748B', fontWeight: '600' },
+  statusClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingBottom: 4,
+  },
+  statusChoice: {
+    width: '48.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 14,
+    backgroundColor: '#fff',
+    marginBottom: 10,
+  },
+  statusChoiceDot: { width: 8, height: 8, borderRadius: 4 },
+  statusChoiceText: { flex: 1, fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  statusSaveBtn: {
+    marginTop: 8,
+    backgroundColor: '#1D4ED8',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  statusSaveText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   menuSheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 18,
