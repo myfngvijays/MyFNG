@@ -15,8 +15,37 @@ export type MessageTrigger = {
   telecaller_id: string;
   /** When matched, treat lead as Meta Ads (WHATSAPP_META) even without referral payload */
   mark_as_meta: boolean;
+  /** Exact lead_source to save. Blank is treated as Meta Ads. */
+  lead_source: string;
+  /** Extra crm_lead_tags id. Blank still tags the campaign label itself. */
+  lead_tag_id: string;
   is_active: boolean;
 };
+
+export const TRIGGER_LEAD_SOURCE_OPTIONS = [
+  'Google Ads',
+  'Instagram Ads',
+  'Meta Ads',
+  'WhatsApp',
+  'WhatsApp Enquiry',
+  'Website',
+  'App Booking',
+  'Incoming Sarv Call',
+  'Reference',
+  'Partner',
+  'Other',
+] as const;
+
+/** Chosen source wins. Blank Meta triggers save as "Meta Ads" — the campaign name is the lead tag. */
+export function resolvedTriggerLeadSource(
+  trigger: Pick<MessageTrigger, 'lead_source' | 'mark_as_meta' | 'label'>,
+  fallback: string,
+): string {
+  const custom = String(trigger.lead_source || '').trim();
+  if (custom) return custom;
+  if (trigger.mark_as_meta) return 'Meta Ads';
+  return fallback;
+}
 
 export function normalizeTriggerPhrase(raw: string): string {
   return String(raw || '')
@@ -51,6 +80,11 @@ export function normalizeMessageTriggers(raw: unknown): MessageTrigger[] {
       match,
       telecaller_id: telecallerId,
       mark_as_meta: r.mark_as_meta !== false,
+      lead_source: String(r.lead_source || 'Meta Ads').trim().slice(0, 80) || 'Meta Ads',
+      lead_tag_id:
+        String(r.lead_tag_id || '').trim() === '__campaign_label__'
+          ? ''
+          : String(r.lead_tag_id || '').trim(),
       is_active: r.is_active !== false,
     });
   }

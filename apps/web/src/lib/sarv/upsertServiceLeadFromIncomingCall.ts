@@ -3,9 +3,9 @@ import 'server-only';
 import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { appendLeadProfileHistory } from '@/lib/service-lead-reopen';
-import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
-
 export const INCOMING_SARV_LEAD_SOURCE = 'Incoming Sarv Call';
+export const INCOMING_SARV_CRM_STATUS = 'INCOMING_SARV_LEADS';
+export const INCOMING_SARV_CRM_LABEL = 'Incoming SARV Leads';
 
 const OPEN_STATUSES = ['NEW', 'VALIDATED', 'HOLD', 'ACCEPTED', 'IN_PROGRESS', 'ASSIGNED'];
 
@@ -44,6 +44,23 @@ export function isSarvIncomingCall(ctype: unknown): boolean {
 function digits10(input: unknown): string {
   const d = String(input ?? '').replace(/\D/g, '');
   return d.length <= 10 ? d : d.slice(-10);
+}
+
+/** New Sarv calls land on Incoming SARV Leads. Worked statuses stay as the telecaller left them. */
+export function stampIncomingSarvDisposition(
+  meta: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const next = meta && typeof meta === 'object' ? { ...meta } : {};
+  const result = String(next.last_call_result || '').trim().toUpperCase();
+  const otherReason = String(next.last_other_reason || '').trim();
+  const parkedInOther =
+    result === 'OTHER' && (!otherReason || /^incoming sarv leads$/i.test(otherReason));
+  const untouched = !result || result === 'FRESH' || result === 'NEW' || parkedInOther;
+  if (!untouched) return next;
+  next.last_call_result = INCOMING_SARV_CRM_STATUS;
+  next.last_call_label = INCOMING_SARV_CRM_LABEL;
+  next.last_other_reason = null;
+  return next;
 }
 
 function isSarvStub(lead: Record<string, any> | null | undefined): boolean {
@@ -178,7 +195,7 @@ export async function upsertServiceLeadFromIncomingSarvCall(
 
     const patch: Record<string, unknown> = {
       updated_at: nowIso,
-      coupon_meta: nextMeta,
+      coupon_meta: stub ? stampIncomingSarvDisposition(nextMeta) : nextMeta,
     };
 
     if (stub) {
@@ -237,7 +254,7 @@ export async function upsertServiceLeadFromIncomingSarvCall(
     is_incomplete: true,
     assigned_telecaller_id: assignedTo,
     assigned_at: assignedTo ? nowIso : null,
-    coupon_meta: stampFreshCrmDisposition(
+    coupon_meta: stampIncomingSarvDisposition(
       appendLeadProfileHistory(
         {
           sarv_incoming: true,
@@ -251,7 +268,7 @@ export async function upsertServiceLeadFromIncomingSarvCall(
         {
           at: nowIso,
           summary: callNote,
-          status: 'NEW',
+          status: INCOMING_SARV_CRM_STATUS,
           event: 'SARV_INCOMING_CALL',
         },
       ),

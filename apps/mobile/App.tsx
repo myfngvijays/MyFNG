@@ -595,7 +595,17 @@ function AppContent() {
   return (
     <>
       <NavigationContainer ref={navigationRef} onStateChange={onNavigationStateChange}>
-        <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+        <Stack.Navigator
+          key={
+            isLoggedIn && !isCustomerSessionUser
+              ? 'staff'
+              : isCustomerSessionUser
+                ? 'customer'
+                : 'guest'
+          }
+          initialRouteName={initialRoute}
+          screenOptions={{ headerShown: false }}
+        >
           {!user || !userProfile || isCustomerSessionUser ? (
             isPartnerApp ? (
               <Stack.Screen name="Login">

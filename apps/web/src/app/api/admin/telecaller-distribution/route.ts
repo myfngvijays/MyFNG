@@ -78,10 +78,35 @@ export async function GET(request: NextRequest) {
       catchAll = { enabled: false, assignees: [] };
     }
 
+    const { data: tagRows } = await supabaseAdmin
+      .from('crm_lead_tags')
+      .select('id, name')
+      .order('name', { ascending: true });
+    const leadTags = (tagRows || [])
+      .filter((row: any) => row?.id && row?.name)
+      .map((row: any) => ({ id: String(row.id), name: String(row.name) }));
+
+    const triggerLeadCounts: Record<string, number> = {};
+    const triggerIds = messageTriggers.map((trigger) => trigger.id).filter(Boolean);
+    for (let i = 0; i < triggerIds.length; i += 8) {
+      const slice = triggerIds.slice(i, i + 8);
+      await Promise.all(
+        slice.map(async (id) => {
+          const { count } = await supabaseAdmin
+            .from('service_leads')
+            .select('id', { count: 'exact', head: true })
+            .filter('coupon_meta->>message_trigger_id', 'eq', id);
+          triggerLeadCounts[id] = count || 0;
+        }),
+      );
+    }
+
     return NextResponse.json({
       allocations: allocations || [],
       telecallers: onlyTelecallers,
       message_triggers: messageTriggers,
+      trigger_lead_counts: triggerLeadCounts,
+      lead_tags: leadTags,
       source_routes: sourceRoutes,
       catch_all: catchAll,
     });

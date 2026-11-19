@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pickTelecallerForLead } from '@/lib/enquiry/assignment';
+import { resolvedTriggerLeadSource } from '@/lib/enquiry/messageTriggers';
 import { channelFromWhatsAppLabels } from '@/lib/enquiry/leadChannels';
 import { findCustomerByPhone } from '@/lib/customer-service-leads';
 import { leadSourceLabelForWacaBusinessPhone } from '@/lib/telecrm/parseTelecrmWebhookPayload';
@@ -7,6 +8,7 @@ import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
 import {
   addLeadTags,
+  applyMessageTriggerTags,
   metaMessageTriggerTagNames,
   ensureTagIdsByNames,
   resolveMetaAdTagNames,
@@ -389,6 +391,7 @@ export async function ensureWhatsAppInboundServiceLead(
     let assignedTo: string | null = existing.assigned_telecaller_id
       ? String(existing.assigned_telecaller_id)
       : null;
+    let pickedTriggerTagId = '';
     let assignmentChanged = false;
     let previousAssigneeForNotify: string | null = assignedTo;
     // Always evaluate message triggers on inbound text.
@@ -403,15 +406,17 @@ export async function ensureWhatsAppInboundServiceLead(
       });
       const isTriggerRoute =
         picked.assignment_mode === 'MESSAGE_TRIGGER' && Boolean(picked.telecallerId);
+      pickedTriggerTagId = isTriggerRoute ? String(picked.trigger?.lead_tag_id || '').trim() : '';
       // Trigger → always set/change assignee. No trigger → only fill if unassigned.
       const shouldAssign = Boolean(picked.telecallerId) && (isTriggerRoute || !assignedTo);
 
-      if (isTriggerRoute && picked.trigger?.mark_as_meta) {
+      if (isTriggerRoute && picked.trigger && (picked.trigger.mark_as_meta || picked.trigger.lead_source)) {
         labels = {
-          created_from: 'WHATSAPP_META',
-          lead_source: picked.trigger.label
-            ? `Meta Ads · ${picked.trigger.label}`
-            : 'Meta Ads',
+          created_from: picked.trigger.mark_as_meta ? 'WHATSAPP_META' : labels.created_from,
+          lead_source: resolvedTriggerLeadSource(
+            picked.trigger,
+            String(patch.lead_source || labels.lead_source || existing.lead_source || ''),
+          ),
         };
         patch.lead_source = labels.lead_source;
         patch.created_from = labels.created_from;
@@ -477,7 +482,7 @@ export async function ensureWhatsAppInboundServiceLead(
       const markAsMeta = /WHATSAPP_META/i.test(String(patch.created_from || labels.created_from || ''));
       const metaTags = resolveMetaAdTagNames({
         leadSource: String(patch.lead_source || labels.lead_source || existing.lead_source || ''),
-        triggerLabel,
+        triggerLabel: null,
         referralHeadline: input.referral?.headline || null,
         markAsMeta,
       });
@@ -489,6 +494,12 @@ export async function ensureWhatsAppInboundServiceLead(
         ...(extraNames.length ? await ensureTagIdsByNames(extraNames) : []),
       ];
       if (tagIds.length) await addLeadTags(String(existing.id), tagIds);
+      if (triggerLabel || pickedTriggerTagId) {
+        await applyMessageTriggerTags(String(existing.id), {
+          label: triggerLabel,
+          leadTagId: pickedTriggerTagId,
+        });
+      }
     } catch (e) {
       console.warn('[whatsapp-inbound-lead] tag apply failed', e);
     }
@@ -516,6 +527,7 @@ export async function ensureWhatsAppInboundServiceLead(
   let assignmentMode: string | null = null;
   let triggerId: string | null = null;
   let triggerLabel: string | null = null;
+  let createTriggerTagId = '';
   try {
     const channel = channelFromWhatsAppLabels(labels.created_from, labels.lead_source);
     const picked = await pickTelecallerForLead({
@@ -528,10 +540,11 @@ export async function ensureWhatsAppInboundServiceLead(
     if (picked.trigger) {
       triggerId = picked.trigger.id;
       triggerLabel = picked.trigger.label || picked.trigger.phrase;
-      if (picked.trigger.mark_as_meta) {
+      createTriggerTagId = String(picked.trigger.lead_tag_id || '').trim();
+      if (picked.trigger.mark_as_meta || picked.trigger.lead_source) {
         labels = {
-          created_from: 'WHATSAPP_META',
-          lead_source: triggerLabel ? `Meta Ads · ${triggerLabel}` : 'Meta Ads',
+          created_from: picked.trigger.mark_as_meta ? 'WHATSAPP_META' : labels.created_from,
+          lead_source: resolvedTriggerLeadSource(picked.trigger, labels.lead_source),
         };
       }
     }
@@ -666,7 +679,7 @@ export async function ensureWhatsAppInboundServiceLead(
       const markAsMeta = /WHATSAPP_META/i.test(labels.created_from);
       const metaTags = resolveMetaAdTagNames({
         leadSource: labels.lead_source,
-        triggerLabel,
+        triggerLabel: null,
         referralHeadline: input.referral?.headline || null,
         markAsMeta,
       });
@@ -678,6 +691,12 @@ export async function ensureWhatsAppInboundServiceLead(
         ...(extraNames.length ? await ensureTagIdsByNames(extraNames) : []),
       ];
       if (tagIds.length) await addLeadTags(String(inserted.id), tagIds);
+      if (triggerLabel || createTriggerTagId) {
+        await applyMessageTriggerTags(String(inserted.id), {
+          label: triggerLabel,
+          leadTagId: createTriggerTagId,
+        });
+      }
     } catch (e) {
       console.warn('[whatsapp-inbound-lead] tag apply on create failed', e);
     }

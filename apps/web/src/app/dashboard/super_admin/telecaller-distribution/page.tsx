@@ -37,6 +37,7 @@ import SourceAssignPanel from '@/components/admin/telecaller-distribution/Source
 import AnyLeadPanel from '@/components/admin/telecaller-distribution/AnyLeadPanel';
 import {
   newTriggerId,
+  TRIGGER_LEAD_SOURCE_OPTIONS,
   type MessageTrigger,
   type MessageTriggerMatch,
 } from '@/lib/enquiry/messageTriggers';
@@ -83,7 +84,7 @@ type WaLeadAlertState = {
   };
 };
 
-const TRIGGER_PAGE_SIZE = 10;
+const TRIGGER_PAGE_SIZE = 12;
 
 function telecallerLabel(t: Telecaller | undefined) {
   if (!t) return 'Telecaller';
@@ -97,6 +98,8 @@ export default function TelecallerDistributionPage() {
   const [telecallers, setTelecallers] = useState<Telecaller[]>([]);
   const [rows, setRows] = useState<AllocationRow[]>([]);
   const [triggers, setTriggers] = useState<MessageTrigger[]>([]);
+  const [triggerLeadCounts, setTriggerLeadCounts] = useState<Record<string, number>>({});
+  const [leadTagOptions, setLeadTagOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [tab, setTab] = useState<TabId>('allocation');
   const [showInactiveAlloc, setShowInactiveAlloc] = useState(false);
   const [showInactiveTest, setShowInactiveTest] = useState(false);
@@ -118,6 +121,7 @@ export default function TelecallerDistributionPage() {
   const [triggerFilterStatus, setTriggerFilterStatus] = useState<TriggerStatusFilter>('active');
   const [triggerPage, setTriggerPage] = useState(1);
   const [highlightTriggerId, setHighlightTriggerId] = useState<string | null>(null);
+  const [selectedTriggerId, setSelectedTriggerId] = useState<string | null>(null);
   const newTriggerRef = useRef<HTMLDivElement | null>(null);
 
   const leadSourceApis = [
@@ -318,6 +322,12 @@ export default function TelecallerDistributionPage() {
       // Do not auto-fill every telecaller — only saved allocation rows (empty until Add Row).
       setRows(allocs);
       setTriggers(Array.isArray(json.message_triggers) ? json.message_triggers : []);
+      setTriggerLeadCounts(
+        json.trigger_lead_counts && typeof json.trigger_lead_counts === 'object'
+          ? json.trigger_lead_counts
+          : {},
+      );
+      setLeadTagOptions(Array.isArray(json.lead_tags) ? json.lead_tags : []);
     } catch (e) {
       console.error('Failed to load telecaller distribution settings:', e);
     } finally {
@@ -477,6 +487,8 @@ export default function TelecallerDistributionPage() {
         match: 'exact',
         telecaller_id: defaultTelecallerId,
         mark_as_meta: true,
+        lead_source: 'Meta Ads',
+        lead_tag_id: '',
         is_active: true,
       },
       ...prev,
@@ -485,6 +497,7 @@ export default function TelecallerDistributionPage() {
     setTriggerFilterStatus('active');
     setTriggerPage(1);
     setHighlightTriggerId(id);
+    setSelectedTriggerId(id);
     setTab('triggers');
   }
 
@@ -1094,36 +1107,59 @@ export default function TelecallerDistributionPage() {
               </div>
             </div>
 
-            <div className="p-3 sm:p-4 space-y-3 bg-slate-50/70">
+            <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 bg-slate-50/70">
               {pagedTriggers.map(({ trigger: t, index }) => {
                 const assignOptions = telecallerOptionsForTrigger(t.telecaller_id);
                 const isNew = highlightTriggerId === t.id;
+                const isSelected = selectedTriggerId === t.id || isNew;
+                const leadCount = triggerLeadCounts[t.id] || 0;
+                const campaignTag = t.label.trim();
+                const sourceValue = t.lead_source || 'Meta Ads';
+                const sourceOptions = TRIGGER_LEAD_SOURCE_OPTIONS.includes(
+                  sourceValue as (typeof TRIGGER_LEAD_SOURCE_OPTIONS)[number],
+                )
+                  ? TRIGGER_LEAD_SOURCE_OPTIONS
+                  : [sourceValue, ...TRIGGER_LEAD_SOURCE_OPTIONS];
+                const extraTags = leadTagOptions.filter(
+                  (tag) => tag.name.trim().toLowerCase() !== campaignTag.toLowerCase(),
+                );
                 return (
                   <div
                     key={t.id}
                     ref={isNew ? newTriggerRef : undefined}
-                    className={`rounded-xl border bg-white px-3 sm:px-4 py-3 space-y-2 shadow-sm transition ${
-                      isNew
-                        ? 'border-indigo-400 ring-2 ring-indigo-200'
+                    onClick={() => setSelectedTriggerId(t.id)}
+                    className={`rounded-xl border-2 px-3 py-3 space-y-2 shadow-sm transition cursor-pointer ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-200'
                         : t.is_active
-                          ? 'border-slate-200'
-                          : 'border-dashed border-slate-300 opacity-80'
+                          ? 'border-blue-300 bg-white hover:border-blue-500'
+                          : 'border-dashed border-blue-200 bg-white opacity-80'
                     }`}
                   >
-                    <div className="flex flex-wrap items-end gap-2">
-                      <label className="block text-[11px] font-semibold text-gray-600 min-w-[120px] flex-1 basis-[140px]">
+                    <div className="flex items-start gap-2">
+                      <label className="block text-[9px] font-semibold text-gray-600 min-w-0 flex-1">
                         Campaign label
                         <input
-                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-xs font-normal"
                           placeholder="e.g. Campaign A"
                           value={t.label}
                           onChange={(e) => updateTrigger(index, { label: e.target.value })}
                         />
                       </label>
-                      <label className="block text-[11px] font-semibold text-gray-600 w-[120px] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => removeTrigger(index)}
+                        className="mt-5 text-rose-600 shrink-0"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block text-[9px] font-semibold text-gray-600">
                         Match
                         <select
-                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-xs font-normal"
                           value={t.match}
                           onChange={(e) =>
                             updateTrigger(index, {
@@ -1136,10 +1172,10 @@ export default function TelecallerDistributionPage() {
                           <option value="contains">Contains</option>
                         </select>
                       </label>
-                      <label className="block text-[11px] font-semibold text-gray-600 min-w-[150px] flex-1 basis-[160px]">
+                      <label className="block text-[9px] font-semibold text-gray-600">
                         Assign telecaller
                         <select
-                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-xs font-normal"
                           value={t.telecaller_id}
                           onChange={(e) => updateTrigger(index, { telecaller_id: e.target.value })}
                         >
@@ -1152,9 +1188,69 @@ export default function TelecallerDistributionPage() {
                           ))}
                         </select>
                       </label>
+                    </div>
+                    <label className="block text-[9px] font-semibold text-gray-600">
+                      Prefill message
+                      <textarea
+                        className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-xs font-normal min-h-[44px] resize-y"
+                        placeholder="Hi! I am interested in service!"
+                        value={t.phrase}
+                        onChange={(e) => updateTrigger(index, { phrase: e.target.value })}
+                        rows={2}
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block text-[9px] font-semibold text-gray-600">
+                        Lead source
+                        <select
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-xs font-normal bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                          value={sourceValue}
+                          onChange={(e) => updateTrigger(index, { lead_source: e.target.value })}
+                        >
+                          {sourceOptions.map((source) => (
+                            <option key={source} value={source}>
+                              {source}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block text-[9px] font-semibold text-gray-600">
+                        Lead tag
+                        <select
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-xs font-normal bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                          value={t.lead_tag_id || ''}
+                          onChange={(e) => updateTrigger(index, { lead_tag_id: e.target.value })}
+                          title="Campaign label is always added. Pick another tag to add that too."
+                        >
+                          <option value="">{campaignTag || 'Campaign label'}</option>
+                          {t.lead_tag_id &&
+                          !leadTagOptions.some((tag) => tag.id === t.lead_tag_id) ? (
+                            <option value={t.lead_tag_id}>Saved tag</option>
+                          ) : null}
+                          {extraTags.map((tag) => (
+                            <option key={tag.id} value={tag.id}>
+                              {tag.name}
+                            </option>
+                          ))}
+                        </select>
+                        {t.lead_tag_id && campaignTag ? (
+                          <span className="mt-0.5 block truncate text-[8px] font-semibold text-blue-700">
+                            + {campaignTag}
+                          </span>
+                        ) : null}
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+                      <a
+                        href={`/dashboard/super_admin/bookings?trigger=${encodeURIComponent(t.id)}&preset=all_time`}
+                        className="text-[10px] font-semibold text-indigo-700 hover:underline tabular-nums"
+                        title="Open leads from this trigger"
+                      >
+                        {leadCount} {leadCount === 1 ? 'lead' : 'leads'}
+                      </a>
                       <label
-                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-700 pb-2 shrink-0"
-                        title="Match hone pe lead ko Meta Ads (WHATSAPP_META) source mark karta hai"
+                        className="inline-flex items-center gap-1.5 text-[9px] font-semibold text-gray-700"
+                        title="Match hone pe lead ko Meta Ads source mark karta hai"
                       >
                         <input
                           type="checkbox"
@@ -1165,7 +1261,7 @@ export default function TelecallerDistributionPage() {
                         />
                         Meta lead
                       </label>
-                      <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-700 pb-2 shrink-0">
+                      <label className="inline-flex items-center gap-1.5 text-[9px] font-semibold text-gray-700">
                         <input
                           type="checkbox"
                           checked={t.is_active}
@@ -1173,36 +1269,17 @@ export default function TelecallerDistributionPage() {
                         />
                         Active
                       </label>
-                      <button
-                        type="button"
-                        onClick={() => removeTrigger(index)}
-                        className="text-rose-600 text-xs font-semibold inline-flex items-center gap-1 pb-2 shrink-0 ml-auto"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
-
-                    <label className="block text-[11px] font-semibold text-gray-600">
-                      Prefill message
-                      <textarea
-                        className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal min-h-[52px] resize-y"
-                        placeholder="Hi! I am interested in service!"
-                        value={t.phrase}
-                        onChange={(e) => updateTrigger(index, { phrase: e.target.value })}
-                        rows={2}
-                      />
-                    </label>
                   </div>
                 );
               })}
               {triggers.length === 0 && (
-                <div className="px-4 py-10 text-center text-sm text-gray-500 bg-white rounded-xl border border-dashed">
+                <div className="xl:col-span-3 md:col-span-2 px-4 py-10 text-center text-sm text-gray-500 bg-white rounded-xl border border-dashed">
                   No message triggers yet. Add one for each Meta campaign prefill message.
                 </div>
               )}
               {triggers.length > 0 && filteredTriggers.length === 0 && (
-                <div className="px-4 py-10 text-center text-sm text-gray-500 bg-white rounded-xl border border-dashed">
+                <div className="xl:col-span-3 md:col-span-2 px-4 py-10 text-center text-sm text-gray-500 bg-white rounded-xl border border-dashed">
                   No triggers match these filters.{' '}
                   <button
                     type="button"
@@ -1217,7 +1294,7 @@ export default function TelecallerDistributionPage() {
                 </div>
               )}
               {filteredTriggers.length > TRIGGER_PAGE_SIZE && (
-                <div className="flex items-center justify-center gap-2 pt-1">
+                <div className="xl:col-span-3 md:col-span-2 flex items-center justify-center gap-2 pt-1">
                   <button
                     type="button"
                     disabled={triggerPage <= 1}

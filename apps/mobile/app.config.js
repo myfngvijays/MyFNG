@@ -31,7 +31,7 @@ module.exports = ({ config }) => {
 
   return {
     ...base,
-    version: partner ? '1.0.2' : base.version,
+    version: partner ? '1.0.3' : base.version,
     splash: {
       ...(base.splash || {}),
       backgroundColor: partner ? '#021E6F' : base.splash && base.splash.backgroundColor,
@@ -43,7 +43,7 @@ module.exports = ({ config }) => {
     android: {
       ...(base.android || {}),
       package: partner ? 'com.myfng.partner' : base.android && base.android.package,
-      versionCode: partner ? 2 : base.android && base.android.versionCode,
+      versionCode: partner ? 3 : base.android && base.android.versionCode,
       config: {
         ...((base.android && base.android.config) || {}),
         googleMaps: {
@@ -55,7 +55,7 @@ module.exports = ({ config }) => {
     ios: {
       ...(base.ios || {}),
       bundleIdentifier: partner ? 'com.myfng.partner' : base.ios && base.ios.bundleIdentifier,
-      buildNumber: partner ? '2' : base.ios && base.ios.buildNumber,
+      buildNumber: partner ? '3' : base.ios && base.ios.buildNumber,
       config: {
         ...((base.ios && base.ios.config) || {}),
         googleMapsApiKey: googleMapsApiKey,

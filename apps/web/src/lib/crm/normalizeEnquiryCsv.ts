@@ -284,7 +284,7 @@ const TELECRM_STATUS_MAP: Array<{ keys: string[]; code: string; label: string; p
   { keys: ['inservice'], code: 'IN_SERVICE', label: 'In Service', pipeline: 'IN_PROGRESS' },
   { keys: ['ringing', 'ringingnoanswer'], code: 'RINGING', label: 'Ringing', pipeline: 'NEW' },
   { keys: ['customrepair'], code: 'CUSTOM_REPAIR', label: 'Custom Repair', pipeline: 'NEW' },
-  { keys: ['incomingsarvleads', 'incomingsarv'], code: 'INCOMING_SARV_LEADS', label: 'Incoming SARV Leads', pipeline: 'NEW' },
+  { keys: ['incomingsarvleads', 'incomingsarv', 'incomingsarvcall', 'sarvcall'], code: 'INCOMING_SARV_LEADS', label: 'Incoming SARV Leads', pipeline: 'NEW' },
   { keys: ['attemptedcontact'], code: 'ATTEMPTED_CONTACT', label: 'Attempted Contact', pipeline: 'NEW' },
   { keys: ['appointmentscheduled'], code: 'APPOINTMENT_SCHEDULED', label: 'Appointment Scheduled', pipeline: 'NEW' },
   { keys: ['fresh', 'fresh2', 'new'], code: 'FRESH', label: 'Fresh', pipeline: 'NEW' },

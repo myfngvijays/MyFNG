@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { fetchMessageTriggers } from '@/lib/enquiry/assignment';
-import { findMatchingMessageTrigger } from '@/lib/enquiry/messageTriggers';
+import { findMatchingMessageTrigger, resolvedTriggerLeadSource } from '@/lib/enquiry/messageTriggers';
+import { applyMessageTriggerTags } from '@/lib/telecaller/crmLeadTagsApply';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -204,17 +205,22 @@ export async function POST(request: NextRequest) {
         },
       };
 
-      if (best.mark_as_meta) {
-        patch.created_from = 'WHATSAPP_META';
-        patch.lead_source = best.label
-          ? `Meta Ads · ${best.label}`
-          : 'Meta Ads';
+      if (best.mark_as_meta || best.lead_source) {
+        if (best.mark_as_meta) patch.created_from = 'WHATSAPP_META';
+        patch.lead_source = resolvedTriggerLeadSource(best, String(lead.lead_source || 'WhatsApp'));
       }
 
       const { error: upErr } = await supabaseAdmin
         .from('service_leads')
         .update(patch)
         .eq('id', lead.id);
+
+      if (!upErr) {
+        await applyMessageTriggerTags(String(lead.id), {
+          label: best.label,
+          leadTagId: best.lead_tag_id,
+        });
+      }
 
       if (upErr) {
         skipped += 1;

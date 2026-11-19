@@ -91,6 +91,22 @@ export async function ensureTagIdsByNames(
   return Array.from(new Set(ids));
 }
 
+/**
+ * Campaign label is always a lead tag. An optional extra tag id is added with it.
+ */
+export async function applyMessageTriggerTags(
+  leadId: string,
+  input: { label?: string | null; leadTagId?: string | null },
+): Promise<void> {
+  const label = String(input.label || '').trim().slice(0, 80);
+  const extra = String(input.leadTagId || '').trim();
+  const ids: string[] = [];
+  if (label) ids.push(...(await ensureTagIdsByNames([label])));
+  if (extra && extra !== '__campaign_label__') ids.push(extra);
+  const unique = Array.from(new Set(ids));
+  if (unique.length) await addLeadTags(leadId, unique);
+}
+
 /** Common tag on every Meta message-trigger lead. */
 export const META_MESSAGE_TRIGGER_TAG = 'META-MAY-2026';
 

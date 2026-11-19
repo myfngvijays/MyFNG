@@ -535,7 +535,7 @@ export default function SettingsSection() {
             <div className="sm:col-span-2 border-t border-gray-100 pt-4">
               <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Partner app force update</p>
               <p className="text-xs text-gray-500 mt-1">
-                MyFNG Partner (com.myfng.partner). Current tester build is 1.0.2 / build 2, so leave force update off
+                MyFNG Partner (com.myfng.partner). Current tester build is 1.0.3 / build 3, so leave force update off
                 until a newer partner build is on the store.
               </p>
             </div>

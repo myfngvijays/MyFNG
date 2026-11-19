@@ -2720,6 +2720,9 @@ function SuperAdminBookingsPage() {
     const search = String(searchParams.get('search') || '').trim();
     if (search) setSearchTerm(search);
 
+    const trigger = String(searchParams.get('trigger') || '').trim();
+    if (trigger) setMessageTriggerFilter([trigger]);
+
     const hasRec = String(searchParams.get('has_recording') || '')
       .trim()
       .toUpperCase();
