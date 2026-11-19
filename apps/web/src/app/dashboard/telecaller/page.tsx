@@ -104,6 +104,7 @@ type FreshLead = {
   created_at?: string | null;
   vehicle_make?: string | null;
   vehicle_model?: string | null;
+  vehicle_number?: string | null;
 };
 
 function formatDashName(name?: string | null): string {
@@ -167,6 +168,11 @@ export default function TelecallerCrmHomePage() {
   const [trend, setTrend] = useState<TrendRow[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminder[]>([]);
   const [freshLeads, setFreshLeads] = useState<FreshLead[]>([]);
+  const [nextCall, setNextCall] = useState<UpcomingReminder | null>(null);
+  const [followupsDue, setFollowupsDue] = useState<UpcomingReminder[]>([]);
+  const [inServiceLeads, setInServiceLeads] = useState<FreshLead[]>([]);
+  const [recentCalls, setRecentCalls] = useState<Array<{ id: string; call_status?: string | null; call_duration?: number | null; created_at?: string | null; phone_number?: string | null; lead_id?: string | null; lead?: { id?: string; customer_name?: string | null; customer_phone?: string | null } | null }>>([]);
+  const [leaderboard, setLeaderboard] = useState<Array<{ rank: number; name?: string; total_calls?: number; is_me?: boolean }>>([]);
   const [profileName, setProfileName] = useState('Telecaller');
   const [waUnread, setWaUnread] = useState(0);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>('all_time');
@@ -229,6 +235,11 @@ export default function TelecallerCrmHomePage() {
           setTrend(Array.isArray(json.trend) ? json.trend : []);
           setUpcomingReminders(Array.isArray(json.upcoming_reminders) ? json.upcoming_reminders : []);
           setFreshLeads(nextFresh);
+          setNextCall(json.next_call || null);
+          setFollowupsDue(Array.isArray(json.followups_due) ? json.followups_due : []);
+          setInServiceLeads(Array.isArray(json.in_service_leads) ? json.in_service_leads : []);
+          setRecentCalls(Array.isArray(json.recent_calls) ? json.recent_calls : []);
+          setLeaderboard(Array.isArray(json.leaderboard) ? json.leaderboard : []);
         }
         setProfileName(json?.profile?.name || 'Telecaller');
         setLoadError(null);
@@ -537,6 +548,20 @@ export default function TelecallerCrmHomePage() {
           </div>
         ) : (
           <>
+            {nextCall ? (
+              <div className="rounded-2xl bg-[#0F2744] p-4 text-white shadow-sm">
+                <div className="text-[11px] font-extrabold tracking-wide text-blue-200">NEXT CALL</div>
+                <div className="mt-1 text-lg font-extrabold">{formatDashName(nextCall.lead?.customer_name)}</div>
+                <div className="text-sm text-slate-300">{nextCall.reason || nextCall.lead?.customer_phone || 'Follow-up'}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {nextCall.lead?.customer_phone ? (
+                    <a href={`tel:${nextCall.lead.customer_phone}`} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white">Call now</a>
+                  ) : null}
+                  <Link href={`${base}/leads/${nextCall.lead_id || nextCall.lead?.id || ''}`} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-slate-100">Open lead</Link>
+                </div>
+              </div>
+            ) : null}
+
             {/* KPI grid — 6 and 6 */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
               {kpiCards.map((k) => {
@@ -570,60 +595,6 @@ export default function TelecallerCrmHomePage() {
               })}
             </div>
 
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-5">
-              <div className="rounded-2xl border border-[#C7D7F5] bg-[#EEF4FF] p-3.5 shadow-sm sm:p-4 xl:col-span-2">
-                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Lead mix</h2>
-                {statusPie.length === 0 ? (
-                  <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
-                    No leads in this range
-                  </div>
-                ) : (
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={statusPie}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={58}
-                          outerRadius={88}
-                          paddingAngle={2}
-                        >
-                          {statusPie.map((entry) => (
-                            <Cell key={entry.name} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-              <div className="rounded-2xl border border-[#BBF7D0] bg-[#F0FDF4] p-3.5 shadow-sm sm:p-4 xl:col-span-3">
-                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Calls and bookings</h2>
-                {activityBars.length === 0 ? (
-                  <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
-                    No activity this week
-                  </div>
-                ) : (
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={activityBars} barGap={4}>
-                        <CartesianGrid stroke="#E2E8F0" vertical={false} />
-                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="calls" name="Calls" fill="#004AAD" radius={[6, 6, 0, 0]} />
-                        <Bar dataKey="bookings" name="Bookings" fill="#10B981" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             <div className="rounded-2xl border border-[#C7D7F5] border-l-4 border-l-[#004AAD] bg-[#F3F7FF] p-3.5 shadow-sm sm:p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -648,8 +619,8 @@ export default function TelecallerCrmHomePage() {
                             {leadInitials(name)}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-semibold text-slate-900">{name}</span>
-                            <span className="block truncate text-[11px] text-slate-500">
+                            <span className="block truncate text-[12px] font-semibold text-slate-900">{name}</span>
+                            <span className="block truncate text-[10px] text-slate-500">
                               {phone || '—'}
                               {meta ? ` · ${meta}` : ''}
                             </span>
@@ -677,16 +648,20 @@ export default function TelecallerCrmHomePage() {
 
             <div className="rounded-2xl border border-[#F3D5B5] border-l-4 border-l-[#EA580C] bg-[#FFF7ED] p-3.5 shadow-sm sm:p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="text-[14px] font-bold text-[#9A3412]">Upcoming reminders</h2>
+                <h2 className="text-[14px] font-bold text-[#9A3412]">Reminders</h2>
                 <Link href={`${base}/followups`} className="rounded-full bg-[#FFEDD5] px-2 py-0.5 text-[11px] font-semibold text-[#C2410C]">
                   View all
                 </Link>
               </div>
-              {upcomingReminders.length === 0 ? (
+              {upcomingReminders.length + followupsDue.length === 0 ? (
                 <p className="py-4 text-center text-sm text-slate-500">No reminders</p>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {upcomingReminders.slice(0, 5).map((r) => {
+                  {[...followupsDue, ...upcomingReminders]
+                    .filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i)
+                    .sort((a, b) => new Date(a.scheduled_time || 0).getTime() - new Date(b.scheduled_time || 0).getTime())
+                    .slice(0, 5)
+                    .map((r) => {
                     const overdue = r.scheduled_time
                       ? new Date(r.scheduled_time).getTime() < Date.now()
                       : false;
@@ -700,14 +675,14 @@ export default function TelecallerCrmHomePage() {
                             {leadInitials(name)}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-semibold text-slate-900">{name}</span>
-                            <span className="block truncate text-[11px] text-slate-500">
+                            <span className="block truncate text-[12px] font-semibold text-slate-900">{name}</span>
+                            <span className="block truncate text-[10px] text-slate-500">
                               {r.reason || 'Follow-up'}
                               {phone ? ` · ${phone}` : ''}
                             </span>
                           </span>
                         </Link>
-                        <span className={`w-24 shrink-0 text-right text-[11px] font-semibold ${overdue ? 'text-red-600' : 'text-[#C2410C]'}`}>
+                        <span className={`w-24 shrink-0 text-right text-[11px] font-semibold ${overdue ? 'text-red-600' : 'text-emerald-600'}`}>
                           {formatReminderClock(r.scheduled_time)}
                         </span>
                         {phone ? (
@@ -837,6 +812,104 @@ export default function TelecallerCrmHomePage() {
                       </span>
                     </Link>
                   ),
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Cars in service</h2>
+                {inServiceLeads.length === 0 ? <p className="text-sm text-slate-500">No cars in service</p> : (
+                  <ul className="divide-y divide-slate-100">
+                    {inServiceLeads.map((lead) => (
+                      <li key={lead.id} className="py-1.5">
+                        <Link href={`${base}/leads/${lead.id}`} className="block truncate text-[12px] font-semibold text-slate-900">{formatDashName(lead.customer_name)}</Link>
+                        <span className="block truncate text-[10px] text-slate-500">{[lead.vehicle_number, lead.vehicle_make, lead.vehicle_model, lead.city].filter(Boolean).join(' · ') || 'In service'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Recent calls</h2>
+                {recentCalls.length === 0 ? <p className="text-sm text-slate-500">No calls yet</p> : (
+                  <ul className="divide-y divide-slate-100">
+                    {recentCalls.map((call) => (
+                      <li key={call.id} className="py-1.5">
+                        <Link href={`${base}/leads/${call.lead?.id || call.lead_id || ''}`} className="block truncate text-[12px] font-semibold text-slate-900">{formatDashName(call.lead?.customer_name || call.phone_number)}</Link>
+                        <span className="block truncate text-[10px] text-slate-500">{call.call_status || 'Call'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {isLeadManager ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Team today</h2>
+                {leaderboard.length === 0 ? <p className="text-sm text-slate-500">No calls logged today</p> : (
+                  <ul className="divide-y divide-slate-100">
+                    {leaderboard.map((row) => (
+                      <li key={row.rank} className="flex items-center justify-between py-1.5 text-[13px]">
+                        <span className={row.is_me ? 'font-extrabold text-[#004AAD]' : 'font-semibold text-slate-900'}>{row.rank}. {row.is_me ? 'You' : row.name}</span>
+                        <span className="text-[11px] font-bold text-slate-500">{row.total_calls || 0} calls</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-5">
+              <div className="rounded-2xl border border-[#C7D7F5] bg-[#EEF4FF] p-3.5 shadow-sm sm:p-4 xl:col-span-2">
+                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Lead mix</h2>
+                {statusPie.length === 0 ? (
+                  <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
+                    No leads in this range
+                  </div>
+                ) : (
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={statusPie}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={58}
+                          outerRadius={88}
+                          paddingAngle={2}
+                        >
+                          {statusPie.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+              <div className="rounded-2xl border border-[#BBF7D0] bg-[#F0FDF4] p-3.5 shadow-sm sm:p-4 xl:col-span-3">
+                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Calls and bookings</h2>
+                {activityBars.length === 0 ? (
+                  <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
+                    No activity this week
+                  </div>
+                ) : (
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={activityBars} barGap={4}>
+                        <CartesianGrid stroke="#E2E8F0" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="calls" name="Calls" fill="#004AAD" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="bookings" name="Bookings" fill="#10B981" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 )}
               </div>
             </div>

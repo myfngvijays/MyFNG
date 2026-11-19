@@ -26,6 +26,7 @@ export type TelecallerCrmFilterPrefs = {
   dateField: 'created' | 'modified';
   statusFilter: string;
   lostReason: string;
+  otherReason: string;
   city: string;
   priority: string;
   q: string;
@@ -50,6 +51,7 @@ export function defaultTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
     dateField: 'created',
     statusFilter: 'all',
     lostReason: '',
+    otherReason: '',
     city: '',
     priority: '',
     q: '',
@@ -73,6 +75,7 @@ function normalizePrefs(raw: Partial<TelecallerCrmFilterPrefs> | null | undefine
     dateField,
     statusFilter: String(raw?.statusFilter || defaults.statusFilter || 'all').trim() || 'all',
     lostReason: String(raw?.lostReason || '').trim(),
+    otherReason: String(raw?.otherReason || '').trim(),
     city: String(raw?.city || '').trim(),
     priority: String(raw?.priority || '').trim(),
     q: String(raw?.q || '').trim(),

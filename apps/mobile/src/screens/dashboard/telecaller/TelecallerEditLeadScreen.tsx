@@ -86,19 +86,10 @@ function parseSlot(iso: string | null | undefined): { date: string; time: string
       return m ? { date: m[1], time: m[2] } : { date: '', time: '' };
     }
     // Use IST parts
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(d);
-    const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+    const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
     return {
-      date: `${get('year')}-${get('month')}-${get('day')}`,
-      time: `${get('hour')}:${get('minute')}`,
+      date: `${ist.getUTCFullYear()}-${String(ist.getUTCMonth() + 1).padStart(2, '0')}-${String(ist.getUTCDate()).padStart(2, '0')}`,
+      time: `${String(ist.getUTCHours()).padStart(2, '0')}:${String(ist.getUTCMinutes()).padStart(2, '0')}`,
     };
   } catch {
     return { date: '', time: '' };

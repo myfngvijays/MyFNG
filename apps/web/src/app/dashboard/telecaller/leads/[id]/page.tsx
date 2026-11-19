@@ -37,9 +37,11 @@ import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
 export function LeadDetailContent({
   panelLeadId,
   onPanelClose,
+  listSeed = null,
 }: {
   panelLeadId?: string;
   onPanelClose?: () => void;
+  listSeed?: Record<string, any> | null;
 } = {}) {
   const params = useParams();
   const router = useRouter();
@@ -280,7 +282,13 @@ export function LeadDetailContent({
 
   async function fetchLeadDetails() {
     const supabase = createClient();
-    setLoading(true);
+    const seed = listSeed && String(listSeed.id || '') === String(leadId) ? listSeed : null;
+    if (seed) {
+      setLead(sanitizeLead(seed as Record<string, any>));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     try {
       // Fetch lead

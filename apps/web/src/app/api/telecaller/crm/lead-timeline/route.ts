@@ -90,8 +90,8 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: 'Admin unavailable' }, { status: 500 });
 
-    await detachForeignDidRecordingsForLead(leadId);
-    await healSmartfloRecordingForLead(leadId);
+    void detachForeignDidRecordingsForLead(leadId);
+    void healSmartfloRecordingForLead(leadId);
     void detachForeignDidRecordingsThrottled();
 
     const leadSelectFull =
@@ -135,19 +135,9 @@ export async function GET(request: NextRequest) {
 
     const phone10 = normalizeCustomerPhone(String((lead as any).customer_phone || ''));
     if (phone10) {
-      try {
-        await consolidateDuplicateLeadsByPhones(supabaseAdmin, [phone10]);
-        const { data: refreshed } = await supabaseAdmin
-          .from('service_leads')
-          .select(
-            'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, vehicle_number, vehicle_make, vehicle_model, service_type, meta',
-          )
-          .eq('id', leadId)
-          .maybeSingle();
-        if (refreshed) lead = refreshed;
-      } catch (e) {
-        console.warn('[lead-timeline] consolidate skipped', e);
-      }
+      void consolidateDuplicateLeadsByPhones(supabaseAdmin, [phone10]).catch((e) =>
+        console.warn('[lead-timeline] consolidate skipped', e),
+      );
     }
 
     const phone = normalizePhone(String((lead as any).customer_phone || ''));

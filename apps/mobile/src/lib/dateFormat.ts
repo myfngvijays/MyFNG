@@ -56,3 +56,46 @@ export function formatDateTime(date: string | number | Date | null | undefined):
   return `${formatDateDMY(d)} ${formatTime12h(d)}`;
 }
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const IST_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function istShifted(input: string | number | Date | null | undefined): Date | null {
+  const d = toValidDate(input);
+  if (!d) return null;
+  return new Date(d.getTime() + IST_OFFSET_MS);
+}
+
+export function formatIstDateGB(input: string | number | Date | null | undefined): string {
+  const ist = istShifted(input);
+  if (!ist) return '';
+  return `${pad2(ist.getUTCDate())}/${pad2(ist.getUTCMonth() + 1)}/${ist.getUTCFullYear()}`;
+}
+
+export function formatIstTime12h(input: string | number | Date | null | undefined): string {
+  const ist = istShifted(input);
+  if (!ist) return '';
+  let hours = ist.getUTCHours();
+  const minutes = pad2(ist.getUTCMinutes());
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12 || 12;
+  return `${hours}:${minutes} ${ampm}`;
+}
+
+export function formatIstDayMonthTime(input: string | number | Date | null | undefined): string {
+  const ist = istShifted(input);
+  if (!ist) return '';
+  return `${pad2(ist.getUTCDate())} ${IST_MONTHS[ist.getUTCMonth()]}, ${formatIstTime12h(input)}`;
+}
+
+export function formatIstDayMonthYear(input: string | number | Date | null | undefined): string {
+  const ist = istShifted(input);
+  if (!ist) return '';
+  return `${ist.getUTCDate()} ${IST_MONTHS[ist.getUTCMonth()]} ${ist.getUTCFullYear()}`;
+}
+
+export function formatIstYmd(input: string | number | Date | null | undefined): string {
+  const ist = istShifted(input);
+  if (!ist) return '';
+  return `${ist.getUTCFullYear()}-${pad2(ist.getUTCMonth() + 1)}-${pad2(ist.getUTCDate())}`;
+}
+

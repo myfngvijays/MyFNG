@@ -2656,8 +2656,41 @@ function TelecallerCrmLeadsContent() {
             onClick={closeLead}
           />
           <div className="telecaller-lead-drawer relative flex h-full w-full min-w-0 flex-col bg-[#f4f7fb] shadow-2xl min-[1100px]:w-[calc(100vw-7rem)] min-[1536px]:w-[min(1360px,calc(100vw-9rem))]">
+            {pageLeadIds.length > 0 ? (
+              <div className="flex shrink-0 items-center justify-end gap-2 border-b border-slate-200 bg-white px-3 py-2">
+                <button
+                  type="button"
+                  disabled={pageLeadIds.indexOf(openLeadId) <= 0}
+                  onClick={() => {
+                    const i = pageLeadIds.indexOf(openLeadId);
+                    if (i > 0) openLead(pageLeadIds[i - 1]);
+                  }}
+                  className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-bold text-slate-700 disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                <span className="text-xs font-bold text-slate-500">
+                  {Math.max(1, pageLeadIds.indexOf(openLeadId) + 1)} of {pageLeadIds.length}
+                </span>
+                <button
+                  type="button"
+                  disabled={pageLeadIds.indexOf(openLeadId) < 0 || pageLeadIds.indexOf(openLeadId) >= pageLeadIds.length - 1}
+                  onClick={() => {
+                    const i = pageLeadIds.indexOf(openLeadId);
+                    if (i >= 0 && i < pageLeadIds.length - 1) openLead(pageLeadIds[i + 1]);
+                  }}
+                  className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-bold text-slate-700 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-              <LeadDetailContent panelLeadId={openLeadId} onPanelClose={closeLead} />
+              <LeadDetailContent
+                panelLeadId={openLeadId}
+                onPanelClose={closeLead}
+                listSeed={displayedLeads.find((row) => String(row.id) === openLeadId) || null}
+              />
             </div>
             <div id="lead-drawer-actions" className="hidden" />
           </div>

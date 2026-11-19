@@ -61,7 +61,7 @@ type Props = {
   managerOps?: boolean;
 };
 
-type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'city' | 'priority' | null;
+type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'otherReason' | 'city' | 'priority' | null;
 
 /** Match lead detail "Select status" — one Fresh, one Follow-up. */
 const DEFAULT_STATUS_FILTERS = mergeCrmStatusFilters([]);
@@ -218,6 +218,8 @@ export default function CrmQueueTab({
   const [pickingLost, setPickingLost] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [lostReason, setLostReason] = useState('');
+  const [otherReason, setOtherReason] = useState('');
+  const [otherReasonOptions, setOtherReasonOptions] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
   const [priority, setPriority] = useState('');
@@ -259,6 +261,7 @@ export default function CrmQueueTab({
   const statusLabel = statusFilters.find((c) => c.id === filter)?.label || 'Lead Status';
   const lostReasonLabel =
     LOST_REASON_FILTERS.find((c) => c.id === lostReason)?.label || 'All lost reasons';
+  const otherReasonLabel = otherReason.trim() || 'All other reasons';
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
 
   const currentViewFilters = {
@@ -266,6 +269,7 @@ export default function CrmQueueTab({
     v: 1 as const,
     filter,
     lostReason,
+    otherReason,
     city,
     priority,
     q: appliedQ,
@@ -324,11 +328,13 @@ export default function CrmQueueTab({
   const applySavedView = (filters: any) => {
     const status = String(filters?.filter || 'all');
     const lost = status === 'lost' ? String(filters?.lostReason || '') : '';
+    const other = status === 'other' ? String(filters?.otherReason || '') : '';
     const preset = (filters?.datePreset || 'all_time') as CrmDatePreset;
     const field = filters?.dateField === 'modified' ? 'modified' : 'created';
     setFilter(status);
     onFilterChange?.(status);
     setLostReason(lost);
+    setOtherReason(other);
     setCity(String(filters?.city || ''));
     setPriority(String(filters?.priority || ''));
     setQ(String(filters?.q || ''));
@@ -344,6 +350,7 @@ export default function CrmQueueTab({
     persistLocalFilters({
       statusFilter: status,
       lostReason: lost,
+      otherReason: other,
       city: String(filters?.city || ''),
       priority: String(filters?.priority || ''),
       q: String(filters?.q || ''),
@@ -384,6 +391,10 @@ export default function CrmQueueTab({
             label: String(row.name || '').trim(),
           }))
           .filter((row: { id: string; label: string }) => row.id && row.label && !builtin.has(row.id));
+        const reasons = (Array.isArray(data?.other_reasons) ? data.other_reasons : [])
+          .map((row: any) => String(row?.name || '').trim())
+          .filter(Boolean);
+        setOtherReasonOptions(reasons);
         setCrmStatusChoices([
           { id: 'FRESH', label: 'Fresh' },
           { id: 'INTERESTED', label: 'Interested' },
@@ -418,6 +429,7 @@ export default function CrmQueueTab({
       setPriority(prefs.priority || '');
       setDateField(prefs.dateField === 'modified' ? 'modified' : 'created');
       setLostReason(prefs.lostReason || '');
+      setOtherReason(prefs.otherReason || '');
       setAdvIncomplete(Boolean(prefs.advIncomplete));
       setAdvFollowUp(Boolean(prefs.advFollowUp));
       setAdvHasVehicle(Boolean(prefs.advHasVehicle));
@@ -566,6 +578,7 @@ export default function CrmQueueTab({
       if (appliedQ.trim()) params.set('q', appliedQ.trim());
       if (filter && filter !== 'all') params.set('filter', filter);
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
+      if (filter === 'other' && otherReason.trim()) params.set('other_reason', otherReason.trim());
       if (city.trim()) params.set('city', city.trim());
       if (priority.trim()) params.set('priority', priority.trim());
       if (dateField === 'modified') params.set('date_field', 'updated_at');
@@ -596,6 +609,7 @@ export default function CrmQueueTab({
     localPrefsReady,
     filter,
     lostReason,
+    otherReason,
     appliedQ,
     city,
     priority,
@@ -630,6 +644,7 @@ export default function CrmQueueTab({
     if (initialFilter) {
       setFilter(initialFilter);
       if (initialFilter !== 'lost') setLostReason('');
+      if (initialFilter !== 'other') setOtherReason('');
     }
   }, [initialFilter]);
 
@@ -639,6 +654,7 @@ export default function CrmQueueTab({
     priority?: string;
     dateField?: 'created' | 'modified';
     lostReason?: string;
+    otherReason?: string;
     statusFilter?: string;
     advIncomplete?: boolean;
     advFollowUp?: boolean;
@@ -985,10 +1001,13 @@ export default function CrmQueueTab({
                         setFilter(c.id);
                         onFilterChange?.(c.id);
                         const nextLost = c.id === 'lost' ? lostReason : '';
+                        const nextOther = c.id === 'other' ? otherReason : '';
                         if (c.id !== 'lost') setLostReason('');
+                        if (c.id !== 'other') setOtherReason('');
                         persistLocalFilters({
                           statusFilter: c.id,
                           lostReason: nextLost,
+                          otherReason: nextOther,
                         });
                         setOpenDropdown(null);
                       }}
@@ -1112,6 +1131,65 @@ export default function CrmQueueTab({
                         {c.label}
                       </Text>
                       {lostReason === c.id ? (
+                        <Ionicons name="checkmark" size={16} color={COLORS.primary} />
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {filter === 'other' ? (
+          <View
+            style={[
+              styles.dateDropdownWrap,
+              styles.lostReasonWrap,
+              openDropdown === 'otherReason' && styles.dropdownOpen,
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.dateDropdownBtn}
+              onPress={() => setOpenDropdown(openDropdown === 'otherReason' ? null : 'otherReason')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="ellipsis-horizontal-circle-outline" size={16} color="#7C3AED" />
+              <Text style={styles.dateDropdownText} numberOfLines={1}>
+                {otherReasonLabel}
+              </Text>
+              <Ionicons
+                name={openDropdown === 'otherReason' ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+            {openDropdown === 'otherReason' ? (
+              <View style={styles.dateMenu}>
+                <ScrollView
+                  style={styles.dateMenuScroll}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {[{ id: '', label: 'All other reasons' }, ...otherReasonOptions.map((name) => ({ id: name, label: name }))].map((c) => (
+                    <TouchableOpacity
+                      key={c.id || 'all-other'}
+                      style={[styles.selectItem, otherReason === c.id && styles.selectItemActive]}
+                      onPress={() => {
+                        setOtherReason(c.id);
+                        persistLocalFilters({ otherReason: c.id });
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.selectItemText,
+                          otherReason === c.id && styles.selectItemTextActive,
+                        ]}
+                      >
+                        {c.label}
+                      </Text>
+                      {otherReason === c.id ? (
                         <Ionicons name="checkmark" size={16} color={COLORS.primary} />
                       ) : null}
                     </TouchableOpacity>
@@ -1409,8 +1487,10 @@ export default function CrmQueueTab({
                   setFilter(v);
                   onFilterChange?.(v);
                   const nextLost = v === 'lost' ? lostReason : '';
+                  const nextOther = v === 'other' ? otherReason : '';
                   if (v !== 'lost') setLostReason('');
-                  persistLocalFilters({ statusFilter: v, lostReason: nextLost });
+                  if (v !== 'other') setOtherReason('');
+                  persistLocalFilters({ statusFilter: v, lostReason: nextLost, otherReason: nextOther });
                 },
               )}
               {filter === 'lost'
@@ -1422,6 +1502,21 @@ export default function CrmQueueTab({
                     (v) => {
                       setLostReason(v);
                       persistLocalFilters({ lostReason: v });
+                    },
+                  )
+                : null}
+              {filter === 'other'
+                ? renderSelect(
+                    'otherReason',
+                    'Other reason',
+                    otherReason,
+                    [
+                      { value: '', label: 'All other reasons' },
+                      ...otherReasonOptions.map((name) => ({ value: name, label: name })),
+                    ],
+                    (v) => {
+                      setOtherReason(v);
+                      persistLocalFilters({ otherReason: v });
                     },
                   )
                 : null}
@@ -1557,6 +1652,7 @@ export default function CrmQueueTab({
                     setCustomEnd(istYmd());
                     setFilter('all');
                     setLostReason('');
+                    setOtherReason('');
                     onFilterChange?.('all');
                     persistLocalFilters({
                       city: '',
@@ -1568,6 +1664,7 @@ export default function CrmQueueTab({
                       dateField: 'created',
                       statusFilter: 'all',
                       lostReason: '',
+                      otherReason: '',
                     });
                     setOpenDropdown(null);
                   }}

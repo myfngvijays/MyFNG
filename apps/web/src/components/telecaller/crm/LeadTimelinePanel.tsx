@@ -505,7 +505,7 @@ export default function LeadTimelinePanel({
             </div>
           )}
 
-          {loadingTasks ? (
+          {loadingTasks && profileHistory.length === 0 && callLogs.length === 0 ? (
             <div className="flex justify-center py-6 text-teal-600">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>

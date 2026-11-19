@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, MessageCircle, Moon, RefreshCw, Search, Sun, X } from 'lucide-react';
 import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
+import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
 import { isWhatsAppSessionWindowClosed } from '@/lib/whatsapp/sessionWindow';
 
 type ChatRow = {
@@ -218,6 +219,8 @@ export default function WhatsAppWebWorkspace({
   const [selectedPhone, setSelectedPhone] = useState('');
   const [selectedPreview, setSelectedPreview] = useState('');
   const [selectedName, setSelectedName] = useState('');
+  const [leadPanelOpen, setLeadPanelOpen] = useState(false);
+  const [sideLeadId, setSideLeadId] = useState('');
   const [isNarrow, setIsNarrow] = useState(false);
   const [theme, setTheme] = useState<WaTheme>('light');
   const [assigneeFilter, setAssigneeFilter] = useState(''); // '' | 'unassigned' | telecaller uuid
@@ -484,6 +487,33 @@ export default function WhatsAppWebWorkspace({
       window.removeEventListener('keydown', onKey);
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    const phone10 = String(selectedPhone || '').replace(/\D/g, '').slice(-10);
+    if (phone10.length !== 10) {
+      setSideLeadId('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/telecaller/crm/leads?q=${encodeURIComponent(phone10)}&limit=10`);
+        const json = await res.json().catch(() => ({}));
+        const rows = Array.isArray(json?.leads) ? json.leads : [];
+        const match =
+          rows.find(
+            (row: { customer_phone?: string | null }) =>
+              String(row?.customer_phone || '').replace(/\D/g, '').slice(-10) === phone10,
+          ) || rows[0];
+        if (!cancelled) setSideLeadId(String(match?.id || ''));
+      } catch {
+        if (!cancelled) setSideLeadId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPhone]);
 
   if (!isOpen || !mounted) return null;
 
@@ -837,6 +867,8 @@ export default function WhatsAppWebWorkspace({
                   else setInboxTab('open');
                 }}
                 onClose={onClose}
+                leadPanelOpen={leadPanelOpen}
+                onToggleLeadPanel={() => setLeadPanelOpen((v) => !v)}
                 onBack={() => {
                   setSelectedPhone('');
                   setSelectedPreview('');
@@ -855,6 +887,22 @@ export default function WhatsAppWebWorkspace({
                   Left se chat select karo. Theme upar sun/moon se badlo.
                 </p>
               </div>
+            )}
+          </div>
+        ) : null}
+
+        {!isNarrow && selectedPhone && leadPanelOpen ? (
+          <div className="flex h-full w-[380px] max-w-[42vw] shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-[#f4f7fb]">
+            {sideLeadId ? (
+              <CrmLeadEditForm
+                key={sideLeadId}
+                leadId={sideLeadId}
+                embedded
+                sidePanel
+                onCancel={() => setLeadPanelOpen(false)}
+              />
+            ) : (
+              <p className="p-4 text-sm text-slate-500">Is number ka lead nahi mila.</p>
             )}
           </div>
         ) : null}

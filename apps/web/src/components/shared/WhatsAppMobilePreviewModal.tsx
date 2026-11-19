@@ -29,6 +29,8 @@ import {
   Video,
   Share2,
   CornerUpLeft,
+  ChevronLeft,
+  ChevronRight,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -54,6 +56,9 @@ interface WhatsAppMobilePreviewModalProps {
   /** Inbox closed state (Open / Closed / Awaiting). */
   chatClosed?: boolean;
   onMarkClosed?: (closed: boolean) => void;
+  /** Side lead panel toggle, shown next to Open lead. */
+  leadPanelOpen?: boolean;
+  onToggleLeadPanel?: () => void;
 }
 
 function humanizeTemplateKey(name: string): string {
@@ -807,6 +812,8 @@ export default function WhatsAppMobilePreviewModal({
   theme = 'light',
   chatClosed = false,
   onMarkClosed,
+  leadPanelOpen,
+  onToggleLeadPanel,
 }: WhatsAppMobilePreviewModalProps) {
   const isWeb = variant === 'web';
   const isDark = isWeb && theme === 'dark';
@@ -3036,6 +3043,17 @@ export default function WhatsAppMobilePreviewModal({
               <button type="button" className="rounded-md p-1 hover:bg-white/10" onClick={onClose} aria-label="Close WhatsApp preview">
                 <X className="h-4 w-4" />
               </button>
+              {onToggleLeadPanel ? (
+                <button
+                  type="button"
+                  className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-[#004AAD] shadow-sm"
+                  onClick={onToggleLeadPanel}
+                  title={leadPanelOpen ? 'Hide lead' : 'Show lead'}
+                  aria-label={leadPanelOpen ? 'Hide lead' : 'Show lead'}
+                >
+                  {leadPanelOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                </button>
+              ) : null}
             </div>
           </div>
 

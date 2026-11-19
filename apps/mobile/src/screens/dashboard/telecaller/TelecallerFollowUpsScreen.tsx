@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { formatDateTime } from "@/lib/dateFormat";
+import { formatDateTime, formatIstDateGB, formatIstDayMonthTime } from "@/lib/dateFormat";
 import {
   View,
   Text,
@@ -29,10 +29,20 @@ import {
   istWeekday,
 } from '../../../lib/crmDateRange';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
+import TelecallerLeadDetailScreen from './TelecallerLeadDetailScreen';
 
 type ScopeFilter = 'all' | 'today' | 'calendar' | 'completed';
 type TypeFilter = 'all' | 'CALLBACK';
 type CalendarPickMode = 'single' | 'range';
+
+function priorityTint(priority: unknown) {
+  const value = String(priority || '').toUpperCase();
+  if (value === 'URGENT') return '#EF4444';
+  if (value === 'HIGH') return '#F97316';
+  if (value === 'MEDIUM') return '#2563EB';
+  if (value === 'LOW') return '#94A3B8';
+  return '#CBD5E1';
+}
 
 function scheduledInIstRange(iso: string, startIso: string, endIso: string) {
   const t = new Date(iso).getTime();
@@ -102,6 +112,9 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   const [customEnd, setCustomEnd] = useState(istYmd());
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [sheetLeadId, setSheetLeadId] = useState<string | null>(null);
+  const sheetLeadIdRef = useRef<string | null>(null);
+  sheetLeadIdRef.current = sheetLeadId;
   const [calendarPickMode, setCalendarPickMode] = useState<CalendarPickMode>('single');
   const [draftStart, setDraftStart] = useState(istYmd());
   const [draftEnd, setDraftEnd] = useState(istYmd());
@@ -202,6 +215,10 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   // Handle hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (sheetLeadIdRef.current) {
+        setSheetLeadId(null);
+        return true;
+      }
       if (navigation?.goBack) {
         navigation.goBack();
         return true;
@@ -683,7 +700,8 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   };
 
   const handleViewLead = (leadId: string) => {
-    navigation.navigate('TelecallerLeadDetail', { leadId });
+    if (!leadId) return;
+    setSheetLeadId(String(leadId));
   };
 
   const renderFollowUp = (item: any, index: number, total: number) => {
@@ -721,89 +739,64 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           : isToday
             ? styles.timePillTextToday
             : undefined;
-    const isFirst = index === 0;
-    const isLast = index === total - 1;
+    const flagColor = priorityTint(item.priority);
+    const accent = isOverdue || isCancelled ? '#DC2626' : '#16A34A';
 
     return (
-      <TouchableOpacity
+      <Pressable
         key={item.id}
-        style={[
-          styles.row,
-          isFirst && styles.rowFirst,
-          isLast && styles.rowLast,
-          !isLast && styles.rowDivider,
-        ]}
-        activeOpacity={0.85}
+        style={[styles.row, { borderLeftColor: accent }]}
         onPress={() => handleViewLead(item.lead_id)}
       >
-        <View style={styles.rowCopy}>
-          <Text style={styles.customerName} numberOfLines={1}>
-            {item.lead?.customer_name || 'Customer'}
-          </Text>
-          <Text style={styles.leadMeta} numberOfLines={expandedNoteId === item.id ? undefined : 2}>
-            {String(item.reason || '').trim()}
-          </Text>
-          {String(item.reason || '').trim().length > 72 ? (
-            <TouchableOpacity onPress={() => setExpandedNoteId((id) => (id === item.id ? null : item.id))}>
-              <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>
-                {expandedNoteId === item.id ? 'Less' : 'Read more'}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-          <Text style={styles.leadMeta} numberOfLines={1}>
-            {item.telecaller?.full_name || 'Unassigned'}
-            {'  ·  '}
-            {phone || '—'}
-          </Text>
-          <Text style={styles.leadMeta} numberOfLines={1}>
-            Date {item.scheduled_time ? new Date(item.scheduled_time).toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
-            {'  ·  '}
-            Due {item.scheduled_time ? new Date(item.scheduled_time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-          </Text>
-          <View style={[styles.statusPill, pillStyle]}>
-            <Text style={[styles.statusPillText, pillTextStyle]} numberOfLines={1}>
-              {isOverdue ? 'LATE' : pillLabel}
+        <View style={styles.cardHead}>
+          <View style={styles.nameRow}>
+            <Text style={styles.customerName} numberOfLines={1}>
+              {item.lead?.customer_name || 'Customer'}
             </Text>
+            <View style={[styles.statusPill, pillStyle]}>
+              <Text style={[styles.statusPillText, pillTextStyle]} numberOfLines={1}>
+                {isOverdue ? 'LATE' : pillLabel}
+              </Text>
+            </View>
           </View>
-        </View>
-        <View style={styles.iconActions}>
           <TouchableOpacity
-            style={styles.iconAct}
+            style={[styles.flagBtn, { backgroundColor: flagColor + '18' }]}
             onPress={() => handleSetPriority(item.id)}
             accessibilityLabel="Priority"
           >
-            <Icon
-              name="flag"
-              size={15}
-              color={
-                String(item.priority || '').toUpperCase() === 'URGENT'
-                  ? '#EF4444'
-                  : String(item.priority || '').toUpperCase() === 'HIGH'
-                    ? '#F97316'
-                    : String(item.priority || '').toUpperCase() === 'MEDIUM'
-                      ? '#2563EB'
-                      : String(item.priority || '').toUpperCase() === 'LOW'
-                        ? '#94A3B8'
-                        : '#CBD5E1'
-              }
-            />
+            <Icon name="flag" size={16} color={flagColor} />
           </TouchableOpacity>
+        </View>
+        <Text style={styles.leadMeta} numberOfLines={expandedNoteId === item.id ? undefined : 2}>
+          {String(item.reason || '').trim()}
+        </Text>
+        {String(item.reason || '').trim().length > 72 ? (
+          <TouchableOpacity onPress={() => setExpandedNoteId((id) => (id === item.id ? null : item.id))}>
+            <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>
+              {expandedNoteId === item.id ? 'Less' : 'Read more'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+        <Text style={styles.leadMeta} numberOfLines={1}>
+          {item.telecaller?.full_name || 'Unassigned'}
+          {'  ·  '}
+          {phone || '—'}
+        </Text>
+        <Text style={styles.leadMeta} numberOfLines={1}>
+          {item.scheduled_time ? formatIstDateGB(item.scheduled_time) : '—'}
+          {'  ·  '}
+          {item.scheduled_time ? formatIstDayMonthTime(item.scheduled_time) : '—'}
+        </Text>
+        <View style={styles.iconActions}>
           {item.lead?.customer_phone ? (
             <TouchableOpacity
               style={[styles.iconAct, styles.iconActPrimary]}
               onPress={() => Linking.openURL(`tel:${item.lead.customer_phone}`)}
               accessibilityLabel="Call"
             >
-              <Icon name="phone" size={15} color="#fff" />
+              <Icon name="phone" size={16} color="#fff" />
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity
-            style={styles.iconAct}
-            onPress={() => handleViewLead(item.lead_id)}
-            accessibilityLabel="Open"
-          >
-            <Icon name="eye" size={15} color={COLORS.primary} />
-          </TouchableOpacity>
           {isPending ? (
             <TouchableOpacity
               style={styles.iconAct}
@@ -819,7 +812,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
               onPress={() => handleReschedule(item.id)}
               accessibilityLabel="Reschedule"
             >
-              <Icon name="calendar" size={15} color="#0369A1" />
+              <Icon name="calendar" size={16} color="#0369A1" />
             </TouchableOpacity>
           ) : null}
           {isPending ? (
@@ -832,7 +825,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             </TouchableOpacity>
           ) : null}
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -934,20 +927,21 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
         <View style={styles.pickerOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFilters(false)} />
           <View style={styles.filterSheet}>
+            <View style={styles.pickerHandle} />
             <Text style={styles.filterSheetTitle}>Filters</Text>
             <Text style={styles.filterLabel}>Show</Text>
-            <View style={styles.filterChipRow}>
+            <View style={styles.filterGrid}>
               {(
                 [
-                  { id: 'all' as const, label: 'All Pending' },
-                  { id: 'today' as const, label: 'Today' },
-                  { id: 'calendar' as const, label: 'Calendar' },
+                  { id: 'all' as const, label: `All Pending (${stats.pending})` },
+                  { id: 'today' as const, label: `Today (${stats.today})` },
+                  { id: 'calendar' as const, label: filter === 'calendar' ? calendarLabel : 'Calendar' },
                   { id: 'completed' as const, label: 'Done' },
                 ]
               ).map((f) => (
                 <TouchableOpacity
                   key={f.id}
-                  style={[styles.scopeChip, filter === f.id && styles.scopeChipActive]}
+                  style={[styles.filterGridChip, filter === f.id && styles.scopeChipActive]}
                   onPress={() => {
                     if (f.id === 'calendar') {
                       setShowFilters(false);
@@ -957,60 +951,95 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
                     setFilter(f.id);
                   }}
                 >
-                  <Text style={[styles.scopeChipText, filter === f.id && styles.scopeChipTextActive]}>
-                    {f.id === 'calendar' && filter === 'calendar'
-                      ? calendarLabel
-                      : f.id === 'today'
-                        ? `Today (${stats.today})`
-                        : f.id === 'all'
-                          ? `All Pending (${stats.pending})`
-                          : f.label}
+                  <Text
+                    style={[styles.scopeChipText, filter === f.id && styles.scopeChipTextActive]}
+                    numberOfLines={1}
+                  >
+                    {f.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
             <Text style={styles.filterLabel}>Priority</Text>
-            {(
-              [
-                { id: 'ALL' as const, label: 'All priorities' },
-                { id: 'URGENT' as const, label: 'Urgent' },
-                { id: 'HIGH' as const, label: 'High' },
-                { id: 'MEDIUM' as const, label: 'Medium' },
-                { id: 'LOW' as const, label: 'Low' },
-              ]
-            ).map((opt) => (
-              <TouchableOpacity
-                key={opt.id}
-                style={styles.filterTypeRow}
-                onPress={() => setPriorityFilter(opt.id)}
-              >
-                <Text style={[styles.filterTypeText, priorityFilter === opt.id && styles.filterTypeTextOn]}>
-                  {opt.label}
-                </Text>
-                {priorityFilter === opt.id ? <Icon name="check" size={16} color={COLORS.primary} /> : null}
-              </TouchableOpacity>
-            ))}
+            <View style={styles.filterChipRow}>
+              {(
+                [
+                  { id: 'ALL' as const, label: 'All', color: '#64748B' },
+                  { id: 'URGENT' as const, label: 'Urgent', color: '#EF4444' },
+                  { id: 'HIGH' as const, label: 'High', color: '#F97316' },
+                  { id: 'MEDIUM' as const, label: 'Medium', color: '#2563EB' },
+                  { id: 'LOW' as const, label: 'Low', color: '#94A3B8' },
+                ]
+              ).map((opt) => {
+                const on = priorityFilter === opt.id;
+                return (
+                  <TouchableOpacity
+                    key={opt.id}
+                    style={[styles.priorityChip, on && { borderColor: opt.color, backgroundColor: opt.color + '14' }]}
+                    onPress={() => setPriorityFilter(opt.id)}
+                  >
+                    <View style={[styles.priorityDot, { backgroundColor: opt.color }]} />
+                    <Text style={[styles.priorityChipText, on && { color: opt.color }]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <Text style={styles.filterLabel}>Type</Text>
-            {(
-              [
-                { id: 'all' as const, label: 'All types' },
-                { id: 'CALLBACK' as const, label: 'Follow-up only' },
-              ]
-            ).map((opt) => (
-              <TouchableOpacity
-                key={opt.id}
-                style={styles.filterTypeRow}
-                onPress={() => setTypeFilter(opt.id)}
-              >
-                <Text style={[styles.filterTypeText, typeFilter === opt.id && styles.filterTypeTextOn]}>
-                  {opt.label}
-                </Text>
-                {typeFilter === opt.id ? <Icon name="check" size={16} color={COLORS.primary} /> : null}
-              </TouchableOpacity>
-            ))}
+            <View style={styles.filterGrid}>
+              {(
+                [
+                  { id: 'all' as const, label: 'All types' },
+                  { id: 'CALLBACK' as const, label: 'Follow-up only' },
+                ]
+              ).map((opt) => (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.filterGridChip, typeFilter === opt.id && styles.scopeChipActive]}
+                  onPress={() => setTypeFilter(opt.id)}
+                >
+                  <Text style={[styles.scopeChipText, typeFilter === opt.id && styles.scopeChipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <TouchableOpacity style={styles.filterDone} onPress={() => setShowFilters(false)}>
               <Text style={styles.filterDoneText}>Done</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(sheetLeadId)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSheetLeadId(null)}
+      >
+        <View style={styles.pickerOverlay}>
+          <Pressable style={styles.sheetBackdrop} onPress={() => setSheetLeadId(null)} />
+          <View style={styles.leadSheet}>
+            <View style={styles.pickerHandle} />
+            {sheetLeadId ? (
+              <View style={{ flex: 1 }}>
+              <TelecallerLeadDetailScreen
+                embedded
+                navigation={{
+                  goBack: () => setSheetLeadId(null),
+                  canGoBack: () => true,
+                  navigate: (name: string, params?: any) => {
+                    if (name === 'TelecallerLeadDetail' && params?.leadId) {
+                      setSheetLeadId(String(params.leadId));
+                      return;
+                    }
+                    setSheetLeadId(null);
+                    navigation?.navigate?.(name, params);
+                  },
+                }}
+                route={{ params: { leadId: sheetLeadId } }}
+              />
+              </View>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -1531,14 +1560,51 @@ const styles = StyleSheet.create({
   filterBtn: { padding: 6 },
   filterSheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 16,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 28,
+    zIndex: 2,
   },
-  filterSheetTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 12 },
-  filterLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 8, marginTop: 8 },
+  filterSheetTitle: { fontSize: 17, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 4 },
+  filterLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 8, marginTop: 14 },
   filterChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterGridChip: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  priorityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
+  },
+  priorityDot: { width: 8, height: 8, borderRadius: 4 },
+  priorityChipText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
+  sheetBackdrop: { flex: 1 },
+  leadSheet: {
+    height: '92%',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+    paddingTop: 8,
+  },
   filterTypeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1558,35 +1624,50 @@ const styles = StyleSheet.create({
   },
   filterDoneText: { color: '#fff', fontWeight: '800' },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     backgroundColor: '#fff',
     paddingHorizontal: 12,
     paddingVertical: 10,
+    gap: 4,
+    marginBottom: 10,
+    borderRadius: 14,
+    borderLeftWidth: 4,
+    overflow: 'hidden',
   },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  flagBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowFirst: { borderTopLeftRadius: 14, borderTopRightRadius: 14 },
   rowLast: { borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
   rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E6EDF5' },
   rowCopy: { flex: 1, minWidth: 0, gap: 2 },
-  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 4,
+  },
   iconAct: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary + '12',
   },
   iconActPrimary: { backgroundColor: COLORS.primary },
   statusPill: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 2,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
   },
-  statusPillText: { fontSize: 11, fontWeight: '700', color: '#047857' },
+  statusPillText: { fontSize: 9, fontWeight: '800', color: '#047857' },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1688,8 +1769,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   avatar: {
-    width: 42,
-    height: 42,
+    width: 36,
+    height: 36,
     marginTop: 2,
     borderRadius: 14,
     backgroundColor: '#E8F1FF',
@@ -1697,11 +1778,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '800',
     color: COLORS.primary,
   },
   nameRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1709,7 +1791,7 @@ const styles = StyleSheet.create({
   },
   customerName: {
     flexShrink: 1,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
     color: COLORS.textHeading,
     letterSpacing: -0.2,
@@ -1725,7 +1807,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   leadMeta: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 2,
     fontWeight: '600',

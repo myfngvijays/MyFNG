@@ -175,7 +175,7 @@ function composeSmartAddress(parts: {
 
 function fieldCls(hasError?: boolean, disabled?: boolean) {
   return [
-    'w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition',
+    'w-full min-w-0 max-w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition',
     'placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#023D95]/20 focus:border-[#023D95]',
     disabled ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : 'bg-white hover:border-slate-300',
     hasError ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200',
@@ -450,7 +450,7 @@ function SectionCard({
     indigo: 'border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 to-white',
   };
   return (
-    <section className={`rounded-2xl border p-4 sm:p-5 shadow-sm ${tones[tone]}`}>
+    <section className={`min-w-0 rounded-2xl border p-4 shadow-sm sm:p-5 ${tones[tone]}`}>
       <div className="mb-4 flex items-center gap-2.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#023D95] text-white shadow-sm">
           <Icon className="h-4 w-4" />
@@ -465,6 +465,8 @@ function SectionCard({
 export type CrmLeadEditFormProps = {
   leadId: string;
   embedded?: boolean;
+  /** WhatsApp ke side panel: layout column ke andar, save bar screen pe nahi. */
+  sidePanel?: boolean;
   onCancel?: () => void;
   onSaved?: () => void;
   onActivity?: () => void;
@@ -519,6 +521,7 @@ function YearPicker({
 export default function CrmLeadEditForm({
   leadId,
   embedded = false,
+  sidePanel = false,
   onCancel,
   onSaved,
   onActivity,
@@ -817,13 +820,28 @@ export default function CrmLeadEditForm({
         if (rows.length) setCities(rows);
       }
       const hit = (rows || []).find((c: any) => String(c.city_pincodes || '').includes(pincode));
-      if (hit?.name) {
+      let cityName = String(hit?.name || '').trim();
+      let cityId = String(hit?.id || '').trim();
+      if (!cityName) {
+        try {
+          const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+          const json = await res.json().catch(() => []);
+          const office = json?.[0]?.PostOffice?.[0];
+          cityName = String(office?.District || office?.Name || '').trim();
+        } catch {
+          cityName = '';
+        }
+      }
+      if (cityName || cityId) {
         setFormData((prev) => ({
           ...prev,
           pincode,
-          city: hit.name,
-          city_id: hit.id || prev.city_id,
+          city: cityName || prev.city,
+          city_id: cityId || prev.city_id,
+          area: String(prev.area || '').trim() ? prev.area : cityName || prev.area,
         }));
+      } else {
+        setFormData((prev) => ({ ...prev, pincode }));
       }
     } catch {
       /* ignore */
@@ -1157,6 +1175,7 @@ export default function CrmLeadEditForm({
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    touchLead();
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
 
@@ -1170,7 +1189,6 @@ export default function CrmLeadEditForm({
       return {
         ...prev,
         [name]: type === 'checkbox' ? checked : value,
-        ...(name === 'activity_result' && value === 'BOOKING_CONFIRMED' ? { pickup_required: true } : {}),
         ...(keepPickup && pickupKey ? { [pickupKey]: value } : {}),
       };
     });
@@ -1461,6 +1479,8 @@ export default function CrmLeadEditForm({
       services: JSON.stringify(formData.service_types || []),
       coupons: [...selectedCodes].map((code) => String(code || '').trim().toUpperCase()).filter(Boolean).sort().join(', '),
       status: n(formData.activity_result),
+      lost: n(formData.lost_reason),
+      other: n(formData.other_reason),
       custom: JSON.stringify(customFieldValues || {}),
       second: showSecondCar ? JSON.stringify(secondCar) : '',
       referred: JSON.stringify(referredBy || null),
@@ -1509,11 +1529,14 @@ export default function CrmLeadEditForm({
 
   const dockFooter = saveSlot;
   const inDrawer = Boolean(dockFooter);
+  const compact = inDrawer || sidePanel;
 
   const saveBar = (
     <div
       className={
-        inDrawer
+        sidePanel
+          ? 'sticky bottom-0 z-20 mt-3 border-t border-slate-200 bg-white px-2 py-2'
+          : inDrawer
           ? 'flex flex-col gap-2'
           : 'fixed bottom-3 sm:bottom-4 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(12px,env(safe-area-inset-bottom,0px))] sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]'
       }
@@ -1533,14 +1556,18 @@ export default function CrmLeadEditForm({
 
   return (
     <div
-      className={`${embedded ? 'w-full' : 'max-w-5xl mx-auto'} ${inDrawer ? 'space-y-3 pb-2' : 'space-y-4 pb-28'} ${embedded ? '' : 'px-3 sm:px-4'}`}
+      className={
+        sidePanel
+          ? 'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#f4f7fb]'
+          : `${embedded ? 'w-full' : 'max-w-5xl mx-auto'} ${inDrawer ? 'space-y-3 pb-2' : 'space-y-4 pb-28'} ${embedded ? '' : 'px-3 sm:px-4'}`
+      }
     >
-      <div className={inDrawer ? 'sticky top-0 z-30 space-y-2 bg-[#f4f7fb] pb-2' : ''}>
+      <div className={sidePanel ? 'shrink-0 px-3 pt-3' : inDrawer ? 'sticky top-0 z-30 space-y-2 bg-[#f4f7fb] pb-2' : ''}>
       <div
-        className={`relative overflow-hidden rounded-2xl text-white shadow-lg transition-colors ${headerCardClass(formData.activity_result)} ${inDrawer ? 'p-3' : 'p-4 sm:p-6'}`}
+        className={`relative overflow-hidden rounded-2xl text-white shadow-lg transition-colors ${headerCardClass(formData.activity_result)} ${compact ? 'p-3' : 'p-4 sm:p-6'}`}
       >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.12),_transparent_55%)]" />
-        <div className={`relative flex flex-col ${inDrawer ? 'gap-2' : 'gap-4'}`}>
+        <div className={`relative flex flex-col ${compact ? 'gap-2' : 'gap-4'}`}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-2.5 min-w-0 flex-1">
               <button
@@ -1551,14 +1578,14 @@ export default function CrmLeadEditForm({
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
-                {inDrawer ? null : (
+                {compact ? null : (
                 <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">
                   {isLeadManager ? 'Lead Manager · Service Lead Details' : 'Telecaller · Service Lead Details'}
                 </p>
                 )}
-                <h1 className={`flex items-center gap-2 font-black text-white ${inDrawer ? 'text-lg leading-tight break-words' : 'text-xl sm:text-2xl md:text-3xl mt-0.5'}`}>
+                <h1 className={`flex min-w-0 items-center gap-2 font-black text-white ${compact ? 'text-lg leading-tight' : 'text-xl sm:text-2xl md:text-3xl mt-0.5'}`}>
                   {hasMembership ? <Crown className="h-6 w-6 shrink-0 text-purple-200" aria-label="Membership customer" /> : null}
-                  <span className={inDrawer ? '' : 'truncate'}>{formData.customer_name || lead.customer_name || 'Lead'}</span>
+                  <span className={sidePanel ? 'break-words leading-tight' : 'truncate'}>{formData.customer_name || lead.customer_name || 'Lead'}</span>
                 </h1>
                 <p className="text-sm text-white/90 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                   <span className="font-mono font-bold text-white">#{lead.lead_number}</span>
@@ -1577,7 +1604,7 @@ export default function CrmLeadEditForm({
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              {inDrawer ? null : (
+              {compact ? null : (
               <button
                 type="submit"
                 form="crm-lead-edit-form"
@@ -1634,8 +1661,8 @@ export default function CrmLeadEditForm({
             </div>
           </div>
 
-          <div className={`rounded-xl bg-white/10 ${inDrawer ? 'p-1.5' : 'overflow-x-auto p-3'}`}>
-            <div className={`flex items-center gap-1 ${inDrawer ? 'min-w-0' : 'min-w-[520px]'}`}>
+          <div className={`max-w-full rounded-xl bg-white/10 ${sidePanel ? 'overflow-x-auto p-1.5' : compact ? 'overflow-x-auto p-1.5' : 'overflow-x-auto p-3'}`}>
+            <div className={`flex items-center gap-1 ${sidePanel ? 'w-max min-w-full' : compact ? 'min-w-0' : 'min-w-[520px]'}`}>
               {PIPELINE.map((step, idx) => {
                 const active = pipelineActiveIndex(lead, formData.activity_result);
                 const lost = active < 0;
@@ -1648,7 +1675,7 @@ export default function CrmLeadEditForm({
                       ? 'SERVICE_DONE'
                       : step.id;
                 return (
-                  <div key={step.id} className="flex items-center flex-1 min-w-0">
+                  <div key={step.id} className={sidePanel ? 'shrink-0' : 'flex items-center flex-1 min-w-0'}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1656,10 +1683,9 @@ export default function CrmLeadEditForm({
                         setFormData((prev) => ({
                           ...prev,
                           activity_result: activityId,
-                          ...(activityId === 'BOOKING_CONFIRMED' ? { pickup_required: true } : {}),
                         }));
                       }}
-                      className={`flex-1 rounded-lg px-2 py-1.5 text-center text-[10px] sm:text-[11px] font-bold truncate transition ${
+                      className={`${sidePanel ? 'whitespace-nowrap px-2.5' : 'flex-1 truncate px-2'} rounded-lg py-1.5 text-center text-[11px] font-bold transition ${
                         lost
                           ? 'bg-rose-500/40 text-white'
                           : done
@@ -1703,14 +1729,17 @@ export default function CrmLeadEditForm({
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 sm:p-4">
           <OtherReasonField
             value={formData.other_reason}
-            onChange={(name) => setFormData((prev) => ({ ...prev, other_reason: name }))}
+            onChange={(name) => {
+              touchLead();
+              setFormData((prev) => ({ ...prev, other_reason: name }));
+            }}
           />
         </div>
       ) : null}
 
-      <form id="crm-lead-edit-form" onSubmit={handleSubmit} onChangeCapture={touchLead} noValidate className="space-y-4">
+      <form id="crm-lead-edit-form" onSubmit={handleSubmit} onChangeCapture={touchLead} noValidate className={sidePanel ? 'min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-3' : 'space-y-4'}>
         <SectionCard title="Customer Details" icon={User} tone="emerald">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'}>
             <div>
               <FieldLabel required>Customer Name</FieldLabel>
               <input type="text" name="customer_name" value={formData.customer_name} onChange={handleChange} className={fieldCls(Boolean(errors.customer_name))} required />
@@ -1747,7 +1776,7 @@ export default function CrmLeadEditForm({
               {errors.customer_phone ? <p className="mt-1 text-xs text-rose-600">{errors.customer_phone}</p> : null}
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className={sidePanel ? 'mt-3 grid grid-cols-1 gap-3' : 'mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3'}>
             <div>
               <FieldLabel>Alternate Phone</FieldLabel>
               <input type="tel" name="customer_alternate_phone" value={formData.customer_alternate_phone} onChange={handleChange} className={fieldCls()} maxLength={10} />
@@ -1768,6 +1797,7 @@ export default function CrmLeadEditForm({
                   name="pincode"
                   value={formData.pincode}
                   onChange={(e) => {
+                    touchLead();
                     const pin = e.target.value.replace(/\D/g, '').slice(0, 6);
                     setFormData((prev) => ({
                       ...prev,
@@ -1786,13 +1816,13 @@ export default function CrmLeadEditForm({
               ) : formData.city ? (
                 <p className="mt-1 text-xs font-semibold text-[#004AAD]">{formData.city}</p>
               ) : formData.pincode.length === 6 ? (
-                <p className="mt-1 text-xs text-amber-600">City not found for this pincode</p>
+                <p className="mt-1 text-xs text-slate-500">Pincode saved. Area city map mein nahi hai.</p>
               ) : null}
               {errors.pincode || errors.city_id ? (
                 <p className="mt-1 text-xs text-rose-600">{errors.pincode || errors.city_id}</p>
               ) : null}
             </div>
-            <div className="sm:col-span-3">
+            <div className={sidePanel ? 'min-w-0' : 'sm:col-span-3'}>
               <CrmWorkshopPicker
                 pincode={formData.pincode}
                 city={formData.city}
@@ -1821,8 +1851,8 @@ export default function CrmLeadEditForm({
         </SectionCard>
 
         <SectionCard title="Vehicle Details" icon={Car} tone="sky">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="col-span-2 lg:col-span-1">
+          <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'}>
+            <div className={sidePanel ? 'min-w-0' : 'col-span-2 lg:col-span-1'}>
               <FieldLabel>Vehicle Number</FieldLabel>
               <input
                 type="text"
@@ -1839,7 +1869,7 @@ export default function CrmLeadEditForm({
               />
               {errors.vehicle_number ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_number}</p> : null}
             </div>
-            <div className="col-span-2 lg:col-span-2">
+            <div className={sidePanel ? 'min-w-0' : 'col-span-2 lg:col-span-2'}>
               <CrmCarSearch
                 label="Car Model"
                 placeholder="Type model (e.g. Swift, City, Rapid)"
@@ -1876,7 +1906,7 @@ export default function CrmLeadEditForm({
               {errors.vehicle_make ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_make}</p> : null}
             </div>
             {!showSecondCar ? (
-              <div className="col-span-2 flex items-end lg:col-span-1">
+              <div className={sidePanel ? 'min-w-0' : 'col-span-2 flex items-end lg:col-span-1'}>
                 <button
                   type="button"
                   onClick={() => {
@@ -1950,8 +1980,8 @@ export default function CrmLeadEditForm({
                   Remove
                 </button>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div className="col-span-2 lg:col-span-1">
+              <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'}>
+                <div className={sidePanel ? 'min-w-0' : 'col-span-2 lg:col-span-1'}>
                   <FieldLabel>Vehicle Number</FieldLabel>
                   <input
                     type="text"
@@ -1969,7 +1999,7 @@ export default function CrmLeadEditForm({
                     <p className="mt-1 text-xs text-rose-600">{errors.second_vehicle_number}</p>
                   ) : null}
                 </div>
-                <div className="col-span-2 lg:col-span-3">
+                <div className={sidePanel ? 'min-w-0' : 'col-span-2 lg:col-span-3'}>
                   <CrmCarSearch
                     label="Car Model"
                     placeholder="Type second car model"
@@ -2042,7 +2072,7 @@ export default function CrmLeadEditForm({
         </SectionCard>
 
         <SectionCard title="Lead Overview" icon={FileText} tone="slate">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'}>
             <div>
               <FieldLabel>Lead Number</FieldLabel>
               <input type="text" value={lead.lead_number || '—'} disabled className={fieldCls(false, true)} />
@@ -2077,7 +2107,7 @@ export default function CrmLeadEditForm({
             <div>
               <LeadTagsPanel leadId={leadId} canManage={isLeadManager} variant="field" />
             </div>
-            <div className="col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4">
+            <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4'}>
               <CrmReferredByField
                 leadId={leadId}
                 value={referredBy}
@@ -2096,14 +2126,11 @@ export default function CrmLeadEditForm({
                   onChange={(e) => setFormData((prev) => ({ ...prev, repeat_customer: e.target.checked }))}
                   className="mt-0.5 h-4 w-4 rounded border-slate-300"
                 />
-                <span>
-                  <span className="block text-sm font-semibold text-slate-900">Repeat Customer</span>
-                  <span className="block text-xs text-slate-500">Customer pehle hamari service le chuka hai aur dobara aaya hai</span>
-                </span>
+                <span className="text-xs font-semibold text-slate-900">Repeat Customer</span>
               </label>
             </div>
             {customFieldDefs.length > 0 ? (
-              <div className="sm:col-span-2 lg:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'sm:col-span-2 lg:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-2'}>
                 {customFieldDefs.map((field) => (
                   <div key={field.id}>
                     <FieldLabel>{field.name}</FieldLabel>
@@ -2118,7 +2145,7 @@ export default function CrmLeadEditForm({
                 ))}
               </div>
             ) : null}
-            <div className="col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4">
+            <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4'}>
               <div>
                 <FieldLabel>Workshop Remark</FieldLabel>
                 <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Workshop remark" />
@@ -2154,7 +2181,7 @@ export default function CrmLeadEditForm({
             {SHOW_SERVICE_ADDONS && (
               <div>
                 <FieldLabel>Service Add-ons (Optional)</FieldLabel>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className={sidePanel ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-1 sm:grid-cols-2 gap-2'}>
                   {serviceAddons.map((addon) => (
                     <label key={addon.id} className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3 hover:border-[#023D95]/40 cursor-pointer transition">
                       <input type="checkbox" checked={formData.service_addons.includes(addon.id)} onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)} className="mt-0.5" />
@@ -2175,7 +2202,7 @@ export default function CrmLeadEditForm({
                   {couponSaving ? 'Saving…' : 'Save coupons'}
                 </button>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-stretch">
+              <div className={sidePanel ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-stretch'}>
                 <div className="max-h-24 overflow-auto rounded-xl border border-slate-200 bg-white p-1.5">
                   {couponsLoading ? (
                     <div className="p-2 text-xs text-slate-500">Loading coupons…</div>
@@ -2281,8 +2308,21 @@ export default function CrmLeadEditForm({
           />
         </div>
 
-        {inDrawer && dockFooter ? createPortal(saveBar, dockFooter) : saveBar}
+        {sidePanel ? null : inDrawer && dockFooter ? createPortal(saveBar, dockFooter) : saveBar}
       </form>
+      {sidePanel ? (
+        <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-2">
+          <div className="flex gap-2">
+            <button type="button" onClick={handleCancel} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
+              <X className="h-4 w-4" /> Back
+            </button>
+            <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2.5 text-sm font-bold text-white disabled:opacity-60">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -287,7 +287,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       pickup_required: Boolean(body?.pickup_required),
       pickup_address: body?.pickup_address ?? null,
 
-      notes: body?.notes ?? null,
+      ...(Object.prototype.hasOwnProperty.call(body || {}, 'notes')
+        ? { notes: body?.notes == null || String(body.notes).trim() === '' ? null : String(body.notes).trim() }
+        : {}),
       lead_priority: body?.lead_priority ?? null,
 
       is_incomplete: false,

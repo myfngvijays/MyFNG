@@ -21,6 +21,7 @@ import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { apiFetch } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
+import { formatIstDayMonthTime, formatIstDayMonthYear, formatIstYmd } from '../../../lib/dateFormat';
 import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
 import { LeadBrainStrip } from '../../../components/telecaller/LeadBrainCard';
 
@@ -95,18 +96,7 @@ function formatLiveTimer(sec: number): string {
 }
 
 function formatWhen(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-  } catch {
-    return '';
-  }
+  return formatIstDayMonthTime(iso);
 }
 
 function wasTalked(row: HistoryRow): boolean {
@@ -175,11 +165,7 @@ function contactKeyForRow(row: HistoryRow): string {
 }
 
 function istYmd(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  } catch {
-    return String(iso || '').slice(0, 10);
-  }
+  return formatIstYmd(iso) || String(iso || '').slice(0, 10);
 }
 
 function daySectionTitle(iso: string): string {
@@ -188,16 +174,7 @@ function daySectionTitle(iso: string): string {
   const yest = istYmd(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
   if (day === today) return 'Today';
   if (day === yest) return 'Yesterday';
-  try {
-    return new Date(iso).toLocaleDateString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  } catch {
-    return day;
-  }
+  return formatIstDayMonthYear(iso) || day;
 }
 
 function buildDaySections(rows: HistoryRow[]): { title: string; data: HistoryRow[] }[] {

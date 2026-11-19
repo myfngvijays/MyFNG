@@ -22,6 +22,7 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../../lib/supabase';
+import { formatIstTime12h } from '../../../lib/dateFormat';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useAuth } from '../../../context/AuthContext';
 import { setAndroidShellBackHandler } from '../../../lib/androidShellBack';
@@ -674,12 +675,7 @@ export default function TelecallerAdvancedCRM() {
         const slot: 30 | 15 | 5 | null =
           remaining <= 5 * 60 * 1000 ? 5 : remaining <= 15 * 60 * 1000 ? 15 : remaining <= 30 * 60 * 1000 ? 30 : null;
         const id = String((row as any).id || '');
-        const whenLabel = new Date(at).toLocaleTimeString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        });
+        const whenLabel = formatIstTime12h(at);
         const leadId = String((row as any).lead_id || '');
         const name = String(lead.customer_name || 'Customer');
         const reason = String((row as any).reason || 'Follow-up');

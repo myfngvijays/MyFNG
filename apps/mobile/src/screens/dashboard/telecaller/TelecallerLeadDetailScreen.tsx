@@ -102,6 +102,7 @@ type EditForm = {
   workshop_name: string;
   lead_priority: string;
   repeat_customer: boolean;
+  telecaller_remark: string;
 };
 
 function emptyEditForm(): EditForm {
@@ -135,7 +136,46 @@ function emptyEditForm(): EditForm {
     workshop_name: '',
     lead_priority: 'NORMAL',
     repeat_customer: false,
+    telecaller_remark: '',
   };
+}
+
+function activityStamp(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+  const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let hours = ist.getUTCHours();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12 || 12;
+  const time = `${hours}:${String(ist.getUTCMinutes()).padStart(2, '0')} ${ampm}`;
+  const year = ist.getUTCFullYear() === now.getUTCFullYear() ? '' : ` ${String(ist.getUTCFullYear()).slice(2)}`;
+  return `${ist.getUTCDate()} ${months[ist.getUTCMonth()]}${year}, ${time}`;
+}
+
+function splitActivityStamp(label: string): { date: string; time: string } {
+  const text = String(label || '').trim();
+  const match = text.match(/^(.*?),\s*(\d{1,2}:\d{2}\s*[ap]m.*)$/i);
+  if (!match) return { date: text, time: '' };
+  return { date: match[1].trim(), time: match[2].trim() };
+}
+
+function bareStatusNote(notes: string): string {
+  const text = String(notes || '').trim();
+  if (!/^[A-Z][A-Z0-9_ ]{1,28}$/.test(text)) return '';
+  return text.replace(/_/g, ' ');
+}
+
+function activityAccent(item: { kind?: string; title?: string }): string {
+  const title = String(item.title || '');
+  if (item.kind === 'call') return '#2563EB';
+  if (/whatsapp received/i.test(title)) return '#059669';
+  if (/whatsapp sent/i.test(title)) return '#0284C7';
+  if (/reminder/i.test(title)) return '#D97706';
+  if (/created/i.test(title)) return '#16A34A';
+  return '#64748B';
 }
 
 function slotIso(date: string, time: string) {
@@ -151,19 +191,10 @@ function parseSlot(iso: string | null | undefined): { date: string; time: string
       const m = String(iso).match(/(\d{4}-\d{2}-\d{2}).*?(\d{2}:\d{2})/);
       return m ? { date: m[1], time: m[2] } : { date: '', time: '' };
     }
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(d);
-    const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+    const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
     return {
-      date: `${get('year')}-${get('month')}-${get('day')}`,
-      time: `${get('hour')}:${get('minute')}`,
+      date: `${ist.getUTCFullYear()}-${String(ist.getUTCMonth() + 1).padStart(2, '0')}-${String(ist.getUTCDate()).padStart(2, '0')}`,
+      time: `${String(ist.getUTCHours()).padStart(2, '0')}:${String(ist.getUTCMinutes()).padStart(2, '0')}`,
     };
   } catch {
     return { date: '', time: '' };
@@ -302,6 +333,7 @@ function buildFormFromLead(data: any): EditForm {
     workshop_id: data?.workshop_id || '',
     workshop_name: data?.workshop?.name || '',
     lead_priority: data?.lead_priority || 'NORMAL',
+    telecaller_remark: String(data?.notes || '').trim(),
     repeat_customer: (() => {
       const flag = meta.repeat_customer;
       if (flag === true || flag === 1) return true;
@@ -943,6 +975,13 @@ export default function TelecallerLeadDetailScreen({
         else if (prevRemark && !nextRemark) changeLines.push('Workshop remark removed');
         else changeLines.push(`Workshop remark updated: ${nextRemark}`);
       }
+      const prevTeleRemark = String(lead?.notes || '').trim();
+      const nextTeleRemark = editForm.telecaller_remark.trim();
+      if (prevTeleRemark !== nextTeleRemark) {
+        if (!prevTeleRemark && nextTeleRemark) changeLines.push(`Telecaller remark added: ${nextTeleRemark}`);
+        else if (prevTeleRemark && !nextTeleRemark) changeLines.push('Telecaller remark removed');
+        else changeLines.push(`Telecaller remark updated: ${nextTeleRemark}`);
+      }
       if (bookingConfirmed) changeLines.push('Booking confirmed');
 
       const historyEntry = changeLines.length
@@ -1010,6 +1049,7 @@ export default function TelecallerLeadDetailScreen({
         pickup_address: editForm.pickup_required ? composed : null,
         workshop_id: editForm.workshop_id || null,
         lead_priority: editForm.lead_priority || 'NORMAL',
+        notes: editForm.telecaller_remark.trim() || null,
         preferred_slot_start: start,
         preferred_slot_end: end,
         coupon_meta: nextMeta,
@@ -1073,6 +1113,7 @@ export default function TelecallerLeadDetailScreen({
             problem_description: payload.problem_description,
             pickup_required: payload.pickup_required,
             pickup_address: payload.pickup_address,
+            notes: payload.notes,
             workshop_id: payload.workshop_id,
             preferred_slot_start: payload.preferred_slot_start,
             preferred_slot_end: payload.preferred_slot_end,
@@ -1289,7 +1330,7 @@ export default function TelecallerLeadDetailScreen({
               ? '#E0F2FE'
               : COLORS.orange + '22',
         timeLabel: item.at
-          ? `${formatDateTime(item.at)}${item?.meta?.by ? ` · ${item.meta.by}` : ''}`
+          ? `${activityStamp(item.at)}${item?.meta?.by ? ` · ${item.meta.by}` : ''}`
           : '',
         noRecordingYet: isCall && !hasRecording,
       });
@@ -1315,7 +1356,7 @@ export default function TelecallerLeadDetailScreen({
           title: `Lead updated · ${crmLabel}`,
           notes: String(lead?.telecaller_remarks || couponMeta.telecaller_remarks || '').trim(),
           badgeColor: COLORS.orange + '22',
-          timeLabel: formatDateTime(lastCallAt),
+          timeLabel: activityStamp(lastCallAt),
           noRecordingYet: false,
         });
       }
@@ -1340,7 +1381,7 @@ export default function TelecallerLeadDetailScreen({
         title,
         notes,
         badgeColor: COLORS.orange + '22',
-        timeLabel: formatDateTime(at),
+        timeLabel: activityStamp(at),
         noRecordingYet: false,
       });
     }
@@ -1360,7 +1401,7 @@ export default function TelecallerLeadDetailScreen({
         title: formatCallLogLabel(log.call_status, log.outcome, log.notes),
         notes: stripDispositionPrefix(log.notes || ''),
         badgeColor: getCallStatusColor(log.call_status, log.outcome),
-        timeLabel: formatDateTime(log.created_at),
+        timeLabel: activityStamp(log.created_at),
         noRecordingYet: !hasRecording,
       });
     }
@@ -1377,8 +1418,8 @@ export default function TelecallerLeadDetailScreen({
         notes: fu.reason || '',
         badgeColor: COLORS.primary + '22',
         timeLabel: fu.scheduled_time
-          ? `Due ${formatDateTime(fu.scheduled_time)}`
-          : formatDateTime(fu.created_at),
+          ? `Due ${activityStamp(fu.scheduled_time)}`
+          : activityStamp(fu.created_at),
         noRecordingYet: false,
       });
     }
@@ -1482,14 +1523,26 @@ export default function TelecallerLeadDetailScreen({
             const raw = String(c.city_pincodes || '');
             return raw.includes(pincode);
           });
-          if (hit?.name) {
+          let resolvedName = String(hit?.name || '').trim();
+          let resolvedId = String(hit?.id || '').trim();
+          if (!resolvedName) {
+            try {
+              const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+              const json = await res.json().catch(() => []);
+              resolvedName = String(json?.[0]?.PostOffice?.[0]?.District || '').trim();
+            } catch {
+              resolvedName = '';
+            }
+          }
+          if (resolvedName) {
             setEditForm((prev) => ({
               ...prev,
-              city: hit.name,
-              city_id: hit.id || prev.city_id,
+              city: resolvedName,
+              city_id: resolvedId || prev.city_id,
               pincode,
+              pickup_address: String(prev.pickup_address || '').trim() ? prev.pickup_address : resolvedName,
             }));
-            cityName = hit.name;
+            cityName = resolvedName;
           }
         } catch {
           /* ignore */
@@ -1916,12 +1969,14 @@ export default function TelecallerLeadDetailScreen({
         last_lost_reason: selected.id === 'LOST' ? activityData.lostReason.trim() || 'Other Reasons' : null,
         last_other_reason: selected.id === 'OTHER' ? activityData.otherReason.trim() || null : null,
         last_call_at: new Date().toISOString(),
+        telecaller_remarks: activityData.notes.trim() || null,
         profile_history: [historyEntry, ...prevHistory].slice(0, 50),
       };
 
       const leadUpdate: Record<string, unknown> = {
         last_call_at: new Date().toISOString(),
         total_calls: (lead?.total_calls || 0) + 1,
+        notes: editForm.telecaller_remark.trim() || null,
         coupon_meta: nextMeta,
         updated_at: new Date().toISOString(),
         is_incomplete: false,
@@ -2434,15 +2489,15 @@ export default function TelecallerLeadDetailScreen({
                 <View key={String(fu.id)} style={{ marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.repeatTitle}>{fu.follow_up_type || 'Reminder'}</Text>
-                      <Text style={styles.fieldCaption}>
+                      <Text style={styles.reminderType}>{fu.follow_up_type || 'Reminder'}</Text>
+                      <Text style={styles.reminderWhen}>
                         {fu.scheduled_time ? formatDateTime(fu.scheduled_time) : '—'}
                         {fu.reason ? ` · ${fu.reason}` : ''}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <TouchableOpacity onPress={() => beginEditFollowUp(fu)}>
-                        <Text style={[styles.repeatTitle, { color: COLORS.primary }]}>Modify</Text>
+                        <Text style={styles.reminderModify}>Modify</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         accessibilityLabel="Delete reminder"
@@ -2467,7 +2522,7 @@ export default function TelecallerLeadDetailScreen({
                           ]);
                         }}
                       >
-                        <Icon name="trash" size={16} color="#E11D48" />
+                        <Icon name="trash" size={14} color="#E11D48" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -2843,6 +2898,16 @@ export default function TelecallerLeadDetailScreen({
                   compact
                 />
               </View>
+              {String(lead?.coupon_meta?.telecaller_remarks || '').trim() ? (
+                <DetailRow
+                  icon="message-text"
+                  label="Workshop Remark"
+                  value={String(lead.coupon_meta.telecaller_remarks).trim()}
+                />
+              ) : null}
+              {String(lead?.notes || '').trim() ? (
+                <DetailRow icon="message-text" label="Telecaller Remark" value={String(lead.notes).trim()} />
+              ) : null}
               {customerMessage ? (
                 <View style={styles.customerMsgBox}>
                   <Text style={styles.fieldCaption}>Customer message</Text>
@@ -3279,33 +3344,30 @@ export default function TelecallerLeadDetailScreen({
               ))}
             </View>
           ) : null}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setEditField('repeat_customer', !editForm.repeat_customer)}
-            style={styles.repeatCheck}
-          >
-            <View style={[styles.repeatBox, editForm.repeat_customer && styles.repeatBoxOn]}>
-              {editForm.repeat_customer ? <Text style={styles.repeatTick}>✓</Text> : null}
-            </View>
-            <View style={{ flex: 1 }}>
+          <View style={styles.repeatRow}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setEditField('repeat_customer', !editForm.repeat_customer)}
+              style={styles.repeatCheck}
+            >
+              <View style={[styles.repeatBox, editForm.repeat_customer && styles.repeatBoxOn]}>
+                {editForm.repeat_customer ? <Text style={styles.repeatTick}>✓</Text> : null}
+              </View>
               <Text style={styles.repeatTitle}>Repeat Customer</Text>
-              <Text style={styles.repeatHint}>Pehle service le chuka hai aur dobara aaya hai</Text>
+            </TouchableOpacity>
+            <View style={styles.createdSide}>
+              <Text style={styles.createdSideLabel}>Created at</Text>
+              {(() => {
+                const stamp = splitActivityStamp(activityStamp(lead?.created_at));
+                return (
+                  <>
+                    <Text style={styles.createdSideDate}>{stamp.date || '—'}</Text>
+                    {stamp.time ? <Text style={styles.createdSideTime}>{stamp.time}</Text> : null}
+                  </>
+                );
+              })()}
             </View>
-          </TouchableOpacity>
-          <DetailRow
-            icon="clock-outline"
-            label="Created"
-            value={
-              lead?.created_at
-                ? new Date(lead.created_at).toLocaleString('en-IN', {
-                    day: '2-digit',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : '—'
-            }
-          />
+          </View>
         </View>
       </View>
 
@@ -3478,13 +3540,22 @@ export default function TelecallerLeadDetailScreen({
                 </Text>
               ) : null}
 
-              <Text style={styles.formLabel}>Remark</Text>
+              <Text style={styles.formLabel}>Workshop Remark</Text>
               <TextInput
                 style={styles.inlineNotes}
-                placeholder="Your remark (optional)"
+                placeholder="Workshop remark"
                 placeholderTextColor={COLORS.textSecondary}
                 value={activityData.notes}
                 onChangeText={(v) => setActivityData({ ...activityData, notes: v })}
+                multiline
+              />
+              <Text style={styles.formLabel}>Telecaller Remark</Text>
+              <TextInput
+                style={styles.inlineNotes}
+                placeholder="Telecaller remark"
+                placeholderTextColor={COLORS.textSecondary}
+                value={editForm.telecaller_remark}
+                onChangeText={(v) => setEditField('telecaller_remark', v)}
                 multiline
               />
 
@@ -3785,12 +3856,22 @@ export default function TelecallerLeadDetailScreen({
               </Text>
             ) : null}
 
-            <Text style={styles.formLabel}>Remark</Text>
+            <Text style={styles.formLabel}>Workshop Remark</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Your remark (optional)"
+              placeholder="Workshop remark"
               value={activityData.notes}
               onChangeText={(value) => setActivityData({ ...activityData, notes: value })}
+              multiline
+              numberOfLines={3}
+              placeholderTextColor={COLORS.textSecondary}
+            />
+            <Text style={styles.formLabel}>Telecaller Remark</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Telecaller remark"
+              value={editForm.telecaller_remark}
+              onChangeText={(value) => setEditField('telecaller_remark', value)}
               multiline
               numberOfLines={3}
               placeholderTextColor={COLORS.textSecondary}
@@ -3822,28 +3903,35 @@ export default function TelecallerLeadDetailScreen({
             <Text style={styles.emptyText}>No activity yet</Text>
           ) : (
             <>
-              {(activityShowAll ? detailActivity : detailActivity.slice(0, 10)).map((item) => {
+              {(activityShowAll ? detailActivity : detailActivity.slice(0, 10)).map((item, index, list) => {
               const isPlaying =
                 item.kind === 'call' &&
                 item.hasRecording &&
                 item.callLogId &&
                 playingCallLogId === item.callLogId;
+              const statusOnly = bareStatusNote(item.notes);
+              const stamp = splitActivityStamp(item.timeLabel);
               return (
                 <View
                   key={item.id}
-                  style={[
-                    styles.logCard,
-                    /whatsapp received/i.test(item.title)
-                      ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
-                      : /whatsapp sent/i.test(item.title)
-                        ? { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }
-                        : null,
-                  ]}
+                  style={[styles.actRow, index === list.length - 1 && styles.actRowLast]}
                 >
-                  <View style={styles.logHeader}>
-                    <View style={[styles.logBadge, { backgroundColor: item.badgeColor }]}>
-                      <Text style={styles.logBadgeText}>{item.title}</Text>
+                  <View style={[styles.actDot, { backgroundColor: activityAccent(item) }]} />
+                  <View style={styles.actCopy}>
+                    <View style={styles.actHead}>
+                      <Text style={styles.actTitle}>{item.title}</Text>
+                      {item.timeLabel ? (
+                        <View style={styles.actTimeCol}>
+                          <Text style={styles.actTime}>{stamp.date}</Text>
+                          {stamp.time ? <Text style={styles.actTimeSub}>{stamp.time}</Text> : null}
+                        </View>
+                      ) : null}
                     </View>
+                    {statusOnly ? (
+                      <Text style={styles.actStatus}>{statusOnly}</Text>
+                    ) : item.notes ? (
+                      <Text style={styles.actBody}>{item.notes}</Text>
+                    ) : null}
                     {item.kind === 'call' && item.hasRecording && item.callLogId ? (
                       <TouchableOpacity
                         onPress={() =>
@@ -3851,33 +3939,21 @@ export default function TelecallerLeadDetailScreen({
                             prev === item.callLogId ? null : item.callLogId,
                           )
                         }
-                        style={{
-                          marginLeft: 'auto',
-                          backgroundColor: isPlaying ? '#DDD6FE' : '#EDE9FE',
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                          borderRadius: 999,
-                        }}
+                        style={styles.actPlay}
                       >
-                        <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>
-                          {isPlaying ? '■ Stop' : '▶ Play'}
-                        </Text>
+                        <Text style={styles.actPlayText}>{isPlaying ? 'Stop' : 'Play recording'}</Text>
                       </TouchableOpacity>
                     ) : null}
+                    {item.noRecordingYet ? (
+                      <Text style={styles.actMuted}>No recording yet</Text>
+                    ) : null}
+                    {isPlaying ? (
+                      <CallRecordingInlinePlayer
+                        callLogId={item.callLogId}
+                        onClose={() => setPlayingCallLogId(null)}
+                      />
+                    ) : null}
                   </View>
-                  {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
-                  <Text style={styles.logTime}>{item.timeLabel}</Text>
-                  {item.noRecordingYet ? (
-                    <Text style={[styles.logNotes, { color: COLORS.textSecondary }]}>
-                      No recording yet
-                    </Text>
-                  ) : null}
-                  {isPlaying ? (
-                    <CallRecordingInlinePlayer
-                      callLogId={item.callLogId}
-                      onClose={() => setPlayingCallLogId(null)}
-                    />
-                  ) : null}
                 </View>
               );
             })}
@@ -3976,34 +4052,43 @@ export default function TelecallerLeadDetailScreen({
     </ScrollView>
 
     <Modal visible={showStatusMenu} transparent animationType="fade" onRequestClose={() => setShowStatusMenu(false)}>
-      <Pressable style={styles.menuOverlay} onPress={() => setShowStatusMenu(false)}>
-        <View style={styles.menuSheet}>
+      <View style={styles.menuOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowStatusMenu(false)} />
+        <View style={[styles.menuSheet, { paddingBottom: Math.max(insets.bottom, 16) + 18, marginBottom: 10 }]}>
           <Text style={styles.menuTitle}>Select status</Text>
-          {statusOptions.map((opt) => (
-            <TouchableOpacity
-              key={opt.id}
-              style={styles.menuItem}
-              onPress={() => {
-                setEditing(true);
-                setActivityData({
-                  ...activityData,
-                  result: opt.id,
-                  lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? activityData.lostReason : '',
-                  otherReason: opt.id === 'OTHER' ? activityData.otherReason : '',
-                });
-                if (opt.id === 'BOOKING_CONFIRMED') {
-                  setEditForm((prev) => ({ ...prev, pickup_required: true }));
-                }
-                setShowStatusMenu(false);
-                if (opt.id === 'LOST' || opt.requires_lost_reason) setShowLostMenu(true);
-                if (opt.id === 'OTHER') setShowOtherMenu(true);
-              }}
-            >
-              <Text style={styles.menuItemText}>{opt.label}</Text>
-            </TouchableOpacity>
-          ))}
+          <ScrollView
+            style={styles.menuScroll}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+            bounces
+          >
+            {statusOptions.map((opt) => (
+              <TouchableOpacity
+                key={opt.id}
+                style={styles.menuItem}
+                onPress={() => {
+                  setEditing(true);
+                  setActivityData({
+                    ...activityData,
+                    result: opt.id,
+                    lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? activityData.lostReason : '',
+                    otherReason: opt.id === 'OTHER' ? activityData.otherReason : '',
+                  });
+                  if (opt.id === 'BOOKING_CONFIRMED') {
+                    setEditForm((prev) => ({ ...prev, pickup_required: true }));
+                  }
+                  setShowStatusMenu(false);
+                  if (opt.id === 'LOST' || opt.requires_lost_reason) setShowLostMenu(true);
+                  if (opt.id === 'OTHER') setShowOtherMenu(true);
+                }}
+              >
+                <Text style={styles.menuItemText}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
-      </Pressable>
+      </View>
     </Modal>
 
     <Modal visible={showOtherMenu} transparent animationType="fade" onRequestClose={() => setShowOtherMenu(false)}>
@@ -4613,20 +4698,26 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     marginTop: 4,
   },
+  repeatRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   repeatCheck: {
-    marginTop: 12,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
+  createdSide: { alignItems: 'flex-end' },
+  createdSideLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textAlign: 'right' },
+  createdSideDate: { fontSize: 11, fontWeight: '700', color: '#334155', textAlign: 'right' },
+  createdSideTime: { fontSize: 10, color: '#94A3B8', textAlign: 'right', marginTop: 1 },
   repeatBox: {
-    width: 22,
-    height: 22,
+    width: 18,
+    height: 18,
     borderRadius: 4,
     borderWidth: 2,
     borderColor: '#CBD5E1',
@@ -4635,8 +4726,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   repeatBoxOn: { backgroundColor: '#D97706', borderColor: '#D97706' },
-  repeatTick: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  repeatTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  repeatTick: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  repeatTitle: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
   repeatHint: { fontSize: 12, color: '#64748B', marginTop: 2 },
   repeatBanner: {
     marginTop: 8,
@@ -5364,8 +5455,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 28,
-    maxHeight: '70%',
+    maxHeight: '72%',
+    overflow: 'hidden',
   },
+  menuScroll: { flexGrow: 0, maxHeight: 460 },
   menuTitle: {
     fontSize: 16,
     fontWeight: '700',
@@ -5432,6 +5525,45 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontWeight: 'bold',
   },
+  actRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingBottom: 12,
+    marginBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E6EDF5',
+  },
+  actRowLast: { borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 },
+  actDot: { width: 7, height: 7, borderRadius: 4, marginTop: 4 },
+  actCopy: { flex: 1, minWidth: 0, gap: 2 },
+  actHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  actTitle: { flex: 1, fontSize: 12, fontWeight: '700', color: '#0F2744', lineHeight: 16 },
+  actBody: { fontSize: 11, color: '#475569', lineHeight: 15 },
+  actStatus: {
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    color: '#334155',
+    fontSize: 9,
+    fontWeight: '800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  actTimeCol: { flexShrink: 0, alignItems: 'flex-end' },
+  actTime: { fontSize: 10, color: '#94A3B8', lineHeight: 13, textAlign: 'right' },
+  actTimeSub: { fontSize: 10, color: '#94A3B8', lineHeight: 13, textAlign: 'right' },
+  actMuted: { fontSize: 11, color: '#94A3B8' },
+  actPlay: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    backgroundColor: '#EDE9FE',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  actPlayText: { color: '#5B21B6', fontSize: 11, fontWeight: '700' },
   logCard: {
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[500] + '20',
@@ -5467,6 +5599,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textSecondary,
   },
+  reminderType: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
+  reminderWhen: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  reminderModify: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
   followUpType: {
     fontSize: 13,
     fontWeight: 'bold',

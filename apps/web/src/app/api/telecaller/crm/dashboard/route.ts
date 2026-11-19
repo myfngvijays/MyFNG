@@ -243,6 +243,8 @@ export async function GET(request: NextRequest) {
       freshPreview,
       reminderRes,
       rankRes,
+      inServicePreview,
+      recentCallsRes,
     ] = await runInChunks([
       () => applyCreatedRange(leadBase()),
       () => applyCreatedRange(applyCrmNewLeadFilter(leadBase())),
@@ -341,11 +343,11 @@ export async function GET(request: NextRequest) {
         let remQ = db
           .from('telecaller_follow_ups')
           .select(
-            'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, customer_name, customer_phone)',
+            'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, customer_name, customer_phone, city, vehicle_make, vehicle_model)',
           )
           .eq('status', 'PENDING')
-          .order('scheduled_time', { ascending: false })
-          .limit(5);
+          .order('scheduled_time', { ascending: true })
+          .limit(12);
         if (!seesAll) remQ = remQ.eq('telecaller_id', teleCallerId);
         return remQ;
       },
@@ -356,6 +358,28 @@ export async function GET(request: NextRequest) {
           .eq('date', today)
           .order('total_calls', { ascending: false })
           .limit(80),
+      () =>
+        applyAssignee(
+          db
+            .from('service_leads')
+            .select(
+              'id, customer_name, customer_phone, city, vehicle_make, vehicle_model, vehicle_number, updated_at',
+            )
+            .eq('status', 'IN_PROGRESS')
+            .is('deleted_at', null),
+        )
+          .order('updated_at', { ascending: false })
+          .limit(4),
+      () =>
+        applyCallAssignee(
+          db
+            .from('telecaller_call_logs')
+            .select(
+              'id, call_status, call_duration, created_at, phone_number, lead_id, lead:service_leads(id, customer_name, customer_phone)',
+            )
+            .order('created_at', { ascending: false })
+            .limit(4),
+        ),
     ]);
 
     const countErrors: string[] = [];
@@ -374,11 +398,36 @@ export async function GET(request: NextRequest) {
       0,
     );
 
-    const upcomingReminders = Array.isArray(reminderRes?.data) ? reminderRes.data : [];
+    const pendingRemindersRows = Array.isArray(reminderRes?.data) ? reminderRes.data : [];
+    const todayEndMs = new Date(`${today}T23:59:59.999+05:30`).getTime();
+    const dueReminders = pendingRemindersRows.filter(
+      (r: { scheduled_time?: string }) => new Date(r.scheduled_time || 0).getTime() <= todayEndMs,
+    );
+    const laterReminders = pendingRemindersRows.filter(
+      (r: { scheduled_time?: string }) => new Date(r.scheduled_time || 0).getTime() > todayEndMs,
+    );
+    const nextCall = dueReminders[0] || laterReminders[0] || null;
+    const followupsDue = (nextCall && dueReminders[0]?.id === nextCall.id ? dueReminders.slice(1) : dueReminders).slice(0, 4);
+    const upcomingReminders = (laterReminders.length ? laterReminders : pendingRemindersRows.filter((r: { id?: string }) => r.id !== nextCall?.id)).slice(0, 5);
     const rankRows = Array.isArray(rankRes?.data) ? rankRes.data : [];
     const leaderboardSize = rankRows.length;
     const idx = rankRows.findIndex((r: any) => String(r.telecaller_id) === teleCallerId);
     const myRank = idx >= 0 ? idx + 1 : null;
+    const boardRows = rankRows.slice(0, 5);
+    const boardIds = boardRows.map((r: { telecaller_id?: string }) => String(r.telecaller_id || '')).filter(Boolean);
+    let nameById = new Map<string, string>();
+    if (boardIds.length) {
+      const { data: people } = await db.from('users_login').select('id, full_name').in('id', boardIds);
+      nameById = new Map((people || []).map((p: { id: string; full_name?: string | null }) => [String(p.id), String(p.full_name || 'Telecaller')]));
+    }
+    const leaderboard = boardRows.map((r: { telecaller_id?: string; total_calls?: number; leads_completed?: number }, i: number) => ({
+      rank: i + 1,
+      telecaller_id: r.telecaller_id,
+      name: nameById.get(String(r.telecaller_id)) || 'Telecaller',
+      total_calls: Number(r.total_calls || 0),
+      leads_completed: 0,
+      is_me: String(r.telecaller_id) === teleCallerId,
+    }));
 
     const seriesMap: Record<string, any> = {};
     for (let i = 6; i >= 0; i--) {
@@ -449,11 +498,17 @@ export async function GET(request: NextRequest) {
         answered_calls: answered,
         answer_rate: todayCalls ? Math.round((answered / todayCalls) * 100) : 0,
         talk_duration_seconds: talkDurationSeconds,
+        avg_call_seconds: answered ? Math.round(talkDurationSeconds / answered) : 0,
         my_rank: myRank,
         leaderboard_size: leaderboardSize,
       },
+      next_call: nextCall,
+      followups_due: followupsDue,
       upcoming_reminders: upcomingReminders,
       fresh_leads: Array.isArray(freshPreview?.data) ? freshPreview.data : [],
+      in_service_leads: Array.isArray(inServicePreview?.data) ? inServicePreview.data : [],
+      recent_calls: Array.isArray(recentCallsRes?.data) ? recentCallsRes.data : [],
+      leaderboard,
       trend,
       attendance: {
         is_punched_in: Boolean(attendance.data),
