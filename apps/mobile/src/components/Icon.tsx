@@ -38,6 +38,7 @@ const ICON_MAP: Record<string, IoniconsName> = {
   'eye': 'eye-outline',
   'magnify': 'search',
   'refresh': 'refresh',
+  'brain': 'hardware-chip-outline',
   'logout': 'log-out-outline',
   'content-copy': 'copy-outline',
   'content-save': 'save-outline',

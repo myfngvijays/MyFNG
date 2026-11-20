@@ -36,6 +36,7 @@ import {
 import { leadStatusCardColors, leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
 import { mergeCrmStatusFilters } from '../../../lib/telecaller/crmStatusFilters';
 import { crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
+import { titleCasePersonName } from '../../../lib/personName';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import { MlScorePill } from '../../../components/telecaller/LeadBrainCard';
 
@@ -234,6 +235,7 @@ export default function CrmQueueTab({
   const [advIncomplete, setAdvIncomplete] = useState(false);
   const [advFollowUp, setAdvFollowUp] = useState(false);
   const [advHasVehicle, setAdvHasVehicle] = useState(false);
+  const [advHasRecording, setAdvHasRecording] = useState(false);
   const [advHasCoupon, setAdvHasCoupon] = useState(false);
   const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('last_7_days');
   const [customStartLocal, setCustomStartLocal] = useState(istYmd());
@@ -353,6 +355,7 @@ export default function CrmQueueTab({
     setAdvIncomplete(Boolean(filters?.advIncomplete));
     setAdvFollowUp(Boolean(filters?.advFollowUp));
     setAdvHasVehicle(Boolean(filters?.advHasVehicle));
+    setAdvHasRecording(Boolean(filters?.advHasRecording));
     setAdvHasCoupon(Boolean(filters?.advHasCoupon));
     persistLocalFilters({
       statusFilter: status,
@@ -365,6 +368,7 @@ export default function CrmQueueTab({
       advIncomplete: Boolean(filters?.advIncomplete),
       advFollowUp: Boolean(filters?.advFollowUp),
       advHasVehicle: Boolean(filters?.advHasVehicle),
+      advHasRecording: Boolean(filters?.advHasRecording),
       advHasCoupon: Boolean(filters?.advHasCoupon),
     });
     closeFilters();
@@ -440,6 +444,7 @@ export default function CrmQueueTab({
       setAdvIncomplete(Boolean(prefs.advIncomplete));
       setAdvFollowUp(Boolean(prefs.advFollowUp));
       setAdvHasVehicle(Boolean(prefs.advHasVehicle));
+      setAdvHasRecording(Boolean(prefs.advHasRecording));
       setAdvHasCoupon(Boolean(prefs.advHasCoupon));
       setLocalPrefsReady(true);
     })();
@@ -589,7 +594,9 @@ export default function CrmQueueTab({
       if (city.trim()) params.set('city', city.trim());
       if (priority.trim()) params.set('priority', priority.trim());
       if (dateField === 'modified') params.set('date_field', 'updated_at');
-      if (!range.allTime) {
+      if (advHasRecording) {
+        params.set('has_recording', '1');
+      } else if (!range.allTime) {
         params.set('from', range.start);
         params.set('to', range.end);
       }
@@ -626,6 +633,7 @@ export default function CrmQueueTab({
     customStart,
     customEnd,
     viewMode,
+    advHasRecording,
   ]);
 
   useEffect(() => {
@@ -667,6 +675,7 @@ export default function CrmQueueTab({
     advIncomplete?: boolean;
     advFollowUp?: boolean;
     advHasVehicle?: boolean;
+    advHasRecording?: boolean;
     advHasCoupon?: boolean;
   }) => {
     void saveTelecallerCrmFilterPrefs(partial);
@@ -1406,7 +1415,7 @@ export default function CrmQueueTab({
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   {item.has_membership ? <Icon name="crown" size={14} color="#7E22CE" /> : null}
                   <Text style={[styles.name, { flex: 1 }]} numberOfLines={1}>
-                    {String(item.customer_name || 'Unknown').trim()}
+                    {titleCasePersonName(item.customer_name) || 'Unknown'}
                   </Text>
                 </View>
                 <Text style={styles.meta} numberOfLines={1}>
@@ -1640,6 +1649,7 @@ export default function CrmQueueTab({
                       { key: 'advIncomplete' as const, label: 'Fresh only', value: advIncomplete, set: setAdvIncomplete },
                       { key: 'advFollowUp' as const, label: 'Follow-up / reminder', value: advFollowUp, set: setAdvFollowUp },
                       { key: 'advHasVehicle' as const, label: 'Has reg. number', value: advHasVehicle, set: setAdvHasVehicle },
+                      { key: 'advHasRecording' as const, label: 'Has recording', value: advHasRecording, set: setAdvHasRecording },
                       { key: 'advHasCoupon' as const, label: 'Has coupon', value: advHasCoupon, set: setAdvHasCoupon },
                     ];
                     const picked = quickOptions.filter((opt) => opt.value);
@@ -1692,6 +1702,7 @@ export default function CrmQueueTab({
                     setAdvIncomplete(false);
                     setAdvFollowUp(false);
                     setAdvHasVehicle(false);
+                    setAdvHasRecording(false);
                     setAdvHasCoupon(false);
                     setDateField('created');
                     setDatePreset('today');
@@ -1707,6 +1718,7 @@ export default function CrmQueueTab({
                       advIncomplete: false,
                       advFollowUp: false,
                       advHasVehicle: false,
+                      advHasRecording: false,
                       advHasCoupon: false,
                       dateField: 'created',
                       statusFilter: 'all',
@@ -1728,6 +1740,7 @@ export default function CrmQueueTab({
                       advIncomplete,
                       advFollowUp,
                       advHasVehicle,
+                      advHasRecording,
                       advHasCoupon,
                       dateField,
                     });
@@ -1755,7 +1768,7 @@ export default function CrmQueueTab({
                 <Ionicons name="close" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.meta}>{shareLead?.customer_name} · #{shareLead?.lead_number}</Text>
+            <Text style={styles.meta}>{titleCasePersonName(shareLead?.customer_name)} · #{shareLead?.lead_number}</Text>
             <ScrollView style={{ maxHeight: 320, marginTop: 12 }}>
               {peers.length === 0 ? (
                 <Text style={styles.emptyText}>No peer telecallers found</Text>

@@ -28,6 +28,7 @@ import {
 } from '@/lib/telecaller/leadDisplayStatus';
 import { crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
 import { leadMatchesCrmQueueFilter } from '@/lib/telecaller/crmLeadFilters';
+import { titleCasePersonName } from '@/lib/telecaller/personName';
 import { createClient } from '@/lib/supabase/client';
 import {
   Phone,
@@ -246,17 +247,8 @@ function formatLeadDateTime(iso: string | null | undefined) {
 
 /** One line, each word capitalised (not ALL CAPS, not all lowercase). */
 function formatLeadName(name: string | null | undefined): string {
-  const full = String(name || '').trim();
-  if (!full) return 'Unknown';
-  return full
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => {
-      if (/^\d+$/.test(word)) return word;
-      const lower = word.toLowerCase();
-      return lower.charAt(0).toUpperCase() + lower.slice(1);
-    })
-    .join(' ');
+  const full = titleCasePersonName(name).trim();
+  return full || 'Unknown';
 }
 
 function formatRelativeLeadTime(iso: string | null | undefined): string {
@@ -461,6 +453,7 @@ function TelecallerCrmLeadsContent() {
   const [advIncomplete, setAdvIncomplete] = useState(false);
   const [advFollowUp, setAdvFollowUp] = useState(false);
   const [advHasVehicle, setAdvHasVehicle] = useState(false);
+  const [advHasRecording, setAdvHasRecording] = useState(false);
   const [advHasCoupon, setAdvHasCoupon] = useState(false);
   const [advNoAssignee, setAdvNoAssignee] = useState(false);
   const [advHasPhone, setAdvHasPhone] = useState(false);
@@ -683,6 +676,7 @@ function TelecallerCrmLeadsContent() {
     advIncomplete,
     advFollowUp,
     advHasVehicle,
+    advHasRecording,
     advHasCoupon,
     advNoAssignee,
     advHasPhone,
@@ -848,6 +842,7 @@ function TelecallerCrmLeadsContent() {
     setAdvIncomplete(saved.advIncomplete);
     setAdvFollowUp(saved.advFollowUp);
     setAdvHasVehicle(saved.advHasVehicle);
+    setAdvHasRecording(saved.advHasRecording);
     setAdvHasCoupon(saved.advHasCoupon);
     setAdvNoAssignee(saved.advNoAssignee);
     setPrefsReady(true);
@@ -1208,7 +1203,9 @@ function TelecallerCrmLeadsContent() {
         baseParams.set('has_coupon', couponFilter);
       }
       if (isLeadManager && triggerFilter) baseParams.set('trigger', triggerFilter);
-      if (!range.allTime) {
+      if (advHasRecording) {
+        baseParams.set('has_recording', '1');
+      } else if (!range.allTime) {
         baseParams.set('from', range.start);
         baseParams.set('to', range.end);
       }
@@ -1306,6 +1303,7 @@ function TelecallerCrmLeadsContent() {
     sourceFilter,
     couponFilter,
     triggerFilter,
+    advHasRecording,
   ]);
 
   useEffect(() => {
@@ -1343,6 +1341,7 @@ function TelecallerCrmLeadsContent() {
     advIncomplete,
     advFollowUp,
     advHasVehicle,
+    advHasRecording,
     advHasCoupon,
     advNoAssignee,
   ]);
@@ -1497,6 +1496,7 @@ function TelecallerCrmLeadsContent() {
     advIncomplete,
     advFollowUp,
     advHasVehicle,
+    advHasRecording,
     advHasCoupon,
     advNoAssignee,
     advHasPhone,
@@ -1526,6 +1526,7 @@ function TelecallerCrmLeadsContent() {
     setAdvIncomplete(Boolean(next.advIncomplete));
     setAdvFollowUp(Boolean(next.advFollowUp));
     setAdvHasVehicle(Boolean(next.advHasVehicle));
+    setAdvHasRecording(Boolean(next.advHasRecording));
     setAdvHasCoupon(Boolean(next.advHasCoupon));
     setAdvNoAssignee(Boolean(next.advNoAssignee));
     setAdvHasPhone(Boolean(next.advHasPhone));
@@ -1545,6 +1546,7 @@ function TelecallerCrmLeadsContent() {
       advIncomplete: Boolean(next.advIncomplete),
       advFollowUp: Boolean(next.advFollowUp),
       advHasVehicle: Boolean(next.advHasVehicle),
+      advHasRecording: Boolean(next.advHasRecording),
       advHasCoupon: Boolean(next.advHasCoupon),
       advNoAssignee: Boolean(next.advNoAssignee),
     });
@@ -1947,6 +1949,13 @@ function TelecallerCrmLeadsContent() {
                       checked: advHasVehicle,
                       set: setAdvHasVehicle,
                       key: 'advHasVehicle' as const,
+                    },
+                    {
+                      id: 'recording',
+                      label: 'Has recording',
+                      checked: advHasRecording,
+                      set: setAdvHasRecording,
+                      key: 'advHasRecording' as const,
                     },
                     {
                       id: 'coupon',

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2, Search, X } from 'lucide-react';
+import { loadCrmWorkshops } from '@/lib/telecaller/loadCrmWorkshops';
 
 type Workshop = {
   id: string;
@@ -44,14 +45,13 @@ export default function CrmWorkshopPicker({
     const timer = window.setTimeout(async () => {
       setLoading(true);
       try {
-        const params = new URLSearchParams();
-        if (q.length >= 2) params.set('q', q);
-        else params.set('pincode', pin);
-        if (city) params.set('city', city);
-        if (cityId) params.set('city_id', cityId);
-        const res = await fetch(`/api/telecaller/crm/workshops?${params.toString()}`);
-        const json = await res.json().catch(() => ({}));
-        if (!cancelled) setRows(Array.isArray(json?.workshops) ? json.workshops : []);
+        const list = await loadCrmWorkshops({
+          pincode: pin,
+          city,
+          cityId,
+          q,
+        });
+        if (!cancelled) setRows(list);
       } catch {
         if (!cancelled) setRows([]);
       } finally {
@@ -129,8 +129,8 @@ export default function CrmWorkshopPicker({
                 key={row.id}
                 type="button"
                 onClick={() => {
-                  onPick(active ? '' : row.id, active ? '' : row.name);
-                  setBrowsing(!active);
+                  onPick(row.id, row.name);
+                  setBrowsing(false);
                   setQuery('');
                 }}
                 className={`flex w-full items-start justify-between gap-2 rounded-lg border px-2.5 py-2 text-left ${

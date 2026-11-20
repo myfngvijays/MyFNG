@@ -14,6 +14,7 @@ import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource
 import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
 import { appendBookingConfirmedToSheet } from '@/lib/telecaller/bookingWonSheet';
+import { titleCasePersonName } from '@/lib/telecaller/personName';
 
 const LEAD_SELECT_FULL =
   'id, lead_number, status, customer_name, customer_phone, customer_id, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, service_type, service_type_ids, subservice_ids, estimated_amount, discount_amount, coupon_code, preferred_slot_start, preferred_slot_end, pickup_required, pickup_address, customer_address, city, city_id, pincode, workshop_id, coupon_meta';
@@ -239,8 +240,38 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         '';
     }
 
+    // Selected package ids win over the old service_type text still sitting on the form.
+    if (nextServiceIds.length) {
+      const fromIds = await resolveServiceTypeNames(db, nextServiceIds);
+      if (fromIds) nextServiceLabel = fromIds;
+    }
+
+    const confirmingBooking =
+      body?.send_booking_confirmed_whatsapp === true ||
+      String(body?.status || '').trim().toUpperCase() === 'VALIDATED';
+    const storedServiceLabel = String((existingLead as any).service_type || '').trim();
+    if (
+      !resolvedQuote &&
+      nextServiceIds.length &&
+      (confirmingBooking || (nextServiceLabel && nextServiceLabel !== storedServiceLabel))
+    ) {
+      try {
+        resolvedQuote = await buildTelecallerCrmQuote(db, {
+          serviceTypeIds: nextServiceIds,
+          addonIds: nextAddonIds,
+          workshopId: Boolean(body?.pickup_required) ? null : nextWorkshopId,
+          cityId: nextCityId,
+          vehicleClass: resolvedVehicleClass,
+          couponCode: nextCouponCode,
+        });
+      } catch (e) {
+        console.warn('[telecaller/leads PATCH] confirm re-quote failed', e);
+      }
+    }
+
     const update: Record<string, unknown> = {
-      customer_name: body?.customer_name ?? null,
+      customer_name:
+        body?.customer_name == null ? null : titleCasePersonName(String(body.customer_name)),
       customer_phone: body?.customer_phone ?? null,
       customer_alternate_phone: body?.customer_alternate_phone ?? null,
       customer_email: body?.customer_email ?? null,
@@ -260,15 +291,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       service_type_ids: JSON.stringify(serviceTypes),
       subservice_ids: JSON.stringify(serviceAddons),
-      // Keep existing label unless services changed / client sent a real name
+      // Package name comes from the selected service ids, not a stale form string.
       service_type:
         nextServiceLabel ||
-        (body?.service_type != null &&
-        !['CAR_SERVICE', 'HOME_SERVICE', 'RSA', 'NORMAL', 'SERVICE'].includes(
-          String(body.service_type).toUpperCase(),
-        )
-          ? body.service_type
-          : (existingLead as any).service_type) ||
+        (nextServiceIds.length
+          ? (existingLead as any).service_type
+          : body?.service_type != null &&
+              !['CAR_SERVICE', 'HOME_SERVICE', 'RSA', 'NORMAL', 'SERVICE'].includes(
+                String(body.service_type).toUpperCase(),
+              )
+            ? body.service_type
+            : (existingLead as any).service_type) ||
         null,
       // Persist customer text only — strip WhatsApp / Trigger wrappers if present
       problem_description:
@@ -402,6 +435,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (!extra.error && extra.data) extraRow = extra.data as Record<string, unknown>;
     }
     const beforeRow = { ...(existingLead as any), ...extraRow };
+    // A list-row open used to save blanks over pincode, year, fuel, notes and visit slot.
+    // Only a form that loaded the full lead may clear those fields.
+    if (body?.form_hydrated !== true) {
+      const keepFilled = (key: string) => {
+        const incoming = update[key];
+        const existing = beforeRow[key];
+        const incomingEmpty = incoming == null || String(incoming).trim() === '';
+        const existingFilled = existing != null && String(existing).trim() !== '';
+        if (incomingEmpty && existingFilled) {
+          update[key] = existing;
+          if (body && typeof body === 'object') (body as Record<string, unknown>)[key] = existing;
+        }
+      };
+      for (const key of [
+        'pincode',
+        'vehicle_year',
+        'vehicle_fuel_type',
+        'odometer_km',
+        'notes',
+        'customer_address',
+        'pickup_address',
+        'preferred_slot_start',
+        'preferred_slot_end',
+      ]) {
+        keepFilled(key);
+      }
+    }
     const nextMeta =
       update.coupon_meta && typeof update.coupon_meta === 'object'
         ? (update.coupon_meta as Record<string, any>)
@@ -451,6 +511,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (prevStatus !== nextStatus && nextStatus) {
       fieldLines.unshift(`Status: ${prevStatus || '—'} → ${nextStatus}`);
     }
+
     if (fieldLines.length) {
       const prevHistory = Array.isArray(prevMeta.profile_history) ? prevMeta.profile_history : [];
       const historyEntry = {
@@ -590,7 +651,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         );
 
         const leadForWa = {
+          // Post-save select omits the car columns. Keep the saved vehicle.
+          ...existingLead,
           ...updated,
+          vehicle_number: updated?.vehicle_number || (existingLead as any)?.vehicle_number || null,
+          vehicle_make: updated?.vehicle_make || (existingLead as any)?.vehicle_make || null,
+          vehicle_model: updated?.vehicle_model || (existingLead as any)?.vehicle_model || null,
+          vehicle_variant: updated?.vehicle_variant || (existingLead as any)?.vehicle_variant || null,
           workshop_name: workshopName || null,
           flat_number: meta.flat_number || null,
           landmark: meta.landmark || null,

@@ -74,28 +74,49 @@ export async function GET(
     }
 
     const redactDirectUrl = roleCode === 'TELECALLER';
+    const logIds = (callLogs || []).map((row: any) => String(row?.id || '').trim()).filter(Boolean);
+    const analysisById: Record<string, any> = {};
+    if (logIds.length && supabaseAdmin) {
+      const { data: analyses } = await supabaseAdmin
+        .from('telecaller_call_analyses')
+        .select(
+          'call_log_id, quality_score, quality_grade, quality_flags, sentiment, summary, conversation_tags, customer_problem, agent_solution, solution_adequacy, coaching_tips, query_resolutions, overall_resolution, queries_resolved, queries_total, queries_unresolved, unresolved_gaps, engine, sop_audit',
+        )
+        .in('call_log_id', logIds);
+      for (const row of analyses || []) {
+        const key = String((row as { call_log_id?: string }).call_log_id || '').trim();
+        if (key) analysisById[key] = row;
+      }
+    }
     const call_logs = (callLogs || []).map((row: any) => {
       const url = String(row?.call_recording_url || '').trim();
       const has = Boolean(url);
+      const analysis = analysisById[String(row?.id || '')] || null;
       if (!redactDirectUrl) {
-        return { ...row, has_call_recording: has };
+        return { ...row, has_call_recording: has, analysis };
       }
       return {
         ...row,
         has_call_recording: has,
         call_recording_url: null,
+        analysis,
       };
     });
 
-    // Keep service_leads.total_calls in sync for list UIs
+    // Sync the call count only when it actually changed.
+    // Any update on service_leads bumps updated_at, so opening a lead
+    // must not rewrite the row when the count is already correct.
     const total = call_logs.length;
-    if (supabaseAdmin && total >= 0) {
-      void supabaseAdmin
+    if (supabaseAdmin) {
+      const { data: leadRow } = await supabaseAdmin
         .from('service_leads')
-        .update({ total_calls: total, updated_at: new Date().toISOString() })
+        .select('total_calls')
         .eq('id', leadId)
-        .then(() => undefined)
-        .catch(() => undefined);
+        .maybeSingle();
+      const current = Number(leadRow?.total_calls ?? 0);
+      if (leadRow && current !== total) {
+        await supabaseAdmin.from('service_leads').update({ total_calls: total }).eq('id', leadId);
+      }
     }
 
     return NextResponse.json(

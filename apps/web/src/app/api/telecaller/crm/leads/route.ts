@@ -140,6 +140,7 @@ export async function GET(request: NextRequest) {
     const sourceFilter = seesAll ? String(sp.get('source') || 'ALL').trim().toUpperCase() : 'ALL';
     const couponFilter = seesAll ? String(sp.get('has_coupon') || 'ALL').trim().toUpperCase() : 'ALL';
     const triggerFilter = seesAll ? String(sp.get('trigger') || '').trim() : '';
+    const hasRecording = sp.get('has_recording') === '1';
     const bookingFilterOn =
       seesAll && (sourceFilter !== 'ALL' || couponFilter !== 'ALL' || Boolean(triggerFilter));
     // Chart / export may request larger pages; list UI stays ≤100 for snappy paging
@@ -164,7 +165,9 @@ export async function GET(request: NextRequest) {
     };
 
     const LEAD_LIST_SELECT = `
-        id, lead_number, customer_name, customer_phone, status, city,
+        id, lead_number, customer_name, customer_phone, status, city, pincode,
+        customer_address, pickup_address, pickup_required, preferred_slot_start, preferred_slot_end,
+        vehicle_year, vehicle_fuel_type, odometer_km, notes,
         lead_priority, is_incomplete, follow_up_required, next_follow_up_at, last_call_at,
         total_calls, workshop_id, created_at, updated_at, coupon_code, coupon_meta, meta, payment_mode,
         vehicle_make, vehicle_model, vehicle_number, service_type, estimated_amount, problem_description,
@@ -175,11 +178,18 @@ export async function GET(request: NextRequest) {
     const OVERVIEW_SELECT =
       'id, status, lead_source, created_from, coupon_code, coupon_meta';
 
-    let query = db
-      .from('service_leads')
-      .select(wantOverview ? OVERVIEW_SELECT : LEAD_LIST_SELECT, {
-        count: wantOverview ? undefined : 'exact',
-      });
+    const listSelect =
+      hasRecording && !wantOverview
+        ? `${LEAD_LIST_SELECT}, recordings:telecaller_call_logs!inner(id, call_recording_url)`
+        : wantOverview
+          ? OVERVIEW_SELECT
+          : LEAD_LIST_SELECT;
+    let query = db.from('service_leads').select(listSelect, {
+      count: wantOverview ? undefined : 'exact',
+    });
+    if (hasRecording && !wantOverview) {
+      query = query.not('recordings.call_recording_url', 'is', null);
+    }
     query = applyAssigneeScope(query).order(orderCol, { ascending: false });
     if (wantOverview || bookingFilterOn) {
       query = query.limit(wantOverview ? 4000 : 2000);
@@ -196,7 +206,7 @@ export async function GET(request: NextRequest) {
     // Intentionally ignore `source` filter — telecallers must not segment by lead origin
     if (priority) query = query.eq('lead_priority', priority.toUpperCase());
     if (workshopId) query = query.eq('workshop_id', workshopId);
-    query = applyCrmLeadDateRange(query, filter, from, to, dateField);
+    if (!hasRecording) query = applyCrmLeadDateRange(query, filter, from, to, dateField);
     query = applyCrmQueueStatusFilter(query, filter, statusReason);
 
     if (q) {
@@ -207,11 +217,12 @@ export async function GET(request: NextRequest) {
 
     if (error && /deleted_at/i.test(String(error.message || ''))) {
       // Retry without soft-delete filter for older schemas
-      let retry = db
-        .from('service_leads')
-        .select(wantOverview ? OVERVIEW_SELECT : LEAD_LIST_SELECT, {
-          count: wantOverview ? undefined : 'exact',
-        });
+      let retry = db.from('service_leads').select(listSelect, {
+        count: wantOverview ? undefined : 'exact',
+      });
+      if (hasRecording && !wantOverview) {
+        retry = retry.not('recordings.call_recording_url', 'is', null);
+      }
       retry = applyAssigneeScope(retry).order(orderCol, { ascending: false });
       if (wantOverview || bookingFilterOn) {
         retry = retry.limit(wantOverview ? 4000 : 2000);
@@ -223,7 +234,7 @@ export async function GET(request: NextRequest) {
       if (city) retry = retry.ilike('city', `%${city}%`);
       if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
-      retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
+      if (!hasRecording) retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
       retry = applyCrmQueueStatusFilter(retry, filter, statusReason);
       if (q) {
         retry = retry.or(crmLeadSearchOr(q));
@@ -242,7 +253,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let rows = data || [];
+    let rows = (data || []).map((row: any) => {
+      if (!row || typeof row !== 'object' || !('recordings' in row)) return row;
+      const { recordings: _recordings, ...rest } = row;
+      return rest;
+    });
     // Skip full healLeadDispositions on list (extra call-log queries). Ringing-from-activity is cheap.
     try {
       const ringingWrites: Array<Promise<unknown>> = [];

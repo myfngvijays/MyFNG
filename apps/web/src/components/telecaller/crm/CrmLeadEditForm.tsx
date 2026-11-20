@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type ComponentTyp
 import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import { mergeAdminStatusChoices } from '@/lib/telecaller/leadDisplayStatus';
+import { titleCasePersonName } from '@/lib/telecaller/personName';
 import { createClient } from '@/lib/supabase/client';
 import {
   User,
@@ -16,6 +18,7 @@ import {
   FileText,
   ArrowLeft,
   Save,
+  Brain,
   X,
   AlertCircle,
   Loader2,
@@ -33,6 +36,7 @@ import {
 import CrmServicePlanPicker from '@/components/telecaller/crm/CrmServicePlanPicker';
 import CrmCarSearch from '@/components/telecaller/crm/CrmCarSearch';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
+import LeadRecordingBrain from '@/components/telecaller/crm/LeadRecordingBrain';
 import CrmReferredByField from '@/components/telecaller/crm/CrmReferredByField';
 import {
   parseReferredBy,
@@ -83,8 +87,8 @@ function pipelineActiveIndex(lead: any, activityResult: string): number {
 
 const ACTIVITY_OPTIONS = [
   // Soft CRM stages live in coupon_meta.last_call_result; DB enum has no CONTACTED.
-  { id: 'RINGING', label: 'Ringing', lead_status: 'NEW' as string | null },
   { id: 'FRESH', label: 'Fresh', lead_status: 'NEW' as string | null },
+  { id: 'RINGING', label: 'Ringing', lead_status: 'NEW' as string | null },
   { id: 'INTERESTED', label: 'Interested', lead_status: 'NEW' as string | null },
   { id: 'WILL_VISIT', label: 'He will visit', lead_status: 'NEW' as string | null },
   { id: 'CALLBACK', label: 'Follow-up', lead_status: 'NEW' as string | null },
@@ -227,6 +231,7 @@ async function describeLeadActivity(
   prev: Record<string, string>,
   next: Record<string, string>,
   statusLabel: string,
+  statusLabels?: Record<string, string>,
 ) {
   const lines: string[] = [];
   pushRemarkChange(lines, 'Workshop remark', prev.remarks || '', next.remarks || '');
@@ -314,7 +319,11 @@ async function describeLeadActivity(
     else lines.push(`${label} updated to ${clipActivity(after)}`);
   }
   if ((prev.status || '') !== (next.status || '')) {
-    const previousLabel = ACTIVITY_OPTIONS.find((option) => option.id === prev.status)?.label || prev.status || '—';
+    const previousLabel =
+      statusLabels?.[prev.status] ||
+      ACTIVITY_OPTIONS.find((option) => option.id === prev.status)?.label ||
+      prev.status ||
+      '—';
     lines.unshift(`Status: ${previousLabel} → ${statusLabel}`);
   }
   if ((prev.repeat || '') !== (next.repeat || '')) {
@@ -341,12 +350,117 @@ function FieldLabel({
   );
 }
 
+function ReasonPicker({
+  kind,
+  query,
+  onQuery,
+  reasons,
+  selected,
+  onBack,
+  onPick,
+  onCreated,
+}: {
+  kind: 'lost' | 'other';
+  query: string;
+  onQuery: (value: string) => void;
+  reasons: string[];
+  selected: string;
+  onBack: () => void;
+  onPick: (reason: string) => void;
+  onCreated: (reason: string) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const label = kind === 'lost' ? 'Lost' : 'Other';
+  const q = query.trim().toLowerCase();
+  const list = [
+    ...(selected && !reasons.some((reason) => reason.toLowerCase() === selected.toLowerCase()) ? [selected] : []),
+    ...reasons,
+  ].filter((reason) => !q || reason.toLowerCase().includes(q));
+
+  const addOther = async () => {
+    const name = draft.trim();
+    if (!name || busy || kind !== 'other') return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/lead-manager/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_other_reason', name }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 409) throw new Error(json?.error || 'Could not add');
+      const saved = String(json?.reason?.name || name);
+      onCreated(saved);
+      onPick(saved);
+      setDraft('');
+    } catch (e: any) {
+      alert(e?.message || 'Could not add');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+        <span className={`shrink-0 rounded-lg px-2 py-1 text-xs font-bold ${kind === 'lost' ? 'bg-rose-100 text-rose-700' : 'bg-violet-100 text-violet-700'}`}>
+          {label}
+        </span>
+        <input
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          placeholder="Search Reason"
+          className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+        />
+      </div>
+      <button type="button" onClick={onBack} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50">
+        <span aria-hidden>←</span> Back
+      </button>
+      <div className="max-h-[280px] overflow-y-auto pb-1">
+        {list.length === 0 ? <p className="px-4 py-3 text-sm text-slate-400">No reason</p> : null}
+        {list.map((reason) => {
+          const active = reason.toLowerCase() === String(selected || '').toLowerCase();
+          return (
+            <button
+              key={reason}
+              type="button"
+              onClick={() => onPick(reason)}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
+            >
+              <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${active ? 'border-[#2563eb]' : 'border-slate-300'}`}>
+                {active ? <span className="h-2 w-2 rounded-full bg-[#2563eb]" /> : null}
+              </span>
+              <span className="min-w-0 break-words">{reason}</span>
+            </button>
+          );
+        })}
+      </div>
+      {kind === 'other' ? (
+        <div className="flex gap-2 border-t border-slate-100 p-2">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Naya other item"
+            className="h-8 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-xs outline-none"
+          />
+          <button type="button" disabled={busy || !draft.trim()} onClick={() => void addOther()} className="rounded-lg bg-[#023D95] px-2 text-xs font-bold text-white disabled:opacity-50">
+            Add
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OtherReasonField({
   value,
   onChange,
+  header,
 }: {
   value: string;
   onChange: (name: string) => void;
+  header?: boolean;
 }) {
   const [items, setItems] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
@@ -395,34 +509,41 @@ function OtherReasonField({
     }
   };
 
+  const selectCls = header
+    ? 'h-10 min-w-[150px] max-w-[200px] rounded-xl bg-white text-[#023D95] pl-3 pr-8 text-xs font-bold shadow-sm outline-none'
+    : fieldCls();
   return (
-    <div className="sm:col-span-2">
-      <FieldLabel>Other</FieldLabel>
+    <div className={header ? 'flex flex-wrap items-center gap-1.5' : 'sm:col-span-2'}>
+      {header ? null : <FieldLabel>Other</FieldLabel>}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={fieldCls()}
+        className={selectCls}
+        aria-label="Other reason"
       >
-        <option value="">Other only</option>
+        <option value="">Other reason</option>
+        {value && !items.some((name) => name.toLowerCase() === value.toLowerCase()) ? (
+          <option value={value}>{value}</option>
+        ) : null}
         {items.map((name) => (
           <option key={name} value={name}>
             {name}
           </option>
         ))}
       </select>
-      <div className="mt-2 flex gap-2">
+      <div className={header ? 'flex items-center gap-1.5' : 'mt-2 flex gap-2'}>
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void addItem()}
           placeholder="Naya other item"
-          className={fieldCls()}
+          className={header ? 'h-10 w-32 rounded-xl bg-white px-3 text-xs font-semibold text-slate-800 outline-none' : fieldCls()}
         />
         <button
           type="button"
           disabled={busy || !draft.trim()}
           onClick={() => void addItem()}
-          className="shrink-0 rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white disabled:opacity-50"
+          className="shrink-0 rounded-xl bg-[#004AAD] px-3 text-xs font-bold text-white disabled:opacity-50 h-10"
         >
           Add
         </button>
@@ -569,6 +690,15 @@ export default function CrmLeadEditForm({
 
   const [cities, setCities] = useState<any[]>([]);
   const [lostReasonOptions, setLostReasonOptions] = useState<string[]>(LOST_REASONS);
+  const [activityOptions, setActivityOptions] = useState<
+    Array<{ id: string; label: string; lead_status: string | null }>
+  >(ACTIVITY_OPTIONS.map((option) => ({ ...option })));
+  const [otherReasonOptions, setOtherReasonOptions] = useState<string[]>([]);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [statusPanel, setStatusPanel] = useState<'list' | 'lost' | 'other'>('list');
+  const [reasonQuery, setReasonQuery] = useState('');
+  const statusBtnRef = useRef<HTMLButtonElement>(null);
+  const [statusPos, setStatusPos] = useState<{ top: number; right: number } | null>(null);
   const [carDisplay, setCarDisplay] = useState('');
   const [showSecondCar, setShowSecondCar] = useState(false);
   const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
@@ -672,12 +802,66 @@ export default function CrmLeadEditForm({
           .map((r: { name?: string }) => String(r?.name || '').trim())
           .filter(Boolean);
         if (names.length) setLostReasonOptions(names);
+        const otherNames = (Array.isArray(json?.other_reasons) ? json.other_reasons : [])
+          .map((r: { name?: string }) => String(r?.name || '').trim())
+          .filter(Boolean);
+        setOtherReasonOptions(otherNames);
+        const rows = Array.isArray(json?.statuses) ? json.statuses : [];
+        if (rows.length) {
+          const pipeline = new Map(
+            rows.map((row: { code?: string; pipeline_status?: string | null }) => [
+              String(row?.code || '').trim().toUpperCase(),
+              row?.pipeline_status ? String(row.pipeline_status).toUpperCase() : '',
+            ]),
+          );
+          setActivityOptions(
+            mergeAdminStatusChoices(rows).map((choice) => {
+              const builtin = ACTIVITY_OPTIONS.find((option) => option.id === choice.id);
+              return {
+                id: choice.id,
+                label: choice.label,
+                lead_status: builtin
+                  ? builtin.lead_status
+                  : pipeline.get(choice.id) || 'NEW',
+              };
+            }),
+          );
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!statusOpen) return;
+    const place = () => {
+      const rect = statusBtnRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setStatusPos({ top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) });
+    };
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (statusBtnRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest('[data-lead-status-menu]')) return;
+      setStatusOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setStatusOpen(false);
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [statusOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -871,7 +1055,7 @@ export default function CrmLeadEditForm({
       setFormData((prev) => {
         const next = { ...prev };
         const empty = (v: string) => !String(v || '').trim();
-        if (empty(next.customer_name) && fill.customer_name) next.customer_name = String(fill.customer_name);
+        if (empty(next.customer_name) && fill.customer_name) next.customer_name = titleCasePersonName(String(fill.customer_name));
         if (empty(next.customer_email) && fill.customer_email) next.customer_email = String(fill.customer_email);
         if (empty(next.vehicle_number) && fill.vehicle_number) {
           next.vehicle_number = String(fill.vehicle_number);
@@ -922,22 +1106,18 @@ export default function CrmLeadEditForm({
 
   async function fetchLeadDetails() {
     const supabase = createClient();
-    const seeded = seedLead && String(seedLead.id || '') === String(leadId) ? seedLead : null;
-    if (!seeded) setLoading(true);
+    setLoading(true);
 
     try {
-      let leadData = seeded;
-      if (!leadData) {
-        const { data, error: leadError } = await supabase
-          .from('service_leads')
-          .select(
-            `*, assigned_telecaller:assigned_telecaller_id(id, full_name, phone), workshop:workshops(name)`,
-          )
-          .eq('id', leadId)
-          .single();
-        if (leadError) throw leadError;
-        leadData = data;
-      }
+      const { data, error: leadError } = await supabase
+        .from('service_leads')
+        .select(
+          `*, assigned_telecaller:assigned_telecaller_id(id, full_name, phone), workshop:workshops(name)`,
+        )
+        .eq('id', leadId)
+        .single();
+      if (leadError) throw leadError;
+      const leadData = data;
 
       setLead(leadData);
 
@@ -976,7 +1156,7 @@ export default function CrmLeadEditForm({
       
       // Populate form with existing data
       setFormData({
-        customer_name: leadData.customer_name || '',
+        customer_name: titleCasePersonName(leadData.customer_name || ''),
         customer_phone: leadData.customer_phone || '',
         customer_alternate_phone: leadData.customer_alternate_phone || '',
         customer_email: leadData.customer_email || '',
@@ -1079,14 +1259,14 @@ export default function CrmLeadEditForm({
         lead_priority: leadData.lead_priority || 'NORMAL',
         activity_result: (() => {
           const raw = String(leadData?.coupon_meta?.last_call_result || '').toUpperCase().trim();
-          if (raw && ACTIVITY_OPTIONS.some((o) => o.id === raw)) return raw;
+          if (raw) return raw;
           const st = String(leadData?.status || '').toUpperCase();
           if (st === 'VALIDATED') return 'BOOKING_CONFIRMED';
           if (st === 'IN_PROGRESS') return 'IN_SERVICE';
           if (st === 'COMPLETED') return 'SERVICE_DONE';
           if (st === 'REJECTED') return 'LOST';
           if (st === 'CONTACTED' || st === 'ASSIGNED' || st === 'ACCEPTED') return 'INTERESTED';
-          return 'RINGING';
+          return 'FRESH';
         })(),
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
         other_reason: String(leadData?.coupon_meta?.last_other_reason || ''),
@@ -1259,7 +1439,9 @@ export default function CrmLeadEditForm({
         String(formData.problem_description || '').trim() ||
         null;
       const selectedActivity =
-        ACTIVITY_OPTIONS.find((o) => o.id === formData.activity_result) || ACTIVITY_OPTIONS[0];
+        activityOptions.find((o) => o.id === formData.activity_result) ||
+        ACTIVITY_OPTIONS.find((o) => o.id === formData.activity_result) ||
+        ACTIVITY_OPTIONS[0];
       const prevMeta =
         lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
       const resolvedLost =
@@ -1273,7 +1455,8 @@ export default function CrmLeadEditForm({
             : selectedActivity.label;
       const nextSnap = currentActivitySnap();
       const prevSnap = activityBase.current;
-      const lines = prevSnap ? await describeLeadActivity(prevSnap, nextSnap, statusLabel) : [];
+      const statusLabels = Object.fromEntries(activityOptions.map((option) => [option.id, option.label]));
+      const lines = prevSnap ? await describeLeadActivity(prevSnap, nextSnap, statusLabel, statusLabels) : [];
       pendingActivitySnap.current = nextSnap;
       const historyEntry = lines.length
         ? {
@@ -1376,6 +1559,7 @@ export default function CrmLeadEditForm({
 
         coupon_codes: selectedCodes,
         applied_coupon: nextApplied || null,
+        form_hydrated: true,
       };
 
       if (
@@ -1439,6 +1623,7 @@ export default function CrmLeadEditForm({
   };
 
   const [saveSlot, setSaveSlot] = useState<HTMLElement | null>(null);
+  const [brainOpen, setBrainOpen] = useState(false);
   useEffect(() => {
     if (!embedded) return;
     setSaveSlot(document.getElementById('lead-sidebar-save'));
@@ -1550,14 +1735,23 @@ export default function CrmLeadEditForm({
           : 'fixed bottom-3 sm:bottom-4 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(12px,env(safe-area-inset-bottom,0px))] sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]'
       }
     >
-      <div className={inDrawer ? 'flex w-full' : 'mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3'}>
+      <div className={inDrawer ? 'flex w-full items-center gap-2' : 'mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3'}>
         {inDrawer ? null : (
           <button type="button" onClick={handleCancel} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
             <X className="w-4 h-4" /> Back
           </button>
         )}
-        <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
+        <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
           {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
+        </button>
+        <button
+          type="button"
+          onClick={() => setBrainOpen(true)}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+          aria-label="Lead recording analysis"
+          title="Lead recording"
+        >
+          <Brain className="h-5 w-5" />
         </button>
       </div>
     </div>
@@ -1594,7 +1788,7 @@ export default function CrmLeadEditForm({
                 )}
                 <h1 className={`flex min-w-0 items-center gap-2 font-black text-white ${compact ? 'text-lg leading-tight' : 'text-xl sm:text-2xl md:text-3xl mt-0.5'}`}>
                   {hasMembership ? <Crown className="h-6 w-6 shrink-0 text-purple-200" aria-label="Membership customer" /> : null}
-                  <span className={sidePanel ? 'break-words leading-tight' : 'truncate'}>{formData.customer_name || lead.customer_name || 'Lead'}</span>
+                  <span className={sidePanel ? 'break-words leading-tight' : 'truncate'}>{titleCasePersonName(formData.customer_name || lead.customer_name) || 'Lead'}</span>
                 </h1>
                 <p className="text-sm text-white/90 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                   <span className="font-mono font-bold text-white">#{lead.lead_number}</span>
@@ -1654,19 +1848,99 @@ export default function CrmLeadEditForm({
                   <Share2 className="w-4 h-4" />
                 </button>
               ) : null}
-              <select
-                name="activity_result"
-                value={formData.activity_result}
-                onChange={handleChange}
-                className="h-10 min-w-[140px] rounded-xl bg-white text-[#023D95] pl-3 pr-9 text-xs font-bold shadow-sm outline-none cursor-pointer"
+              <button
+                ref={statusBtnRef}
+                type="button"
                 aria-label="Change lead status"
+                aria-expanded={statusOpen}
+                onClick={() => {
+                  setStatusPanel('list');
+                  setReasonQuery('');
+                  setStatusOpen((open) => !open);
+                }}
+                className="inline-flex h-10 min-w-[140px] items-center justify-between gap-2 rounded-xl bg-white px-3 text-xs font-bold text-[#023D95] shadow-sm"
               >
-                {ACTIVITY_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate">
+                  {activityOptions.find((option) => option.id === formData.activity_result)?.label ||
+                    formData.activity_result ||
+                    'Fresh'}
+                </span>
+                <span aria-hidden className="text-[10px] text-slate-400">▾</span>
+              </button>
+              {statusOpen && statusPos
+                ? createPortal(
+                    <div
+                      data-lead-status-menu
+                      style={{ top: statusPos.top, right: statusPos.right }}
+                      className="fixed z-[80] w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl"
+                    >
+                      {statusPanel === 'list' ? (
+                        <div className="max-h-[360px] overflow-y-auto py-1">
+                          {(activityOptions.some((option) => option.id === formData.activity_result)
+                            ? activityOptions
+                            : [
+                                ...activityOptions,
+                                { id: formData.activity_result, label: formData.activity_result, lead_status: 'NEW' },
+                              ]
+                          ).map((option) => {
+                            const active = option.id === formData.activity_result;
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => {
+                                  if (option.id === 'LOST' || option.id === 'OTHER') {
+                                    setStatusPanel(option.id === 'LOST' ? 'lost' : 'other');
+                                    setReasonQuery('');
+                                    return;
+                                  }
+                                  touchLead();
+                                  setFormData((prev) => ({ ...prev, activity_result: option.id }));
+                                  setStatusOpen(false);
+                                }}
+                                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm ${
+                                  active ? 'bg-[#2563eb] font-semibold text-white' : 'hover:bg-slate-50'
+                                }`}
+                              >
+                                <span className="w-4 text-xs">{active ? '✓' : ''}</span>
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <ReasonPicker
+                          kind={statusPanel}
+                          query={reasonQuery}
+                          onQuery={setReasonQuery}
+                          reasons={
+                            statusPanel === 'lost'
+                              ? lostReasonOptions
+                              : otherReasonOptions
+                          }
+                          selected={statusPanel === 'lost' ? formData.lost_reason : formData.other_reason}
+                          onBack={() => {
+                            setStatusPanel('list');
+                            setReasonQuery('');
+                          }}
+                          onPick={(reason) => {
+                            touchLead();
+                            setFormData((prev) =>
+                              statusPanel === 'lost'
+                                ? { ...prev, activity_result: 'LOST', lost_reason: reason }
+                                : { ...prev, activity_result: 'OTHER', other_reason: reason },
+                            );
+                            setStatusOpen(false);
+                          }}
+                          onCreated={(reason) => {
+                            setOtherReasonOptions((prev) => (prev.includes(reason) ? prev : [...prev, reason]));
+                          }}
+                        />
+                      )}
+                    </div>,
+                    document.body,
+                  )
+                : null}
             </div>
           </div>
 
@@ -1723,35 +1997,23 @@ export default function CrmLeadEditForm({
       </div>
       </div>
 
-      {formData.activity_result === 'LOST' ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 sm:p-4">
-          <FieldLabel required>Lost reason</FieldLabel>
-          <select name="lost_reason" value={formData.lost_reason} onChange={handleChange} className={fieldCls()}>
-            <option value="">Select lost reason</option>
-            {lostReasonOptions.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </div>
-      ) : null}
-      {formData.activity_result === 'OTHER' ? (
-        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 sm:p-4">
-          <OtherReasonField
-            value={formData.other_reason}
-            onChange={(name) => {
-              touchLead();
-              setFormData((prev) => ({ ...prev, other_reason: name }));
-            }}
-          />
-        </div>
-      ) : null}
-
       <form id="crm-lead-edit-form" onSubmit={handleSubmit} onChangeCapture={touchLead} noValidate className={sidePanel ? 'min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-3' : 'space-y-4'}>
         <SectionCard title="Customer Details" icon={User} tone="emerald">
           <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'}>
             <div>
               <FieldLabel required>Customer Name</FieldLabel>
-              <input type="text" name="customer_name" value={formData.customer_name} onChange={handleChange} className={fieldCls(Boolean(errors.customer_name))} required />
+              <input
+                type="text"
+                name="customer_name"
+                value={formData.customer_name}
+                onChange={(e) => {
+                  touchLead();
+                  const customer_name = titleCasePersonName(e.target.value);
+                  setFormData((prev) => ({ ...prev, customer_name }));
+                }}
+                className={fieldCls(Boolean(errors.customer_name))}
+                required
+              />
               {errors.customer_name ? <p className="mt-1 text-xs text-rose-600">{errors.customer_name}</p> : null}
             </div>
             <div>
@@ -2318,16 +2580,25 @@ export default function CrmLeadEditForm({
         </div>
 
         {sidePanel ? null : inDrawer && dockFooter ? createPortal(saveBar, dockFooter) : saveBar}
+        <LeadRecordingBrain leadId={leadId} open={brainOpen} onClose={() => setBrainOpen(false)} />
       </form>
       {sidePanel ? (
         <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-2">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button type="button" onClick={handleCancel} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700">
               <X className="h-4 w-4" /> Back
             </button>
             <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2.5 text-sm font-bold text-white disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBrainOpen(true)}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-orange-200 bg-orange-50 text-orange-700"
+              aria-label="Lead recording analysis"
+            >
+              <Brain className="h-5 w-5" />
             </button>
           </div>
         </div>

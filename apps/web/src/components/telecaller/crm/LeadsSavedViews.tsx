@@ -24,6 +24,7 @@ export type CrmLeadsViewSnapshot = {
   advIncomplete: boolean;
   advFollowUp: boolean;
   advHasVehicle: boolean;
+  advHasRecording: boolean;
   advHasCoupon: boolean;
   advNoAssignee: boolean;
   advHasPhone: boolean;
@@ -62,6 +63,7 @@ function asView(raw: unknown): CrmLeadsViewSnapshot | null {
     advIncomplete: Boolean(src.advIncomplete),
     advFollowUp: Boolean(src.advFollowUp),
     advHasVehicle: Boolean(src.advHasVehicle),
+    advHasRecording: Boolean(src.advHasRecording),
     advHasCoupon: Boolean(src.advHasCoupon),
     advNoAssignee: Boolean(src.advNoAssignee),
     advHasPhone: Boolean(src.advHasPhone),

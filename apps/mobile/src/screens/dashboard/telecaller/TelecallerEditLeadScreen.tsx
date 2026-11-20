@@ -38,6 +38,7 @@ import {
   resolveVehicleClassByMakeModel,
 } from '@/lib/servicePricing';
 import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
+import { titleCasePersonName } from '@/lib/personName';
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
 
@@ -299,7 +300,7 @@ export default function TelecallerEditLeadScreen({
         setInitialServiceAddons(serviceAddons);
 
         setForm({
-          customer_name: data.customer_name || '',
+          customer_name: titleCasePersonName(data.customer_name || ''),
           customer_phone: String(data.customer_phone || '').replace(/\D/g, '').slice(-10),
           customer_alternate_phone: data.customer_alternate_phone || '',
           customer_email: data.customer_email || '',
@@ -668,7 +669,7 @@ export default function TelecallerEditLeadScreen({
             placeholder="Customer name"
             placeholderTextColor={COLORS.textSecondary}
             value={form.customer_name}
-            onChangeText={(v) => setField('customer_name', v)}
+            onChangeText={(v) => setField('customer_name', titleCasePersonName(v))}
           />
 
           <View style={styles.phoneRow}>

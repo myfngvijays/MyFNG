@@ -1,5 +1,6 @@
 import { resolveBookingServiceLabel } from '@/lib/booking-wallet-apply';
 import { sendAutomationWhatsApp } from '@/lib/services/whatsappAutomation';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export type BookingConfirmedLead = {
   id?: string | null;
@@ -19,6 +20,7 @@ export type BookingConfirmedLead = {
   customer_address?: string | null;
   city?: string | null;
   pincode?: string | null;
+  workshop_id?: string | null;
   workshop_name?: string | null;
   estimated_amount?: number | null;
   payment_mode?: string | null;
@@ -27,7 +29,7 @@ export type BookingConfirmedLead = {
   landmark?: string | null;
 };
 
-function formatPickupDatetime(lead: BookingConfirmedLead): string {
+export function formatPickupDatetime(lead: BookingConfirmedLead): string {
   if (lead.preferred_slot_start) {
     const date = new Date(lead.preferred_slot_start);
     if (!Number.isNaN(date.getTime())) {
@@ -63,15 +65,25 @@ export function formatBookingCarLabel(lead: BookingConfirmedLead): string {
   return reg && reg !== 'NA' ? reg : 'Your vehicle';
 }
 
+/** Inbound stub labels are not a booked package. */
+const PLACEHOLDER_SERVICE =
+  /^(whatsapp(\s+enquiry)?|incoming(\s+sarv)?\s+call|car[\s_]?service|home[\s_]?service|normal|service|rsa)$/i;
+
+export function isPlaceholderServiceLabel(value: unknown): boolean {
+  const text = String(value || '').trim();
+  if (!text) return true;
+  return PLACEHOLDER_SERVICE.test(text.replace(/_/g, ' '));
+}
+
 export function resolveBookingConfirmedServiceLabel(
   lead: BookingConfirmedLead,
   body?: Record<string, unknown> | null
 ): string {
   const fromBody = body ? resolveBookingServiceLabel(body) : null;
-  if (fromBody) return fromBody;
+  if (fromBody && !isPlaceholderServiceLabel(fromBody)) return fromBody;
 
   const serviceType = String(lead.service_type || '').trim();
-  if (serviceType && serviceType !== 'CAR_SERVICE') {
+  if (serviceType && !isPlaceholderServiceLabel(serviceType)) {
     return serviceType.replace(/_/g, ' ');
   }
 
@@ -211,8 +223,11 @@ export function buildBookingConfirmedTemplateParams(
       ? `${carBase} (${reg})`
       : carBase;
 
+  const chosenLabel = String(options?.serviceLabel || '').trim();
   const serviceName =
-    options?.serviceLabel || resolveBookingConfirmedServiceLabel(lead, options?.body);
+    chosenLabel && !isPlaceholderServiceLabel(chosenLabel)
+      ? chosenLabel
+      : resolveBookingConfirmedServiceLabel(lead, options?.body);
   const amount =
     formatAmount(options?.amount) ||
     formatAmount(lead.estimated_amount) ||
@@ -239,6 +254,56 @@ export function buildBookingConfirmedTemplateParams(
   return [customerName, bookingId, car, service, pickup];
 }
 
+const PICKUP_TEMPLATE = 'pickup_booking_confirmed';
+const VISIT_TEMPLATE = 'visit_booking_confirmed';
+
+const PICKUP_BODY =
+  'Hi {{1}},\n\nYour MyFNG Booking is confirmed.\n\nBooking ID: {{2}}\nCar: {{3}}\nService: {{4}}\nPickup: {{5}}\nWorkshop: {{6}}\n\nOur team will contact you shortly with pickup details.';
+
+const VISIT_BODY =
+  'Hi {{1}},\n\nYour MyFNG Booking is confirmed.\n\nBooking ID: {{2}}\nCar: {{3}}\nService: {{4}}\nVisit: {{5}}\nWorkshop: {{6}}\n\nOur team will contact you shortly with visit details.';
+
+/** MyFNG display name, not the real service-center name. */
+export async function resolveMyfngWorkshopName(lead: BookingConfirmedLead): Promise<string> {
+  const id = String(lead.workshop_id || '').trim();
+  if (id) {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (supabaseAdmin) {
+      const { data } = await supabaseAdmin
+        .from('workshops')
+        .select('workshop_name')
+        .eq('id', id)
+        .maybeSingle();
+      const branded = String(data?.workshop_name || '').trim();
+      if (branded) return branded;
+    }
+  }
+  return 'MyFNG';
+}
+
+/** One confirmation per lead. Status toggled back to Booking confirmed must not text the customer again. */
+async function bookingConfirmedAlreadySent(lead: BookingConfirmedLead): Promise<boolean> {
+  const leadId = String(lead.id || '').trim();
+  const leadNumber = String(lead.lead_number || '').trim();
+  if (!leadId && !leadNumber) return false;
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return false;
+  const parts = [
+    leadId ? `payload->>lead_id.eq.${leadId}` : '',
+    leadNumber ? `payload->>lead_number.eq.${leadNumber}` : '',
+  ].filter(Boolean);
+  const { data, error } = await supabaseAdmin
+    .from('whatsapp_trigger_logs')
+    .select('id')
+    .eq('trigger_key', 'booking_confirmed')
+    .eq('delivery_status', 'SENT')
+    .or(parts.join(','))
+    .limit(1)
+    .maybeSingle();
+  if (error) return false;
+  return Boolean(data?.id);
+}
+
 export async function notifyBookingConfirmedWhatsApp(input: {
   lead: BookingConfirmedLead;
   customerId?: string | null;
@@ -247,6 +312,15 @@ export async function notifyBookingConfirmedWhatsApp(input: {
   serviceLabel?: string | null;
 }) {
   const phone = String(input.lead.customer_phone || '').trim();
+  if (await bookingConfirmedAlreadySent(input.lead)) {
+    return {
+      sent: false,
+      skipped: true,
+      skipReason: 'already_sent',
+      deliveryStatus: 'SKIPPED' as const,
+      triggerKey: 'booking_confirmed' as const,
+    };
+  }
   if (!phone) {
     return {
       sent: false,
@@ -257,16 +331,24 @@ export async function notifyBookingConfirmedWhatsApp(input: {
     };
   }
 
+  const isPickup = input.lead.pickup_required === true;
+  const templateName = isPickup ? PICKUP_TEMPLATE : VISIT_TEMPLATE;
+  const templateBody = isPickup ? PICKUP_BODY : VISIT_BODY;
   const serviceLabel =
     input.serviceLabel || resolveBookingConfirmedServiceLabel(input.lead, input.body);
-  const templateParams = buildBookingConfirmedTemplateParams(input.lead, {
+  const base = buildBookingConfirmedTemplateParams(input.lead, {
     serviceLabel,
     amount: input.amount,
     body: input.body,
   });
+  const when = formatPickupDatetime(input.lead);
+  const workshop = await resolveMyfngWorkshopName(input.lead);
+  const templateParams = [base[0], base[1], base[2], base[3], when, workshop];
 
   return sendAutomationWhatsApp({
     triggerKey: 'booking_confirmed',
+    templateName,
+    templateBody,
     phone,
     customerId: input.customerId || null,
     templateParams,
@@ -274,6 +356,7 @@ export async function notifyBookingConfirmedWhatsApp(input: {
       lead_id: input.lead.id || null,
       lead_number: input.lead.lead_number || null,
       service_label: serviceLabel,
+      pickup_or_visit: isPickup ? 'pickup' : 'visit',
       templateParams,
     },
   });

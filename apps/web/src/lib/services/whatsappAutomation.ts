@@ -78,6 +78,9 @@ export type SendAutomationWhatsAppInput = {
   customerId?: string | null;
   templateParams: string[];
   payload?: Record<string, unknown>;
+  /** Send this Meta template instead of the trigger's saved template. */
+  templateName?: string;
+  templateBody?: string;
   /** Admin/test only */
   skipEnabledCheck?: boolean;
   skipCooldownCheck?: boolean;
@@ -358,7 +361,7 @@ export async function sendAutomationWhatsApp(
       triggerKey: input.triggerKey,
       phone,
       customerId: input.customerId,
-      templateName: setting.template_name,
+      templateName,
       deliveryStatus: 'SKIPPED',
       skipReason: 'trigger_disabled',
       payload: { ...input.payload, templateParams: input.templateParams },
@@ -378,7 +381,7 @@ export async function sendAutomationWhatsApp(
         triggerKey: input.triggerKey,
         phone,
         customerId: input.customerId,
-        templateName: setting.template_name,
+        templateName,
         deliveryStatus: 'SKIPPED',
         skipReason: 'cooldown_active',
         payload: { ...input.payload, templateParams: input.templateParams },
@@ -387,7 +390,10 @@ export async function sendAutomationWhatsApp(
     }
   }
 
-  if (!input.skipTemplateApprovalCheck) {
+  const templateName = String(input.templateName || setting.template_name || '').trim();
+  const templateBody = String(input.templateBody || setting.template_body || '');
+
+  if (!input.skipTemplateApprovalCheck && !input.templateName) {
     const approved = await isAutomationTemplateApproved(setting.template_name);
     if (!approved) {
       const result = skippedResult(input, 'template_not_approved', setting.template_name);
@@ -395,7 +401,7 @@ export async function sendAutomationWhatsApp(
         triggerKey: input.triggerKey,
         phone,
         customerId: input.customerId,
-        templateName: setting.template_name,
+        templateName,
         deliveryStatus: 'SKIPPED',
         skipReason: 'template_not_approved',
         payload: { ...input.payload, templateParams: input.templateParams },
@@ -406,18 +412,18 @@ export async function sendAutomationWhatsApp(
 
   const sendResult = await sendTemplateMessage({
     phoneNumber: phone,
-    templateName: setting.template_name,
+    templateName,
     templateParams: input.templateParams,
     languageCode: setting.template_language || 'en',
   });
 
-  const filledBody = fillTemplateBody(setting.template_body, input.templateParams);
+  const filledBody = fillTemplateBody(templateBody, input.templateParams);
 
   await logAutomationAttempt({
     triggerKey: input.triggerKey,
     phone,
     customerId: input.customerId,
-    templateName: setting.template_name,
+    templateName,
     providerMessageId: sendResult.messageId || null,
     deliveryStatus: sendResult.success ? 'SENT' : 'FAILED',
     skipReason: sendResult.success ? null : sendResult.error || 'send_failed',
@@ -432,7 +438,7 @@ export async function sendAutomationWhatsApp(
       sent: false,
       skipped: false,
       triggerKey: input.triggerKey,
-      templateName: setting.template_name,
+      templateName,
       phone,
       messageId: sendResult.messageId,
       error: sendResult.error,
@@ -444,7 +450,7 @@ export async function sendAutomationWhatsApp(
     sent: true,
     skipped: false,
     triggerKey: input.triggerKey,
-    templateName: setting.template_name,
+    templateName,
     phone,
     messageId: sendResult.messageId,
     deliveryStatus: 'SENT',

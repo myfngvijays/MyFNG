@@ -310,6 +310,7 @@ export function leadStatusPillClass(lead: any): string {
 
 export const ADMIN_CRM_STATUS_OPTIONS = [
   { id: 'FRESH', label: 'Fresh' },
+  { id: 'RINGING', label: 'Ringing' },
   { id: 'INTERESTED', label: 'Interested' },
   { id: 'WILL_VISIT', label: 'He will visit' },
   { id: 'CALLBACK', label: 'Follow-up' },
@@ -318,7 +319,6 @@ export const ADMIN_CRM_STATUS_OPTIONS = [
   { id: 'SERVICE_DONE', label: 'Service Done' },
   { id: 'LOST', label: 'Lost' },
   { id: 'OTHER', label: 'Other' },
-  { id: 'RINGING', label: 'Ringing' },
 ] as const;
 
 export type AdminCrmStatusId = (typeof ADMIN_CRM_STATUS_OPTIONS)[number]['id'];
@@ -334,15 +334,17 @@ export function mergeAdminStatusChoices(
     label: opt.label,
   }));
   const seen = new Set(out.map((opt) => opt.id));
+  const extras: CrmStatusChoice[] = [];
   for (const row of rows) {
     if (row?.is_active === false) continue;
     const id = String(row?.code || '').trim().toUpperCase();
     const label = String(row?.name || '').trim();
     if (!id || !label || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, label });
+    extras.push({ id, label });
   }
-  return out;
+  const tail = new Set(['LOST', 'OTHER']);
+  return [...out.filter((opt) => !tail.has(opt.id)), ...extras, ...out.filter((opt) => tail.has(opt.id))];
 }
 
 /** Same workshop `status` mapping telecaller CRM uses (Service Done → COMPLETED). */

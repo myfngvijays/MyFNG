@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { formatDateTime } from "@/lib/dateFormat";
+import { titleCasePersonName } from "@/lib/personName";
 import {
   View,
   Text,
@@ -19,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { Icon } from '../../../components/Icon';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase, withTimeout } from '../../../lib/supabase';
 import CarLoading from '../../../components/CarLoading';
 import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
@@ -26,7 +28,7 @@ import { formatPreferredSlotLabel } from '../../../lib/preferredSlot';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
-import LeadBrainCard from '../../../components/telecaller/LeadBrainCard';
+import LeadRecordingBrain from '../../../components/telecaller/LeadRecordingBrain';
 import { parseIds } from '../../../lib/parseIds';
 import {
   emptySecondCar,
@@ -303,7 +305,7 @@ function buildFormFromLead(data: any): EditForm {
     pin,
   );
   return {
-    customer_name: data?.customer_name || '',
+    customer_name: titleCasePersonName(data?.customer_name || ''),
     customer_phone: String(data?.customer_phone || '')
       .replace(/\D/g, '')
       .slice(-10),
@@ -374,9 +376,29 @@ const RINGING: CallDisposition = {
   outcome: null,
 };
 
-const DEFAULT_STATUS_OPTIONS: CallDisposition[] = [
-  { id: 'RINGING', label: 'Ringing', call_status: 'NO_ANSWER', outcome: null },
+const STATUS_HEAD_IDS = [
+  'FRESH',
+  'RINGING',
+  'INTERESTED',
+  'WILL_VISIT',
+  'CALLBACK',
+  'BOOKING_CONFIRMED',
+  'IN_SERVICE',
+  'SERVICE_DONE',
+];
+
+function orderLeadStatuses(options: CallDisposition[]): CallDisposition[] {
+  const byId = new Map(options.map((opt) => [opt.id, opt]));
+  const head = STATUS_HEAD_IDS.map((id) => byId.get(id)).filter(Boolean) as CallDisposition[];
+  const tailIds = new Set(['LOST', 'OTHER']);
+  const extras = options.filter((opt) => !STATUS_HEAD_IDS.includes(opt.id) && !tailIds.has(opt.id));
+  const tail = ['LOST', 'OTHER'].map((id) => byId.get(id)).filter(Boolean) as CallDisposition[];
+  return [...head, ...extras, ...tail];
+}
+
+const DEFAULT_STATUS_OPTIONS: CallDisposition[] = orderLeadStatuses([
   { id: 'FRESH', label: 'Fresh', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
+  { id: 'RINGING', label: 'Ringing', call_status: 'NO_ANSWER', outcome: null },
   { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   {
@@ -421,7 +443,7 @@ const DEFAULT_STATUS_OPTIONS: CallDisposition[] = [
     call_status: 'ANSWERED',
     outcome: 'INFO_COLLECTED',
   },
-];
+]);
 
 const DEFAULT_LOST_REASONS = [
   'Not Interested',
@@ -450,7 +472,7 @@ function activityResultFromLead(data: any): string {
   if (st === 'IN_PROGRESS') return 'IN_SERVICE';
   if (st === 'COMPLETED') return 'SERVICE_DONE';
   if (st === 'REJECTED') return 'LOST';
-  return 'RINGING';
+  return 'FRESH';
 }
 
 export default function TelecallerLeadDetailScreen({
@@ -501,6 +523,9 @@ export default function TelecallerLeadDetailScreen({
   const [editing, setEditing] = useState(true);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [showRecordingBrain, setShowRecordingBrain] = useState(false);
+  const [statusPanel, setStatusPanel] = useState<'list' | 'lost' | 'other'>('list');
+  const [reasonQuery, setReasonQuery] = useState('');
   const [statusDraftId, setStatusDraftId] = useState('');
   const [showLostMenu, setShowLostMenu] = useState(false);
   const [showOtherMenu, setShowOtherMenu] = useState(false);
@@ -616,7 +641,7 @@ export default function TelecallerLeadDetailScreen({
               Boolean(r.requires_lost_reason) || String(r.code).toUpperCase() === 'LOST',
           }));
           const withoutRinging = mapped.filter((o) => o.id !== 'RINGING');
-          setStatusOptions([RINGING, ...withoutRinging]);
+          setStatusOptions(orderLeadStatuses([RINGING, ...withoutRinging]));
         }
         const reasons = Array.isArray(data?.lost_reasons) ? data.lost_reasons : [];
         if (!cancelled && reasons.length) {
@@ -672,7 +697,7 @@ export default function TelecallerLeadDetailScreen({
       setEditForm((prev) => {
         const empty = (v: string) => !String(v || '').trim();
         const next = { ...prev };
-        if (empty(next.customer_name) && fill.customer_name) next.customer_name = String(fill.customer_name);
+        if (empty(next.customer_name) && fill.customer_name) next.customer_name = titleCasePersonName(String(fill.customer_name));
         if (empty(next.customer_email) && fill.customer_email) next.customer_email = String(fill.customer_email);
         if (empty(next.vehicle_number) && fill.vehicle_number) {
           next.vehicle_number = String(fill.vehicle_number);
@@ -1069,10 +1094,13 @@ export default function TelecallerLeadDetailScreen({
             .filter(Boolean)
             .join(', ') || undefined,
         ...(dispositionStatus ? { status: dispositionStatus } : {}),
-        // booking_confirmed WhatsApp ONLY when status = Booking confirmed
-        send_booking_confirmed_whatsapp: bookingConfirmed,
+        // First time this lead becomes Booking confirmed. Repeat status flips must not text the customer.
+        send_booking_confirmed_whatsapp:
+          bookingConfirmed &&
+          String(couponMeta.last_call_result || '').toUpperCase() !== 'BOOKING_CONFIRMED',
         // Never auto-fire update WA for Interested / Lost / etc.
         send_booking_updated_whatsapp: false,
+        form_hydrated: true,
       };
 
       let result: { success?: boolean; servicesChanged?: boolean; whatsapp?: any } | null = null;
@@ -1278,6 +1306,8 @@ export default function TelecallerLeadDetailScreen({
 
   const openStatusMenu = () => {
     setStatusDraftId(activityData.result || selectedResult.id);
+    setStatusPanel('list');
+    setReasonQuery('');
     setShowLostMenu(false);
     setShowOtherMenu(false);
     setEditing(true);
@@ -1296,8 +1326,6 @@ export default function TelecallerLeadDetailScreen({
       setEditForm((prev) => ({ ...prev, pickup_required: true }));
     }
     setShowStatusMenu(false);
-    if (opt.id === 'LOST' || opt.requires_lost_reason) setShowLostMenu(true);
-    if (opt.id === 'OTHER') setShowOtherMenu(true);
   };
 
   const activityItems = React.useMemo(() => {
@@ -2347,7 +2375,9 @@ export default function TelecallerLeadDetailScreen({
 
   const headerStatus = resolveLeadDisplayStatus(lead, callLogs);
   const badge = getCallStatusBadge(headerStatus);
-  const shownName = editing ? editForm.customer_name || lead.customer_name : lead.customer_name;
+  const shownName = titleCasePersonName(
+    editing ? editForm.customer_name || lead.customer_name : lead.customer_name,
+  );
   const shownPhone = String(editing ? editForm.customer_phone : lead.customer_phone || '').trim();
   const ownerName = String(
     lead?.assigned_telecaller?.full_name || lead?.created_by?.full_name || '',
@@ -2549,13 +2579,6 @@ export default function TelecallerLeadDetailScreen({
                 </TouchableOpacity>
               </View>
             ) : null}
-
-      {canSeeMlDl ? (
-        <LeadBrainCard
-          leadId={leadId}
-          onOpenSimilar={(id) => navigation?.navigate?.('TelecallerLeadDetail', { leadId: id })}
-        />
-      ) : null}
 
       <View
         style={styles.section}
@@ -2805,7 +2828,7 @@ export default function TelecallerLeadDetailScreen({
                 label="Name"
                 value={editForm.customer_name}
                 editing
-                onChangeText={(v) => setEditField('customer_name', v)}
+                onChangeText={(v) => setEditField('customer_name', titleCasePersonName(v))}
                 placeholder="Customer name"
               />
               <View style={styles.detailGrid}>
@@ -2982,7 +3005,7 @@ export default function TelecallerLeadDetailScreen({
             </>
           ) : (
             <>
-              <DetailRow icon="account" label="Name" value={lead.customer_name} />
+              <DetailRow icon="account" label="Name" value={titleCasePersonName(lead.customer_name)} />
               <View style={styles.detailGrid}>
                 <DetailRow icon="phone" label="Phone" value={lead.customer_phone} compact />
                 {lead.customer_alternate_phone ? (
@@ -4246,20 +4269,80 @@ export default function TelecallerLeadDetailScreen({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {statusOptions.map((opt) => {
-              const active = statusDraftId === opt.id;
-              const dot = statusChoiceColor(opt.id);
-              return (
+            {statusPanel === 'list' ? (
+              statusOptions.map((opt) => {
+                const active = statusDraftId === opt.id;
+                const dot = statusChoiceColor(opt.id);
+                return (
+                  <TouchableOpacity
+                    key={opt.id}
+                    style={[styles.statusChoice, active && { borderColor: dot, backgroundColor: '#F8FAFC' }]}
+                    onPress={() => {
+                      setStatusDraftId(opt.id);
+                      if (opt.id === 'LOST' || opt.id === 'OTHER') {
+                        setStatusPanel(opt.id === 'LOST' ? 'lost' : 'other');
+                        setReasonQuery('');
+                      }
+                    }}
+                  >
+                    <View style={[styles.statusChoiceDot, { backgroundColor: dot }]} />
+                    <Text style={styles.statusChoiceText} numberOfLines={1}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              <View style={{ width: '100%' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <View style={{ backgroundColor: statusPanel === 'lost' ? '#FFE4E6' : '#EDE9FE', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ color: statusPanel === 'lost' ? '#BE123C' : '#6D28D9', fontWeight: '800', fontSize: 12 }}>
+                      {statusPanel === 'lost' ? 'Lost' : 'Other'}
+                    </Text>
+                  </View>
+                  <TextInput
+                    value={reasonQuery}
+                    onChangeText={setReasonQuery}
+                    placeholder="Search Reason"
+                    placeholderTextColor="#94A3B8"
+                    style={{ flex: 1, height: 36, fontSize: 14, color: '#0F172A' }}
+                  />
+                </View>
                 <TouchableOpacity
-                  key={opt.id}
-                  style={[styles.statusChoice, active && { borderColor: dot, backgroundColor: '#F8FAFC' }]}
-                  onPress={() => setStatusDraftId(opt.id)}
+                  onPress={() => {
+                    setStatusPanel('list');
+                    setReasonQuery('');
+                  }}
+                  style={{ paddingVertical: 8 }}
                 >
-                  <View style={[styles.statusChoiceDot, { backgroundColor: dot }]} />
-                  <Text style={styles.statusChoiceText} numberOfLines={1}>{opt.label}</Text>
+                  <Text style={{ color: '#475569', fontSize: 14 }}>← Back</Text>
                 </TouchableOpacity>
-              );
-            })}
+                {(statusPanel === 'lost' ? lostReasons : otherReasons)
+                  .filter((reason) => reason.toLowerCase().includes(reasonQuery.trim().toLowerCase()))
+                  .map((reason) => {
+                    const picked =
+                      statusPanel === 'lost'
+                        ? activityData.lostReason === reason
+                        : activityData.otherReason === reason;
+                    return (
+                      <TouchableOpacity
+                        key={reason}
+                        style={styles.menuItem}
+                        onPress={() =>
+                          setActivityData((prev) =>
+                            statusPanel === 'lost'
+                              ? { ...prev, lostReason: reason }
+                              : { ...prev, otherReason: reason },
+                          )
+                        }
+                      >
+                        <Text style={[styles.menuItemText, picked && { color: COLORS.primary, fontWeight: '800' }]}>
+                          {picked ? '● ' : '○ '}
+                          {reason}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </View>
+            )}
           </ScrollView>
           <TouchableOpacity
             style={[styles.statusSaveBtn, !statusDraftId && { opacity: 0.5 }]}
@@ -4479,22 +4562,36 @@ export default function TelecallerLeadDetailScreen({
 
     {editing ? (
       <View style={[styles.saveBar, { paddingBottom: saveBarBottomPad }]}>
-        <TouchableOpacity
-          style={[styles.saveBarBtn, saving && { opacity: 0.65 }]}
-          disabled={saving}
-          onPress={saveLeadEdits}
-        >
-          {saving ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Icon name="check" size={16} color="#fff" />
-              <Text style={styles.saveBarBtnText}>Save & update booking</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            style={[styles.saveBarBtn, { flex: 1 }, saving && { opacity: 0.65 }]}
+            disabled={saving}
+            onPress={saveLeadEdits}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Icon name="check" size={16} color="#fff" />
+                <Text style={styles.saveBarBtnText}>Save & update booking</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowRecordingBrain(true)}
+            style={styles.brainBtn}
+            accessibilityLabel="Lead recording"
+          >
+            <MaterialCommunityIcons name="brain" size={22} color="#C2410C" />
+          </TouchableOpacity>
+        </View>
       </View>
     ) : null}
+    <LeadRecordingBrain
+      leadId={String(leadId || '')}
+      visible={showRecordingBrain}
+      onClose={() => setShowRecordingBrain(false)}
+    />
     </KeyboardAvoidingView>
   );
 }
@@ -5677,6 +5774,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
+  },
+  brainBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   saveBarBtnText: {
     color: '#fff',

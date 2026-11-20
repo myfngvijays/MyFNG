@@ -33,6 +33,7 @@ export type TelecallerCrmFilterPrefs = {
   advIncomplete: boolean;
   advFollowUp: boolean;
   advHasVehicle: boolean;
+  advHasRecording: boolean;
   advHasCoupon: boolean;
 };
 
@@ -58,6 +59,7 @@ export function defaultTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
     advIncomplete: false,
     advFollowUp: false,
     advHasVehicle: false,
+    advHasRecording: false,
     advHasCoupon: false,
   };
 }
@@ -82,6 +84,7 @@ function normalizePrefs(raw: Partial<TelecallerCrmFilterPrefs> | null | undefine
     advIncomplete: Boolean(raw?.advIncomplete),
     advFollowUp: Boolean(raw?.advFollowUp),
     advHasVehicle: Boolean(raw?.advHasVehicle),
+    advHasRecording: Boolean(raw?.advHasRecording),
     advHasCoupon: Boolean(raw?.advHasCoupon),
   };
 }

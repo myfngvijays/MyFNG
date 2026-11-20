@@ -18,7 +18,6 @@ import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
 import AppActivityTimeline from '@/components/admin/AppActivityTimeline';
 import LeadIqCard from '@/components/admin/LeadIqCard';
-import LeadBrainCard from '@/components/telecaller/crm/LeadBrainCard';
 import {
   leadDisplayStatus,
 } from '@/lib/telecaller/leadDisplayStatus';
@@ -943,19 +942,9 @@ export function LeadDetailContent({
             </div>
           </div>
         ) : null}
-        {!(editing && !isPanel) ? (
-          <div className="relative z-0 mt-4">
-            <LeadBrainCard leadId={leadId} basePath={base} />
-          </div>
-        ) : null}
         {editing ? (
           <div className={isPanel ? 'lead-detail-split min-w-0' : 'lead-page-split'}>
             <div className={isPanel ? 'min-w-0' : 'lead-page-col min-w-0 space-y-4'}>
-              {!isPanel ? (
-                <div className="relative z-0">
-                  <LeadBrainCard leadId={leadId} basePath={base} />
-                </div>
-              ) : null}
               <CrmLeadEditForm
                 leadId={leadId}
                 seedLead={lead}

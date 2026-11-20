@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Briefcase, Calendar, Home, Loader2, MapPin, Navigation } from 'lucide-react';
+import { loadCrmWorkshops } from '@/lib/telecaller/loadCrmWorkshops';
 
 export type CrmPickupVisitValue = {
   pickup_required: boolean;
@@ -149,15 +150,8 @@ export default function CrmPickupVisitStep({
     (async () => {
       setLoadingWs(true);
       try {
-        const params = new URLSearchParams();
         const pin = String(pincode || '').trim();
-        if (pin) params.set('pincode', pin);
-        if (city) params.set('city', city);
-        if (cityId) params.set('city_id', cityId);
-
-        const res = await fetch(`/api/telecaller/crm/workshops?${params.toString()}`);
-        const json = await res.json().catch(() => ({}));
-        const list = Array.isArray(json?.workshops) ? json.workshops : [];
+        const list = await loadCrmWorkshops({ pincode: pin, city, cityId });
         if (!cancelled) setWorkshops(list);
       } catch {
         if (!cancelled) setWorkshops([]);

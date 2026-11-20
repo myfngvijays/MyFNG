@@ -112,12 +112,21 @@ export const createClientFromRequest = async (request: NextRequest) => {
   const cookieAuth =
     hasSupabaseAuthCookie(requestCookies) || hasSupabaseAuthCookie(cookieStore.getAll());
 
-  if (bearer && (isMobileClient || !cookieAuth)) {
-    return createSupabaseClient<Database>(supabaseUrl, supabaseKey, {
+  const bearerClient = () =>
+    createSupabaseClient<Database>(supabaseUrl, supabaseKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { headers: { Authorization: `Bearer ${bearer}` } },
     });
+
+  if (bearer && (isMobileClient || !cookieAuth)) {
+    return bearerClient();
   }
 
-  return buildCookieClient(supabaseUrl, supabaseKey, cookieStore, request);
+  const cookieClient = buildCookieClient(supabaseUrl, supabaseKey, cookieStore, request);
+  if (!bearer) return cookieClient;
+
+  // A leftover cookie must not hide a fresh browser session token.
+  const { data } = await cookieClient.auth.getUser();
+  if (data?.user) return cookieClient;
+  return bearerClient();
 };
