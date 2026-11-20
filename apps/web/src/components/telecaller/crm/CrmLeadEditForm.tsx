@@ -911,11 +911,8 @@ export default function CrmLeadEditForm({
     touchLead();
     const code = String(codeRaw || '').trim().toUpperCase();
     if (!code) return;
-    setCouponCodes((prev) => {
-      const next = prev.includes(code) ? prev : [...prev, code];
-      if (!appliedCoupon) setAppliedCoupon(code);
-      return next;
-    });
+    setCouponCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+    setAppliedCoupon(code);
   };
 
   const removeCouponCode = (codeRaw: string) => {
@@ -1872,7 +1869,7 @@ export default function CrmLeadEditForm({
                     <div
                       data-lead-status-menu
                       style={{ top: statusPos.top, right: statusPos.right }}
-                      className="fixed z-[80] w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl"
+                      className="fixed z-[11000] w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl"
                     >
                       {statusPanel === 'list' ? (
                         <div className="max-h-[360px] overflow-y-auto py-1">
@@ -2446,6 +2443,17 @@ export default function CrmLeadEditForm({
               }}
               title=""
               subtitle=""
+              cityId={formData.city_id || null}
+              workshopId={formData.pickup_required ? null : formData.workshop_id || null}
+              vehicleClass={formData.vehicle_class || null}
+              modelId={formData.model_id || null}
+              vehicleMake={formData.vehicle_make || null}
+              vehicleModel={formData.vehicle_model || null}
+              couponCode={
+                appliedCoupon && selectedCodes.includes(String(appliedCoupon).toUpperCase())
+                  ? appliedCoupon
+                  : selectedCodes[0] || ''
+              }
             />
             {errors.service_types ? <p className="text-xs text-rose-600">{errors.service_types}</p> : null}
 

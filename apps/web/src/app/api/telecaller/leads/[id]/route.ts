@@ -152,10 +152,55 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const nextCall = String(nextMeta.last_call_result || '').toUpperCase();
       if (body.send_booking_confirmed_whatsapp === true && nextCall === 'BOOKING_CONFIRMED') {
         try {
+          const serviceIds = parseServiceIdList((existingLead as any).service_type_ids);
+          const addonIds = parseServiceIdList((existingLead as any).subservice_ids);
+          let amount = Number((existingLead as any).estimated_amount || 0);
+          let serviceLabel = String((existingLead as any)?.service_type || '');
+          let quoteMeta = nextMeta;
+          if (serviceIds.length || addonIds.length) {
+            const quote = await buildTelecallerCrmQuote(db, {
+              serviceTypeIds: serviceIds,
+              addonIds,
+              workshopId: Boolean(patch.pickup_required ?? (existingLead as any).pickup_required)
+                ? null
+                : (existingLead as any).workshop_id || null,
+              cityId: (existingLead as any).city_id || null,
+              vehicleClass: nextMeta.vehicle_class || null,
+              modelId: (existingLead as any).model_id || null,
+              vehicleMake: (existingLead as any).vehicle_make || null,
+              vehicleModel: (existingLead as any).vehicle_model || null,
+              couponCode: (existingLead as any).coupon_code || nextMeta.applied_code || null,
+            });
+            amount = Number(quote.total || 0);
+            serviceLabel = serviceLabelFromQuote(quote) || serviceLabel;
+            const fix: Record<string, unknown> = {};
+            if (amount > 0) fix.estimated_amount = amount;
+            if (quote.model_id && !(existingLead as any).model_id) fix.model_id = quote.model_id;
+            if (quote.vehicle_class || amount > 0) {
+              quoteMeta = {
+                ...nextMeta,
+                ...(quote.vehicle_class ? { vehicle_class: quote.vehicle_class } : {}),
+                last_quote_total: amount,
+                last_quote_subtotal: Number(quote.subtotal || 0) || 0,
+              };
+              fix.coupon_meta = quoteMeta;
+            }
+            if (Object.keys(fix).length) {
+              await db.from('service_leads').update(fix).eq('id', leadId);
+            }
+          }
           whatsapp = await notifyBookingConfirmedWhatsApp({
-            lead: { ...existingLead, ...updated, ...patch, id: leadId, coupon_meta: nextMeta },
+            lead: {
+              ...existingLead,
+              ...updated,
+              ...patch,
+              id: leadId,
+              coupon_meta: quoteMeta,
+              estimated_amount: amount,
+            },
             customerId: (updated as any)?.customer_id || (existingLead as any)?.customer_id || null,
-            serviceLabel: String((updated as any)?.service_type || (existingLead as any)?.service_type || ''),
+            serviceLabel,
+            amount,
           });
         } catch (waErr: any) {
           whatsapp = { sent: false, skipped: true, skipReason: waErr?.message || 'whatsapp_error' };
@@ -225,7 +270,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       nextCouponCode = applied && normalizedCodes.includes(applied) ? applied : normalizedCodes[0] || null;
     }
 
-    // Always re-quote on package change (never trust stale client amount)
+    // Always re-quote on the server from make/model/class. A client quote can be the
+    // cheapest national price when the car class was never saved.
     let resolvedQuote: any = null;
     let nextServiceLabel = '';
     let resolvedVehicleClass =
@@ -234,20 +280,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       (existingLead as any)?.coupon_meta?.vehicle_class ||
       null;
     const modelIdForClass = body?.model_id || (existingLead as any)?.model_id || null;
-    if (!resolvedVehicleClass && modelIdForClass) {
-      try {
-        const { data: modelRow } = await db
-          .from('car_models')
-          .select('class')
-          .eq('id', modelIdForClass)
-          .maybeSingle();
-        resolvedVehicleClass = String(modelRow?.class || '').trim() || null;
-      } catch {
-        // optional
-      }
-    }
+    const vehicleMake = body?.vehicle_make ?? (existingLead as any)?.vehicle_make ?? null;
+    const vehicleModel = body?.vehicle_model ?? (existingLead as any)?.vehicle_model ?? null;
 
-    if (servicesChanged || body?.force_requote) {
+    if (nextServiceIds.length || nextAddonIds.length) {
       try {
         resolvedQuote = await buildTelecallerCrmQuote(db, {
           serviceTypeIds: nextServiceIds,
@@ -255,69 +291,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           workshopId: Boolean(body?.pickup_required) ? null : nextWorkshopId,
           cityId: nextCityId,
           vehicleClass: resolvedVehicleClass,
+          modelId: modelIdForClass,
+          vehicleMake,
+          vehicleModel,
           couponCode: nextCouponCode,
         });
+        if (resolvedQuote?.vehicle_class) resolvedVehicleClass = resolvedQuote.vehicle_class;
       } catch (e) {
         console.warn('[telecaller/leads PATCH] re-quote failed', e);
       }
-      nextServiceLabel =
-        serviceLabelFromQuote(resolvedQuote) ||
-        (await resolveServiceTypeNames(db, nextServiceIds)) ||
-        '';
-    } else if (body?.quote || body?.estimated_amount != null) {
-      resolvedQuote = body?.quote || null;
-      if (!resolvedQuote || !Number(resolvedQuote.total || resolvedQuote.subtotal || 0)) {
-        try {
-          resolvedQuote = await buildTelecallerCrmQuote(db, {
-            serviceTypeIds: nextServiceIds,
-            addonIds: nextAddonIds,
-            workshopId: Boolean(body?.pickup_required) ? null : nextWorkshopId,
-            cityId: nextCityId,
-            vehicleClass: resolvedVehicleClass,
-            couponCode: nextCouponCode,
-          });
-        } catch (e) {
-          console.warn('[telecaller/leads PATCH] quote failed', e);
-        }
-      }
-      nextServiceLabel =
-        serviceLabelFromQuote(resolvedQuote) ||
-        (body?.service_type &&
-        !['CAR_SERVICE', 'HOME_SERVICE', 'RSA', 'NORMAL', 'SERVICE'].includes(
-          String(body.service_type).toUpperCase(),
-        )
-          ? String(body.service_type)
-          : '') ||
-        '';
     }
+
+    nextServiceLabel = serviceLabelFromQuote(resolvedQuote) || '';
 
     // Selected package ids win over the old service_type text still sitting on the form.
     if (nextServiceIds.length) {
       const fromIds = await resolveServiceTypeNames(db, nextServiceIds);
       if (fromIds) nextServiceLabel = fromIds;
-    }
-
-    const confirmingBooking =
-      body?.send_booking_confirmed_whatsapp === true ||
-      String(body?.status || '').trim().toUpperCase() === 'VALIDATED';
-    const storedServiceLabel = String((existingLead as any).service_type || '').trim();
-    if (
-      !resolvedQuote &&
-      nextServiceIds.length &&
-      (confirmingBooking || (nextServiceLabel && nextServiceLabel !== storedServiceLabel))
-    ) {
-      try {
-        resolvedQuote = await buildTelecallerCrmQuote(db, {
-          serviceTypeIds: nextServiceIds,
-          addonIds: nextAddonIds,
-          workshopId: Boolean(body?.pickup_required) ? null : nextWorkshopId,
-          cityId: nextCityId,
-          vehicleClass: resolvedVehicleClass,
-          couponCode: nextCouponCode,
-        });
-      } catch (e) {
-        console.warn('[telecaller/leads PATCH] confirm re-quote failed', e);
-      }
     }
 
     const update: Record<string, unknown> = {
@@ -333,7 +323,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       vehicle_number: serviceLeadVehicleNumber(body?.vehicle_number, (existingLead as any).vehicle_number),
       vehicle_make: body?.vehicle_make ?? null,
-      model_id: body?.model_id ?? null,
+      model_id: body?.model_id || resolvedQuote?.model_id || null,
       vehicle_model: body?.vehicle_model ?? null,
       vehicle_variant: body?.vehicle_variant ?? null,
       vehicle_year: body?.vehicle_year ?? null,
@@ -697,9 +687,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             ? (updated.coupon_meta as Record<string, unknown>)
             : {});
 
-        const newAmount = Number(
-          update.estimated_amount ?? resolvedQuote?.total ?? updated?.estimated_amount ?? 0,
-        );
+        const newAmount = resolvedQuote
+          ? Number(resolvedQuote.total || 0)
+          : Number(update.estimated_amount ?? updated?.estimated_amount ?? 0);
 
         const leadForWa = {
           // Post-save select omits the car columns. Keep the saved vehicle.

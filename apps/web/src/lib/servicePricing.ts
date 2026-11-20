@@ -63,22 +63,8 @@ export async function fetchServicePriceForBooking(
     if (p) return p;
   }
 
-  if (isPremiumLuxuryClass(vehicleClass)) {
-    return 0;
-  }
-
-  // Last resort — any active row (matches book-service step 6)
-  const { data } = await supabase
-    .from('workshop_service_pricing')
-    .select('custom_price')
-    .eq('service_type_id', serviceTypeId)
-    .eq('is_active', true)
-    .gt('custom_price', 0)
-    .order('custom_price', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  return toPrice((data as { custom_price?: number })?.custom_price);
+  // No class/city/zone match: return 0. Do not use the cheapest row in the country.
+  return 0;
 }
 
 export function normalizeCategoryKey(name: string): string {

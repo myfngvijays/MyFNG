@@ -59,25 +59,26 @@ export async function POST(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
 
-    // Prefer client quote; otherwise build server-side so amount/package are never blank
-    let resolvedQuote = quote;
-    if (
-      (!resolvedQuote || !Number(resolvedQuote.total || resolvedQuote.subtotal || 0)) &&
-      (serviceTypeIds.length > 0 || addonIds.length > 0)
-    ) {
+    // Server quote uses the car's class. Do not keep a client total that was priced without a class.
+    let resolvedQuote: any = null;
+    if (serviceTypeIds.length > 0 || addonIds.length > 0) {
       try {
         resolvedQuote = await buildTelecallerCrmQuote(db, {
           serviceTypeIds,
           addonIds,
-          workshopId,
+          workshopId: pickupRequired ? null : workshopId,
           cityId: body?.city_id || null,
           vehicleClass: body?.vehicle_class || body?.coupon_meta?.vehicle_class || null,
+          modelId: body?.model_id || null,
+          vehicleMake: body?.vehicle_make || null,
+          vehicleModel: body?.vehicle_model || null,
           couponCode,
         });
       } catch (e) {
         console.warn('[telecaller/crm/book] server quote failed', e);
       }
     }
+    if (!resolvedQuote) resolvedQuote = quote;
 
     let serviceLabel = serviceLabelFromQuote(resolvedQuote);
     if (!serviceLabel && serviceTypeIds.length > 0) {

@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
       cityId,
       zoneId,
       vehicleClass,
+      modelId: body?.model_id ? String(body.model_id) : null,
+      vehicleMake: body?.vehicle_make ? String(body.vehicle_make) : null,
+      vehicleModel: body?.vehicle_model ? String(body.vehicle_model) : null,
       couponCode,
     });
 

@@ -1046,6 +1046,9 @@ export default function TelecallerLeadDetailScreen({
               city_id: editForm.city_id || null,
               workshop_id: editForm.workshop_id || null,
               vehicle_class: editForm.vehicle_class || null,
+              model_id: editForm.model_id || null,
+              vehicle_make: editForm.vehicle_make || null,
+              vehicle_model: editForm.vehicle_model || null,
             }),
           });
           quotePayload = quoteRes?.quote || null;

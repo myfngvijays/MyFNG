@@ -396,15 +396,17 @@ export default function CrmServicePlanPicker({
                       {s.name}
                     </Text>
                     {pts > 0 ? <Text style={styles.planPoints}>{pts} Points</Text> : null}
+                  </View>
+                  <View style={styles.planPriceCol}>
                     <Text style={styles.planPriceInline}>
                       {pricingLoading ? '…' : price ? inr(price) : '—'}
                     </Text>
+                    <Ionicons
+                      name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={22}
+                      color={selected ? COLORS.green : COLORS.gray[400]}
+                    />
                   </View>
-                  <Ionicons
-                    name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={22}
-                    color={selected ? COLORS.green : COLORS.gray[400]}
-                  />
                 </TouchableOpacity>
                 {items.length > 0 ? (
                   <TouchableOpacity style={styles.viewAll} onPress={() => setDetails(s)}>
@@ -593,13 +595,14 @@ const styles = StyleSheet.create({
   },
   planCardActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '06' },
   planHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  planPriceCol: { alignItems: 'flex-end', gap: 4 },
   planName: { fontSize: 13, fontWeight: '800', color: COLORS.textHeading },
   planPoints: { fontSize: 11, color: COLORS.primary, fontWeight: '700', marginTop: 2 },
   planPriceInline: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
-    color: COLORS.textPrimary,
-    marginTop: 4,
+    color: COLORS.primary,
+    textAlign: 'right',
   },
   planRight: {
     flexDirection: 'row',

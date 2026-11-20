@@ -125,6 +125,7 @@ export default function CrmBookingCatalog({
   onChangeIds,
   cityId,
   vehicleClass,
+  modelId,
   notes,
   onNotesChange,
   selectionMeta,
@@ -236,6 +237,7 @@ export default function CrmBookingCatalog({
           body: JSON.stringify({
             city_id: cityId || null,
             vehicle_class: vehicleClass || null,
+            model_id: modelId || null,
             service_type_ids: ids,
           }),
         });
@@ -252,7 +254,7 @@ export default function CrmBookingCatalog({
         setQuoting(false);
       }
     },
-    [cityId, vehicleClass, showQuotePrices],
+    [cityId, vehicleClass, modelId, showQuotePrices],
   );
 
   const toggleService = (id: string) => {

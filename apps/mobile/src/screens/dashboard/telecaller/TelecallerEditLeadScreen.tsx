@@ -456,6 +456,9 @@ export default function TelecallerEditLeadScreen({
               city_id: form.city_id || null,
               workshop_id: form.pickup_required ? null : form.workshop_id || null,
               vehicle_class: form.vehicle_class || null,
+              model_id: form.model_id || null,
+              vehicle_make: form.vehicle_make || null,
+              vehicle_model: form.vehicle_model || null,
             }),
           });
           quotePayload = quoteRes?.quote || null;

@@ -84,19 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const addonIds = parseServiceIdList(row.subservice_ids);
     const meta = row.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
 
-    let vehicleClass = String(meta.vehicle_class || '').trim() || null;
-    if (!vehicleClass && row.model_id) {
-      try {
-        const { data: modelRow } = await db
-          .from('car_models')
-          .select('class')
-          .eq('id', row.model_id)
-          .maybeSingle();
-        vehicleClass = String(modelRow?.class || '').trim() || null;
-      } catch {
-        // optional
-      }
-    }
+    const vehicleClass = String(meta.vehicle_class || '').trim() || null;
 
     let quote: any = null;
     try {
@@ -106,6 +94,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         workshopId: row.pickup_required ? null : row.workshop_id || null,
         cityId: row.city_id || null,
         vehicleClass,
+        modelId: row.model_id || null,
+        vehicleMake: row.vehicle_make || null,
+        vehicleModel: row.vehicle_model || null,
         couponCode: row.coupon_code || meta.applied_code || null,
       });
     } catch (e) {

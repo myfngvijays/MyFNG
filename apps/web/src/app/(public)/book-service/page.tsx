@@ -714,22 +714,8 @@ export default function BookServicePage() {
             }
           }
 
-          // Priority 6: Any pricing for this service (skip for premium luxury)
-          if (!price && !premiumLuxury) {
-            const { data, error } = await supabase
-              .from('workshop_service_pricing')
-              .select('custom_price')
-              .eq('service_type_id', service.id)
-              .eq('is_active', true)
-              .gt('custom_price', 0)
-              .order('custom_price', { ascending: true })
-              .limit(1)
-              .maybeSingle();
-
-            if (!error && data?.custom_price) {
-              price = parseFloat(data.custom_price);
-            }
-          }
+          // No matching city/zone/class row: leave price empty.
+          // Do not substitute the cheapest price from another city or car class.
         } catch (err) {
           // Silently handle errors - use default price
           console.debug(`Pricing fetch error for ${service.name}:`, err);

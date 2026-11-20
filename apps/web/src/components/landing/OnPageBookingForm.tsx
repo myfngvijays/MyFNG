@@ -363,18 +363,6 @@ const OnPageBookingForm = forwardRef<OnPageBookingFormHandle, Props>(function On
         price = Number(data?.custom_price || 0);
       }
       if (!price) {
-        const { data } = await supabase
-          .from('workshop_service_pricing')
-          .select('custom_price')
-          .eq('service_type_id', picked.id)
-          .eq('is_active', true)
-          .gt('custom_price', 0)
-          .order('custom_price', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        price = Number(data?.custom_price || 0);
-      }
-      if (!price) {
         setCouponError('Price for this car is not available yet.');
         return false;
       }

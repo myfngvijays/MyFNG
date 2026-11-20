@@ -23,7 +23,19 @@ type Props = {
   onChange: (ids: string[]) => void;
   title?: string;
   subtitle?: string;
+  cityId?: string | null;
+  workshopId?: string | null;
+  vehicleClass?: string | null;
+  modelId?: string | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  /** Checked coupon. Card keeps the list price; the message uses the price after this discount. */
+  couponCode?: string | null;
 };
+
+function inr(n: number) {
+  return `₹${Math.round(Number(n || 0)).toLocaleString('en-IN')}`;
+}
 
 const CATEGORY_ORDER = [
   'PERIODIC',
@@ -92,6 +104,13 @@ export default function CrmServicePlanPicker({
   onChange,
   title = 'Service Types',
   subtitle = 'Pick by category — Periodic, AC, Brake, Engine, etc.',
+  cityId,
+  workshopId,
+  vehicleClass,
+  modelId,
+  vehicleMake,
+  vehicleModel,
+  couponCode,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [allServices, setAllServices] = useState<CrmServiceItem[]>([]);
@@ -105,6 +124,9 @@ export default function CrmServicePlanPicker({
     items: string[];
   } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [priceMap, setPriceMap] = useState<Record<string, number>>({});
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [couponPayable, setCouponPayable] = useState<{ total: number; subtotal: number } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -227,6 +249,103 @@ export default function CrmServicePlanPicker({
     });
   }, [allServices, selectedCategory, isPeriodicCategory, oilType, search, selectedIds]);
 
+  const priceIdsKey = servicesInCategory.map((s) => s.id).join(',');
+  const canPrice = Boolean(
+    cityId || workshopId || vehicleClass || modelId || (vehicleMake && vehicleModel),
+  );
+
+  useEffect(() => {
+    const ids = priceIdsKey.split(',').filter(Boolean);
+    if (!canPrice || ids.length === 0) {
+      setPriceMap({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setPriceLoading(true);
+      try {
+        const res = await fetch('/api/telecaller/crm/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service_type_ids: ids,
+            city_id: cityId || null,
+            workshop_id: workshopId || null,
+            vehicle_class: vehicleClass || null,
+            model_id: modelId || null,
+            vehicle_make: vehicleMake || null,
+            vehicle_model: vehicleModel || null,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        const items = Array.isArray(json?.quote?.line_items) ? json.quote.line_items : [];
+        items.forEach((item: { id?: string; price?: number }) => {
+          const price = Number(item?.price || 0);
+          if (item?.id && price > 0) next[String(item.id)] = price;
+        });
+        setPriceMap(next);
+      } catch {
+        if (!cancelled) setPriceMap({});
+      } finally {
+        if (!cancelled) setPriceLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [priceIdsKey, canPrice, cityId, workshopId, vehicleClass, modelId, vehicleMake, vehicleModel]);
+
+  const selectedKey = selectedIds.join(',');
+  useEffect(() => {
+    const code = String(couponCode || '').trim();
+    const ids = selectedKey.split(',').filter(Boolean);
+    if (!code || !canPrice || ids.length === 0) {
+      setCouponPayable(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/telecaller/crm/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service_type_ids: ids,
+            city_id: cityId || null,
+            workshop_id: workshopId || null,
+            vehicle_class: vehicleClass || null,
+            model_id: modelId || null,
+            vehicle_make: vehicleMake || null,
+            vehicle_model: vehicleModel || null,
+            coupon_code: code,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const subtotal = Number(json?.quote?.subtotal || 0);
+        const total = Number(json?.quote?.total || 0);
+        const discount = Number(json?.quote?.discount || 0);
+        if (discount > 0 && total >= 0 && subtotal > 0) setCouponPayable({ total, subtotal });
+        else setCouponPayable(null);
+      } catch {
+        if (!cancelled) setCouponPayable(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedKey, couponCode, canPrice, cityId, workshopId, vehicleClass, modelId, vehicleMake, vehicleModel]);
+
+  const payableFor = (id: string, listPrice: number) => {
+    if (!couponPayable || !selectedIds.includes(id) || listPrice <= 0 || couponPayable.subtotal <= 0) {
+      return null;
+    }
+    if (selectedIds.length === 1) return couponPayable.total;
+    return Math.max(0, Math.round(listPrice * (couponPayable.total / couponPayable.subtotal)));
+  };
+
   const selectedByCategory = useMemo(() => {
     const map = new Map<string, CrmServiceItem[]>();
     selectedIds.forEach((id) => {
@@ -298,6 +417,11 @@ export default function CrmServicePlanPicker({
               </div>
             </div>
           ))}
+          {couponPayable && String(couponCode || '').trim() ? (
+            <p className="text-[11px] font-bold text-[#023D95]">
+              WhatsApp amount after {String(couponCode).trim().toUpperCase()}: {inr(couponPayable.total)}
+            </p>
+          ) : null}
         </div>
       ) : (
         <p className="text-[11px] text-gray-500">No services selected</p>
@@ -391,6 +515,9 @@ export default function CrmServicePlanPicker({
                 const selected = selectedIds.includes(service.id);
                 const tpl = checklists[service.id];
                 const pointsCount = tpl?.points || tpl?.items?.length || 0;
+                const listPrice = Number(priceMap[service.id] || 0);
+                const payable = payableFor(service.id, listPrice);
+                const showDeal = payable != null && payable < listPrice;
                 return (
                   <div
                     key={service.id}
@@ -408,14 +535,32 @@ export default function CrmServicePlanPicker({
                         className="mt-0.5 sm:mt-1 flex-shrink-0"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-xs sm:text-sm text-text-heading flex items-center gap-1.5">
-                          {service.name}
-                          {selected ? (
-                            <Check className="w-3.5 h-3.5 text-brand-primary shrink-0" />
-                          ) : null}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-medium text-xs sm:text-sm text-text-heading flex items-center gap-1.5 min-w-0">
+                            <span className="min-w-0">{service.name}</span>
+                            {selected ? (
+                              <Check className="w-3.5 h-3.5 text-brand-primary shrink-0" />
+                            ) : null}
+                          </div>
+                          <div className="shrink-0 text-right leading-tight">
+                            {priceLoading && !listPrice ? (
+                              <span className="text-[11px] font-semibold text-slate-400">…</span>
+                            ) : listPrice > 0 ? (
+                              <>
+                                <div className="text-sm font-black text-[#023D95]">
+                                  {inr(showDeal ? payable : listPrice)}
+                                </div>
+                                {showDeal ? (
+                                  <div className="text-[10px] font-semibold text-slate-400 line-through">
+                                    {inr(listPrice)}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
+                          </div>
                         </div>
                         {service.description ? (
-                          <div className="text-xs sm:text-sm text-text-body mt-0.5 line-clamp-2">
+                          <div className="text-xs sm:text-sm text-text-body mt-0.5 line-clamp-2 pr-14">
                             {service.description}
                           </div>
                         ) : null}
@@ -443,7 +588,7 @@ export default function CrmServicePlanPicker({
       {mounted &&
         pointsModal &&
         createPortal(
-          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="fixed inset-0 z-[11000] flex items-end sm:items-center justify-center p-0 sm:p-4">
             <button
               type="button"
               className="absolute inset-0 bg-black/50"

@@ -16,6 +16,9 @@ export type CrmQuoteResult = {
   total: number;
   coupon_code: string | null;
   currency: 'INR';
+  /** Class used for this quote. Filled from car_models when the lead only has make/model text. */
+  vehicle_class: string | null;
+  model_id: string | null;
 };
 
 /** City / zone / class pricing when workshop is not selected. */
@@ -87,6 +90,74 @@ export function parseServiceIdList(value: unknown): string[] {
   return [];
 }
 
+function cleanIlikeToken(value: string): string {
+  return value.replace(/[%_\\]/g, '').trim();
+}
+
+/**
+ * Leads imported from TeleCRM often have "SKODA" + "RAPID" text and no model_id.
+ * Without a class, workshop prices cannot match and must not fall through to another city's rate.
+ */
+export async function resolveCarForQuote(
+  supabase: any,
+  input: {
+    vehicleClass?: string | null;
+    modelId?: string | null;
+    vehicleMake?: string | null;
+    vehicleModel?: string | null;
+  },
+): Promise<{ vehicleClass: string | null; modelId: string | null }> {
+  const givenClass = String(input.vehicleClass || '').trim() || null;
+  const givenModelId = String(input.modelId || '').trim() || null;
+  if (givenClass) return { vehicleClass: givenClass, modelId: givenModelId };
+
+  if (givenModelId) {
+    try {
+      const { data } = await supabase
+        .from('car_models')
+        .select('id, class')
+        .eq('id', givenModelId)
+        .maybeSingle();
+      const cls = String(data?.class || '').trim() || null;
+      if (cls) return { vehicleClass: cls, modelId: String(data?.id || givenModelId) };
+    } catch {
+      // try make + model next
+    }
+  }
+
+  const makeToken = cleanIlikeToken(String(input.vehicleMake || '').split(/\s+/)[0] || '');
+  const modelRaw = String(input.vehicleModel || '').trim();
+  const modelToken = cleanIlikeToken(modelRaw.split(/\s+/)[0] || '');
+  if (!makeToken || !modelToken) return { vehicleClass: null, modelId: givenModelId };
+
+  try {
+    const { data } = await supabase
+      .from('car_models')
+      .select('id, class, model_name')
+      .eq('is_active', true)
+      .ilike('make', `%${makeToken}%`)
+      .ilike('model_name', `%${modelToken}%`)
+      .order('model_name')
+      .limit(20);
+    const rows = (data || []) as Array<{ id?: string; class?: string; model_name?: string }>;
+    const wanted = modelRaw.toLowerCase();
+    const token = modelToken.toLowerCase();
+    const exact = rows.filter((row) => {
+      const name = String(row.model_name || '').trim().toLowerCase();
+      return name === wanted || name === token;
+    });
+    const pool = exact.length ? exact : rows;
+    const classes = [...new Set(pool.map((row) => String(row.class || '').trim()).filter(Boolean))];
+    if (classes.length !== 1) return { vehicleClass: null, modelId: givenModelId };
+    return {
+      vehicleClass: classes[0],
+      modelId: String(pool[0]?.id || givenModelId || '') || null,
+    };
+  } catch {
+    return { vehicleClass: null, modelId: givenModelId };
+  }
+}
+
 export async function resolveServiceTypeNames(supabase: any, ids: string[]): Promise<string> {
   if (!ids.length) return '';
   const { data } = await supabase.from('service_types').select('id, name').in('id', ids);
@@ -106,6 +177,9 @@ export async function buildTelecallerCrmQuote(
     cityId?: string | null;
     zoneId?: string | null;
     vehicleClass?: string | null;
+    modelId?: string | null;
+    vehicleMake?: string | null;
+    vehicleModel?: string | null;
     couponCode?: string | null;
   },
 ): Promise<CrmQuoteResult> {
@@ -113,7 +187,13 @@ export async function buildTelecallerCrmQuote(
   const addonIds = (input.addonIds || []).map(String).filter(Boolean);
   const workshopId = input.workshopId ? String(input.workshopId) : null;
   const cityId = input.cityId ? String(input.cityId) : null;
-  const vehicleClass = input.vehicleClass ? String(input.vehicleClass) : null;
+  const car = await resolveCarForQuote(supabase, {
+    vehicleClass: input.vehicleClass,
+    modelId: input.modelId,
+    vehicleMake: input.vehicleMake,
+    vehicleModel: input.vehicleModel,
+  });
+  const vehicleClass = car.vehicleClass;
   const couponCode = String(input.couponCode || '')
     .trim()
     .toUpperCase();
@@ -131,33 +211,39 @@ export async function buildTelecallerCrmQuote(
     for (const st of types || []) {
       let price = 0;
       let source = 'master_default';
-      if (workshopId) {
+      // Workshop rows are stored per class (and zone). Match that class directly.
+      // Never pick the cheapest row in the table — that sent Urban hatchback ₹8,635
+      // for a Mumbai sedan whose real price was ₹9,955.
+      if (workshopId && vehicleClass) {
+        const { data: workshopRows } = await supabase
+          .from('workshop_service_pricing')
+          .select('custom_price, zone_id')
+          .eq('workshop_id', workshopId)
+          .eq('service_type_id', st.id)
+          .eq('class', vehicleClass)
+          .eq('is_active', true)
+          .gt('custom_price', 0);
+        const rows = (workshopRows || []) as Array<{ custom_price?: number; zone_id?: string | null }>;
+        const zoned = resolvedZoneId
+          ? rows.find((row) => String(row.zone_id || '') === resolvedZoneId)
+          : null;
+        const picked = zoned || rows.find((row) => !row.zone_id) || rows[0];
+        const workshopPrice = Number(picked?.custom_price || 0);
+        if (workshopPrice > 0) {
+          price = workshopPrice;
+          source = zoned ? 'workshop_class_zone' : 'workshop_class';
+        }
+      }
+      if (!price && workshopId) {
         const result = await getServicePrice(supabase, workshopId, st.id, vehicleClass, resolvedZoneId);
         price = Number(result.price || 0);
         source = result.source;
       }
-      // Fall back to city/class pricing when workshop price missing
+      // City / zone + class when this workshop has no row for the car's class.
       if (!price) {
         const result = await getCityServicePrice(supabase, st.id, cityId, resolvedZoneId, vehicleClass);
         price = result.price;
         source = result.source;
-      }
-      // Last resort: any active price row for this service (city-agnostic)
-      if (!price) {
-        const { data: anyRow } = await supabase
-          .from('workshop_service_pricing')
-          .select('custom_price')
-          .eq('service_type_id', st.id)
-          .eq('is_active', true)
-          .gt('custom_price', 0)
-          .order('custom_price', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        const p = Number(anyRow?.custom_price || 0);
-        if (p > 0) {
-          price = p;
-          source = 'any_active_tier';
-        }
       }
       lineItems.push({
         kind: 'service',
@@ -188,11 +274,13 @@ export async function buildTelecallerCrmQuote(
 
   if (couponCode) {
     try {
-      const { data: couponRow } = await supabase
+        const couponPattern = couponCode.replace(/[%_\\]/g, (ch) => `\\${ch}`);
+        const { data: couponRow } = await supabase
         .from('coupons')
         .select('*')
-        .eq('code', couponCode)
+        .ilike('code', couponPattern)
         .eq('is_active', true)
+        .limit(1)
         .maybeSingle();
 
       if (couponRow) {
@@ -202,20 +290,22 @@ export async function buildTelecallerCrmQuote(
         ).toUpperCase();
         const value = Number(couponRow.discount_value || couponRow.value || 0);
         const kind = String(couponRow.coupon_kind || '').toUpperCase();
-        if (kind === 'FREE_SERVICE') {
+        const minOrder = Number(couponRow.min_order_value || couponRow.min_amount || 0);
+        const meetsMinimum = !(minOrder > 0 && subtotal < minOrder);
+        if (meetsMinimum && kind === 'FREE_SERVICE') {
           const targetId = String(couponRow.target_service_type_id || '');
           const targetItem = targetId
             ? lineItems.find((i) => i.id === targetId)
             : lineItems.find((i) => i.kind === 'service');
           discount = Number(targetItem?.price || 0);
-        } else if (mode.includes('PERCENT') || mode === 'PERCENTAGE') {
-          discount = Math.round((subtotal * value) / 100);
-        } else {
+        } else if (meetsMinimum && (mode.includes('PERCENT') || mode === 'PERCENTAGE')) {
+          const payable = Math.round((subtotal * (100 - value)) / 100);
+          discount = Math.max(0, subtotal - payable);
+          discount = applyMaxDiscountCap(discount, couponRow, vehicleClass);
+        } else if (meetsMinimum) {
           discount = value;
         }
-        if (mode.includes('PERCENT') || mode === 'PERCENTAGE') {
-          discount = applyMaxDiscountCap(discount, couponRow, vehicleClass);
-        }
+        if (!meetsMinimum) appliedCoupon = null;
         discount = Math.min(discount, subtotal);
       }
     } catch {
@@ -230,6 +320,8 @@ export async function buildTelecallerCrmQuote(
     total: Math.max(0, subtotal - discount),
     coupon_code: appliedCoupon,
     currency: 'INR',
+    vehicle_class: vehicleClass,
+    model_id: car.modelId,
   };
 }
 
