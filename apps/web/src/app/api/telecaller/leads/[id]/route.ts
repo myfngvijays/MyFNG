@@ -122,6 +122,57 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const body = await request.json().catch(() => ({}));
+    if (body?.disposition_only === true) {
+      const prevMeta =
+        (existingLead as any)?.coupon_meta && typeof (existingLead as any).coupon_meta === 'object'
+          ? (existingLead as any).coupon_meta
+          : {};
+      const incoming =
+        body?.coupon_meta && typeof body.coupon_meta === 'object' ? body.coupon_meta : {};
+      const nextMeta = { ...prevMeta, ...incoming };
+      const nowIso = new Date().toISOString();
+      const patch: Record<string, unknown> = {
+        coupon_meta: nextMeta,
+        updated_at: nowIso,
+        is_incomplete: false,
+        updated_by_id: userProfile?.id || null,
+      };
+      if (body.status) patch.status = String(body.status);
+      if (body.pickup_required != null) patch.pickup_required = Boolean(body.pickup_required);
+      const { data: updated, error: statusErr } = await db
+        .from('service_leads')
+        .update(patch)
+        .eq('id', leadId)
+        .select(LEAD_SELECT_SAFE)
+        .maybeSingle();
+      if (statusErr) {
+        return NextResponse.json({ error: statusErr.message || 'Could not save status' }, { status: 400 });
+      }
+      let whatsapp: { sent?: boolean; skipped?: boolean; skipReason?: string } | null = null;
+      const nextCall = String(nextMeta.last_call_result || '').toUpperCase();
+      if (body.send_booking_confirmed_whatsapp === true && nextCall === 'BOOKING_CONFIRMED') {
+        try {
+          whatsapp = await notifyBookingConfirmedWhatsApp({
+            lead: { ...existingLead, ...updated, ...patch, id: leadId, coupon_meta: nextMeta },
+            customerId: (updated as any)?.customer_id || (existingLead as any)?.customer_id || null,
+            serviceLabel: String((updated as any)?.service_type || (existingLead as any)?.service_type || ''),
+          });
+        } catch (waErr: any) {
+          whatsapp = { sent: false, skipped: true, skipReason: waErr?.message || 'whatsapp_error' };
+        }
+      }
+      if (crmLeadClosedForFollowUp({ status: String(patch.status || (updated as any)?.status || ''), coupon_meta: nextMeta })) {
+        try {
+          await closeLeadFollowUps(db, leadId, {
+            completedBy: userProfile?.id || null,
+            note: 'Auto-closed — lead moved to In Service / Service Done / Lost',
+          });
+        } catch {
+          /* optional */
+        }
+      }
+      return NextResponse.json({ success: true, lead: updated, whatsapp });
+    }
     const hasServiceTypes = Array.isArray(body?.service_types);
     const hasServiceAddons = Array.isArray(body?.service_addons);
     const serviceTypes = hasServiceTypes

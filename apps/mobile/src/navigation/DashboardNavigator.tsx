@@ -295,6 +295,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
   if (roleCode === 'TELECALLER') {
     const IncomingCallLeadOverlay =
       require('../components/telecaller/IncomingCallLeadOverlay').default;
+    const PhoneDialWatcher = require('../components/telecaller/PhoneDialWatcher').default;
     return (
       <View style={{ flex: 1 }}>
       <Stack.Navigator
@@ -415,6 +416,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         leadScreen="TelecallerLeadDetail"
         onOpenLead={(leadId) => crmStackRef.current?.navigate('TelecallerLeadDetail', { leadId })}
       />
+      <PhoneDialWatcher />
       </View>
     );
   }
@@ -424,6 +426,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
     const TelecallerAdvancedCRM = require('../screens/dashboard/telecaller_crm/TelecallerAdvancedCRM').default;
     const IncomingCallLeadOverlay =
       require('../components/telecaller/IncomingCallLeadOverlay').default;
+    const PhoneDialWatcher = require('../components/telecaller/PhoneDialWatcher').default;
     return (
       <View style={{ flex: 1 }}>
       <Stack.Navigator
@@ -635,6 +638,7 @@ export default function DashboardNavigator({ userProfile, onLogout, navigation }
         showMlInsights
         onOpenLead={(leadId) => crmStackRef.current?.navigate('TelecallerLeadDetail', { leadId })}
       />
+      <PhoneDialWatcher />
       </View>
     );
   }

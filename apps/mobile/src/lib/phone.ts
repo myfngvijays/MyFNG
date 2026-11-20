@@ -1,39 +1,21 @@
-import { Linking, Platform } from 'react-native';
+import { Linking } from 'react-native';
 
 /**
  * Open the phone dialer for the given E.164 (or any tel-friendly) number.
  *
- * iOS:     uses `telprompt:` so the system shows a confirm dialog before
- *          actually dialing — recommended UX per Apple HIG and required
- *          for App Store reviewers who flag silent auto-dial buttons.
- * Android: uses `tel:` (standard tel URI) which opens the dialer pre-filled.
- *
- * Falls back gracefully if `telprompt:` cannot be opened (e.g. iPad without
- * cellular) by retrying with `tel:`.
+ * Both platforms use `tel:`. On a dual-SIM iPhone this is the system sheet
+ * "Call +91… from" with each line (Personal / business) and Cancel.
+ * A 10-digit Indian number is sent as +91 so that sheet shows the country code.
  */
 export async function openPhoneCall(phone: string): Promise<void> {
   if (!phone) return;
-  const cleaned = String(phone).trim();
-  if (!cleaned) return;
-
-  const primary = Platform.select({
-    ios: `telprompt:${cleaned}`,
-    android: `tel:${cleaned}`,
-    default: `tel:${cleaned}`,
-  }) as string;
+  const digits = String(phone).replace(/\D/g, '');
+  if (!digits) return;
+  const dialable =
+    digits.length === 10 ? `+91${digits}` : digits.length === 12 && digits.startsWith('91') ? `+${digits}` : digits;
 
   try {
-    const supported = await Linking.canOpenURL(primary);
-    if (supported) {
-      await Linking.openURL(primary);
-      return;
-    }
-  } catch {
-    // ignore and try fallback
-  }
-
-  try {
-    await Linking.openURL(`tel:${cleaned}`);
+    await Linking.openURL(`tel:${dialable}`);
   } catch {
     // device cannot dial (e.g. wifi-only iPad) — silently no-op
   }

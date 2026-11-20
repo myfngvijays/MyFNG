@@ -39,6 +39,59 @@ function n(v: number | null | undefined) {
   return v == null ? 0 : v;
 }
 
+/** Soonest pending reminders: today and upcoming first, then the most recent overdue. */
+async function loadNearestReminders(db: any, teleCallerId: string, seesAll: boolean, todayStartIso: string) {
+  const select =
+    'id, scheduled_time, reason, priority, lead_id, telecaller_id, lead:service_leads(id, customer_name, customer_phone, city, vehicle_make, vehicle_model, assigned_telecaller_id)';
+  const scoped = (q: any) => (seesAll ? q : q.eq('telecaller_id', teleCallerId));
+  const base = () => scoped(db.from('telecaller_follow_ups').select(select).eq('status', 'PENDING'));
+  const [upcomingRes, recentRes] = await Promise.all([
+    base().gte('scheduled_time', todayStartIso).order('scheduled_time', { ascending: true }).limit(8),
+    base().lt('scheduled_time', todayStartIso).order('scheduled_time', { ascending: false }).limit(8),
+  ]);
+  const rows = [...(upcomingRes.data || []), ...(recentRes.data || [])];
+  if (!seesAll) {
+    const { data: leads } = await db
+      .from('service_leads')
+      .select('id')
+      .eq('assigned_telecaller_id', teleCallerId)
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(150);
+    const ids = (leads || []).map((row: { id?: string }) => String(row.id || '')).filter(Boolean);
+    if (ids.length) {
+      const { data: extra } = await db
+        .from('telecaller_follow_ups')
+        .select(select)
+        .eq('status', 'PENDING')
+        .in('lead_id', ids)
+        .gte('scheduled_time', todayStartIso)
+        .order('scheduled_time', { ascending: true })
+        .limit(8);
+      rows.push(...(extra || []));
+    }
+  }
+  const now = Date.now();
+  const seen = new Set<string>();
+  const nearest = rows
+    .filter((row: { id?: string; telecaller_id?: string | null; lead?: { assigned_telecaller_id?: string | null } }) => {
+      const id = String(row.id || '');
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      if (seesAll) return true;
+      const owner = String(row.telecaller_id || '');
+      const assigned = String(row.lead?.assigned_telecaller_id || '');
+      return !owner || owner === teleCallerId || assigned === teleCallerId;
+    })
+    .sort(
+      (a: { scheduled_time?: string }, b: { scheduled_time?: string }) =>
+        Math.abs(new Date(a.scheduled_time || 0).getTime() - now) -
+        Math.abs(new Date(b.scheduled_time || 0).getTime() - now),
+    )
+    .slice(0, 6);
+  return { data: nearest };
+}
+
 function dayBoundsFromParam(raw: string | null, fallbackYmd: string) {
   const v = String(raw || '').trim();
   if (!v) {
@@ -339,18 +392,7 @@ export async function GET(request: NextRequest) {
         )
           .order('created_at', { ascending: false })
           .limit(5),
-      () => {
-        let remQ = db
-          .from('telecaller_follow_ups')
-          .select(
-            'id, scheduled_time, reason, priority, lead_id, lead:service_leads(id, customer_name, customer_phone, city, vehicle_make, vehicle_model)',
-          )
-          .eq('status', 'PENDING')
-          .order('scheduled_time', { ascending: true })
-          .limit(12);
-        if (!seesAll) remQ = remQ.eq('telecaller_id', teleCallerId);
-        return remQ;
-      },
+      () => loadNearestReminders(db, teleCallerId, seesAll, todayStartIso),
       () =>
         db
           .from('telecaller_performance_metrics')
@@ -399,16 +441,9 @@ export async function GET(request: NextRequest) {
     );
 
     const pendingRemindersRows = Array.isArray(reminderRes?.data) ? reminderRes.data : [];
-    const todayEndMs = new Date(`${today}T23:59:59.999+05:30`).getTime();
-    const dueReminders = pendingRemindersRows.filter(
-      (r: { scheduled_time?: string }) => new Date(r.scheduled_time || 0).getTime() <= todayEndMs,
-    );
-    const laterReminders = pendingRemindersRows.filter(
-      (r: { scheduled_time?: string }) => new Date(r.scheduled_time || 0).getTime() > todayEndMs,
-    );
-    const nextCall = dueReminders[0] || laterReminders[0] || null;
-    const followupsDue = (nextCall && dueReminders[0]?.id === nextCall.id ? dueReminders.slice(1) : dueReminders).slice(0, 4);
-    const upcomingReminders = (laterReminders.length ? laterReminders : pendingRemindersRows.filter((r: { id?: string }) => r.id !== nextCall?.id)).slice(0, 5);
+    const nextCall = pendingRemindersRows[0] || null;
+    const followupsDue: typeof pendingRemindersRows = [];
+    const upcomingReminders = pendingRemindersRows.slice(0, 6);
     const rankRows = Array.isArray(rankRes?.data) ? rankRes.data : [];
     const leaderboardSize = rankRows.length;
     const idx = rankRows.findIndex((r: any) => String(r.telecaller_id) === teleCallerId);

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Bell, Check, CheckCheck, Trash2, Clock, Filter, Phone, MessageCircle } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
-import { createClient } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 
 export const dynamic = 'force-dynamic';
@@ -45,33 +44,20 @@ function NotificationsContent() {
   const [waMessages, setWaMessages] = useState<any[]>([]);
 
   useEffect(() => {
-    const supabase = createClient();
     void (async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth.user?.id;
-      if (!uid) return;
-      const { data: calls } = await supabase
-        .from('telecaller_call_logs')
-        .select('id, customer_number, call_status, created_at, call_duration')
-        .eq('telecaller_id', uid)
-        .neq('call_status', 'ANSWERED')
-        .order('created_at', { ascending: false })
-        .limit(40);
-      setMissedCalls(calls || []);
-      const { data: reminders } = await supabase
-        .from('telecaller_follow_ups')
-        .select('id, reason, scheduled_time, status, lead:service_leads(customer_name, lead_number)')
-        .eq('telecaller_id', uid)
-        .eq('status', 'PENDING')
-        .lt('scheduled_time', new Date().toISOString())
-        .order('scheduled_time', { ascending: false })
-        .limit(40);
-      setMissedReminders(reminders || []);
+      try {
+        const res = await fetch('/api/telecaller/notifications-feed');
+        const json = await res.json();
+        if (!res.ok) return;
+        setMissedCalls(Array.isArray(json?.calls) ? json.calls : []);
+        setMissedReminders(Array.isArray(json?.reminders) ? json.reminders : []);
+        setWaMessages(Array.isArray(json?.whatsapp) ? json.whatsapp : []);
+      } catch {
+        setMissedCalls([]);
+        setMissedReminders([]);
+        setWaMessages([]);
+      }
     })();
-    void fetch('/api/whatsapp/recent-inbound')
-      .then((res) => res.json())
-      .then((json) => setWaMessages(Array.isArray(json?.messages) ? json.messages : []))
-      .catch(() => setWaMessages([]));
   }, []);
 
   const blobOf = (n: any) => `${n?.type || ''} ${n?.title || ''} ${n?.message || ''}`.toLowerCase();
@@ -160,7 +146,7 @@ function NotificationsContent() {
 
         {/* Filter Tabs */}
         <div className="card p-3 sm:p-4">
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <div className="flex items-center gap-2 overflow-x-auto flex-nowrap">
             <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
             {(
               [
@@ -173,7 +159,7 @@ function NotificationsContent() {
               <button
                 key={tab.id}
                 onClick={() => setFilter(tab.id)}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
                   filter === tab.id
                     ? 'bg-brand-primary text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -197,8 +183,8 @@ function NotificationsContent() {
               {missedCalls.map((call) => (
                 <div key={call.id} className="card flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{call.customer_number || 'Unknown number'}</p>
-                    <p className="text-xs text-gray-500">{call.call_status || 'MISSED'}</p>
+                    <p className="text-sm font-semibold text-gray-900">{call.name || call.phone || 'Unknown number'}</p>
+                    <p className="text-xs text-gray-500">{call.status || 'MISSED'}</p>
                   </div>
                   <span className="text-xs text-gray-400">{call.created_at ? getRelativeTime(call.created_at) : ''}</span>
                 </div>
@@ -251,7 +237,7 @@ function NotificationsContent() {
                   className="card flex w-full items-center justify-between px-4 py-3 text-left"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{row.lead?.customer_name || 'Reminder'}</p>
+                    <p className="text-sm font-semibold text-gray-900">{row.name || 'Reminder'}</p>
                     <p className="text-xs text-gray-500">{row.reason || 'Follow-up overdue'}</p>
                   </div>
                   <span className="text-xs text-red-500">{row.scheduled_time ? getRelativeTime(row.scheduled_time) : ''}</span>
@@ -259,7 +245,10 @@ function NotificationsContent() {
               ))}
             </div>
           )
-        ) : filteredNotifications.length === 0 ? (
+        ) : filteredNotifications.length === 0 &&
+          missedCalls.length === 0 &&
+          missedReminders.length === 0 &&
+          waMessages.length === 0 ? (
           <div className="card text-center py-8 sm:py-10 md:py-12">
             <Bell className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto mb-3 sm:mb-4 text-gray-300" />
             <h3 className="text-lg sm:text-xl font-semibold text-gray-700 mb-1.5 sm:mb-2">No Notifications</h3>
@@ -269,6 +258,49 @@ function NotificationsContent() {
           </div>
         ) : (
           <div className="space-y-2 sm:space-y-3">
+            {missedCalls.map((call) => (
+              <div key={`all-call-${call.id}`} className="card flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{call.name || call.phone || 'Missed call'}</p>
+                  <p className="text-xs text-gray-500">{call.status || 'MISSED'}</p>
+                </div>
+                <span className="text-xs text-gray-400">{call.created_at ? getRelativeTime(call.created_at) : ''}</span>
+              </div>
+            ))}
+            {missedReminders.map((row) => (
+              <button
+                key={`all-rem-${row.id}`}
+                type="button"
+                onClick={() => router.push('/dashboard/telecaller/followups')}
+                className="card flex w-full items-center justify-between px-4 py-3 text-left"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{row.name || 'Reminder'}</p>
+                  <p className="text-xs text-gray-500">{row.reason || 'Follow-up overdue'}</p>
+                </div>
+                <span className="text-xs text-red-500">{row.scheduled_time ? getRelativeTime(row.scheduled_time) : ''}</span>
+              </button>
+            ))}
+            {waMessages.map((msg) => (
+              <button
+                key={`all-wa-${msg.id}`}
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('myfng:open-wa-chat', {
+                      detail: { phone: msg.phone, preview: msg.text },
+                    }),
+                  );
+                }}
+                className="card flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-gray-900">{msg.name || msg.phone}</p>
+                  <p className="truncate text-xs text-gray-500">{msg.text}</p>
+                </div>
+                <span className="shrink-0 text-xs text-gray-400">{msg.created_at ? getRelativeTime(msg.created_at) : ''}</span>
+              </button>
+            ))}
             {filteredNotifications.map((notification) => {
               const priorityBadge = getPriorityBadge(notification.priority);
               

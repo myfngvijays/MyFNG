@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
+import { WebPhoneCallLink } from '@/components/telecaller/PhoneDialHandoff';
 import { createClient } from '@/lib/supabase/client';
 import { useCrmPermissions } from '@/lib/telecaller/useCrmPermissions';
 import {
@@ -271,12 +272,13 @@ function EngageContent() {
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {lead.customer_phone ? (
-                          <a
-                            href={`tel:${lead.customer_phone}`}
+                          <WebPhoneCallLink
+                            phone={String(lead.customer_phone)}
+                            leadId={lead.id ? String(lead.id) : undefined}
                             className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
                           >
                             <Phone className="h-3.5 w-3.5" /> Call
-                          </a>
+                          </WebPhoneCallLink>
                         ) : null}
                         {lead.id ? (
                           <Link

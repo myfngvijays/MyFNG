@@ -240,8 +240,8 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       const { data: profile } = await supabase
         .from('users_login')
         .select('id, roles!role_id(role_code)')
-        .eq('email', user?.email)
-        .single();
+        .ilike('email', String(user?.email || ''))
+        .maybeSingle();
 
       const profileRole = String(
         (profile as any)?.roles?.role_code || role || '',
@@ -288,11 +288,82 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       });
       const pendingLeadIds = new Set(pendingList.map((fu: any) => String(fu.lead_id)));
 
+      const todayBounds = istDayBounds(istYmd());
+      let todayQuery = supabase
+        .from('telecaller_follow_ups')
+        .select(`
+          *,
+          lead:lead_id(
+            lead_number,
+            customer_name,
+            customer_phone,
+            status,
+            service_type,
+            coupon_meta,
+            deleted_at,
+            assigned_telecaller_id
+          ),
+          telecaller:telecaller_id(full_name)
+        `)
+        .eq('status', 'PENDING')
+        .gte('scheduled_time', todayBounds.start)
+        .lte('scheduled_time', todayBounds.end)
+        .order('scheduled_time', { ascending: true });
+      if (!canSeeTeam && profile?.id) {
+        todayQuery = todayQuery.eq('telecaller_id', profile.id);
+      }
+      const { data: todayRaw } = await todayQuery.limit(80);
+      const todaySeen = new Set<string>();
+      const todayList = (todayRaw || []).filter((fu: any) => {
+        const id = String(fu.id || '');
+        if (!id || todaySeen.has(id) || fu.lead?.deleted_at || crmLeadClosedForFollowUp(fu.lead)) return false;
+        todaySeen.add(id);
+        return true;
+      });
+      if (!canSeeTeam && profile?.id) {
+        const { data: leadIds } = await supabase
+          .from('service_leads')
+          .select('id')
+          .eq('assigned_telecaller_id', profile.id)
+          .is('deleted_at', null)
+          .limit(200);
+        const ids = (leadIds || []).map((row: { id?: string }) => String(row.id || '')).filter(Boolean);
+        if (ids.length) {
+          const { data: extraToday } = await supabase
+            .from('telecaller_follow_ups')
+            .select(`
+              *,
+              lead:lead_id(
+                lead_number,
+                customer_name,
+                customer_phone,
+                status,
+                service_type,
+                coupon_meta,
+                deleted_at,
+                assigned_telecaller_id
+              ),
+              telecaller:telecaller_id(full_name)
+            `)
+            .eq('status', 'PENDING')
+            .in('lead_id', ids)
+            .gte('scheduled_time', todayBounds.start)
+            .lte('scheduled_time', todayBounds.end)
+            .limit(80);
+          for (const fu of extraToday || []) {
+            const id = String((fu as any).id || '');
+            if (!id || todaySeen.has(id) || (fu as any).lead?.deleted_at || crmLeadClosedForFollowUp((fu as any).lead)) continue;
+            todaySeen.add(id);
+            todayList.push(fu);
+          }
+        }
+      }
+
       const now = new Date();
 
       setStats({
         pending: pendingList.length,
-        today: pendingList.filter((fu: any) => isScheduledIstToday(fu.scheduled_time)).length,
+        today: todayList.length,
         overdue: pendingList.filter((fu: any) => new Date(fu.scheduled_time) < now).length,
       });
 
@@ -368,7 +439,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       } else {
         list = [...pendingList];
         if (filter === 'today') {
-          list = list.filter((fu: any) => isScheduledIstToday(fu.scheduled_time));
+          list = todayList;
         } else if (filter === 'calendar') {
           const start = istDayBounds(customStart).start;
           const end = istDayBounds(customEnd).end;

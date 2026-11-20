@@ -838,11 +838,10 @@ export default function TelecallerAdvancedCRM() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    menuSlide.setValue(320);
-    Animated.timing(menuSlide, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-  }, [menuOpen, menuSlide]);
+  const openMenu = () => {
+    menuSlide.setValue(0);
+    setMenuOpen(true);
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -1084,7 +1083,6 @@ export default function TelecallerAdvancedCRM() {
     <SafeAreaView
       style={[styles.container, !detailLeadId ? { backgroundColor: '#004AAD' } : null]}
       edges={['top']}
-      {...edgeSwipe.panHandlers}
     >
       <StatusBar barStyle="light-content" />
 
@@ -1169,7 +1167,7 @@ export default function TelecallerAdvancedCRM() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuBtn}
-              onPress={() => setMenuOpen(true)}
+              onPress={openMenu}
               activeOpacity={0.7}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
@@ -1245,7 +1243,7 @@ export default function TelecallerAdvancedCRM() {
               initialFilter={queueFilter}
               initialQuery={queueQuery}
               onFilterChange={persistQueueFilter}
-              onOpenMenu={() => setMenuOpen(true)}
+              onOpenMenu={openMenu}
               onAddLead={() => {
                 setBookMode('lead');
                 setTab('book');
@@ -1415,7 +1413,7 @@ export default function TelecallerAdvancedCRM() {
       <Modal
         visible={menuOpen}
         transparent
-        animationType="fade"
+        animationType="none"
         presentationStyle="overFullScreen"
         statusBarTranslucent
         onRequestClose={() => setMenuOpen(false)}
@@ -1583,12 +1581,14 @@ export default function TelecallerAdvancedCRM() {
         </View>
       </Modal>
       )}
+      {menuOpen ? null : <View style={styles.edgeSwipe} {...edgeSwipe.panHandlers} />}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
+  edgeSwipe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 22, zIndex: 2 },
   previewBar: {
     flexDirection: 'row',
     backgroundColor: '#004AAD',

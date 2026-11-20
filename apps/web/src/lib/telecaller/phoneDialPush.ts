@@ -52,54 +52,6 @@ export async function sendPhoneDial(input: DialPushInput): Promise<{
     customerName = String((lead as { customer_name?: string } | null)?.customer_name || '');
   }
 
-  if (!input.alreadyDialed) {
-    const { data: device } = await supabaseAdmin
-      .from('notification_devices')
-      .select('token, device_name')
-      .eq('user_id', input.telecallerId)
-      .eq('platform', 'FCM')
-      .eq('is_active', true)
-      .order('last_seen_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const token = String((device as { token?: string } | null)?.token || '');
-    if (!token) {
-      return {
-        ok: false,
-        error: 'Phone app is not logged in. Open MyFNG on your phone with this same account, then call again.',
-        code: 'PHONE_OFFLINE',
-      };
-    }
-
-    const deviceName = String((device as { device_name?: string } | null)?.device_name || '');
-    const os = /ios|iphone/i.test(deviceName) ? 'ios' : 'android';
-    const who = customerName || to;
-    const delivery = await sendFcmPush([
-      {
-        token,
-        title: 'Call customer',
-        body: os === 'ios' ? `Tap to call ${who}` : `Calling ${who}`,
-        priority: 'high',
-        os,
-        data: {
-          kind: 'SIM_DIAL',
-          phone: to,
-          lead_id: leadId,
-          customer_name: customerName,
-        },
-      },
-    ]);
-
-    if (!delivery.delivered) {
-      return {
-        ok: false,
-        error: 'Could not reach your phone. Open the MyFNG app and try again.',
-        code: 'PUSH_FAILED',
-      };
-    }
-  }
-
   let callLogId: string | null = null;
   if (leadId) {
     const { data: inserted } = await supabaseAdmin
@@ -108,10 +60,10 @@ export async function sendPhoneDial(input: DialPushInput): Promise<{
         lead_id: leadId,
         telecaller_id: input.telecallerId,
         call_type: 'OUTBOUND',
-        call_status: 'RINGING',
+        call_status: input.alreadyDialed ? 'RINGING' : 'DEVICE_PENDING',
         notes: input.alreadyDialed
           ? '[Phone dial] Dialed from the logged-in phone'
-          : '[Phone dial] Sent to the logged-in phone',
+          : '[Phone dial] Waiting for the open phone app',
         phone_number: to,
         created_at: new Date().toISOString(),
       })
@@ -120,11 +72,57 @@ export async function sendPhoneDial(input: DialPushInput): Promise<{
     callLogId = inserted?.id ? String(inserted.id) : null;
   }
 
+  if (input.alreadyDialed) {
+    return { ok: true, callLogId, message: 'Opening the phone dialer' };
+  }
+
+  const { data: device } = await supabaseAdmin
+    .from('notification_devices')
+    .select('token, device_name')
+    .eq('user_id', input.telecallerId)
+    .eq('platform', 'FCM')
+    .eq('is_active', true)
+    .order('last_seen_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const token = String((device as { token?: string } | null)?.token || '');
+  let pushed = false;
+  if (token) {
+    const deviceName = String((device as { device_name?: string } | null)?.device_name || '');
+    const os = /ios|iphone/i.test(deviceName) ? 'ios' : 'android';
+    const who = customerName || to;
+    const delivery = await sendFcmPush([
+      {
+        token,
+        title: 'Call customer',
+        body: `Calling ${who}`,
+        priority: 'high',
+        os,
+        apnsTopic: 'com.myfng.partner',
+        data: {
+          kind: 'SIM_DIAL',
+          phone: to,
+          lead_id: leadId,
+          customer_name: customerName,
+          call_log_id: callLogId || '',
+        },
+      },
+    ]);
+    pushed = delivery.delivered;
+  }
+
+  if (!callLogId && !pushed) {
+    return {
+      ok: false,
+      error: 'Open the MyFNG app on your phone with this same account, then call again.',
+      code: token ? 'PUSH_FAILED' : 'PHONE_OFFLINE',
+    };
+  }
+
   return {
     ok: true,
     callLogId,
-    message: input.alreadyDialed
-      ? 'Opening the phone dialer'
-      : 'Call sent to your logged-in phone. It will dial the customer.',
+    message: 'Open the MyFNG app. The lead will open and your phone will ask which line to call from.',
   };
 }

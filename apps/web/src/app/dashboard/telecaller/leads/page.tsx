@@ -7,6 +7,7 @@ import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import MlScoreBadge from '@/components/telecaller/crm/MlScoreBadge';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
+import { WebPhoneCallLink } from '@/components/telecaller/PhoneDialHandoff';
 import {
   resolveCrmDateRange,
   type CrmDatePreset,
@@ -2459,9 +2460,9 @@ function TelecallerCrmLeadsContent() {
                           >
                             <div className="flex flex-nowrap items-center justify-end gap-2">
                               {lead.customer_phone ? (
-                                <a href={`tel:${lead.customer_phone}`} title="Call" aria-label="Call" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700">
+                                <WebPhoneCallLink phone={String(lead.customer_phone)} leadId={String(lead.id)} title="Call" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700">
                                   <Phone className="h-5 w-5 shrink-0 fill-current" strokeWidth={0} />
-                                </a>
+                                </WebPhoneCallLink>
                               ) : null}
                               {lead.customer_phone ? (
                                 <button type="button" onClick={() => openLeadWhatsApp(lead)} title="WhatsApp" aria-label="WhatsApp" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm hover:bg-[#1ebe5c]">
@@ -2583,14 +2584,15 @@ function TelecallerCrmLeadsContent() {
                     </div>
                     <div className="mt-2.5 flex gap-2" onClick={(e) => e.stopPropagation()}>
                       {lead.customer_phone ? (
-                        <a
-                          href={`tel:${lead.customer_phone}`}
+                        <WebPhoneCallLink
+                          phone={String(lead.customer_phone)}
+                          leadId={String(lead.id)}
                           title="Call"
                           className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-[#004AAD] px-2 py-2 text-xs font-bold text-white"
                         >
                           <Phone className="h-3.5 w-3.5 fill-current" strokeWidth={0} />
                           Call
-                        </a>
+                        </WebPhoneCallLink>
                       ) : null}
                       <button
                         type="button"

@@ -12,13 +12,13 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDateDMY } from "@/lib/dateFormat";
 import { useNotifications, Notification } from '../../context/NotificationContext';
 import { COLORS, SIZES, SPACING } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
 import { apiFetch } from '../../lib/api';
 
 type NotifFilter = 'all' | 'missed_calls' | 'missed_reminders' | 'whatsapp';
@@ -39,77 +39,78 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
   const [missedReminders, setMissedReminders] = useState<Notification[]>([]);
   const [waMessages, setWaMessages] = useState<Notification[]>([]);
 
-  useEffect(() => {
-    void (async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth.user?.id;
-      if (!uid) return;
-      const { data: calls } = await supabase
-        .from('telecaller_call_logs')
-        .select('id, customer_number, call_status, created_at')
-        .eq('telecaller_id', uid)
-        .neq('call_status', 'ANSWERED')
-        .order('created_at', { ascending: false })
-        .limit(40);
+  const loadFeed = async () => {
+    try {
+      const json = await apiFetch<{
+        calls?: Array<{ id: string; phone?: string; name?: string; status?: string; created_at?: string }>;
+        reminders?: Array<{ id: string; name?: string; reason?: string; scheduled_time?: string; lead_id?: string }>;
+        whatsapp?: Array<{ id: string; phone?: string; name?: string; text?: string; created_at?: string }>;
+      }>('/api/telecaller/notifications-feed');
       setMissedCalls(
-        (calls || []).map((call: any) => ({
+        (json?.calls || []).map((call) => ({
           id: `call-${call.id}`,
-          title: call.customer_number || 'Missed call',
-          message: call.call_status || 'MISSED',
-          created_at: call.created_at,
+          title: call.name || call.phone || 'Missed call',
+          message: call.status || 'MISSED',
+          created_at: call.created_at || new Date().toISOString(),
           is_read: true,
           type: 'SYSTEM_ALERT',
           priority: 'MEDIUM',
+          user_id: '',
+          read_at: null,
+          action_url: null,
+          lead_number: null,
+          lead_id: null,
+          metadata: { phone: call.phone },
         })) as Notification[],
       );
-      const { data: reminders } = await supabase
-        .from('telecaller_follow_ups')
-        .select('id, reason, scheduled_time, lead:service_leads(customer_name)')
-        .eq('telecaller_id', uid)
-        .eq('status', 'PENDING')
-        .lt('scheduled_time', new Date().toISOString())
-        .order('scheduled_time', { ascending: false })
-        .limit(40);
       setMissedReminders(
-        (reminders || []).map((row: any) => ({
+        (json?.reminders || []).map((row) => ({
           id: `rem-${row.id}`,
-          title: row.lead?.customer_name || 'Missed reminder',
+          title: row.name || 'Missed reminder',
           message: row.reason || 'Follow-up overdue',
-          created_at: row.scheduled_time,
+          created_at: row.scheduled_time || new Date().toISOString(),
           is_read: true,
           type: 'FOLLOW_UP_DUE',
           priority: 'HIGH',
+          user_id: '',
+          read_at: null,
+          action_url: null,
+          lead_number: null,
+          lead_id: row.lead_id || null,
+          metadata: {},
         })) as Notification[],
       );
-    })();
-    void apiFetch<{ messages?: Array<{ id: string; name?: string; phone?: string; text?: string; created_at?: string }> }>(
-      '/api/whatsapp/recent-inbound',
-    )
-      .then((json) => {
-        setWaMessages(
-          (json?.messages || []).map((msg) => ({
-            id: `wa-${msg.id}`,
-            title: msg.name || msg.phone || 'WhatsApp',
-            message: msg.text || 'Message',
-            created_at: msg.created_at || new Date().toISOString(),
-            is_read: true,
-            type: 'WHATSAPP',
-            priority: 'MEDIUM',
-            user_id: '',
-            read_at: null,
-            action_url: null,
-            lead_number: null,
-            lead_id: null,
-            metadata: { phone: msg.phone },
-          })),
-        );
-      })
-      .catch(() => setWaMessages([]));
+      setWaMessages(
+        (json?.whatsapp || []).map((msg) => ({
+          id: `wa-${msg.id}`,
+          title: msg.name || msg.phone || 'WhatsApp',
+          message: msg.text || 'Message',
+          created_at: msg.created_at || new Date().toISOString(),
+          is_read: true,
+          type: 'WHATSAPP',
+          priority: 'MEDIUM',
+          user_id: '',
+          read_at: null,
+          action_url: null,
+          lead_number: null,
+          lead_id: null,
+          metadata: { phone: msg.phone },
+        })) as Notification[],
+      );
+    } catch {
+      setMissedCalls([]);
+      setMissedReminders([]);
+      setWaMessages([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadFeed();
   }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refreshNotifications();
+    await Promise.all([refreshNotifications(), loadFeed()]);
     setRefreshing(false);
   };
 
@@ -118,7 +119,16 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
     if (filter === 'whatsapp') return waMessages;
     if (filter === 'missed_calls') return missedCalls;
     if (filter === 'missed_reminders') return missedReminders;
-    return rows;
+    const seen = new Set<string>();
+    const merged = [...rows, ...missedCalls, ...missedReminders, ...waMessages].filter((row) => {
+      const id = String(row?.id || '');
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    return merged.sort(
+      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+    );
   }, [notifications, filter, missedCalls, missedReminders, waMessages]);
 
   const getPriorityColor = (priority: string): string => {
@@ -403,7 +413,12 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
       </View>
       )}
 
-      <View style={styles.filters}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filters}
+        contentContainerStyle={styles.filtersContent}
+      >
         {(
           [
             { id: 'all', label: 'All' },
@@ -420,7 +435,7 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
             <Text style={[styles.filterText, filter === f.id && styles.filterTextOn]}>{f.label}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <FlatList
         data={filtered}
@@ -480,11 +495,14 @@ const styles = StyleSheet.create({
   markAll: { flexDirection: 'row', alignItems: 'center', gap: 4, width: 72, justifyContent: 'flex-end' },
   markAllText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   filters: {
+    backgroundColor: COLORS.white,
+    flexGrow: 0,
+  },
+  filtersContent: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: SPACING.md,
     paddingVertical: 10,
-    backgroundColor: COLORS.white,
   },
   filterChip: {
     paddingHorizontal: 12,

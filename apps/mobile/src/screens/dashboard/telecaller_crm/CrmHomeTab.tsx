@@ -396,9 +396,13 @@ export default function CrmHomeTab({
     for (const row of [...followupsDue, ...reminders]) {
       if (row?.id) seen.set(String(row.id), row);
     }
+    const now = Date.now();
     return [...seen.values()]
-      .filter((row) => String(row.id) !== String(nextCall?.id || ''))
-      .sort((a, b) => new Date(a.scheduled_time || 0).getTime() - new Date(b.scheduled_time || 0).getTime())
+      .sort(
+        (a, b) =>
+          Math.abs(new Date(a.scheduled_time || 0).getTime() - now) -
+          Math.abs(new Date(b.scheduled_time || 0).getTime() - now),
+      )
       .slice(0, 5);
   })();
   const inServiceLeads: FreshLead[] = Array.isArray(data?.in_service_leads) ? data.in_service_leads.slice(0, 4) : [];

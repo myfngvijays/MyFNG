@@ -20,6 +20,8 @@ export type FcmPushMessage = {
   os?: FcmDeviceOs;
   /** Data-only ping — used for silent uninstall token probes */
   dataOnly?: boolean;
+  /** Override APNs topic. Partner app tokens belong to com.myfng.partner. */
+  apnsTopic?: string;
 };
 
 export type FcmPlatformDeliveryStats = {
@@ -151,7 +153,7 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
             headers: {
               'apns-priority': '10',
               'apns-push-type': 'alert',
-              'apns-topic': iosBundleId,
+              'apns-topic': msg.apnsTopic || iosBundleId,
             },
             payload: {
               aps: {

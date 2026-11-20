@@ -536,6 +536,7 @@ export default function TelecallerLeadDetailScreen({
   const [couponInput, setCouponInput] = useState('');
   const [activeCoupons, setActiveCoupons] = useState<Array<{ id: string; code: string; description?: string }>>([]);
   const [saving, setSaving] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [sendingPricing, setSendingPricing] = useState(false);
   const [showWaChat, setShowWaChat] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>(emptyEditForm);
@@ -1314,18 +1315,63 @@ export default function TelecallerLeadDetailScreen({
     setShowStatusMenu(true);
   };
 
-  const applyStatusChoice = (opt: CallDisposition) => {
+  const commitDisposition = async (
+    opt: CallDisposition,
+    reasons?: { lostReason?: string; otherReason?: string },
+  ) => {
+    if (statusSaving) return;
+    const lostReason = String(reasons?.lostReason ?? activityData.lostReason ?? '').trim();
+    const otherReason = String(reasons?.otherReason ?? activityData.otherReason ?? '').trim();
+    const statusLabel =
+      opt.id === 'LOST'
+        ? `Lost · ${lostReason || 'Other Reasons'}`
+        : opt.id === 'OTHER' && otherReason
+          ? `Other · ${otherReason}`
+          : opt.label;
+    const prevMeta =
+      lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? { ...lead.coupon_meta } : {};
+    const nextMeta = {
+      ...prevMeta,
+      last_call_status: opt.call_status,
+      last_call_result: opt.id,
+      last_call_label: statusLabel,
+      last_lost_reason: opt.id === 'LOST' ? lostReason || 'Other Reasons' : null,
+      last_other_reason: opt.id === 'OTHER' ? otherReason || null : null,
+      last_call_at: new Date().toISOString(),
+    };
+    setStatusSaving(true);
     setEditing(true);
     setActivityData((prev) => ({
       ...prev,
       result: opt.id,
-      lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? prev.lostReason : '',
-      otherReason: opt.id === 'OTHER' ? prev.otherReason : '',
+      lostReason: opt.id === 'LOST' ? lostReason : '',
+      otherReason: opt.id === 'OTHER' ? otherReason : '',
     }));
     if (opt.id === 'BOOKING_CONFIRMED') {
       setEditForm((prev) => ({ ...prev, pickup_required: true }));
     }
     setShowStatusMenu(false);
+    try {
+      await apiFetch(`/api/telecaller/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          disposition_only: true,
+          status: opt.lead_status || undefined,
+          pickup_required: opt.id === 'BOOKING_CONFIRMED' ? true : undefined,
+          coupon_meta: nextMeta,
+          send_booking_confirmed_whatsapp:
+            opt.id === 'BOOKING_CONFIRMED' &&
+            String(prevMeta.last_call_result || '').toUpperCase() !== 'BOOKING_CONFIRMED',
+        }),
+      });
+      await fetchLeadDetails();
+    } catch (e: any) {
+      Alert.alert('Status', e?.message || 'Could not save status');
+      await fetchLeadDetails();
+    } finally {
+      setStatusSaving(false);
+    }
   };
 
   const activityItems = React.useMemo(() => {
@@ -4278,11 +4324,14 @@ export default function TelecallerLeadDetailScreen({
                     key={opt.id}
                     style={[styles.statusChoice, active && { borderColor: dot, backgroundColor: '#F8FAFC' }]}
                     onPress={() => {
+                      if (statusSaving) return;
                       setStatusDraftId(opt.id);
                       if (opt.id === 'LOST' || opt.id === 'OTHER') {
                         setStatusPanel(opt.id === 'LOST' ? 'lost' : 'other');
                         setReasonQuery('');
+                        return;
                       }
+                      void commitDisposition(opt);
                     }}
                   >
                     <View style={[styles.statusChoiceDot, { backgroundColor: dot }]} />
@@ -4326,13 +4375,17 @@ export default function TelecallerLeadDetailScreen({
                       <TouchableOpacity
                         key={reason}
                         style={styles.menuItem}
-                        onPress={() =>
-                          setActivityData((prev) =>
-                            statusPanel === 'lost'
-                              ? { ...prev, lostReason: reason }
-                              : { ...prev, otherReason: reason },
-                          )
-                        }
+                        onPress={() => {
+                          if (statusSaving) return;
+                          const opt = statusOptions.find(
+                            (row) => row.id === (statusPanel === 'lost' ? 'LOST' : 'OTHER'),
+                          );
+                          if (!opt) return;
+                          void commitDisposition(
+                            opt,
+                            statusPanel === 'lost' ? { lostReason: reason } : { otherReason: reason },
+                          );
+                        }}
                       >
                         <Text style={[styles.menuItemText, picked && { color: COLORS.primary, fontWeight: '800' }]}>
                           {picked ? '● ' : '○ '}
@@ -4344,18 +4397,11 @@ export default function TelecallerLeadDetailScreen({
               </View>
             )}
           </ScrollView>
-          <TouchableOpacity
-            style={[styles.statusSaveBtn, !statusDraftId && { opacity: 0.5 }]}
-            disabled={!statusDraftId}
-            onPress={() => {
-              const opt = statusOptions.find((r) => r.id === statusDraftId);
-              if (opt) applyStatusChoice(opt);
-            }}
-          >
-            <Text style={styles.statusSaveText}>
-              Save · {statusOptions.find((r) => r.id === statusDraftId)?.label || 'status'}
-            </Text>
-          </TouchableOpacity>
+          {statusSaving ? (
+            <View style={[styles.statusSaveBtn, { opacity: 0.7 }]}>
+              <Text style={styles.statusSaveText}>Saving…</Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>

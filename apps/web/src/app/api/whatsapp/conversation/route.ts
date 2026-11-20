@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 import { businessPhoneForScope, loadOtpOutbounds, otpOutboundToMessage } from '@/lib/whatsapp/otpInbox';
+import { visibleWhatsAppText } from '@/lib/whatsapp/visibleMessageText';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -297,6 +298,12 @@ export async function GET(request: NextRequest) {
       }
       messages = deduped;
     }
+
+    messages = messages.map((row: any) => {
+      const visible = visibleWhatsAppText(row);
+      if (!visible || visible === String(row?.text_body || '').trim()) return row;
+      return { ...row, text_body: visible };
+    });
 
     return NextResponse.json({
       success: true,

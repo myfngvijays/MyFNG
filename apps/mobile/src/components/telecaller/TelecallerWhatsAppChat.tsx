@@ -47,6 +47,7 @@ type Msg = {
   created_at?: string | null;
   status?: string | null;
   payload?: Record<string, any> | null;
+  meta?: Record<string, any> | null;
 };
 
 type WaTemplate = {
@@ -108,12 +109,22 @@ function isImageMessage(m: Msg): boolean {
   return type === 'IMAGE' || type === 'STICKER' || mime.startsWith('image/');
 }
 
+function templateParamsOf(m: Msg): string[] {
+  const meta = m.meta && typeof m.meta === 'object' ? (m.meta as any) : {};
+  const payload = m.payload && typeof m.payload === 'object' ? (m.payload as any) : {};
+  const raw = meta.template_params || payload?.request?.template_params || payload?.template_params || [];
+  return Array.isArray(raw) ? raw.map((value) => String(value ?? '').trim()).filter(Boolean) : [];
+}
+
 function messageText(m: Msg): string {
+  const params = templateParamsOf(m);
   const rawBody = String(m.text_body || '').trim();
   const caption = String(m.media_caption || '').trim();
   const body = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'STICKER'].includes(rawBody.toUpperCase())
     ? ''
     : rawBody;
+  const archiveLabel = /^template:\s*/i.test(body);
+  if (params.length && (!body || archiveLabel)) return params.join('\n');
   if (isImageMessage(m)) return caption || body;
   if (body) {
     try {
@@ -125,14 +136,15 @@ function messageText(m: Msg): string {
     } catch {
       /* plain text */
     }
-    // Avoid dumping internal template keys as the visible message
-    if (/^template:\s*/i.test(body)) {
-      const rest = body.replace(/^template:\s*/i, '').trim();
-      if (rest && !/^[a-z0-9_]+$/i.test(rest.split(/\s|\(/)[0] || '')) return rest;
+    if (archiveLabel) {
+      const paren = body.match(/\(([\s\S]+)\)\s*$/);
+      const inside = String(paren?.[1] || '').trim();
+      if (inside) return inside;
       return 'Template message';
     }
     return body;
   }
+  if (params.length) return params.join('\n');
   if (m.template_name) return humanizeTemplateKey(String(m.template_name));
   const type = String(m.message_type || '').toUpperCase();
   if (type && type !== 'TEXT') return type;

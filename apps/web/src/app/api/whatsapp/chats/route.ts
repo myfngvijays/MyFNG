@@ -4,6 +4,7 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 import { loadOtpOutbounds, mergeOtpChats } from '@/lib/whatsapp/otpInbox';
+import { visibleWhatsAppText } from '@/lib/whatsapp/visibleMessageText';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -30,8 +31,10 @@ function normalizePhone(phone: string): string {
 }
 
 function messagePreviewFromRow(row: any): string {
+  const visible = visibleWhatsAppText(row);
+  if (visible) return visible;
   const text = String(row?.text_body || '').trim();
-  if (text) return text;
+  if (text && !/^template:\s*/i.test(text)) return text;
 
   const caption = String(row?.media_caption || '').trim();
   if (caption) return caption;

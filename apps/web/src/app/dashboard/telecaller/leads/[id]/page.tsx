@@ -502,9 +502,7 @@ export function LeadDetailContent({
       });
       if (!result.ok) {
         toast.error(result.error || 'Could not send the call to your phone');
-        return;
       }
-      toast.success(result.message || 'Call sent to your logged-in phone');
     } finally {
       setCalling(false);
     }

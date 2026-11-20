@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import DashboardLayout from '@/components/DashboardLayout';
+import { WebPhoneCallLink } from '@/components/telecaller/PhoneDialHandoff';
 import {
   CRM_DATE_PRESETS,
   resolveCrmDateRange,
@@ -556,7 +557,7 @@ export default function TelecallerCrmHomePage() {
                 <div className="text-sm text-slate-300">{nextCall.reason || nextCall.lead?.customer_phone || 'Follow-up'}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {nextCall.lead?.customer_phone ? (
-                    <a href={`tel:${nextCall.lead.customer_phone}`} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white">Call now</a>
+                    <WebPhoneCallLink phone={String(nextCall.lead.customer_phone)} leadId={String(nextCall.lead_id || nextCall.lead?.id || '')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white">Call now</WebPhoneCallLink>
                   ) : null}
                   <Link href={`${base}/leads/${nextCall.lead_id || nextCall.lead?.id || ''}`} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-slate-100">Open lead</Link>
                 </div>
@@ -631,14 +632,14 @@ export default function TelecallerCrmHomePage() {
                           {formatLeadAgo(lead.created_at)}
                         </span>
                         {phone ? (
-                          <a
-                            href={`tel:${phone}`}
+                          <WebPhoneCallLink
+                            phone={phone}
+                            leadId={String(lead.id)}
                             title="Call"
-                            aria-label="Call"
                             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#DCE8FF] text-[#004AAD]"
                           >
                             <Phone className="h-3 w-3" />
-                          </a>
+                          </WebPhoneCallLink>
                         ) : null}
                       </li>
                     );
@@ -660,7 +661,13 @@ export default function TelecallerCrmHomePage() {
                 <ul className="divide-y divide-slate-100">
                   {[...followupsDue, ...upcomingReminders]
                     .filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i)
-                    .sort((a, b) => new Date(a.scheduled_time || 0).getTime() - new Date(b.scheduled_time || 0).getTime())
+                    .sort((a, b) => {
+                      const now = Date.now();
+                      return (
+                        Math.abs(new Date(a.scheduled_time || 0).getTime() - now) -
+                        Math.abs(new Date(b.scheduled_time || 0).getTime() - now)
+                      );
+                    })
                     .slice(0, 5)
                     .map((r) => {
                     const overdue = r.scheduled_time
@@ -687,14 +694,14 @@ export default function TelecallerCrmHomePage() {
                           {formatReminderClock(r.scheduled_time)}
                         </span>
                         {phone ? (
-                          <a
-                            href={`tel:${phone}`}
+                          <WebPhoneCallLink
+                            phone={phone}
+                            leadId={String(r.lead_id || r.lead?.id || '')}
                             title="Call"
-                            aria-label="Call"
                             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FFEDD5] text-[#C2410C]"
                           >
                             <Phone className="h-3 w-3" />
-                          </a>
+                          </WebPhoneCallLink>
                         ) : null}
                       </li>
                     );

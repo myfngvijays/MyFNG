@@ -61,6 +61,7 @@ import WhatsAppWebWorkspace from '@/components/shared/WhatsAppWebWorkspace';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import { dashboardRolesMatch, getRoleDashboardHome } from '@/lib/dashboard/roleHome';
 import IncomingClickToCallBanner from '@/components/telecaller/crm/IncomingClickToCallBanner';
+import PhoneDialHandoffBanner from '@/components/telecaller/PhoneDialHandoff';
 import TelecallerFloorHeaderButton from '@/components/telecaller/TelecallerFloorHeaderButton';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
@@ -1504,6 +1505,9 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
 
       {['TELECALLER', 'LEAD_MANAGER'].includes(role.toUpperCase()) ? (
         <IncomingClickToCallBanner />
+      ) : null}
+      {['TELECALLER', 'LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(role.toUpperCase()) ? (
+        <PhoneDialHandoffBanner />
       ) : null}
     </div>
   );

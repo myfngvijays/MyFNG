@@ -57,11 +57,10 @@ export default function WorkshopCrmShell({
   const { unreadCount } = useNotifications();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuSlide = useRef(new Animated.Value(320)).current;
-  useEffect(() => {
-    if (!menuOpen) return;
-    menuSlide.setValue(320);
-    Animated.timing(menuSlide, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-  }, [menuOpen, menuSlide]);
+  const openMenu = () => {
+    menuSlide.setValue(0);
+    setMenuOpen(true);
+  };
 
   const drawerTopPad =
     Math.max(
@@ -233,7 +232,7 @@ export default function WorkshopCrmShell({
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.menuBtn}
-            onPress={() => setMenuOpen(true)}
+            onPress={openMenu}
             activeOpacity={0.7}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
@@ -257,7 +256,7 @@ export default function WorkshopCrmShell({
       <Modal
         visible={menuOpen}
         transparent
-        animationType="fade"
+        animationType="none"
         presentationStyle="overFullScreen"
         statusBarTranslucent
         onRequestClose={() => setMenuOpen(false)}

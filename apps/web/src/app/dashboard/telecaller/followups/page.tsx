@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import { WebPhoneCallLink } from '@/components/telecaller/PhoneDialHandoff';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { Calendar, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye, Flag, RefreshCw } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -746,14 +747,14 @@ export default function FollowUpsPage() {
                   <td className="px-3 align-middle">
                   <div className="flex shrink-0 items-center justify-end gap-1">
                     {followUp.lead?.customer_phone ? (
-                      <a
-                        href={`tel:${followUp.lead.customer_phone}`}
+                      <WebPhoneCallLink
+                        phone={String(followUp.lead.customer_phone)}
+                        leadId={String(followUp.lead_id || '')}
                         title="Call"
-                        aria-label="Call"
                         className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#004AAD] text-white"
                       >
                         <Phone className="h-3.5 w-3.5" />
-                      </a>
+                      </WebPhoneCallLink>
                     ) : null}
                     <Link
                       href={leadHref(followUp.lead_id)}

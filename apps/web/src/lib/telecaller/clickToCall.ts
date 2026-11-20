@@ -19,7 +19,20 @@ export type ClickToCallResult = {
   to?: string;
   message?: string;
   sessionId?: string;
+  callLogId?: string;
 };
+
+export const PHONE_DIAL_EVENT = 'myfng:phone-dial';
+export const PHONE_DIAL_MS = 40_000;
+
+export function announcePhoneDial(detail: { callLogId?: string; phone: string }) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(PHONE_DIAL_EVENT, {
+      detail: { ...detail, startedAt: Date.now() },
+    }),
+  );
+}
 
 export async function requestClickToCall(input: {
   to: string;
@@ -50,12 +63,15 @@ export async function requestClickToCall(input: {
         code: json?.code ? String(json.code) : undefined,
       };
     }
+    const callLogId = json?.call_log_id ? String(json.call_log_id) : undefined;
+    announcePhoneDial({ callLogId, phone: json?.to ? String(json.to) : to });
     return {
       ok: true,
       from: json?.from ? String(json.from) : undefined,
       to: json?.to ? String(json.to) : to,
       message: String(json?.message || 'Call initiated'),
       sessionId: json?.session_id ? String(json.session_id) : undefined,
+      callLogId,
     };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Network error' };
