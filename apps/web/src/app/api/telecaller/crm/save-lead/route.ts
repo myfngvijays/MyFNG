@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { toServiceLeadType } from '@/lib/customer-service-leads';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 import { addLeadTags } from '@/lib/telecaller/crmLeadTagsApply';
+import { applyKnownFillToPayload, inspectPhoneForNewLead } from '@/lib/telecaller/phoneLeadGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,6 +106,11 @@ export async function POST(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
 
+    const phoneCheck = await inspectPhoneForNewLead(db, customerPhone, profile?.id);
+    if (phoneCheck.blocked) {
+      return NextResponse.json({ error: phoneCheck.message, code: 'PHONE_OWNED' }, { status: 409 });
+    }
+
     const insert: Record<string, unknown> = {
       lead_number: leadNumber,
       lead_type: leadType,
@@ -168,6 +174,7 @@ export async function POST(request: NextRequest) {
       created_at: now,
       updated_at: now,
     };
+    applyKnownFillToPayload(insert, phoneCheck.fill);
 
     const { data: lead, error } = await db
       .from('service_leads')

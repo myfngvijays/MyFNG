@@ -11,6 +11,7 @@ import { resolveTelecallerUserId } from './resolveTelecallerUserId';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { resolvedTriggerLeadSource, type MessageTrigger } from '@/lib/enquiry/messageTriggers';
 import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
+import { fillNewLeadFromHistory } from '@/lib/telecaller/phoneLeadGuard';
 import { stampFreshOnMeta } from '@/lib/telecaller/crmLeadTagsApply';
 import {
   addLeadTags,
@@ -355,6 +356,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
     created_at: nowIso,
     updated_at: nowIso,
   };
+  await fillNewLeadFromHistory(supabaseAdmin, payload);
 
   let { data: inserted, error: insertErr } = await supabaseAdmin
     .from('service_leads')

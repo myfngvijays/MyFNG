@@ -50,6 +50,7 @@ export type KnownCustomerFill = {
   pincode?: string | null;
   customer_address?: string | null;
   pickup_address?: string | null;
+  vehicle_fuel_type?: string | null;
 };
 
 /** Open / in-progress statuses that should receive new WhatsApp messages (enum-safe). */
@@ -219,8 +220,8 @@ export async function lookupKnownCustomerFill(
     const { data: pastLeads } = await supabaseAdmin
       .from('service_leads')
       .select(
-        `customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant,
-         city, pincode, customer_address, pickup_address, created_at`,
+        `customer_name, customer_email, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant,
+         vehicle_fuel_type, city, pincode, customer_address, pickup_address, created_at`,
       )
       .or(
         `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`,
@@ -232,6 +233,9 @@ export async function lookupKnownCustomerFill(
       if (!fill.customer_name && !isPlaceholderName(row.customer_name)) {
         fill.customer_name = String(row.customer_name).trim();
       }
+      if (!fill.customer_email && row.customer_email) {
+        fill.customer_email = String(row.customer_email).trim();
+      }
       if (isPlaceholderVehicle(fill.vehicle_number) && !isPlaceholderVehicle(row.vehicle_number)) {
         fill.vehicle_number = String(row.vehicle_number).trim().toUpperCase();
         fill.vehicle_make = fill.vehicle_make || (row.vehicle_make ? String(row.vehicle_make).trim() : null);
@@ -239,6 +243,12 @@ export async function lookupKnownCustomerFill(
           fill.vehicle_model || (row.vehicle_model ? String(row.vehicle_model).trim() : null);
         fill.vehicle_variant =
           fill.vehicle_variant || (row.vehicle_variant ? String(row.vehicle_variant).trim() : null);
+        fill.vehicle_fuel_type =
+          fill.vehicle_fuel_type ||
+          (row.vehicle_fuel_type ? String(row.vehicle_fuel_type).trim() : null);
+      }
+      if (!fill.vehicle_fuel_type && row.vehicle_fuel_type) {
+        fill.vehicle_fuel_type = String(row.vehicle_fuel_type).trim();
       }
       if (!fill.city && row.city) fill.city = String(row.city).trim();
       if (!fill.pincode && row.pincode) fill.pincode = String(row.pincode).trim();

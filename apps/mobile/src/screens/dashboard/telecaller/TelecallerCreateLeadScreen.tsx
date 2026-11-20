@@ -357,6 +357,23 @@ export default function TelecallerCreateLeadScreen({ navigation, route }: any) {
         discountAmount = Number(validated.discount_amount || 0);
       }
 
+      let phoneCheck: any = null;
+      try {
+        phoneCheck = await apiFetch<any>(
+          `/api/telecaller/crm/phone-lead?phone=${encodeURIComponent(formData.customer_phone)}`,
+        );
+      } catch {
+        phoneCheck = null;
+      }
+      if (phoneCheck?.blocked) {
+        Alert.alert('Number already exists', String(phoneCheck.error || 'Ye number kisi aur lead par hai'));
+        setLoading(false);
+        return;
+      }
+      const known = phoneCheck?.fill || {};
+      const knownOr = (current: string, key: string) =>
+        String(current || '').trim() || (known[key] ? String(known[key]) : '');
+
       // Create lead
       const { data: lead, error: leadError } = await supabase
         .from('service_leads')
@@ -367,25 +384,25 @@ export default function TelecallerCreateLeadScreen({ navigation, route }: any) {
           assigned_telecaller_id: profile?.id,
           telecaller_assigned_at: new Date().toISOString(),
           
-          customer_name: formData.customer_name,
+          customer_name: knownOr(formData.customer_name, 'customer_name'),
           customer_phone: formData.customer_phone,
           customer_alternate_phone: formData.customer_alternate_phone || null,
-          customer_email: formData.customer_email || null,
-          customer_address: formData.customer_address || null,
+          customer_email: knownOr(formData.customer_email, 'customer_email') || null,
+          customer_address: knownOr(formData.customer_address, 'customer_address') || null,
           city_id: formData.city_id || null,
-          city: formData.city || null,
-          pincode: formData.pincode || null,
+          city: knownOr(formData.city, 'city') || null,
+          pincode: knownOr(formData.pincode, 'pincode') || null,
           contact_method: formData.contact_method,
           customer_lat: formData.customer_lat || null,
           customer_lng: formData.customer_lng || null,
           
-          vehicle_number: formData.vehicle_number, // Required field
-          vehicle_make: formData.vehicle_make,
+          vehicle_number: knownOr(formData.vehicle_number, 'vehicle_number'),
+          vehicle_make: knownOr(formData.vehicle_make, 'vehicle_make'),
           model_id: formData.model_id || null,
-          vehicle_model: formData.vehicle_model,
+          vehicle_model: knownOr(formData.vehicle_model, 'vehicle_model'),
           vehicle_variant: formData.vehicle_variant || null,
           vehicle_year: formData.vehicle_year ? parseInt(formData.vehicle_year) : null,
-          vehicle_fuel_type: formData.vehicle_fuel_type,
+          vehicle_fuel_type: knownOr(formData.vehicle_fuel_type, 'vehicle_fuel_type'),
           odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
           
           service_type: selectedServiceNames.join(', ') || null,

@@ -37,6 +37,7 @@ const WA = {
 
 type Msg = {
   id: string;
+  provider_message_id?: string | null;
   direction?: string | null;
   text_body?: string | null;
   message_type?: string | null;
@@ -458,9 +459,13 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
             language: fr.language_code || 'en',
             template_params: [text],
           }),
+            ...(replyTo?.id
+              ? { reply_to_message_id: replyTo.id, reply_preview: replyTo.preview }
+              : {}),
+          }),
         });
         setDraft('');
-        await load();
+        setReplyTo(null);
       } catch (e: any) {
         Alert.alert('Send failed', String(e?.message || 'Could not send message'));
       } finally {
@@ -478,9 +483,13 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
           message_type: 'text',
           text,
         }),
+          ...(replyTo?.id
+            ? { reply_to_message_id: replyTo.id, reply_preview: replyTo.preview }
+            : {}),
+        }),
       });
       setDraft('');
-      await load();
+      setReplyTo(null);
     } catch (e: any) {
       Alert.alert('Send failed', String(e?.message || 'Could not send message'));
     } finally {
@@ -509,9 +518,13 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
           language: selectedTemplate.language_code || 'en',
           template_params: cleaned.slice(0, count),
         }),
+          ...(replyTo?.id
+            ? { reply_to_message_id: replyTo.id, reply_preview: replyTo.preview }
+            : {}),
+        }),
       });
       setDraft('');
-      if (!isTemplateOnlyMode) setTemplateMode(false);
+      setReplyTo(null);
       await load();
     } catch (e: any) {
       Alert.alert('Template failed', String(e?.message || 'Could not send template'));
@@ -601,9 +614,34 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
             const showImage = isImageMessage(item);
             const mediaUrl = showImage ? resolveMediaUrl(item) : null;
             return (
-              <View style={[styles.bubbleRow, outbound ? styles.bubbleRowOut : styles.bubbleRowIn]}>
+            const quote = String(item.meta?.reply_preview || '').trim();
+            const replyBtn = (
+              <TouchableOpacity
+                style={styles.replyBtn}
+                onPress={() => {
+                  const wamid = String(item.provider_message_id || '').trim();
+                  if (!wamid) {
+                    Alert.alert('Reply', 'Is message pe reply nahi ja sakta');
+                    return;
+                  }
+                  const preview = (body || tpl || 'Message').replace(/\s+/g, ' ').slice(0, 80);
+                  setReplyTo({ id: wamid, preview });
+                }}
+                accessibilityLabel="Reply to this message"
+              >
+                <Ionicons name="arrow-undo" size={14} color="#004AAD" />
+              </TouchableOpacity>
+            );
+            return (
+              <View style={[styles.msgLine, outbound ? styles.msgLineOut : styles.msgLineIn]}>
+                {outbound ? replyBtn : null}
+                <View style={[styles.bubbleRow, outbound ? styles.bubbleRowOut : styles.bubbleRowIn]}>
                 <View style={[styles.bubble, outbound ? styles.bubbleOut : styles.bubbleIn]}>
-                  {tpl ? (
+                  {quote ? (
+                    <Text style={styles.quote} numberOfLines={2}>
+                      {quote}
+                    </Text>
+                  ) : null}
                     <Text style={styles.templateTag} numberOfLines={1}>
                       {humanizeTemplateKey(tpl)}
                     </Text>
@@ -643,6 +681,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
                   </View>
                 </View>
               </View>
+                </View>
+                {outbound ? null : replyBtn}
             );
           }}
         />
@@ -724,6 +764,16 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
       ) : (
         <View style={[styles.composerWrap, { paddingBottom: bottomSafe + (isTemplateOnlyMode ? 12 : 8) }]}>
           <View style={styles.composer}>
+          {replyTo ? (
+            <View style={styles.replyChip}>
+              <Text style={styles.replyChipText} numberOfLines={1}>
+                {replyTo.preview}
+              </Text>
+              <TouchableOpacity onPress={() => setReplyTo(null)} accessibilityLabel="Cancel reply">
+                <Ionicons name="close" size={16} color="#667781" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
             <View style={styles.inputShell}>
               <TouchableOpacity style={styles.plusBtn} onPress={openTemplatePicker}>
                 <Ionicons name="add" size={26} color={WA.meta} />
@@ -941,13 +991,54 @@ const styles = StyleSheet.create({
   emptyText: { color: WA.meta, fontWeight: '600', textAlign: 'center' },
   emptyHint: { color: WA.meta, fontSize: 12, marginTop: 4, textAlign: 'center' },
   bubbleRow: {
-    maxWidth: '82%',
+  msgLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 6,
+    paddingHorizontal: 8,
+  },
+  msgLineIn: { justifyContent: 'flex-start' },
+  msgLineOut: { justifyContent: 'flex-end' },
+  replyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quote: {
+    borderLeftWidth: 2,
+    borderLeftColor: '#004AAD',
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginBottom: 4,
+    fontSize: 11,
+    color: '#54656f',
+  },
+  replyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 8,
+    marginBottom: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#004AAD',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  replyChipText: { flex: 1, fontSize: 12, color: '#54656f' },
+  bubbleRow: {
+    maxWidth: '82%',
     position: 'relative',
   },
-  bubbleRowIn: { alignSelf: 'flex-start', marginLeft: 8 },
-  bubbleRowOut: { alignSelf: 'flex-end', marginRight: 8 },
-  bubble: {
+  bubbleRowIn: { alignSelf: 'flex-start' },
+  bubbleRowOut: { alignSelf: 'flex-end' },
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingTop: 7,

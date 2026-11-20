@@ -3652,12 +3652,12 @@ export default function WhatsAppMobilePreviewModal({
                         </div>
                       </button>
                     ) : null}
-                    {!outbound && !isStatus && !selectMode ? (
+                    {!isStatus && !selectMode ? (
                       <button
                         type="button"
                         title="Reply"
                         aria-label="Reply to this message"
-                        className="order-last inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#004AAD] shadow-sm hover:bg-slate-50"
+                        className={`${outbound ? 'order-first' : 'order-last'} inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#004AAD] shadow-sm hover:bg-slate-50`}
                         onClick={() => {
                           const wamid = String(msg.provider_message_id || '').trim();
                           if (!wamid) {

@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { findLatestServiceLeadByPhone } from '@/lib/service-lead-reopen';
+import { fillNewLeadFromHistory } from '@/lib/telecaller/phoneLeadGuard';
 import { addLeadTags, ensureTagIdsByNames } from '@/lib/telecaller/crmLeadTagsApply';
 
 function phone91(raw: string) {
@@ -134,9 +135,7 @@ export async function applyBulkWhatsAppButtonReply(input: {
   const note = `WhatsApp button “${label}” on ${templateName}`;
   if (!lead?.id) {
     const now = new Date().toISOString();
-    const inserted = await db
-      .from('service_leads')
-      .insert({
+    const fresh: Record<string, unknown> = {
         lead_number: `L-WA${Date.now().toString().slice(-8)}`,
         lead_type: 'NORMAL',
         lead_source: 'WhatsApp',
@@ -158,7 +157,11 @@ export async function applyBulkWhatsAppButtonReply(input: {
         },
         created_at: now,
         updated_at: now,
-      })
+    };
+    await fillNewLeadFromHistory(db, fresh);
+    const inserted = await db
+      .from('service_leads')
+      .insert(fresh)
       .select('id, lead_number, coupon_meta')
       .maybeSingle();
     lead = inserted.data;

@@ -271,6 +271,52 @@ function TelecallerCrmBookContent() {
   const setField = (key: keyof FormState, value: any) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
+  useEffect(() => {
+    const phone = form.customer_phone.replace(/\D/g, '').slice(-10);
+    if (phone.length !== 10) return;
+    let cancel = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/telecaller/crm/phone-lead?phone=${phone}`, { cache: 'no-store' });
+          const json = await res.json().catch(() => ({}));
+          if (cancel) return;
+          if (json?.blocked) {
+            setError(String(json.error || 'Ye number pehle se kisi aur lead par hai.'));
+            return;
+          }
+          setError((prev) => (String(prev).startsWith('Ye number pehle se') ? '' : prev));
+          const fill = json?.fill || {};
+          setForm((prev) => {
+            if (prev.customer_phone.replace(/\D/g, '').slice(-10) !== phone) return prev;
+            const next = { ...prev };
+            const keys = [
+              'customer_name',
+              'customer_address',
+              'pincode',
+              'city',
+              'vehicle_number',
+              'vehicle_make',
+              'vehicle_model',
+              'vehicle_fuel_type',
+              'pickup_address',
+            ] as const;
+            for (const key of keys) {
+              if (!String(prev[key] || '').trim() && fill[key]) next[key] = String(fill[key]);
+            }
+            return next;
+          });
+        } catch {
+          /* typing should not fail the form */
+        }
+      })();
+    }, 350);
+    return () => {
+      cancel = true;
+      window.clearTimeout(timer);
+    };
+  }, [form.customer_phone]);
+
   const resolveCityFromPincode = async (pin: string) => {
     const pincode = String(pin || '').replace(/\D/g, '').slice(0, 6);
     if (!/^\d{6}$/.test(pincode)) {

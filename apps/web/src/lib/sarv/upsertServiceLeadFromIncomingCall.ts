@@ -3,6 +3,7 @@ import 'server-only';
 import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { appendLeadProfileHistory } from '@/lib/service-lead-reopen';
+import { fillNewLeadFromHistory } from '@/lib/telecaller/phoneLeadGuard';
 export const INCOMING_SARV_LEAD_SOURCE = 'Incoming Sarv Call';
 export const INCOMING_SARV_CRM_STATUS = 'INCOMING_SARV_LEADS';
 export const INCOMING_SARV_CRM_LABEL = 'Incoming SARV Leads';
@@ -276,6 +277,7 @@ export async function upsertServiceLeadFromIncomingSarvCall(
     created_at: nowIso,
     updated_at: nowIso,
   };
+  await fillNewLeadFromHistory(db, payload);
 
   let { data: inserted, error: insertErr } = await db
     .from('service_leads')

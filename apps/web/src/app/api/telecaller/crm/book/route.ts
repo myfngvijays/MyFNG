@@ -10,6 +10,7 @@ import {
   resolveServiceTypeNames,
   serviceLabelFromQuote,
 } from '@/lib/telecaller/crmQuote';
+import { applyKnownFillToPayload, inspectPhoneForNewLead } from '@/lib/telecaller/phoneLeadGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -147,6 +148,12 @@ export async function POST(request: NextRequest) {
       created_at: now,
       updated_at: now,
     };
+
+    const phoneCheck = await inspectPhoneForNewLead(db, customerPhone, profile?.id);
+    if (phoneCheck.blocked) {
+      return NextResponse.json({ error: phoneCheck.message, code: 'PHONE_OWNED' }, { status: 409 });
+    }
+    applyKnownFillToPayload(insert, phoneCheck.fill);
 
     const { data: lead, error } = await db
       .from('service_leads')
