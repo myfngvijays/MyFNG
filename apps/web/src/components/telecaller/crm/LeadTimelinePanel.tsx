@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Phone,
   Plus,
+  X,
 } from 'lucide-react';
 import { formatDateTimeIST } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -385,6 +386,39 @@ export default function LeadTimelinePanel({
     }
   };
 
+  const [removingTaskId, setRemovingTaskId] = useState<string | null>(null);
+
+  /** Remove a reminder (late / active / closed). Delete; if RLS blocks delete, mark it CANCELLED. */
+  const removeTask = async (t: TaskRow) => {
+    const what = String(t.follow_up_type || 'Task').replace(/_/g, ' ');
+    if (!window.confirm(`Remove this ${what} reminder${t.scheduled_time ? ` (due ${fmtAt(t.scheduled_time)})` : ''}?`)) return;
+    setRemovingTaskId(String(t.id));
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('telecaller_follow_ups').delete().eq('id', t.id);
+      if (error) {
+        const { error: cancelErr } = await (supabase.from('telecaller_follow_ups') as any)
+          .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+          .eq('id', t.id);
+        if (cancelErr) throw new Error(cancelErr.message || 'Could not remove reminder');
+      }
+      // No pending reminder left → clear the lead's follow-up flag so it leaves the follow-up list.
+      const stillPending = tasks.some((x) => String(x.id) !== String(t.id) && x.bucket !== 'closed');
+      if (!stillPending) {
+        await (supabase.from('service_leads') as any)
+          .update({ follow_up_required: false, next_follow_up_at: null })
+          .eq('id', leadId);
+      }
+      setTasks((prev) => prev.filter((x) => String(x.id) !== String(t.id)));
+      await loadTasks();
+      void loadCalls();
+    } catch (e: any) {
+      alert(e?.message || 'Could not remove reminder');
+    } finally {
+      setRemovingTaskId(null);
+    }
+  };
+
   const renderTaskGroup = (
     label: string,
     color: string,
@@ -418,6 +452,20 @@ export default function LeadTimelinePanel({
               <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
                 {t.status}
               </span>
+              <button
+                type="button"
+                onClick={() => void removeTask(t)}
+                disabled={removingTaskId === String(t.id)}
+                aria-label="Remove reminder"
+                title="Remove reminder"
+                className="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+              >
+                {removingTaskId === String(t.id) ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <X className="h-3.5 w-3.5" />
+                )}
+              </button>
             </li>
           ))}
         </ul>
