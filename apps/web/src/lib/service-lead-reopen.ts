@@ -216,6 +216,38 @@ export async function updateLeadScheduleByPhone(
   return { updated: true, leadId: String(lead.id) };
 }
 
+/**
+ * Soft-delete leads and stamp who/what removed them (coupon_meta.deleted_*),
+ * so the Deleted Leads page can show it and the lead can be restored.
+ */
+export async function softDeleteLeadsWithReason(
+  supabaseAdmin: any,
+  rows: Array<{ id: string; coupon_meta?: unknown }>,
+  info: { reason: string; byName: string; mergedInto?: string | null; nowIso?: string },
+): Promise<{ error: string | null }> {
+  const nowIso = info.nowIso || new Date().toISOString();
+  const results = await Promise.all(
+    rows.map((row) => {
+      const base =
+        row.coupon_meta && typeof row.coupon_meta === 'object' && !Array.isArray(row.coupon_meta)
+          ? { ...(row.coupon_meta as Record<string, unknown>) }
+          : {};
+      base.deleted_by_id = null;
+      base.deleted_by_name = info.byName;
+      base.deleted_by_role = 'SYSTEM';
+      base.deleted_reason = info.reason;
+      base.deleted_merged_into = info.mergedInto || null;
+      return supabaseAdmin
+        .from('service_leads')
+        .update({ deleted_at: nowIso, updated_at: nowIso, coupon_meta: base })
+        .eq('id', row.id)
+        .is('deleted_at', null);
+    }),
+  );
+  const failed = results.find((r: any) => r?.error);
+  return { error: failed ? String(failed.error.message || 'soft-delete failed') : null };
+}
+
 /** Soft-delete other leads for same phone (keep keeper). Skip active workshop jobs. */
 async function softDeleteSiblingLeads(
   supabaseAdmin: any,
@@ -227,23 +259,29 @@ async function softDeleteSiblingLeads(
   try {
     const { data: siblings } = await supabaseAdmin
       .from('service_leads')
-      .select('id, status, service_type, meta')
+      .select('id, status, service_type, meta, coupon_meta')
       .or(phoneOrFilter(phone10))
       .neq('id', keeperId)
       .is('deleted_at', null)
       .limit(30);
 
-    const ids = (siblings || [])
+    const victims = (siblings || [])
       .filter((r: any) => !skipStatuses.has(String(r.status || '').toUpperCase()))
       .filter((r: any) => !isCustomRepairLead(r))
-      .map((r: any) => r.id)
-      .filter(Boolean);
-    if (!ids.length) return;
+      .filter((r: any) => r.id);
+    if (!victims.length) return;
 
-    await supabaseAdmin
+    const { data: keeper } = await supabaseAdmin
       .from('service_leads')
-      .update({ deleted_at: nowIso, updated_at: nowIso })
-      .in('id', ids);
+      .select('lead_number')
+      .eq('id', keeperId)
+      .maybeSingle();
+    await softDeleteLeadsWithReason(supabaseAdmin, victims, {
+      reason: 'Rebooked — merged into the booking lead (same phone)',
+      byName: 'System · booking merge',
+      mergedInto: keeper?.lead_number || keeperId,
+      nowIso,
+    });
   } catch (err) {
     console.warn('[service-lead-reopen] sibling cleanup skipped:', err);
   }
@@ -623,15 +661,16 @@ async function softDeleteStaleWebsiteOtpStubs(
     const { data, error } = await query;
     if (error || !data?.length) return;
     const nowIso = new Date().toISOString();
-    const ids = data
-      .filter((row: any) => isWebsiteOtpIncompleteLead(row) && String(row.id) !== String(keepId || ''))
-      .map((row: any) => row.id)
-      .filter(Boolean);
-    if (!ids.length) return;
-    await supabaseAdmin
-      .from('service_leads')
-      .update({ deleted_at: nowIso, updated_at: nowIso })
-      .in('id', ids);
+    const victims = data.filter(
+      (row: any) => row.id && isWebsiteOtpIncompleteLead(row) && String(row.id) !== String(keepId || ''),
+    );
+    if (!victims.length) return;
+    await softDeleteLeadsWithReason(supabaseAdmin, victims, {
+      reason: 'Unfinished website OTP stub replaced by a newer lead',
+      byName: 'System · website OTP cleanup',
+      mergedInto: null,
+      nowIso,
+    });
   } catch (err) {
     console.warn('[ensureWebsiteOtpVerifiedLead] stale stub cleanup skipped:', err);
   }
@@ -1119,6 +1158,7 @@ export type ConsolidatePhoneDupesResult = {
 export async function consolidateDuplicateLeadsByPhones(
   supabaseAdmin: any,
   phones: string[],
+  opts?: { triggeredBy?: string | null },
 ): Promise<ConsolidatePhoneDupesResult> {
   const deletedIds: string[] = [];
   const winnerMetaById = new Map<string, Record<string, unknown>>();
@@ -1196,12 +1236,14 @@ export async function consolidateDuplicateLeadsByPhones(
       } catch (tagErr) {
         console.warn('[consolidateDuplicateLeadsByPhones] tag merge skipped:', tagErr);
       }
-      const { error: delErr } = await supabaseAdmin
-        .from('service_leads')
-        .update({ deleted_at: nowIso, updated_at: nowIso })
-        .in('id', loserIds);
+      const { error: delErr } = await softDeleteLeadsWithReason(supabaseAdmin, losers, {
+        reason: 'Duplicate of the same phone — merged into the latest lead',
+        byName: opts?.triggeredBy ? `Auto-merge (opened by ${opts.triggeredBy})` : 'System · duplicate merge',
+        mergedInto: String(winner.lead_number || winner.id),
+        nowIso,
+      });
       if (delErr) {
-        console.warn('[consolidateDuplicateLeadsByPhones] soft-delete failed:', delErr.message);
+        console.warn('[consolidateDuplicateLeadsByPhones] soft-delete failed:', delErr);
         continue;
       }
 

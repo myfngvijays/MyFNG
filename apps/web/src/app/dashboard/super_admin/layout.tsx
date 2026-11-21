@@ -25,6 +25,8 @@ import {
   History,
   FileCheck,
   ClipboardCheck,
+  ArchiveRestore,
+  Webhook,
   Wrench,
   Car,
   Globe,
@@ -213,6 +215,12 @@ const navigationItems: NavItem[] = [
     description: 'Leads marked Booking confirmed'
   },
   {
+    name: 'Deleted Leads',
+    href: '/dashboard/super_admin/deleted-leads',
+    icon: ArchiveRestore,
+    description: 'Restore deleted leads'
+  },
+  {
     name: 'Lead Tags',
     href: '/dashboard/super_admin/lead-tags',
     icon: Tag,
@@ -229,6 +237,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/lead-fields',
     icon: List,
     description: 'Built-in columns and extra lead fields'
+  },
+  {
+    name: 'API Templates',
+    href: '/dashboard/super_admin/api-templates',
+    icon: Webhook,
+    description: 'Send leads to other systems on status change'
   },
   {
     name: 'Recordings',

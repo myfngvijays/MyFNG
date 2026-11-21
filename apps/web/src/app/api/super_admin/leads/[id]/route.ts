@@ -1,3 +1,4 @@
+import { queueLeadStatusApis } from '@/lib/crm/serviceDoneWebhook';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
@@ -226,6 +227,7 @@ export async function PATCH(
       if (slot.iso) update.preferred_slot_start = slot.iso;
     }
 
+    let prevCrmResult: unknown = undefined;
     if (body.crm_status !== undefined) {
       const { data: currentLead } = await supabaseAdmin
         .from('service_leads')
@@ -247,6 +249,7 @@ export async function PATCH(
       if (!built.ok) {
         return NextResponse.json({ error: built.error }, { status: 400 });
       }
+      prevCrmResult = (currentLead?.coupon_meta as any)?.last_call_result ?? null;
       update.coupon_meta = built.coupon_meta;
       const workshopStatus = adminCrmMappedWorkshopStatus(
         String(body.crm_status || ''),
@@ -315,6 +318,22 @@ export async function PATCH(
 
     if (error) {
       return NextResponse.json({ error: error.message || 'Update failed' }, { status: 500 });
+    }
+
+    // Service Done from the admin panel → workshop-leads panel on the website.
+    if (body.crm_status !== undefined) {
+      const { data: actorRow } = await supabaseAdmin
+        .from('users_login')
+        .select('full_name')
+        .eq('id', auth.userId)
+        .maybeSingle();
+      queueLeadStatusApis(
+        supabaseAdmin,
+        id,
+        prevCrmResult,
+        (update.coupon_meta as any)?.last_call_result,
+        actorRow?.full_name || 'Admin',
+      );
     }
 
     let assignedName: string | null = null;
@@ -390,43 +409,46 @@ export async function DELETE(
 
     const now = new Date().toISOString();
 
-    // Soft-delete first (FK-safe). Hard-delete when nothing references the lead.
-    const { data: softDeleted, error: softError } = await supabaseAdmin
+    // Soft-delete only, so the lead can be restored from "Deleted Leads".
+    // Record who deleted it on the lead itself.
+    const { data: existing } = await supabaseAdmin
       .from('service_leads')
-      .update({ deleted_at: now, updated_at: now })
+      .select('id, deleted_at, coupon_meta')
       .eq('id', id)
-      .is('deleted_at', null)
-      .select('id')
       .maybeSingle();
+    if (!existing) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+    if (existing.deleted_at) {
+      return NextResponse.json({ success: true, mode: 'soft', already: true });
+    }
+
+    const { data: actor } = await supabaseAdmin
+      .from('users_login')
+      .select('full_name, email')
+      .eq('id', auth.userId)
+      .maybeSingle();
+    const baseMeta =
+      existing.coupon_meta && typeof existing.coupon_meta === 'object' && !Array.isArray(existing.coupon_meta)
+        ? (existing.coupon_meta as Record<string, unknown>)
+        : {};
+    const nextMeta = {
+      ...baseMeta,
+      deleted_by_id: auth.userId,
+      deleted_by_name: actor?.full_name || actor?.email || 'Admin',
+      deleted_by_role: auth.roleCode,
+    };
+
+    const { error: softError } = await supabaseAdmin
+      .from('service_leads')
+      .update({ deleted_at: now, updated_at: now, coupon_meta: nextMeta })
+      .eq('id', id)
+      .is('deleted_at', null);
 
     if (softError) {
-      // Column may not exist on older DBs — fall back to hard delete.
-      const { error: hardError } = await supabaseAdmin.from('service_leads').delete().eq('id', id);
-      if (hardError) {
-        return NextResponse.json(
-          { error: hardError.message || softError.message || 'Delete failed. Lead may be linked to jobs or invoices.' },
-          { status: 500 },
-        );
-      }
-      return NextResponse.json({ success: true, mode: 'hard' });
+      return NextResponse.json({ error: softError.message || 'Delete failed' }, { status: 500 });
     }
 
-    if (!softDeleted?.id) {
-      // Already deleted, or missing — try hard delete once.
-      const { error: hardError } = await supabaseAdmin.from('service_leads').delete().eq('id', id);
-      if (hardError) {
-        return NextResponse.json({ error: 'Lead not found or already deleted' }, { status: 404 });
-      }
-      return NextResponse.json({ success: true, mode: 'hard' });
-    }
-
-    // Best-effort hard delete so the row is gone when there are no FK blockers.
-    const { error: hardError } = await supabaseAdmin.from('service_leads').delete().eq('id', id);
-    if (!hardError) {
-      return NextResponse.json({ success: true, mode: 'hard' });
-    }
-
-    // Soft-deleted; hide from lists even if hard delete is blocked by FKs.
     return NextResponse.json({ success: true, mode: 'soft' });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

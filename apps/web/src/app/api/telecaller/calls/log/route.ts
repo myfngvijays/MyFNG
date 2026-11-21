@@ -3,6 +3,7 @@
  * Purpose: Log telecaller call interactions + sync lead disposition/status
  */
 
+import { queueLeadStatusApis } from '@/lib/crm/serviceDoneWebhook';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { NextRequest, NextResponse } from 'next/server';
@@ -173,6 +174,16 @@ export async function POST(request: NextRequest) {
           console.warn('[calls/log] lead disposition sync failed:', leadErr.message);
         } else {
           leadPatch = patch;
+          // Service Done from a call disposition → workshop-leads panel on the website.
+          if (disposition) {
+            queueLeadStatusApis(
+              db,
+              String(lead_id),
+              prevMeta.last_call_result,
+              disposition.result,
+              String((userProfile as any)?.full_name || '').trim() || null,
+            );
+          }
         }
       }
     } catch (syncErr) {

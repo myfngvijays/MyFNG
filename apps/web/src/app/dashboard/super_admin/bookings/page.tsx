@@ -3130,7 +3130,7 @@ function SuperAdminBookingsPage() {
   const deleteLead = async (lead: ServiceLead, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!lead?.id) return;
-    if (!window.confirm(`Delete lead ${lead.lead_number || lead.id}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete lead ${lead.lead_number || lead.id}? You can restore it later from Deleted Leads.`)) return;
     setDeletingId(String(lead.id));
     try {
       const res = await fetch(`/api/super_admin/leads/${lead.id}`, {
@@ -3180,7 +3180,7 @@ function SuperAdminBookingsPage() {
   const bulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const count = selectedIds.size;
-    if (!window.confirm(`Delete ${count} selected lead${count > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete ${count} selected lead${count > 1 ? 's' : ''}? You can restore them later from Deleted Leads.`)) return;
     setBulkDeleting(true);
     let deleted = 0;
     let failed = 0;

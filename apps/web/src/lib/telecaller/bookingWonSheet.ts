@@ -209,6 +209,18 @@ function buildRow(headers: string[], input: BookingWonSheetInput): string[] {
   return row;
 }
 
+/**
+ * The sheet webhook is handled by Settings → API Templates when a template there (ON or OFF)
+ * posts to BOOKING_SHEET_WEBHOOK_URL for this status; the hardcoded sender below then stands down.
+ * OFF in the panel therefore really stops the sheet; deleting the template brings this back.
+ */
+export async function sheetHandledByApiTemplate(db: any, trigger: 'BOOKING_CONFIRMED' | 'IN_SERVICE') {
+  const url = String(process.env.BOOKING_SHEET_WEBHOOK_URL || '').trim();
+  if (!url) return false;
+  const { hasApiTemplate } = await import('@/lib/crm/apiTemplates');
+  return hasApiTemplate(db, trigger, url);
+}
+
 export async function appendBookingConfirmedToSheet(
   input: BookingWonSheetInput,
 ): Promise<{ ok: boolean; error?: string }> {

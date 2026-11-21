@@ -37,6 +37,8 @@ import {
   Send,
   BarChart3,
   ClipboardCheck,
+  ArchiveRestore,
+  Webhook,
   Globe,
   MessageSquare,
   MessageCircle,
@@ -850,6 +852,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         },
         { href: '/dashboard/super_admin/bookings', icon: <FileText className="w-5 h-5" />, label: 'Bookings & Leads' },
         { href: '/dashboard/super_admin/booking-confirmed', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Booking Confirmed' },
+        { href: '/dashboard/super_admin/deleted-leads', icon: <ArchiveRestore className="w-5 h-5" />, label: 'Deleted Leads' },
         { href: '/dashboard/super_admin/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
         {
           href: '/dashboard/super_admin/ai-suite',
@@ -866,6 +869,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/super_admin/lead-tags', icon: <Tag className="w-5 h-5" />, label: 'Lead Tags' },
         { href: '/dashboard/super_admin/lead-statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead Status' },
         { href: '/dashboard/super_admin/lead-fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead Fields' },
+        { href: '/dashboard/super_admin/api-templates', icon: <Webhook className="w-5 h-5" />, label: 'API Templates' },
         { href: '/dashboard/super_admin/analytics-hub?section=overview', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics Hub' },
         { href: '/dashboard/super_admin/tracking-scripts', icon: <Code2 className="w-5 h-5" />, label: 'Tracking Scripts' },
         { href: '/dashboard/super_admin/system-monitor', icon: <Shield className="w-5 h-5" />, label: 'System Monitor' },
@@ -939,6 +943,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { section: 'Daily', href: '/dashboard/lead_manager/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         { section: 'Daily', href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
         { section: 'Daily', href: '/dashboard/lead_manager/booking-confirmed', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Booking Confirmed' },
+        { section: 'Daily', href: '/dashboard/lead_manager/deleted-leads', icon: <ArchiveRestore className="w-5 h-5" />, label: 'Deleted Leads' },
         { section: 'Calls', href: '/dashboard/lead_manager/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
         { section: 'Calls', href: '/dashboard/lead_manager/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         {
@@ -964,6 +969,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { section: 'Setup', href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
         { section: 'Setup', href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
         { section: 'Setup', href: '/dashboard/lead_manager/fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead fields' },
+        { section: 'Setup', href: '/dashboard/lead_manager/api-templates', icon: <Webhook className="w-5 h-5" />, label: 'API Templates' },
         {
           section: 'Setup',
           href: '/dashboard/lead_manager/templates',
@@ -1061,6 +1067,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/telecaller/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
         { href: '/dashboard/telecaller/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         { href: '/dashboard/telecaller/booking-confirmed', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Booking Confirmed' },
+        { href: '/dashboard/telecaller/deleted-leads', icon: <ArchiveRestore className="w-5 h-5" />, label: 'Deleted Leads' },
         {
           href: '#whatsapp',
           icon: <MessageCircle className="w-5 h-5" />,

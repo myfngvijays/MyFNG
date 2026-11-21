@@ -1,3 +1,4 @@
+import { queueLeadStatusApis } from '@/lib/crm/serviceDoneWebhook';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
@@ -13,7 +14,11 @@ import {
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
-import { appendBookingConfirmedToSheet, moveBookingToInServiceSheet } from '@/lib/telecaller/bookingWonSheet';
+import {
+  appendBookingConfirmedToSheet,
+  moveBookingToInServiceSheet,
+  sheetHandledByApiTemplate,
+} from '@/lib/telecaller/bookingWonSheet';
 import { titleCasePersonName } from '@/lib/telecaller/personName';
 import { leadStatusChangeAllowed } from '@/lib/telecaller/leadStatusTransition';
 
@@ -171,7 +176,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // In Service → move the sheet line from "Today send lead" to "Today".
       if (
         String(nextMeta.last_call_result || '').toUpperCase() === 'IN_SERVICE' &&
-        String((prevMeta as any).last_call_result || '').toUpperCase() !== 'IN_SERVICE'
+        String((prevMeta as any).last_call_result || '').toUpperCase() !== 'IN_SERVICE' &&
+        !(await sheetHandledByApiTemplate(db, 'IN_SERVICE'))
       ) {
         const moved = await moveBookingToInServiceSheet({
           phone: String((updated as any)?.customer_phone || (existingLead as any)?.customer_phone || ''),
@@ -179,6 +185,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         });
         if (!moved.ok) console.warn('[telecaller/leads PATCH] in-service sheet move skipped:', moved.error);
       }
+      // Service Done → workshop-leads panel on the website.
+      queueLeadStatusApis(
+        db,
+        leadId,
+        (prevMeta as any).last_call_result,
+        nextMeta.last_call_result,
+        String(userProfile?.full_name || '').trim() || null,
+      );
       let whatsapp: { sent?: boolean; skipped?: boolean; skipReason?: string } | null = null;
       const nextCall = String(nextMeta.last_call_result || '').toUpperCase();
       if (body.send_booking_confirmed_whatsapp === true && nextCall === 'BOOKING_CONFIRMED') {
@@ -812,7 +826,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         console.warn('[telecaller/leads PATCH] booking confirmed stamp failed:', stampErr?.message || stampErr);
       }
     }
-    if (nextCall === 'BOOKING_CONFIRMED' && prevCall !== 'BOOKING_CONFIRMED' && !alreadyOnSheet) {
+    if (
+      nextCall === 'BOOKING_CONFIRMED' &&
+      prevCall !== 'BOOKING_CONFIRMED' &&
+      !alreadyOnSheet &&
+      !(await sheetHandledByApiTemplate(db, 'BOOKING_CONFIRMED'))
+    ) {
       try {
         let workshopName = '';
         const workshopId = update.workshop_id || updated?.workshop_id || null;
@@ -867,12 +886,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
-    if (nextCall === 'IN_SERVICE' && prevCall !== 'IN_SERVICE') {
+    if (nextCall === 'IN_SERVICE' && prevCall !== 'IN_SERVICE' && !(await sheetHandledByApiTemplate(db, 'IN_SERVICE'))) {
       const moved = await moveBookingToInServiceSheet({
         phone: String(update.customer_phone || updated?.customer_phone || (existingLead as any)?.customer_phone || ''),
         name: String(update.customer_name || updated?.customer_name || (existingLead as any)?.customer_name || ''),
       });
       if (!moved.ok) console.warn('[telecaller/leads PATCH] in-service sheet move skipped:', moved.error);
+    }
+
+    // Service Done → workshop-leads panel on the website.
+    if (update.coupon_meta && typeof update.coupon_meta === 'object') {
+      queueLeadStatusApis(db, leadId, prevCall, nextCall, String(userProfile?.full_name || '').trim() || null);
     }
 
     if (crmLeadClosedForFollowUp(closedLead)) {
