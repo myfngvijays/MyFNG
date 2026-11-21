@@ -279,7 +279,9 @@ function resolveFrictionlessTemplate(rows: TemplateOption[]): TemplateOption | n
       .toUpperCase();
 
   // Prefer Meta-approved first so closed-window send actually works
+  // quick_note_with_button (OK button) wins once Meta approves it; until then myfng_quick_note.
   const preferredNames = [
+    'quick_note_with_button',
     'myfng_quick_note',
     'myfng_support_note',
     'myfng_closed_window_note',
@@ -877,6 +879,17 @@ export default function WhatsAppMobilePreviewModal({
   const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video' | 'document' | 'audio'>('document');
   const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
+  // Small thumbnail for an attached / pasted image.
+  const [selectedMediaPreview, setSelectedMediaPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedMediaFile || !selectedMediaFile.type.startsWith('image/')) {
+      setSelectedMediaPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(selectedMediaFile);
+    setSelectedMediaPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selectedMediaFile]);
   const [caption, setCaption] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templateParams, setTemplateParams] = useState<string[]>([]);
@@ -2536,7 +2549,8 @@ export default function WhatsAppMobilePreviewModal({
       payload = {
         ...payload,
         media_type: mediaType,
-        caption: caption.trim() || undefined,
+        // Text typed in the message box goes out as the image caption.
+        caption: caption.trim() || textMessage.trim() || undefined,
         filename: selectedMediaFile?.name || undefined,
         media_mime_type: selectedMediaFile?.type || undefined,
       };
@@ -4432,7 +4446,12 @@ export default function WhatsAppMobilePreviewModal({
             ) : null}
             {selectedMediaFile ? (
               <div className="mb-2 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                <p className="truncate text-xs text-gray-700">{selectedMediaFile.name}</p>
+                <div className="flex min-w-0 items-center gap-2">
+                  {selectedMediaPreview ? (
+                    <img src={selectedMediaPreview} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover" />
+                  ) : null}
+                  <p className="truncate text-xs text-gray-700">{selectedMediaFile.name}</p>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -4579,6 +4598,23 @@ export default function WhatsAppMobilePreviewModal({
               <textarea
                 value={activeType === 'payment' ? '' : textMessage}
                 onChange={(e) => setTextMessage(e.target.value)}
+                onPaste={(e) => {
+                  // Copy an image anywhere → paste here → it is attached as an image message.
+                  const items = Array.from(e.clipboardData?.items || []);
+                  const imageItem = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+                  const blob = imageItem?.getAsFile();
+                  if (!blob) return; // plain text paste stays normal
+                  e.preventDefault();
+                  const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '');
+                  const file = new File([blob], `pasted-image-${Date.now()}.${ext || 'png'}`, {
+                    type: blob.type || 'image/png',
+                  });
+                  setSelectedMediaFile(file);
+                  setMediaType('image');
+                  setActiveType('media');
+                  setShowAttachMenu(false);
+                  toast.success('Image attached — add a caption and press send');
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();

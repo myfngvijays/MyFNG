@@ -222,7 +222,8 @@ function resolveFrictionlessTemplate(rows: WaTemplate[]): WaTemplate | null {
     String((row?.meta as any)?.status || '')
       .trim()
       .toUpperCase();
-  const preferredNames = ['myfng_quick_note'];
+  // quick_note_with_button (OK button) wins once Meta approves it; until then myfng_quick_note.
+  const preferredNames = ['quick_note_with_button', 'myfng_quick_note'];
   for (const name of preferredNames) {
     const row = byName(name);
     if (row && metaStatus(row) === 'APPROVED') return row;
@@ -341,7 +342,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
       const name = String(row.template_name || '').toLowerCase();
       if (cat.includes('auth') || name.includes('otp') || name.startsWith('auth_')) return false;
       // Telecaller API only returns Quick note — keep client in sync
-      if (telecallerScopedTemplates && name !== 'myfng_quick_note') return false;
+      if (telecallerScopedTemplates && name !== 'myfng_quick_note' && name !== 'quick_note_with_button') return false;
       if (!q) return true;
       return (
         name.includes(q) ||

@@ -55,6 +55,26 @@ async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<b
   }
 }
 
+/** quick_note_with_button when it is active + Meta APPROVED locally, else myfng_quick_note. */
+async function pickClosedWindowNoteTemplate(): Promise<string> {
+  try {
+    const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) return 'myfng_quick_note';
+    const { data } = await supabaseAdmin
+      .from('whatsapp_templates')
+      .select('is_active, meta')
+      .eq('template_name', 'quick_note_with_button')
+      .maybeSingle();
+    const meta = (data?.meta || {}) as Record<string, any>;
+    const status = String(meta.status || meta.raw?.status || '').toUpperCase();
+    if (data && data.is_active !== false && status === 'APPROVED') return 'quick_note_with_button';
+  } catch {
+    /* fall back below */
+  }
+  return 'myfng_quick_note';
+}
+
 function normalizePhone(phone: string): string {
   // Keeps a foreign country code (e.g. +966); Indian numbers become 91XXXXXXXXXX.
   return toWhatsAppPhone(phone);
@@ -106,6 +126,7 @@ function isFrictionlessTemplate(templateName: string): boolean {
   const name = templateName.toLowerCase();
   return (
     name === 'myfng_quick_note' ||
+    name === 'quick_note_with_button' ||
     name === 'myfng_msg_note' ||
     name === 'myfng_msg_note_safe' ||
     name === 'myfng_support_note' ||
@@ -354,7 +375,8 @@ export async function POST(request: NextRequest) {
       const sessionOpen = await hasCustomerRepliedOnSenderLine(recipientPhone);
       const replyToMessageId = String(body?.reply_to_message_id || '').trim();
       const sendClosedWindowNote = async () => {
-        const templateName = 'myfng_quick_note';
+        // OK-button note once Meta approves it; otherwise the plain quick note.
+        const templateName = await pickClosedWindowNoteTemplate();
         const laid = layoutTemplateParam(text);
         sentViaTemplateName = templateName;
         requestPayload = {
@@ -489,6 +511,7 @@ export async function POST(request: NextRequest) {
         }
         if (
           templateName.toLowerCase() === 'myfng_quick_note' ||
+          templateName.toLowerCase() === 'quick_note_with_button' ||
           templateName.toLowerCase() === 'myfng_msg_note' ||
           templateName.toLowerCase() === 'myfng_msg_note_safe' ||
           templateName.toLowerCase() === 'myfng_support_note' ||
