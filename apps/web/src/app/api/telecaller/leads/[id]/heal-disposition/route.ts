@@ -8,6 +8,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { DISPOSITION_TO_LEAD_STATUS } from '@/lib/telecaller/callDisposition';
+import { moveBookingToInServiceSheet } from '@/lib/telecaller/bookingWonSheet';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -103,6 +104,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       telecaller_remarks: remark ?? meta.telecaller_remarks ?? null,
       profile_history: !force && hasHist ? prevHistory : [historyEntry, ...prevHistory].slice(0, 50),
     };
+    // List-row status change to Booking confirmed: stamp when, so the Booking Confirmed list shows it today.
+    if (result === 'BOOKING_CONFIRMED' && existingResult !== 'BOOKING_CONFIRMED') {
+      (nextMeta as Record<string, unknown>).booking_confirmed_at = new Date().toISOString();
+    }
 
     const patch: Record<string, unknown> = {
       coupon_meta: nextMeta,
@@ -125,6 +130,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (updErr) {
       return NextResponse.json({ error: updErr.message || 'Heal failed' }, { status: 500 });
+    }
+
+    // List-row change to In Service → move the sheet line from "Today send lead" to "Today".
+    if (result === 'IN_SERVICE' && existingResult !== 'IN_SERVICE') {
+      const moved = await moveBookingToInServiceSheet({
+        phone: String((updated as any)?.customer_phone || lead.customer_phone || ''),
+        name: String((updated as any)?.customer_name || lead.customer_name || ''),
+      });
+      if (!moved.ok) console.warn('[heal-disposition] in-service sheet move skipped:', moved.error);
     }
 
     return NextResponse.json({ success: true, healed: true, lead: updated || { ...lead, ...patch } });

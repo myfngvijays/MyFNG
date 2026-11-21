@@ -207,6 +207,12 @@ const navigationItems: NavItem[] = [
     description: 'Service Leads & AI Bookings'
   },
   {
+    name: 'Booking Confirmed',
+    href: '/dashboard/super_admin/booking-confirmed',
+    icon: ClipboardCheck,
+    description: 'Leads marked Booking confirmed'
+  },
+  {
     name: 'Lead Tags',
     href: '/dashboard/super_admin/lead-tags',
     icon: Tag,

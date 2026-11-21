@@ -275,3 +275,36 @@ export async function bookingWonSheetReadable(): Promise<{ ok: boolean; error?: 
     return { ok: false, error: e?.message || 'Sheet unreachable' };
   }
 }
+
+/**
+ * Lead moved to In Service → move its line from "Today send lead" to the "Today" tab
+ * (Apps Script action "in_service", matched by phone). Not found on the sheet is fine.
+ */
+export async function moveBookingToInServiceSheet(input: {
+  phone?: string | null;
+  name?: string | null;
+}): Promise<{ ok: boolean; moved?: boolean; error?: string }> {
+  const url = String(process.env.BOOKING_SHEET_WEBHOOK_URL || '').trim();
+  if (!url) return { ok: false, error: 'BOOKING_SHEET_WEBHOOK_URL not set' };
+  const digits = String(input.phone || '').replace(/\D/g, '');
+  if (digits.length < 10) return { ok: false, error: 'phone missing' };
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: String(process.env.BOOKING_SHEET_WEBHOOK_SECRET || '').trim(),
+        action: 'in_service',
+        // No name on purpose: an older script without the in_service action then rejects this
+        // ("name and phone required") instead of appending it as a new booking line.
+        booking: { phone: digits },
+      }),
+      redirect: 'follow',
+    });
+    const json = (await res.json().catch(() => null)) as { ok?: boolean; moved?: boolean; error?: string } | null;
+    if (!res.ok || !json?.ok) return { ok: false, error: json?.error || `Sheet webhook ${res.status}` };
+    return { ok: true, moved: Boolean(json.moved) };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Sheet webhook failed' };
+  }
+}

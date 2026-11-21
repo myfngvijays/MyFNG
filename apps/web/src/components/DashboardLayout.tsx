@@ -849,6 +849,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           ],
         },
         { href: '/dashboard/super_admin/bookings', icon: <FileText className="w-5 h-5" />, label: 'Bookings & Leads' },
+        { href: '/dashboard/super_admin/booking-confirmed', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Booking Confirmed' },
         { href: '/dashboard/super_admin/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
         {
           href: '/dashboard/super_admin/ai-suite',
@@ -937,6 +938,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { section: 'Daily', href: '/dashboard/lead_manager/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
         { section: 'Daily', href: '/dashboard/lead_manager/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         { section: 'Daily', href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
+        { section: 'Daily', href: '/dashboard/lead_manager/booking-confirmed', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Booking Confirmed' },
         { section: 'Calls', href: '/dashboard/lead_manager/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
         { section: 'Calls', href: '/dashboard/lead_manager/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         {
@@ -1058,6 +1060,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/telecaller/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
         { href: '/dashboard/telecaller/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
+        { href: '/dashboard/telecaller/booking-confirmed', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Booking Confirmed' },
         {
           href: '#whatsapp',
           icon: <MessageCircle className="w-5 h-5" />,

@@ -47,6 +47,7 @@ import {
   Area,
 } from 'recharts';
 import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
+import BookingConfirmedTodayCard from '@/components/crm/BookingConfirmedTodayCard';
 
 const CHART_COLORS = ['#004AAD', '#0066FF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -668,6 +669,11 @@ export default function SuperAdminDashboard() {
             />
           </div>
         </div>
+
+        <BookingConfirmedTodayCard
+          viewAllHref="/dashboard/super_admin/booking-confirmed"
+          leadHref={(row) => `/dashboard/super_admin/bookings?lead=${encodeURIComponent(row.lead_number || row.id)}`}
+        />
 
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

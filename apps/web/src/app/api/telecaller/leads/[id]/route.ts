@@ -13,8 +13,9 @@ import {
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 import { serviceLeadVehicleNumber } from '@/lib/telecaller/serviceLeadVehicleNumber';
 import { closeLeadFollowUps, crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
-import { appendBookingConfirmedToSheet } from '@/lib/telecaller/bookingWonSheet';
+import { appendBookingConfirmedToSheet, moveBookingToInServiceSheet } from '@/lib/telecaller/bookingWonSheet';
 import { titleCasePersonName } from '@/lib/telecaller/personName';
+import { leadStatusChangeAllowed } from '@/lib/telecaller/leadStatusTransition';
 
 const LEAD_SELECT_FULL =
   'id, lead_number, status, customer_name, customer_phone, customer_id, vehicle_number, vehicle_make, vehicle_model, vehicle_variant, service_type, service_type_ids, subservice_ids, estimated_amount, discount_amount, coupon_code, preferred_slot_start, preferred_slot_end, pickup_required, pickup_address, customer_address, city, city_id, pincode, workshop_id, coupon_meta';
@@ -130,6 +131,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const incoming =
         body?.coupon_meta && typeof body.coupon_meta === 'object' ? body.coupon_meta : {};
       const nextMeta = { ...prevMeta, ...incoming };
+      // Optional activity line (e.g. "Booking confirmed → In Service" from the Booking Confirmed list).
+      if (body?.history_entry && typeof body.history_entry === 'object') {
+        const prevHistory = Array.isArray((prevMeta as any).profile_history) ? (prevMeta as any).profile_history : [];
+        nextMeta.profile_history = [
+          {
+            at: new Date().toISOString(),
+            summary: String(body.history_entry.summary || '').slice(0, 500),
+            remark: null,
+            status: String(body.history_entry.status || nextMeta.last_call_result || ''),
+            previous_label: String(body.history_entry.previous_label || '') || undefined,
+            by: String(userProfile?.full_name || '').trim() || undefined,
+          },
+          ...prevHistory,
+        ].slice(0, 50);
+      }
       const nowIso = new Date().toISOString();
       const patch: Record<string, unknown> = {
         coupon_meta: nextMeta,
@@ -137,7 +153,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         is_incomplete: false,
         updated_by_id: userProfile?.id || null,
       };
-      if (body.status) patch.status = String(body.status);
+      // Finished leads (COMPLETED +) cannot move back in the pipeline (DB trigger). Keep their status,
+      // still save the CRM label — otherwise the whole update fails.
+      if (body.status && leadStatusChangeAllowed((existingLead as any)?.status, body.status)) {
+        patch.status = String(body.status);
+      }
       if (body.pickup_required != null) patch.pickup_required = Boolean(body.pickup_required);
       const { data: updated, error: statusErr } = await db
         .from('service_leads')
@@ -147,6 +167,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         .maybeSingle();
       if (statusErr) {
         return NextResponse.json({ error: statusErr.message || 'Could not save status' }, { status: 400 });
+      }
+      // In Service → move the sheet line from "Today send lead" to "Today".
+      if (
+        String(nextMeta.last_call_result || '').toUpperCase() === 'IN_SERVICE' &&
+        String((prevMeta as any).last_call_result || '').toUpperCase() !== 'IN_SERVICE'
+      ) {
+        const moved = await moveBookingToInServiceSheet({
+          phone: String((updated as any)?.customer_phone || (existingLead as any)?.customer_phone || ''),
+          name: String((updated as any)?.customer_name || (existingLead as any)?.customer_name || ''),
+        });
+        if (!moved.ok) console.warn('[telecaller/leads PATCH] in-service sheet move skipped:', moved.error);
       }
       let whatsapp: { sent?: boolean; skipped?: boolean; skipReason?: string } | null = null;
       const nextCall = String(nextMeta.last_call_result || '').toUpperCase();
@@ -424,7 +455,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         'COMPLETED',
         'REJECTED',
       ]);
-      if (ALLOWED_STATUS_SET.has(nextStatus)) {
+      if (ALLOWED_STATUS_SET.has(nextStatus) && leadStatusChangeAllowed((existingLead as any)?.status, nextStatus)) {
         update.status = nextStatus;
       }
     }
@@ -608,6 +639,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           .update(slimUpdate)
           .eq('id', leadId);
         if (bare.error) {
+          // Log why the full save failed (a status that "won't change" from inside the lead).
+          console.error('[telecaller/leads PATCH] update failed', {
+            leadId,
+            first: updateErr?.message || null,
+            retry: res.error?.message || null,
+            bare: bare.error.message,
+            keys: Object.keys(slimUpdate),
+          });
           return NextResponse.json(
             { error: bare.error.message || updateErr?.message || 'Failed to update lead' },
             { status: 400 },
@@ -754,6 +793,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         : {}) || {};
     const nextCall = String(nextMetaForSheet.last_call_result || '').toUpperCase();
     const alreadyOnSheet = Boolean((existingLead as any).coupon_meta?.won_sheet_at);
+    // Stamp when / who confirmed the booking. The "Booking Confirmed" admin list uses this,
+    // so a lead keeps its confirm date even after it moves on to In Service / Service Done.
+    if (
+      nextCall === 'BOOKING_CONFIRMED' &&
+      prevCall !== 'BOOKING_CONFIRMED' &&
+      update.coupon_meta &&
+      typeof update.coupon_meta === 'object'
+    ) {
+      Object.assign(nextMetaForSheet, {
+        booking_confirmed_at: new Date().toISOString(),
+        booking_confirmed_by_id: userProfile?.id || null,
+        booking_confirmed_by_name: String(userProfile?.full_name || '').trim() || null,
+      });
+      try {
+        await db.from('service_leads').update({ coupon_meta: nextMetaForSheet }).eq('id', leadId);
+      } catch (stampErr: any) {
+        console.warn('[telecaller/leads PATCH] booking confirmed stamp failed:', stampErr?.message || stampErr);
+      }
+    }
     if (nextCall === 'BOOKING_CONFIRMED' && prevCall !== 'BOOKING_CONFIRMED' && !alreadyOnSheet) {
       try {
         let workshopName = '';
@@ -807,6 +865,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       } catch (sheetErr: any) {
         console.warn('[telecaller/leads PATCH] won sheet failed:', sheetErr?.message || sheetErr);
       }
+    }
+
+    if (nextCall === 'IN_SERVICE' && prevCall !== 'IN_SERVICE') {
+      const moved = await moveBookingToInServiceSheet({
+        phone: String(update.customer_phone || updated?.customer_phone || (existingLead as any)?.customer_phone || ''),
+        name: String(update.customer_name || updated?.customer_name || (existingLead as any)?.customer_name || ''),
+      });
+      if (!moved.ok) console.warn('[telecaller/leads PATCH] in-service sheet move skipped:', moved.error);
     }
 
     if (crmLeadClosedForFollowUp(closedLead)) {

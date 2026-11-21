@@ -1,10 +1,11 @@
 /**
- * MyFNG CRM → "DAILY Telecrm Won Records" sheet, tab "Today send lead".
- * When a lead is marked "Booking confirmed" in the MyFNG CRM, the server POSTs it here and
- * this script adds one line — same columns as the TeleCRM script already writing to this sheet.
+ * MyFNG CRM → "DAILY Telecrm Won Records" sheet.
+ *
+ *  - Booking confirmed → one new line in "Today send lead" (columns A–M).
+ *  - In Service (action "in_service") → that line (matched by phone, column B) moves to the
+ *    "Today" tab (A–M copied) and is removed from "Today send lead". Not found → nothing changes.
  *
  * Keep this as its OWN standalone project (script.google.com → New project).
- * Do NOT paste it into the TeleCRM script: one project can only have one doPost.
  *
  * Setup (once):
  *  1. script.google.com → New project → paste this file → Save.
@@ -18,6 +19,8 @@
 
 var SPREADSHEET_ID = '1v7i7wOU3MRsA8mQJ1WnITNkzrJLQKapvnNvbDXrYPrg';
 var TAB_NAME = 'Today send lead';
+var IN_SERVICE_TAB = 'Today';
+var COLS = 13; // A → M
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -27,14 +30,14 @@ function doPost(e) {
     var secret = PropertiesService.getScriptProperties().getProperty('WEBHOOK_SECRET');
     if (!secret || body.secret !== secret) return json_({ ok: false, error: 'unauthorized' });
 
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = findTab_(ss, TAB_NAME);
+    if (!sheet) return json_({ ok: false, error: 'tab not found: ' + TAB_NAME + ' | tabs: ' + tabNames_(ss) });
+
+    if (body.action === 'in_service') return moveToInService_(ss, sheet, body.booking || {});
+
     var b = body.booking || {};
     if (!b.name || !b.phone) return json_({ ok: false, error: 'name and phone required' });
-
-    var sheet = findTab_(SpreadsheetApp.openById(SPREADSHEET_ID), TAB_NAME);
-    if (!sheet) {
-      var names = SpreadsheetApp.openById(SPREADSHEET_ID).getSheets().map(function (s) { return '[' + s.getName() + ']'; });
-      return json_({ ok: false, error: 'tab not found: ' + TAB_NAME + ' | tabs: ' + names.join(', ') });
-    }
 
     // Same column order as the TeleCRM script (A → M).
     var row = [
@@ -61,6 +64,34 @@ function doPost(e) {
   }
 }
 
+/** In Service: copy A–M of the latest matching line into "Today", then delete it from "Today send lead". */
+function moveToInService_(ss, sheet, b) {
+  var want = last10_(b.phone);
+  if (!want) return json_({ ok: false, error: 'phone required' });
+
+  var target = findTab_(ss, IN_SERVICE_TAB);
+  if (!target) return json_({ ok: false, error: 'tab not found: ' + IN_SERVICE_TAB + ' | tabs: ' + tabNames_(ss) });
+
+  var last = sheet.getLastRow();
+  if (last < 1) return json_({ ok: true, moved: false, reason: 'not found' });
+
+  // Latest line first (bottom up), match on column B.
+  var phones = sheet.getRange(1, 2, last, 1).getValues();
+  for (var r = last; r >= 1; r--) {
+    if (last10_(phones[r - 1][0]) !== want) continue;
+    var values = sheet.getRange(r, 1, 1, COLS).getValues()[0];
+    target.appendRow(values);
+    sheet.deleteRow(r);
+    return json_({ ok: true, moved: true, from_row: r, to_row: target.getLastRow() });
+  }
+  return json_({ ok: true, moved: false, reason: 'not found' });
+}
+
+function last10_(v) {
+  var d = String(v == null ? '' : v).replace(/\D/g, '');
+  return d.length >= 10 ? d.slice(-10) : '';
+}
+
 // Match the tab name ignoring case and extra spaces ("Today send lead " === "today send lead").
 function findTab_(ss, name) {
   var want = String(name).replace(/\s+/g, ' ').trim().toLowerCase();
@@ -69,6 +100,10 @@ function findTab_(ss, name) {
     if (sheets[i].getName().replace(/\s+/g, ' ').trim().toLowerCase() === want) return sheets[i];
   }
   return null;
+}
+
+function tabNames_(ss) {
+  return ss.getSheets().map(function (s) { return '[' + s.getName() + ']'; }).join(', ');
 }
 
 function json_(obj) {

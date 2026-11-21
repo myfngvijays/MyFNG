@@ -1417,9 +1417,11 @@ export default function CrmLeadEditForm({
 
   const validateForm = (): boolean => true;
 
-  const handleSubmit = async (e?: React.FormEvent, quiet = false) => {
+  const handleSubmit = async (e?: React.FormEvent, quiet = false): Promise<boolean> => {
     e?.preventDefault();
-    if (!quiet && !validateForm()) return;
+    if (!quiet && !validateForm()) return false;
+    // One save at a time: a status pick saves at once and the 800ms autosave must not double it.
+    if (quiet && saveInFlight.current) return false;
     const openedSnap = currentActivitySnap();
     const savedSnap = activityBase.current;
     const nothingChanged = Boolean(savedSnap && JSON.stringify(savedSnap) === JSON.stringify(openedSnap));
@@ -1427,9 +1429,11 @@ export default function CrmLeadEditForm({
     // change the form without marking it edited, so the snapshot can look unchanged.
     if (quiet && (nothingChanged || !userEdited.current)) {
       activityBase.current = openedSnap;
-      return;
+      statusToastPending.current = false;
+      return true;
     }
 
+    saveInFlight.current = true;
     setSaving(true);
     if (quiet) setAutoSaveState('saving');
 
@@ -1593,6 +1597,10 @@ export default function CrmLeadEditForm({
       if (!res.ok) throw new Error(json?.error || 'Failed to update lead');
       if (pendingActivitySnap.current) activityBase.current = pendingActivitySnap.current;
       setAutoSaveState('saved');
+      if (statusToastPending.current) {
+        statusToastPending.current = false;
+        toast.success(`Status saved: ${statusLabel}`);
+      }
       if (historyEntry) onActivity?.();
 
       if (payload.next_follow_up_at) {
@@ -1623,10 +1631,16 @@ export default function CrmLeadEditForm({
     } catch (error: any) {
       console.error('Error updating lead:', error);
       setAutoSaveState('error');
+      statusToastPending.current = false;
       if (!quiet) alert('Failed to update lead: ' + (error?.message || String(error)));
+      // Autosave used to fail silently — show why, so a status that "won't change" is visible.
+      else toast.error('Auto-save failed: ' + (error?.message || String(error)));
+      return false;
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
+    return true;
   };
 
   const [saveSlot, setSaveSlot] = useState<HTMLElement | null>(null);
@@ -1636,6 +1650,10 @@ export default function CrmLeadEditForm({
     setSaveSlot(document.getElementById('lead-sidebar-save'));
   }, [embedded, leadId]);
 
+  const saveInFlight = useRef(false);
+  // Set when the status dropdown / pipeline is used: save right away instead of waiting.
+  const statusSaveRequested = useRef(false);
+  const statusToastPending = useRef(false);
   const saveRef = useRef(handleSubmit);
   saveRef.current = handleSubmit;
   const skipAutoSave = useRef(true);
@@ -1699,6 +1717,12 @@ export default function CrmLeadEditForm({
       carModel: `${String(formData.vehicle_make || '').trim()} ${String(formData.vehicle_model || '').trim()}`.trim(),
     });
   }, [formData.pincode, formData.vehicle_make, formData.vehicle_model, onDraftChange]);
+  useEffect(() => {
+    if (loading || !statusSaveRequested.current) return;
+    statusSaveRequested.current = false;
+    statusToastPending.current = true;
+    void saveRef.current(undefined, true);
+  }, [formData.activity_result, formData.lost_reason, formData.other_reason, loading]);
   useEffect(() => {
     if (loading) return;
     if (!userEdited.current) {
@@ -1931,6 +1955,7 @@ export default function CrmLeadEditForm({
                                     return;
                                   }
                                   touchLead();
+                                  statusSaveRequested.current = true;
                                   setFormData((prev) => ({ ...prev, activity_result: option.id }));
                                   setStatusOpen(false);
                                 }}
@@ -1961,6 +1986,7 @@ export default function CrmLeadEditForm({
                           }}
                           onPick={(reason) => {
                             touchLead();
+                            statusSaveRequested.current = true;
                             setFormData((prev) =>
                               statusPanel === 'lost'
                                 ? { ...prev, activity_result: 'LOST', lost_reason: reason }
@@ -1999,6 +2025,7 @@ export default function CrmLeadEditForm({
                       type="button"
                       onClick={() => {
                         touchLead();
+                        statusSaveRequested.current = true;
                         setFormData((prev) => ({
                           ...prev,
                           activity_result: activityId,

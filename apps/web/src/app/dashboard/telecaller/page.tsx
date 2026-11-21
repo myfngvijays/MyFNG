@@ -35,6 +35,7 @@ import {
 import { shouldKeepPreviousDashboardKpis } from '@/lib/telecaller/crmDashboardGuard';
 import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
+import BookingConfirmedTodayCard from '@/components/crm/BookingConfirmedTodayCard';
 import {
   Bar,
   BarChart,
@@ -794,6 +795,12 @@ export default function TelecallerCrmHomePage() {
               )}
             </div>
             </div>
+
+            {/* Lead manager: whole team. Telecaller: the API returns only their own leads. */}
+            <BookingConfirmedTodayCard
+              viewAllHref={`${base}/booking-confirmed`}
+              leadHref={(row) => `${base}/leads?lead=${encodeURIComponent(row.id)}`}
+            />
 
             {/* Quick Actions — web only, above analytics (phone order unchanged) */}
             <div className="rounded-2xl border border-[#C7D7F5] bg-[#F4F8FF] p-3.5 sm:p-4">
