@@ -101,14 +101,23 @@ export default function FollowUpsPage() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [noteOpenId, setNoteOpenId] = useState<string | null>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
-  const [pickMode, setPickMode] = useState<'single' | 'range'>('single');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  // Calendar dates live in the URL (start/end/mode) so they survive opening a lead and coming back.
+  const ymdParam = (key: string) => {
+    const v = String(searchParams?.get(key) || '');
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+  };
+  const initialStart = ymdParam('start') || istYmd();
+  const initialEnd = ymdParam('end') && ymdParam('end') >= initialStart ? ymdParam('end') : initialStart;
+  const [pickMode, setPickMode] = useState<'single' | 'range'>(
+    searchParams?.get('mode') === 'range' ? 'range' : 'single',
+  );
+  const [customStart, setCustomStart] = useState(initialStart);
+  const [customEnd, setCustomEnd] = useState(initialEnd);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const todayYmd = istYmd();
-  const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
-  const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
+  const [viewYear, setViewYear] = useState(() => Number(initialStart.slice(0, 4)));
+  const [viewMonth0, setViewMonth0] = useState(() => Number(initialStart.slice(5, 7)) - 1);
   const [rangeTap, setRangeTap] = useState<'start' | 'end'>('start');
   const [priorityMenuId, setPriorityMenuId] = useState<string | null>(null);
 
@@ -136,12 +145,45 @@ export default function FollowUpsPage() {
     const params = new URLSearchParams(searchParams?.toString() || '');
     if (next === 'pending') params.delete('view');
     else params.set('view', next);
+    if (next === 'calendar') {
+      params.set('start', customStart);
+      params.set('end', customEnd);
+      params.set('mode', pickMode);
+    } else {
+      params.delete('start');
+      params.delete('end');
+      params.delete('mode');
+    }
     const qs = params.toString();
     router.replace(`${base}/followups${qs ? `?${qs}` : ''}`, { scroll: false });
   };
 
+  // Keep the picked calendar dates in the URL while the calendar view is on.
+  useEffect(() => {
+    if (filter !== 'calendar') return;
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    if (
+      params.get('start') === customStart &&
+      params.get('end') === customEnd &&
+      params.get('mode') === pickMode
+    ) {
+      return;
+    }
+    params.set('view', 'calendar');
+    params.set('start', customStart);
+    params.set('end', customEnd);
+    params.set('mode', pickMode);
+    router.replace(`${base}/followups?${params.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, customStart, customEnd, pickMode]);
+
   const leadHref = (leadId: string) => {
     const params = new URLSearchParams({ from: 'followups', view: filter });
+    if (filter === 'calendar') {
+      params.set('start', customStart);
+      params.set('end', customEnd);
+      params.set('mode', pickMode);
+    }
     return `${base}/leads/${leadId}?${params.toString()}`;
   };
 

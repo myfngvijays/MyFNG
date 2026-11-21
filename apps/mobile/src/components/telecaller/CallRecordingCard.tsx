@@ -14,8 +14,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadRecordingFolder,
   pickRecordingFolder,
-  syncPhoneRecordings,
+  loadRecordingSyncHistory,
+  queueManualRecordingSync,
+  subscribeRecordingSyncHistory,
+  isRecordingSyncRunning,
   type RecordingFolder,
+  type RecordingSyncHistoryRow,
 } from '../../lib/callRecordingSync';
 
 const LAST_SYNC_KEY = 'myfng.telecaller.lastRecordingSync';
@@ -53,8 +57,10 @@ export default function CallRecordingCard() {
   const [preset, setPreset] = useState<(typeof PRESETS)[number]['id']>('15m');
   const [unit, setUnit] = useState<(typeof UNITS)[number]['id']>('minutes');
   const [customAmount, setCustomAmount] = useState('15');
-  const [busy, setBusy] = useState<'pick' | 'sync' | null>(null);
+  const [busy, setBusy] = useState<'pick' | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(0);
+  const [history, setHistory] = useState<RecordingSyncHistoryRow[]>([]);
   const [toast, setToast] = useState('');
   const [, setTick] = useState(0);
 
@@ -64,6 +70,13 @@ export default function CallRecordingCard() {
       const n = Number(raw || 0);
       if (n) setLastSync(n);
     });
+    void loadRecordingSyncHistory().then(setHistory);
+    const unsub = subscribeRecordingSyncHistory(setHistory);
+    const syncPoll = setInterval(() => setSyncing(isRecordingSyncRunning()), 1200);
+    return () => {
+      unsub();
+      clearInterval(syncPoll);
+    };
   }, []);
 
   useEffect(() => {
@@ -103,25 +116,30 @@ export default function CallRecordingCard() {
     }
   };
 
-  const runSync = async () => {
-    setBusy('sync');
+  const runSync = () => {
     setSheet(false);
-    try {
-      const result = await syncPhoneRecordings({ manual: true, sinceMs: windowMs() });
-      if (result.error) {
-        setToast(result.error);
-        return;
-      }
-      const now = Date.now();
-      setLastSync(now);
-      await AsyncStorage.setItem(LAST_SYNC_KEY, String(now));
-      const n = result.uploaded;
-      setToast(n === 1 ? 'Added 1 Call.' : `Added ${n} Calls.`);
-    } catch (e: unknown) {
-      setToast(e instanceof Error ? e.message : 'Sync failed');
-    } finally {
-      setBusy(null);
-    }
+    const label = windowLabel();
+    queueManualRecordingSync({ sinceMs: windowMs(), windowLabel: label });
+    setSyncing(true);
+    setToast(`Sync started (${label}) — app chalega, background mein upload hoga.`);
+    const now = Date.now();
+    setLastSync(now);
+    void AsyncStorage.setItem(LAST_SYNC_KEY, String(now));
+  };
+
+  const formatHistoryTime = (ts: number) =>
+    new Date(ts).toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+  const statusLabel = (row: RecordingSyncHistoryRow) => {
+    if (row.status === 'failed') return 'Failed';
+    if (row.status === 'partial') return 'Partial';
+    return 'Success';
   };
 
   const folderName = folder?.label && !folder.label.startsWith('content://') ? folder.label : '';
@@ -157,11 +175,36 @@ export default function CallRecordingCard() {
             <Ionicons name="chevron-down" size={16} color="#64748B" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.syncBtn} onPress={runSync} disabled={busy != null}>
-            {busy === 'sync' ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncBtnText}>SYNC</Text>}
+            {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncBtnText}>SYNC</Text>}
           </TouchableOpacity>
         </View>
-        <Text style={styles.lastSync}>Last synced: {lastSync ? agoLabel(lastSync) : '—'}</Text>
+        <Text style={styles.lastSync}>
+          {syncing ? 'Sync running in background…' : `Last synced: ${lastSync ? agoLabel(lastSync) : '—'}`}
+        </Text>
       </View>
+
+      {history.length ? (
+        <View style={styles.historyCard}>
+          <Text style={styles.historyTitle}>Sync history</Text>
+          {history.slice(0, 8).map((row) => (
+            <View key={row.id} style={styles.historyRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.historyWhen}>{formatHistoryTime(row.at)}</Text>
+                <Text style={styles.historyMeta} numberOfLines={1}>
+                  {row.manual ? row.windowLabel || 'Manual' : 'Auto'} · {statusLabel(row)} · +{row.uploaded} uploaded
+                  {row.noMatch ? ` · ${row.noMatch} no match` : ''}
+                  {row.skipped ? ` · ${row.skipped} skipped` : ''}
+                </Text>
+                {row.error ? (
+                  <Text style={styles.historyErr} numberOfLines={2}>
+                    {row.error}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <Modal visible={sheet} transparent animationType="fade" onRequestClose={() => setSheet(false)}>
         <Pressable style={styles.scrim} onPress={() => setSheet(false)}>
@@ -325,6 +368,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
   lastSync: { marginTop: 8, textAlign: 'center', color: '#94A3B8', fontSize: 12 },
+  historyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+  },
+  historyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+  historyRow: {
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#EEF2F6',
+  },
+  historyWhen: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  historyMeta: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  historyErr: { fontSize: 11, color: '#DC2626', marginTop: 2 },
   scrim: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#F8FAFC',

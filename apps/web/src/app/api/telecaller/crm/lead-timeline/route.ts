@@ -9,6 +9,7 @@ import {
   resolveAdminCrmStatusId,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { detachForeignDidRecordingsForLead, detachForeignDidRecordingsThrottled, healSmartfloRecordingForLead } from '@/lib/telecaller/smartfloCdr';
+import { crmLeadIsLost, followUpAutoClosed } from '@/lib/telecaller/crmFollowUpClose';
 import {
   buildCheckoutLeadIndex,
   checkoutServiceName,
@@ -208,7 +209,7 @@ export async function GET(request: NextRequest) {
           supabaseAdmin
             .from('telecaller_follow_ups')
             .select(
-              'id, lead_id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, completed_by, telecaller_id',
+              'id, lead_id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, updated_at, completed_at, completed_by, completion_notes, telecaller_id',
             )
             .in('lead_id', relatedLeadIds)
             .order('scheduled_time', { ascending: false })
@@ -384,7 +385,33 @@ export async function GET(request: NextRequest) {
           meta: { scheduled_time: row.scheduled_time, status: row.status },
         });
       }
-      if (String(row.status || '').toUpperCase() === 'COMPLETED' && row.completed_at) {
+      const rowStatus = String(row.status || '').toUpperCase();
+      const rowLead = String(row.lead_id || '') === leadId
+        ? lead
+        : siblingLeads.find((s) => String(s.id) === String(row.lead_id || ''));
+      // Older Lost leads: reminder was auto-closed as COMPLETED before Lost started cancelling them.
+      const cancelledForLost =
+        (rowStatus === 'CANCELLED' && /lost/i.test(String(row.completion_notes || ''))) ||
+        (rowStatus === 'COMPLETED' && followUpAutoClosed(row) && crmLeadIsLost(rowLead as any));
+      const cancelAt = String(row.completed_at || '') || (rowStatus === 'CANCELLED' ? String(row.updated_at || '') : '');
+      if (rowStatus === 'CANCELLED' || cancelledForLost) {
+        const cancelledBy = reminderNames.get(String(row.completed_by || ''));
+        if (cancelAt) {
+          items.push({
+            id: `fu-cancel-${row.id}`,
+            kind: 'followup',
+            at: cancelAt,
+            title: cancelledForLost
+              ? `Call Reminder of ${when} cancelled — lead marked Lost`
+              : `Call Reminder of ${when} cancelled${cancelledBy ? ` by ${cancelledBy}` : ''}`,
+            body: reason || null,
+            meta: { scheduled_time: row.scheduled_time, status: 'CANCELLED' },
+          });
+        }
+        // Show the "created" row with a Cancelled badge, not Completed.
+        const created = items.find((it) => it.id === `fu-created-${row.id}`);
+        if (created) created.meta = { ...(created.meta || {}), status: 'CANCELLED' };
+      } else if (rowStatus === 'COMPLETED' && row.completed_at) {
         const doneBy = reminderNames.get(String(row.completed_by || '')) || assignee;
         items.push({
           id: `fu-done-${row.id}`,

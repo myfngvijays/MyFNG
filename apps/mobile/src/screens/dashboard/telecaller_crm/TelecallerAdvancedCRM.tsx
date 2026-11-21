@@ -13,6 +13,7 @@ import {
   Image,
   Alert,
   BackHandler,
+  AppState,
   DeviceEventEmitter,
   PanResponder,
   type ViewStyle,
@@ -30,6 +31,8 @@ import TelecallerWhatsAppInbox from '../../../components/telecaller/TelecallerWh
 import TelecallerLeadDetailScreen from '../telecaller/TelecallerLeadDetailScreen';
 import {
   CRM_OPEN_LEAD_EVENT,
+  clearStickyCrmLead,
+  readStickyCrmLead,
   takePendingOpenCrmLead,
 } from '../../../components/telecaller/IncomingCallLeadOverlay';
 import CrmHomeTab from './CrmHomeTab';
@@ -767,6 +770,7 @@ export default function TelecallerAdvancedCRM() {
     if (detailLeadId) {
       setDetailLeadId(null);
       setDetailEditing(false);
+      void clearStickyCrmLead();
       return true;
     }
     if (bookMode) {
@@ -908,12 +912,27 @@ export default function TelecallerAdvancedCRM() {
 
   useEffect(() => {
     const pending = takePendingOpenCrmLead();
-    if (pending) openLead(pending, true);
+    if (pending) openLead(pending, false);
+    void readStickyCrmLead().then((id) => {
+      if (id) openLead(id, false);
+    });
     const sub = DeviceEventEmitter.addListener(CRM_OPEN_LEAD_EVENT, (payload: { leadId?: string }) => {
       const id = String(payload?.leadId || '').trim();
-      if (id) openLead(id, true);
+      if (id) openLead(id, false);
     });
-    return () => sub.remove();
+    const appSub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void readStickyCrmLead().then((id) => {
+        if (id) {
+          setDetailLeadId((cur) => cur || id);
+          setDetailEditing(false);
+        }
+      });
+    });
+    return () => {
+      sub.remove();
+      appSub.remove();
+    };
   }, []);
 
   const dateProps = {

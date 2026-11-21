@@ -32,6 +32,7 @@ import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
 import CallReminderForm from '@/components/telecaller/crm/CallReminderForm';
 import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
+import { followUpAutoClosed } from '@/lib/telecaller/crmFollowUpClose';
 
 function webLeadInitials(name?: string | null) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -270,7 +271,15 @@ export function LeadDetailContent({
     }
     if (searchParams?.get('from') === 'followups') {
       const view = String(searchParams.get('view') || '');
-      const q = view && view !== 'pending' ? `?view=${encodeURIComponent(view)}` : '';
+      const back = new URLSearchParams();
+      if (view && view !== 'pending') back.set('view', view);
+      if (view === 'calendar') {
+        for (const key of ['start', 'end', 'mode']) {
+          const v = searchParams.get(key);
+          if (v) back.set(key, v);
+        }
+      }
+      const q = back.toString() ? `?${back.toString()}` : '';
       router.push(`${base}/followups${q}`);
       return;
     }
@@ -483,7 +492,8 @@ export function LeadDetailContent({
         .eq('lead_id', leadId)
         .order('scheduled_time', { ascending: false });
 
-      setFollowUps((followUpsData || []).filter((fu: any) => String(fu.status || '').toUpperCase() !== 'CANCELLED'));
+      // Hide reminders the system closed (Lost cancels them; older rows were auto-closed as COMPLETED).
+      setFollowUps((followUpsData || []).filter((fu: any) => !followUpAutoClosed(fu)));
 
     } catch (error) {
       console.error('Error fetching lead details:', error);

@@ -164,6 +164,12 @@ export default function TelecallerCrmHomePage() {
   const router = useRouter();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
   const [leadQ, setLeadQ] = useState('');
+  const [leadHits, setLeadHits] = useState<
+    Array<{ id: string; lead_number?: string | null; customer_name?: string | null; customer_phone?: string | null; vehicle_number?: string | null; vehicle_model?: string | null }>
+  >([]);
+  const [leadHitsTotal, setLeadHitsTotal] = useState(0);
+  const [leadHitsLoading, setLeadHitsLoading] = useState(false);
+  const [leadHitsOpen, setLeadHitsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [kpis, setKpis] = useState<Kpis>({});
@@ -206,6 +212,38 @@ export default function TelecallerCrmHomePage() {
   );
   const dateLabel =
     CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
+
+  // Live lead search: results show under the box while typing (no need to press Search).
+  useEffect(() => {
+    const q = leadQ.trim();
+    if (q.length < 2) {
+      setLeadHits([]);
+      setLeadHitsTotal(0);
+      setLeadHitsLoading(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    setLeadHitsLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/telecaller/crm/leads?q=${encodeURIComponent(q)}&limit=8`, {
+          signal: ctrl.signal,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (ctrl.signal.aborted) return;
+        setLeadHits(Array.isArray(json?.leads) ? json.leads : []);
+        setLeadHitsTotal(Number(json?.total || 0));
+      } catch {
+        if (!ctrl.signal.aborted) setLeadHits([]);
+      } finally {
+        if (!ctrl.signal.aborted) setLeadHitsLoading(false);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [leadQ]);
 
   const load = useCallback(async (force = false) => {
     if (inFlight.current && !force) return;
@@ -414,10 +452,56 @@ export default function TelecallerCrmHomePage() {
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#004AAD]" />
                 <input
                   value={leadQ}
-                  onChange={(e) => setLeadQ(e.target.value)}
+                  onChange={(e) => {
+                    setLeadQ(e.target.value);
+                    setLeadHitsOpen(true);
+                  }}
+                  onFocus={() => setLeadHitsOpen(true)}
+                  onBlur={() => setTimeout(() => setLeadHitsOpen(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setLeadHitsOpen(false);
+                  }}
                   placeholder="Search lead by name, phone, vehicle"
                   className="w-full rounded-xl border border-white bg-white py-2.5 pl-9 pr-3 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
                 />
+                {leadHitsOpen && leadQ.trim().length >= 2 ? (
+                  <div className="absolute left-0 right-0 top-full z-40 mt-1.5 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                    {leadHitsLoading && leadHits.length === 0 ? (
+                      <p className="px-3 py-2.5 text-xs font-semibold text-slate-400">Searching…</p>
+                    ) : leadHits.length === 0 ? (
+                      <p className="px-3 py-2.5 text-xs font-semibold text-slate-400">No leads found</p>
+                    ) : (
+                      <>
+                        {leadHits.map((hit) => (
+                          <Link
+                            key={hit.id}
+                            href={`${base}/leads?q=${encodeURIComponent(leadQ.trim())}&lead=${encodeURIComponent(hit.id)}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="block px-3 py-2 hover:bg-slate-50"
+                          >
+                            <p className="truncate text-sm font-bold text-slate-900">
+                              {hit.customer_name || 'Unnamed lead'}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">
+                              {[hit.customer_phone, hit.lead_number, hit.vehicle_number, hit.vehicle_model]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </p>
+                          </Link>
+                        ))}
+                        {leadHitsTotal > leadHits.length ? (
+                          <Link
+                            href={`${base}/leads?q=${encodeURIComponent(leadQ.trim())}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="block border-t border-slate-100 px-3 py-2 text-xs font-bold text-[#004AAD] hover:bg-slate-50"
+                          >
+                            See all {leadHitsTotal} results
+                          </Link>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <button
                 type="submit"

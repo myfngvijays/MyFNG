@@ -10,8 +10,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../../lib/api';
 import { LeadBrainStrip } from './LeadBrainCard';
+
+const STICKY_LEAD_KEY = 'myfng.telecaller.stickyCrmLead';
+const STICKY_LEAD_MAX_MS = 4 * 60 * 60 * 1000;
 
 export const CRM_OPEN_LEAD_EVENT = 'crm:openLead';
 export const CRM_CALLER_ID_EVENT = 'crm:callerId';
@@ -42,7 +46,32 @@ export function requestOpenCrmLead(leadId: string) {
   const id = String(leadId || '').trim();
   if (!id) return;
   pendingOpenLeadId = id;
+  void AsyncStorage.setItem(STICKY_LEAD_KEY, JSON.stringify({ leadId: id, at: Date.now() })).catch(
+    () => undefined,
+  );
   DeviceEventEmitter.emit(CRM_OPEN_LEAD_EVENT, { leadId: id });
+}
+
+export async function readStickyCrmLead(): Promise<string | null> {
+  try {
+    const raw = await AsyncStorage.getItem(STICKY_LEAD_KEY);
+    if (!raw) return null;
+    const json = JSON.parse(raw) as { leadId?: string; at?: number };
+    const id = String(json?.leadId || '').trim();
+    const at = Number(json?.at || 0);
+    if (!id || !at || Date.now() - at > STICKY_LEAD_MAX_MS) {
+      await AsyncStorage.removeItem(STICKY_LEAD_KEY);
+      return null;
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearStickyCrmLead(): Promise<void> {
+  pendingOpenLeadId = null;
+  await AsyncStorage.removeItem(STICKY_LEAD_KEY).catch(() => undefined);
 }
 
 export function takePendingOpenCrmLead(): string | null {

@@ -1952,7 +1952,14 @@ export default function TelecallerLeadDetailScreen({
         .eq('lead_id', leadId)
         .order('scheduled_time', { ascending: false });
 
-      setFollowUps(followUpsData || []);
+      setFollowUps(
+        (followUpsData || []).filter((fu: any) => {
+          // Hide reminders the system closed (Lost cancels them; older rows were auto-closed as COMPLETED).
+          const st = String(fu?.status || '').toUpperCase();
+          if (st === 'CANCELLED') return false;
+          return !(st === 'COMPLETED' && /^auto-closed/i.test(String(fu?.completion_notes || '').trim()));
+        }),
+      );
 
     } catch (error) {
       console.error('Error fetching lead details:', error);

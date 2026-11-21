@@ -38,13 +38,63 @@ export function crmLeadClosedForFollowUp(lead: {
   return false;
 }
 
+/** Lead is Lost / Rejected — its reminders get cancelled, not marked done. */
+export function crmLeadIsLost(lead: {
+  status?: string | null;
+  coupon_meta?: { last_call_result?: string | null; last_call_label?: string | null } | null;
+} | null | undefined): boolean {
+  if (!lead) return false;
+  const st = String(lead.status || '').toUpperCase();
+  if (st === 'REJECTED' || st === 'CANCELLED') return true;
+  const meta = lead.coupon_meta || {};
+  const norm = (v: unknown) =>
+    String(v || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[_-]+/g, ' ');
+  return norm(meta.last_call_result).startsWith('LOST') || norm(meta.last_call_label).startsWith('LOST');
+}
+
+export const LOST_REMINDER_CANCEL_NOTE = 'Cancelled — lead marked Lost';
+
+/**
+ * Reminder was closed by the system, not by a person: CANCELLED, or an older
+ * "Auto-closed" COMPLETED row (written before Lost cancelled reminders).
+ */
+export function followUpAutoClosed(fu: { status?: string | null; completion_notes?: string | null } | null | undefined) {
+  if (!fu) return false;
+  const st = String(fu.status || '').toUpperCase();
+  if (st === 'CANCELLED') return true;
+  return st === 'COMPLETED' && /^auto-closed/i.test(String(fu.completion_notes || '').trim());
+}
+
 export async function closeLeadFollowUps(
   db: any,
   leadId: string,
-  opts?: { completedBy?: string | null; note?: string | null },
+  opts?: { completedBy?: string | null; note?: string | null; lost?: boolean },
 ) {
   if (!leadId) return;
   const now = new Date().toISOString();
+
+  let lost = opts?.lost;
+  if (lost === undefined) {
+    try {
+      const { data: leadRow } = await db
+        .from('service_leads')
+        .select('status, coupon_meta')
+        .eq('id', leadId)
+        .maybeSingle();
+      lost = crmLeadIsLost(leadRow);
+    } catch {
+      lost = false;
+    }
+  }
+
+  if (lost) {
+    await cancelLeadFollowUps(db, leadId, { cancelledBy: opts?.completedBy || null });
+    return;
+  }
+
   const note = String(opts?.note || 'Auto-closed — lead is In Service / Service Done / Lost').slice(0, 240);
 
   const leadRes = await db
@@ -74,6 +124,45 @@ export async function closeLeadFollowUps(
     await db
       .from('telecaller_follow_ups')
       .update({ status: 'COMPLETED', completed_at: now, updated_at: now })
+      .eq('lead_id', leadId)
+      .eq('status', 'PENDING');
+  }
+}
+
+/** Lost lead: cancel every PENDING reminder so none stay on the lead or the follow-up list. */
+export async function cancelLeadFollowUps(
+  db: any,
+  leadId: string,
+  opts?: { cancelledBy?: string | null; note?: string | null },
+) {
+  if (!leadId) return;
+  const now = new Date().toISOString();
+  const note = String(opts?.note || LOST_REMINDER_CANCEL_NOTE).slice(0, 240);
+
+  const leadRes = await db
+    .from('service_leads')
+    .update({ follow_up_required: false, next_follow_up_at: null, updated_at: now })
+    .eq('id', leadId);
+  if (leadRes?.error) {
+    await db.from('service_leads').update({ follow_up_required: false, updated_at: now }).eq('id', leadId);
+  }
+
+  // completed_at doubles as the cancel time so the activity timeline can show when it happened.
+  const full = await db
+    .from('telecaller_follow_ups')
+    .update({
+      status: 'CANCELLED',
+      completed_at: now,
+      completed_by: opts?.cancelledBy || null,
+      completion_notes: note,
+      updated_at: now,
+    })
+    .eq('lead_id', leadId)
+    .eq('status', 'PENDING');
+  if (full?.error) {
+    await db
+      .from('telecaller_follow_ups')
+      .update({ status: 'CANCELLED', completed_at: now, updated_at: now })
       .eq('lead_id', leadId)
       .eq('status', 'PENDING');
   }

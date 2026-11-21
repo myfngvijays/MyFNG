@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { apiFetch } from '../../lib/api';
-import { handleSimDialPush } from '../../lib/simDial';
+import { ensureCrmLeadAfterPhoneCall, handleSimDialPush } from '../../lib/simDial';
 
 /**
  * While the CRM app is open, pick up a Call pressed on the website and open
@@ -33,7 +33,10 @@ export default function PhoneDialWatcher() {
     void tick();
     const timer = setInterval(() => void tick(), 1500);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void tick();
+      if (state === 'active') {
+        ensureCrmLeadAfterPhoneCall();
+        void tick();
+      }
     });
     return () => {
       stopped = true;

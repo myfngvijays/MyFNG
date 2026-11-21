@@ -272,6 +272,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
   const [mediaAuth, setMediaAuth] = useState<string | undefined>();
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [openingLead, setOpeningLead] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
 
   const openLead = async () => {
     const phone10 = String(phone || '').replace(/\D/g, '').slice(-10);
@@ -458,7 +459,6 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
             template_name: fr.template_name,
             language: fr.language_code || 'en',
             template_params: [text],
-          }),
             ...(replyTo?.id
               ? { reply_to_message_id: replyTo.id, reply_preview: replyTo.preview }
               : {}),
@@ -482,7 +482,6 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
           recipient_phone: normalized,
           message_type: 'text',
           text,
-        }),
           ...(replyTo?.id
             ? { reply_to_message_id: replyTo.id, reply_preview: replyTo.preview }
             : {}),
@@ -517,7 +516,6 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
           template_name: selectedTemplate.template_name,
           language: selectedTemplate.language_code || 'en',
           template_params: cleaned.slice(0, count),
-        }),
           ...(replyTo?.id
             ? { reply_to_message_id: replyTo.id, reply_preview: replyTo.preview }
             : {}),
@@ -613,7 +611,6 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
             const tpl = String(item.template_name || '').trim();
             const showImage = isImageMessage(item);
             const mediaUrl = showImage ? resolveMediaUrl(item) : null;
-            return (
             const quote = String(item.meta?.reply_preview || '').trim();
             const replyBtn = (
               <TouchableOpacity
@@ -642,6 +639,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
                       {quote}
                     </Text>
                   ) : null}
+                  {tpl ? (
                     <Text style={styles.templateTag} numberOfLines={1}>
                       {humanizeTemplateKey(tpl)}
                     </Text>
@@ -680,9 +678,9 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
                     ) : null}
                   </View>
                 </View>
-              </View>
                 </View>
                 {outbound ? null : replyBtn}
+              </View>
             );
           }}
         />
