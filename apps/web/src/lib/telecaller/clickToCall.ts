@@ -23,7 +23,8 @@ export type ClickToCallResult = {
 };
 
 export const PHONE_DIAL_EVENT = 'myfng:phone-dial';
-export const PHONE_DIAL_MS = 40_000;
+// Matches the 45s pending window in /api/telecaller/phone-dial.
+export const PHONE_DIAL_MS = 45_000;
 
 export function announcePhoneDial(detail: { callLogId?: string; phone: string }) {
   if (typeof window === 'undefined') return;

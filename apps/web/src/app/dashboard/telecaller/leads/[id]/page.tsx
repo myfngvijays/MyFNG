@@ -979,6 +979,8 @@ export function LeadDetailContent({
             </div>
             <div className={isPanel ? 'lg:sticky lg:top-4 z-20 min-w-0 space-y-3 self-start' : 'lead-page-col z-20 min-w-0 space-y-3'}>
               <div id="lead-sidebar-save" className="lg:sticky lg:top-0 lg:z-20 lg:bg-[#f4f7fb] lg:pb-1" />
+              {/* "Open your MyFNG app" card shows here while a website call waits for the phone. */}
+              <div id="lead-dial-handoff-slot" className="empty:hidden" />
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                 <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
                 <div className="space-y-2.5">
@@ -1577,6 +1579,7 @@ export function LeadDetailContent({
           </div>
 
           <div className="space-y-4 min-w-0">
+            <div id="lead-dial-handoff-slot" className="empty:hidden" />
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
               <div className="space-y-2.5">

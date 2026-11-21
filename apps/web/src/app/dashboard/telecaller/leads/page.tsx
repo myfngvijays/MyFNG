@@ -1154,6 +1154,18 @@ function TelecallerCrmLeadsContent() {
     [displayedLeads],
   );
 
+  // Prev / Next order is frozen while the lead drawer is open. Saving or calling bumps
+  // updated_at, the list re-sorts, and the lead would jump to "1 of 25" otherwise.
+  const [drawerLeadIds, setDrawerLeadIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!openLeadId) {
+      setDrawerLeadIds((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    setDrawerLeadIds((prev) => (prev.includes(openLeadId) ? prev : pageLeadIds));
+  }, [openLeadId, pageLeadIds]);
+  const navLeadIds = drawerLeadIds.includes(openLeadId) ? drawerLeadIds : pageLeadIds;
+
   const allPageSelected =
     pageLeadIds.length > 0 && pageLeadIds.every((id) => selectedIds.has(id));
 
@@ -2700,28 +2712,28 @@ function TelecallerCrmLeadsContent() {
             onClick={closeLead}
           />
           <div className="telecaller-lead-drawer relative flex h-full w-full min-w-0 flex-col bg-[#f4f7fb] shadow-2xl min-[1100px]:w-[calc(100vw-7rem)] min-[1536px]:w-[min(1360px,calc(100vw-9rem))]">
-            {pageLeadIds.length > 0 ? (
+            {navLeadIds.length > 0 ? (
               <div className="flex shrink-0 items-center justify-end gap-2 border-b border-slate-200 bg-white px-3 py-2">
                 <button
                   type="button"
-                  disabled={pageLeadIds.indexOf(openLeadId) <= 0}
+                  disabled={navLeadIds.indexOf(openLeadId) <= 0}
                   onClick={() => {
-                    const i = pageLeadIds.indexOf(openLeadId);
-                    if (i > 0) openLead(pageLeadIds[i - 1]);
+                    const i = navLeadIds.indexOf(openLeadId);
+                    if (i > 0) openLead(navLeadIds[i - 1]);
                   }}
                   className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-bold text-slate-700 disabled:opacity-40"
                 >
                   Prev
                 </button>
                 <span className="text-xs font-bold text-slate-500">
-                  {Math.max(1, pageLeadIds.indexOf(openLeadId) + 1)} of {pageLeadIds.length}
+                  {Math.max(1, navLeadIds.indexOf(openLeadId) + 1)} of {navLeadIds.length}
                 </span>
                 <button
                   type="button"
-                  disabled={pageLeadIds.indexOf(openLeadId) < 0 || pageLeadIds.indexOf(openLeadId) >= pageLeadIds.length - 1}
+                  disabled={navLeadIds.indexOf(openLeadId) < 0 || navLeadIds.indexOf(openLeadId) >= navLeadIds.length - 1}
                   onClick={() => {
-                    const i = pageLeadIds.indexOf(openLeadId);
-                    if (i >= 0 && i < pageLeadIds.length - 1) openLead(pageLeadIds[i + 1]);
+                    const i = navLeadIds.indexOf(openLeadId);
+                    if (i >= 0 && i < navLeadIds.length - 1) openLead(navLeadIds[i + 1]);
                   }}
                   className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-bold text-slate-700 disabled:opacity-40"
                 >

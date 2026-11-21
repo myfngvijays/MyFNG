@@ -80,7 +80,81 @@ export type BookingWonSheetInput = {
   agent?: string | null;
   remark?: string | null;
   customerRemark?: string | null;
+  vehicleClass?: string | null;
+  area?: string | null;
+  pickupRequired?: boolean | null;
+  leadNumber?: string | null;
+  pincode?: string | null;
+  city?: string | null;
 };
+
+function istDateTime(d = new Date()) {
+  // 21/11/2026 14:45:16 — same as the rows already in "Today send lead".
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+    .format(d)
+    .replace(',', '');
+}
+
+/**
+ * Google Apps Script web app inside the sheet (scripts/google-apps-script/booking-sheet-webhook.gs).
+ * No Sheets API / service account: the script runs as the sheet owner and appends the row.
+ */
+async function postBookingToSheetWebhook(
+  url: string,
+  secret: string,
+  input: BookingWonSheetInput,
+): Promise<{ ok: boolean; error?: string }> {
+  const digits = String(input.phone || '').replace(/\D/g, '');
+  const phone = digits.length === 10 ? `91${digits}` : digits;
+  const booking = {
+    name: String(input.name || '').trim(),
+    phone,
+    address: String(input.address || '').trim(),
+    carNo: String(input.carNo || '').trim().toUpperCase(),
+    make: String(input.make || '').trim(),
+    carModel: String(input.carModel || '').trim().toUpperCase(),
+    vehicleClass: String(input.vehicleClass || '').trim(),
+    // Column H "Package": the chosen package, else the car class (TeleCRM rows show "Hatchback" here).
+    package: String(input.packageName || input.vehicleClass || '').trim(),
+    regDate: '',
+    area: String(input.area || '').trim(),
+    agent: String(input.agent || '').trim(),
+    visitType: input.pickupRequired ? 'Pickup' : 'Visit',
+    remark: String(input.remark || '').trim(),
+    customerRemark: String(input.customerRemark || '').trim(),
+    workshop: String(input.workshop || '').trim(),
+    packageName: String(input.packageName || '').trim(),
+    packageAmount: input.packageAmount == null ? '' : String(input.packageAmount),
+    leadNumber: String(input.leadNumber || '').trim(),
+    pincode: String(input.pincode || '').trim(),
+    city: String(input.city || '').trim(),
+    sentAt: istDateTime(),
+  };
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret, booking }),
+      redirect: 'follow',
+    });
+    const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    if (!res.ok || !json?.ok) {
+      return { ok: false, error: json?.error || `Sheet webhook ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Sheet webhook failed' };
+  }
+}
 
 function normHeader(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -138,6 +212,15 @@ function buildRow(headers: string[], input: BookingWonSheetInput): string[] {
 export async function appendBookingConfirmedToSheet(
   input: BookingWonSheetInput,
 ): Promise<{ ok: boolean; error?: string }> {
+  // Preferred: Apps Script webhook in the sheet ("Today send lead" tab).
+  const webhookUrl = String(process.env.BOOKING_SHEET_WEBHOOK_URL || '').trim();
+  if (webhookUrl) {
+    return postBookingToSheetWebhook(
+      webhookUrl,
+      String(process.env.BOOKING_SHEET_WEBHOOK_SECRET || '').trim(),
+      input,
+    );
+  }
   const creds = loadCreds();
   if (!creds) return { ok: false, error: 'Google service account missing' };
   try {

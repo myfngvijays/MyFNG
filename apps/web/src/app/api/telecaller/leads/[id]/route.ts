@@ -787,6 +787,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           agent: String(userProfile?.full_name || '').trim(),
           remark: String(nextMetaForSheet.telecaller_remarks || '').trim(),
           customerRemark: String(update.notes || '').trim(),
+          vehicleClass: String(nextMetaForSheet.vehicle_class || '').trim(),
+          area: String(nextMetaForSheet.area || update.city || updated?.city || '').trim(),
+          pickupRequired: Boolean(update.pickup_required ?? updated?.pickup_required),
+          leadNumber: String(updated?.lead_number || (existingLead as any)?.lead_number || ''),
+          pincode: String(update.pincode || updated?.pincode || ''),
+          city: String(update.city || updated?.city || ''),
         });
         if (sheet.ok) {
           await db
