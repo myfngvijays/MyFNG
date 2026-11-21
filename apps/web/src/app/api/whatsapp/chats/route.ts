@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 import { loadOtpOutbounds, mergeOtpChats } from '@/lib/whatsapp/otpInbox';
 import { visibleWhatsAppText } from '@/lib/whatsapp/visibleMessageText';
+import { toWhatsAppPhone } from '@/lib/phoneIntl';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -23,11 +24,8 @@ function waLineFromLead(row: any): '9696' | '6161' {
 }
 
 function normalizePhone(phone: string): string {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  const last10 = digits.slice(-10);
-  if (last10.length === 10) return `91${last10}`;
-  return digits.startsWith('91') ? digits : `91${digits}`;
+  // Keeps a foreign country code (e.g. +966); Indian numbers become 91XXXXXXXXXX.
+  return toWhatsAppPhone(phone);
 }
 
 function messagePreviewFromRow(row: any): string {
@@ -174,7 +172,7 @@ async function loadTelecallerLeadPhones(
   query = unassigned
     ? query.is('assigned_telecaller_id', null)
     : query.or(
-        `assigned_telecaller_id.eq.${telecallerId},created_by_id.eq.${telecallerId}`,
+        `assigned_telecaller_id.eq.${telecallerId},and(created_by_id.eq.${telecallerId},assigned_telecaller_id.is.null)`,
       );
 
   let { data, error } = await query;

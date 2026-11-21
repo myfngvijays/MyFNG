@@ -14,6 +14,7 @@ import {
   resolveMetaAdTagNames,
   stampFreshOnMeta,
 } from '@/lib/telecaller/crmLeadTagsApply';
+import { isForeignPhone, phoneCountryCode, toLeadPhone } from '@/lib/phoneIntl';
 
 export type WhatsAppReferral = {
   source_url?: string | null;
@@ -591,6 +592,10 @@ export async function ensureWhatsAppInboundServiceLead(
       known,
     }) as Record<string, unknown>,
   );
+  if (isForeignPhone(input.phone)) {
+    couponMeta.phone_country_code = phoneCountryCode(input.phone) || null;
+    couponMeta.phone_international = String(input.phone || '').replace(/\D/g, '');
+  }
   if (triggerId) {
     couponMeta.message_trigger_id = triggerId;
     couponMeta.message_trigger_label = triggerLabel;
@@ -604,7 +609,8 @@ export async function ensureWhatsAppInboundServiceLead(
     created_from: labels.created_from,
     status: 'NEW',
     customer_name: name,
-    customer_phone: phone10,
+    // Foreign WhatsApp numbers (e.g. +966) keep their full digits so calls / replies reach them.
+    customer_phone: toLeadPhone(input.phone) || phone10,
     customer_email: known.customer_email || null,
     vehicle_number: known.vehicle_number || 'NA',
     vehicle_make: known.vehicle_make || null,

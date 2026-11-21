@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
+import toast from 'react-hot-toast';
+import { formatPhoneDisplay, isForeignPhone, toLeadPhone } from '@/lib/phoneIntl';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { mergeAdminStatusChoices } from '@/lib/telecaller/leadDisplayStatus';
 import { titleCasePersonName } from '@/lib/telecaller/personName';
@@ -672,6 +674,7 @@ export default function CrmLeadEditForm({
   const [repeatRemark, setRepeatRemark] = useState<string | null>(null);
   const [hasMembership, setHasMembership] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   
@@ -1420,12 +1423,15 @@ export default function CrmLeadEditForm({
     const openedSnap = currentActivitySnap();
     const savedSnap = activityBase.current;
     const nothingChanged = Boolean(savedSnap && JSON.stringify(savedSnap) === JSON.stringify(openedSnap));
-    if (nothingChanged || (quiet && !userEdited.current)) {
+    // Only autosave may skip. A pressed Save always writes: some pickers (pincode, workshop, car)
+    // change the form without marking it edited, so the snapshot can look unchanged.
+    if (quiet && (nothingChanged || !userEdited.current)) {
       activityBase.current = openedSnap;
       return;
     }
 
     setSaving(true);
+    if (quiet) setAutoSaveState('saving');
 
     try {
       const applied = String(appliedCoupon || '').trim().toUpperCase();
@@ -1503,7 +1509,7 @@ export default function CrmLeadEditForm({
 
       const payload: any = {
         customer_name: formData.customer_name,
-        customer_phone: formData.customer_phone.replace(/\D/g, '').slice(-10),
+        customer_phone: toLeadPhone(formData.customer_phone),
         customer_alternate_phone: formData.customer_alternate_phone || null,
         customer_email: formData.customer_email || null,
         customer_address: composedAddress || null,
@@ -1586,6 +1592,7 @@ export default function CrmLeadEditForm({
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to update lead');
       if (pendingActivitySnap.current) activityBase.current = pendingActivitySnap.current;
+      setAutoSaveState('saved');
       if (historyEntry) onActivity?.();
 
       if (payload.next_follow_up_at) {
@@ -1608,11 +1615,14 @@ export default function CrmLeadEditForm({
 
       if (!quiet) {
         if (onSaved) onSaved();
+        // WhatsApp side panel: stay on the chat instead of jumping to the lead page.
+        else if (sidePanel) toast.success('Lead saved');
         else router.push(`${base}/leads/${leadId}`);
       }
 
     } catch (error: any) {
       console.error('Error updating lead:', error);
+      setAutoSaveState('error');
       if (!quiet) alert('Failed to update lead: ' + (error?.message || String(error)));
     } finally {
       setSaving(false);
@@ -1639,7 +1649,7 @@ export default function CrmLeadEditForm({
     const n = (v: unknown) => String(v ?? '').trim();
     return {
       name: n(formData.customer_name),
-      phone: n(formData.customer_phone).replace(/\D/g, '').slice(-10),
+      phone: toLeadPhone(n(formData.customer_phone)),
       alt: n(formData.customer_alternate_phone),
       email: n(formData.customer_email),
       pin: n(formData.pincode),
@@ -1676,6 +1686,13 @@ export default function CrmLeadEditForm({
     userEdited.current = false;
     activityBase.current = null;
   }, [leadId]);
+  // Closing the panel / switching chat within the 800ms autosave delay must not drop the last edit.
+  useEffect(
+    () => () => {
+      if (userEdited.current) void saveRef.current(undefined, true);
+    },
+    [],
+  );
   useEffect(() => {
     onDraftChange?.({
       pincode: String(formData.pincode || '').replace(/\D/g, '').slice(0, 6),
@@ -1738,9 +1755,31 @@ export default function CrmLeadEditForm({
             <X className="w-4 h-4" /> Back
           </button>
         )}
-        <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
-          {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
-        </button>
+        {sidePanel ? (
+          // WhatsApp side panel autosaves while you type — no Save button, just status.
+          <div
+            className={`inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold ${
+              autoSaveState === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
+            }`}
+            aria-live="polite"
+          >
+            {saving || autoSaveState === 'saving' ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+            ) : autoSaveState === 'error' ? (
+              <button type="submit" form="crm-lead-edit-form" className="underline">
+                Save failed — retry
+              </button>
+            ) : autoSaveState === 'saved' ? (
+              <><Save className="w-4 h-4" /> All changes saved</>
+            ) : (
+              <><Save className="w-4 h-4" /> Auto-save on</>
+            )}
+          </div>
+        ) : (
+          <button type="submit" form="crm-lead-edit-form" disabled={saving} className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-3 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
+            {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setBrainOpen(true)}
@@ -1790,7 +1829,7 @@ export default function CrmLeadEditForm({
                 <p className="text-sm text-white/90 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                   <span className="font-mono font-bold text-white">#{lead.lead_number}</span>
                   {formData.customer_phone || lead.customer_phone ? (
-                    <span className="text-white/95">{formData.customer_phone || lead.customer_phone}</span>
+                    <span className="text-white/95">{isForeignPhone(formData.customer_phone || lead.customer_phone) ? formatPhoneDisplay(formData.customer_phone || lead.customer_phone) : formData.customer_phone || lead.customer_phone}</span>
                   ) : null}
                   {lead.created_at ? (
                     <span className="text-white/90">Created {formatDateTime(lead.created_at)}</span>
@@ -1994,7 +2033,15 @@ export default function CrmLeadEditForm({
       </div>
       </div>
 
-      <form id="crm-lead-edit-form" onSubmit={handleSubmit} onChangeCapture={touchLead} noValidate className={sidePanel ? 'min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-3' : 'space-y-4'}>
+      <form
+        id="crm-lead-edit-form"
+        onSubmit={handleSubmit}
+        onChangeCapture={touchLead}
+        // Pickers (pincode, workshop, car, status chips) change data by click, not by an input
+        // change event — mark the form edited on any click / key too so autosave picks them up.
+        onClickCapture={touchLead}
+        onKeyDownCapture={touchLead}
+        noValidate className={sidePanel ? 'min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-3' : 'space-y-4'}>
         <SectionCard title="Customer Details" icon={User} tone="emerald">
           <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'}>
             <div>
@@ -2017,20 +2064,33 @@ export default function CrmLeadEditForm({
               <FieldLabel required>Phone Number</FieldLabel>
               <div className="relative">
                 <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="tel"
-                  name="customer_phone"
-                  value={formData.customer_phone}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, '').slice(0, 10);
-                    setFormData((prev) => ({ ...prev, customer_phone: v }));
-                    setLookupHint(null);
-                  }}
-                  onBlur={(e) => void lookupCustomerByPhone(e.target.value)}
-                  className={`${fieldCls(Boolean(errors.customer_phone))} pl-9`}
-                  maxLength={10}
-                  required
-                />
+                {isForeignPhone(formData.customer_phone) ? (
+                  // Foreign WhatsApp number (e.g. +966): show it with its country code, keep it as is.
+                  <input
+                    type="tel"
+                    name="customer_phone"
+                    value={formatPhoneDisplay(formData.customer_phone)}
+                    readOnly
+                    title="International number — country code kept"
+                    className={`${fieldCls(Boolean(errors.customer_phone))} pl-9 bg-amber-50`}
+                  />
+                ) : (
+                  <input
+                    type="tel"
+                    name="customer_phone"
+                    value={formData.customer_phone}
+                    onChange={(e) => {
+                      touchLead();
+                      const v = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setFormData((prev) => ({ ...prev, customer_phone: v }));
+                      setLookupHint(null);
+                    }}
+                    onBlur={(e) => void lookupCustomerByPhone(e.target.value)}
+                    className={`${fieldCls(Boolean(errors.customer_phone))} pl-9`}
+                    maxLength={10}
+                    required
+                  />
+                )}
               </div>
               {lookingUpPhone ? (
                 <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">

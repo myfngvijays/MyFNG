@@ -6,6 +6,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { toWhatsAppPhone } from '@/lib/phoneIntl';
 
 export type WhatsAppSendResult = {
   success: boolean;
@@ -89,11 +90,8 @@ function assertWhatsAppConfig(creds: {
 }
 
 export function normalizePhoneNumber(phoneNumber: string): string {
-  const digits = phoneNumber.replace(/\D/g, '');
-  if (!digits) return '';
-  const last10 = digits.slice(-10);
-  if (last10.length === 10) return `91${last10}`;
-  return digits;
+  // Keeps a foreign country code (e.g. +966); Indian numbers become 91XXXXXXXXXX.
+  return toWhatsAppPhone(phoneNumber);
 }
 
 async function parseCloudApiError(response: Response): Promise<{ message: string; raw?: unknown }> {

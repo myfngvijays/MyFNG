@@ -7,6 +7,7 @@ import {
   sendTextMessage,
   uploadWhatsAppMedia,
 } from '@/lib/services/whatsappService';
+import { toWhatsAppPhone } from '@/lib/phoneIntl';
 
 type MessageType = 'text' | 'media' | 'template';
 type ParsedSendBody = Record<string, any> & { __file?: File | null };
@@ -38,13 +39,14 @@ async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<b
     if (!supabaseAdmin) return false;
     const last10 = recipientPhone.replace(/\D/g, '').slice(-10);
     if (last10.length !== 10) return false;
+    const fullPhone = toWhatsAppPhone(recipientPhone);
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data } = await supabaseAdmin
       .from('whatsapp_messages')
       .select('id, meta, payload, recipient_phone, direction, created_at')
       .eq('direction', 'INBOUND')
       .gte('created_at', since)
-      .or(`sender_phone.eq.91${last10},sender_phone.eq.${last10}`)
+      .or(`sender_phone.eq.91${last10},sender_phone.eq.${last10},sender_phone.eq.${fullPhone}`)
       .order('created_at', { ascending: false })
       .limit(20);
     return (data || []).some((row) => is6161SessionInbound(row));
@@ -54,11 +56,8 @@ async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<b
 }
 
 function normalizePhone(phone: string): string {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  const last10 = digits.slice(-10);
-  if (last10.length === 10) return `91${last10}`;
-  return digits.startsWith('91') ? digits : `91${digits}`;
+  // Keeps a foreign country code (e.g. +966); Indian numbers become 91XXXXXXXXXX.
+  return toWhatsAppPhone(phone);
 }
 
 async function resolveUserProfile(supabase: any, user: any) {

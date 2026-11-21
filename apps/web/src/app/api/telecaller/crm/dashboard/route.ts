@@ -212,7 +212,7 @@ export async function GET(request: NextRequest) {
         return q;
       }
       return q.or(
-        `assigned_telecaller_id.eq.${assignedToMe},created_by_id.eq.${assignedToMe}`,
+        `assigned_telecaller_id.eq.${assignedToMe},and(created_by_id.eq.${assignedToMe},assigned_telecaller_id.is.null)`,
       );
     };
 

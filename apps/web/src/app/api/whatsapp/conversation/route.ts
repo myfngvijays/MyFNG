@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScope';
 import { businessPhoneForScope, loadOtpOutbounds, otpOutboundToMessage } from '@/lib/whatsapp/otpInbox';
 import { visibleWhatsAppText } from '@/lib/whatsapp/visibleMessageText';
+import { toWhatsAppPhone } from '@/lib/phoneIntl';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -18,11 +19,8 @@ const ALLOWED_ROLE_CODES = [
 ];
 
 function normalizePhone(phone: string): string {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  const last10 = digits.slice(-10);
-  if (last10.length === 10) return `91${last10}`;
-  return digits.startsWith('91') ? digits : `91${digits}`;
+  // Keeps a foreign country code (e.g. +966); Indian numbers become 91XXXXXXXXXX.
+  return toWhatsAppPhone(phone);
 }
 
 /** Collapse lead wrappers so "WhatsApp (91…) · Msg: Hello" ≈ "Hello" for dedupe. */

@@ -23,16 +23,18 @@ import { apiFetch } from '../../lib/api';
 import { getSupabaseAccessToken } from '../../lib/supabase';
 import { ENV } from '../../config/environment';
 
+// WhatsApp (Android light) palette.
 const WA = {
-  header: '#004AAD',
-  chatBg: '#F0F7FF',
+  header: '#008069',
+  chatBg: '#EFEAE2',
   bubbleIn: '#FFFFFF',
-  bubbleOut: '#D6E8FF',
-  send: '#004AAD',
-  composerBg: '#EEF4FF',
+  bubbleOut: '#D9FDD3',
+  send: '#00A884',
+  composerBg: '#F0F2F5',
   meta: '#667781',
   text: '#111B21',
   divider: '#E9EDEF',
+  read: '#53BDEB',
 };
 
 type Msg = {
@@ -626,7 +628,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
                 }}
                 accessibilityLabel="Reply to this message"
               >
-                <Ionicons name="arrow-undo" size={14} color="#004AAD" />
+                <Ionicons name="arrow-undo" size={14} color={WA.meta} />
               </TouchableOpacity>
             );
             return (
@@ -668,14 +670,26 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
                   ) : null}
                   <View style={styles.metaRow}>
                     <Text style={styles.bubbleTime}>{formatBubbleTime(item.created_at)}</Text>
-                    {outbound ? (
-                      <Ionicons
-                        name="checkmark-done"
-                        size={14}
-                        color={String(item.status || '').toUpperCase() === 'READ' ? '#004AAD' : WA.meta}
-                        style={{ marginLeft: 2 }}
-                      />
-                    ) : null}
+                    {outbound
+                      ? (() => {
+                          // WhatsApp ticks: sent ✓, delivered ✓✓ grey, read ✓✓ blue, failed red.
+                          const st = String(item.status || '').toUpperCase();
+                          if (st === 'FAILED') {
+                            return <Ionicons name="alert-circle" size={14} color="#EA0038" style={{ marginLeft: 2 }} />;
+                          }
+                          if (st === 'SENT' || st === 'QUEUED' || st === 'PENDING') {
+                            return <Ionicons name="checkmark" size={14} color={WA.meta} style={{ marginLeft: 2 }} />;
+                          }
+                          return (
+                            <Ionicons
+                              name="checkmark-done"
+                              size={14}
+                              color={st === 'READ' ? WA.read : WA.meta}
+                              style={{ marginLeft: 2 }}
+                            />
+                          );
+                        })()
+                      : null}
                   </View>
                 </View>
                 </View>
@@ -760,8 +774,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={[styles.composerWrap, { paddingBottom: bottomSafe + (isTemplateOnlyMode ? 12 : 8) }]}>
-          <View style={styles.composer}>
+        <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 8) + (isTemplateOnlyMode ? 4 : 0) }]}>
+          {/* Reply preview sits above the input row, like WhatsApp. */}
           {replyTo ? (
             <View style={styles.replyChip}>
               <Text style={styles.replyChipText} numberOfLines={1}>
@@ -772,9 +786,10 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
               </TouchableOpacity>
             </View>
           ) : null}
+          <View style={styles.composer}>
             <View style={styles.inputShell}>
               <TouchableOpacity style={styles.plusBtn} onPress={openTemplatePicker}>
-                <Ionicons name="add" size={26} color={WA.meta} />
+                <Ionicons name="add" size={24} color={WA.meta} />
               </TouchableOpacity>
               <TextInput
                 style={styles.input}
@@ -784,12 +799,12 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
                 placeholderTextColor={WA.meta}
                 multiline
               />
-              <TouchableOpacity onPress={openTemplatePicker} hitSlop={8}>
-                <Ionicons name="document-text-outline" size={22} color={WA.meta} />
+              <TouchableOpacity onPress={openTemplatePicker} hitSlop={8} style={styles.tplBtn}>
+                <Ionicons name="document-text-outline" size={20} color={WA.meta} />
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              style={[styles.sendBtn, (!draft.trim() || sending) && { opacity: 0.45 }]}
+              style={[styles.sendBtn, sending && { opacity: 0.7 }]}
               onPress={sendText}
               disabled={!draft.trim() || sending}
             >
@@ -902,7 +917,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     marginRight: 4,
   },
-  openLeadText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  openLeadText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   header: {
     backgroundColor: WA.header,
     paddingBottom: 10,
@@ -926,16 +941,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 6,
   },
-  headerAvatarText: { fontSize: 17, fontWeight: '700', color: '#54656F' },
-  title: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  headerAvatarText: { fontSize: 16, fontWeight: '700', color: '#54656F' },
+  title: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  subtitle: { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 1 },
   banner: {
     backgroundColor: '#FFEAA7',
     paddingHorizontal: 14,
     paddingVertical: 7,
     alignItems: 'center',
   },
-  bannerText: { fontSize: 12, fontWeight: '600', color: '#5C4B1F', textAlign: 'center' },
+  bannerText: { fontSize: 11, fontWeight: '600', color: '#5C4B1F', textAlign: 'center' },
   bannerClosed: {
     backgroundColor: '#FEF2F2',
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -944,23 +959,21 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   bannerClosedTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: '#991B1B',
     textAlign: 'center',
   },
   bannerClosedSub: {
     marginTop: 3,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: '#B91C1C',
     textAlign: 'center',
   },
   composerWrap: {
     backgroundColor: WA.composerBg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: WA.divider,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   orTemplateLink: {
     marginTop: 14,
@@ -974,11 +987,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#E7F8F1',
   },
   orTemplateText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: WA.send,
   },
-  list: { paddingHorizontal: 10, paddingVertical: 12, flexGrow: 1 },
+  list: { paddingHorizontal: 6, paddingVertical: 10, flexGrow: 1 },
   empty: { alignItems: 'center', paddingTop: 40, transform: [{ scaleY: -1 }] },
   emptyCard: {
     backgroundColor: 'rgba(255,255,255,0.92)',
@@ -987,35 +1000,35 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   emptyText: { color: WA.meta, fontWeight: '600', textAlign: 'center' },
-  emptyHint: { color: WA.meta, fontSize: 12, marginTop: 4, textAlign: 'center' },
-  bubbleRow: {
+  emptyHint: { color: WA.meta, fontSize: 11, marginTop: 4, textAlign: 'center' },
   msgLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-    paddingHorizontal: 8,
+    marginBottom: 4,
+    paddingHorizontal: 4,
   },
   msgLineIn: { justifyContent: 'flex-start' },
   msgLineOut: { justifyContent: 'flex-end' },
   replyBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#fff',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    marginHorizontal: 4,
+    backgroundColor: 'rgba(255,255,255,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   quote: {
-    borderLeftWidth: 2,
-    borderLeftColor: '#004AAD',
-    backgroundColor: 'rgba(0,0,0,0.04)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    marginBottom: 4,
+    borderLeftWidth: 4,
+    borderLeftColor: '#06CF9C',
+    backgroundColor: 'rgba(11,20,26,0.05)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 5,
     fontSize: 11,
     color: '#54656f',
+    overflow: 'hidden',
   },
   replyChip: {
     flexDirection: 'row',
@@ -1023,44 +1036,50 @@ const styles = StyleSheet.create({
     gap: 8,
     marginHorizontal: 8,
     marginBottom: 6,
-    borderLeftWidth: 3,
-    borderLeftColor: '#004AAD',
+    borderLeftWidth: 4,
+    borderLeftColor: '#06CF9C',
     backgroundColor: '#fff',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  replyChipText: { flex: 1, fontSize: 12, color: '#54656f' },
+  replyChipText: { flex: 1, fontSize: 11, color: '#54656f' },
   bubbleRow: {
-    maxWidth: '82%',
-    position: 'relative',
+    maxWidth: '80%',
+    flexShrink: 1,
   },
   bubbleRowIn: { alignSelf: 'flex-start' },
   bubbleRowOut: { alignSelf: 'flex-end' },
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingTop: 7,
-    paddingBottom: 5,
-    minWidth: 88,
+  bubble: {
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingTop: 6,
+    paddingBottom: 4,
+    minWidth: 80,
     maxWidth: '100%',
+    shadowColor: '#0B141A',
+    shadowOpacity: 0.13,
+    shadowRadius: 0.5,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   bubbleIn: {
     backgroundColor: WA.bubbleIn,
-    borderTopLeftRadius: 2,
+    borderTopLeftRadius: 0,
   },
   bubbleOut: {
     backgroundColor: WA.bubbleOut,
-    borderTopRightRadius: 2,
+    borderTopRightRadius: 0,
   },
   templateTag: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
-    color: WA.send,
+    color: '#027EB5',
     marginBottom: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.2,
   },
-  bubbleText: { fontSize: 15, color: WA.text, lineHeight: 21 },
+  bubbleText: { fontSize: 13, color: WA.text, lineHeight: 18 },
   bubbleImage: {
     width: 220,
     height: 220,
@@ -1093,52 +1112,53 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 3,
+    marginTop: 2,
     gap: 2,
   },
-  bubbleTime: { fontSize: 11, color: WA.meta },
+  bubbleTime: { fontSize: 10, color: WA.meta },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 6,
-    paddingTop: 4,
-    paddingBottom: 4,
-    paddingHorizontal: 8,
-    backgroundColor: WA.composerBg,
+    paddingHorizontal: 6,
   },
   inputShell: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 44,
     maxHeight: 120,
     flexDirection: 'row',
     alignItems: 'flex-end',
     backgroundColor: '#fff',
-    borderRadius: 24,
-    paddingLeft: 4,
-    paddingRight: 12,
-    paddingVertical: 4,
-    gap: 2,
+    borderRadius: 22,
+    paddingLeft: 2,
+    paddingRight: 10,
+    paddingVertical: 2,
   },
   plusBtn: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
   input: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 40,
     maxHeight: 100,
-    paddingVertical: Platform.OS === 'ios' ? 8 : 6,
-    fontSize: 16,
+    paddingTop: Platform.OS === 'ios' ? 11 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 11 : 8,
+    fontSize: 15,
     color: WA.text,
   },
   sendBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: WA.send,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tplBtn: {
+    height: 40,
     justifyContent: 'center',
   },
   templatePanel: {
@@ -1151,16 +1171,16 @@ const styles = StyleSheet.create({
   },
   templatePanelHeader: { flexDirection: 'row', alignItems: 'center' },
   templatePanelTitle: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: WA.meta,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  templatePanelName: { fontSize: 14, fontWeight: '700', color: WA.header, marginTop: 2 },
-  changeLink: { fontSize: 13, fontWeight: '700', color: WA.header },
+  templatePanelName: { fontSize: 13, fontWeight: '700', color: WA.header, marginTop: 2 },
+  changeLink: { fontSize: 12, fontWeight: '700', color: WA.header },
   previewBody: {
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 19,
     color: WA.text,
     backgroundColor: WA.chatBg,
@@ -1168,14 +1188,14 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   varRow: { gap: 4 },
-  varLabel: { fontSize: 11, fontWeight: '700', color: WA.meta },
+  varLabel: { fontSize: 10, fontWeight: '700', color: WA.meta },
   varInput: {
     borderWidth: 1,
     borderColor: WA.divider,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    fontSize: 14,
+    fontSize: 13,
     color: WA.text,
     backgroundColor: '#fff',
   },
@@ -1189,7 +1209,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  sendTemplateText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  sendTemplateText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(11,20,26,0.45)',
@@ -1211,15 +1231,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#D1D7DB',
     marginBottom: 12,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: WA.text },
-  modalSub: { fontSize: 13, color: WA.meta, marginTop: 2, marginBottom: 10 },
+  modalTitle: { fontSize: 17, fontWeight: '700', color: WA.text },
+  modalSub: { fontSize: 12, color: WA.meta, marginTop: 2, marginBottom: 10 },
   searchInput: {
     backgroundColor: '#F0F2F5',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 10,
-    fontSize: 15,
+    fontSize: 14,
     color: WA.text,
   },
   templateCard: {
@@ -1231,8 +1251,8 @@ const styles = StyleSheet.create({
     borderBottomColor: WA.divider,
   },
   templateCardActive: { backgroundColor: '#F0FDF4' },
-  templateCardTitle: { fontSize: 15, fontWeight: '700', color: WA.text },
-  templateCardMeta: { fontSize: 13, color: WA.meta, marginTop: 3 },
+  templateCardTitle: { fontSize: 14, fontWeight: '700', color: WA.text },
+  templateCardMeta: { fontSize: 12, color: WA.meta, marginTop: 3 },
   modalClose: { marginTop: 8, alignItems: 'center', paddingVertical: 12 },
   modalCloseText: { fontWeight: '700', color: WA.meta },
 });

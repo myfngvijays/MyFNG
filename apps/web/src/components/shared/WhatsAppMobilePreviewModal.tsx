@@ -37,6 +37,7 @@ import {
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 import WhatsAppTemplatePickerModal from '@/components/shared/WhatsAppTemplatePickerModal';
+import { formatPhoneDisplay } from '@/lib/phoneIntl';
 
 interface WhatsAppMobilePreviewModalProps {
   isOpen: boolean;
@@ -177,14 +178,8 @@ function isSameWaPhone(a: string, b: string): boolean {
 }
 
 function formatPhone(phone: string): string {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('91')) {
-    return `+${digits.slice(0, 2)} ${digits.slice(2, 7)} ${digits.slice(7)}`;
-  }
-  if (digits.length === 10) {
-    return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-  }
-  return phone || '—';
+  // +91 for Indian numbers; foreign ones (e.g. +966) keep their own country code.
+  return formatPhoneDisplay(phone) || phone || '—';
 }
 
 function formatMessageTime(value: string | null | undefined): string {

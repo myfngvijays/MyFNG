@@ -9,6 +9,15 @@ export function formatWhatsAppReply(text: string): string {
   // **bold** → *bold* (WhatsApp native bold)
   out = out.replace(/\*\*([^*]+)\*\*/g, '*$1*');
 
+  // [View on Map](url) → "Map Link: url". WhatsApp has no markdown links; a bare URL is clickable.
+  out = out.replace(
+    /(🗺️\s*)?(Map Link:\s*)?\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi,
+    (_m, _icon, mapPrefix, label, url) => {
+      if (mapPrefix || /map/i.test(String(label))) return `Map Link: ${url}`;
+      return `${label}: ${url}`;
+    },
+  );
+
   // Long decorative separators → short break
   out = out.replace(/[━─]{4,}/g, '────────');
 

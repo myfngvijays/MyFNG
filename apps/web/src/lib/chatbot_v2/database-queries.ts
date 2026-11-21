@@ -26,6 +26,8 @@ interface ServicePlanByPincodeParams {
   category: string;
   carModel: string;
   pincode: string;
+  /** Lead / link city name — breaks ties when a PIN is listed under more than one city. */
+  cityHint?: string | null;
 }
 
 interface ServicePlanParams {
@@ -397,7 +399,7 @@ export async function getServicePlans({ category, carModel, city }: ServicePlanP
   }
 }
 
-export async function getServicePlansByPincode({ category, carModel, pincode }: ServicePlanByPincodeParams) {
+export async function getServicePlansByPincode({ category, carModel, pincode, cityHint }: ServicePlanByPincodeParams) {
   if (!supabase) return [];
 
   try {
@@ -477,7 +479,7 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
     }
 
     // Step 2: Resolve city + zone from PIN (same source as book-service / app)
-    const cityData = await getCityByPincode(pincode);
+    const cityData = await getCityByPincode(pincode, cityHint);
     let cityId = cityData?.id ? String(cityData.id) : null;
     let zoneId: string | null = null;
 
@@ -628,17 +630,47 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
   }
 }
 
-export async function getCityByPincode(pincode: string) {
+/** Pick one city for a PIN: exact PIN token match, then the hinted city name. Logs when a PIN is in 2+ cities. */
+function pickCityForPincode(
+  rows: Array<{ id: string; name: string; city_pincodes?: string | null }>,
+  pincode: string,
+  cityHint?: string | null,
+) {
+  const pin = String(pincode || '').replace(/\D/g, '');
+  const exact = rows.filter((row) =>
+    String(row.city_pincodes || '')
+      .split(/[^0-9]+/)
+      .some((token) => token === pin),
+  );
+  const pool = exact.length ? exact : rows;
+  if (pool.length > 1) {
+    console.warn(
+      `[DB] PIN ${pin} is listed under ${pool.length} cities: ${pool.map((r) => r.name).join(', ')} — fix City Pincodes`,
+    );
+  }
+  const hint = String(cityHint || '').trim().toLowerCase();
+  if (hint && pool.length > 1) {
+    const byName =
+      pool.find((r) => String(r.name || '').trim().toLowerCase() === hint) ||
+      pool.find((r) => String(r.name || '').toLowerCase().includes(hint) || hint.includes(String(r.name || '').toLowerCase()));
+    if (byName) return { id: byName.id, name: byName.name };
+  }
+  // Stable order (by name) so the same PIN never flips between cities.
+  const picked = [...pool].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))[0];
+  return picked ? { id: picked.id, name: picked.name } : null;
+}
+
+export async function getCityByPincode(pincode: string, cityHint?: string | null) {
   if (!supabase) return null;
   try {
     console.log(`[DB] Resolving city for PIN code: ${pincode}`);
-    const { data, error } = await supabase
+    const { data: rows, error } = await supabase
       .from('cities')
-      .select('id, name')
+      .select('id, name, city_pincodes')
       .ilike('city_pincodes', `%${pincode}%`)
       .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
+      .limit(20);
+    const data = pickCityForPincode((rows || []) as any[], pincode, cityHint);
     if (data) return data;
 
     if (error) {

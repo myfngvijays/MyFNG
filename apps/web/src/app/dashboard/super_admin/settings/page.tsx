@@ -522,7 +522,7 @@ export default function SystemSettingsPage() {
               <div className="min-w-0 flex-1">
                 <h3 className="font-medium text-sm sm:text-base">Partner app — Force Update Enabled</h3>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
-                  com.myfng.partner. Leave this off for the current 1.0.4 / build 4 tester build.
+                  com.myfng.partner. Leave this off for the current 1.0.5 / build 5 tester build.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">

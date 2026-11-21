@@ -12,7 +12,13 @@ export async function openPhoneCall(phone: string): Promise<void> {
   const digits = String(phone).replace(/\D/g, '');
   if (!digits) return;
   const dialable =
-    digits.length === 10 ? `+91${digits}` : digits.length === 12 && digits.startsWith('91') ? `+${digits}` : digits;
+    digits.length === 10
+      ? `+91${digits}`
+      : digits.length === 12 && digits.startsWith('91')
+        ? `+${digits}`
+        : digits.length >= 11 && digits.length <= 15 && !digits.startsWith('0')
+          ? `+${digits}` // foreign number with its own country code (e.g. +966)
+          : digits;
 
   try {
     await Linking.openURL(`tel:${dialable}`);

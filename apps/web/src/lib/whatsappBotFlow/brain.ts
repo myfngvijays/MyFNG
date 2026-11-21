@@ -45,7 +45,20 @@ const WHATSAPP_CHANNEL_RULES = `
 - Group output: Semi Synthetic plans first, then Fully Synthetic.
 - One line per plan: Tier · points · price (no duplicate paragraphs).
 - Periodic package time, if asked: Platinum is minimum 2 days. Basic, General, and Premium are same-day only if the car reaches the workshop before 11:30 AM–12 noon. Arrival after 12 noon (including 4–5 PM) means next day, not same day. Extra work found during the job can also push it past the same day. Never quote hours (not "3 to 4 hours").
-- Workshop reply: same compact layout as a booking chat. Nearest first, then the next option. Single asterisks. Short ________ separators. Phone 9152307030. Map as [View on Map](link). End with one short question asking which workshop to book.
+- Workshop reply: nearest first, then the next option, in exactly this layout (one blank line between blocks, address in normal case not ALL CAPS, "LANDMARK -" becomes "Near …", " · X km" only when distance_km is known, map URL as plain text — never [text](link)):
+📍 *Here is the nearest workshop for you:*
+
+*1. [Workshop name]* · [X km]
+Address: [Address]
+Number: 9152307030
+Map Link: [map url]
+
+*2. [Workshop name]* · [X km]
+Address: [Address]
+Number: 9152307030
+Map Link: [map url]
+
+Would you like to book at the nearest workshop, or the next one? Reply *1* or *2*.
 `;
 
 const TOOL_GROUPS: Record<keyof WhatsAppBrainToolsConfig, string[]> = {

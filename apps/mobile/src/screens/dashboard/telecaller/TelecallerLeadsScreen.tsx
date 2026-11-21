@@ -113,7 +113,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
             .eq('status', 'REJECTED');
           break;
         default:
-          query = query.or(`assigned_telecaller_id.eq.${teleCallerId},created_by_id.eq.${teleCallerId}`);
+          query = query.or(`assigned_telecaller_id.eq.${teleCallerId},and(created_by_id.eq.${teleCallerId},assigned_telecaller_id.is.null)`);
       }
 
       const { data, error } = await query

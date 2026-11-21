@@ -359,7 +359,7 @@ export async function loadPricingForShareLink(
     cats.map(async (category) => {
       let raw: any[] = [];
       try {
-        raw = (await getServicePlansByPincode({ category, carModel, pincode })) as any[];
+        raw = (await getServicePlansByPincode({ category, carModel, pincode, cityHint: row.city || null })) as any[];
       } catch {
         return null;
       }

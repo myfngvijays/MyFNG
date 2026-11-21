@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { toWhatsAppPhone } from '@/lib/phoneIntl';
 
 export const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -23,11 +24,8 @@ export function isInboundDirection(direction: unknown): boolean {
 }
 
 export function normalizePhone(phone: string): string {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  const last10 = digits.slice(-10);
-  if (last10.length === 10) return `91${last10}`;
-  return digits.startsWith('91') ? digits : `91${digits}`;
+  // Keeps a foreign country code (e.g. +966); Indian numbers become 91XXXXXXXXXX.
+  return toWhatsAppPhone(phone);
 }
 
 export function callErrorResponse(message: string, status = 400) {

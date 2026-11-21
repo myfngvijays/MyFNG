@@ -473,12 +473,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '600',
     color: '#fff',
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.85)',
     marginTop: 1,
   },
@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: 14,
     color: WA.text,
   },
   tabsRow: {
@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F1FF',
   },
   tabLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: WA.meta,
   },
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
     backgroundColor: WA.header,
   },
   tabCountText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: WA.meta,
   },
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '700',
     color: '#fff',
   },
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: WA.text,
   },
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   time: {
-    fontSize: 12,
+    fontSize: 11,
     color: WA.meta,
   },
   timeUnread: {
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
   },
   preview: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     color: WA.meta,
   },
   unreadBadge: {
@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
   },
   unreadBadgeText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     lineHeight: 13,
   },
@@ -634,7 +634,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: WA.meta,
-    fontSize: 15,
+    fontSize: 14,
   },
   fabStack: {
     position: 'absolute',
@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: COLORS.white,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
   },
 });

@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { toWhatsAppPhone } from '@/lib/phoneIntl';
 
 const ALLOWED_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER', 'LEAD_MANAGER'];
 const ASSIGNABLE_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER', 'LEAD_MANAGER', 'CUSTOMER_SERVICE_EXECUTIVE'];
 
 function normalizePhone(phone: string): string {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  const last10 = digits.slice(-10);
-  if (last10.length === 10) return `91${last10}`;
-  return digits.startsWith('91') ? digits : `91${digits}`;
+  // Keeps a foreign country code (e.g. +966); Indian numbers become 91XXXXXXXXXX.
+  return toWhatsAppPhone(phone);
 }
 
 async function resolveUserProfile(db: any, user: any) {

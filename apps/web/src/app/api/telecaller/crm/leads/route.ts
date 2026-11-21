@@ -158,9 +158,10 @@ export async function GET(request: NextRequest) {
         if (telecallerFilter) return query.eq('assigned_telecaller_id', telecallerFilter);
         return query;
       }
-      // Same as mobile TelecallerLeadsScreen: assigned to me OR created by me
+      // Same as mobile TelecallerLeadsScreen: assigned to me, or created by me and not yet assigned.
+      // Once a lead is transferred to someone else it leaves my list.
       return query.or(
-        `assigned_telecaller_id.eq.${teleCallerId},created_by_id.eq.${teleCallerId}`,
+        `assigned_telecaller_id.eq.${teleCallerId},and(created_by_id.eq.${teleCallerId},assigned_telecaller_id.is.null)`,
       );
     };
 
