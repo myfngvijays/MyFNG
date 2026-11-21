@@ -21,6 +21,8 @@ export type CrmLeadsViewSnapshot = {
   source: string;
   coupon: string;
   trigger: string;
+  /** "+ Add condition" filters (serialized JSON); missing on older views. */
+  conditions?: string;
   advIncomplete: boolean;
   advFollowUp: boolean;
   advHasVehicle: boolean;

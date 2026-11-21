@@ -42,6 +42,18 @@ export function crmDispositionNeedsFullProfile(result: unknown): boolean {
   return a === 'BOOKING_CONFIRMED' || a === 'IN_SERVICE' || a === 'SERVICE_DONE';
 }
 
+/** "interested,lost" → ['interested','lost'] (lower-case, no 'all'). One id = old single filter. */
+export function splitCrmStatusFilter(filter: string | null | undefined): string[] {
+  return Array.from(
+    new Set(
+      String(filter || '')
+        .split(',')
+        .map((v) => v.trim().toLowerCase())
+        .filter((v) => v && v !== 'all'),
+    ),
+  );
+}
+
 export function applyCrmLeadDateRange(
   query: any,
   filter: string | null | undefined,
@@ -58,8 +70,10 @@ export function applyCrmLeadDateRange(
     col = 'updated_at';
   } else if (requested === 'last_call_at' || requested === 'activity') {
     col = 'last_call_at';
-  } else if (CRM_ACTIVITY_DATE_FILTERS.has(String(filter || '').toLowerCase())) {
-    col = 'last_call_at';
+  } else {
+    // Activity date only when every picked status is an activity filter.
+    const ids = splitCrmStatusFilter(filter);
+    if (ids.length && ids.every((id) => CRM_ACTIVITY_DATE_FILTERS.has(id))) col = 'last_call_at';
   }
   let q = query;
   if (from) q = q.gte(col, from);
@@ -83,6 +97,8 @@ export function isCrmLeadLookupQuery(q: string | null | undefined): boolean {
 
 /** Same rules as applyCrmQueueStatusFilter, for a row already loaded in the list. */
 export function leadMatchesCrmQueueFilter(lead: any, filter: string | null | undefined): boolean {
+  const ids = splitCrmStatusFilter(filter);
+  if (ids.length > 1) return ids.some((id) => leadMatchesCrmQueueFilter(lead, id));
   const f = String(filter || '').trim().toLowerCase();
   if (!f || f === 'all') return true;
   const result = String(lead?.coupon_meta?.last_call_result || '').trim().toUpperCase();
@@ -109,7 +125,14 @@ export function applyCrmQueueStatusFilter(
   query: any,
   filter: string | null | undefined,
   lostReason?: string | null,
+  otherReason?: string | null,
 ) {
+  const ids = splitCrmStatusFilter(filter);
+  if (ids.length > 1) {
+    // Several statuses picked → OR of each one's condition.
+    const clauses = ids.map((id) => crmStatusOrClause(id, id === 'other' ? otherReason : lostReason)).filter(Boolean);
+    return clauses.length ? query.or(clauses.join(',')) : query;
+  }
   const f = String(filter || '').trim().toLowerCase();
   if (!f || f === 'all') return query;
   if (f === 'new' || f === 'fresh') return applyCrmNewLeadFilter(query);
@@ -153,4 +176,50 @@ export function applyCrmQueueStatusFilter(
     return next;
   }
   return query.filter('coupon_meta->>last_call_result', 'eq', f.toUpperCase());
+}
+
+const CLOSED_FOR_FOLLOW_UP = '(IN_PROGRESS,COMPLETED,READY_FOR_DELIVERY,DELIVERED,CLOSED,CANCELLED,REJECTED)';
+
+/** PostgREST or()-clause for one status id — same rules as applyCrmQueueStatusFilter. */
+function crmStatusOrClause(f: string, reason?: string | null): string {
+  const clean = (v: string) => v.replace(/[,()"]/g, ' ').trim();
+  const r = clean(String(reason || ''));
+  switch (f) {
+    case 'new':
+    case 'fresh':
+      return 'and(status.eq.NEW,or(coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH))';
+    case 'ringing':
+      return 'coupon_meta->>last_call_result.eq.RINGING';
+    case 'interested':
+      return 'coupon_meta->>last_call_result.eq.INTERESTED';
+    case 'will_visit':
+      return 'coupon_meta->>last_call_result.eq.WILL_VISIT';
+    case 'booking_confirmed':
+      return 'status.eq.VALIDATED';
+    case 'booked':
+      return 'status.in.(VALIDATED,ASSIGNED,ACCEPTED,IN_PROGRESS,COMPLETED)';
+    case 'in_service':
+      return 'status.eq.IN_PROGRESS';
+    case 'service_done':
+      return 'status.eq.COMPLETED';
+    case 'lost':
+    case 'rejected':
+      return r ? `and(status.eq.REJECTED,coupon_meta->>last_lost_reason.eq."${r}")` : 'status.eq.REJECTED';
+    case 'callback':
+    case 'followup':
+    case 'follow_up':
+      return `and(coupon_meta->>last_call_result.eq.CALLBACK,status.not.in.${CLOSED_FOR_FOLLOW_UP})`;
+    case 'overdue_callback':
+      return `and(follow_up_required.is.true,next_follow_up_at.lte.${new Date().toISOString()},status.not.in.${CLOSED_FOR_FOLLOW_UP})`;
+    case 'incomplete':
+      return 'is_incomplete.is.true';
+    case 'other':
+      return r
+        ? `and(coupon_meta->>last_call_result.eq.OTHER,coupon_meta->>last_other_reason.eq."${r}")`
+        : 'coupon_meta->>last_call_result.eq.OTHER';
+    default: {
+      const code = f.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+      return code ? `coupon_meta->>last_call_result.eq.${code}` : '';
+    }
+  }
 }

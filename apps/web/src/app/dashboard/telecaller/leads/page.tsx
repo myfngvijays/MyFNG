@@ -28,7 +28,7 @@ import {
   resolveAdminCrmStatusId,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { crmLeadClosedForFollowUp } from '@/lib/telecaller/crmFollowUpClose';
-import { leadMatchesCrmQueueFilter } from '@/lib/telecaller/crmLeadFilters';
+import { leadMatchesCrmQueueFilter, splitCrmStatusFilter } from '@/lib/telecaller/crmLeadFilters';
 import { titleCasePersonName } from '@/lib/telecaller/personName';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -55,6 +55,8 @@ import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkAction
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import CrmDatePickerModal from '@/components/telecaller/crm/CrmDatePickerModal';
 import LeadsSavedViews, { type CrmLeadsViewSnapshot } from '@/components/telecaller/crm/LeadsSavedViews';
+import LeadConditionsBar from '@/components/telecaller/crm/LeadConditionsBar';
+import { parseLeadConditions, serializeLeadConditions, type LeadCondition } from '@/lib/crm/leadConditions';
 import { LeadDetailContent } from './[id]/page';
 
 /** Compact filters — same size on 14", 15.6", and wide monitors. Two-up only on phones. */
@@ -163,6 +165,167 @@ function FilterSelect({
     </div>
   );
 }
+
+/**
+ * Lead Status with checkboxes: pick one or many. Empty = all statuses.
+ * Stays open while ticking; "Clear" resets.
+ */
+function MultiFilterSelect({
+  values,
+  onChange,
+  options,
+  ariaLabel,
+  placeholder,
+  allLabel = 'All statuses',
+}: {
+  values: string[];
+  onChange: (values: string[]) => void;
+  options: Array<{ value: string; label: string }>;
+  ariaLabel: string;
+  placeholder: string;
+  /** Menu header when nothing is ticked. */
+  allLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+
+  const place = () => {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.max(r.width, 220);
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8);
+    const spaceBelow = window.innerHeight - r.bottom - 12;
+    const spaceAbove = r.top - 12;
+    const openUp = spaceBelow < 260 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(180, Math.min(380, openUp ? spaceAbove : spaceBelow));
+    const top = openUp ? Math.max(8, r.top - 6 - maxHeight) : r.bottom + 6;
+    setBox({ top, left, width, maxHeight });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (btnRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const picked = new Set(values);
+  const pickedOptions = options.filter((o) => picked.has(o.value));
+  const label = !pickedOptions.length
+    ? placeholder
+    : pickedOptions.length === 1
+      ? pickedOptions[0].label
+      : `${pickedOptions[0].label} +${pickedOptions.length - 1}`;
+
+  const toggle = (value: string) => {
+    const next = picked.has(value) ? values.filter((v) => v !== value) : [...values, value];
+    // Keep the menu order so the URL / saved views stay stable.
+    onChange(options.map((o) => o.value).filter((v) => next.includes(v)));
+  };
+
+  return (
+    <div className={FILTER_FIELD}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        title={pickedOptions.map((o) => o.label).join(', ') || placeholder}
+        onClick={() => setOpen((next) => !next)}
+        className={`inline-flex h-8 w-max min-w-[6.5rem] max-w-[13rem] items-center justify-between gap-1 rounded-lg border px-2 text-left text-xs font-semibold ${
+          pickedOptions.length ? 'border-[#004AAD] bg-[#E7F0FF] text-[#023D95]' : 'border-slate-200 bg-white text-slate-800'
+        }`}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && box
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="listbox"
+              aria-multiselectable="true"
+              className="fixed z-[80] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+              style={{ top: box.top, left: box.left, width: box.width, maxHeight: box.maxHeight }}
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  {pickedOptions.length ? `${pickedOptions.length} selected` : allLabel}
+                </span>
+                <button
+                  type="button"
+                  disabled={!pickedOptions.length}
+                  onClick={() => onChange([])}
+                  className="text-[11px] font-bold text-[#004AAD] disabled:text-slate-300"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto py-1">
+                {options.map((option) => {
+                  const on = picked.has(option.value);
+                  return (
+                    <label
+                      key={option.value}
+                      role="option"
+                      aria-selected={on}
+                      className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 ${
+                        on ? 'text-[#023D95]' : 'text-slate-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => toggle(option.value)}
+                        className="h-4 w-4 shrink-0 cursor-pointer accent-[#004AAD]"
+                      />
+                      <span className="truncate">{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="border-t border-slate-100 p-1.5">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="h-7 w-full rounded-lg bg-[#004AAD] text-xs font-bold text-white"
+                >
+                  Done
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
 
 const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v6';
 
@@ -400,6 +563,7 @@ function TelecallerCrmLeadsContent() {
   const [q, setQ] = useState(qParam || '');
   const [appliedQ, setAppliedQ] = useState(qParam || '');
   const [filter, setFilter] = useState(filterParam || 'all');
+  const pickedStatuses = useMemo(() => splitCrmStatusFilter(filter), [filter]);
   const [crmStatusChoices, setCrmStatusChoices] = useState(
     ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({ id: opt.id, label: opt.label })),
   );
@@ -422,6 +586,16 @@ function TelecallerCrmLeadsContent() {
   } | null>(null);
   const [city, setCity] = useState(cityParam || '');
   const [priority, setPriority] = useState(priorityParam || '');
+  // "+ Add condition" filters (fields + activities), kept in the URL as ?cond=[…]
+  const condParam = searchParams?.get('cond') || '';
+  const [conditions, setConditions] = useState<LeadCondition[]>(() => parseLeadConditions(condParam));
+  const conditionsKey = useMemo(() => (conditions.length ? serializeLeadConditions(conditions) : ''), [conditions]);
+  // Back / forward or a shared link changed ?cond= → follow it.
+  useEffect(() => {
+    if (condParam === conditionsKey) return;
+    setConditions(parseLeadConditions(condParam));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the URL
+  }, [condParam]);
   const [telecallerId, setTelecallerId] = useState(telecallerParam || '');
   const [unassignedOnly, setUnassignedOnly] = useState(unassignedParam === '1');
   const [sourceFilter, setSourceFilter] = useState(sourceParam || 'ALL');
@@ -872,6 +1046,7 @@ function TelecallerCrmLeadsContent() {
       source?: string;
       hasCoupon?: string;
       trigger?: string;
+      cond?: string;
     }) => {
       const params = new URLSearchParams(searchParams?.toString() || '');
       const f = next.filter ?? filter;
@@ -899,10 +1074,10 @@ function TelecallerCrmLeadsContent() {
       else params.set('priority', p);
       if (!query) params.delete('q');
       else params.set('q', query);
-      if (f === 'lost' && lr) params.set('lost_reason', lr);
+      if (String(f || '').split(',').includes('lost') && lr) params.set('lost_reason', lr);
       else params.delete('lost_reason');
       const or = next.otherReason ?? otherReason;
-      if (f === 'other' && or) params.set('other_reason', or);
+      if (String(f || '').split(',').includes('other') && or) params.set('other_reason', or);
       else params.delete('other_reason');
       if (isLeadManager && tid) params.set('telecaller_id', tid);
       else params.delete('telecaller_id');
@@ -914,6 +1089,9 @@ function TelecallerCrmLeadsContent() {
       else params.delete('has_coupon');
       if (isLeadManager && trig) params.set('trigger', trig);
       else params.delete('trigger');
+      const cnd = next.cond ?? conditionsKey;
+      if (cnd) params.set('cond', cnd);
+      else params.delete('cond');
 
       const qs = params.toString();
       router.replace(`${base}/leads${qs ? `?${qs}` : ''}`, { scroll: false });
@@ -933,6 +1111,7 @@ function TelecallerCrmLeadsContent() {
       sourceFilter,
       couponFilter,
       triggerFilter,
+      conditionsKey,
       isLeadManager,
       router,
       base,
@@ -1204,8 +1383,8 @@ function TelecallerCrmLeadsContent() {
       const baseParams = new URLSearchParams();
       if (appliedQ.trim()) baseParams.set('q', appliedQ.trim());
       if (filter && filter !== 'all') baseParams.set('filter', filter);
-      if (filter === 'lost' && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
-      if (filter === 'other' && otherReason.trim()) baseParams.set('other_reason', otherReason.trim());
+      if (pickedStatuses.includes('lost') && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
+      if (pickedStatuses.includes('other') && otherReason.trim()) baseParams.set('other_reason', otherReason.trim());
       if (city.trim()) baseParams.set('city', city.trim());
       if (priority.trim()) baseParams.set('priority', priority.trim());
       if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
@@ -1216,6 +1395,7 @@ function TelecallerCrmLeadsContent() {
         baseParams.set('has_coupon', couponFilter);
       }
       if (isLeadManager && triggerFilter) baseParams.set('trigger', triggerFilter);
+      if (conditionsKey) baseParams.set('conditions', conditionsKey);
       if (advHasRecording) {
         baseParams.set('has_recording', '1');
       } else if (!range.allTime) {
@@ -1316,6 +1496,7 @@ function TelecallerCrmLeadsContent() {
     sourceFilter,
     couponFilter,
     triggerFilter,
+    conditionsKey,
     advHasRecording,
   ]);
 
@@ -1350,6 +1531,7 @@ function TelecallerCrmLeadsContent() {
     sourceFilter,
     couponFilter,
     triggerFilter,
+    conditionsKey,
     pageSize,
     advIncomplete,
     advFollowUp,
@@ -1477,15 +1659,19 @@ function TelecallerCrmLeadsContent() {
     }
   };
 
+  /** id = one status, several joined by commas ("interested,lost"), or 'all'. */
   const setFilterAndUrl = (id: string) => {
+    const ids = splitCrmStatusFilter(id);
+    const hasLost = ids.includes('lost');
+    const hasOther = ids.includes('other');
     setFilter(id);
-    if (id !== 'lost') setLostReason('');
-    if (id !== 'other') setOtherReason('');
-    persistAll({ statusFilter: id, lostReason: id === 'lost' ? lostReason : '' });
+    if (!hasLost) setLostReason('');
+    if (!hasOther) setOtherReason('');
+    persistAll({ statusFilter: id, lostReason: hasLost ? lostReason : '' });
     syncFiltersToUrl({
       filter: id,
-      lostReason: id === 'lost' ? lostReason : '',
-      otherReason: id === 'other' ? otherReason : '',
+      lostReason: hasLost ? lostReason : '',
+      otherReason: hasOther ? otherReason : '',
     });
   };
 
@@ -1506,6 +1692,7 @@ function TelecallerCrmLeadsContent() {
     source: sourceFilter,
     coupon: couponFilter,
     trigger: triggerFilter,
+    conditions: conditionsKey,
     advIncomplete,
     advFollowUp,
     advHasVehicle,
@@ -1518,7 +1705,8 @@ function TelecallerCrmLeadsContent() {
 
   const applySavedView = (next: CrmLeadsViewSnapshot) => {
     const status = next.filter || 'all';
-    const lost = status === 'lost' ? next.lostReason || '' : '';
+    const lost = status.split(',').includes('lost') ? next.lostReason || '' : '';
+    setConditions(parseLeadConditions(next.conditions || ''));
     const preset = (next.datePreset || 'all_time') as CrmDatePreset;
     const field = next.dateField === 'modified' ? 'modified' : 'created';
     setFilter(status);
@@ -1707,14 +1895,14 @@ function TelecallerCrmLeadsContent() {
 
         <div>
           <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto">
-            <FilterSelect
+            <MultiFilterSelect
               ariaLabel="Lead Status"
-              value={filter}
-              onChange={setFilterAndUrl}
-              options={statusFilters.map((f) => ({
-                value: f.id,
-                label: f.id === 'all' ? 'Lead Status' : f.label,
-              }))}
+              placeholder="Lead Status"
+              values={pickedStatuses}
+              onChange={(ids) => setFilterAndUrl(ids.length ? ids.join(',') : 'all')}
+              options={statusFilters
+                .filter((f) => f.id !== 'all')
+                .map((f) => ({ value: f.id, label: f.label }))}
             />
 
             <button
@@ -1732,29 +1920,35 @@ function TelecallerCrmLeadsContent() {
               <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
             </button>
 
-            <FilterSelect
+            <MultiFilterSelect
               ariaLabel="City"
-              value={city}
-              onChange={(v) => {
+              placeholder="All cities"
+              allLabel="All cities"
+              values={city ? city.split(',').filter(Boolean) : []}
+              onChange={(ids) => {
+                const v = ids.join(',');
                 setCity(v);
                 persistAll({ city: v });
                 syncFiltersToUrl({ city: v });
               }}
-              options={[{ value: '', label: 'All cities' }, ...cities.map((c) => ({ value: c, label: c }))]}
+              options={cities.map((c) => ({ value: c, label: c }))}
             />
 
-            <FilterSelect
+            <MultiFilterSelect
               ariaLabel="Priority"
-              value={priority}
-              onChange={(v) => {
+              placeholder="All priorities"
+              allLabel="All priorities"
+              values={priority ? priority.split(',').filter(Boolean) : []}
+              onChange={(ids) => {
+                const v = ids.join(',');
                 setPriority(v);
                 persistAll({ priority: v });
                 syncFiltersToUrl({ priority: v });
               }}
-              options={PRIORITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              options={PRIORITY_OPTIONS.filter((o) => o.value).map((o) => ({ value: o.value, label: o.label }))}
             />
 
-            {filter === 'lost' ? (
+            {pickedStatuses.includes('lost') ? (
               <FilterSelect
                 ariaLabel="Lost reason"
                 value={lostReason}
@@ -1767,7 +1961,7 @@ function TelecallerCrmLeadsContent() {
               />
             ) : null}
 
-            {filter === 'other' ? (
+            {pickedStatuses.includes('other') ? (
               <FilterSelect
                 ariaLabel="Other reason"
                 value={otherReason}
@@ -2012,7 +2206,8 @@ function TelecallerCrmLeadsContent() {
                 : null}
             </div>
 
-            <div className="contents">
+            {/* Actions sit on the right edge so the row has no empty gap after Columns. */}
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
               {isLeadManager ? (
                 <>
                   <button
@@ -2178,6 +2373,15 @@ function TelecallerCrmLeadsContent() {
                 </div>
               ) : null}
             </div>
+          </div>
+          <div className="mt-1.5">
+            <LeadConditionsBar
+              conditions={conditions}
+              onChange={(next) => {
+                setConditions(next);
+                syncFiltersToUrl({ cond: next.length ? serializeLeadConditions(next) : '' });
+              }}
+            />
           </div>
         </div>
 

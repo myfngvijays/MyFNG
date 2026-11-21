@@ -19,6 +19,7 @@ import {
 import {
   applyCrmLeadDateRange,
   applyCrmQueueStatusFilter,
+  splitCrmStatusFilter,
   isCrmLeadLookupQuery,
   resolveCrmLeadOrderColumn,
 } from '@/lib/telecaller/crmLeadFilters';
@@ -35,6 +36,30 @@ import {
 } from '@/lib/booking-lead-utils';
 import { attachRepeatCustomerFlags } from '@/lib/crm/repeatCustomer';
 import { attachMembershipFlags } from '@/lib/crm/membershipCustomer';
+
+import { parseLeadConditions } from '@/lib/crm/leadConditions';
+import { buildLeadConditionPlan, stripConditionKeys } from '@/lib/crm/leadConditionsServer';
+
+/** City filter: one city (partial match) or several, comma-separated. */
+function applyCityFilter(query: any, city: string) {
+  const list = city
+    .split(',')
+    .map((c) => c.replace(/[%_(),]/g, ' ').trim())
+    .filter(Boolean);
+  if (!list.length) return query;
+  if (list.length === 1) return query.ilike('city', `%${list[0]}%`);
+  return query.or(list.map((c) => `city.ilike.%${c}%`).join(','));
+}
+
+/** Priority filter: one or several (HIGH,MEDIUM). */
+function applyPriorityFilter(query: any, priority: string) {
+  const list = priority
+    .split(',')
+    .map((p) => p.trim().toUpperCase())
+    .filter(Boolean);
+  if (!list.length) return query;
+  return list.length === 1 ? query.eq('lead_priority', list[0]) : query.in('lead_priority', list);
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -185,7 +210,9 @@ export async function GET(request: NextRequest) {
         : wantOverview
           ? OVERVIEW_SELECT
           : LEAD_LIST_SELECT;
-    let query = db.from('service_leads').select(listSelect, {
+    // "+ Add condition" filters (fields + activities), sent as JSON.
+    const conditionPlan = await buildLeadConditionPlan(db, parseLeadConditions(sp.get('conditions')));
+    let query = db.from('service_leads').select(listSelect + conditionPlan.select, {
       count: wantOverview ? undefined : 'exact',
     });
     if (hasRecording && !wantOverview) {
@@ -203,12 +230,13 @@ export async function GET(request: NextRequest) {
 
     const searching = isCrmLeadLookupQuery(q);
     if (status) query = query.eq('status', status.toUpperCase());
-    if (city) query = query.ilike('city', `%${city}%`);
+    if (city) query = applyCityFilter(query, city);
     // Intentionally ignore `source` filter — telecallers must not segment by lead origin
-    if (priority) query = query.eq('lead_priority', priority.toUpperCase());
+    if (priority) query = applyPriorityFilter(query, priority);
     if (workshopId) query = query.eq('workshop_id', workshopId);
     if (!hasRecording) query = applyCrmLeadDateRange(query, filter, from, to, dateField);
-    query = applyCrmQueueStatusFilter(query, filter, statusReason);
+    query = applyCrmQueueStatusFilter(query, filter, statusReason, otherReason);
+    query = conditionPlan.apply(query);
 
     if (q) {
       query = query.or(crmLeadSearchOr(q));
@@ -218,7 +246,7 @@ export async function GET(request: NextRequest) {
 
     if (error && /deleted_at/i.test(String(error.message || ''))) {
       // Retry without soft-delete filter for older schemas
-      let retry = db.from('service_leads').select(listSelect, {
+      let retry = db.from('service_leads').select(listSelect + conditionPlan.select, {
         count: wantOverview ? undefined : 'exact',
       });
       if (hasRecording && !wantOverview) {
@@ -232,11 +260,12 @@ export async function GET(request: NextRequest) {
       }
 
       if (status) retry = retry.eq('status', status.toUpperCase());
-      if (city) retry = retry.ilike('city', `%${city}%`);
-      if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
+      if (city) retry = applyCityFilter(retry, city);
+      if (priority) retry = applyPriorityFilter(retry, priority);
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
       if (!hasRecording) retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
-      retry = applyCrmQueueStatusFilter(retry, filter, statusReason);
+      retry = applyCrmQueueStatusFilter(retry, filter, statusReason, otherReason);
+      retry = conditionPlan.apply(retry);
       if (q) {
         retry = retry.or(crmLeadSearchOr(q));
       }
@@ -246,7 +275,7 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
     if (wantOverview) {
-      const scoped = (data || []).map((row: any) => enrichBookingLead(row));
+      const scoped = stripConditionKeys((data || []) as any[], conditionPlan.aliases).map((row: any) => enrichBookingLead(row));
       return NextResponse.json({
         success: true,
         overview: computeServiceLeadOverview(scoped),
@@ -254,7 +283,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let rows = (data || []).map((row: any) => {
+    let rows = stripConditionKeys((data || []) as any[], conditionPlan.aliases).map((row: any) => {
       if (!row || typeof row !== 'object' || !('recordings' in row)) return row;
       const { recordings: _recordings, ...rest } = row;
       return rest;
@@ -266,7 +295,9 @@ export async function GET(request: NextRequest) {
         const patch = applyStuckRingingPatch(row);
         if (!patch) return true;
         ringingWrites.push(db.from('service_leads').update(patch).eq('id', row.id));
-        if (filter === 'new' || filter === 'fresh') return false;
+        // Healed to Ringing → leaves a Fresh-only view (stays when Ringing is also picked).
+        const picked = splitCrmStatusFilter(filter);
+        if (picked.some((id) => id === 'new' || id === 'fresh') && !picked.includes('ringing')) return false;
         return true;
       });
       if (ringingWrites.length) void Promise.allSettled(ringingWrites);
@@ -493,11 +524,12 @@ export async function GET(request: NextRequest) {
     if (!searching && filter && filter !== 'all') {
       let scopeQuery = db
         .from('service_leads')
-        .select('id', { count: 'exact', head: true })
+        .select(`id${conditionPlan.select}`, { count: 'exact', head: true })
         .is('deleted_at', null);
       scopeQuery = applyAssigneeScope(scopeQuery);
-      if (city) scopeQuery = scopeQuery.ilike('city', `%${city}%`);
-      if (priority) scopeQuery = scopeQuery.eq('lead_priority', priority.toUpperCase());
+      scopeQuery = conditionPlan.apply(scopeQuery);
+      if (city) scopeQuery = applyCityFilter(scopeQuery, city);
+      if (priority) scopeQuery = applyPriorityFilter(scopeQuery, priority);
       if (workshopId) scopeQuery = scopeQuery.eq('workshop_id', workshopId);
       scopeQuery = applyCrmLeadDateRange(scopeQuery, null, from, to, dateField);
       const scopeRes = await scopeQuery;
