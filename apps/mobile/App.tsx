@@ -62,6 +62,7 @@ import CarQuizGameScreen from './src/screens/smartTools/CarQuizGameScreen';
 import CarPartsPriceScreen from './src/screens/smartTools/CarPartsPriceScreen';
 import CustomerRegistrationScreen from './src/screens/dashboard/customer/CustomerRegistrationScreen';
 import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import SplashScreen from './src/screens/SplashScreen';
 import PartnerSplashScreen from './src/screens/PartnerSplashScreen';
 import CarLoading from './src/components/CarLoading';
@@ -105,11 +106,19 @@ const SPLASH_MAX_MS = 2000;
 const SPLASH_ANIMATION_MS = 1800;
 /** Safety only. Login waits until the partner video ends; this stops a stuck splash. */
 const PARTNER_SPLASH_MAX_MS = 20000;
+/** Partner app: the splash video plays only on the first open of each day. */
+const PARTNER_SPLASH_DAY_KEY = 'myfng.partner.splashShownDay';
+
+function localDayKey(d = new Date()): string {
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
 
 function AppContent() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const partnerBuild = getAppVariant() === 'partner';
   const [showSplash, setShowSplash] = useState(true);
+  // Partner: null while we check whether today's splash already played.
+  const [splashToday, setSplashToday] = useState<boolean | null>(partnerBuild ? null : true);
   const [authReady, setAuthReady] = useState(false);
   const [updateCheckDone, setUpdateCheckDone] = useState(__DEV__);
   const [forceUpdate, setForceUpdate] = useState<ForceUpdateResult | null>(null);
@@ -137,6 +146,28 @@ function AppContent() {
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
   }, []);
+
+  useEffect(() => {
+    if (!partnerBuild) return;
+    let done = false;
+    const today = localDayKey();
+    const finish = (show: boolean) => {
+      if (done) return;
+      done = true;
+      setSplashToday(show);
+      if (!show) setShowSplash(false);
+    };
+    // Never hang on storage: fall back to playing the splash.
+    const guard = setTimeout(() => finish(true), 800);
+    AsyncStorage.getItem(PARTNER_SPLASH_DAY_KEY)
+      .then((last) => {
+        if (last === today) return finish(false);
+        void AsyncStorage.setItem(PARTNER_SPLASH_DAY_KEY, today).catch(() => undefined);
+        finish(true);
+      })
+      .catch(() => finish(true));
+    return () => clearTimeout(guard);
+  }, [partnerBuild]);
 
   useEffect(() => {
     const capTimer = setTimeout(() => {
@@ -537,6 +568,10 @@ function AppContent() {
   // Animated splash only — do not keep the full splash UI while auth/update finish.
   if (showSplash) {
     if (partnerBuild) {
+      if (splashToday === null) {
+        // Checking today's splash (a few ms): plain brand blue, no flash of the video.
+        return <View style={{ flex: 1, backgroundColor: '#021E6F' }} />;
+      }
       return <PartnerSplashScreen onComplete={handleSplashComplete} />;
     }
     return <SplashScreen durationMs={SPLASH_ANIMATION_MS} onComplete={handleSplashComplete} />;

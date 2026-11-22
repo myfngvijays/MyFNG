@@ -74,6 +74,9 @@
       "versionCode": 48,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
+        "CALL_PHONE",
+        "READ_PHONE_STATE",
+        "SYSTEM_ALERT_WINDOW",
         "CAMERA",
         "READ_CONTACTS",
         "RECORD_AUDIO",

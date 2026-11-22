@@ -140,6 +140,13 @@ type Props = {
   hideVehicleNumber?: boolean;
   /** Hide nearby workshop list when already selected above */
   hideWorkshopPicker?: boolean;
+  /**
+   * Lead form (same as web): always-visible "Pickup / Visit" card with Visit / Pickup
+   * buttons; date, time and address open below only after one is picked.
+   */
+  leadCard?: boolean;
+  /** Lead card only: date & time required (booking confirmed) vs optional. */
+  requireSchedule?: boolean;
 };
 
 export default function CrmPickupVisitStep({
@@ -152,8 +159,15 @@ export default function CrmPickupVisitStep({
   quoteTotal,
   hideVehicleNumber = false,
   hideWorkshopPicker = false,
+  leadCard = false,
+  requireSchedule = false,
 }: Props) {
   const pickupRequired = forcePickup ? true : value.pickup_required;
+  const [modeChosen, setModeChosen] = useState(() =>
+    Boolean(value.pickup_date || value.pickup_time),
+  );
+  const showFields = !leadCard || modeChosen || forcePickup;
+  const req = leadCard && !requireSchedule ? ' (optional)' : ' *';
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loadingWs, setLoadingWs] = useState(false);
   const [showAllWorkshops, setShowAllWorkshops] = useState(false);
@@ -256,6 +270,7 @@ export default function CrmPickupVisitStep({
 
   const setMode = (pickup: boolean) => {
     if (forcePickup && !pickup) return;
+    setModeChosen(true);
     onChange({
       pickup_required: pickup,
       ...(pickup
@@ -278,8 +293,49 @@ export default function CrmPickupVisitStep({
     }
   };
 
+  const leadHeader = (
+    <View style={styles.leadCard}>
+      <View style={styles.leadCardText}>
+        <Text style={styles.title}>Pickup / Visit</Text>
+        <Text style={styles.leadCardSub}>
+          {pickupRequired ? 'Doorstep pickup' : 'Workshop visit'}
+          {requireSchedule ? ' — date & time required' : ' — date/time optional until booking confirmed'}
+        </Text>
+      </View>
+      {!forcePickup ? (
+        <View style={styles.leadBtnRow}>
+          {[
+            { pickup: false, label: 'Visit', icon: 'location-outline' as const },
+            { pickup: true, label: 'Pickup', icon: 'navigate-outline' as const },
+          ].map((opt) => {
+            const active = modeChosen && pickupRequired === opt.pickup;
+            return (
+              <TouchableOpacity
+                key={opt.label}
+                style={[styles.leadBtn, active && styles.leadBtnActive]}
+                onPress={() => setMode(opt.pickup)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name={opt.icon} size={14} color={active ? '#fff' : '#334155'} />
+                <Text style={[styles.leadBtnText, active && { color: '#fff' }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={styles.leadPill}>
+          <Text style={styles.leadPillText}>Pickup required</Text>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <View>
+      {leadCard ? (
+        leadHeader
+      ) : (
+      <>
       <Text style={styles.title}>Pickup Details</Text>
       <Text style={styles.sub}>Same as mobile / website booking — choose Pickup or Visit workshop.</Text>
 
@@ -323,6 +379,11 @@ export default function CrmPickupVisitStep({
         </View>
       )}
 
+      </>
+      )}
+
+      {showFields ? (
+      <>
       {!hideVehicleNumber ? (
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Vehicle Number *</Text>
@@ -341,7 +402,7 @@ export default function CrmPickupVisitStep({
       ) : null}
 
       <View style={styles.card}>
-        <Text style={styles.cardLabel}>{pickupRequired ? 'Pickup Date *' : 'Visit Date *'}</Text>
+        <Text style={styles.cardLabel}>{pickupRequired ? 'Pickup Date' : 'Visit Date'}{req}</Text>
         <View style={styles.dateRow}>
           {dateOptions.map((opt) => {
             const active = value.pickup_date === opt.dateStr;
@@ -393,7 +454,7 @@ export default function CrmPickupVisitStep({
 
       {value.pickup_date ? (
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>{pickupRequired ? 'Pickup Time *' : 'Visit Time *'}</Text>
+          <Text style={styles.cardLabel}>{pickupRequired ? 'Pickup Time' : 'Visit Time'}{req}</Text>
           <View style={styles.timeGrid}>
             {slots.map((slot) => {
               const past = isTimeSlotPastForDate(slot.value, value.pickup_date, todayStr);
@@ -558,6 +619,9 @@ export default function CrmPickupVisitStep({
         </View>
       )}
 
+      </>
+      ) : null}
+
       {quoteTotal != null && quoteTotal > 0 ? (
         <View style={styles.totalBar}>
           <Text style={styles.totalLabel}>Estimated total</Text>
@@ -624,6 +688,39 @@ export default function CrmPickupVisitStep({
 export { TIME_SLOTS };
 
 const styles = StyleSheet.create({
+  leadCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    ...SHADOWS.small,
+  },
+  leadCardText: { flex: 1, minWidth: 0 },
+  leadCardSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 3, lineHeight: 17 },
+  leadBtnRow: { flexDirection: 'row', gap: 6 },
+  leadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  leadBtnActive: { backgroundColor: '#004AAD', borderColor: '#004AAD' },
+  leadBtnText: { fontSize: 12, fontWeight: '700', color: '#334155' },
+  leadPill: {
+    backgroundColor: 'rgba(0,74,173,0.1)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  leadPillText: { fontSize: 11, fontWeight: '700', color: '#004AAD' },
   title: { fontSize: 16, fontWeight: '800', color: COLORS.textHeading },
   sub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, marginBottom: 12, lineHeight: 17 },
   hint: { fontSize: 12, color: COLORS.textSecondary },

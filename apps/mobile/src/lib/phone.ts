@@ -1,4 +1,78 @@
-import { Linking } from 'react-native';
+import { Linking, NativeModules, PermissionsAndroid, Platform } from 'react-native';
+
+function dialableNumber(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (digits.length >= 11 && digits.length <= 15 && !digits.startsWith('0')) return `+${digits}`;
+  return digits;
+}
+
+type DirectCallNative = {
+  call: (n: string) => Promise<boolean>;
+  watchCallEnd: () => void;
+  canReturnAfterCall: () => Promise<boolean>;
+  openReturnAfterCallSettings: () => void;
+};
+
+function directCallNative(): DirectCallNative | null {
+  if (Platform.OS !== 'android') return null;
+  const native = NativeModules.MyFNGDirectCall as DirectCallNative | undefined;
+  return native?.call ? native : null;
+}
+
+/** Android: "Make and manage phone calls" (auto call + see when the call hangs up). */
+export async function ensureCallPermissions(): Promise<boolean> {
+  if (!directCallNative()) return false;
+  const { CALL_PHONE, READ_PHONE_STATE } = PermissionsAndroid.PERMISSIONS;
+  try {
+    const [call, state] = await Promise.all([
+      PermissionsAndroid.check(CALL_PHONE),
+      PermissionsAndroid.check(READ_PHONE_STATE),
+    ]);
+    if (call && state) return true;
+    const res = await PermissionsAndroid.requestMultiple([CALL_PHONE, READ_PHONE_STATE]);
+    return res[CALL_PHONE] === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+}
+
+/** Android needs "Display over other apps" to bring MyFNG back after a call. */
+export async function canReturnAfterCall(): Promise<boolean> {
+  const native = directCallNative();
+  if (!native) return true;
+  try {
+    return await native.canReturnAfterCall();
+  } catch {
+    return true;
+  }
+}
+
+export function openReturnAfterCallSettings(): void {
+  directCallNative()?.openReturnAfterCallSettings();
+}
+
+/**
+ * Telecaller call. Android: rings straight away (no green button) and MyFNG
+ * comes back to the lead when the call is cut. Falls back to the normal dialer
+ * if the permission is denied, and on iOS (Apple never allows auto call).
+ */
+export async function placePhoneCall(phone: string): Promise<void> {
+  const dialable = dialableNumber(phone);
+  if (!dialable) return;
+  const native = directCallNative();
+  if (native) {
+    try {
+      if ((await ensureCallPermissions()) && (await native.call(dialable))) return;
+      native.watchCallEnd();
+    } catch {
+      // fall back to the dialer below
+    }
+  }
+  await openPhoneCall(phone);
+}
 
 /**
  * Open the phone dialer for the given E.164 (or any tel-friendly) number.

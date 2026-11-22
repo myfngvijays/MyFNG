@@ -32,6 +32,7 @@ import TelecallerLeadDetailScreen from '../telecaller/TelecallerLeadDetailScreen
 import {
   CRM_OPEN_LEAD_EVENT,
   clearStickyCrmLead,
+  forgetStickyCrmLead,
   readStickyCrmLead,
   takePendingOpenCrmLead,
 } from '../../../components/telecaller/IncomingCallLeadOverlay';
@@ -910,14 +911,20 @@ export default function TelecallerAdvancedCRM() {
     setDetailLeadId(id);
   };
 
+  const hadDetailLeadRef = useRef(false);
   useEffect(() => {
+    if (detailLeadId) hadDetailLeadRef.current = true;
+    else if (hadDetailLeadRef.current) void forgetStickyCrmLead();
+  }, [detailLeadId]);
+
+  useEffect(() => {
+    // Fresh app start → Home. Only a lead asked for in this launch (push / web Call) opens.
     const pending = takePendingOpenCrmLead();
     if (pending) openLead(pending, false);
-    void readStickyCrmLead().then((id) => {
-      if (id) openLead(id, false);
-    });
+    else void forgetStickyCrmLead();
     const sub = DeviceEventEmitter.addListener(CRM_OPEN_LEAD_EVENT, (payload: { leadId?: string }) => {
       const id = String(payload?.leadId || '').trim();
+      takePendingOpenCrmLead();
       if (id) openLead(id, false);
     });
     const appSub = AppState.addEventListener('change', (state) => {

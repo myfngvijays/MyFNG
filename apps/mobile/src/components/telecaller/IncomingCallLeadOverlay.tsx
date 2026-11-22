@@ -69,6 +69,11 @@ export async function readStickyCrmLead(): Promise<string | null> {
   }
 }
 
+/** Lead drawer closed: stop reopening it when the app comes back. */
+export async function forgetStickyCrmLead(): Promise<void> {
+  await AsyncStorage.removeItem(STICKY_LEAD_KEY).catch(() => undefined);
+}
+
 export async function clearStickyCrmLead(): Promise<void> {
   pendingOpenLeadId = null;
   await AsyncStorage.removeItem(STICKY_LEAD_KEY).catch(() => undefined);

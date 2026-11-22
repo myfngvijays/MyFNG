@@ -1,6 +1,6 @@
 import { Alert } from 'react-native';
 import { apiFetch } from './api';
-import { openPhoneCall } from './phone';
+import { placePhoneCall } from './phone';
 
 function normalizePhone10(raw: unknown): string | null {
   const d = String(raw || '').replace(/\D/g, '');
@@ -30,7 +30,7 @@ export async function clickToCallCustomer(opts: {
     return { ok: false, error: 'Customer phone missing' };
   }
 
-  await openPhoneCall(to);
+  await placePhoneCall(to);
 
   try {
     await apiFetch('/api/telecaller/click-to-call', {

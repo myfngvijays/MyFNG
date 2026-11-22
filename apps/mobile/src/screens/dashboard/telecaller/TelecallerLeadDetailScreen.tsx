@@ -3803,24 +3803,28 @@ export default function TelecallerLeadDetailScreen({
               />
               </View>
 
+              {/* Same as web: Pickup / Visit card always shows; picking Visit or Pickup opens its fields. */}
+              <View style={{ marginTop: 14 }}>
+                <CrmPickupVisitStep
+                  leadCard
+                  requireSchedule={activityData.result === 'BOOKING_CONFIRMED'}
+                  value={pickupValue}
+                  city={editForm.city}
+                  cityId={editForm.city_id}
+                  pincode={editForm.pincode}
+                  hideVehicleNumber
+                  hideWorkshopPicker={Boolean(editForm.workshop_id)}
+                  onChange={(patch) => {
+                    setEditForm((prev) => ({
+                      ...prev,
+                      ...patch,
+                    }));
+                  }}
+                />
+              </View>
+
               {activityData.result === 'BOOKING_CONFIRMED' ? (
                 <>
-                  <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Pickup / Visit</Text>
-                  <CrmPickupVisitStep
-                    value={pickupValue}
-                    city={editForm.city}
-                    cityId={editForm.city_id}
-                    pincode={editForm.pincode}
-                    hideVehicleNumber
-                    hideWorkshopPicker={Boolean(editForm.workshop_id)}
-                    onChange={(patch) => {
-                      setEditForm((prev) => ({
-                        ...prev,
-                        ...patch,
-                      }));
-                    }}
-                  />
-
                   <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Coupon</Text>
                   {(() => {
                     const code = String(
