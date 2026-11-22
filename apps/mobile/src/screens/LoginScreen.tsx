@@ -34,6 +34,9 @@ import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import { ReferralCodeModal } from '../components/ReferralCodeModal';
 import { InstallCouponModal } from '../components/InstallCouponModal';
 import AnimatedOtpInput, { type OtpAnimStatus } from '../components/AnimatedOtpInput';
+import OdometerOtp from '../components/customerLogin/OdometerOtp';
+import { playLoginSound, preloadLoginSounds } from '../lib/loginSounds';
+import { SideCar, Speedometer } from '../components/customerLogin/GarageArt';
 import { getPendingReferralCode, clearPendingReferralCode } from '../lib/referralDeepLink';
 import { getAppVariant, resolveRoleAccess } from '../config/appVariant';
 import {
@@ -92,6 +95,14 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
   useEffect(() => {
     prepareFirebasePhoneAuth();
   }, []);
+
+  // Customer garage login sounds: load early, cough on a wrong OTP.
+  useEffect(() => {
+    if (!partnerLogin) preloadLoginSounds();
+  }, [partnerLogin]);
+  useEffect(() => {
+    if (!partnerLogin && otpAnim === 'error') playLoginSound('stall');
+  }, [otpAnim, partnerLogin]);
 
   useEffect(() => {
     if (resendInSec <= 0) return;
@@ -245,7 +256,7 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
       setOtpButtonPhase('sent');
       setErrorText('');
       if (!auto) setCustomerStep('otp');
-      setResendInSec(30);
+      setResendInSec(15);
     } catch (error: any) {
       emailAutoKey.current = '';
       setErrorText(error?.message || 'Unable to send email OTP');
@@ -267,7 +278,7 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
       await sendSmsOtp(cleanPhone);
       setCustomerConfirmation(null);
       setCustomerStep('otp');
-      setResendInSec(30);
+      setResendInSec(15);
     } catch (error: any) {
       setErrorText(error?.message || 'Unable to send SMS OTP');
     } finally {
@@ -318,7 +329,8 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
       setOtpButtonPhase('sent');
       setErrorText('');
       if (!auto) setCustomerStep('otp');
-      setResendInSec(30);
+      if (!partnerLogin) playLoginSound('ignition');
+      setResendInSec(15);
     } catch (error: any) {
       waAutoPhone.current = '';
       setErrorText(error?.message || 'Unable to send WhatsApp OTP');
@@ -327,21 +339,7 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
     }
   };
 
-  useEffect(() => {
-    if (!channelsReady || loginMethod !== 'phone') return;
-    const phone = customerPhone.replace(/\D/g, '');
-    if (phone.length !== 10) {
-      waAutoPhone.current = '';
-      return;
-    }
-    if (waAutoPhone.current === phone) return;
-    waAutoPhone.current = phone;
-    if (!otpChannels.whatsapp) {
-      setErrorText('WhatsApp OTP is turned off.');
-      return;
-    }
-    void handleWhatsAppOtpStart(phone, true);
-  }, [channelsReady, customerPhone, loginMethod, otpChannels.whatsapp]);
+  // Customer taps GET OTP (garage login). No auto-send on the 10th digit any more.
 
   const sendWhatsappWhenReady = (phone: string) => {
     if (!channelsReady || loginMethod !== 'phone' || phone.length !== 10) return;
@@ -673,6 +671,284 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
     void handleLogin();
   };
 
+  const sharedModals = (
+    <>
+      <WelcomeBonusCreditedModal
+        visible={creditedWelcomeVisible}
+        amount={creditedWelcomeAmount}
+        onClose={async () => {
+          setCreditedWelcomeVisible(false);
+          const customerId = pendingWelcomeCustomerIdRef.current;
+          const phone = pendingWelcomePhoneRef.current;
+          if (customerId || phone) {
+            await markWelcomeCreditedPopupShown(customerId || '', phone);
+            pendingWelcomeCustomerIdRef.current = null;
+            pendingWelcomePhoneRef.current = null;
+          }
+          if (pendingHomeNavigationRef.current) {
+            pendingHomeNavigationRef.current = false;
+            // Wait for Modal dismiss animation — opening next Modal/nav in the same tick
+            // can leave an invisible iOS touch blocker (home swipe/scroll dies).
+            setTimeout(() => finishLoginNavigation(), 400);
+          }
+        }}
+      />
+      <InstallCouponModal
+        visible={installCouponVisible}
+        welcomeAmount={creditedWelcomeAmount}
+        onClose={() => {
+          setInstallCouponVisible(false);
+          setTimeout(() => setReferralModalVisible(true), 400);
+        }}
+      />
+      <ReferralCodeModal
+        visible={referralModalVisible}
+        initialCode={deepLinkReferralCode}
+        onClose={() => {
+          setReferralModalVisible(false);
+          setTimeout(() => navigation?.navigate?.('PublicHome'), 400);
+        }}
+      />
+    </>
+  );
+
+  // ── Customer login: garage theme (number → OTP odometer). Partner login is below. ──
+  if (!partnerLogin) {
+    const phoneDigits = customerPhone.replace(/\D/g, '');
+    const maskedPhone =
+      phoneDigits.length === 10
+        ? `+91 ${phoneDigits.slice(0, 5)} ${phoneDigits.slice(5)}`
+        : `+91 ${phoneDigits}`;
+    const resendClock = `00:${String(resendInSec).padStart(2, '0')}`;
+    const startGarageOtp = () => {
+      if (loading) return;
+      if (phoneDigits.length !== 10) {
+        setErrorText('Enter a 10-digit mobile number');
+        return;
+      }
+      void handleWhatsAppOtpStart(phoneDigits, false);
+    };
+
+    return (
+      <KeyboardAvoidingView
+        style={gStyles.screen}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {customerStep === 'input' ? (
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 16 }}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            <View style={[gStyles.hero, { paddingTop: insets.top + 12 }]}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <View key={i} style={[gStyles.stripe, { top: 40 + i * 34 }]} />
+              ))}
+              <View style={gStyles.heroTop}>
+                <View style={gStyles.logoPill}>
+                  <Image source={require('../../assets/logo.png')} style={gStyles.logo} resizeMode="contain" />
+                </View>
+                <TouchableOpacity
+                  style={gStyles.skipPill}
+                  onPress={() => navigation?.navigate?.('PublicHome')}
+                  activeOpacity={0.8}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={gStyles.skipText}>Skip</Text>
+                  <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <Text style={gStyles.heroTitle}>Garage ka darwaza{'\n'}khol do!</Text>
+              <View style={gStyles.carRow}>
+                <SideCar width={176} />
+              </View>
+              <View style={gStyles.road}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <View key={i} style={gStyles.roadDash} />
+                ))}
+              </View>
+            </View>
+
+            <View style={gStyles.body}>
+              <View style={gStyles.gaugeRow}>
+                <Speedometer value={phoneDigits.length} max={10} size={92} />
+                <View style={{ flex: 1 }}>
+                  <Text style={gStyles.gaugeCount}>
+                    {phoneDigits.length}
+                    <Text style={gStyles.gaugeMax}>/10</Text>
+                  </Text>
+                  <Text style={gStyles.gaugeHint}>Number daalo, gaadi start karo</Text>
+                </View>
+              </View>
+
+              <Text style={gStyles.fieldLabel}>Mobile number</Text>
+              <View style={[gStyles.plate, errorText ? gStyles.plateError : null]}>
+                <View style={gStyles.plateTag}>
+                  <Text style={gStyles.plateTagText}>+91</Text>
+                </View>
+                <TextInput
+                  style={gStyles.plateInput}
+                  placeholder="98XXX XXXXX"
+                  placeholderTextColor="#B6C2D9"
+                  value={customerPhone}
+                  onChangeText={(text) => {
+                    const digits = text.replace(/\D/g, '').slice(0, 10);
+                    setCustomerPhone(digits);
+                    if (errorText) setErrorText('');
+                    // 10th digit typed → send OTP straight away (GET OTP stays as a manual retry).
+                    if (digits.length === 10 && !loading && waAutoPhone.current !== digits) {
+                      waAutoPhone.current = digits;
+                      void handleWhatsAppOtpStart(digits, false);
+                    }
+                  }}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  autoComplete="tel"
+                  textContentType="telephoneNumber"
+                  editable={!loading}
+                />
+              </View>
+              {errorText ? <Text style={gStyles.error}>{errorText}</Text> : null}
+              {__DEV__ && isDevSimulator() ? (
+                <Text style={gStyles.hint}>
+                  Simulator: real number par OTP nahi aayega. Test number 7007543565 (OTP 454545).
+                </Text>
+              ) : null}
+
+              <View style={{ flex: 1, minHeight: 24 }} />
+              <View style={gStyles.startWrap}>
+                <TouchableOpacity
+                  style={[gStyles.startBtn, phoneDigits.length === 10 && gStyles.startBtnReady]}
+                  onPress={startGarageOtp}
+                  activeOpacity={0.85}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="power" size={22} color="#FFFFFF" />
+                      <Text style={gStyles.startText}>GET OTP</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <Text style={gStyles.startHint}>PRESS TO START</Text>
+              </View>
+
+              <View style={{ flex: 1, minHeight: 24 }} />
+              <Text style={gStyles.cities}>Mumbai · Thane · Navi Mumbai · Palghar · Pune</Text>
+              <Text style={gStyles.terms}>
+                By continuing you agree to our{' '}
+                <Text style={gStyles.link} onPress={() => { void Linking.openURL('https://myfng.in/terms-and-conditions'); }}>
+                  Terms
+                </Text>{' '}
+                &{' '}
+                <Text style={gStyles.link} onPress={() => { void Linking.openURL('https://myfng.in/privacy-policy'); }}>
+                  Privacy Policy
+                </Text>
+              </Text>
+            </View>
+          </ScrollView>
+        ) : (
+          <ScrollView
+            style={gStyles.otpScreen}
+            contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16, paddingHorizontal: 20 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={gStyles.otpTop}>
+              <TouchableOpacity style={gStyles.backBtn} onPress={resetPhoneOtpAndGoInput} activeOpacity={0.8}>
+                <Ionicons name="arrow-back" size={20} color="#0F172A" />
+              </TouchableOpacity>
+              <View style={gStyles.stepPill}>
+                <Text style={gStyles.stepPillText}>STEP 2 OF 2 · IGNITION CHECK</Text>
+              </View>
+            </View>
+
+            <Text style={gStyles.otpTitle}>Enter OTP,{'\n'}start your engine</Text>
+            <Text style={gStyles.otpSub}>
+              6-digit code sent to{' '}
+              <Text style={gStyles.otpPhone}>{phoneOtpChannel === 'email' ? otpEmail : maskedPhone}</Text>
+            </Text>
+            <TouchableOpacity
+              onPress={resetPhoneOtpAndGoInput}
+              activeOpacity={0.8}
+              style={gStyles.changeNumber}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="create-outline" size={15} color={G_BLUE} />
+              <Text style={gStyles.changeNumberText}>Change number</Text>
+            </TouchableOpacity>
+
+            <View style={{ marginTop: 20 }}>
+              <OdometerOtp
+                value={customerOtp}
+                onChange={(next) => {
+                  if (next.length > customerOtp.length) playLoginSound('tick');
+                  setCustomerOtp(next);
+                  if (otpAnim === 'error') setOtpAnim('idle');
+                  setErrorText('');
+                }}
+                status={otpAnim}
+                onFilled={(code) => { void submitOtp(code); }}
+                editable={!loading && otpAnim !== 'success'}
+              />
+            </View>
+
+            {errorText ? <Text style={[gStyles.error, { textAlign: 'center' }]}>{errorText}</Text> : null}
+            {isFirebaseTestPhone(customerPhone) && firebaseTestOtpHint(customerPhone) ? (
+              <Text style={[gStyles.hint, { textAlign: 'center' }]}>{firebaseTestOtpHint(customerPhone)}</Text>
+            ) : null}
+
+            <View style={gStyles.resendRow}>
+              <Text style={gStyles.resendMuted}>Didn&apos;t get the code?</Text>
+              {resendInSec > 0 ? (
+                <Text style={gStyles.resendStrong}>Resend in {resendClock}</Text>
+              ) : (
+                <Text style={[gStyles.resendStrong, gStyles.link]} onPress={() => { void handleResendOtp(); }}>
+                  Resend OTP
+                </Text>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[gStyles.verifyBtn, (loading || customerOtp.replace(/\D/g, '').length !== 6) && gStyles.verifyBtnDim]}
+              onPress={() => { void submitOtp(); }}
+              disabled={loading}
+              activeOpacity={0.9}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={gStyles.verifyText}>VERIFY & DRIVE</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={{ flex: 1, minHeight: 24 }} />
+            <TouchableOpacity
+              style={gStyles.helpCard}
+              activeOpacity={0.85}
+              onPress={() => { void Linking.openURL('tel:+919152307030'); }}
+            >
+              <View style={gStyles.helpIcon}>
+                <Ionicons name="construct-outline" size={18} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={gStyles.helpText} numberOfLines={1}>
+                  Need help? Our team is here for you
+                </Text>
+                <Text style={gStyles.helpPhone}>Call +91-9152307030</Text>
+              </View>
+            </TouchableOpacity>
+          </ScrollView>
+        )}
+        {sharedModals}
+      </KeyboardAvoidingView>
+    );
+  }
+
   return (
     <KeyboardAvoidingView style={[styles.container, partnerLogin && styles.partnerContainer]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {partnerLogin ? (
@@ -985,42 +1261,7 @@ export default function LoginScreen({ navigation, onLoginSuccess, onSkipPreview 
         </View>
       </ScrollView>
 
-      <WelcomeBonusCreditedModal
-        visible={creditedWelcomeVisible}
-        amount={creditedWelcomeAmount}
-        onClose={async () => {
-          setCreditedWelcomeVisible(false);
-          const customerId = pendingWelcomeCustomerIdRef.current;
-          const phone = pendingWelcomePhoneRef.current;
-          if (customerId || phone) {
-            await markWelcomeCreditedPopupShown(customerId || '', phone);
-            pendingWelcomeCustomerIdRef.current = null;
-            pendingWelcomePhoneRef.current = null;
-          }
-          if (pendingHomeNavigationRef.current) {
-            pendingHomeNavigationRef.current = false;
-            // Wait for Modal dismiss animation — opening next Modal/nav in the same tick
-            // can leave an invisible iOS touch blocker (home swipe/scroll dies).
-            setTimeout(() => finishLoginNavigation(), 400);
-          }
-        }}
-      />
-      <InstallCouponModal
-        visible={installCouponVisible}
-        welcomeAmount={creditedWelcomeAmount}
-        onClose={() => {
-          setInstallCouponVisible(false);
-          setTimeout(() => setReferralModalVisible(true), 400);
-        }}
-      />
-      <ReferralCodeModal
-        visible={referralModalVisible}
-        initialCode={deepLinkReferralCode}
-        onClose={() => {
-          setReferralModalVisible(false);
-          setTimeout(() => navigation?.navigate?.('PublicHome'), 400);
-        }}
-      />
+      {sharedModals}
     </KeyboardAvoidingView>
   );
 }
@@ -1590,4 +1831,156 @@ const styles = StyleSheet.create({
   passwordContainer: {
     marginTop: 10,
   },
+});
+
+// Customer "garage" login (number → OTP odometer).
+const G_BLUE = '#2457F5';
+const gStyles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#F4F7FD' },
+  hero: {
+    backgroundColor: G_BLUE,
+    paddingHorizontal: 20,
+    paddingBottom: 0,
+    borderBottomLeftRadius: 0,
+    overflow: 'hidden',
+  },
+  stripe: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.07)' },
+  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  logoPill: { backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
+  logo: { width: 112, height: 30 },
+  skipPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  skipText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  heroTitle: { color: '#FFFFFF', fontSize: 30, fontWeight: '900', lineHeight: 36, marginTop: 30 },
+  carRow: { alignItems: 'center', marginTop: 34, marginBottom: 4, paddingLeft: 40 },
+  road: {
+    height: 14,
+    marginHorizontal: -20,
+    backgroundColor: '#1D46D1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  roadDash: { width: 26, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.75)' },
+  body: { flex: 1, paddingHorizontal: 20, paddingTop: 28 },
+  gaugeRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 22 },
+  gaugeCount: { fontSize: 30, fontWeight: '900', color: '#0F172A' },
+  gaugeMax: { fontSize: 14, fontWeight: '800', color: '#64748B' },
+  gaugeHint: { fontSize: 13, color: '#475569', fontWeight: '600', marginTop: 2 },
+  fieldLabel: { fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+  plate: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderWidth: 3,
+    borderColor: '#0F172A',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    height: 62,
+  },
+  plateError: { borderColor: '#EF4444' },
+  plateTag: {
+    flexDirection: 'row',
+    paddingHorizontal: 14,
+    backgroundColor: G_BLUE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  plateTagText: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
+  plateInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    fontSize: 23,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    color: '#0F172A',
+  },
+
+  error: { color: '#DC2626', fontSize: 13, fontWeight: '700', marginTop: 8 },
+  hint: { color: '#64748B', fontSize: 12, marginTop: 8 },
+  startWrap: { alignItems: 'center' },
+  startBtn: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    backgroundColor: '#1E293B',
+    borderWidth: 5,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  startBtnReady: { backgroundColor: '#0F172A', borderColor: G_BLUE },
+  startText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900', letterSpacing: 1 },
+  startHint: { marginTop: 10, fontSize: 11, fontWeight: '800', letterSpacing: 2, color: '#64748B' },
+  cities: { textAlign: 'center', fontSize: 12, color: '#475569', marginTop: 24 },
+  terms: { textAlign: 'center', fontSize: 12, color: '#475569', marginTop: 4 },
+  link: { color: G_BLUE, fontWeight: '800' },
+  otpScreen: { flex: 1, backgroundColor: '#F4F7FD' },
+  otpTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  stepPill: { backgroundColor: '#DCE6FF', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  stepPillText: { color: G_BLUE, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  otpTitle: { fontSize: 28, fontWeight: '900', color: '#0F172A', lineHeight: 34, marginTop: 22 },
+  otpSub: { fontSize: 14, color: '#475569', marginTop: 8, lineHeight: 20 },
+  otpPhone: { color: '#0F172A', fontWeight: '900' },
+  resendRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  resendMuted: { fontSize: 13, color: '#64748B' },
+  resendStrong: { fontSize: 13, color: '#0F172A', fontWeight: '800' },
+  verifyBtn: {
+    marginTop: 22,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: G_BLUE,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  verifyBtnDim: { opacity: 0.55 },
+  verifyText: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', letterSpacing: 1.5 },
+  // Blue help card: white text and number on brand blue.
+  helpCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: G_BLUE,
+    borderRadius: 16,
+    padding: 14,
+  },
+  helpIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  helpText: { fontSize: 13, color: '#DCE6FF' },
+  helpPhone: { fontSize: 15, color: '#FFFFFF', fontWeight: '900', marginTop: 2 },
+  changeNumber: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 8 },
+  changeNumberText: { fontSize: 14, color: G_BLUE, fontWeight: '800' },
 });

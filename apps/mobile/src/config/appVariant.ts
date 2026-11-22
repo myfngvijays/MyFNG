@@ -51,9 +51,8 @@ function readVariant(raw: unknown): AppVariant {
 }
 
 /**
- * Set `APP_VARIANT=customer` or `APP_VARIANT=partner` before `expo start`.
- * Unset stays `unified`, so the live MyFNG listing keeps every role until the
- * Partner listing exists.
+ * Comes from app.config.js: APP_VARIANT unset = `customer` (MyFNG listing, customers only),
+ * `partner` = MyFNG Partner (staff), `unified` = old all-roles app for local testing.
  */
 export function getAppVariant(): AppVariant {
   return readVariant(Constants.expoConfig?.extra?.appVariant);

@@ -23,8 +23,9 @@ module.exports = ({ config }) => {
     (base.ios && base.ios.config && base.ios.config.googleMapsApiKey) ||
     undefined;
 
-  // customer | partner split the phone apps. Unset keeps the current single app.
-  const appVariantRaw = String(process.env.APP_VARIANT || 'unified').trim().toLowerCase();
+  // customer | partner split the phone apps. Unset = customer (MyFNG listing is customer-only;
+  // staff use MyFNG Partner). APP_VARIANT=unified still gives the old all-roles app for testing.
+  const appVariantRaw = String(process.env.APP_VARIANT || 'customer').trim().toLowerCase();
   const appVariant =
     appVariantRaw === 'customer' || appVariantRaw === 'partner' ? appVariantRaw : 'unified';
   const partner = appVariant === 'partner';

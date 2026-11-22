@@ -62,6 +62,7 @@ import CarQuizGameScreen from './src/screens/smartTools/CarQuizGameScreen';
 import CarPartsPriceScreen from './src/screens/smartTools/CarPartsPriceScreen';
 import CustomerRegistrationScreen from './src/screens/dashboard/customer/CustomerRegistrationScreen';
 import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
+import CustomerWelcomeScreen from './src/screens/CustomerWelcomeScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SplashScreen from './src/screens/SplashScreen';
 import PartnerSplashScreen from './src/screens/PartnerSplashScreen';
@@ -127,6 +128,8 @@ function AppContent() {
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loginScreenKey, setLoginScreenKey] = useState(0);
+  // Customer just logged in with OTP: open the "Engine on!" welcome first.
+  const [customerWelcomePending, setCustomerWelcomePending] = useState(false);
 
   useEffect(() => {
     setPartnerPreviewExit(() => {
@@ -142,6 +145,16 @@ function AppContent() {
     Boolean(user && userProfile) &&
     (isCustomerSessionUser || userProfile?.role?.role_code === 'CUSTOMER');
   const appSessionStartedAtRef = useRef<number | null>(null);
+
+  // After OTP login the customer stack remounts but React Navigation keeps the old route
+  // (PublicHome), so initialRouteName alone is ignored. Jump to the welcome screen explicitly.
+  useEffect(() => {
+    if (!customerWelcomePending || !isCustomerSessionUser) return;
+    const t = setTimeout(() => {
+      navigationRef.current?.reset({ index: 0, routes: [{ name: 'CustomerWelcome' }] });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [customerWelcomePending, isCustomerSessionUser]);
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
@@ -536,6 +549,7 @@ function AppContent() {
     setUserProfile(profile);
     if (user?.type === 'customer_session' || profile?.role?.role_code === 'CUSTOMER') {
       void syncCustomerPushToken();
+      if (user?.type === 'customer_session') setCustomerWelcomePending(true);
     }
   };
 
@@ -616,7 +630,9 @@ function AppContent() {
   const isConsumerCustomer = isCustomerSessionUser || roleCode === 'CUSTOMER';
   const initialRoute = isLoggedIn
     ? isConsumerCustomer
-      ? 'PublicHome'
+      ? customerWelcomePending
+        ? 'CustomerWelcome'
+        : 'PublicHome'
       : 'Dashboard'
     : 'Login';
 
@@ -692,6 +708,11 @@ function AppContent() {
                 )}
               </Stack.Screen>
               <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
+              <Stack.Screen name="CustomerWelcome" options={{ gestureEnabled: false, animation: 'fade' }}>
+                {(props) => (
+                  <CustomerWelcomeScreen {...props} onDone={() => setCustomerWelcomePending(false)} />
+                )}
+              </Stack.Screen>
               <Stack.Screen name="CustomerOtpLogin" component={CustomerOtpLoginScreen} />
               {isCustomerSessionUser ? (
                 <Stack.Screen name="Dashboard" options={{ gestureEnabled: false, animation: 'none' }}>

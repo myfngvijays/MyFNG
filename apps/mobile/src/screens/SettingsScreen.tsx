@@ -140,7 +140,7 @@ import { fetchSettingsMenuConfig, getEnabledMenuIds } from '../lib/settingsMenuC
 
 type Props = {
   navigation: any;
-  route: { params?: { initialSubPage?: string | null; subPage?: string | null; membershipType?: 'SERVICE' | 'RSA'; planCode?: string } };
+  route: { params?: { initialSubPage?: string | null; subPage?: string | null; membershipType?: 'SERVICE' | 'RSA'; planCode?: string; addVehicle?: boolean } };
   onCustomerLogout?: () => void | Promise<void>;
 };
 
@@ -1170,6 +1170,15 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     const sp = route?.params?.subPage;
     if (sp) setActiveSubPage(resolveSubPage(sp));
   }, [route?.params?.subPage]);
+
+  // Opened from the "Engine on!" welcome: go straight to the Add vehicle form once logged in.
+  const addVehicleOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!route?.params?.addVehicle || !isLoggedIn || addVehicleOpenedRef.current) return;
+    addVehicleOpenedRef.current = true;
+    onPressAddVehicle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once
+  }, [route?.params?.addVehicle, isLoggedIn]);
 
   useFocusEffect(
     useCallback(() => {
