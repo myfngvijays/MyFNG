@@ -8,6 +8,7 @@ import {
   type ImageSourcePropType,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   RefreshControl,
@@ -630,6 +631,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
           contentContainerStyle={styles.content}
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
+          // Softer fling: iOS "normal" (0.998) throws the page too far on a quick swipe.
+          decelerationRate={Platform.OS === 'ios' ? 0.992 : 0.98}
           scrollEventThrottle={16}
           scrollEnabled
           bounces
@@ -681,6 +684,31 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <Text style={styles.heroSubLine}>
               Genuine Parts • Expert Technicians • Free Pickup & Drop • Transparent Pricing
             </Text>
+            {/* Primary actions right at the top — no scrolling to find "book". */}
+            <View style={styles.ctaRow}>
+              <TouchableOpacity
+                style={[styles.ctaBtn, styles.ctaBtnPrimary]}
+                activeOpacity={0.9}
+                onPress={() => {
+                  trackEvent('home_cta_book_tapped');
+                  navigation.navigate('PublicBookServiceNow' as never);
+                }}
+              >
+                <Ionicons name="car-sport" size={18} color="#FFFFFF" />
+                <Text style={styles.ctaBtnPrimaryText}>Book a Service</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ctaBtn, styles.ctaBtnGhost]}
+                activeOpacity={0.9}
+                onPress={() => {
+                  trackEvent('home_cta_misa_tapped');
+                  navigation.navigate('AIBooking' as never);
+                }}
+              >
+                <Ionicons name="sparkles" size={17} color={COLORS.primary} />
+                <Text style={styles.ctaBtnGhostText}>Ask Misa AI</Text>
+              </TouchableOpacity>
+            </View>
             <Animated.View style={[styles.heroCard, { opacity: heroFade }]}>
               <TouchableOpacity
                 activeOpacity={0.9}
@@ -727,7 +755,26 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </Animated.View>
           </Section>
 
-          {isLoggedIn ? (
+          {isLoggedIn && !hasActiveBooking ? (
+            <Section>
+              <TouchableOpacity
+                style={styles.noBookingCard}
+                activeOpacity={0.9}
+                onPress={() => navigation.navigate('PublicBookServiceNow' as never)}
+              >
+                <View style={styles.noBookingIcon}>
+                  <Ionicons name="calendar" size={20} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.noBookingTitle}>No active booking</Text>
+                  <Text style={styles.noBookingSub}>Book a service and track it live here.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+            </Section>
+          ) : null}
+
+          {isLoggedIn && hasActiveBooking ? (
             <Section>
               <TouchableOpacity
                 style={[styles.liveCard, !hasActiveBooking ? styles.liveCardDisabled : null]}
@@ -801,27 +848,48 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </View>
           </Section>
 
+          {/* One Prime card on home (admin "after_services" slot). */}
           <Section tight>
             <MembershipCardsBlock screen="home" slot="after_services" navigation={navigation} spacing="compact" />
-            <SmartToolsBlock screen="home" slot="after_services" navigation={navigation} city={detectedCity} compact />
+          </Section>
+
+          <SmartToolsBlock screen="home" slot="main_grid" navigation={navigation} city={detectedCity} />
+
+          <Section>
+            <RsaHomeSection city={detectedCity} navigation={navigation} compact />
           </Section>
 
           <Section>
-            <TouchableOpacity
-              style={styles.locatorCard}
-              onPress={() => { trackEvent('workshop_locator_opened'); navigation.navigate('PublicWorkshopLocator', { city: detectedCity }); }}
-            >
-              <View style={styles.locatorLeft}>
-                <View style={styles.locatorIcon}>
-                  <Ionicons name="location" size={22} color={COLORS.primary} />
+            <SectionHeading
+              spacing="inline"
+              title="Popular Packages"
+              subtitle="Best-value service bundles for your car"
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
+              {PACKAGE_ITEMS.map((pkg) => (
+                <View key={pkg.id} style={styles.packageCard}>
+                  <Image source={{ uri: pkg.image }} style={styles.packageImagePlaceholder} resizeMode="cover" />
+                  <View style={styles.packageContent}>
+                    <Text style={styles.packageName}>{pkg.name}</Text>
+                    <Text style={styles.packageDesc}>{pkg.desc}</Text>
+                    <View style={styles.packageFooter}>
+                      <View>
+                        <Text style={styles.packageStartsFrom}>Starts From</Text>
+                        <Text style={styles.packageVariant}>WagonR</Text>
+                        <Text style={styles.packagePrice}>₹{pkg.price.toLocaleString()}*</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.packageBookBtn}
+                        activeOpacity={0.85}
+                        onPress={() => navigation.navigate('PublicBookServiceNow', { city: detectedCity, packageId: pkg.id })}
+                      >
+                        <Text style={styles.packageBookBtnText}>Book</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.locatorTitle}>Workshop Locator</Text>
-                  <Text style={styles.locatorSubTitle}>Find nearest MyFNG certified workshop</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
-            </TouchableOpacity>
+              ))}
+            </ScrollView>
           </Section>
 
           <Section>
@@ -942,12 +1010,38 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </Animated.View>
           </Section>
 
-          <Section tight>
-            <MembershipCardsBlock screen="home" slot="after_loan_card" navigation={navigation} spacing="compact" />
-            <SmartToolsBlock screen="home" slot="after_loan_card" navigation={navigation} city={detectedCity} compact />
+          <Section>
+            <TouchableOpacity
+              style={styles.locatorCard}
+              onPress={() => { trackEvent('workshop_locator_opened'); navigation.navigate('PublicWorkshopLocator', { city: detectedCity }); }}
+            >
+              <View style={styles.locatorLeft}>
+                <View style={styles.locatorIcon}>
+                  <Ionicons name="location" size={22} color={COLORS.primary} />
+                </View>
+                <View>
+                  <Text style={styles.locatorTitle}>Workshop Locator</Text>
+                  <Text style={styles.locatorSubTitle}>Find nearest MyFNG certified workshop</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
+            </TouchableOpacity>
           </Section>
 
-          <SmartToolsBlock screen="home" slot="main_grid" navigation={navigation} city={detectedCity} />
+          <Section>
+            <SectionHeading
+              spacing="inline"
+              title="Brands We Service"
+              subtitle="Multibrand expertise across all major makes"
+            />
+            <View style={styles.brandCarouselClip}>
+              <Animated.View style={[styles.brandCarouselRow, { transform: [{ translateX: brandScrollX }] }]}>
+                {carBrands.map((brand) => (
+                  <BrandLogoCard key={brand.name} brand={brand} />
+                ))}
+              </Animated.View>
+            </View>
+          </Section>
 
           <Section>
             <SectionHeading
@@ -973,68 +1067,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <SectionHeading
-              spacing="inline"
-              title="Popular Packages"
-              subtitle="Best-value service bundles for your car"
-            />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
-              {PACKAGE_ITEMS.map((pkg) => (
-                <View key={pkg.id} style={styles.packageCard}>
-                  <Image source={{ uri: pkg.image }} style={styles.packageImagePlaceholder} resizeMode="cover" />
-                  <View style={styles.packageContent}>
-                    <Text style={styles.packageName}>{pkg.name}</Text>
-                    <Text style={styles.packageDesc}>{pkg.desc}</Text>
-                    <View style={styles.packageFooter}>
-                      <View>
-                        <Text style={styles.packageStartsFrom}>Starts From</Text>
-                        <Text style={styles.packageVariant}>WagonR</Text>
-                        <Text style={styles.packagePrice}>₹{pkg.price.toLocaleString()}*</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.packageBookBtn}
-                        activeOpacity={0.85}
-                        onPress={() => navigation.navigate('PublicBookServiceNow', { city: detectedCity, packageId: pkg.id })}
-                      >
-                        <Text style={styles.packageBookBtnText}>Book</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          </Section>
-
-          <Section>
-            <RsaHomeSection city={detectedCity} navigation={navigation} compact />
-          </Section>
-
-          <Section tight>
-            <MembershipCardsBlock screen="home" slot="after_smart_tools" navigation={navigation} bannerOnly spacing="compact" />
-          </Section>
-
-          <Section>
-            <SectionHeading
-              spacing="inline"
-              title="Brands We Service"
-              subtitle="Multibrand expertise across all major makes"
-            />
-            <View style={styles.brandCarouselClip}>
-              <Animated.View style={[styles.brandCarouselRow, { transform: [{ translateX: brandScrollX }] }]}>
-                {carBrands.map((brand) => (
-                  <BrandLogoCard key={brand.name} brand={brand} />
-                ))}
-              </Animated.View>
-            </View>
-          </Section>
-
-          <Section>
             <TrustStatsGrid />
-          </Section>
-
-          <Section tight>
-            <SmartToolsBlock screen="home" slot="before_reviews" navigation={navigation} city={detectedCity} compact />
-            <MembershipCardsBlock screen="home" slot="before_reviews" navigation={navigation} spacing="compact" />
           </Section>
 
           <Section>
@@ -1280,6 +1313,40 @@ function Section({ children, tight = false }: { children: React.ReactNode; tight
 }
 
 const styles = StyleSheet.create({
+  ctaRow: { flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 4 },
+  ctaBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  ctaBtnPrimary: { backgroundColor: COLORS.primary },
+  ctaBtnPrimaryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  ctaBtnGhost: { backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: COLORS.primary },
+  ctaBtnGhostText: { color: COLORS.primary, fontSize: 15, fontWeight: '800' },
+  noBookingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#DCE6FF',
+  },
+  noBookingIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#EAF1FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noBookingTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
+  noBookingSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
   safe: {
     flex: 1,
     backgroundColor: COLORS.background,
