@@ -30,10 +30,18 @@ async function requireManager(request: NextRequest) {
   return { ok: true as const, managerId: String(profile?.id || user.id) };
 }
 
+type Platform = 'mobile' | 'web' | 'unknown';
+
+function platformOf(raw: unknown): Platform {
+  const p = String(raw || '').toLowerCase();
+  return p === 'mobile' ? 'mobile' : p === 'web' ? 'web' : 'unknown';
+}
+
 /**
  * GET /api/lead-manager/telecaller-logins
- * Team telecaller login audit: counts + recent rows (time, platform, IP, location).
- * Query: telecaller_id?, days?=14, limit?=200
+ * Team telecaller login audit, split by phone app vs website.
+ * Query: days?=14 (1 = today), platform?=all|mobile|web, status?=active|inactive|all,
+ *        telecaller_id?, limit?=250
  */
 export async function GET(request: NextRequest) {
   try {
@@ -43,11 +51,17 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: 'Admin unavailable' }, { status: 500 });
 
-    const daysRaw = Number(request.nextUrl.searchParams.get('days') || 14);
+    const sp = request.nextUrl.searchParams;
+    const daysRaw = Number(sp.get('days') || 14);
     const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(90, Math.floor(daysRaw))) : 14;
-    const limitRaw = Number(request.nextUrl.searchParams.get('limit') || 200);
-    const limit = Number.isFinite(limitRaw) ? Math.max(20, Math.min(500, Math.floor(limitRaw))) : 200;
-    const telecallerFilter = String(request.nextUrl.searchParams.get('telecaller_id') || '').trim();
+    const limitRaw = Number(sp.get('limit') || 250);
+    const limit = Number.isFinite(limitRaw) ? Math.max(20, Math.min(500, Math.floor(limitRaw))) : 250;
+    const telecallerFilter = String(sp.get('telecaller_id') || '').trim();
+    const platformParam = String(sp.get('platform') || 'all').toLowerCase();
+    const platformFilter: Platform | 'all' =
+      platformParam === 'mobile' || platformParam === 'web' ? platformParam : 'all';
+    const statusParam = String(sp.get('status') || 'active').toLowerCase();
+    const statusFilter = statusParam === 'inactive' || statusParam === 'all' ? statusParam : 'active';
 
     const { data: users, error: uErr } = await supabaseAdmin
       .from('users_login')
@@ -56,19 +70,27 @@ export async function GET(request: NextRequest) {
 
     if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 });
 
-    const telecallers = (users || []).filter(
+    const allTelecallers = (users || []).filter(
       (u: any) => String(u?.roles?.role_code || '').toUpperCase() === 'TELECALLER',
     );
+    const telecallers = allTelecallers.filter((t: any) => {
+      const active = t.is_active !== false;
+      return statusFilter === 'all' ? true : statusFilter === 'active' ? active : !active;
+    });
     const idSet = new Set(telecallers.map((t: any) => String(t.id)));
     if (telecallerFilter && !idSet.has(telecallerFilter)) {
       return NextResponse.json({ error: 'Unknown telecaller' }, { status: 404 });
     }
 
     const ids = [...idSet];
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const today = istYmd();
     const todayBounds = istDayBounds(today);
+    // days=1 → today only (IST); otherwise a rolling window.
+    const since =
+      days === 1 ? todayBounds.start : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
+    // Counts need every row in range, not just the newest few hundred.
+    const COUNT_CAP = 10000;
     let history: any[] = [];
     if (ids.length) {
       const { data, error } = await supabaseAdmin
@@ -79,7 +101,7 @@ export async function GET(request: NextRequest) {
         .in('user_id', ids)
         .gte('logged_in_at', since)
         .order('logged_in_at', { ascending: false })
-        .limit(Math.max(limit, 500));
+        .limit(COUNT_CAP);
 
       if (error && /column|ip_address|latitude|device_label/i.test(error.message || '')) {
         const fallback = await supabaseAdmin
@@ -88,13 +110,32 @@ export async function GET(request: NextRequest) {
           .in('user_id', ids)
           .gte('logged_in_at', since)
           .order('logged_in_at', { ascending: false })
-          .limit(Math.max(limit, 500));
+          .limit(COUNT_CAP);
         if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 });
         history = fallback.data || [];
       } else if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       } else {
         history = data || [];
+      }
+    }
+
+    // Phone app stays signed in for days, so "app opened" (push token refresh) shows
+    // who is really working on the phone even without a fresh login.
+    const appSeen = new Map<string, { at: string; device: string | null }>();
+    if (ids.length) {
+      const { data: devices } = await supabaseAdmin
+        .from('notification_devices')
+        .select('user_id, last_seen_at, device_name')
+        .in('user_id', ids)
+        .eq('platform', 'FCM')
+        .order('last_seen_at', { ascending: false });
+      for (const d of devices || []) {
+        const uid = String((d as any).user_id || '');
+        const at = String((d as any).last_seen_at || '');
+        if (uid && at && !appSeen.has(uid)) {
+          appSeen.set(uid, { at, device: (d as any).device_name || null });
+        }
       }
     }
 
@@ -111,42 +152,108 @@ export async function GET(request: NextRequest) {
       ]),
     );
 
-    const countByUser = new Map<string, { total: number; today: number; mobile: number; web: number }>();
-    for (const id of ids) {
-      countByUser.set(id, { total: 0, today: 0, mobile: 0, web: 0 });
-    }
+    type Bucket = {
+      total: number;
+      today: number;
+      mobile: number;
+      web: number;
+      unknown: number;
+      today_mobile: number;
+      today_web: number;
+      last_mobile: string | null;
+      last_web: string | null;
+      devices: Set<string>;
+      ips: Set<string>;
+    };
+    const emptyBucket = (): Bucket => ({
+      total: 0,
+      today: 0,
+      mobile: 0,
+      web: 0,
+      unknown: 0,
+      today_mobile: 0,
+      today_web: 0,
+      last_mobile: null,
+      last_web: null,
+      devices: new Set(),
+      ips: new Set(),
+    });
+    const countByUser = new Map<string, Bucket>();
+    for (const id of ids) countByUser.set(id, emptyBucket());
+
+    let todayMobile = 0;
+    let todayWeb = 0;
+    let rangeMobile = 0;
+    let rangeWeb = 0;
     for (const row of history) {
       const uid = String(row.user_id || '');
-      const bucket = countByUser.get(uid) || { total: 0, today: 0, mobile: 0, web: 0 };
-      bucket.total += 1;
+      const b = countByUser.get(uid) || emptyBucket();
       const at = String(row.logged_in_at || '');
-      if (at >= todayBounds.start && at <= todayBounds.end) bucket.today += 1;
-      const p = String(row.platform || '').toLowerCase();
-      if (p === 'mobile') bucket.mobile += 1;
-      else if (p === 'web') bucket.web += 1;
-      countByUser.set(uid, bucket);
+      const isToday = at >= todayBounds.start && at <= todayBounds.end;
+      const p = platformOf(row.platform);
+      b.total += 1;
+      b[p] += 1;
+      if (isToday) b.today += 1;
+      if (p === 'mobile') {
+        rangeMobile += 1;
+        if (isToday) {
+          b.today_mobile += 1;
+          todayMobile += 1;
+        }
+        if (!b.last_mobile) b.last_mobile = at; // rows are newest first
+      } else if (p === 'web') {
+        rangeWeb += 1;
+        if (isToday) {
+          b.today_web += 1;
+          todayWeb += 1;
+        }
+        if (!b.last_web) b.last_web = at;
+      }
+      if (row.device_label) b.devices.add(String(row.device_label));
+      if (row.ip_address) b.ips.add(String(row.ip_address));
+      countByUser.set(uid, b);
     }
 
-    const summary = ids.map((id) => {
-      const meta = nameById.get(id)!;
-      const c = countByUser.get(id) || { total: 0, today: 0, mobile: 0, web: 0 };
-      return {
-        telecaller_id: id,
-        name: meta.name,
-        phone: meta.phone,
-        email: meta.email,
-        is_active: meta.is_active,
-        last_login: meta.last_login,
-        logins_in_range: c.total,
-        logins_today: c.today,
-        logins_mobile: c.mobile,
-        logins_web: c.web,
-      };
-    }).sort((a, b) => b.logins_today - a.logins_today || b.logins_in_range - a.logins_in_range);
+    const summary = ids
+      .map((id) => {
+        const meta = nameById.get(id)!;
+        const c = countByUser.get(id) || emptyBucket();
+        const seen = appSeen.get(id) || null;
+        return {
+          telecaller_id: id,
+          name: meta.name,
+          phone: meta.phone,
+          email: meta.email,
+          is_active: meta.is_active,
+          last_login: meta.last_login,
+          logins_in_range: c.total,
+          logins_today: c.today,
+          logins_mobile: c.mobile,
+          logins_web: c.web,
+          logins_unknown: c.unknown,
+          today_mobile: c.today_mobile,
+          today_web: c.today_web,
+          last_mobile_login: c.last_mobile,
+          last_web_login: c.last_web,
+          app_last_seen: seen?.at || null,
+          app_device: seen?.device || null,
+          devices: c.devices.size,
+          ips: c.ips.size,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.logins_today - a.logins_today ||
+          b.logins_in_range - a.logins_in_range ||
+          String(b.app_last_seen || '').localeCompare(String(a.app_last_seen || '')) ||
+          a.name.localeCompare(b.name),
+      );
 
-    const filteredHistory = telecallerFilter
-      ? history.filter((r) => String(r.user_id) === telecallerFilter)
-      : history;
+    const filteredHistory = history.filter(
+      (r) =>
+        (!telecallerFilter || String(r.user_id) === telecallerFilter) &&
+        (platformFilter === 'all' || platformOf(r.platform) === platformFilter),
+    );
     const events = filteredHistory.slice(0, limit).map((row) => {
       const meta = nameById.get(String(row.user_id)) || {
         name: 'Telecaller',
@@ -165,7 +272,7 @@ export async function GET(request: NextRequest) {
         telecaller_id: row.user_id,
         telecaller_name: meta.name,
         logged_in_at: row.logged_in_at,
-        platform: row.platform || 'unknown',
+        platform: platformOf(row.platform),
         device_label: row.device_label || null,
         ip_address: row.ip_address || null,
         city: row.city || null,
@@ -180,8 +287,23 @@ export async function GET(request: NextRequest) {
       success: true,
       days,
       date: today,
+      platform: platformFilter,
+      status: statusFilter,
+      totals: {
+        today: todayMobile + todayWeb,
+        today_mobile: todayMobile,
+        today_web: todayWeb,
+        range_mobile: rangeMobile,
+        range_web: rangeWeb,
+        telecallers: ids.length,
+        logged_in_today: summary.filter((s) => s.logins_today > 0).length,
+        app_open_today: summary.filter(
+          (s) => s.app_last_seen && s.app_last_seen >= todayBounds.start,
+        ).length,
+      },
       summary,
       events,
+      events_total: filteredHistory.length,
       count: events.length,
       filtered_telecaller_id: telecallerFilter || null,
     });

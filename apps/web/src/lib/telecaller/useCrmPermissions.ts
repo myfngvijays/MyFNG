@@ -10,9 +10,12 @@ import {
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { usePathname } from 'next/navigation';
 
-export function useCrmPermissions() {
+/** `enabled: false` skips the fetch (e.g. layout for non-telecaller roles). */
+export function useCrmPermissions(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled !== false;
   const pathname = usePathname();
-  const { isLeadManager } = getCrmDashboardBase(pathname);
+  const { isLeadManager: onManagerPath } = getCrmDashboardBase(pathname);
+  const isLeadManager = onManagerPath || !enabled;
   const [permissions, setPermissions] = useState<CrmPermissions>(
     isLeadManager ? FULL_MANAGER_PERMISSIONS : DEFAULT_CALLER_PERMISSIONS,
   );

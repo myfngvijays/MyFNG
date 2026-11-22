@@ -4,7 +4,10 @@ import {
   requireCrmReportsContext,
 } from '@/lib/telecaller/crmReportsAuth';
 import {
+  CRM_PERMISSION_CATALOG,
+  CRM_PERMISSION_GROUPS,
   CRM_PERMISSION_LABELS,
+  missingCrmPermissionKeys,
   normalizeCrmPermissions,
   type CrmPermissionKey,
 } from '@/lib/telecaller/crmPermissions';
@@ -55,7 +58,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       permission_labels: CRM_PERMISSION_LABELS,
-      templates: templatesRes.data || [],
+      permission_catalog: CRM_PERMISSION_CATALOG.map(({ key, group, label, description, callerDefault }) => ({
+        key,
+        group,
+        label,
+        description,
+        caller_default: callerDefault,
+      })),
+      permission_groups: CRM_PERMISSION_GROUPS,
+      templates: (templatesRes.data || []).map((t: any) => ({
+        ...t,
+        // Stored JSON may predate newer permissions: send them resolved + flag what is new.
+        permissions: normalizeCrmPermissions(t.permissions),
+        missing_keys: missingCrmPermissionKeys(t.permissions),
+      })),
       telecallers,
     });
   } catch (e: any) {
@@ -145,6 +161,28 @@ export async function POST(request: NextRequest) {
         .single();
       if (error) throw error;
       return NextResponse.json({ ok: true, id: data?.id });
+    }
+
+    if (action === 'delete_template') {
+      const id = String(body?.id || '').trim();
+      if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+      const { data: tpl } = await ctx.db
+        .from('telecaller_permission_templates')
+        .select('id, is_default')
+        .eq('id', id)
+        .maybeSingle();
+      if (!tpl) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+      if (tpl.is_default) {
+        return NextResponse.json({ error: 'Default template delete nahi ho sakta. Pehle doosra default banao.' }, { status: 400 });
+      }
+      // Callers on this template fall back to the default template.
+      await ctx.db
+        .from('users_login')
+        .update({ crm_permission_template_id: null, updated_at: new Date().toISOString() })
+        .eq('crm_permission_template_id', id);
+      const { error } = await ctx.db.from('telecaller_permission_templates').delete().eq('id', id);
+      if (error) throw error;
+      return NextResponse.json({ ok: true });
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

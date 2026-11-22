@@ -1,340 +1,289 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getBrowserClient } from '@/lib/supabase/browserClient';
-import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  Building, Search, MapPin, Phone, Mail, Star, 
-  CheckCircle, XCircle, Edit, Eye, Filter, Loader2,
-  TrendingUp, AlertCircle, Users
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'react-hot-toast';
+import { AlertCircle, Building, CheckCircle, Loader2, Phone, RefreshCw, Search, Star } from 'lucide-react';
+import DashboardLayout from '@/components/DashboardLayout';
+import PageHelpIcon from '@/components/PageHelpIcon';
+
+type LeadCounts = { open: number; booked: number; completed: number; rejected: number; total: number };
+
+type Workshop = {
+  id: string;
+  name: string | null;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  pincode: string | null;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  is_verified: boolean | null;
+  audit_score: number | string | null;
+  lead_counts?: LeadCounts;
+};
+
+type Stats = { total: number; verified: number; unverified: number; active_jobs: number; open_leads?: number };
+
+type Verification = 'all' | 'verified' | 'unverified';
+type SortBy = 'booked' | 'open' | 'completed' | 'name';
+
+const EMPTY_COUNTS: LeadCounts = { open: 0, booked: 0, completed: 0, rejected: 0, total: 0 };
 
 export default function WorkshopsPage() {
-  const supabase = getBrowserClient();
-  
-  const [workshops, setWorkshops] = useState<any[]>([]);
+  const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [cityFilter, setCityFilter] = useState('all');
-  const [verificationFilter, setVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all');
-  const [stats, setStats] = useState({
-    total: 0,
-    verified: 0,
-    unverified: 0,
-    active_jobs: 0
-  });
+  const [verification, setVerification] = useState<Verification>('all');
+  const [sortBy, setSortBy] = useState<SortBy>('booked');
+  const [stats, setStats] = useState<Stats>({ total: 0, verified: 0, unverified: 0, active_jobs: 0 });
 
-  useEffect(() => {
-    fetchWorkshops();
-  }, [verificationFilter]);
-
-  const fetchWorkshops = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('workshops')
-        .select(`
-          *,
-          active_leads:service_leads(count)
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false });
-
-      // Apply verification filter
-      if (verificationFilter === 'verified') {
-        query = query.eq('is_verified', true);
-      } else if (verificationFilter === 'unverified') {
-        query = query.eq('is_verified', false);
-      }
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      setWorkshops(data || []);
-
-      // Calculate stats
-      const { count: totalCount } = await supabase
-        .from('workshops')
-        .select('*', { count: 'exact', head: true });
-
-      const { count: verifiedCount } = await supabase
-        .from('workshops')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_verified', true);
-
-      const { count: unverifiedCount } = await supabase
-        .from('workshops')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_verified', false);
-
-      const { count: activeJobsCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .filter('workshop_id', 'not.is', null)
-        .in('status', ['ACCEPTED', 'IN_PROGRESS', 'TEAM_ASSIGNED']);
-
-      setStats({
-        total: totalCount || 0,
-        verified: verifiedCount || 0,
-        unverified: unverifiedCount || 0,
-        active_jobs: activeJobsCount || 0
-      });
-
+      const res = await fetch(`/api/lead-manager/workshops?verification=${verification}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to load workshops');
+      setWorkshops(json.workshops || []);
+      setStats(json.stats || { total: 0, verified: 0, unverified: 0, active_jobs: 0 });
     } catch (error) {
-      console.error('Error fetching workshops:', error);
-      toast.error('Failed to load workshops');
+      toast.error(error instanceof Error ? error.message : 'Failed to load workshops');
     } finally {
       setLoading(false);
     }
-  };
+  }, [verification]);
 
-  const filteredWorkshops = workshops.filter(workshop => {
-    const matchesSearch = 
-      workshop.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      workshop.city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      workshop.contact_person?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      workshop.phone?.includes(searchTerm);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-    const matchesCity = cityFilter === 'all' || workshop.city === cityFilter;
+  const cities = useMemo(
+    () => Array.from(new Set(workshops.map((w) => w.city).filter(Boolean) as string[])).sort(),
+    [workshops],
+  );
 
-    return matchesSearch && matchesCity;
-  });
-
-  // Get unique cities for filter
-  const cities = Array.from(new Set(workshops.map(w => w.city).filter(Boolean)));
+  const rows = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const list = workshops.filter((w) => {
+      if (cityFilter !== 'all' && w.city !== cityFilter) return false;
+      if (!q) return true;
+      return [w.name, w.city, w.contact_person, w.phone, w.pincode, w.address].some((v) =>
+        String(v || '').toLowerCase().includes(q),
+      );
+    });
+    const c = (w: Workshop) => w.lead_counts || EMPTY_COUNTS;
+    return list.sort((a, b) => {
+      if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
+      const d = c(b)[sortBy] - c(a)[sortBy];
+      return d || String(a.name || '').localeCompare(String(b.name || ''));
+    });
+  }, [workshops, searchTerm, cityFilter, sortBy]);
 
   return (
     <DashboardLayout role="lead_manager">
-      <div className="w-full max-w-7xl mx-auto min-w-0">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-2xl shadow-lg mb-6 sm:mb-8">
-          <h1 className="text-3xl font-bold text-yellow-300 drop-shadow-lg">🏢 Workshop Management</h1>
-          <p className="text-white font-medium mt-1">Partner Network • Quality Control • Assignment Ready</p>
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-black text-[#023D95]">
+              <Building className="h-6 w-6" /> Workshops
+              <PageHelpIcon href="/dashboard/lead_manager/workshops" label="Workshops" />
+            </h1>
+            <p className="text-sm text-slate-500">Partner workshops aur unki leads — open, booked, completed</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Workshops</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
-              </div>
-              <div className="bg-blue-100 p-3 rounded-full">
-                <Building className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-[11px] font-bold uppercase text-slate-500">Workshops</p>
+            <p className="text-2xl font-black text-[#023D95]">{stats.total}</p>
           </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Verified</p>
-                <p className="text-3xl font-bold text-green-600">{stats.verified}</p>
-              </div>
-              <div className="bg-green-100 p-3 rounded-full">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-[11px] font-bold uppercase text-emerald-700">Verified</p>
+            <p className="text-2xl font-black text-emerald-900">{stats.verified}</p>
           </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Unverified</p>
-                <p className="text-3xl font-bold text-yellow-600">{stats.unverified}</p>
-              </div>
-              <div className="bg-yellow-100 p-3 rounded-full">
-                <AlertCircle className="w-6 h-6 text-yellow-600" />
-              </div>
-            </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-[11px] font-bold uppercase text-amber-700">Unverified</p>
+            <p className="text-2xl font-black text-amber-900">{stats.unverified}</p>
           </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active Jobs</p>
-                <p className="text-3xl font-bold text-purple-600">{stats.active_jobs}</p>
-              </div>
-              <div className="bg-purple-100 p-3 rounded-full">
-                <TrendingUp className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+            <p className="text-[11px] font-bold uppercase text-violet-700">Booked (active)</p>
+            <p className="text-2xl font-black text-violet-900">{stats.active_jobs}</p>
+          </div>
+          <div className="col-span-2 rounded-2xl border border-sky-200 bg-sky-50 p-4 sm:col-span-1">
+            <p className="text-[11px] font-bold uppercase text-sky-700">Open leads</p>
+            <p className="text-2xl font-black text-sky-900">{stats.open_leads ?? 0}</p>
           </div>
         </div>
 
-        {/* Filters and Search */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search by name, city, contact person, phone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-            </div>
-
-            {/* City Filter */}
-            <select
-              value={cityFilter}
-              onChange={(e) => setCityFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary"
-            >
-              <option value="all">All Cities</option>
-              {cities.map(city => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
-
-            {/* Verification Filter */}
-            <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+          <label className="relative min-w-[200px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search name, city, contact, phone, pincode"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+            />
+          </label>
+          <select
+            value={cityFilter}
+            onChange={(e) => setCityFilter(e.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
+          >
+            <option value="all">All cities</option>
+            {cities.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
+          </select>
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
+            {(
+              [
+                { id: 'all', label: `All ${stats.total}` },
+                { id: 'verified', label: `Verified ${stats.verified}` },
+                { id: 'unverified', label: `Unverified ${stats.unverified}` },
+              ] as const
+            ).map((o) => (
               <button
-                onClick={() => setVerificationFilter('all')}
-                className={`px-4 py-2 rounded-lg font-medium transition ${
-                  verificationFilter === 'all'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                key={o.id}
+                type="button"
+                onClick={() => setVerification(o.id)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
+                  verification === o.id ? 'bg-[#023D95] text-white' : 'text-slate-600'
                 }`}
               >
-                All ({stats.total})
+                {o.label}
               </button>
-              <button
-                onClick={() => setVerificationFilter('verified')}
-                className={`px-4 py-2 rounded-lg font-medium transition ${
-                  verificationFilter === 'verified'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Verified ({stats.verified})
-              </button>
-              <button
-                onClick={() => setVerificationFilter('unverified')}
-                className={`px-4 py-2 rounded-lg font-medium transition ${
-                  verificationFilter === 'unverified'
-                    ? 'bg-yellow-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                Unverified ({stats.unverified})
-              </button>
+            ))}
+          </div>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortBy)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
+          >
+            <option value="booked">Sort: Most booked</option>
+            <option value="open">Sort: Most open leads</option>
+            <option value="completed">Sort: Most completed</option>
+            <option value="name">Sort: Name A–Z</option>
+          </select>
+        </div>
+
+        {loading && !workshops.length ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading workshops…
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-14 text-center">
+            <Building className="mx-auto h-10 w-10 text-slate-300" />
+            <p className="mt-3 text-base font-black text-slate-800">No workshops</p>
+            <p className="text-sm text-slate-500">
+              {searchTerm || cityFilter !== 'all' ? 'Search / city filter badal ke dekho.' : 'Koi workshop nahi mila.'}
+            </p>
+          </div>
+        ) : (
+          <div
+            className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-opacity ${
+              loading ? 'opacity-60' : ''
+            }`}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5 text-xs text-slate-500">
+              <span>{rows.length} workshops</span>
+              <span>Open = lead bheji, booking baaki · Booked = booking confirmed</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Workshop</th>
+                    <th className="px-4 py-3">Location</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-3 py-3 text-right text-sky-700">Open</th>
+                    <th className="px-3 py-3 text-right text-violet-700">Booked</th>
+                    <th className="px-3 py-3 text-right text-emerald-700">Completed</th>
+                    <th className="px-3 py-3 text-right text-red-600">Rejected</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {rows.map((w) => {
+                    const c = w.lead_counts || EMPTY_COUNTS;
+                    const score = w.audit_score != null && w.audit_score !== '' ? Number(w.audit_score) : null;
+                    return (
+                      <tr key={w.id} className="align-top hover:bg-slate-50/70">
+                        <td className="px-4 py-3">
+                          <p className="max-w-[220px] truncate font-bold text-slate-900" title={w.name || ''}>
+                            {w.name || '—'}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            {w.is_verified ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                <CheckCircle className="h-3 w-3" /> Verified
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                <AlertCircle className="h-3 w-3" /> Unverified
+                              </span>
+                            )}
+                            {score != null && Number.isFinite(score) ? (
+                              <span className="inline-flex items-center gap-0.5 rounded-full bg-yellow-50 px-2 py-0.5 text-[10px] font-bold text-yellow-700">
+                                <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" /> {score.toFixed(1)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-slate-800">
+                            {[w.city, w.pincode].filter(Boolean).join(' · ') || '—'}
+                          </p>
+                          <p className="max-w-[240px] truncate text-xs text-slate-500" title={w.address || ''}>
+                            {w.address || '—'}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-slate-800">{w.contact_person || '—'}</p>
+                          {w.phone ? (
+                            <a
+                              href={`tel:${w.phone}`}
+                              className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-[#023D95]"
+                            >
+                              <Phone className="h-3 w-3" /> {w.phone}
+                            </a>
+                          ) : (
+                            <p className="text-xs text-slate-400">—</p>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right font-bold text-sky-800">{c.open || <span className="text-slate-300">0</span>}</td>
+                        <td className="px-3 py-3 text-right font-bold text-violet-800">{c.booked || <span className="text-slate-300">0</span>}</td>
+                        <td className="px-3 py-3 text-right font-bold text-emerald-800">{c.completed || <span className="text-slate-300">0</span>}</td>
+                        <td className="px-3 py-3 text-right font-bold text-red-700">{c.rejected || <span className="text-slate-300">0</span>}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Link
+                            href={`/dashboard/lead_manager/workshops/${w.id}`}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-[#023D95] hover:bg-blue-50"
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
-
-        {/* Workshops Grid */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {loading ? (
-            <div className="p-12 text-center">
-              <Loader2 className="w-12 h-12 animate-spin text-brand-primary mx-auto" />
-              <p className="mt-4 text-gray-600">Loading workshops...</p>
-            </div>
-          ) : filteredWorkshops.length === 0 ? (
-            <div className="p-12 text-center">
-              <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-xl text-gray-600">No workshops found</p>
-              <p className="text-gray-500 mt-2">
-                {searchTerm ? 'Try adjusting your search' : 'No workshops available'}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-              {filteredWorkshops.map((workshop) => (
-                <div
-                  key={workshop.id}
-                  className="bg-white border border-gray-200 rounded-lg hover:shadow-lg transition p-6"
-                >
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 mb-1">
-                        {workshop.name}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {workshop.is_verified ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
-                            <CheckCircle className="w-3 h-3" />
-                            Verified
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-full">
-                            <AlertCircle className="w-3 h-3" />
-                            Unverified
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {workshop.audit_score && (
-                      <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded">
-                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                        <span className="text-sm font-semibold text-yellow-700">
-                          {parseFloat(workshop.audit_score).toFixed(1)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Details */}
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-start gap-2 text-sm text-gray-600">
-                      <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <span className="line-clamp-2">
-                        {workshop.address}, {workshop.city}, {workshop.state} - {workshop.pincode}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Users className="w-4 h-4 flex-shrink-0" />
-                      <span>{workshop.contact_person}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Phone className="w-4 h-4 flex-shrink-0" />
-                      <a href={`tel:${workshop.phone}`} className="hover:text-brand-primary">
-                        {workshop.phone}
-                      </a>
-                    </div>
-                    {workshop.email && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Mail className="w-4 h-4 flex-shrink-0" />
-                        <a href={`mailto:${workshop.email}`} className="hover:text-brand-primary truncate">
-                          {workshop.email}
-                        </a>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Active Jobs Badge */}
-                  <div className="pt-4 border-t border-gray-100">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Active Jobs:</span>
-                      <span className="font-semibold text-brand-primary">
-                        {workshop.active_leads?.[0]?.count || 0}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="mt-4 pt-4 border-t border-gray-100 flex gap-2">
-                    <Link
-                      href={`/dashboard/lead_manager/workshops/${workshop.id}`}
-                      className="flex-1 btn-outline text-sm py-2 text-center inline-flex items-center justify-center"
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      View Details
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </DashboardLayout>
   );
 }
-

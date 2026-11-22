@@ -1,5 +1,7 @@
 'use client';
 
+import { useCrmPermissions } from '@/lib/telecaller/useCrmPermissions';
+import { crmPermissionForPath } from '@/lib/telecaller/crmPermissions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -177,6 +179,17 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
   const waAssignedPhonesRef = useRef<Set<string>>(new Set());
   const headerRef = useRef<HTMLElement | null>(null);
   const sidebarNavRef = useRef<HTMLElement | null>(null);
+  // Telecaller access template: hides menu pages and blocks those pages when OFF.
+  const isTelecallerRole = roleCode === 'TELECALLER';
+  const { permissions: crmPerms, loading: crmPermsLoading } = useCrmPermissions({
+    enabled: isTelecallerRole,
+  });
+  const blockedPermission =
+    isTelecallerRole && !crmPermsLoading ? crmPermissionForPath(pathname || '') : null;
+  const pageBlocked = Boolean(blockedPermission && !crmPerms[blockedPermission]);
+  useEffect(() => {
+    if (pageBlocked) router.replace('/dashboard/telecaller');
+  }, [pageBlocked, router]);
   const [headerHeightPx, setHeaderHeightPx] = useState(64);
 
   useEffect(() => {
@@ -202,6 +215,28 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       window.removeEventListener('resize', apply);
     };
   }, [loading]);
+
+  // Keep the current page's menu item in view: on page load, when the rail opens on
+  // hover (labels change row heights), and when the mobile drawer opens.
+  useEffect(() => {
+    if (waWorkspaceOpen) return;
+    const reveal = () => {
+      const nav = sidebarNavRef.current;
+      const el = nav?.querySelector<HTMLElement>('[data-nav-active="true"]');
+      if (!nav || !el) return;
+      const navBox = nav.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      if (box.top >= navBox.top + 8 && box.bottom <= navBox.bottom - 8) return;
+      nav.scrollTop += box.top - navBox.top - (navBox.height - box.height) / 2;
+    };
+    const raf = requestAnimationFrame(reveal);
+    // Again after the 300ms width transition settles.
+    const t = window.setTimeout(reveal, 320);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+    };
+  }, [pathname, sidebarCollapsed, sidebarOpen, waWorkspaceOpen, loading]);
 
   useEffect(() => {
     if (!waWorkspaceOpen) return;
@@ -1165,7 +1200,13 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
     );
   }
 
-  const menuItems = getMenuItems();
+  const menuItems = isTelecallerRole
+    ? getMenuItems().filter((item: any) => {
+        const key =
+          item.action === 'open-wa-inbox' ? 'page_whatsapp' : crmPermissionForPath(String(item.href || ''));
+        return !key || crmPerms[key as keyof typeof crmPerms] !== false;
+      })
+    : getMenuItems();
 
   return (
     <div className="admin-shell">
@@ -1544,6 +1585,8 @@ function NavLink({
     <Link
       href={href}
       onClick={() => onNavigate?.()}
+      data-nav-active={active ? 'true' : undefined}
+      aria-current={active ? 'page' : undefined}
       title={collapsed ? (label || (typeof children === 'string' ? children : '')) : undefined}
       aria-label={collapsed ? (label || (typeof children === 'string' ? children : undefined)) : undefined}
       className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base ${
