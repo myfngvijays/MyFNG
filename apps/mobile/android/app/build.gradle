@@ -108,6 +108,10 @@ def jscFlavor = 'org.webkit:android-jsc:+'
 def partnerApp = (System.getenv("APP_VARIANT") ?: "").equalsIgnoreCase("partner")
 
 android {
+    if (partnerApp) {
+        // Partner release drops permissions only the customer app needs (see the file).
+        sourceSets.release.manifest.srcFile 'src/partnerRelease/AndroidManifest.xml'
+    }
     ndkVersion rootProject.ext.ndkVersion
 
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -118,9 +122,9 @@ android {
         applicationId partnerApp ? 'com.myfng.partner' : 'com.myfng.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Partner listing is 1.0.6 (build 6). Customer app stays 1.3.8 (48).
-        versionCode partnerApp ? 6 : 48
-        versionName partnerApp ? "1.0.6" : "1.3.8"
+        // Partner listing is 1.0.7 (build 7). Customer app stays 1.3.8 (48).
+        versionCode partnerApp ? 7 : 48
+        versionName partnerApp ? "1.0.7" : "1.3.8"
         // First frame of the partner splash video. Customer launch screen stays light blue.
         resValue "color", "splashscreen_background", (partnerApp ? "#021E6F" : "#F0F7FF")
 
