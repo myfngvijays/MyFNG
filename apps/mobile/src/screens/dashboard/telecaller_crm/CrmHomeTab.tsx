@@ -422,12 +422,20 @@ export default function CrmHomeTab({
     leads_completed?: number;
     is_me?: boolean;
   }> = Array.isArray(data?.leaderboard) ? data.leaderboard.slice(0, 5) : [];
+  // Same CRM status ids as the web CRM (ADMIN_CRM_STATUS_OPTIONS + Lead Status extras).
   const pipeline = [
     { label: 'Follow-up', value: Number(kpis.callbacks || 0), filter: 'callback', color: '#F59E0B' },
-    { label: 'Fresh', value: Number(kpis.new_leads || 0), filter: 'new', color: '#3B82F6' },
     { label: 'Interested', value: Number(kpis.interested || 0), filter: 'interested', color: '#22C55E' },
-    { label: 'In Service', value: Number(kpis.in_service || 0), filter: 'in_service', color: '#8B5CF6' },
+    { label: 'He will visit', value: Number(kpis.will_visit || 0), filter: 'will_visit', color: '#8B5CF6' },
+    { label: 'Custom repair', value: Number(kpis.custom_repair || 0), filter: 'custom_repair', color: '#EC4899' },
+    {
+      label: 'Appointment scheduled',
+      value: Number(kpis.appointment_scheduled || 0),
+      filter: 'appointment_scheduled',
+      color: '#0EA5E9',
+    },
   ];
+  const bookingConfirmed = Number(kpis.booking_confirmed ?? kpis.booked ?? 0);
   const pipelineMax = Math.max(1, ...pipeline.map((row) => row.value));
   const punchedIn = Boolean(data?.attendance?.is_punched_in);
   const onFloor = punchedIn;
@@ -456,13 +464,14 @@ export default function CrmHomeTab({
     }
   };
 
+  // Row 1: Leads, Reminders, WhatsApp · Row 2: Book service, Workshops, Reports — each its own colour.
   const quickActions = [
-    { label: 'Reminders', icon: 'alarm-outline' as const, color: '#D97706', go: () => onNavigate('TelecallerFollowUps') },
-    { label: 'Book service', icon: 'calendar-outline' as const, color: '#16A34A', go: () => onNavigate('book', { mode: 'book' }) },
-    { label: 'WhatsApp', icon: 'logo-whatsapp' as const, color: '#25D366', go: onOpenWhatsApp },
-    { label: 'Workshops', icon: 'location-outline' as const, color: '#0284C7', go: () => onNavigate('workshops') },
-    { label: 'Leads', icon: 'people-outline' as const, color: '#7C3AED', go: () => onNavigate('queue') },
-    { label: 'Reports', icon: 'bar-chart-outline' as const, color: '#004AAD', go: () => onNavigate('reports') },
+    { label: 'Leads', icon: 'people-outline' as const, color: '#7C3AED', bg: '#F5F3FF', chip: '#EDE9FE', border: '#DDD6FE', go: () => onNavigate('queue') },
+    { label: 'Reminders', icon: 'alarm-outline' as const, color: '#D97706', bg: '#FFFBEB', chip: '#FEF3C7', border: '#FDE68A', go: () => onNavigate('TelecallerFollowUps') },
+    { label: 'WhatsApp', icon: 'logo-whatsapp' as const, color: '#16A34A', bg: '#F0FDF4', chip: '#DCFCE7', border: '#BBF7D0', go: onOpenWhatsApp },
+    { label: 'Book service', icon: 'calendar-outline' as const, color: '#DB2777', bg: '#FDF2F8', chip: '#FCE7F3', border: '#FBCFE8', go: () => onNavigate('book', { mode: 'book' }) },
+    { label: 'Workshops', icon: 'location-outline' as const, color: '#0284C7', bg: '#F0F9FF', chip: '#E0F2FE', border: '#BAE6FD', go: () => onNavigate('workshops') },
+    { label: 'Reports', icon: 'bar-chart-outline' as const, color: '#EA580C', bg: '#FFF7ED', chip: '#FFEDD5', border: '#FED7AA', go: () => onNavigate('reports') },
   ];
 
   return (
@@ -600,8 +609,13 @@ export default function CrmHomeTab({
       <Text style={styles.blockTitle}>Quick actions</Text>
       <View style={styles.actionsGrid}>
         {quickActions.map((a) => (
-          <TouchableOpacity key={a.label} style={styles.actionCard} onPress={a.go} activeOpacity={0.85}>
-            <View style={[styles.actionIcon, { backgroundColor: a.color + '18' }]}>
+          <TouchableOpacity
+            key={a.label}
+            style={[styles.actionCard, { backgroundColor: a.bg, borderColor: a.border }]}
+            onPress={a.go}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: a.chip, borderWidth: 1, borderColor: a.border }]}>
               <Ionicons name={a.icon} size={18} color={a.color} />
             </View>
             <Text style={styles.actionText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -614,15 +628,15 @@ export default function CrmHomeTab({
       {/* Date filter (same as Leads) */}
       <View style={styles.dateDropdownWrap}>
         <TouchableOpacity
-          style={styles.dateDropdownBtn}
+          style={[styles.dateDropdownBtn, styles.dateRangeBtnBlue]}
           onPress={() => setDateOpen((v) => !v)}
           activeOpacity={0.85}
         >
-          <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.dateDropdownText} numberOfLines={1}>
+          <Ionicons name="calendar-outline" size={16} color="#fff" />
+          <Text style={[styles.dateDropdownText, styles.dateRangeTextBlue]} numberOfLines={1}>
             {datePreset === 'custom' ? dateRange.label : dateLabel}
           </Text>
-          <Ionicons name={dateOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textSecondary} />
+          <Ionicons name={dateOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#fff" />
         </TouchableOpacity>
         {dateOpen ? (
           <View style={styles.dateMenu}>
@@ -672,6 +686,22 @@ export default function CrmHomeTab({
         ) : null}
       </View>
 
+      <TouchableOpacity
+        style={styles.bookedCard}
+        onPress={() => onNavigate('queue', { filter: 'booking_confirmed' })}
+        activeOpacity={0.85}
+      >
+        <View style={styles.bookedIcon}>
+          <Ionicons name="checkmark-done-circle" size={24} color="#047857" />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.bookedLabel}>Booking confirmed</Text>
+          <Text style={styles.bookedHint} numberOfLines={1}>{dateLabel}</Text>
+        </View>
+        <Text style={styles.bookedValue}>{bookingConfirmed}</Text>
+        <Ionicons name="chevron-forward" size={18} color="#047857" />
+      </TouchableOpacity>
+
       <View style={styles.pipeCard}>
         <View style={styles.cardHead}>
           <Text style={styles.cardTitle}>My pipeline</Text>
@@ -686,7 +716,7 @@ export default function CrmHomeTab({
             onPress={() => onNavigate('queue', { filter: row.filter })}
             activeOpacity={0.85}
           >
-            <Text style={styles.pipeLabel}>{row.label}</Text>
+            <Text style={styles.pipeLabel} numberOfLines={2}>{row.label}</Text>
             <View style={styles.pipeTrack}>
               <View style={[styles.pipeFill, { width: `${Math.max(6, Math.round((row.value / pipelineMax) * 100))}%`, backgroundColor: row.color }]} />
             </View>
@@ -924,7 +954,7 @@ export default function CrmHomeTab({
         {(() => {
           const calls = Number(kpis.today_calls || 0);
           const connected = Number(kpis.answered_calls || 0);
-          const bookings = Number(kpis.booking_confirmed ?? kpis.booked ?? 0);
+          const bookings = bookingConfirmed;
           const talkSeconds = Number(kpis.talk_duration_seconds || 0);
           const connectRatio = calls > 0 ? connected / calls : 0;
           const talkRatio = Math.min(1, talkSeconds / (3 * 3600));
@@ -1168,6 +1198,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E6EDF5',
   },
+  dateRangeBtnBlue: { backgroundColor: '#004AAD', borderColor: '#004AAD' },
+  dateRangeTextBlue: { color: '#fff' },
   dateDropdownText: { flex: 1, fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   dateMenu: {
     position: 'absolute',
@@ -1401,7 +1433,30 @@ const styles = StyleSheet.create({
   nextGhostText: { color: '#E2E8F0', fontSize: 12, fontWeight: '700' },
   pipeCard: { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#E6EDF5', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, marginBottom: 12 },
   pipeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  pipeLabel: { width: 86, fontSize: 13, fontWeight: '700', color: '#334155' },
+  pipeLabel: { width: 112, fontSize: 13, fontWeight: '700', color: '#334155' },
+  bookedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  bookedIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookedLabel: { fontSize: 15, fontWeight: '800', color: '#065F46' },
+  bookedHint: { fontSize: 12, color: '#047857', marginTop: 2 },
+  bookedValue: { fontSize: 24, fontWeight: '900', color: '#065F46' },
   pipeTrack: { flex: 1, height: 10, borderRadius: 99, backgroundColor: '#EEF2F7', overflow: 'hidden' },
   pipeFill: { height: 10, borderRadius: 99 },
   pipeValue: { width: 42, textAlign: 'right', fontSize: 14, fontWeight: '800', color: '#0F2744' },

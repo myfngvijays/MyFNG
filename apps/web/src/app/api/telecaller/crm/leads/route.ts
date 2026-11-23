@@ -1,3 +1,4 @@
+import { last10Phone, loadCustomerPhoneIndex } from '@/lib/customerPhoneIndex';
 import { resolveCrmPermissionsForUser } from '@/lib/telecaller/resolveCrmPermissions';
 import { leadSourceTag, leadSourceTagWithoutChannel } from '@/lib/telecaller/leadSourceTag';
 import { NextRequest, NextResponse } from 'next/server';
@@ -443,7 +444,25 @@ export async function GET(request: NextRequest) {
           });
     });
 
-    let scoped = leads;
+    // "App user" badge: lead phone is a registered MyFNG app / website customer.
+    // Managers get the customer id (link to App Customers); telecallers only get the flag.
+    let custIndex: Awaited<ReturnType<typeof loadCustomerPhoneIndex>> | null = null;
+    try {
+      custIndex = await loadCustomerPhoneIndex(db);
+    } catch (err) {
+      console.warn('[crm/leads] app customer lookup skipped', err);
+    }
+    const withAppCustomer = (lead: any) => {
+      const hit = custIndex?.get(last10Phone(lead?.customer_phone));
+      if (!hit) return lead;
+      return {
+        ...lead,
+        is_app_customer: true,
+        app_customer_platform: hit.app_platform,
+        ...(seesAll ? { app_customer_id: hit.id } : {}),
+      };
+    };
+    let scoped = leads.map(withAppCustomer);
     if (bookingFilterOn) {
       scoped = filterBookingLeads(scoped, {
         source: sourceFilter,

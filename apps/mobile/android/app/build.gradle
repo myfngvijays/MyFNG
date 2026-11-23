@@ -127,9 +127,9 @@ android {
         applicationId partnerApp ? 'com.myfng.partner' : 'com.myfng.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Partner listing is 1.0.8 (build 8). Customer app is 1.5.0 (50).
-        versionCode partnerApp ? 8 : 50
-        versionName partnerApp ? "1.0.8" : "1.5.0"
+        // Partner listing is 1.0.9 (build 9). Customer app is 1.5.0 (50).
+        versionCode partnerApp ? 9 : 50
+        versionName partnerApp ? "1.0.9" : "1.5.0"
         // First frame of the partner splash video. Customer launch screen stays light blue.
         resValue "color", "splashscreen_background", (partnerApp ? "#021E6F" : "#F0F7FF")
 

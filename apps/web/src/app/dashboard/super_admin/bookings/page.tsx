@@ -102,6 +102,24 @@ const SOURCE_OPTIONS = [
 ] as const;
 const COUPON_OPTIONS = ['ALL', 'YES', 'PROMO', 'REFERRAL', 'NO'] as const;
 const PAGE_SIZE_OPTIONS = [25, 50, 75, 100] as const;
+/** Lead phone is a registered MyFNG app / website customer → badge that opens Customer Insights. */
+function AppCustomerBadge({ lead }: { lead: Record<string, any> }) {
+  const id = String(lead?.app_customer_id || '').trim();
+  if (!id) return null;
+  const platform = String(lead?.app_customer_platform || '').trim().toLowerCase();
+  const label = platform === 'android' ? 'App user · Android' : platform === 'ios' ? 'App user · iOS' : 'App user';
+  return (
+    <a
+      href={`/dashboard/super_admin/customer-insights?customer=${encodeURIComponent(id)}`}
+      onClick={(e) => e.stopPropagation()}
+      title="Open this customer in App Customers"
+      className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm hover:bg-emerald-700"
+    >
+      📱 {label} ↗
+    </a>
+  );
+}
+
 const EDIT_LEAD_SOURCES = [
   ...LEAD_SOURCES,
   'MISA AI (Website)',
@@ -4560,6 +4578,7 @@ function SuperAdminBookingsPage() {
                           <td className="px-3 py-3 text-sm text-gray-800 min-w-[180px] whitespace-normal break-words">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span>{lead.customer_name || '-'}</span>
+                              <AppCustomerBadge lead={lead} />
                               {lead.repeat_customer ? (
                                 <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
                                   Repeat Customer
@@ -4855,6 +4874,7 @@ function SuperAdminBookingsPage() {
                       <p className="text-sm font-bold text-gray-900 break-words">
                         {item.customer_name || item.lead_number || '-'}
                       </p>
+                      <AppCustomerBadge lead={item} />
                       {item.repeat_customer ? (
                         <p className="mt-1 text-[11px] font-semibold text-amber-800">
                           Repeat Customer{item.repeat_remark ? ` · ${item.repeat_remark}` : ''}

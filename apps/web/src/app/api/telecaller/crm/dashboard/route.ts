@@ -424,6 +424,11 @@ export async function GET(request: NextRequest) {
         ),
     ]);
 
+    // Extra Lead Status codes the phone pipeline shows (Custom Repair / Appointment Scheduled).
+    const [customRepair, appointmentScheduled] = await Promise.all([
+      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'CUSTOM_REPAIR')),
+      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'APPOINTMENT_SCHEDULED')),
+    ]);
     const countErrors: string[] = [];
     const todayCalls = n(countOf(callTotal, countErrors));
     const answered = n(countOf(callAnswered, countErrors));
@@ -520,6 +525,8 @@ export async function GET(request: NextRequest) {
         will_visit: n(countOf(willVisit, countErrors)),
         callbacks: n(countOf(callbackStatus, countErrors)),
         booking_confirmed: n(countOf(bookingConfirmed, countErrors)),
+        custom_repair: n(countOf(customRepair, [])),
+        appointment_scheduled: n(countOf(appointmentScheduled, [])),
         in_service: n(countOf(inService, countErrors)),
         service_done: n(countOf(serviceDone, countErrors)),
         lost: n(countOf(lost, countErrors)),

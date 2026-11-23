@@ -283,6 +283,11 @@ export default function CustomerInsightsApp() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Deep link from Bookings & Leads "App user" badge: ?customer=<id> opens that customer.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('customer');
+    if (id) setSelectedId(id);
+  }, []);
   const [detail, setDetail] = useState<any>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [error, setError] = useState<string | null>(null);
@@ -1821,6 +1826,19 @@ export default function CustomerInsightsApp() {
                             ) : (
                               <span className="font-bold">{b.lead_number || 'Lead'}</span>
                             )}
+                            {b.lead_number ? (
+                              <a
+                                href={
+                                  typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/lead_manager')
+                                    ? `/dashboard/lead_manager/leads?q=${encodeURIComponent(String(b.lead_number))}`
+                                    : `/dashboard/super_admin/bookings?search=${encodeURIComponent(String(b.lead_number))}`
+                                }
+                                className="ml-2 inline-flex items-center gap-1 rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-bold text-sky-800 hover:bg-sky-100"
+                                title="Open this lead in Bookings & Leads"
+                              >
+                                Bookings &amp; Leads ↗
+                              </a>
+                            ) : null}
                           <div className="flex flex-wrap items-center justify-end gap-1.5">
                             <select
                               key={`${b.id}:${bookingCrmSelectKey}`}
@@ -1844,7 +1862,32 @@ export default function CustomerInsightsApp() {
                             <span className="text-xs rounded-full bg-gray-100 px-2 py-0.5">{b.status}</span>
                           </div>
                           </div>
-                          <div className="font-semibold text-gray-900 mt-1">{serviceLabel}</div>
+                          {Array.isArray(b.service_lines) && b.service_lines.length > 1 && siblings.length === 0 ? (
+                            <div className="mt-1">
+                              <div className="font-semibold text-gray-900">{b.service_lines[0]}</div>
+                              <div className="mt-0.5 flex flex-wrap gap-1">
+                                {b.service_lines.slice(1).map((name: string) => (
+                                  <span key={name} className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">
+                                    + {name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="font-semibold text-gray-900 mt-1">{serviceLabel}</div>
+                          )}
+                          {(() => {
+                            const hist: any[] = Array.isArray(b.coupon_meta?.profile_history) ? b.coupon_meta.profile_history : [];
+                            const removed = hist
+                              .map((h) => String(h?.summary || ''))
+                              .filter((t) => /^package removed:/i.test(t))
+                              .map((t) => t.replace(/^package removed:\s*/i, ''));
+                            return removed.length ? (
+                              <div className="mt-1 text-[11px] font-semibold text-rose-600">
+                                Removed later in CRM: {removed.join(', ')}
+                              </div>
+                            ) : null;
+                          })()}
                           {vehicleLabel || reg ? (
                             <div className="mt-2 flex items-start gap-2 text-xs text-gray-700">
                               <Car className="h-3.5 w-3.5 text-gray-400 shrink-0 mt-0.5" />
@@ -1876,39 +1919,115 @@ export default function CustomerInsightsApp() {
                               </div>
                             ) : null}
                           </div>
-                          {pricing.original > 0 || pricing.payable > 0 ? (
-                            <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-2.5 space-y-1 text-xs">
-                              {pricing.original > 0 ? (
-                                <div className="flex justify-between gap-3">
-                                  <span className="text-gray-500">Original amount</span>
-                                  <span className="font-semibold text-gray-800">{inr(pricing.original)}</span>
-                                </div>
-                              ) : null}
-                              {pricing.walletUsed > 0 ? (
-                                <div className="flex justify-between gap-3 text-blue-700">
-                                  <span>
-                                    Wallet used
-                                    {b.wallet_usage_percent
-                                      ? ` (${b.wallet_usage_percent}%)`
-                                      : pricing.walletUsagePercent
-                                        ? ` (${pricing.walletUsagePercent}%)`
-                                        : ''}
-                                  </span>
-                                  <span className="font-semibold">−{inr(pricing.walletUsed)}</span>
-                                </div>
-                              ) : null}
-                              {pricing.couponDiscount > 0 ? (
-                                <div className="flex justify-between gap-3 text-emerald-700">
-                                  <span>Coupon discount</span>
-                                  <span className="font-semibold">−{inr(pricing.couponDiscount)}</span>
-                                </div>
-                              ) : null}
-                              <div className="flex justify-between gap-3 border-t border-gray-200 pt-1.5 mt-1">
-                                <span className="font-bold text-gray-700">Payable</span>
-                                <span className="font-extrabold text-emerald-700">{inr(pricing.payable)}</span>
+                          {(() => {
+                            const pb = b.price_breakdown || {};
+                            const subtotal = Number(pb.serviceSubtotal || 0) || pricing.original;
+                            const coupon = Number(pb.couponDiscount || 0) || pricing.couponDiscount;
+                            const referral = pricing.referralDiscount;
+                            const memberDisc = Number(pb.membershipBundleDiscount || 0);
+                            const wallet = Number(pb.walletUsed || 0) || pricing.walletUsed;
+                            const walletPct = b.wallet_usage_percent || pb.walletUsagePercent || pricing.walletUsagePercent;
+                            const memberFee = Number(pb.membershipFee || 0);
+                            const invoice = Number(pb.invoiceAmount || 0);
+                            const payable = pricing.payable;
+                            if (subtotal <= 0 && payable <= 0) return null;
+                            const Row = ({ label, value, tone, sign }: { label: string; value: number; tone: string; sign: '−' | '+' | '' }) => (
+                              <div className={`flex justify-between gap-3 ${tone}`}>
+                                <span>{label}</span>
+                                <span className="font-semibold">{sign}{inr(value)}</span>
                               </div>
-                            </div>
-                          ) : null}
+                            );
+                            return (
+                              <div className="mt-3 rounded-lg bg-[#004AAD] border border-[#023D95] p-2.5 space-y-1 text-xs text-white shadow-sm">
+                                {(() => {
+                                  const lines: Array<{ kind: string; name: string; price: number }> = Array.isArray(b.price_lines) ? b.price_lines : [];
+                                  if (!lines.length) {
+                                    return subtotal > 0 ? <Row label="Service amount" value={subtotal} tone="text-white" sign="" /> : null;
+                                  }
+                                  const linesTotal = lines.reduce((sum, l) => sum + (Number(l.price) || 0), 0);
+                                  return (
+                                    <>
+                                      {lines.map((l, idx) => (
+                                        <div key={`${l.name}-${idx}`} className="flex justify-between gap-3 text-white">
+                                          <span>
+                                            {l.kind === 'addon' ? (
+                                              <span className="mr-1 rounded bg-white/20 px-1 py-px text-[10px] font-bold text-white">ADD-ON</span>
+                                            ) : null}
+                                            {l.name}
+                                          </span>
+                                          <span className="font-semibold">{l.price > 0 ? inr(l.price) : '—'}</span>
+                                        </div>
+                                      ))}
+                                      {lines.length > 1 || (subtotal > 0 && Math.abs(subtotal - linesTotal) > 1) ? (
+                                        <div className="flex justify-between gap-3 border-t border-dashed border-white/30 pt-1 text-white">
+                                          <span className="font-semibold">Subtotal</span>
+                                          <span className="font-bold">{inr(subtotal > 0 ? subtotal : linesTotal)}</span>
+                                        </div>
+                                      ) : null}
+                                    </>
+                                  );
+                                })()}
+                                {coupon > 0 ? (
+                                  <Row label={`Coupon discount${b.coupon_display_code ? ` (${b.coupon_display_code})` : ''}`} value={coupon} tone="text-emerald-200" sign="−" />
+                                ) : null}
+                                {referral > 0 ? <Row label="Referral reward" value={referral} tone="text-emerald-200" sign="−" /> : null}
+                                {memberDisc > 0 && memberFee <= 0 ? <Row label="Membership discount (on service)" value={memberDisc} tone="text-emerald-200" sign="−" /> : null}
+                                {wallet > 0 ? (
+                                  <Row label={`Wallet used${walletPct ? ` (${walletPct}%)` : ''}`} value={wallet} tone="text-sky-200" sign="−" />
+                                ) : null}
+                                {memberFee > 0 ? (
+                                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-800">
+                                    <div className="flex justify-between gap-3">
+                                      <span className="font-semibold">MyFNG membership (bought with booking)</span>
+                                      <span className="font-semibold">+{inr(memberFee)}</span>
+                                    </div>
+                                    {memberDisc > 0 ? (
+                                      <div className="flex justify-between gap-3 text-emerald-700">
+                                        <span>Booking + membership discount</span>
+                                        <span className="font-semibold">−{inr(memberDisc)}</span>
+                                      </div>
+                                    ) : null}
+                                    <div className="flex justify-between gap-3 border-t border-amber-200 pt-1 mt-1">
+                                      <span>Membership net · not paid yet, collect with service</span>
+                                      <span className="font-bold">{inr(Math.max(0, memberFee - memberDisc))}</span>
+                                    </div>
+                                  </div>
+                                ) : null}
+                                {pb.membershipPaidOnline ? (
+                                  <div className="rounded-md border border-blue-200 bg-white px-2 py-1.5 text-blue-800">
+                                    <div className="flex justify-between gap-3">
+                                      <span className="font-semibold">MyFNG membership · paid online ✓</span>
+                                      <span className="font-bold">
+                                        {Number(pb.membershipPlanPrice || 0) > 0
+                                          ? inr(Math.max(0, Number(pb.membershipPlanPrice) - memberDisc))
+                                          : 'Paid'}
+                                      </span>
+                                    </div>
+                                    {Number(pb.membershipPlanPrice || 0) > 0 ? (
+                                      <div className="text-[11px]">
+                                        Plan {inr(Number(pb.membershipPlanPrice))}
+                                        {memberDisc > 0 ? ` − booking discount ${inr(memberDisc)}` : ''} · not part of payable below
+                                      </div>
+                                    ) : (
+                                      <div className="text-[11px]">Not part of payable below</div>
+                                    )}
+                                  </div>
+                                ) : null}
+                                {invoice > 0 ? (
+                                  <div className="text-[11px] text-blue-100">Final invoice amount used below</div>
+                                ) : null}
+                                <div className="flex justify-between gap-3 border-t border-white/30 pt-1.5 mt-1">
+                                  <span className="font-bold text-white">Actual payable</span>
+                                  <span className="font-extrabold text-white text-sm">{inr(payable)}</span>
+                                </div>
+                                {subtotal > 0 && coupon + referral + memberDisc + wallet > 0 ? (
+                                  <div className="text-[11px] font-semibold text-emerald-200">
+                                    Total saved {inr(coupon + referral + memberDisc + wallet)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
                           <div className="text-xs text-gray-500 mt-2">{fmtDate(b.created_at)}</div>
                           {b.coupon_display_code ? (
                             <div className="mt-2 text-xs font-bold text-emerald-700">

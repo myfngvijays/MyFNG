@@ -8,22 +8,24 @@ import {
   TextInput,
   ActivityIndicator,
   Pressable,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadRecordingFolder,
   pickRecordingFolder,
+  checkRecordingFolder,
   loadRecordingSyncHistory,
   queueManualRecordingSync,
   subscribeRecordingSyncHistory,
-  isRecordingSyncRunning,
+  subscribeRecordingSyncProgress,
   type RecordingFolder,
   type RecordingSyncHistoryRow,
+  type RecordingSyncProgress,
 } from '../../lib/callRecordingSync';
 
-const LAST_SYNC_KEY = 'myfng.telecaller.lastRecordingSync';
 const PURPLE = '#5B2EE6';
+const IS_ANDROID = Platform.OS === 'android';
 
 const PRESETS = [
   { id: '15m', label: '15 minutes', ms: 15 * 60 * 1000 },
@@ -51,31 +53,82 @@ function agoLabel(ts: number) {
   return `${Math.round(hr / 24)}d ago`;
 }
 
+const STATUS_STYLE: Record<RecordingSyncHistoryRow['status'], { label: string; fg: string; bg: string }> = {
+  success: { label: 'Success', fg: '#047857', bg: '#D1FAE5' },
+  partial: { label: 'Partial', fg: '#B45309', bg: '#FEF3C7' },
+  failed: { label: 'Failed', fg: '#B91C1C', bg: '#FEE2E2' },
+};
+
+function formatHistoryTime(ts: number) {
+  return new Date(ts).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function Count({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <View style={styles.countBox}>
+      <Text style={[styles.countValue, { color }]}>{value}</Text>
+      <Text style={styles.countLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function phaseText(p: RecordingSyncProgress) {
+  if (p.phase === 'listing') return 'Folder padh rahe hain…';
+  if (p.phase === 'checking') return `Files check ho rahi hain… ${p.checked}/${p.scanned}`;
+  if (p.phase === 'uploading') {
+    return p.found ? `Upload ho raha hai… ${p.processed}/${p.found}` : 'Is time range mein koi recording nahi';
+  }
+  return 'Sync complete';
+}
+
 export default function CallRecordingCard() {
   const [folder, setFolder] = useState<RecordingFolder | null>(null);
+  const [folderCheck, setFolderCheck] = useState<{ ok: boolean; audio: number; error?: string } | null>(null);
   const [sheet, setSheet] = useState(false);
   const [preset, setPreset] = useState<(typeof PRESETS)[number]['id']>('15m');
   const [unit, setUnit] = useState<(typeof UNITS)[number]['id']>('minutes');
   const [customAmount, setCustomAmount] = useState('15');
-  const [busy, setBusy] = useState<'pick' | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(0);
+  const [picking, setPicking] = useState(false);
+  const [progress, setProgress] = useState<RecordingSyncProgress | null>(null);
   const [history, setHistory] = useState<RecordingSyncHistoryRow[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [toast, setToast] = useState('');
   const [, setTick] = useState(0);
 
+  const verifyFolder = (row: RecordingFolder | null) => {
+    if (!row?.uri || !IS_ANDROID) {
+      setFolderCheck(null);
+      return;
+    }
+    void checkRecordingFolder(row.uri).then(setFolderCheck);
+  };
+
   useEffect(() => {
-    void loadRecordingFolder().then(setFolder).catch(() => setFolder(null));
-    void AsyncStorage.getItem(LAST_SYNC_KEY).then((raw) => {
-      const n = Number(raw || 0);
-      if (n) setLastSync(n);
+    let alive = true;
+    void loadRecordingFolder()
+      .then((row) => {
+        if (!alive) return;
+        setFolder(row);
+        verifyFolder(row);
+      })
+      .catch(() => alive && setFolder(null));
+    void loadRecordingSyncHistory().then((rows) => {
+      if (!alive) return;
+      setHistory(rows);
+      setHistoryLoaded(true);
     });
-    void loadRecordingSyncHistory().then(setHistory);
-    const unsub = subscribeRecordingSyncHistory(setHistory);
-    const syncPoll = setInterval(() => setSyncing(isRecordingSyncRunning()), 1200);
+    const unsubHistory = subscribeRecordingSyncHistory(setHistory);
+    const unsubProgress = subscribeRecordingSyncProgress(setProgress);
     return () => {
-      unsub();
-      clearInterval(syncPoll);
+      alive = false;
+      unsubHistory();
+      unsubProgress();
     };
   }, []);
 
@@ -86,7 +139,7 @@ export default function CallRecordingCard() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(''), 2800);
+    const t = setTimeout(() => setToast(''), 3200);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -105,55 +158,85 @@ export default function CallRecordingCard() {
   };
 
   const selectFolder = async () => {
-    setBusy('pick');
+    setPicking(true);
     try {
       const next = await pickRecordingFolder();
-      if (next) setFolder(next);
+      if (next) {
+        setFolder(next);
+        verifyFolder(next);
+        setToast('Folder saved ✓');
+      }
     } catch (e: unknown) {
       setToast(e instanceof Error ? e.message : 'Could not open the folder picker');
     } finally {
-      setBusy(null);
+      setPicking(false);
     }
   };
 
+  const running = Boolean(progress?.running);
+
   const runSync = () => {
     setSheet(false);
+    if (!IS_ANDROID) {
+      setToast('Call recording sync sirf Android phone par chalta hai.');
+      return;
+    }
     const label = windowLabel();
-    queueManualRecordingSync({ sinceMs: windowMs(), windowLabel: label });
-    setSyncing(true);
-    setToast(`Sync started (${label}) — app chalega, background mein upload hoga.`);
-    const now = Date.now();
-    setLastSync(now);
-    void AsyncStorage.setItem(LAST_SYNC_KEY, String(now));
+    const state = queueManualRecordingSync({ sinceMs: windowMs(), windowLabel: label });
+    setToast(state === 'queued' ? `Ek sync chal raha hai — uske baad ${label} wala chalega.` : `Sync started (${label})`);
   };
 
-  const formatHistoryTime = (ts: number) =>
-    new Date(ts).toLocaleString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-
-  const statusLabel = (row: RecordingSyncHistoryRow) => {
-    if (row.status === 'failed') return 'Failed';
-    if (row.status === 'partial') return 'Partial';
-    return 'Success';
-  };
-
-  const folderName = folder?.label && !folder.label.startsWith('content://') ? folder.label : '';
+  const lastRun = history[0];
+  const folderName = folder?.label || '';
+  const pct = (() => {
+    if (!progress) return 0;
+    if (progress.phase === 'done') return 1;
+    if (progress.phase === 'checking') return progress.scanned ? (progress.checked / progress.scanned) * 0.3 : 0.05;
+    if (progress.phase === 'uploading') return 0.3 + (progress.found ? (progress.processed / progress.found) * 0.7 : 0.7);
+    return 0.03;
+  })();
 
   return (
     <View>
       <Text style={styles.pageTitle}>Call Recording</Text>
+
+      {!IS_ANDROID ? (
+        <View style={styles.iosNote}>
+          <Ionicons name="information-circle" size={18} color="#1D4ED8" />
+          <Text style={styles.iosNoteText}>
+            Call recording sync sirf Android phone par chalta hai. iPhone par history dekh sakte hain.
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Recording's Folder</Text>
         <View style={styles.folderBlock}>
-          <Ionicons name="folder-outline" size={54} color="#C5CAD3" />
-          <Text style={styles.folderState}>{folderName || 'No folder selected'}</Text>
-          <TouchableOpacity style={styles.selectBtn} onPress={selectFolder} disabled={busy != null}>
-            {busy === 'pick' ? (
+          <Ionicons
+            name={folderName ? 'folder-open' : 'folder-outline'}
+            size={54}
+            color={folderName ? (folderCheck && !folderCheck.ok ? '#F59E0B' : '#5B2EE6') : '#C5CAD3'}
+          />
+          <Text style={[styles.folderState, folderName ? styles.folderStateOn : null]}>
+            {folderName || 'No folder selected'}
+          </Text>
+          {folderName && folderCheck ? (
+            folderCheck.ok ? (
+              <Text style={styles.folderOk}>
+                ✓ Access OK · {folderCheck.audio} recording{folderCheck.audio === 1 ? '' : 's'} in folder
+              </Text>
+            ) : (
+              <Text style={styles.folderErr}>
+                Folder access nahi mila. "Change folder" dabakar wahi folder dobara chunein aur "Use this folder" → Allow karein.
+              </Text>
+            )
+          ) : null}
+          <TouchableOpacity
+            style={[styles.selectBtn, !IS_ANDROID && styles.btnOff]}
+            onPress={selectFolder}
+            disabled={picking || !IS_ANDROID}
+          >
+            {picking ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.selectBtnText}>{folderName ? 'Change folder' : 'Select folder'}</Text>
@@ -168,43 +251,134 @@ export default function CallRecordingCard() {
       <View style={styles.syncBar}>
         <Text style={styles.syncTitle}>Manually sync calls for last</Text>
         <View style={styles.syncRow}>
-          <TouchableOpacity style={styles.timeBtn} onPress={() => setSheet(true)}>
+          <TouchableOpacity style={styles.timeBtn} onPress={() => setSheet(true)} disabled={running}>
             <Text style={styles.timeBtnText} numberOfLines={1}>
               {windowLabel()}
             </Text>
             <Ionicons name="chevron-down" size={16} color="#64748B" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.syncBtn} onPress={runSync} disabled={busy != null}>
-            {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncBtnText}>SYNC</Text>}
+          <TouchableOpacity
+            style={[styles.syncBtn, (running || !IS_ANDROID) && styles.btnOff]}
+            onPress={runSync}
+            disabled={running || !IS_ANDROID}
+          >
+            {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncBtnText}>SYNC</Text>}
           </TouchableOpacity>
         </View>
+
+        {progress ? (
+          <View style={styles.progressBox}>
+            <View style={styles.progressHead}>
+              {progress.running ? (
+                <ActivityIndicator size="small" color={PURPLE} />
+              ) : (
+                <Ionicons
+                  name={progress.result?.status === 'failed' ? 'close-circle' : 'checkmark-circle'}
+                  size={18}
+                  color={progress.result?.status === 'failed' ? '#DC2626' : '#16A34A'}
+                />
+              )}
+              <Text style={styles.progressText} numberOfLines={2}>
+                {progress.running
+                  ? `${phaseText(progress)}`
+                  : `Sync ${STATUS_STYLE[progress.result?.status || 'success'].label.toLowerCase()} · ${progress.windowLabel || ''}`}
+              </Text>
+              {!progress.running ? (
+                <TouchableOpacity onPress={() => setProgress(null)} hitSlop={8}>
+                  <Ionicons name="close" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.round(Math.min(1, Math.max(0.03, pct)) * 100)}%`,
+                    backgroundColor: progress.result?.status === 'failed' ? '#DC2626' : PURPLE,
+                  },
+                ]}
+              />
+            </View>
+            {progress.running && progress.current ? (
+              <Text style={styles.progressFile} numberOfLines={1}>
+                {progress.current}
+              </Text>
+            ) : null}
+            <View style={styles.countRow}>
+              <Count label="Found" value={progress.found} color="#0F172A" />
+              <Count label="Uploaded" value={progress.uploaded} color="#047857" />
+              <Count label="No match" value={progress.noMatch} color="#B45309" />
+              <Count label="Skipped" value={progress.skipped} color="#64748B" />
+              <Count label="Failed" value={progress.failed} color="#DC2626" />
+            </View>
+            {!progress.running && progress.result ? (
+              <>
+                <Text style={styles.progressMeta}>
+                  {progress.result.scanned ?? 0} audio files in folder · {progress.result.found ?? 0} in last{' '}
+                  {progress.windowLabel || 'range'}
+                </Text>
+                {progress.result.noMatch ? (
+                  <Text style={styles.progressMeta}>
+                    No match = is number ki koi call log aapke naam par nahi mili.
+                  </Text>
+                ) : null}
+                {progress.result.skipNote ? (
+                  <Text style={styles.progressMeta}>Skipped: {progress.result.skipNote}</Text>
+                ) : null}
+                {progress.result.error ? <Text style={styles.historyErr}>{progress.result.error}</Text> : null}
+              </>
+            ) : null}
+          </View>
+        ) : null}
+
         <Text style={styles.lastSync}>
-          {syncing ? 'Sync running in background…' : `Last synced: ${lastSync ? agoLabel(lastSync) : '—'}`}
+          {running ? 'Sync chal raha hai — screen band kar sakte hain, background mein chalta rahega.' : `Last synced: ${lastRun ? agoLabel(lastRun.at) : '—'}`}
         </Text>
       </View>
 
-      {history.length ? (
-        <View style={styles.historyCard}>
-          <Text style={styles.historyTitle}>Sync history</Text>
-          {history.slice(0, 8).map((row) => (
-            <View key={row.id} style={styles.historyRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.historyWhen}>{formatHistoryTime(row.at)}</Text>
-                <Text style={styles.historyMeta} numberOfLines={1}>
-                  {row.manual ? row.windowLabel || 'Manual' : 'Auto'} · {statusLabel(row)} · +{row.uploaded} uploaded
+      <View style={styles.historyCard}>
+        <Text style={styles.historyTitle}>Sync history</Text>
+        {!historyLoaded ? (
+          <ActivityIndicator color={PURPLE} style={{ marginVertical: 10 }} />
+        ) : history.length === 0 ? (
+          <Text style={styles.historyEmpty}>Abhi tak koi sync nahi hua. SYNC dabayein.</Text>
+        ) : (
+          history.slice(0, 15).map((row) => {
+            const st = STATUS_STYLE[row.status] || STATUS_STYLE.success;
+            return (
+              <View key={row.id} style={styles.historyRow}>
+                <View style={styles.historyTop}>
+                  <Text style={styles.historyWhen}>{formatHistoryTime(row.at)}</Text>
+                  <Text style={styles.historyRange} numberOfLines={1}>
+                    {row.manual ? row.windowLabel || 'Manual' : 'Auto'}
+                  </Text>
+                  <View style={[styles.pill, { backgroundColor: st.bg }]}>
+                    <Text style={[styles.pillText, { color: st.fg }]}>{st.label}</Text>
+                  </View>
+                </View>
+                <Text style={styles.historyMeta}>
+                  {row.found != null ? `${row.found} found · ` : ''}
+                  {row.uploaded} uploaded
                   {row.noMatch ? ` · ${row.noMatch} no match` : ''}
                   {row.skipped ? ` · ${row.skipped} skipped` : ''}
+                  {row.failed ? ` · ${row.failed} failed` : ''}
                 </Text>
+                {row.skipNote ? (
+                  <Text style={styles.historySub} numberOfLines={2}>
+                    {row.skipNote}
+                  </Text>
+                ) : null}
                 {row.error ? (
-                  <Text style={styles.historyErr} numberOfLines={2}>
+                  <Text style={styles.historyErr} numberOfLines={3}>
                     {row.error}
                   </Text>
                 ) : null}
               </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
+            );
+          })
+        )}
+      </View>
 
       <Modal visible={sheet} transparent animationType="fade" onRequestClose={() => setSheet(false)}>
         <Pressable style={styles.scrim} onPress={() => setSheet(false)}>
@@ -264,14 +438,14 @@ export default function CallRecordingCard() {
                   </Text>
                   <Ionicons name="chevron-down" size={16} color="#64748B" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.syncBtn} onPress={runSync} disabled={busy != null}>
+                <TouchableOpacity style={styles.syncBtn} onPress={runSync} disabled={running}>
                   <Text style={styles.syncBtnText}>SYNC</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.closeBtn} onPress={() => setSheet(false)}>
                   <Ionicons name="close" size={18} color="#64748B" />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.lastSync}>Last synced: {lastSync ? agoLabel(lastSync) : '—'}</Text>
+              <Text style={styles.lastSync}>Last synced: {lastRun ? agoLabel(lastRun.at) : '—'}</Text>
             </View>
           </Pressable>
         </Pressable>
@@ -279,7 +453,7 @@ export default function CallRecordingCard() {
 
       {toast ? (
         <View style={styles.toast}>
-          {toast.startsWith('Added') ? <Ionicons name="checkmark-circle" size={18} color="#16A34A" /> : null}
+          {toast.includes('✓') ? <Ionicons name="checkmark-circle" size={18} color="#16A34A" /> : null}
           <Text style={styles.toastText}>{toast}</Text>
         </View>
       ) : null}
@@ -309,7 +483,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   folderBlock: { alignItems: 'center', paddingTop: 18, paddingBottom: 16 },
-  folderState: { marginTop: 8, fontSize: 14, color: '#64748B', fontWeight: '600' },
+  folderState: { marginTop: 8, fontSize: 14, color: '#64748B', fontWeight: '600', textAlign: 'center', paddingHorizontal: 16 },
+  folderStateOn: { color: '#0F172A', fontWeight: '800' },
+  folderOk: { marginTop: 4, fontSize: 12, color: '#047857', fontWeight: '700' },
+  folderErr: { marginTop: 6, fontSize: 12, color: '#B45309', textAlign: 'center', paddingHorizontal: 20 },
+  btnOff: { opacity: 0.5 },
+  iosNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  iosNoteText: { flex: 1, fontSize: 13, color: '#1E3A8A', fontWeight: '600' },
+  progressBox: {
+    marginTop: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+  },
+  progressHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressText: { flex: 1, fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  progressTrack: { height: 8, borderRadius: 99, backgroundColor: '#E2E8F0', overflow: 'hidden', marginTop: 10 },
+  progressFill: { height: 8, borderRadius: 99 },
+  progressFile: { fontSize: 11, color: '#64748B', marginTop: 6 },
+  progressMeta: { fontSize: 12, color: '#475569', marginTop: 6 },
+  countRow: { flexDirection: 'row', marginTop: 10, gap: 6 },
+  countBox: { flex: 1, alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, paddingVertical: 8 },
+  countValue: { fontSize: 17, fontWeight: '900' },
+  countLabel: { fontSize: 10, color: '#64748B', fontWeight: '700', marginTop: 2 },
+  historyEmpty: { fontSize: 13, color: '#64748B', paddingVertical: 6 },
+  historyTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  historyRange: { flex: 1, fontSize: 12, color: '#64748B', fontWeight: '600' },
+  historySub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  pill: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
+  pillText: { fontSize: 11, fontWeight: '800' },
   selectBtn: {
     marginTop: 14,
     backgroundColor: PURPLE,

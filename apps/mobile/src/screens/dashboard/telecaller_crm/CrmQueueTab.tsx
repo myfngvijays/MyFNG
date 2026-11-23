@@ -39,6 +39,7 @@ import { crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClo
 import { titleCasePersonName } from '../../../lib/personName';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import { MlScorePill } from '../../../components/telecaller/LeadBrainCard';
+import { isPendingBookingLead, pendingBookingPill } from '../../../lib/telecaller/pendingBooking';
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -1081,18 +1082,18 @@ export default function CrmQueueTab({
             ]}
           >
             <TouchableOpacity
-              style={styles.dateDropdownBtn}
+              style={[styles.dateDropdownBtn, styles.dateRangeBtnBlue]}
               onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
               activeOpacity={0.85}
             >
-              <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.dateDropdownText} numberOfLines={1}>
+              <Ionicons name="calendar-outline" size={16} color="#fff" />
+              <Text style={[styles.dateDropdownText, styles.dateRangeTextBlue]} numberOfLines={1}>
                 {datePreset === 'custom' ? dateRange.label : dateLabel}
               </Text>
               <Ionicons
                 name={openDropdown === 'date' ? 'chevron-up' : 'chevron-down'}
                 size={16}
-                color={COLORS.textSecondary}
+                color="#fff"
               />
             </TouchableOpacity>
             {openDropdown === 'date' ? (
@@ -1388,12 +1389,14 @@ export default function CrmQueueTab({
             ).trim();
             const isFirst = index === 0;
             const isLast = index === displayedLeads.length - 1;
+            const pendingBooking = isPendingBookingLead(item);
             return (
             <TouchableOpacity
               style={[
                 styles.card,
                 isFirst ? styles.cardFirst : null,
                 isLast ? styles.cardLast : styles.cardDivider,
+                pendingBooking ? styles.cardPendingBooking : null,
                 selected ? { backgroundColor: '#EFF6FF' } : null,
               ]}
               activeOpacity={0.9}
@@ -1447,6 +1450,13 @@ export default function CrmQueueTab({
                     {statusLabel}
                   </Text>
                 </TouchableOpacity>
+                {pendingBooking ? (
+                  <View style={styles.pendingPill}>
+                    <Text style={styles.pendingPillText} numberOfLines={1}>
+                      {pendingBookingPill(item)}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
               <View style={styles.iconActions}>
                   <TouchableOpacity
@@ -2130,6 +2140,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     ...SHADOWS.small,
   },
+  dateRangeBtnBlue: { backgroundColor: '#004AAD', borderColor: '#004AAD' },
+  dateRangeTextBlue: { color: '#fff' },
   dateDropdownText: { flex: 1, fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   filterBtnSpacer: { flex: 1 },
   dateMenu: {
@@ -2192,6 +2204,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  cardPendingBooking: {
+    backgroundColor: '#FEF3C7',
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+    paddingLeft: 8,
+  },
+  pendingPill: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    borderRadius: 99,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: '#FDE68A',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  pendingPillText: { fontSize: 11, fontWeight: '800', color: '#92400E' },
   cardFirst: {
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,

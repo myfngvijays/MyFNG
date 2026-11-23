@@ -62,6 +62,29 @@ import { leadSourceTag, type LeadSourceKind, type LeadSourceTag } from '@/lib/te
 
 const BOOKING_ROW_BG = '#FEF3C7';
 
+/** Lead phone is a registered MyFNG app customer. Managers: link to App Customers; telecallers: plain badge. */
+function AppUserBadge({ lead, linkable }: { lead: any; linkable: boolean }) {
+  if (!lead?.is_app_customer) return null;
+  const platform = String(lead.app_customer_platform || '').toLowerCase();
+  const label = platform === 'android' ? 'App user · Android' : platform === 'ios' ? 'App user · iOS' : 'App user';
+  const cls =
+    'mt-1 inline-flex w-fit items-center gap-1 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm';
+  const id = String(lead.app_customer_id || '').trim();
+  if (linkable && id) {
+    return (
+      <a
+        href={`/dashboard/lead_manager/customer-insights?customer=${encodeURIComponent(id)}`}
+        onClick={(e) => e.stopPropagation()}
+        title="Open this customer in App Customers"
+        className={`${cls} hover:bg-emerald-700`}
+      >
+        📱 {label} ↗
+      </a>
+    );
+  }
+  return <span className={cls}>📱 {label}</span>;
+}
+
 /** One colour per channel so telecallers can tell sources apart at a glance. */
 const SOURCE_KIND_CLASS: Record<LeadSourceKind, string> = {
   app: 'bg-blue-100 text-blue-800',
@@ -2659,6 +2682,7 @@ function TelecallerCrmLeadsContent() {
                             {lead.repeat_customer && lead.repeat_remark ? (
                               <span className="mt-0.5 block truncate text-[10px] font-medium text-amber-800" title={lead.repeat_remark}>{lead.repeat_remark}</span>
                             ) : null}
+                            <AppUserBadge lead={lead} linkable={isLeadManager} />
                           </td>
                         ) : null}
                         {showCol('leadFrom') ? (
@@ -2803,6 +2827,7 @@ function TelecallerCrmLeadsContent() {
                           {lead.has_membership ? <MembershipCrown /> : null}
                           <span className="truncate">{formatLeadName(lead.customer_name)}</span>
                         </p>
+                        <AppUserBadge lead={lead} linkable={isLeadManager} />
                         {lead.repeat_customer ? (
                           <p className="mt-1 text-[11px] font-semibold text-amber-800" title={lead.repeat_remark || ''}>
                             Repeat Customer{lead.repeat_remark ? ` · ${lead.repeat_remark}` : ''}

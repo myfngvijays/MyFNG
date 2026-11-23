@@ -46,6 +46,17 @@ function stampPaidBookingMembershipBundle(
     service_subtotal: opts.serviceSubtotal,
   };
   meta.customer_id = opts.customerId;
+  // Membership is now paid online — it is no longer an amount to collect with the service.
+  const unpaidLine = Number(meta.unpaid_membership_line_price || 0);
+  if (unpaidLine > 0) {
+    meta.membership_paid_online = {
+      at: opts.appliedAt,
+      membership_id: opts.membershipId,
+      plan_price: unpaidLine,
+      discount: opts.discountAmount,
+    };
+  }
+  meta.unpaid_membership_line_price = null;
   const offer = meta.post_booking_membership_offer;
   if (offer && typeof offer === 'object' && !Array.isArray(offer)) {
     const nextOffer = { ...(offer as Record<string, unknown>) };

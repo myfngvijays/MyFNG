@@ -669,38 +669,91 @@ function resolveAdminWalletDeduction(
 }
 
 /** Payable amount shown in admin booking/lead lists (service − coupon − Prime − wallet [+ unpaid membership line]). */
-export function resolveAdminBookingPayableAmount(
+export type AdminBookingPriceBreakdown = {
+  /** Services + add-ons before any discount. 0 = unknown (old / manual leads). */
+  serviceSubtotal: number;
+  couponDiscount: number;
+  membershipBundleDiscount: number;
+  walletUsed: number;
+  /** Membership bought with this booking and still to be paid (added on top). */
+  membershipFee: number;
+  /** Membership bought with this booking and already paid online (not part of payable). */
+  membershipPaidOnline: boolean;
+  /** Plan price of that membership (before the booking discount), when known. */
+  membershipPlanPrice: number;
+  /** Final invoice amount, when an invoice exists (overrides the computed payable). */
+  invoiceAmount: number;
+  payable: number;
+};
+
+/** Line-by-line price of a booking for admin screens (same maths as the payable). */
+export function resolveAdminBookingPriceBreakdown(
   lead: Record<string, unknown>,
   config: PostBookingMembershipConfig = DEFAULT_POST_BOOKING_MEMBERSHIP_CONFIG,
-): number {
-  const invoiceAmount = Number(lead.invoice_amount || 0);
-  if (invoiceAmount > 0) return invoiceAmount;
-
+): AdminBookingPriceBreakdown {
+  const invoiceAmount = Number(lead.invoice_amount || 0) > 0 ? Number(lead.invoice_amount) : 0;
   const actual = Number(lead.actual_amount || 0);
   const estimated = Number(lead.estimated_amount || 0);
   const storedPayable = actual > 0 ? actual : estimated;
   const meta = parseMetaObject(lead.meta);
   const serviceSubtotal = resolvePureServiceSubtotalFromLead(lead, config);
+
   if (serviceSubtotal <= 0) {
-    return storedPayable;
+    return {
+      serviceSubtotal: 0,
+      couponDiscount: 0,
+      membershipBundleDiscount: 0,
+      walletUsed: 0,
+      membershipFee: 0,
+      membershipPaidOnline: false,
+      membershipPlanPrice: 0,
+      invoiceAmount,
+      payable: invoiceAmount > 0 ? invoiceAmount : storedPayable,
+    };
   }
 
   const couponDiscount = resolveServiceLeadCouponDiscount(lead, config);
-  const membershipDiscount = resolveActiveMembershipBundleDiscount(lead, config);
-  const wallet = resolveAdminWalletDeduction(lead, config);
-  let payable = roundMoney(serviceSubtotal - couponDiscount - membershipDiscount - wallet);
-
+  const membershipBundleDiscount = resolveActiveMembershipBundleDiscount(lead, config);
+  const walletUsed = resolveAdminWalletDeduction(lead, config);
   const unpaidLine = Number(meta.unpaid_membership_line_price || 0);
   const bundle = meta.booking_membership_bundle as Record<string, unknown> | undefined;
-  if (
+  const paidInfo =
+    meta.membership_paid_online && typeof meta.membership_paid_online === 'object'
+      ? (meta.membership_paid_online as Record<string, unknown>)
+      : null;
+  // membership_id + applied_at on the bundle = customer paid the membership online (Razorpay).
+  const membershipPaidOnline = Boolean(paidInfo) || Boolean(bundle?.membership_id && bundle?.applied_at);
+  const membershipPlanPrice = Number(paidInfo?.plan_price || unpaidLine || 0);
+  const membershipFee =
+    !membershipPaidOnline &&
     unpaidLine > 0 &&
     bundle?.include_membership &&
     !isExpiredUnpaidMembershipBundle(lead, config)
-  ) {
-    payable = roundMoney(payable + unpaidLine);
-  }
+      ? unpaidLine
+      : 0;
+  const computed = Math.max(
+    0,
+    roundMoney(serviceSubtotal - couponDiscount - membershipBundleDiscount - walletUsed + membershipFee),
+  );
 
-  return Math.max(0, payable);
+  return {
+    serviceSubtotal,
+    couponDiscount,
+    membershipBundleDiscount,
+    walletUsed,
+    membershipFee,
+    membershipPaidOnline,
+    membershipPlanPrice,
+    invoiceAmount,
+    payable: invoiceAmount > 0 ? invoiceAmount : computed,
+  };
+}
+
+export function resolveAdminBookingPayableAmount(
+  lead: Record<string, unknown>,
+  config: PostBookingMembershipConfig = DEFAULT_POST_BOOKING_MEMBERSHIP_CONFIG,
+): number {
+  return resolveAdminBookingPriceBreakdown(lead, config).payable;
 }
 
 /** Apply expiry + display pricing fields for admin lead lists (matches customer app). */

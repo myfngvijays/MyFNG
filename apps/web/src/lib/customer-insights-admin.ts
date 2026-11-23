@@ -1,7 +1,12 @@
+import { buildTelecallerCrmQuote } from './telecaller/crmQuote';
 import { normalizePhone } from './coupon-rules';
 import { enrichBookingLead, enrichLeadsServiceDisplay, getLeadVehicleLabel, getLeadPricingBreakdown, isIncomingSarvLeadSource, isWhatsAppEnquiryLead } from './booking-lead-utils';
 import { getPostBookingMembershipConfig } from './post-booking-membership-config';
-import { syncServiceLeadMembershipPricingForAdmin, resolveAdminBookingPayableAmount } from './post-booking-membership-offer';
+import {
+  syncServiceLeadMembershipPricingForAdmin,
+  resolveAdminBookingPayableAmount,
+  resolveAdminBookingPriceBreakdown,
+} from './post-booking-membership-offer';
 import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
 import { normalizeAppPlatform, resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
@@ -996,6 +1001,79 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     }
   }
 
+  // Service + add-on names (service_type_ids / subservice_ids) so the booking card lists every line.
+  const parseIds = (raw: unknown): string[] => {
+    let v: unknown = raw;
+    if (typeof v === 'string') {
+      try {
+        v = JSON.parse(v);
+      } catch {
+        v = [];
+      }
+    }
+    return Array.isArray(v) ? v.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  };
+  const allServiceIds = new Set<string>();
+  const allSubserviceIds = new Set<string>();
+  for (const lead of syncedLeads as Record<string, unknown>[]) {
+    parseIds(lead.service_type_ids).forEach((id) => allServiceIds.add(id));
+    parseIds(lead.subservice_ids).forEach((id) => allSubserviceIds.add(id));
+  }
+  const serviceNameById = new Map<string, string>();
+  try {
+    const [stRes, subRes] = await Promise.all([
+      allServiceIds.size
+        ? supabaseAdmin.from('service_types').select('id, name').in('id', [...allServiceIds])
+        : Promise.resolve({ data: [] as any[] }),
+      allSubserviceIds.size
+        ? supabaseAdmin.from('subservices').select('id, name').in('id', [...allSubserviceIds])
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+    for (const row of [...((stRes as any).data || []), ...((subRes as any).data || [])]) {
+      if (row?.id && row?.name) serviceNameById.set(String(row.id), String(row.name).trim());
+    }
+  } catch (err) {
+    console.warn('[customer-insights] service names lookup failed:', err);
+  }
+
+  // Price per line (main service + add-ons) for this car / city — same quote the CRM uses.
+  const priceLinesByLead = new Map<string, Array<{ kind: 'service' | 'addon'; name: string; price: number }>>();
+  await Promise.all(
+    (syncedLeads as Record<string, unknown>[]).map(async (lead) => {
+      const serviceIds = parseIds(lead.service_type_ids);
+      const addonIds = parseIds(lead.subservice_ids);
+      if (!serviceIds.length && !addonIds.length) return;
+      try {
+        const cm =
+          lead.coupon_meta && typeof lead.coupon_meta === 'object'
+            ? (lead.coupon_meta as Record<string, unknown>)
+            : {};
+        const quote = await buildTelecallerCrmQuote(supabaseAdmin, {
+          serviceTypeIds: serviceIds,
+          addonIds,
+          cityId: lead.city_id ? String(lead.city_id) : null,
+          vehicleClass: cm.vehicle_class ? String(cm.vehicle_class) : null,
+          modelId: lead.model_id ? String(lead.model_id) : null,
+          vehicleMake: lead.vehicle_make ? String(lead.vehicle_make) : null,
+          vehicleModel: lead.vehicle_model ? String(lead.vehicle_model) : null,
+        });
+        const byId = new Map(quote.line_items.map((li) => [String(li.id), li]));
+        const lines = [...serviceIds, ...addonIds].map((id, idx) => {
+          const li = byId.get(id);
+          return {
+            // First package = the service; everything after it = add-on.
+            kind: (idx === 0 ? 'service' : 'addon') as 'service' | 'addon',
+            name: li?.name || serviceNameById.get(id) || 'Service',
+            price: Number(li?.price || 0),
+          };
+        });
+        priceLinesByLead.set(String(lead.id), lines);
+      } catch (err) {
+        console.warn('[customer-insights] line price quote failed:', err);
+      }
+    }),
+  );
+
   const serviceBookings = syncedLeads.map((lead: Record<string, unknown>) => {
     const leadId = String(lead.id || '');
     const walletTx = walletDebitByLeadId.get(leadId);
@@ -1006,8 +1084,20 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
       payableOverride: payable,
     });
 
+    const breakdown = resolveAdminBookingPriceBreakdown(lead, pbConfig);
     return {
       ...lead,
+      // Line-by-line: services + add-ons → coupon → membership discount → wallet → membership fee → payable
+      price_lines: priceLinesByLead.get(String(lead.id)) || [],
+      service_lines: [...parseIds(lead.service_type_ids), ...parseIds(lead.subservice_ids)]
+        .map((id) => serviceNameById.get(id))
+        .filter((name): name is string => Boolean(name)),
+      price_breakdown: {
+        ...breakdown,
+        walletUsed: breakdown.walletUsed > 0 ? breakdown.walletUsed : pricing.walletUsed,
+        walletUsagePercent: pricing.walletUsagePercent,
+        payable: pricing.payable,
+      },
       payment_amount: pricing.payable,
       vehicle_display: getLeadVehicleLabel(lead),
       original_amount: pricing.original,

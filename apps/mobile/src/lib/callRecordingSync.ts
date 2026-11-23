@@ -1,7 +1,7 @@
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
-import { apiFetch, apiUpload } from './api';
+import { apiFetch } from './api';
 
 const STORE_KEY = 'myfng.telecaller.callRecordingFolder';
 const SYNCED_KEY = 'myfng.telecaller.syncedCallRecordings';
@@ -13,11 +13,19 @@ export type RecordingSyncHistoryRow = {
   at: number;
   manual: boolean;
   status: 'success' | 'failed' | 'partial';
+  /** Audio files in the folder (whole folder). */
+  scanned?: number;
+  /** Recordings inside the chosen time window. */
+  found?: number;
   uploaded: number;
   noMatch: number;
   skipped: number;
+  failed?: number;
+  /** e.g. "3 no phone number in file name · 2 already uploaded" */
+  skipNote?: string;
   error?: string;
   windowLabel?: string;
+  durationMs?: number;
 };
 
 export type RecordingFolder = {
@@ -27,41 +35,70 @@ export type RecordingFolder = {
 };
 
 export type SyncResult = {
+  scanned: number;
+  found: number;
   uploaded: number;
   noMatch: number;
   skipped: number;
+  failed: number;
+  skipNote?: string;
   error?: string;
   morePending?: boolean;
+};
+
+export type RecordingSyncProgress = {
+  running: boolean;
+  manual: boolean;
+  windowLabel?: string;
+  phase: 'listing' | 'checking' | 'uploading' | 'done';
+  scanned: number;
+  checked: number;
+  found: number;
+  processed: number;
+  uploaded: number;
+  noMatch: number;
+  skipped: number;
+  failed: number;
+  current?: string;
+  startedAt: number;
+  /** Final row once phase === 'done'. */
+  result?: RecordingSyncHistoryRow;
 };
 
 const HISTORY_CAP = 40;
 
 async function appendSyncHistory(row: Omit<RecordingSyncHistoryRow, 'id'>) {
+  const full: RecordingSyncHistoryRow = { ...row, id: `${row.at}-${Math.random().toString(36).slice(2, 8)}` };
+  let next: RecordingSyncHistoryRow[] = [full];
   try {
     const raw = await AsyncStorage.getItem(SYNC_HISTORY_KEY);
-    const list: RecordingSyncHistoryRow[] = raw ? JSON.parse(raw) : [];
-    const next: RecordingSyncHistoryRow[] = [
-      { ...row, id: `${row.at}:${row.uploaded}` },
-      ...(Array.isArray(list) ? list : []),
-    ].slice(0, HISTORY_CAP);
-    await AsyncStorage.setItem(SYNC_HISTORY_KEY, JSON.stringify(next));
-    historyListeners.forEach((fn) => {
-      try {
-        fn(next);
-      } catch {
-        /* ignore */
-      }
-    });
+    const list = raw ? JSON.parse(raw) : [];
+    next = [full, ...(Array.isArray(list) ? (list as RecordingSyncHistoryRow[]) : [])].slice(0, HISTORY_CAP);
   } catch {
-    /* ignore */
+    /* corrupt history — start fresh with this row */
   }
+  try {
+    await AsyncStorage.setItem(SYNC_HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    /* still notify the open screen below */
+  }
+  historyListeners.forEach((fn) => {
+    try {
+      fn(next);
+    } catch {
+      /* ignore */
+    }
+  });
+  return full;
 }
 
 const historyListeners = new Set<(rows: RecordingSyncHistoryRow[]) => void>();
 
 export function subscribeRecordingSyncHistory(fn: (rows: RecordingSyncHistoryRow[]) => void) {
   historyListeners.add(fn);
-  return () => historyListeners.delete(fn);
+  return () => {
+    historyListeners.delete(fn);
+  };
 }
 
 export async function loadRecordingSyncHistory(): Promise<RecordingSyncHistoryRow[]> {
@@ -74,12 +111,45 @@ export async function loadRecordingSyncHistory(): Promise<RecordingSyncHistoryRo
   }
 }
 
+let progress: RecordingSyncProgress | null = null;
+const progressListeners = new Set<(p: RecordingSyncProgress | null) => void>();
+
+function emitProgress(next: RecordingSyncProgress | null) {
+  progress = next;
+  progressListeners.forEach((fn) => {
+    try {
+      fn(next);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+export function subscribeRecordingSyncProgress(fn: (p: RecordingSyncProgress | null) => void) {
+  progressListeners.add(fn);
+  fn(progress);
+  return () => {
+    progressListeners.delete(fn);
+  };
+}
+
+export function getRecordingSyncProgress() {
+  return progress;
+}
+
+/** "Internal storage / Recordings / Call" from a SAF tree URI. */
 function folderLabel(uri: string) {
   try {
-    const decoded = decodeURIComponent(uri);
-    const tail = decoded.split('/').pop() || decoded;
-    const path = tail.includes(':') ? tail.split(':').slice(1).join(':') : tail;
-    return path.replace(/\+/g, ' ').trim() || 'Recording folder';
+    const decoded = decodeURIComponent(String(uri || ''));
+    const treeMatch = decoded.match(/\/tree\/(.+?)(?:\/document\/|$)/);
+    const tree = treeMatch ? treeMatch[1] : decoded.split('/').pop() || decoded;
+    const colon = tree.indexOf(':');
+    const volume = colon >= 0 ? tree.slice(0, colon) : '';
+    const path = (colon >= 0 ? tree.slice(colon + 1) : tree).replace(/\+/g, ' ').trim();
+    const root =
+      volume === 'primary' ? 'Internal storage' : volume === 'downloads' ? 'Downloads' : volume ? 'SD card' : '';
+    const parts = [root, ...path.split('/').map((p) => p.trim()).filter(Boolean)].filter(Boolean);
+    return parts.join(' / ') || 'Recording folder';
   } catch {
     return 'Recording folder';
   }
@@ -133,25 +203,37 @@ async function writeSynced(set: Set<string>) {
   await AsyncStorage.setItem(SYNCED_KEY, JSON.stringify(list));
 }
 
+function normalizeFolder(row: RecordingFolder): RecordingFolder {
+  const label = String(row.label || '').trim();
+  return {
+    ...row,
+    // Older builds stored the raw content:// URI (or just "Call") as the label.
+    label: !label || label.startsWith('content://') || !label.includes('/') ? folderLabel(row.uri) : label,
+  };
+}
+
+/** Phone copy wins (it is the one with the Android permission); server copy only fills an empty phone. */
 export async function loadRecordingFolder() {
   const local = await readFolder();
+  if (local) return normalizeFolder(local);
   try {
     const remote = await apiFetch<{ path?: { uri?: string; label?: string; auto_since?: number } | null }>(
       '/api/telecaller/profile/recording-path',
+      { timeoutMs: 8000 },
     );
-    if (remote?.path?.uri && (!local || local.uri !== remote.path.uri)) {
-      const next: RecordingFolder = {
+    if (remote?.path?.uri) {
+      const next = normalizeFolder({
         uri: remote.path.uri,
-        label: remote.path.label || folderLabel(remote.path.uri),
+        label: remote.path.label || '',
         autoSince: Number(remote.path.auto_since || Date.now()),
-      };
+      });
       await AsyncStorage.setItem(STORE_KEY, JSON.stringify(next));
       return next;
     }
   } catch {
-    // Phone copy is enough until the profile column is available.
+    // Phone copy is enough.
   }
-  return local;
+  return null;
 }
 
 export async function saveRecordingFolder(uri: string) {
@@ -162,133 +244,273 @@ export async function saveRecordingFolder(uri: string) {
     autoSince: Date.now(),
   };
   await AsyncStorage.setItem(STORE_KEY, JSON.stringify(next));
-  try {
-    await apiFetch('/api/telecaller/profile/recording-path', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uri: next.uri, label: next.label, auto_since: next.autoSince }),
-    });
-  } catch {
-    // Kept on the phone. Profile column may not be migrated yet.
-  }
+  // Backup to the profile in the background — never block the screen on the network.
+  void apiFetch('/api/telecaller/profile/recording-path', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uri: next.uri, label: next.label, auto_since: next.autoSince }),
+    timeoutMs: 10000,
+  }).catch(() => {
+    /* kept on the phone */
+  });
   return next;
 }
 
-export async function pickRecordingFolder() {
-  if (Platform.OS !== 'android') {
-    throw new Error('Recording folder is chosen on the Android phone.');
-  }
-  const permission = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-  if (!permission.granted || !permission.directoryUri) return null;
-  return saveRecordingFolder(permission.directoryUri);
+let pickerOpenSince = 0;
+let pickerClosedAt = 0;
+
+/** True while the Android folder picker is open, and a few seconds after it closes. */
+export function isRecordingFolderPickerBusy() {
+  if (pickerOpenSince) return true;
+  return pickerClosedAt > 0 && Date.now() - pickerClosedAt < 6000;
 }
 
+const SUGGESTED_FOLDER = 'Recordings/Call';
+
+export async function pickRecordingFolder() {
+  if (Platform.OS !== 'android') {
+    throw new Error('Call recording sync sirf Android phone par chalta hai.');
+  }
+  pickerOpenSince = Date.now();
+  try {
+    const SAF = FileSystem.StorageAccessFramework;
+    const permission = await SAF.requestDirectoryPermissionsAsync(SAF.getUriForDirectoryInRoot(SUGGESTED_FOLDER));
+    if (!permission.granted || !permission.directoryUri) return null;
+    return await saveRecordingFolder(permission.directoryUri);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '';
+    if (/pending|already/i.test(msg)) {
+      throw new Error('Folder picker pehle se khula hai. App band karke dobara kholein, phir Select folder dabayein.');
+    }
+    throw e;
+  } finally {
+    pickerOpenSince = 0;
+    pickerClosedAt = Date.now();
+  }
+}
+
+/** Reads the chosen folder now — confirms Android still allows access and counts audio files. */
+export async function checkRecordingFolder(uri: string): Promise<{ ok: boolean; audio: number; error?: string }> {
+  if (Platform.OS !== 'android') return { ok: false, audio: 0, error: 'Android only' };
+  try {
+    const list = await FileSystem.StorageAccessFramework.readDirectoryAsync(uri);
+    return { ok: true, audio: list.filter((u) => AUDIO.test(decodeURIComponent(u))).length };
+  } catch (e: unknown) {
+    return {
+      ok: false,
+      audio: 0,
+      error:
+        (e instanceof Error ? e.message : '') ||
+        'Folder padh nahi paa rahe. Select folder dobara dabakar wahi folder chunein.',
+    };
+  }
+}
+
+const metaCache = new Map<string, { recordedAt: number; size: number }>();
+
 async function fileMeta(uri: string) {
+  const hit = metaCache.get(uri);
+  if (hit) return hit;
   try {
     const info = await FileSystem.getInfoAsync(uri);
     const modified = Number((info as { modificationTime?: number }).modificationTime || 0);
     const size = Number((info as { size?: number }).size || 0);
-    return { recordedAt: modified > 0 ? modified * 1000 : 0, size };
+    const meta = { recordedAt: modified > 0 ? modified * 1000 : 0, size };
+    if (meta.recordedAt) metaCache.set(uri, meta);
+    return meta;
   } catch {
     return { recordedAt: 0, size: 0 };
   }
 }
 
-export async function syncPhoneRecordings(opts?: { manual?: boolean; sinceMs?: number }): Promise<SyncResult> {
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(label)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+const SKIP_TEXT: Record<string, string> = {
+  already: 'already uploaded',
+  no_phone: 'no phone number in file name',
+  too_large: 'file over 25 MB',
+  not_audio: 'not an audio file',
+  server: 'skipped by server',
+  earlier_no_match: 'no matching call earlier',
+};
+
+function skipNoteOf(reasons: Record<string, number>) {
+  return Object.entries(reasons)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${n} ${SKIP_TEXT[k] || k}`)
+    .join(' · ');
+}
+
+type RunOpts = {
+  manual: boolean;
+  sinceMs?: number;
+  onProgress?: (p: Partial<RecordingSyncProgress>) => void;
+};
+
+/**
+ * One pass over the folder: list → read dates → upload what is in range.
+ * Never throws; a fatal problem comes back as `error`.
+ */
+export async function syncPhoneRecordings(opts: RunOpts = { manual: false }): Promise<SyncResult> {
+  const out: SyncResult = { scanned: 0, found: 0, uploaded: 0, noMatch: 0, skipped: 0, failed: 0 };
+  const report = opts.onProgress || (() => {});
   if (Platform.OS !== 'android') {
-    return { uploaded: 0, noMatch: 0, skipped: 0, error: 'Recording sync runs on the Android phone.' };
+    return { ...out, error: 'Call recording sync sirf Android phone par chalta hai.' };
   }
   const folder = await readFolder();
-  if (!folder?.uri) return { uploaded: 0, noMatch: 0, skipped: 0, error: 'Choose the recording folder first' };
+  if (!folder?.uri) return { ...out, error: 'Pehle recording folder select karein (Select folder).' };
 
+  report({ phase: 'listing' });
   let uris: string[] = [];
   try {
-    uris = await FileSystem.StorageAccessFramework.readDirectoryAsync(folder.uri);
+    uris = await withTimeout(
+      FileSystem.StorageAccessFramework.readDirectoryAsync(folder.uri),
+      60000,
+      'Folder list karne mein bahut time lag gaya',
+    );
   } catch (e: unknown) {
     return {
-      uploaded: 0,
-      noMatch: 0,
-      skipped: 0,
-      error: e instanceof Error ? e.message : 'Could not read that folder',
+      ...out,
+      error: `Folder padh nahi paa rahe (${e instanceof Error ? e.message : 'no access'}). Select folder dobara karein.`,
     };
   }
 
   const synced = await readSynced();
-  const unmatched = opts?.manual ? new Set<string>() : await readSet(NOMATCH_KEY);
+  const unmatched = await readSet(NOMATCH_KEY);
   const audio = uris.filter((uri) => AUDIO.test(decodeURIComponent(uri)));
-  const pending = audio.filter((uri) => !synced.has(uri) && !unmatched.has(uri));
-  const cap = opts?.manual ? 12 : 8;
-  const windowStart = opts?.sinceMs ? Date.now() - opts.sinceMs : 0;
-  let uploaded = 0;
-  let noMatch = 0;
-  let skipped = 0;
-  let tried = 0;
+  out.scanned = audio.length;
+  report({ phase: 'checking', scanned: audio.length, checked: 0 });
 
-  for (const uri of pending) {
-    if (tried >= cap) break;
-    const name = decodeURIComponent(uri).split('/').pop() || 'recording.m4a';
-    const phones = phonesInName(name);
-    if (!phones.length) {
-      synced.add(uri);
-      skipped += 1;
-      continue;
-    }
-    const { recordedAt, size } = await fileMeta(uri);
-    if (size > 25 * 1024 * 1024) {
-      synced.add(uri);
-      skipped += 1;
-      continue;
-    }
-    if (opts?.manual && windowStart && (!recordedAt || recordedAt < windowStart)) {
-      continue;
-    }
-    if (!opts?.manual && (!recordedAt || recordedAt + 120000 < folder.autoSince)) {
-      continue;
-    }
-    tried += 1;
-    const form = new FormData();
-    form.append('file', {
-      uri,
-      name,
-      type: name.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/mp4',
-    } as unknown as Blob);
-    form.append('phone', phones[0]);
-    if (recordedAt) form.append('recorded_at', String(recordedAt));
-    try {
-      const res = await apiUpload<{ status?: string; error?: string }>('/api/telecaller/calls/device-recording', form);
-      if (res?.status === 'attached') {
-        synced.add(uri);
-        unmatched.delete(uri);
-        uploaded += 1;
-      } else if (res?.status === 'no_match') {
-        unmatched.add(uri);
-        noMatch += 1;
-      } else if (res?.status === 'skipped') {
-        synced.add(uri);
-        skipped += 1;
-      } else if (res?.error) {
-        await writeSynced(synced);
-        await AsyncStorage.setItem(NOMATCH_KEY, JSON.stringify([...unmatched].slice(-400)));
-        return { uploaded, noMatch, skipped, error: res.error };
+  const windowStart = opts.manual
+    ? opts.sinceMs
+      ? Date.now() - opts.sinceMs
+      : 0
+    : Math.max(0, folder.autoSince - 120000);
+
+  // Read file dates (cached) in small parallel batches.
+  const inWindow: Array<{ uri: string; recordedAt: number; size: number }> = [];
+  const BATCH = 16;
+  for (let i = 0; i < audio.length; i += BATCH) {
+    const slice = audio.slice(i, i + BATCH);
+    const metas = await Promise.all(slice.map((uri) => fileMeta(uri)));
+    slice.forEach((uri, k) => {
+      const m = metas[k];
+      if (m.recordedAt && m.recordedAt >= windowStart) inWindow.push({ uri, ...m });
+    });
+    report({ checked: Math.min(audio.length, i + BATCH), found: inWindow.length });
+  }
+  inWindow.sort((a, b) => b.recordedAt - a.recordedAt);
+  out.found = inWindow.length;
+  report({ phase: 'uploading', found: inWindow.length, processed: 0 });
+
+  const reasons: Record<string, number> = {};
+  const skip = (key: string) => {
+    out.skipped += 1;
+    reasons[key] = (reasons[key] || 0) + 1;
+  };
+  const failReasons: Record<string, number> = {};
+  const uploadCap = opts.manual ? 300 : 8;
+  let attempts = 0;
+  let failStreak = 0;
+  let processed = 0;
+
+  const persist = async () => {
+    await writeSynced(synced);
+    await AsyncStorage.setItem(NOMATCH_KEY, JSON.stringify([...unmatched].slice(-400)));
+  };
+
+  for (const file of inWindow) {
+    const name = decodeURIComponent(file.uri).split('/').pop() || 'recording.m4a';
+    processed += 1;
+    if (synced.has(file.uri)) {
+      skip('already');
+    } else if (!opts.manual && unmatched.has(file.uri)) {
+      skip('earlier_no_match');
+    } else if (!phonesInName(name).length) {
+      synced.add(file.uri);
+      skip('no_phone');
+    } else if (file.size > 25 * 1024 * 1024) {
+      synced.add(file.uri);
+      skip('too_large');
+    } else if (attempts >= uploadCap) {
+      out.morePending = true;
+      processed -= 1;
+      break;
+    } else {
+      attempts += 1;
+      report({ current: name, processed: processed - 1 });
+      const form = new FormData();
+      form.append('file', {
+        uri: file.uri,
+        name,
+        type: name.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'audio/mp4',
+      } as unknown as Blob);
+      form.append('phone', phonesInName(name)[0]);
+      form.append('recorded_at', String(file.recordedAt));
+      try {
+        const res = await apiFetch<{ status?: string; reason?: string; error?: string }>(
+          '/api/telecaller/calls/device-recording',
+          { method: 'POST', body: form as any, timeoutMs: 120000 },
+        );
+        failStreak = 0;
+        if (res?.status === 'attached') {
+          synced.add(file.uri);
+          unmatched.delete(file.uri);
+          out.uploaded += 1;
+        } else if (res?.status === 'no_match') {
+          unmatched.add(file.uri);
+          out.noMatch += 1;
+        } else if (res?.status === 'skipped') {
+          synced.add(file.uri);
+          skip(res.reason && SKIP_TEXT[res.reason] ? res.reason : 'server');
+        } else {
+          out.failed += 1;
+          const why = String(res?.error || 'Unknown server reply');
+          failReasons[why] = (failReasons[why] || 0) + 1;
+        }
+      } catch (e: unknown) {
+        out.failed += 1;
+        failStreak += 1;
+        const why = e instanceof Error ? e.message : 'Upload failed';
+        failReasons[why] = (failReasons[why] || 0) + 1;
+        if (failStreak >= 3) {
+          out.error = `Upload ruk gaya: ${why}`;
+          break;
+        }
       }
-    } catch (e: unknown) {
-      await writeSynced(synced);
-      await AsyncStorage.setItem(NOMATCH_KEY, JSON.stringify([...unmatched].slice(-400)));
-      return {
-        uploaded,
-        noMatch,
-        skipped,
-        error: e instanceof Error ? e.message : 'Upload failed',
-      };
     }
+    report({
+      processed,
+      uploaded: out.uploaded,
+      noMatch: out.noMatch,
+      skipped: out.skipped,
+      failed: out.failed,
+    });
+    if (processed % 10 === 0) await persist();
   }
 
-  await writeSynced(synced);
-  await AsyncStorage.setItem(NOMATCH_KEY, JSON.stringify([...unmatched].slice(-400)));
-  const morePending =
-    tried >= cap &&
-    pending.some((uri) => !synced.has(uri) && !unmatched.has(uri));
-  return { uploaded, noMatch, skipped, morePending };
+  await persist();
+  out.skipNote = skipNoteOf(reasons) || undefined;
+  if (!out.error && out.failed) {
+    out.error = Object.entries(failReasons)
+      .map(([why, n]) => `${n} failed: ${why}`)
+      .join(' · ');
+  }
+  return out;
 }
 
 let listeners = 0;
@@ -300,57 +522,84 @@ let manualJob: { sinceMs?: number; windowLabel?: string } | null = null;
 async function runBackgroundSync(manual: boolean, sinceMs?: number, windowLabel?: string) {
   if (bgRunning) return;
   bgRunning = true;
-  try {
-    let totals = { uploaded: 0, noMatch: 0, skipped: 0 };
-    let error: string | undefined;
-    let rounds = 0;
-    const maxRounds = manual ? 24 : 3;
-    while (rounds < maxRounds) {
-      const result = await syncPhoneRecordings({ manual, sinceMs: manual ? sinceMs : undefined });
-      totals.uploaded += result.uploaded;
-      totals.noMatch += result.noMatch;
-      totals.skipped += result.skipped;
-      if (result.error) {
-        error = result.error;
-        break;
-      }
-      rounds += 1;
-      if (!result.morePending && result.uploaded + result.noMatch + result.skipped === 0) break;
-      if (!result.morePending) break;
-      await new Promise((r) => setTimeout(r, 400));
-    }
-  const status: RecordingSyncHistoryRow['status'] = error
-    ? totals.uploaded + totals.noMatch + totals.skipped > 0
-      ? 'partial'
-      : 'failed'
-    : 'success';
-  await appendSyncHistory({
-    at: Date.now(),
+  const startedAt = Date.now();
+  let live: RecordingSyncProgress = {
+    running: true,
     manual,
-    status,
-    uploaded: totals.uploaded,
-    noMatch: totals.noMatch,
-    skipped: totals.skipped,
-    error,
     windowLabel,
-  });
+    phase: 'listing',
+    scanned: 0,
+    checked: 0,
+    found: 0,
+    processed: 0,
+    uploaded: 0,
+    noMatch: 0,
+    skipped: 0,
+    failed: 0,
+    startedAt,
+  };
+  if (manual) emitProgress(live);
+  let result: SyncResult = { scanned: 0, found: 0, uploaded: 0, noMatch: 0, skipped: 0, failed: 0 };
+  try {
+    result = await syncPhoneRecordings({
+      manual,
+      sinceMs: manual ? sinceMs : undefined,
+      onProgress: (patch) => {
+        live = { ...live, ...patch };
+        if (manual) emitProgress(live);
+      },
+    });
+  } catch (e: unknown) {
+    result = { ...result, error: e instanceof Error ? e.message : 'Sync failed' };
   } finally {
-    bgRunning = false;
-    if (manualJob) {
-      const job = manualJob;
-      manualJob = null;
-      void runBackgroundSync(true, job.sinceMs, job.windowLabel);
+    try {
+      const touched = result.uploaded + result.noMatch + result.failed;
+      const status: RecordingSyncHistoryRow['status'] =
+        result.error && !result.uploaded && !result.noMatch
+          ? 'failed'
+          : result.error || result.failed
+            ? 'partial'
+            : 'success';
+      // Auto runs only log when something happened, so history is not flooded.
+      if (manual || touched > 0 || result.error) {
+        const row = await appendSyncHistory({
+          at: Date.now(),
+          manual,
+          status,
+          scanned: result.scanned,
+          found: result.found,
+          uploaded: result.uploaded,
+          noMatch: result.noMatch,
+          skipped: result.skipped,
+          failed: result.failed,
+          skipNote: result.skipNote,
+          error: result.error,
+          windowLabel: manual ? windowLabel : 'Auto',
+          durationMs: Date.now() - startedAt,
+        });
+        if (manual) emitProgress({ ...live, ...result, running: false, phase: 'done', result: row });
+      } else if (manual) {
+        emitProgress(null);
+      }
+    } finally {
+      bgRunning = false;
+      if (manualJob) {
+        const job = manualJob;
+        manualJob = null;
+        void runBackgroundSync(true, job.sinceMs, job.windowLabel);
+      }
     }
   }
 }
 
-/** Queue a manual sync — UI stays responsive; runs in background with history rows per batch. */
+/** Queue a manual sync — UI stays responsive; progress via subscribeRecordingSyncProgress. */
 export function queueManualRecordingSync(opts: { sinceMs?: number; windowLabel?: string }) {
   if (bgRunning) {
     manualJob = opts;
-    return;
+    return 'queued' as const;
   }
   void runBackgroundSync(true, opts.sinceMs, opts.windowLabel);
+  return 'started' as const;
 }
 
 export function isRecordingSyncRunning() {

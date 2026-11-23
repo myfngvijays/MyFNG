@@ -1,3 +1,4 @@
+import { last10Phone, loadCustomerPhoneIndex } from '@/lib/customerPhoneIndex';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
@@ -314,6 +315,17 @@ export async function GET(request: NextRequest) {
       });
     } else {
       leads = leads.map((lead) => ({ ...lead, assigned_telecaller_name: null }));
+    }
+
+    // App / website customer (customers table) for each lead phone → "App user" badge + link.
+    try {
+      const custByPhone = await loadCustomerPhoneIndex(supabaseAdmin);
+      leads = leads.map((lead) => {
+        const hit = custByPhone.get(last10Phone((lead as any).customer_phone));
+        return hit ? { ...lead, app_customer_id: hit.id, app_customer_platform: hit.app_platform } : lead;
+      });
+    } catch (custErr) {
+      console.warn('[super_admin/leads] app customer lookup skipped', custErr);
     }
 
     const totalFetched = (data || []).length;

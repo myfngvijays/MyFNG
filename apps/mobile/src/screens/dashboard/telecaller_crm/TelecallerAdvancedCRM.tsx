@@ -44,6 +44,7 @@ import CrmEngageTab from './CrmEngageTab';
 import CrmWorkshopLocatorTab from './CrmWorkshopLocatorTab';
 import CrmMeTab from './CrmMeTab';
 import CallRecordingCard from '../../../components/telecaller/CallRecordingCard';
+import { isRecordingFolderPickerBusy } from '../../../lib/callRecordingSync';
 import CallRecordingsList from '../../../components/telecaller/CallRecordingsList';
 import { COLORS } from '../../../constants/theme';
 import { isPartnerPreview, exitPartnerPreview } from '../../../lib/partnerPreview';
@@ -929,6 +930,8 @@ export default function TelecallerAdvancedCRM() {
     });
     const appSub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
+      // Back from the Android folder picker — stay on Call Recording, don't jump to a lead.
+      if (isRecordingFolderPickerBusy()) return;
       void readStickyCrmLead().then((id) => {
         if (id) {
           setDetailLeadId((cur) => cur || id);

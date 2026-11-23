@@ -47,6 +47,7 @@ import {
 } from '../../../lib/crmLeadReference';
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
+import PendingBookingBanner from '../../../components/telecaller/PendingBookingBanner';
 import {
   ADMIN_CRM_STATUS_OPTIONS,
   resolveAdminCrmStatusId,
@@ -2517,6 +2518,17 @@ export default function TelecallerLeadDetailScreen({
             ) : null}
           </View>
         </View>
+
+        <PendingBookingBanner
+          lead={lead}
+          onCall={() =>
+            void clickToCallCustomer({
+              customerPhone: shownPhone,
+              leadId: lead?.id,
+            })
+          }
+          onUpdated={() => void fetchLeadDetails()}
+        />
 
         <View style={styles.leadActionCard}>
           <View style={styles.leadActionRow}>

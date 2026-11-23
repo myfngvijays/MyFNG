@@ -56,6 +56,10 @@ import {
   Code2,
   Search,
   Target,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronDown,
+  Settings2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -157,7 +161,28 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       return true;
     }
   });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  // Desktop sidebar: open by default; the arrow button pins it collapsed (remembered).
+  const SIDEBAR_PIN_KEY = 'myfng_sidebar_collapsed';
+  const [sidebarPinnedCollapsed, setSidebarPinnedCollapsed] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('myfng_sidebar_collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(sidebarPinnedCollapsed);
+  // Menu groups (Reports, AI Suite, Setup…): closed by default, open when one of their pages is active.
+  const [openMenuGroups, setOpenMenuGroups] = useState<Record<string, boolean>>({});
+  const toggleSidebarPinned = () => {
+    const next = !sidebarPinnedCollapsed;
+    setSidebarPinnedCollapsed(next);
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(SIDEBAR_PIN_KEY, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  };
   const [loading, setLoading] = useState(() => !useAuthStore.getState().userProfile);
 
   const eligibleForAansh = role && ['TELECALLER', 'RSA_MANAGER', 'LEAD_MANAGER'].includes(role.toUpperCase());
@@ -239,7 +264,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
   }, [pathname, sidebarCollapsed, sidebarOpen, waWorkspaceOpen, loading]);
 
   useEffect(() => {
-    if (!waWorkspaceOpen) return;
+    if (!waWorkspaceOpen) {
+      // WhatsApp closed → back to the user's own menu choice (open unless they collapsed it).
+      setSidebarCollapsed(sidebarPinnedCollapsed);
+      return;
+    }
     setSidebarCollapsed(true);
     const nav = sidebarNavRef.current;
     if (nav) nav.scrollTop = 0;
@@ -991,27 +1020,35 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         },
         { section: 'WhatsApp', href: '/dashboard/lead_manager/team-whatsapp', icon: <MessageCircle className="w-5 h-5" />, label: 'Team WA' },
         { section: 'WhatsApp', href: '/dashboard/lead_manager/whatsapp-dnd', icon: <AlertTriangle className="w-5 h-5" />, label: 'WA DND' },
-        { section: 'Team', href: '/dashboard/lead_manager/floor', icon: <Activity className="w-5 h-5" />, label: 'Live floor' },
-        { section: 'Team', href: '/dashboard/lead_manager/login-activity', icon: <Clock className="w-5 h-5" />, label: 'Login activity' },
-        { section: 'Team', href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
-        { section: 'Team', href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
-        { section: 'Team', href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
-        { section: 'Team', href: '/dashboard/lead_manager/telecallers', icon: <UserPlus className="w-5 h-5" />, label: 'Telecaller IDs' },
         { section: 'Customers', href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
         { section: 'Customers', href: '/dashboard/lead_manager/customer-insights', icon: <Smartphone className="w-5 h-5" />, label: 'App Customers' },
         { section: 'Customers', href: '/dashboard/lead_manager/workshop-proximity', icon: <MapPin className="w-5 h-5" />, label: 'Workshop Proximity' },
         { section: 'Customers', href: '/dashboard/lead_manager/membership-customers', icon: <Crown className="w-5 h-5" />, label: 'Membership Customers' },
         { section: 'Customers', href: '/dashboard/lead_manager/refer-and-rise', icon: <Gift className="w-5 h-5" />, label: 'Refer & Rise' },
-        { section: 'Setup', href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
-        { section: 'Setup', href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
-        { section: 'Setup', href: '/dashboard/lead_manager/fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead fields' },
-        { section: 'Setup', href: '/dashboard/lead_manager/api-templates', icon: <Webhook className="w-5 h-5" />, label: 'API Templates' },
+        {
+          section: 'Team',
+          href: '/dashboard/lead_manager/floor',
+          icon: <Users className="w-5 h-5" />,
+          label: 'Team',
+          children: [
+            { href: '/dashboard/lead_manager/floor', icon: <Activity className="w-5 h-5" />, label: 'Live floor' },
+            { href: '/dashboard/lead_manager/login-activity', icon: <Clock className="w-5 h-5" />, label: 'Login activity' },
+            { href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
+            { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
+            { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team & permissions' },
+            { href: '/dashboard/lead_manager/telecallers', icon: <UserPlus className="w-5 h-5" />, label: 'Telecaller IDs' },
+          ],
+        },
         {
           section: 'Setup',
-          href: '/dashboard/lead_manager/templates',
-          icon: <MessageSquare className="w-5 h-5" />,
-          label: 'Msg Templates',
+          href: '/dashboard/lead_manager/tags',
+          icon: <Settings2 className="w-5 h-5" />,
+          label: 'Setup',
           children: [
+            { href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
+            { href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
+            { href: '/dashboard/lead_manager/fields', icon: <ClipboardList className="w-5 h-5" />, label: 'Lead fields' },
+            { href: '/dashboard/lead_manager/api-templates', icon: <Webhook className="w-5 h-5" />, label: 'API Templates' },
             { href: '/dashboard/lead_manager/templates', icon: <Phone className="w-5 h-5" />, label: 'Call scripts' },
             {
               href: '/dashboard/lead_manager/templates?tab=whatsapp',
@@ -1271,10 +1308,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       {/* Sidebar — overlay on mobile/WebView; docked on lg+ */}
       <aside
         onMouseEnter={() => {
-          if (waWorkspaceOpen) return;
+          if (waWorkspaceOpen || !sidebarPinnedCollapsed) return;
           if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(false);
         }}
         onMouseLeave={() => {
+          if (!sidebarPinnedCollapsed) return;
           if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(true);
         }}
         style={{
@@ -1298,9 +1336,29 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
+        {!waWorkspaceOpen ? (
+          <div
+            className={
+              sidebarCollapsed
+                ? 'hidden lg:flex shrink-0 justify-center pt-1.5'
+                : // Open menu: sit on the same line as the first "DAILY" label — no extra empty row.
+                  'hidden lg:block absolute right-2 top-2 z-10'
+            }
+          >
+            <button
+              type="button"
+              onClick={toggleSidebarPinned}
+              title={sidebarPinnedCollapsed ? 'Expand menu' : 'Collapse menu'}
+              aria-label={sidebarPinnedCollapsed ? 'Expand menu' : 'Collapse menu'}
+              className="rounded-md p-1.5 text-white/80 hover:bg-white/15 hover:text-white"
+            >
+              {sidebarPinnedCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+            </button>
+          </div>
+        ) : null}
         <nav
           ref={sidebarNavRef}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 sm:p-3 md:p-4 space-y-1 sm:space-y-2"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 sm:p-3 space-y-0.5"
           style={{
             display: 'block',
             marginTop: 0,
@@ -1316,27 +1374,37 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
               const sectionLabel = showSection ? (
                 <p
                   key={`${item.section}-label`}
-                  className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-white/45"
+                  className="px-3 pb-0.5 pt-2.5 text-[10px] font-bold uppercase tracking-wider text-white/45"
                 >
                   {item.section}
                 </p>
               ) : null;
               if (item.children && item.children.length > 0) {
-                const childActive = item.children.some((child) => pathname === child.href);
+                const childActive = item.children.some(
+                  (child) => pathname === child.href || pathname === String(child.href).split('?')[0],
+                );
+                const groupOpen = openMenuGroups[item.label] ?? childActive;
                 return (
                   <div key={item.label}>
                     {sectionLabel}
-                  <div className="space-y-1">
-                    <div
-                      className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg text-sm sm:text-base ${
-                        childActive ? 'bg-white/15 text-white font-semibold' : 'text-white/90 font-medium'
+                  <div className="space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuGroups((prev) => ({ ...prev, [item.label]: !groupOpen }))}
+                      aria-expanded={groupOpen}
+                      className={`w-full flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-sm sm:text-[15px] text-left transition-colors hover:bg-blue-500/30 ${
+                        childActive ? 'bg-white/15 text-white font-semibold' : 'text-white font-medium'
                       } ${sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}`}
                       title={sidebarCollapsed ? item.label : undefined}
                     >
                       <span className="flex-shrink-0">{item.icon}</span>
-                      <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} min-w-0 leading-snug break-words`}>{item.label}</span>
-                    </div>
-                    <div className={`${sidebarCollapsed ? 'lg:hidden' : ''} ml-4 sm:ml-5 space-y-1`}>
+                      <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} min-w-0 flex-1 leading-snug break-words`}>{item.label}</span>
+                      <ChevronDown
+                        className={`${sidebarCollapsed ? 'lg:hidden' : ''} h-4 w-4 shrink-0 text-white/70 transition-transform ${groupOpen ? 'rotate-180' : ''}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    <div className={`${!groupOpen ? 'hidden' : sidebarCollapsed ? 'lg:hidden' : ''} ml-4 sm:ml-5 space-y-0.5`}>
                       {item.children.map((child) => (
                         <NavLink
                           key={`${child.label}-${child.href}`}
@@ -1379,7 +1447,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
                         setSidebarOpen(false);
                       }
                     }}
-                    className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base ${
+                    className={`w-full flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200 text-sm sm:text-[15px] ${
                       waWorkspaceOpen || sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
                     } ${
                       waWorkspaceOpen
@@ -1445,7 +1513,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       {/* Main: padding (not margin) so width:100% is not clipped on the right */}
       <main
         className={`admin-main min-h-[100dvh] w-full max-w-full pb-[env(safe-area-inset-bottom)] transition-[padding] duration-300 ${
-          waWorkspaceOpen || sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
+          waWorkspaceOpen || sidebarPinnedCollapsed ? 'lg:pl-20' : 'lg:pl-64'
         }`}
         style={{ paddingTop: headerHeightPx }}
       >
@@ -1590,7 +1658,7 @@ function NavLink({
       aria-current={active ? 'page' : undefined}
       title={collapsed ? (label || (typeof children === 'string' ? children : '')) : undefined}
       aria-label={collapsed ? (label || (typeof children === 'string' ? children : undefined)) : undefined}
-      className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base ${
+      className={`flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-200 text-sm sm:text-[15px] ${
         active 
           ? 'bg-white text-blue-700 shadow-lg font-semibold' 
           : 'text-white hover:bg-blue-500/30 font-medium'
