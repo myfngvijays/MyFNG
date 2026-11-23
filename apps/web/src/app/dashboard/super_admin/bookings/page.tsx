@@ -1810,7 +1810,17 @@ function SuperAdminBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [serviceLeads, setServiceLeads] = useState<ServiceLead[]>([]);
+  const [serviceLeads, setServiceLeadsRaw] = useState<ServiceLead[]>([]);
+  // Search ignores date range + every other filter: results come from all leads (all time).
+  const [globalSearchLeads, setGlobalSearchLeads] = useState<ServiceLead[] | null>(null);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+  // Row edits (status / assignee / delete) must also reach the all-time search results.
+  const setServiceLeads = useCallback((next: React.SetStateAction<ServiceLead[]>) => {
+    setServiceLeadsRaw(next);
+    if (typeof next === 'function') {
+      setGlobalSearchLeads((prev) => (prev ? next(prev) : prev));
+    }
+  }, []);
   const [totalInRange, setTotalInRange] = useState<number | null>(null);
 
   const [detailOpen, setDetailOpen] = useState(false);
@@ -2227,7 +2237,14 @@ function SuperAdminBookingsPage() {
     ];
   }, [activeMessageTriggers]);
 
+  const isGlobalSearch = searchTerm.trim().length > 0;
+
   const baseFilteredServiceLeads = useMemo(() => {
+    if (isGlobalSearch) {
+      // Search = all leads, all time, other filters ignored. Until the server answers,
+      // show matches from what is already loaded.
+      return globalSearchLeads ?? filterBookingLeads(serviceLeads, { search: searchTerm });
+    }
     let leads = filterBookingLeads(serviceLeads, {
       source: sourceFilter,
       sourceLabel: sourceLabelFilter,
@@ -2294,6 +2311,8 @@ function SuperAdminBookingsPage() {
     }
     return leads;
   }, [
+    isGlobalSearch,
+    globalSearchLeads,
     serviceLeads,
     sourceFilter,
     sourceLabelFilter,
@@ -2593,6 +2612,38 @@ function SuperAdminBookingsPage() {
     setChartDrill(null);
   };
 
+  const globalSearchGen = useRef(0);
+  useEffect(() => {
+    const term = searchTerm.trim().replace(/[,()%*\\]/g, ' ').replace(/\s+/g, ' ').trim();
+    const generation = globalSearchGen.current + 1;
+    globalSearchGen.current = generation;
+    if (!term) {
+      setGlobalSearchLeads(null);
+      setGlobalSearchLoading(false);
+      return;
+    }
+    setGlobalSearchLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const query = new URLSearchParams({ preset: 'all_time', search: term, limit: '1000' });
+        const res = await fetch(`/api/super_admin/leads?${query.toString()}`);
+        const text = await res.text();
+        const payload = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(payload?.error || 'Search failed');
+        if (globalSearchGen.current !== generation) return;
+        const rows = Array.isArray(payload?.leads) ? payload.leads : [];
+        setGlobalSearchLeads(rows.map((lead: ServiceLead) => withOtpFlags(enrichBookingLead(lead))));
+      } catch (err: any) {
+        if (globalSearchGen.current !== generation) return;
+        toast.error(err?.message || 'Search failed');
+        setGlobalSearchLeads(null);
+      } finally {
+        if (globalSearchGen.current === generation) setGlobalSearchLoading(false);
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
   const fetchData = useCallback(async () => {
     if (showUploadCrm) return;
     if (datePreset === 'custom' && (!customStart || !customEnd)) return;
@@ -2630,7 +2681,7 @@ function SuperAdminBookingsPage() {
     };
 
     const mergeLeads = (incoming: ServiceLead[]) => {
-      setServiceLeads((prev) => {
+      setServiceLeadsRaw((prev) => {
         if (!prev.length) return incoming;
         const seen = new Set(prev.map((lead) => String(lead.id || '')));
         const extra = incoming.filter((lead) => !seen.has(String(lead.id || '')));
@@ -2641,7 +2692,7 @@ function SuperAdminBookingsPage() {
     try {
       const first = await loadSlice(0, FIRST_BATCH, true);
       if (leadsFetchGen.current !== generation) return;
-      setServiceLeads(first.rows);
+      setServiceLeadsRaw(first.rows);
       const inRange = first.totalInRange ?? first.rows.length;
       setTotalInRange(inRange);
       const cap = Math.min(inRange, MAX_ROWS);
@@ -2660,7 +2711,7 @@ function SuperAdminBookingsPage() {
       if (leadsFetchGen.current === generation && first.rows.length > 0) {
         const flagged = await loadSlice(0, Math.min(FIRST_BATCH, cap), false);
         if (leadsFetchGen.current !== generation) return;
-        setServiceLeads((prev) => {
+        setServiceLeadsRaw((prev) => {
           const byId = new Map(flagged.rows.map((lead) => [String(lead.id || ''), lead]));
           return prev.map((lead) => byId.get(String(lead.id || '')) || lead);
         });
@@ -4020,7 +4071,13 @@ function SuperAdminBookingsPage() {
       <div className="px-4 sm:px-6 lg:px-8 py-5">
         {!showUploadCrm && !loading ? (
           <div className="mb-5">
-            {hasActiveLeadFilters ? (
+            {isGlobalSearch ? (
+              <p className="mb-3 text-xs font-medium text-amber-700">
+                {globalSearchLoading
+                  ? 'Searching all leads (all time)…'
+                  : `Search results from all leads (all time) · ${displayedServiceLeads.length} found · date and other filters ignored while searching`}
+              </p>
+            ) : hasActiveLeadFilters ? (
               <p className="mb-3 text-xs font-medium text-amber-700">
                 Overview for filtered results · {displayedServiceLeads.length} of {serviceLeads.length} loaded
                 {typeof totalInRange === 'number' ? ` · ${totalInRange.toLocaleString('en-IN')} in date range` : ''}

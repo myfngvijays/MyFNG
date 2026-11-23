@@ -351,14 +351,19 @@ export async function notifyTelecallerAssignedToLead(params: {
   assignedByName?: string;
   isReassignment?: boolean;
   notes?: string;
+  /** Override push / bell text (e.g. "New app booking — call now"). */
+  title?: string;
+  message?: string;
 }) {
   const { leadId, leadNumber, telecallerId, assignedByName, isReassignment, notes } = params;
 
-  const title = isReassignment ? 'Lead reassigned to you' : 'New lead assigned';
-  const message = [
-    `${leadNumber} assigned to you${assignedByName ? ` by ${assignedByName}` : ''}.`,
-    notes ? `Notes: ${notes}` : null,
-  ].filter(Boolean).join(' ');
+  const title = params.title || (isReassignment ? 'Lead reassigned to you' : 'New lead assigned');
+  const message =
+    params.message ||
+    [
+      `${leadNumber} assigned to you${assignedByName ? ` by ${assignedByName}` : ''}.`,
+      notes ? `Notes: ${notes}` : null,
+    ].filter(Boolean).join(' ');
 
   await createNotification({
     userId: telecallerId,
@@ -387,13 +392,17 @@ export async function notifyTelecallerNewLeadAssignedSafe(params: {
   assignedByName?: string;
   isReassignment?: boolean;
   notes?: string;
+  title?: string;
+  message?: string;
+  /** Send even when the same telecaller already owns the lead (customer booked again). */
+  force?: boolean;
 }) {
   const leadId = String(params.leadId || '').trim();
   const telecallerId = String(params.telecallerId || '').trim();
   if (!leadId || !telecallerId) return;
 
   const prev = String(params.previousTelecallerId || '').trim();
-  if (prev && prev === telecallerId) return;
+  if (prev && prev === telecallerId && !params.force) return;
 
   const leadNumber = String(params.leadNumber || leadId);
 
@@ -403,8 +412,10 @@ export async function notifyTelecallerNewLeadAssignedSafe(params: {
       leadNumber,
       telecallerId,
       assignedByName: params.assignedByName || 'System',
-      isReassignment: params.isReassignment ?? Boolean(prev),
+      isReassignment: params.isReassignment ?? Boolean(prev && prev !== telecallerId),
       notes: params.notes,
+      title: params.title,
+      message: params.message,
     });
   } catch (err) {
     console.warn('[notifyTelecallerNewLeadAssignedSafe] failed (non-blocking):', err);

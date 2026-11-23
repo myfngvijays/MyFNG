@@ -140,7 +140,7 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       lead_type: 'NORMAL',
       lead_source: leadSource,
       created_from: getMisaCreatedFrom(channel),
-      status: 'VALIDATED',
+      status: 'NEW', // telecaller calls to confirm (booking lands as Fresh)
       customer_name: bookingData.customer_name || null,
       customer_phone: phoneDigits,
       vehicle_number: bookingData.vehicle_number || 'NA',

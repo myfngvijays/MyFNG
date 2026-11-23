@@ -1,3 +1,5 @@
+import { resolveCrmPermissionsForUser } from '@/lib/telecaller/resolveCrmPermissions';
+import { leadSourceTag, leadSourceTagWithoutChannel } from '@/lib/telecaller/leadSourceTag';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getRequestUser } from '@/lib/supabase/requestUser';
@@ -132,6 +134,11 @@ export async function GET(request: NextRequest) {
     }
 
     const seesAll = crmSeesAllLeads(roleCode);
+    // "Lead from" column: managers always; telecallers per permission template.
+    const canSeeLeadSource = seesAll
+      ? true
+      : (await resolveCrmPermissionsForUser(db, teleCallerId, roleCode).catch(() => null))?.permissions
+          ?.view_lead_source !== false;
 
     // Never block the leads list on WhatsApp inbound sync (was ~10s+ per request).
     // Opt-in only: ?sync_wa=1
@@ -397,6 +404,7 @@ export async function GET(request: NextRequest) {
       return seesAll
         ? {
             ...enrichBookingLead(row),
+            lead_from: leadSourceTag(row),
             assigned_telecaller_name:
               row?.assigned_telecaller?.full_name ||
               row?.assigned_telecaller_name ||
@@ -415,6 +423,8 @@ export async function GET(request: NextRequest) {
           }
         : redactLeadSourceForTelecaller({
             ...row,
+            // Built before redaction (lead_source / created_from are blanked below).
+            lead_from: canSeeLeadSource ? leadSourceTag(row) : leadSourceTagWithoutChannel(row),
             assigned_telecaller_name:
               row?.assigned_telecaller?.full_name ||
               row?.assigned_telecaller_name ||

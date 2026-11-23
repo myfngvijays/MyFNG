@@ -31,6 +31,7 @@ import { requestClickToCall } from '@/lib/telecaller/clickToCall';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
 import CallReminderForm from '@/components/telecaller/crm/CallReminderForm';
+import PendingBookingBanner from '@/components/telecaller/crm/PendingBookingBanner';
 import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
 import { followUpAutoClosed } from '@/lib/telecaller/crmFollowUpClose';
 
@@ -950,6 +951,15 @@ export function LeadDetailContent({
             </div>
           </div>
         ) : null}
+        <PendingBookingBanner
+          lead={lead}
+          calling={calling}
+          onCall={() => void handleClickToCall()}
+          onUpdated={() => {
+            setTimelineRefreshKey((k) => k + 1);
+            void fetchLeadDetails();
+          }}
+        />
         {editing ? (
           <div className={isPanel ? 'lead-detail-split min-w-0' : 'lead-page-split'}>
             <div className={isPanel ? 'min-w-0' : 'lead-page-col min-w-0 space-y-4'}>

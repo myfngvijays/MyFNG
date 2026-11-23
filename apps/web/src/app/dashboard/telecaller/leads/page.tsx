@@ -58,6 +58,48 @@ import LeadsSavedViews, { type CrmLeadsViewSnapshot } from '@/components/telecal
 import LeadConditionsBar from '@/components/telecaller/crm/LeadConditionsBar';
 import { parseLeadConditions, serializeLeadConditions, type LeadCondition } from '@/lib/crm/leadConditions';
 import { LeadDetailContent } from './[id]/page';
+import { leadSourceTag, type LeadSourceKind, type LeadSourceTag } from '@/lib/telecaller/leadSourceTag';
+
+const BOOKING_ROW_BG = '#FEF3C7';
+
+/** One colour per channel so telecallers can tell sources apart at a glance. */
+const SOURCE_KIND_CLASS: Record<LeadSourceKind, string> = {
+  app: 'bg-blue-100 text-blue-800',
+  website: 'bg-indigo-100 text-indigo-800',
+  misa: 'bg-violet-100 text-violet-800',
+  whatsapp: 'bg-green-100 text-green-800',
+  sarv: 'bg-cyan-100 text-cyan-800',
+  meta: 'bg-pink-100 text-pink-800',
+  google: 'bg-orange-100 text-orange-800',
+  telecaller: 'bg-slate-200 text-slate-700',
+  other: 'bg-slate-100 text-slate-600',
+};
+
+/** Small line under the status: App booking · call pending / OTP verified · MISA AI (App) / WhatsApp… */
+/** Server sends `lead_from` (built before telecaller redaction + permission check). */
+function leadFromTag(lead: any): LeadSourceTag | null {
+  if (lead && 'lead_from' in lead) return (lead.lead_from as LeadSourceTag | null) || null;
+  return leadSourceTag(lead);
+}
+
+function LeadSourceLine({ tag, placeholder }: { tag: LeadSourceTag | null; placeholder?: string }) {
+  if (!tag) return placeholder ? <span className="text-[12px] text-slate-400">{placeholder}</span> : null;
+  const cls =
+    tag.tone === 'booking'
+      ? 'border border-amber-500 bg-amber-100 text-amber-900'
+      : tag.tone === 'otp'
+        ? 'border border-dashed border-purple-400 bg-purple-50 text-purple-800'
+        : SOURCE_KIND_CLASS[tag.kind];
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-1 text-[11px] font-bold ${cls}`}
+      title={tag.label}
+    >
+      {tag.tone === 'booking' ? <span aria-hidden="true">🔔</span> : null}
+      <span className="truncate">{tag.label}</span>
+    </span>
+  );
+}
 
 /** Compact filters — same size on 14", 15.6", and wide monitors. Two-up only on phones. */
 const FILTER_FIELD = 'relative shrink-0 w-auto min-w-[6.5rem]';
@@ -357,6 +399,7 @@ const LEADS_TABLE_COLUMNS = [
   { key: 'status', label: 'Status', onByDefault: true, locked: false },
   { key: 'mlScore', label: 'ML', onByDefault: false, locked: false },
   { key: 'customer', label: 'Customer', onByDefault: true, locked: false },
+  { key: 'leadFrom', label: 'Lead from', onByDefault: true, locked: false },
   { key: 'phone', label: 'Phone', onByDefault: true, locked: false },
   { key: 'message', label: 'Message', onByDefault: false, locked: false },
   { key: 'regNo', label: 'Reg. No', onByDefault: false, locked: false },
@@ -720,6 +763,7 @@ function TelecallerCrmLeadsContent() {
   const COL_MIN_PX: Record<LeadsColumnKey, number> = {
     leadNumber: 124,
     status: 152,
+    leadFrom: 190,
     mlScore: 68,
     customer: 176,
     phone: 124,
@@ -748,7 +792,7 @@ function TelecallerCrmLeadsContent() {
     'serviceDoneDate',
   ];
   const hasExtraCols = EXTRA_COL_KEYS.some((key) => showCol(key));
-  const BASE_COL_KEYS: LeadsColumnKey[] = ['status', 'customer', 'phone', 'assignee', 'date', 'modified'];
+  const BASE_COL_KEYS: LeadsColumnKey[] = ['status', 'customer', 'leadFrom', 'phone', 'assignee', 'date', 'modified'];
 
   useEffect(() => {
     if (hasExtraCols) return;
@@ -807,6 +851,7 @@ function TelecallerCrmLeadsContent() {
     const weight: Record<LeadsColumnKey, number> = {
       leadNumber: 1.15,
       status: 1.45,
+      leadFrom: 1.6,
       mlScore: 0.7,
       customer: 2.05,
       phone: 1.3,
@@ -2450,6 +2495,7 @@ function TelecallerCrmLeadsContent() {
                     <col style={{ width: pxFor('check') }} />
                     {showCol('status') ? <col style={{ width: pxFor('status') }} /> : null}
                     {showCol('customer') ? <col style={{ width: pxFor('customer') }} /> : null}
+                    {showCol('leadFrom') ? <col style={{ width: pxFor('leadFrom') }} /> : null}
                     {showCol('phone') ? <col style={{ width: pxFor('phone') }} /> : null}
                     {showCol('assignee') ? <col style={{ width: pxFor('assignee') }} /> : null}
                     {showCol('date') ? <col style={{ width: pxFor('date') }} /> : null}
@@ -2482,6 +2528,9 @@ function TelecallerCrmLeadsContent() {
                     ) : null}
                     {showCol('customer') ? (
                       <th data-col="customer" className="whitespace-nowrap bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('customer')}>Customer</th>
+                    ) : null}
+                    {showCol('leadFrom') ? (
+                      <th data-col="leadFrom" className="truncate bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('leadFrom')}>Lead from</th>
                     ) : null}
                     {showCol('phone') ? (
                       <th data-col="phone" className="truncate bg-[#004AAD] px-1.5 py-2" style={colWidthStyle('phone')}>Phone</th>
@@ -2536,7 +2585,13 @@ function TelecallerCrmLeadsContent() {
                 <tbody>
                   {displayedLeads.map((lead) => {
                     const tint = leadStatusCardColors(lead);
-                    const rowBg = selectedIds.has(String(lead.id)) ? '#DBEAFE' : tint.cardBg;
+                    const srcTag = leadFromTag(lead);
+                    const pendingBooking = srcTag?.tone === 'booking';
+                    const rowBg = selectedIds.has(String(lead.id))
+                      ? '#DBEAFE'
+                      : pendingBooking
+                        ? BOOKING_ROW_BG
+                        : tint.cardBg;
                     const msg =
                       lead.message_preview ||
                       lead.coupon_meta?.last_inbound_message ||
@@ -2562,7 +2617,7 @@ function TelecallerCrmLeadsContent() {
                         style={{ backgroundColor: rowBg }}
                         onClick={() => openLead(String(lead.id))}
                       >
-                        <td className="border-b border-slate-100 px-2 py-2 align-middle" style={{ backgroundColor: rowBg }} onClick={(e) => { e.stopPropagation(); toggleSelect(String(lead.id)); }}>
+                        <td className="border-b border-slate-100 px-2 py-2 align-middle" style={{ backgroundColor: rowBg, ...(pendingBooking ? { boxShadow: 'inset 4px 0 0 #F59E0B' } : {}) }} onClick={(e) => { e.stopPropagation(); toggleSelect(String(lead.id)); }}>
                           <input
                             type="checkbox"
                             checked={selectedIds.has(String(lead.id))}
@@ -2582,7 +2637,7 @@ function TelecallerCrmLeadsContent() {
                                 e.stopPropagation();
                                 void changeLeadStatus(lead, e.target.value, e.currentTarget);
                               }}
-                              className="max-w-[148px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-6 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
+                              className="max-w-[148px] cursor-pointer rounded-md border-0 py-0.5 pl-2 pr-6 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
                               style={{ backgroundColor: tint.badgeBg, color: tint.badgeText, WebkitTextFillColor: tint.badgeText }}
                             >
                               {crmStatusChoices.map((opt) => (
@@ -2603,6 +2658,11 @@ function TelecallerCrmLeadsContent() {
                             {lead.repeat_customer && lead.repeat_remark ? (
                               <span className="mt-0.5 block truncate text-[10px] font-medium text-amber-800" title={lead.repeat_remark}>{lead.repeat_remark}</span>
                             ) : null}
+                          </td>
+                        ) : null}
+                        {showCol('leadFrom') ? (
+                          <td className="border-b border-slate-100 px-1.5 py-2 align-middle" style={{ ...colWidthStyle('leadFrom'), backgroundColor: rowBg }}>
+                            <LeadSourceLine tag={srcTag} placeholder="—" />
                           </td>
                         ) : null}
                         {showCol('phone') ? (
@@ -2703,6 +2763,8 @@ function TelecallerCrmLeadsContent() {
               {displayedLeads.map((lead) => {
                 const tint = leadStatusCardColors(lead);
                 const statusLabel = leadDisplayStatus(lead);
+                const srcTag = leadFromTag(lead);
+                const pendingBooking = srcTag?.tone === 'booking';
                 return (
                   <div
                     key={lead.id}
@@ -2719,8 +2781,9 @@ function TelecallerCrmLeadsContent() {
                       openLeadId === String(lead.id) ? 'ring-2 ring-[#004AAD]' : ''
                     }`}
                     style={{
-                      backgroundColor: tint.cardBg,
-                      borderColor: tint.border,
+                      backgroundColor: pendingBooking ? BOOKING_ROW_BG : tint.cardBg,
+                      borderColor: pendingBooking ? '#F59E0B' : tint.border,
+                      ...(pendingBooking ? { borderLeftWidth: 4 } : {}),
                     }}
                   >
                     <div className="mb-2" onClick={(e) => e.stopPropagation()}>
@@ -2747,6 +2810,7 @@ function TelecallerCrmLeadsContent() {
                         <p className="mt-1 text-sm font-semibold text-slate-700">
                           {lead.customer_phone || '—'}
                         </p>
+                        <div className="mt-1"><LeadSourceLine tag={srcTag} /></div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isLeadManager ? (
@@ -2765,7 +2829,7 @@ function TelecallerCrmLeadsContent() {
                             e.stopPropagation();
                             void changeLeadStatus(lead, e.target.value, e.currentTarget);
                           }}
-                          className="max-w-[132px] cursor-pointer rounded-full border-0 py-0.5 pl-2 pr-5 text-[11px] font-bold focus:outline-none disabled:opacity-60"
+                          className="max-w-[132px] cursor-pointer rounded-md border-0 py-0.5 pl-2 pr-5 text-[11px] font-bold focus:outline-none disabled:opacity-60"
                           style={{ backgroundColor: tint.badgeBg, color: tint.badgeText, WebkitTextFillColor: tint.badgeText }}
                         >
                           {crmStatusChoices.map((opt) => (

@@ -43,6 +43,10 @@ type AssignedTc = {
 
 export default function LeadManagerTeamPage() {
   const [tab, setTab] = useState<'phones' | 'access'>('phones');
+  // Deep link from Super Admin menu: ?tab=access opens Permission templates.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'access') setTab('access');
+  }, []);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TelecallerRow[]>([]);
   const [phoneDrafts, setPhoneDrafts] = useState<Record<string, string>>({});

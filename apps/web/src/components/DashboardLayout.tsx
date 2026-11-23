@@ -855,6 +855,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/super_admin/advance-coupons', icon: <Tag className="w-5 h-5" />, label: 'Advance Coupon Management' },
         { href: '/dashboard/super_admin/manual-invoices', icon: <FileText className="w-5 h-5" />, label: 'Manual Invoices' },
         { href: '/dashboard/super_admin/telecaller-distribution', icon: <Phone className="w-5 h-5" />, label: 'Telecaller Distribution' },
+        { href: '/dashboard/lead_manager/team?tab=access', icon: <Users className="w-5 h-5" />, label: 'Telecaller Permissions' },
         { href: '/dashboard/super_admin/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         {
           href: '/dashboard/super_admin/whatsapp-templates',

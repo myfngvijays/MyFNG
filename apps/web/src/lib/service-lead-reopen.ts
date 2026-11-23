@@ -12,6 +12,175 @@ import type { LeadDistributionChannelId } from '@/lib/enquiry/leadChannels';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { addLeadTags, ensureTagIdsByNames, mergeLeadTagsFromLosers } from '@/lib/telecaller/crmLeadTagsApply';
 import { isDisposableOtpStubLead, isPlaceholderCustomerName } from '@/lib/otp-stub-lead';
+import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
+import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
+
+/**
+ * Pipeline statuses where the car is already with the workshop. A new booking / enquiry
+ * still shows the lead as Fresh to telecallers, but we keep this pipeline status so the
+ * running workshop job is not broken.
+ */
+const WORKSHOP_ACTIVE_STATUSES = new Set([
+  'ACCEPTED',
+  'IN_PROGRESS',
+  'ASSIGNED_TO_WORKSHOP',
+  'ON_THE_WAY',
+  'VEHICLE_DROPPED_AT_WORKSHOP',
+  'READY_FOR_BILLING',
+  'READY_FOR_DELIVERY',
+  'QC_APPROVED',
+  'REWORK_REQUIRED',
+]);
+
+export function isWorkshopActiveStatus(status: unknown): boolean {
+  return WORKSHOP_ACTIVE_STATUSES.has(String(status || '').trim().toUpperCase());
+}
+
+/** Friendly current CRM status of a lead ("Interested", "Lost", "Booking confirmed"…). */
+export function currentLeadStatusLabel(lead: Record<string, any> | null | undefined): string {
+  try {
+    return String(leadDisplayStatus(lead || {}) || '').trim() || 'Fresh';
+  } catch {
+    return 'Fresh';
+  }
+}
+
+/**
+ * Every new booking / enquiry puts the lead back to Fresh so telecallers call it,
+ * and logs "Status changed from X → Fresh" in the lead activity.
+ */
+export function stampLeadFreshWithHistory(
+  couponMeta: Record<string, unknown> | null | undefined,
+  input: {
+    nowIso: string;
+    previousLabel: string | null;
+    previousStatus: string | null;
+    sourceLabel: string;
+    remark?: string | null;
+    event: string;
+    /** true = customer booked (App / Website / MISA) → yellow "call pending" in CRM list. */
+    priorityBooking?: boolean;
+  },
+): Record<string, unknown> {
+  const prev = String(input.previousLabel || '').trim();
+  // Line 1 = activity title, next lines = activity body (see lead-timeline route).
+  const summary = [
+    prev && !/^fresh$/i.test(prev)
+      ? `Status changed from ${prev} → Fresh`
+      : 'Status: Fresh',
+    `New ${input.sourceLabel}`,
+    input.remark ? String(input.remark).trim() : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return appendLeadProfileHistory(
+    {
+      ...(couponMeta && typeof couponMeta === 'object' ? couponMeta : {}),
+      last_call_result: 'FRESH',
+      last_call_label: 'Fresh',
+      last_lost_reason: null,
+      last_other_reason: null,
+      refreshed_at: input.nowIso,
+      refreshed_reason: input.event.toLowerCase(),
+      priority_booking_at: input.priorityBooking ? input.nowIso : null,
+      priority_booking_source: input.priorityBooking ? input.sourceLabel : null,
+    },
+    {
+      at: input.nowIso,
+      summary,
+      remark: input.remark || null,
+      status: 'FRESH',
+      event: input.event,
+      previous_status: input.previousStatus,
+      previous_label: prev || null,
+    },
+  );
+}
+
+function bookingSourceLabel(payload: Record<string, unknown>): string {
+  const src = String(payload.lead_source || '').trim();
+  return src ? `booking (${src})` : 'booking';
+}
+
+/** Customer-picked service slot → UTC ISO. Naive "YYYY-MM-DDTHH:mm" is read as IST. */
+export function bookingSlotIso(payload: Record<string, unknown>): string | null {
+  const raw = String(payload.preferred_slot_start || '').trim();
+  if (raw) {
+    const naive = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(:\d{2}(\.\d+)?)?$/);
+    if (naive) return istDateTimeToIso(naive[1], naive[2]);
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  const ymd = String(payload.preferred_date || '').trim().slice(0, 10);
+  const hm = String(payload.preferred_time_slot || payload.preferred_time || '').match(/(\d{1,2}):(\d{2})/);
+  if (ymd && hm) return istDateTimeToIso(ymd, `${hm[1].padStart(2, '0')}:${hm[2]}`);
+  return null;
+}
+
+/**
+ * Customer booked (App / Website / MISA): high priority + call reminder at the booking
+ * date/time + push to the telecaller (sent even if they already own this lead).
+ */
+async function flagBookingForTelecaller(
+  supabaseAdmin: any,
+  input: {
+    leadId: string;
+    leadNumber: string;
+    telecallerId: string | null;
+    previousTelecallerId: string | null;
+    leadPayload: Record<string, unknown>;
+    bookingSummary: string;
+    isExistingLead: boolean;
+  },
+) {
+  const nowIso = new Date().toISOString();
+  const slotIso = bookingSlotIso(input.leadPayload);
+  // Past / missing slot → remind right away.
+  const reminderIso = slotIso && new Date(slotIso).getTime() > Date.now() ? slotIso : nowIso;
+  const sourceName = String(input.leadPayload.lead_source || 'App/Website').trim();
+  const customer = String(input.leadPayload.customer_name || '').trim();
+
+  if (input.telecallerId) {
+    try {
+      await supabaseAdmin.from('telecaller_follow_ups').insert([
+        {
+          lead_id: input.leadId,
+          telecaller_id: input.telecallerId,
+          follow_up_type: 'CALLBACK',
+          scheduled_time: reminderIso,
+          reason: `New ${sourceName} booking — call to confirm. ${input.bookingSummary}`.slice(0, 500),
+          priority: 'HIGH',
+          status: 'PENDING',
+        },
+      ]);
+      await supabaseAdmin
+        .from('service_leads')
+        .update({ follow_up_required: true, next_follow_up_at: reminderIso })
+        .eq('id', input.leadId);
+    } catch (err) {
+      console.warn('[booking-flag] reminder insert failed:', err);
+    }
+  }
+
+  void notifyTelecallerNewLeadAssignedSafe({
+    leadId: input.leadId,
+    leadNumber: input.leadNumber,
+    telecallerId: input.telecallerId,
+    previousTelecallerId: input.previousTelecallerId,
+    assignedByName: 'Auto distribution',
+    force: true,
+    title: input.isExistingLead
+      ? `New ${sourceName} booking — existing customer`
+      : `New ${sourceName} booking — call now`,
+    message: [
+      `${input.leadNumber}${customer ? ` · ${customer}` : ''}`,
+      input.bookingSummary || null,
+      'Call to confirm.',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  });
+}
 
 export type LeadHistoryEntry = {
   at: string;
@@ -328,6 +497,23 @@ export async function upsertBookingServiceLead(
     const payload: Record<string, unknown> = { ...input.leadPayload };
     // service_leads has no assignment_mode column (enquiry_hub does) — keep mode in coupon_meta only
     delete payload.assignment_mode;
+    // Every booking (App / Website / MISA) lands as Fresh — telecaller calls to confirm.
+    payload.status = 'NEW';
+    payload.lead_priority = 'HIGH';
+    payload.coupon_meta = stampLeadFreshWithHistory(
+      payload.coupon_meta && typeof payload.coupon_meta === 'object'
+        ? (payload.coupon_meta as Record<string, unknown>)
+        : {},
+      {
+        nowIso,
+        previousLabel: null,
+        previousStatus: null,
+        sourceLabel: bookingSourceLabel(payload),
+        remark: bookingSummary,
+        event: 'NEW_BOOKING',
+        priorityBooking: true,
+      },
+    );
     if (!payload.assigned_telecaller_id) {
       try {
         const picked = await pickTelecallerWeightedRoundRobin(
@@ -355,12 +541,14 @@ export async function upsertBookingServiceLead(
     if (error || !inserted) {
       throw new Error(error?.message || 'Booking lead insert failed');
     }
-    void notifyTelecallerNewLeadAssignedSafe({
-      leadId: inserted.id,
-      leadNumber: inserted.lead_number,
+    await flagBookingForTelecaller(supabaseAdmin, {
+      leadId: String(inserted.id),
+      leadNumber: String(inserted.lead_number || inserted.id),
       telecallerId: payload.assigned_telecaller_id ? String(payload.assigned_telecaller_id) : null,
-      assignedByName: 'Auto distribution',
-      notes: bookingSummary || 'New booking lead',
+      previousTelecallerId: null,
+      leadPayload: payload,
+      bookingSummary,
+      isExistingLead: false,
     });
     return {
       lead: { id: inserted.id, lead_number: inserted.lead_number },
@@ -387,33 +575,25 @@ export async function upsertBookingServiceLead(
     Boolean(prevMeta.otp_verified_at) ||
     (Boolean(existing.is_incomplete) && previousStatus === 'NEW');
 
-  const historySummary = wasLost
-    ? `Rebooked — was Lost${previousLabel && previousLabel.toLowerCase().includes('lost') ? '' : previousLabel ? ` · ${previousLabel}` : ''} → Booking confirmed`
-    : wasOtpIncomplete
-      ? 'Booking completed after website OTP verify'
-      : `Rebooked on existing lead → Booking confirmed`;
-
-  const nextCouponMeta = appendLeadProfileHistory(
+  // Old lead (any status: Interested, Lost, Booking confirmed, Service Done…) → Fresh again,
+  // with "Status changed from X → Fresh" in the activity.
+  const currentLabel = currentLeadStatusLabel(existing);
+  const nextCouponMeta = stampLeadFreshWithHistory(
     {
       ...prevMeta,
       ...(input.leadPayload.coupon_meta && typeof input.leadPayload.coupon_meta === 'object'
         ? (input.leadPayload.coupon_meta as Record<string, unknown>)
         : {}),
-      last_call_result: 'BOOKING_CONFIRMED',
-      last_call_label: 'Booking confirmed',
-      last_lost_reason: null,
-      last_call_at: nowIso,
-      last_call_status: 'ANSWERED',
       website_booking_abandoned: false,
     },
     {
-      at: nowIso,
-      summary: historySummary,
+      nowIso,
+      previousLabel: currentLabel,
+      previousStatus,
+      sourceLabel: bookingSourceLabel(input.leadPayload),
       remark: bookingSummary,
-      status: 'BOOKING_CONFIRMED',
-      event: wasOtpIncomplete ? 'OTP_BOOKING_COMPLETED' : 'REBOOK',
-      previous_status: previousStatus,
-      previous_label: previousLabel,
+      event: wasLost ? 'REBOOK_FROM_LOST' : wasOtpIncomplete ? 'OTP_BOOKING_COMPLETED' : 'REBOOK',
+      priorityBooking: true,
     },
   );
 
@@ -435,7 +615,8 @@ export async function upsertBookingServiceLead(
 
   const patch: Record<string, unknown> = {
     ...restPayload,
-    status: 'VALIDATED',
+    status: isWorkshopActiveStatus(previousStatus) ? previousStatus : 'NEW',
+    lead_priority: 'HIGH',
     is_incomplete: false,
     coupon_meta: nextCouponMeta,
     meta: nextMeta,
@@ -501,17 +682,18 @@ export async function upsertBookingServiceLead(
         throw new Error(retry.error?.message || updateError.message || 'Lead reopen failed');
       }
       await softDeleteSiblingLeads(supabaseAdmin, phone10, retry.data.id);
-      void notifyTelecallerNewLeadAssignedSafe({
-        leadId: retry.data.id,
-        leadNumber: retry.data.lead_number,
+      await flagBookingForTelecaller(supabaseAdmin, {
+        leadId: String(retry.data.id),
+        leadNumber: String(retry.data.lead_number || retry.data.id),
         telecallerId: patch.assigned_telecaller_id
           ? String(patch.assigned_telecaller_id)
           : input.leadPayload.assigned_telecaller_id
             ? String(input.leadPayload.assigned_telecaller_id)
-            : null,
+            : previousAssignee,
         previousTelecallerId: previousAssignee,
-        assignedByName: 'Auto distribution',
-        notes: bookingSummary || 'Booking confirmed',
+        leadPayload: { ...input.leadPayload, customer_name: input.leadPayload.customer_name || existing.customer_name },
+        bookingSummary,
+        isExistingLead: true,
       });
       return {
         lead: { id: retry.data.id, lead_number: retry.data.lead_number },
@@ -525,17 +707,18 @@ export async function upsertBookingServiceLead(
 
   await softDeleteSiblingLeads(supabaseAdmin, phone10, updated.id);
 
-  void notifyTelecallerNewLeadAssignedSafe({
-    leadId: updated.id,
-    leadNumber: updated.lead_number,
+  await flagBookingForTelecaller(supabaseAdmin, {
+    leadId: String(updated.id),
+    leadNumber: String(updated.lead_number || updated.id),
     telecallerId: patch.assigned_telecaller_id
       ? String(patch.assigned_telecaller_id)
       : input.leadPayload.assigned_telecaller_id
         ? String(input.leadPayload.assigned_telecaller_id)
-        : null,
+        : previousAssignee,
     previousTelecallerId: previousAssignee,
-    assignedByName: 'Auto distribution',
-    notes: bookingSummary || 'Booking confirmed',
+    leadPayload: { ...input.leadPayload, customer_name: input.leadPayload.customer_name || existing.customer_name },
+    bookingSummary,
+    isExistingLead: true,
   });
 
   return {

@@ -6,6 +6,7 @@ import { findCustomerByPhone } from '@/lib/customer-service-leads';
 import { leadSourceLabelForWacaBusinessPhone } from '@/lib/telecrm/parseTelecrmWebhookPayload';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
+import { currentLeadStatusLabel, stampLeadFreshWithHistory } from '@/lib/service-lead-reopen';
 import {
   addLeadTags,
   applyMessageTriggerTags,
@@ -375,19 +376,32 @@ export async function ensureWhatsAppInboundServiceLead(
         ? (existing.coupon_meta as Record<string, unknown>)
         : {};
 
+    const freshMeta = stampFreshOnMeta(
+      buildCouponMeta({
+        existing: prevMeta,
+        referral: input.referral,
+        messageText: input.messageText,
+        profileName: input.profileName,
+        providerMessageId: input.providerMessageId,
+        businessPhone: input.businessPhone,
+        nowIso,
+        known,
+      }) as Record<string, unknown>,
+    );
+    const prevResult = String(prevMeta.last_call_result || '').trim().toUpperCase();
     const patch: Record<string, unknown> = {
-      coupon_meta: stampFreshOnMeta(
-        buildCouponMeta({
-          existing: prevMeta,
-          referral: input.referral,
-          messageText: input.messageText,
-          profileName: input.profileName,
-          providerMessageId: input.providerMessageId,
-          businessPhone: input.businessPhone,
-          nowIso,
-          known,
-        }) as Record<string, unknown>,
-      ),
+      // Activity: "Status changed from X → Fresh" when an old lead messages again.
+      coupon_meta:
+        prevResult && prevResult !== 'FRESH'
+          ? stampLeadFreshWithHistory(freshMeta, {
+              nowIso,
+              previousLabel: currentLeadStatusLabel(existing),
+              previousStatus: String(existing.status || '') || null,
+              sourceLabel: 'WhatsApp enquiry',
+              remark: String(input.messageText || '').trim().slice(0, 300) || null,
+              event: 'REENQUIRY',
+            })
+          : freshMeta,
       problem_description: String(input.messageText || '').trim().slice(0, 1000) || undefined,
       updated_at: new Date().toISOString(),
     };

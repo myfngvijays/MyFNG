@@ -125,6 +125,15 @@ export const CRM_PERMISSION_CATALOG = [
   },
   // ── Tools ─────────────────────────────────────────────────────────────────
   {
+    key: 'view_lead_source',
+    group: 'tools',
+    label: 'Lead source dekhna',
+    description:
+      'Leads list ke "Lead from" column mein lead kahan se aayi (App booking, Website, MISA AI, WhatsApp, Sarv call, Meta / Google Ads). OFF = sirf "Booking · call pending" / "OTP verified" dikhega, channel ka naam nahi. UTM / campaign details kabhi nahi dikhte.',
+    callerDefault: true,
+    pagePaths: [],
+  },
+  {
     key: 'engage',
     group: 'tools',
     label: 'Engage (follow-ups / scripts)',

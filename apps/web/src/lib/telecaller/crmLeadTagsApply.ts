@@ -255,5 +255,8 @@ export function stampFreshOnMeta(meta: Record<string, unknown>): Record<string, 
     last_call_at: new Date().toISOString(),
     refreshed_at: new Date().toISOString(),
     refreshed_reason: 'whatsapp_inbound',
+    // Enquiry (not a booking) → drop the yellow "booking · call pending" flag.
+    priority_booking_at: null,
+    priority_booking_source: null,
   };
 }
