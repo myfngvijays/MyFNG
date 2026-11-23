@@ -653,7 +653,8 @@ export async function POST(request: NextRequest) {
       results.push({ callid, status: 'ok' });
     }
 
-    return NextResponse.json({ success: true, results }, { status: 200 });
+    // DeepCall "Tech" push template validates {"status","code"} in the reply.
+    return NextResponse.json({ status: '200', code: '200', success: true, results }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: 'Internal server error', details: e?.message }, { status: 500 });
   }
