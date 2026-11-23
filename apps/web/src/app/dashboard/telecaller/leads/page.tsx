@@ -72,6 +72,7 @@ const SOURCE_KIND_CLASS: Record<LeadSourceKind, string> = {
   meta: 'bg-pink-100 text-pink-800',
   google: 'bg-orange-100 text-orange-800',
   telecaller: 'bg-slate-200 text-slate-700',
+  loan: 'bg-teal-100 text-teal-800',
   other: 'bg-slate-100 text-slate-600',
 };
 

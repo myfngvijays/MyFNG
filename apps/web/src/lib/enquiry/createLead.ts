@@ -12,6 +12,7 @@ export const LEAD_SOURCES = [
   'Banner/Offline',
   'Reference',
   'Partner',
+  'Car Loan',
   'Other',
 ] as const;
 

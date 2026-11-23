@@ -19,10 +19,12 @@ export type LeadSourceKind =
   | 'meta'
   | 'google'
   | 'telecaller'
+  | 'loan'
   | 'other';
 
 function sourceKind(lead: any, channel: string): LeadSourceKind {
   const text = `${channel} ${lead?.lead_source || ''} ${lead?.created_from || ''}`.toLowerCase();
+  if (/car loan|car_loan/.test(text)) return 'loan';
   if (/misa/.test(text)) return 'misa';
   if (/sarv|incoming call/.test(text)) return 'sarv';
   if (/meta|instagram|facebook/.test(text)) return 'meta';

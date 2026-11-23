@@ -225,7 +225,7 @@ export async function findLatestServiceLeadByPhone(
   if (!phone10) return null;
 
   const selectCols =
-    'id, lead_number, status, is_incomplete, coupon_meta, meta, reopen_count, assigned_telecaller_id, customer_name, customer_phone, created_at, updated_at';
+    'id, lead_number, status, is_incomplete, coupon_meta, meta, reopen_count, assigned_telecaller_id, customer_name, customer_phone, lead_source, created_at, updated_at';
 
   let query = supabaseAdmin
     .from('service_leads')

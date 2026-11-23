@@ -1,3 +1,4 @@
+import { upsertCarLoanServiceLead } from '@/lib/carLoanServiceLead';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pushCarLoanLeadToISanction } from '@/lib/isanction-car-loan';
@@ -126,6 +127,23 @@ export async function POST(request: NextRequest) {
         console.error('[car-loan] DB insert failed (non-blocking):', dbError);
       } else {
         dbLeadId = dbLead?.id || null;
+      }
+    }
+
+    // Also show it in Bookings & Leads / telecaller CRM as a Fresh "Car Loan" lead.
+    if (supabaseAdmin) {
+      try {
+        await upsertCarLoanServiceLead(supabaseAdmin, {
+          phone,
+          fullName: leadData.fullName,
+          vehicleNumber: leadData.vehicleRegistrationNumber,
+          loanAmount: leadData.loanAmount,
+          income: leadData.income,
+          occupation: leadData.occupation,
+          carLoanLeadId: dbLeadId,
+        });
+      } catch (err) {
+        console.error('[car-loan] CRM lead create failed (non-blocking):', err);
       }
     }
 
