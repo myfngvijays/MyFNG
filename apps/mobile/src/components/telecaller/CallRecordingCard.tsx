@@ -15,6 +15,7 @@ import {
   loadRecordingFolder,
   pickRecordingFolder,
   checkRecordingFolder,
+  NOT_PHONE_FOLDER_MESSAGE,
   loadRecordingSyncHistory,
   queueManualRecordingSync,
   subscribeRecordingSyncHistory,
@@ -167,7 +168,10 @@ export default function CallRecordingCard() {
         setToast('Folder saved ✓');
       }
     } catch (e: unknown) {
-      setToast(e instanceof Error ? e.message : 'Could not open the folder picker');
+      const msg = e instanceof Error ? e.message : 'Could not open the folder picker';
+      setToast(msg);
+      // Drive / cloud folder picked: keep the warning on the card, not just a short toast.
+      if (msg === NOT_PHONE_FOLDER_MESSAGE) setFolderCheck({ ok: false, audio: 0, error: msg });
     } finally {
       setPicking(false);
     }
@@ -227,7 +231,9 @@ export default function CallRecordingCard() {
               </Text>
             ) : (
               <Text style={styles.folderErr}>
-                Folder access nahi mila. "Change folder" dabakar wahi folder dobara chunein aur "Use this folder" → Allow karein.
+                {folderCheck.error === NOT_PHONE_FOLDER_MESSAGE
+                  ? NOT_PHONE_FOLDER_MESSAGE
+                  : 'Folder access nahi mila. "Change folder" dabakar wahi folder dobara chunein aur "Use this folder" → Allow karein.'}
               </Text>
             )
           ) : null}

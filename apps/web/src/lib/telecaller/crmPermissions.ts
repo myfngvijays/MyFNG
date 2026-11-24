@@ -125,6 +125,15 @@ export const CRM_PERMISSION_CATALOG = [
   },
   // ── Tools ─────────────────────────────────────────────────────────────────
   {
+    key: 'view_booking_price',
+    group: 'tools',
+    label: 'Booking ka price dekhna',
+    description:
+      'Lead page par "Booking & price" card aur list ke "App user" badge par click karke booking ka hisaab: service + add-ons ka price, coupon, wallet, membership aur actual payable. Sirf apni assigned lead ka. Wallet balance ya App Customers page nahi dikhta.',
+    callerDefault: true,
+    pagePaths: [],
+  },
+  {
     key: 'view_lead_source',
     group: 'tools',
     label: 'Lead source dekhna',

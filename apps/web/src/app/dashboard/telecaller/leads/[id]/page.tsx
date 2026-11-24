@@ -32,6 +32,7 @@ import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import toast from 'react-hot-toast';
 import CallReminderForm from '@/components/telecaller/crm/CallReminderForm';
 import PendingBookingBanner from '@/components/telecaller/crm/PendingBookingBanner';
+import BookingPriceCard from '@/components/telecaller/crm/BookingPriceCard';
 import { istDateTimeToIso, istHm, istYmd } from '@/lib/telecaller/crmDateRange';
 import { followUpAutoClosed } from '@/lib/telecaller/crmFollowUpClose';
 
@@ -960,6 +961,7 @@ export function LeadDetailContent({
             void fetchLeadDetails();
           }}
         />
+        <BookingPriceCard leadId={String(leadId)} className="mb-3" />
         {editing ? (
           <div className={isPanel ? 'lead-detail-split min-w-0' : 'lead-page-split'}>
             <div className={isPanel ? 'min-w-0' : 'lead-page-col min-w-0 space-y-4'}>

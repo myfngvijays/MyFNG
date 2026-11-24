@@ -137,8 +137,26 @@ export function getRecordingSyncProgress() {
   return progress;
 }
 
+/** Phone storage only. Google Drive / Photos / other cloud "folders" can't be listed by the app. */
+const LOCAL_STORAGE_AUTHORITY = 'com.android.externalstorage.documents';
+
+export function isPhoneStorageFolder(uri: string) {
+  return String(uri || '').startsWith(`content://${LOCAL_STORAGE_AUTHORITY}/`);
+}
+
+export const NOT_PHONE_FOLDER_MESSAGE =
+  'Ye phone ka folder nahi hai (Google Drive / cloud folder chuna gaya). "Change folder" dabakar left menu se phone ki memory kholein → Recordings → Call chunein → "Use this folder" → Allow.';
+
+function cloudFolderLabel(uri: string) {
+  const u = String(uri || '');
+  if (/com\.google\.android\.apps\.docs/.test(u)) return 'Google Drive folder (not supported)';
+  if (/com\.google\.android\.apps\.photos/.test(u)) return 'Google Photos (not supported)';
+  return 'Cloud folder (not supported)';
+}
+
 /** "Internal storage / Recordings / Call" from a SAF tree URI. */
 function folderLabel(uri: string) {
+  if (uri && String(uri).startsWith('content://') && !isPhoneStorageFolder(uri)) return cloudFolderLabel(uri);
   try {
     const decoded = decodeURIComponent(String(uri || ''));
     const treeMatch = decoded.match(/\/tree\/(.+?)(?:\/document\/|$)/);
@@ -274,8 +292,13 @@ export async function pickRecordingFolder() {
   pickerOpenSince = Date.now();
   try {
     const SAF = FileSystem.StorageAccessFramework;
+    // Open the picker inside phone storage at Recordings/Call so telecallers don't land in Google Drive.
     const permission = await SAF.requestDirectoryPermissionsAsync(SAF.getUriForDirectoryInRoot(SUGGESTED_FOLDER));
     if (!permission.granted || !permission.directoryUri) return null;
+    if (!isPhoneStorageFolder(permission.directoryUri)) {
+      // Don't save a Drive / cloud folder — the app can't list it (readSAFDirectory rejects it).
+      throw new Error(NOT_PHONE_FOLDER_MESSAGE);
+    }
     return await saveRecordingFolder(permission.directoryUri);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : '';
@@ -292,6 +315,7 @@ export async function pickRecordingFolder() {
 /** Reads the chosen folder now — confirms Android still allows access and counts audio files. */
 export async function checkRecordingFolder(uri: string): Promise<{ ok: boolean; audio: number; error?: string }> {
   if (Platform.OS !== 'android') return { ok: false, audio: 0, error: 'Android only' };
+  if (!isPhoneStorageFolder(uri)) return { ok: false, audio: 0, error: NOT_PHONE_FOLDER_MESSAGE };
   try {
     const list = await FileSystem.StorageAccessFramework.readDirectoryAsync(uri);
     return { ok: true, audio: list.filter((u) => AUDIO.test(decodeURIComponent(u))).length };
@@ -373,13 +397,15 @@ export async function syncPhoneRecordings(opts: RunOpts = { manual: false }): Pr
   }
   const folder = await readFolder();
   if (!folder?.uri) return { ...out, error: 'Pehle recording folder select karein (Select folder).' };
+  if (!isPhoneStorageFolder(folder.uri)) return { ...out, error: NOT_PHONE_FOLDER_MESSAGE };
 
   report({ phase: 'listing' });
   let uris: string[] = [];
   try {
     uris = await withTimeout(
       FileSystem.StorageAccessFramework.readDirectoryAsync(folder.uri),
-      60000,
+      // Big call-recording folders on older phones can take a while to list.
+      120000,
       'Folder list karne mein bahut time lag gaya',
     );
   } catch (e: unknown) {

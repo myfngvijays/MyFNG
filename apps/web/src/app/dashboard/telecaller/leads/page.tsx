@@ -59,11 +59,16 @@ import LeadConditionsBar from '@/components/telecaller/crm/LeadConditionsBar';
 import { parseLeadConditions, serializeLeadConditions, type LeadCondition } from '@/lib/crm/leadConditions';
 import { LeadDetailContent } from './[id]/page';
 import { leadSourceTag, type LeadSourceKind, type LeadSourceTag } from '@/lib/telecaller/leadSourceTag';
+import BookingPriceCard from '@/components/telecaller/crm/BookingPriceCard';
 
 const BOOKING_ROW_BG = '#FEF3C7';
 
-/** Lead phone is a registered MyFNG app customer. Managers: link to App Customers; telecallers: plain badge. */
+/**
+ * Lead phone is a registered MyFNG app customer.
+ * Managers: link to App Customers. Telecallers: click opens this lead's booking & price (no App Customers access).
+ */
 function AppUserBadge({ lead, linkable }: { lead: any; linkable: boolean }) {
+  const [open, setOpen] = useState(false);
   if (!lead?.is_app_customer) return null;
   const platform = String(lead.app_customer_platform || '').toLowerCase();
   const label = platform === 'android' ? 'App user · Android' : platform === 'ios' ? 'App user · iOS' : 'App user';
@@ -82,7 +87,48 @@ function AppUserBadge({ lead, linkable }: { lead: any; linkable: boolean }) {
       </a>
     );
   }
-  return <span className={cls}>📱 {label}</span>;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        title="See booking & price"
+        className={`${cls} hover:bg-emerald-700`}
+      >
+        📱 {label} · ₹
+      </button>
+      {open && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+              }}
+            >
+              <div className="relative w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="absolute -right-2 -top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-600 shadow-lg hover:text-slate-900"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+                <div className="mb-2 rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-800">
+                  {formatLeadName(lead.customer_name)} · {lead.lead_number || ''}
+                </div>
+                <BookingPriceCard leadId={String(lead.id)} emptyText="Is lead par booking ka price nahi hai." />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
 }
 
 /** One colour per channel so telecallers can tell sources apart at a glance. */
