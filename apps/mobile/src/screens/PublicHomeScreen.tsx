@@ -25,6 +25,7 @@ import PostBookingMembershipOfferCard from '../components/PostBookingMembershipO
 import { usePendingPostBookingMembershipOffer } from '../hooks/usePendingPostBookingMembershipOffer';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import PublicHeader from '../components/PublicHeader';
+import CustomerHomeGreeting, { type HomeVehicle, vehicleTitle } from '../components/CustomerHomeGreeting';
 import RsaHomeSection from '../components/RsaHomeSection';
 import { detectHeaderLocation } from '../lib/locationDisplay';
 import LiveTrackingModal from '../components/LiveTrackingModal';
@@ -185,6 +186,7 @@ const HEADLINES = [
 ];
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+const HOME_VEHICLE_KEY = 'myfng_home_vehicle_id';
 const REVIEW_MODAL_SCROLL_MAX_HEIGHT = SCREEN_HEIGHT * 0.8 - 96;
 
 function BrandLogoCard({ brand }: { brand: PublicBrand }) {
@@ -229,6 +231,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const pendingWelcomePhoneRef = useRef<string | null>(null);
   const [hasActiveBooking] = useState(false);
+  const [homeCustomerName, setHomeCustomerName] = useState<string>('');
+  const [homeVehicles, setHomeVehicles] = useState<Array<HomeVehicle & { id?: string; is_default?: boolean }>>([]);
+  const [homeVehiclesLoading, setHomeVehiclesLoading] = useState(false);
+  const [homeVehicleId, setHomeVehicleId] = useState<string | null>(null);
+  const [showCarPicker, setShowCarPicker] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>(CAR_BRANDS);
   const [detectedCity, setDetectedCity] = useState('Detecting...');
   const [cartItemCount, setCartItemCount] = useState(0);
@@ -313,6 +320,63 @@ export default function PublicHomeScreen({ navigation }: Props) {
       };
     }, []),
   );
+
+  // Greeting name + "My Car" card for logged-in customers (refreshes on focus so a newly added car shows up).
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        const token = await getCustomerSessionToken();
+        if (!token) {
+          if (active) {
+            setHomeCustomerName('');
+            setHomeVehicles([]);
+          }
+          return;
+        }
+        if (active) setHomeVehiclesLoading(true);
+        try {
+          const headers = mobileCustomerHeaders(token);
+          const [profileRes, vehiclesRes, savedId] = await Promise.all([
+            fetch(`${ENV.API_URL}/api/customer/profile`, { headers })
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+            fetch(`${ENV.API_URL}/api/customer/vehicles`, { headers })
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+            AsyncStorage.getItem(HOME_VEHICLE_KEY).catch(() => null),
+          ]);
+          if (!active) return;
+          const name = String(profileRes?.customer?.full_name || profileRes?.customer?.name || '').trim();
+          if (name) setHomeCustomerName(name);
+          if (vehiclesRes) {
+            setHomeVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
+          }
+          setHomeVehicleId(savedId || null);
+        } finally {
+          if (active) setHomeVehiclesLoading(false);
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  const homeVehicle = useMemo(() => {
+    if (homeVehicles.length === 0) return null;
+    return (
+      homeVehicles.find((v) => homeVehicleId && String(v.id) === homeVehicleId) ||
+      homeVehicles.find((v) => v.is_default) ||
+      homeVehicles[0]
+    );
+  }, [homeVehicles, homeVehicleId]);
+
+  const openAddCar = useCallback(() => {
+    trackEvent('home_add_car_tapped');
+    setShowCarPicker(false);
+    navigation.navigate('Settings', { addVehicle: true, addVehicleNonce: Date.now() });
+  }, [navigation]);
 
   const {
     pending: pendingMembershipOffer,
@@ -646,6 +710,22 @@ export default function PublicHomeScreen({ navigation }: Props) {
             />
           }
         >
+          {isLoggedIn ? (
+            <CustomerHomeGreeting
+              name={homeCustomerName}
+              city={detectedCity}
+              vehicle={homeVehicle}
+              vehicleCount={homeVehicles.length}
+              loading={homeVehiclesLoading}
+              onPressBell={() => navigation.navigate('Settings', { subPage: 'Notifications' })}
+              onPressChangeCar={() => {
+                trackEvent('home_change_car_tapped');
+                setShowCarPicker(true);
+              }}
+              onPressAddCar={openAddCar}
+            />
+          ) : null}
+
           {!isLoggedIn ? (
             <View style={[styles.loginBanner, { backgroundColor: '#004AAD' }]}>
               <View>
@@ -1303,6 +1383,62 @@ export default function PublicHomeScreen({ navigation }: Props) {
           skipGuestLoginPopups
         />
 
+        <Modal
+          visible={showCarPicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowCarPicker(false)}
+        >
+          <Pressable style={styles.carSheetBackdrop} onPress={() => setShowCarPicker(false)}>
+            <Pressable style={styles.carSheet} onPress={() => undefined}>
+              <View style={styles.carSheetHandle} />
+              <Text style={styles.carSheetTitle}>Choose your car</Text>
+              <Text style={styles.carSheetSub}>Prices and offers on Home are shown for this car.</Text>
+              <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.45 }} showsVerticalScrollIndicator={false}>
+                {homeVehicles.map((v, idx) => {
+                  const id = String(v.id ?? idx);
+                  const selected = homeVehicle ? String(homeVehicle.id ?? '') === String(v.id ?? '') : false;
+                  const plate = String(v.vehicle_number || '').toUpperCase();
+                  return (
+                    <TouchableOpacity
+                      key={id}
+                      style={[styles.carSheetRow, selected ? styles.carSheetRowActive : null]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        if (v.id != null) {
+                          setHomeVehicleId(String(v.id));
+                          void AsyncStorage.setItem(HOME_VEHICLE_KEY, String(v.id)).catch(() => undefined);
+                        }
+                        setShowCarPicker(false);
+                      }}
+                    >
+                      <View style={styles.carSheetIcon}>
+                        <Ionicons name="car-sport" size={20} color="#2754C8" />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.carSheetRowTitle} numberOfLines={1}>
+                          {vehicleTitle(v) || `Car ${idx + 1}`}
+                        </Text>
+                        <Text style={styles.carSheetRowSub} numberOfLines={1}>
+                          {[plate, v.fuel_type].filter(Boolean).join(' · ') || 'Details pending'}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={22}
+                        color={selected ? '#2754C8' : '#CBD5E1'}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <TouchableOpacity style={styles.carSheetAdd} activeOpacity={0.85} onPress={openAddCar}>
+                <Ionicons name="add-circle-outline" size={18} color="#2754C8" />
+                <Text style={styles.carSheetAddText}>Add another car</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -1313,6 +1449,63 @@ function Section({ children, tight = false }: { children: React.ReactNode; tight
 }
 
 const styles = StyleSheet.create({
+  carSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
+  },
+  carSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 30,
+  },
+  carSheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+  carSheetTitle: { fontSize: 19, fontWeight: '800', color: '#0F172A' },
+  carSheetSub: { fontSize: 13, color: '#64748B', marginTop: 4, marginBottom: 14 },
+  carSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+    marginBottom: 10,
+  },
+  carSheetRowActive: { borderColor: '#2754C8', backgroundColor: '#F4F7FF' },
+  carSheetIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#E8EEFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  carSheetRowTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  carSheetRowSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  carSheetAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#BFD0FF',
+    marginTop: 4,
+  },
+  carSheetAddText: { fontSize: 14, fontWeight: '700', color: '#2754C8' },
   ctaRow: { flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 4 },
   ctaBtn: {
     flex: 1,
