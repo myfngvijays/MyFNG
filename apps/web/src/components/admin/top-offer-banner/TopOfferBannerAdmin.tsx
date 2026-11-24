@@ -115,6 +115,21 @@ export default function TopOfferBannerAdmin() {
             />
             Show banner on the website
           </label>
+          <label className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={config.festive_theme === 'christmas'}
+              onChange={(event) => set('festive_theme', event.target.checked ? 'christmas' : 'none')}
+            />
+            <span>
+              <span className="font-semibold">🎄 Christmas theme on the website</span>
+              <span className="block text-xs text-red-800/80">
+                Red–green banner, light snowfall on the home page, Santa hat on the logo and a festive line in the
+                home hero. Turn off after New Year — everything goes back to normal.
+              </span>
+            </span>
+          </label>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block text-sm sm:col-span-2">

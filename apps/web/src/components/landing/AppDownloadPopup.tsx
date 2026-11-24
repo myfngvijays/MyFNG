@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import WebsiteOfferPopupCard from '@/components/landing/WebsiteOfferPopupCard';
 import type { WebsiteOfferPopupConfig } from '@/lib/website-offer-popup';
+import { CHRISTMAS_COMING_SOON_POPUP, SantaHat, useFestiveTheme } from '@/components/festive/Christmas';
 
 const OPEN_DELAY_MS = 4000;
 const SCROLL_TRIGGER = 0.6;
@@ -36,14 +37,30 @@ function recordView(popup: LivePopup) {
 
 export default function AppDownloadPopup() {
   const pathname = usePathname();
-  const [popup, setPopup] = useState<LivePopup | null>(null);
+  const festiveTheme = useFestiveTheme();
+  const [adminPopup, setAdminPopup] = useState<LivePopup | null>(null);
+  const [adminPopupLoaded, setAdminPopupLoaded] = useState(false);
+  // Christmas theme on + no admin popup live → built-in "Christmas offers coming soon" popup.
+  const popup: LivePopup | null = useMemo(
+    () =>
+      adminPopup ||
+      (adminPopupLoaded && festiveTheme === 'christmas' && pathname !== '/book-service'
+        ? ({ ...CHRISTMAS_COMING_SOON_POPUP, href: CHRISTMAS_COMING_SOON_POPUP.button_href } as LivePopup)
+        : null),
+    [adminPopup, adminPopupLoaded, festiveTheme, pathname],
+  );
+  const setPopup = (next: LivePopup | null) => {
+    setAdminPopup(next);
+    setAdminPopupLoaded(true);
+  };
   const [show, setShow] = useState(false);
   const openedRef = useRef(false);
 
   useEffect(() => {
     if (!pathname) return;
     let cancelled = false;
-    setPopup(null);
+    setAdminPopup(null);
+    setAdminPopupLoaded(false);
     setShow(false);
     openedRef.current = false;
     fetch(`/api/public/website-popup?path=${encodeURIComponent(pathname)}`)
@@ -124,7 +141,10 @@ export default function AppDownloadPopup() {
           >
             <X className="h-4 w-4" />
           </button>
-          <WebsiteOfferPopupCard popup={popup} />
+          {festiveTheme === 'christmas' ? (
+            <SantaHat className="-left-3 -top-7 h-14 w-16 -rotate-12" />
+          ) : null}
+          <WebsiteOfferPopupCard popup={popup} festive={festiveTheme === 'christmas'} />
         </div>
       </div>
     </div>

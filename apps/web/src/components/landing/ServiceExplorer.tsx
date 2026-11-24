@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import AIFeatureBadge from './AIFeatureBadge';
+import { SnowCap, useFestiveTheme } from '@/components/festive/Christmas';
 
 export type ServiceExplorerItem = {
   slug: string;
@@ -131,6 +132,7 @@ export default function ServiceExplorer({
   popularSlugs?: string[];
   className?: string;
 }) {
+  const festiveTheme = useFestiveTheme();
   const list = services ?? [];
   const bySlug = useMemo(() => new Map(list.map((s) => [s.slug, s] as const)), [list]);
 
@@ -332,13 +334,14 @@ export default function ServiceExplorer({
                           if (window.innerWidth < 1024) openSheet(s.slug);
                         }}
                         className={cx(
-                          'group text-left rounded-3xl border bg-white/80 backdrop-blur overflow-hidden transition-all',
+                          'group relative text-left rounded-3xl border bg-white/80 backdrop-blur overflow-hidden transition-all',
                           selected
                             ? 'border-blue-200 ring-2 ring-blue-200/30 shadow-lg shadow-blue-900/10'
                             : 'border-gray-100 hover:border-gray-200 hover:shadow-md'
                         )}
                         aria-pressed={selected}
                       >
+                        {festiveTheme === 'christmas' ? <SnowCap /> : null}
                         <div className={cx('p-4', s.bg)}>
                           <div className="flex items-start justify-between gap-3">
                             <div

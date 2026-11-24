@@ -43,6 +43,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
+import { ChristmasHeroLine, ChristmasSnow, SantaHat, isNewYearPhase, newYearLabel, useFestiveTheme } from '@/components/festive/Christmas';
 
 const AppDownloadSection = dynamic(() => import('@/components/landing/AppDownloadSection'));
 const BookingForm = dynamic(() => import('@/components/landing/BookingForm'), { ssr: false });
@@ -89,6 +90,7 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 }
 
 export default function HomePage() {
+  const festiveTheme = useFestiveTheme();
   const [activeCarType, setActiveCarType] = useState<'hatchback' | 'sedan' | 'suv'>('sedan');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [showPrimeInChat, setShowPrimeInChat] = useState(false);
@@ -885,12 +887,18 @@ export default function HomePage() {
         {/* Floating background blobs — desktop only; blur animation is expensive on phones */}
         <div className="hidden sm:block absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl animate-float"></div>
         <div className="hidden sm:block absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
+        {festiveTheme === 'christmas' ? <ChristmasSnow onLight /> : null}
 
         <div className="container mx-auto px-4 sm:px-6 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 items-start gap-6 sm:gap-8 lg:gap-10">
             
             {/* Left Content – higher z so buttons are never covered by right visual */}
             <div className="lg:col-span-6 text-center lg:text-left w-full relative z-20 pt-1 sm:pt-2">
+              {festiveTheme === 'christmas' ? (
+                <div className="mb-3 flex justify-center lg:justify-start">
+                  <ChristmasHeroLine />
+                </div>
+              ) : null}
               {/* AI Badge */}
               <div className="mb-4 lg:mb-5 flex justify-center lg:justify-start overflow-visible">
                 <AIFeatureBadge text="Powered by Advanced AI Technology" />
@@ -912,9 +920,14 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
                 <Link
                   href="/book-service"
-                  className="btn inline-flex w-full sm:w-auto sm:min-w-[220px] items-center justify-center rounded-2xl px-6 py-3.5 text-base sm:text-lg font-semibold text-white bg-blue-600 shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  className={`btn relative inline-flex w-full sm:w-auto sm:min-w-[220px] items-center justify-center rounded-2xl px-6 py-3.5 text-base sm:text-lg font-semibold text-white bg-blue-600 shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                    festiveTheme === 'christmas' ? 'ring-2 ring-red-500 ring-offset-2 ring-offset-white shadow-red-500/30' : ''
+                  }`}
                 >
                   Book Service Now
+                  {festiveTheme === 'christmas' ? (
+                    <span aria-hidden="true" className="absolute -right-2 -top-3 rotate-12 text-xl drop-shadow">🎁</span>
+                  ) : null}
                 </Link>
 
                 <button
@@ -967,6 +980,11 @@ export default function HomePage() {
                       className="absolute inset-0 h-full w-full object-cover object-center sm:mix-blend-multiply sm:opacity-90 hover:opacity-100 transition-opacity duration-500"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
+                    {festiveTheme === 'christmas' ? (
+                      <span className="absolute right-3 top-3 z-10 inline-flex -rotate-3 items-center gap-1 rounded-full border-2 border-white bg-gradient-to-r from-red-600 to-green-700 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white shadow-lg sm:text-xs">
+                        🎄 Christmas Special
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 
@@ -2173,7 +2191,10 @@ export default function HomePage() {
                           : 'bg-white p-3 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 text-sm text-gray-700'
                       }
                     >
-                      {m.text.split('\n').map((line, idx) => {
+                      {(festiveTheme === 'christmas' && m.id === 'm0'
+                        ? `🎄 ${isNewYearPhase() ? `${newYearLabel()}!` : 'Merry Christmas!'} ${m.text}`
+                        : m.text
+                      ).split('\n').map((line, idx) => {
                         const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
                         if (urlMatch?.[1]) {
                           const url = urlMatch[1];
@@ -2416,9 +2437,10 @@ export default function HomePage() {
       {!isChatOpen && (
         <button
           onClick={() => setIsChatOpen(true)}
-          className="fixed bottom-20 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-xl hover:shadow-2xl hover:scale-110 transition-all flex items-center justify-center group"
+          className="fixed bottom-20 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-purple-600  text-white shadow-xl hover:shadow-2xl hover:scale-110 transition-all flex items-center justify-center group"
           aria-label="Open MISA AI Chat"
         >
+          {festiveTheme === 'christmas' ? <SantaHat className="-left-1 -top-5 h-8 w-9 -rotate-12" /> : null}
           <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none">
             <rect x="4" y="8" width="16" height="12" rx="3" fill="white" opacity="0.95"/>
             <rect x="9" y="4" width="6" height="5" rx="2" fill="white" opacity="0.7"/>

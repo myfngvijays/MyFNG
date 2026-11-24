@@ -6,9 +6,12 @@ type CardPopup = WebsiteOfferPopupConfig & { href?: string };
 export default function WebsiteOfferPopupCard({
   popup,
   preview = false,
+  festive = false,
 }: {
   popup: CardPopup;
   preview?: boolean;
+  /** Christmas theme: red–green ribbon and snow on the card. */
+  festive?: boolean;
 }) {
   const colors = { ...DEFAULT_WEBSITE_POPUP_COLORS, ...popup.colors };
   const buttonStyle = { backgroundColor: colors.button_bg, color: colors.button_text };
@@ -18,8 +21,15 @@ export default function WebsiteOfferPopupCard({
       className="overflow-hidden rounded-[28px] shadow-2xl"
       style={{ backgroundColor: colors.card, boxShadow: `0 0 0 1px ${colors.ring}` }}
     >
+      {festive ? (
+        <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 via-red-700 to-green-700 py-2 text-xs font-extrabold uppercase tracking-[0.2em] text-white">
+          <span aria-hidden="true">❄</span> Merry Christmas <span aria-hidden="true">🎄</span>
+        </div>
+      ) : null}
       {popup.image_url ? (
         <img src={popup.image_url} alt="" className="aspect-[2/1] w-full object-cover" />
+      ) : festive ? (
+        <div className="pt-4 text-center text-5xl" aria-hidden="true">🎅🎁</div>
       ) : null}
       <div className="px-5 py-5 text-center sm:px-8 sm:py-6">
         <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl" style={{ color: colors.headline }}>

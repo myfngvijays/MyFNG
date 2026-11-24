@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import TrackedLink from '@/components/tracking/TrackedLink';
+import { FestiveFooterGreeting, useFestiveTheme } from '@/components/festive/Christmas';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 import { POPULAR_BRAND_PAGES } from '@/lib/popular-brands';
 import {
@@ -45,6 +46,7 @@ const ctaTitles = [
 ];
 
 export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) {
+  const festiveTheme = useFestiveTheme();
   const [ctaIndex, setCtaIndex] = useState(0);
   const [ctaFading, setCtaFading] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
@@ -139,6 +141,7 @@ export default function Footer({ hideCta = false }: { hideCta?: boolean } = {}) 
           animation: 'gradientMove 12s ease infinite',
         }}
       >
+        {festiveTheme === 'christmas' ? <FestiveFooterGreeting /> : null}
         <div className="max-w-[900px] mx-auto">
           <h2
             className="text-[28px] md:text-[32px] font-extrabold text-white mb-4 transition-opacity duration-300"

@@ -14,7 +14,11 @@ export type TopOfferBannerConfig = {
   background_to: string;
   button_background: string;
   button_text: string;
+  /** Site-wide festive look (banner colours, snowfall, Santa hat on logo, hero line). 'none' = normal. */
+  festive_theme: FestiveTheme;
 };
+
+export type FestiveTheme = 'none' | 'christmas';
 
 export const DEFAULT_TOP_OFFER_BANNER: TopOfferBannerConfig = {
   enabled: true,
@@ -30,6 +34,7 @@ export const DEFAULT_TOP_OFFER_BANNER: TopOfferBannerConfig = {
   background_to: '#7e22ce',
   button_background: '#ffffff',
   button_text: '#1d4ed8',
+  festive_theme: 'none',
 };
 
 const SETTING_KEY = 'website_top_offer_banner';
@@ -72,6 +77,7 @@ export function normalizeTopOfferBanner(input?: Partial<TopOfferBannerConfig> | 
     background_to: hex(input?.background_to, base.background_to),
     button_background: hex(input?.button_background, base.button_background),
     button_text: hex(input?.button_text, base.button_text),
+    festive_theme: input?.festive_theme === 'christmas' ? 'christmas' : 'none',
   };
 }
 

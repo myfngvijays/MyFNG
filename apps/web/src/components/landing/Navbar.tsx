@@ -8,12 +8,15 @@ import { createClient } from '@/lib/supabase/client';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 import { buildGoAppDownloadHref } from '@/lib/utm';
 import { DEFAULT_TOP_OFFER_BANNER, type TopOfferBannerConfig } from '@/lib/top-offer-banner';
+import { SantaHat, christmasBanner, festivePreviewFromUrl, FairyLights, isNewYearPhase, newYearTargetMs } from '@/components/festive/Christmas';
 
-function useCountdown() {
+/** Countdown to end of today, or to `targetMs` (New Year) when given — hours can exceed 24. */
+function useCountdown(targetMs?: number) {
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
 
   useEffect(() => {
     function getEndOfDay() {
+      if (targetMs) return new Date(targetMs);
       const now = new Date();
       const end = new Date(now);
       end.setHours(23, 59, 59, 999);
@@ -32,7 +35,7 @@ function useCountdown() {
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [targetMs]);
 
   return timeLeft;
 }
@@ -46,7 +49,9 @@ function AppDownloadBanner({
   config: TopOfferBannerConfig;
   roomy?: boolean;
 }) {
-  const { hours, minutes, seconds } = useCountdown();
+  // Christmas theme from 26 Dec: count down to New Year midnight instead of end of day.
+  const newYearCountdown = config.festive_theme === 'christmas' && isNewYearPhase();
+  const { hours, minutes, seconds } = useCountdown(newYearCountdown ? newYearTargetMs() : undefined);
   const pad = (n: number) => String(n).padStart(2, '0');
   const barStyle = {
     background: `linear-gradient(to right, ${config.background_from}, ${config.background_via}, ${config.background_to})`,
@@ -162,6 +167,7 @@ export default function Navbar({
   const [appGoHref, setAppGoHref] = useState('/go/myfngapp');
   const [showAppBanner, setShowAppBanner] = useState(!hideAppBanner);
   const [offerBanner, setOfferBanner] = useState<TopOfferBannerConfig>(DEFAULT_TOP_OFFER_BANNER);
+  const isChristmas = offerBanner.festive_theme === 'christmas';
   const [cityName, setCityName] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(true);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
@@ -182,7 +188,14 @@ export default function Navbar({
     fetch('/api/public/top-offer-banner', { cache: 'no-store' })
       .then((res) => res.json())
       .then((json) => {
-        if (!cancelled && json?.config) setOfferBanner({ ...DEFAULT_TOP_OFFER_BANNER, ...json.config });
+        if (!cancelled && json?.config) {
+          const preview = festivePreviewFromUrl();
+          setOfferBanner({
+            ...DEFAULT_TOP_OFFER_BANNER,
+            ...json.config,
+            ...(preview ? { festive_theme: preview } : {}),
+          });
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -392,10 +405,10 @@ export default function Navbar({
       {showAppBanner && !hideAppBanner && offerBanner.enabled && (
         <AppDownloadBanner
           onClose={() => setShowAppBanner(false)}
-          config={{
+          config={christmasBanner({
             ...offerBanner,
             button_href: isAdsLanding ? appGoHref : offerBanner.button_href,
-          }}
+          })}
           roomy={isAdsLanding}
         />
       )}
@@ -430,14 +443,20 @@ export default function Navbar({
             </div>
 
             <TrackedLink href="/" className="hidden lg:flex items-center min-w-0 flex-shrink-0">
-              <img src="/logo.png" alt="MyFNG Logo" width={160} height={56} className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
+              <span className="relative inline-flex">
+                {isChristmas ? <SantaHat className="-left-2 -top-4 h-8 w-9 md:-top-5 md:h-9 md:w-10 -rotate-12" /> : null}
+                <img src="/logo.png" alt="MyFNG Logo" width={160} height={56} className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
+              </span>
             </TrackedLink>
           </div>
 
           {/* Mobile logo (right on other pages, centered on home — see absolute logo below) */}
           {!isHomePage && (
             <TrackedLink href="/" className="lg:hidden flex items-center min-w-0 flex-shrink-0">
-              <img src="/logo.png" alt="MyFNG Logo" width={140} height={48} className="h-10 sm:h-12 w-auto flex-shrink-0" />
+              <span className="relative inline-flex">
+                {isChristmas ? <SantaHat className="-left-2 -top-3.5 h-7 w-8 -rotate-12" /> : null}
+                <img src="/logo.png" alt="MyFNG Logo" width={140} height={48} className="h-10 sm:h-12 w-auto flex-shrink-0" />
+              </span>
             </TrackedLink>
           )}
 
@@ -564,11 +583,15 @@ export default function Navbar({
             href="/"
             className="lg:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-auto"
           >
-            <img src="/logo.png" alt="MyFNG Logo" width={140} height={48} className="h-10 sm:h-12 w-auto flex-shrink-0" />
+            <span className="relative inline-flex">
+                {isChristmas ? <SantaHat className="-left-2 -top-3.5 h-7 w-8 -rotate-12" /> : null}
+                <img src="/logo.png" alt="MyFNG Logo" width={140} height={48} className="h-10 sm:h-12 w-auto flex-shrink-0" />
+              </span>
           </TrackedLink>
         )}
       </nav>
       </div>
+      {isChristmas ? <FairyLights /> : null}
     </header>
   );
 }
