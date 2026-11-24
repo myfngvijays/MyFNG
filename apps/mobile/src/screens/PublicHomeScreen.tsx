@@ -17,14 +17,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { setStatusBarStyle } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PostBookingMembershipOfferCard from '../components/PostBookingMembershipOfferCard';
 import { usePendingPostBookingMembershipOffer } from '../hooks/usePendingPostBookingMembershipOffer';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
-import PublicHeader from '../components/PublicHeader';
+import PublicHeader, { PUBLIC_HEADER_BLUE } from '../components/PublicHeader';
+import { isMembershipActive } from '../lib/membershipTheme';
 import CustomerHomeGreeting, { type HomeVehicle, vehicleTitle } from '../components/CustomerHomeGreeting';
 import RsaHomeSection from '../components/RsaHomeSection';
 import { detectHeaderLocation } from '../lib/locationDisplay';
@@ -212,6 +214,7 @@ function BrandLogoCard({ brand }: { brand: PublicBrand }) {
 
 export default function PublicHomeScreen({ navigation }: Props) {
   const { footer, refreshFooter } = useAppFooter();
+  const safeInsets = useSafeAreaInsets();
   const [heroIndex, setHeroIndex] = useState(0);
   const [heroBanners, setHeroBanners] = useState<HeroBanner[]>(FALLBACK_HERO_BANNERS);
   const [promoBanners, setPromoBanners] = useState<PromoBanner[]>(FALLBACK_PROMO_BANNERS);
@@ -234,6 +237,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [homeCustomerName, setHomeCustomerName] = useState<string>('');
   const [homeVehicles, setHomeVehicles] = useState<Array<HomeVehicle & { id?: string; is_default?: boolean }>>([]);
   const [homeVehiclesLoading, setHomeVehiclesLoading] = useState(false);
+  const [homeIsPrime, setHomeIsPrime] = useState(false);
   const [homeVehicleId, setHomeVehicleId] = useState<string | null>(null);
   const [showCarPicker, setShowCarPicker] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>(CAR_BRANDS);
@@ -337,7 +341,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
         if (active) setHomeVehiclesLoading(true);
         try {
           const headers = mobileCustomerHeaders(token);
-          const [profileRes, vehiclesRes, savedId] = await Promise.all([
+          const [profileRes, vehiclesRes, savedId, membershipRes] = await Promise.all([
             fetch(`${ENV.API_URL}/api/customer/profile`, { headers })
               .then((r) => (r.ok ? r.json() : null))
               .catch(() => null),
@@ -345,6 +349,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
               .then((r) => (r.ok ? r.json() : null))
               .catch(() => null),
             AsyncStorage.getItem(HOME_VEHICLE_KEY).catch(() => null),
+            fetch(`${ENV.API_URL}/api/customer/membership`, { headers })
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
           ]);
           if (!active) return;
           const name = String(profileRes?.customer?.full_name || profileRes?.customer?.name || '').trim();
@@ -353,6 +360,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             setHomeVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
           }
           setHomeVehicleId(savedId || null);
+          if (membershipRes) setHomeIsPrime(isMembershipActive(membershipRes?.membership));
         } finally {
           if (active) setHomeVehiclesLoading(false);
         }
@@ -669,6 +677,15 @@ export default function PublicHomeScreen({ navigation }: Props) {
     return heroBanners[heroIndex % heroBanners.length] || heroBanners[0];
   }, [heroIndex, heroBanners]);
 
+  // White status-bar text over the blue header while this screen is focused.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoggedIn) return undefined;
+      setStatusBarStyle('light');
+      return () => setStatusBarStyle('dark');
+    }, [isLoggedIn]),
+  );
+
   const onNavPress = (tab: PublicPillNavTab) => {
     if (tab === 'home') return;
     if (tab === 'services') navigation.navigate('PublicServicePackages', { city: detectedCity });
@@ -680,9 +697,17 @@ export default function PublicHomeScreen({ navigation }: Props) {
   // Search navigation is now handled inside SearchOverlay directly
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
+      {isLoggedIn ? (
+        // Paints the status-bar area blue so it joins the blue header.
+        <View pointerEvents="none" style={[styles.blueTopInset, { height: safeInsets.top }]} />
+      ) : null}
+    <SafeAreaView style={[styles.safe, isLoggedIn && styles.safeTransparent]}>
       <View style={styles.screen}>
         <PublicHeader
+          variant={isLoggedIn ? 'blue' : 'light'}
+          hideCity={isLoggedIn}
+          onPressBell={isLoggedIn ? () => navigation.navigate('Settings', { subPage: 'Notifications' }) : undefined}
           city={detectedCity}
           cartCount={cartItemCount}
           onPressSearch={() => { trackEvent('home_search_opened'); setShowSearchOverlay(true); }}
@@ -712,6 +737,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
         >
           {isLoggedIn ? (
             <CustomerHomeGreeting
+              attached
+              isPrime={homeIsPrime}
+              onPressPrime={() => {
+                trackEvent('home_prime_badge_tapped', { is_prime: homeIsPrime });
+                navigation.navigate('Settings', { subPage: 'Membership' });
+              }}
               name={homeCustomerName}
               city={detectedCity}
               vehicle={homeVehicle}
@@ -764,31 +795,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <Text style={styles.heroSubLine}>
               Genuine Parts • Expert Technicians • Free Pickup & Drop • Transparent Pricing
             </Text>
-            {/* Primary actions right at the top — no scrolling to find "book". */}
-            <View style={styles.ctaRow}>
-              <TouchableOpacity
-                style={[styles.ctaBtn, styles.ctaBtnPrimary]}
-                activeOpacity={0.9}
-                onPress={() => {
-                  trackEvent('home_cta_book_tapped');
-                  navigation.navigate('PublicBookServiceNow' as never);
-                }}
-              >
-                <Ionicons name="car-sport" size={18} color="#FFFFFF" />
-                <Text style={styles.ctaBtnPrimaryText}>Book a Service</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.ctaBtn, styles.ctaBtnGhost]}
-                activeOpacity={0.9}
-                onPress={() => {
-                  trackEvent('home_cta_misa_tapped');
-                  navigation.navigate('AIBooking' as never);
-                }}
-              >
-                <Ionicons name="sparkles" size={17} color={COLORS.primary} />
-                <Text style={styles.ctaBtnGhostText}>Ask Misa AI</Text>
-              </TouchableOpacity>
-            </View>
             <Animated.View style={[styles.heroCard, { opacity: heroFade }]}>
               <TouchableOpacity
                 activeOpacity={0.9}
@@ -821,17 +827,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
                   resizeMode="contain"
                 />
               </TouchableOpacity>
-              <View style={styles.heroDots}>
-                {heroBanners.map((banner, idx) => (
-                  <View
-                    key={banner.id}
-                    style={[
-                      styles.heroDot,
-                      idx === heroIndex % Math.max(heroBanners.length, 1) ? styles.heroDotActive : null,
-                    ]}
-                  />
-                ))}
-              </View>
             </Animated.View>
           </Section>
 
@@ -843,13 +838,16 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('PublicBookServiceNow' as never)}
               >
                 <View style={styles.noBookingIcon}>
-                  <Ionicons name="calendar" size={20} color={COLORS.primary} />
+                  <Ionicons name="calendar-outline" size={20} color="#FFFFFF" />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.noBookingTitle}>No active booking</Text>
-                  <Text style={styles.noBookingSub}>Book a service and track it live here.</Text>
+                  <Text style={styles.noBookingSub} numberOfLines={1}>Book a service & track it live here</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+                <View style={styles.noBookingCta}>
+                  <Text style={styles.noBookingCtaText}>Book</Text>
+                  <Ionicons name="arrow-forward" size={13} color="#2754C8" />
+                </View>
               </TouchableOpacity>
             </Section>
           ) : null}
@@ -1441,6 +1439,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
         </Modal>
       </View>
     </SafeAreaView>
+    </View>
   );
 }
 
@@ -1524,25 +1523,72 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#DCE6FF',
+    backgroundColor: '#0E1B3D',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    overflow: 'hidden',
+    shadowColor: '#0E1B3D',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  noBookingGlowA: {
+    position: 'absolute',
+    right: -30,
+    top: -60,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: '#2754C8',
+    opacity: 0.5,
+  },
+  noBookingGlowB: {
+    position: 'absolute',
+    left: -40,
+    bottom: -70,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: '#5B8CFF',
+    opacity: 0.14,
   },
   noBookingIcon: {
     width: 42,
     height: 42,
-    borderRadius: 12,
-    backgroundColor: '#EAF1FF',
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  noBookingTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  noBookingSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  noBookingTitle: { fontSize: 14.5, fontWeight: '800', color: '#FFFFFF' },
+  noBookingSub: { fontSize: 11.5, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+  noBookingCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  noBookingCtaText: { fontSize: 12.5, fontWeight: '800', color: '#2754C8' },
   safe: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  safeTransparent: {
+    backgroundColor: 'transparent',
+  },
+  blueTopInset: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: PUBLIC_HEADER_BLUE,
   },
   screen: {
     flex: 1,
@@ -1618,8 +1664,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   heroCard: {
-    marginTop: 12,
-    borderRadius: 32,
+    marginTop: 14,
+    borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000000',
     shadowOpacity: 0.1,

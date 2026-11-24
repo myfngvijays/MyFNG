@@ -88,6 +88,7 @@ import {
 import { checkForceUpdate, dismissSoftUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
 import SoftUpdateModal from './src/components/SoftUpdateModal';
 import ForceUpdateModal from './src/components/ForceUpdateModal';
+import ServiceReviewPrompt from './src/components/ServiceReviewPrompt';
 import { notifyAppSessionIncompleteOnServer } from './src/lib/whatsappAutomationClient';
 import { initializeClarity } from './src/lib/clarity';
 import { preloadMobileAuthConfig } from './src/lib/mobileAuthConfig';
@@ -753,6 +754,7 @@ function AppContent() {
         </Stack.Navigator>
       </NavigationContainer>
 
+      <ServiceReviewPrompt enabled={isCustomerSessionUser && !isPartnerApp} />
       <GpsStampHost />
       {softUpdate?.softAvailable && softUpdateVisible ? (
         <SoftUpdateModal

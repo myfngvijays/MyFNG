@@ -166,6 +166,14 @@ const LEGAL_MENU: MenuItem[] = [
   { id: 'delete', label: 'Delete Account', icon: 'trash' },
 ];
 
+// Short labels for the 4-across Legal & Support row.
+const LEGAL_SHORT_LABELS: Record<string, string> = {
+  privacy: 'Privacy',
+  terms: 'Terms',
+  support: 'Support',
+  delete: 'Delete',
+};
+
 // Icon tile colours + one-line hints for the Settings menu rows.
 const DEFAULT_MENU_META = { bg: '#EEF2FF', fg: '#2754C8', sub: '' };
 const MENU_META: Record<string, { bg: string; fg: string; sub: string }> = {
@@ -179,8 +187,8 @@ const MENU_META: Record<string, { bg: string; fg: string; sub: string }> = {
   referral: { bg: '#E0E7FF', fg: '#4F46E5', sub: 'Invite friends, earn rewards' },
   referral_rewards: { bg: '#FFE4E6', fg: '#E11D48', sub: 'Your vouchers & rewards' },
   notifications: { bg: '#E0F2FE', fg: '#0284C7', sub: 'Alerts & permissions' },
-  privacy: { bg: '#F1F5F9', fg: '#475569', sub: 'How we protect your data' },
-  terms: { bg: '#F1F5F9', fg: '#475569', sub: 'Terms of service' },
+  privacy: { bg: '#DCFCE7', fg: '#16A34A', sub: 'How we protect your data' },
+  terms: { bg: '#EDE9FE', fg: '#7C3AED', sub: 'Terms of service' },
   support: { bg: '#E0F2FE', fg: '#0284C7', sub: 'Chat, call or email us' },
   delete: { bg: '#FEE2E2', fg: '#DC2626', sub: 'Permanently remove your account' },
 };
@@ -3481,109 +3489,14 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     }
   }, [activeSubPage, vehicleEntryOnly]);
 
-  const renderMain = () => (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      {isLoggedIn ? (
-        <View style={styles.premiumHero}>
-          <View pointerEvents="none" style={styles.premiumGlowA} />
-          <View pointerEvents="none" style={styles.premiumGlowB} />
-          <View style={styles.profileTopRow}>
-            <TouchableOpacity activeOpacity={0.85} onPress={pickAndUploadProfileImage} style={styles.premiumAvatarRing}>
-              <View style={styles.premiumAvatar}>
-                {profileImageUrl ? (
-                  <Image source={{ uri: profileImageUrl }} style={styles.premiumAvatarImage} />
-                ) : (
-                  <Text style={styles.premiumAvatarText}>{profileForm.name.trim().charAt(0).toUpperCase() || 'C'}</Text>
-                )}
-              </View>
-              <View style={styles.premiumAvatarCam}>
-                <Ionicons name="camera" size={10} color="#0B1B3F" />
-              </View>
-            </TouchableOpacity>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.premiumName} numberOfLines={1}>{profileForm.name || 'MyFNG Customer'}</Text>
-              <Text style={styles.premiumPhone} numberOfLines={1}>
-                {profileForm.phone ? `+91 ${profileForm.phone}` : 'No phone linked'}
-              </Text>
-              <TouchableOpacity
-                activeOpacity={hasActiveMembership ? 1 : 0.8}
-                onPress={hasActiveMembership ? undefined : () => setActiveSubPage('Membership')}
-                style={[styles.premiumTierChip, hasActiveMembership ? styles.premiumTierChipActive : null]}
-              >
-                <Ionicons name={hasActiveMembership ? 'diamond' : 'sparkles'} size={11} color={hasActiveMembership ? '#0B1B3F' : '#FCD34D'} />
-                <Text style={[styles.premiumTierText, hasActiveMembership ? { color: '#0B1B3F' } : null]} numberOfLines={1}>
-                  {hasActiveMembership ? 'Prime Member' : 'Upgrade to Prime'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.premiumEditBtn}
-              onPress={() => {
-                setVehicleEntryOnly(false);
-                setActiveSubPage('My Profile');
-              }}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Ionicons name="create-outline" size={18} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.premiumStatsRow}>
-            <TouchableOpacity style={styles.premiumStat} activeOpacity={0.8} onPress={() => setActiveSubPage('FNG Wallet')}>
-              <Text style={styles.premiumStatValue} numberOfLines={1}>₹{Math.round(Number(walletBalance || 0)).toLocaleString('en-IN')}</Text>
-              <Text style={styles.premiumStatLabel}>Wallet</Text>
-            </TouchableOpacity>
-            <View style={styles.premiumStatDivider} />
-            <TouchableOpacity
-              style={styles.premiumStat}
-              activeOpacity={0.8}
-              onPress={
-                vehicleCarouselData.length
-                  ? () => {
-                      setVehicleEntryOnly(false);
-                      setProfileStep(2);
-                      setActiveSubPage('My Profile');
-                    }
-                  : onPressAddVehicle
-              }
-            >
-              <Text style={styles.premiumStatValue}>{vehicleCarouselData.length}</Text>
-              <Text style={styles.premiumStatLabel}>{vehicleCarouselData.length === 1 ? 'Car' : 'Cars'}</Text>
-            </TouchableOpacity>
-            <View style={styles.premiumStatDivider} />
-            <TouchableOpacity style={styles.premiumStat} activeOpacity={0.8} onPress={() => setActiveSubPage('Order History')}>
-              <Text style={styles.premiumStatValue}>{(orders || []).length}</Text>
-              <Text style={styles.premiumStatLabel}>Bookings</Text>
-            </TouchableOpacity>
-          </View>
-
-          {dataLoading ? <Text style={styles.premiumSyncText}>Syncing account details…</Text> : null}
-        </View>
-      ) : (
-        <TouchableOpacity style={styles.premiumGuestCard} onPress={() => navigation.navigate('Login')} activeOpacity={0.9}>
-          <View pointerEvents="none" style={styles.premiumGlowA} />
-          <View style={styles.premiumAvatarRing}>
-            <View style={styles.premiumAvatar}>
-              <Ionicons name="person" size={24} color="#FFFFFF" />
-            </View>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.premiumName}>Welcome to MyFNG</Text>
-            <Text style={styles.premiumPhone}>Login to unlock rewards, wallet & live tracking</Text>
-          </View>
-          <View style={styles.premiumGuestCta}>
-            <Text style={styles.premiumGuestCtaText}>Login</Text>
-          </View>
-        </TouchableOpacity>
-      )}
-
-      <View style={styles.vehicleCard}>
+  const renderVehicleSection = (inHero: boolean) => (
+      <View style={[styles.vehicleCard, inHero && styles.vehicleCardInHero]}>
         <View style={styles.vehicleCardHeaderRow}>
-          <Text style={styles.cardHeading}>Your Vehicles</Text>
+          <Text style={[styles.cardHeading, inHero && styles.cardHeadingInHero]}>Your Vehicles</Text>
           {vehicleCarouselData.length > 0 ? (
             <View style={styles.vehicleCardActions}>
               <TouchableOpacity
-                style={styles.vehicleActionBtn}
+                style={[styles.vehicleActionBtn, inHero && styles.vehicleActionBtnInHero]}
                 activeOpacity={0.85}
                 onPress={() => {
                   const item = vehicleCarouselData[activeVehicleIndex];
@@ -3591,10 +3504,10 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                 }}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                <Ionicons name="pencil" size={14} color={COLORS.primary} />
+                <Ionicons name="pencil" size={14} color={inHero ? '#FFFFFF' : COLORS.primary} />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.vehicleActionBtn, styles.vehicleDeleteBtn]}
+                style={[styles.vehicleActionBtn, styles.vehicleDeleteBtn, inHero && styles.vehicleActionBtnInHero]}
                 activeOpacity={0.85}
                 onPress={() => {
                   const item = vehicleCarouselData[activeVehicleIndex];
@@ -3602,12 +3515,13 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                 }}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                <Ionicons name="trash-outline" size={14} color={inHero ? '#FFFFFF' : '#DC2626'} />
               </TouchableOpacity>
             </View>
           ) : null}
         </View>
         {vehicleCarouselData.length > 0 ? (
+          <View>
           <FlatList
             ref={vehiclePagerRef}
             data={vehicleCarouselData}
@@ -3645,14 +3559,18 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                       </View>
                       <Text style={styles.vehicleYear}>{item?.year ? String(item.year) : '-'}</Text>
                     </View>
-                    {incomplete ? (
-                      <View style={styles.completeDetailsBadge}>
-                        <Ionicons name="alert-circle" size={11} color="#B45309" />
-                        <Text style={styles.completeDetailsBadgeText}>Complete your details</Text>
-                      </View>
-                    ) : null}
                   </View>
                   <VehicleImage vehicle={item} style={styles.vehicleImage} />
+                  {incomplete ? (
+                    <TouchableOpacity
+                      style={styles.vehicleIncompleteDot}
+                      onPress={() => openVehicleEditor(item, index, false)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel="Complete vehicle details"
+                    >
+                      <Ionicons name="alert-circle" size={20} color="#F59E0B" />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               );
             }}
@@ -3664,6 +3582,19 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               setSelectedVehicleKey(getVehicleKey(vehicle, index));
             }}
           />
+          {inHero ? (
+            <TouchableOpacity
+              style={styles.addVehicleCorner}
+              onPress={onPressAddVehicle}
+              activeOpacity={0.8}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityLabel="Add your vehicle"
+            >
+              <Ionicons name="add" size={11} color="#FFFFFF" />
+              <Text style={styles.addVehicleCornerText}>Add vehicle</Text>
+            </TouchableOpacity>
+          ) : null}
+          </View>
         ) : !isLoggedIn ? (
           <TouchableOpacity
             style={styles.vehicleEmptyState}
@@ -3690,22 +3621,125 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             {vehicleCarouselData.map((_, index) => (
               <View
                 key={`vehicle-dot-${index}`}
-                style={[styles.vehicleDot, activeVehicleIndex === index ? styles.vehicleDotActive : null]}
+                style={[styles.vehicleDot, inHero && styles.vehicleDotInHero, activeVehicleIndex === index ? (inHero ? styles.vehicleDotActiveInHero : styles.vehicleDotActive) : null]}
               />
             ))}
           </View>
         ) : null}
-        {vehicleCarouselData.length > 0 ? (
+        {vehicleCarouselData.length > 0 && !inHero ? (
           <TouchableOpacity
-            style={styles.addVehicleBtn}
+            style={styles.addVehicleLink}
             onPress={onPressAddVehicle}
-            activeOpacity={0.85}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
           >
-            <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
-            <Text style={styles.addVehicleBtnText}>Add New Vehicle</Text>
+            <Ionicons name="add-circle" size={15} color="#2754C8" />
+            <Text style={styles.addVehicleLinkText}>Add your vehicle</Text>
           </TouchableOpacity>
         ) : null}
       </View>
+  );
+
+  const renderMain = () => (
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      {isLoggedIn ? (
+        <View style={styles.premiumHero}>
+          <View style={styles.premiumBrandRow}>
+            <Image source={require('../../assets/logo-white.png')} style={styles.premiumBrandLogo} resizeMode="contain" />
+            <TouchableOpacity
+              style={styles.premiumEditBtn}
+              onPress={() => {
+                setVehicleEntryOnly(false);
+                setActiveSubPage('My Profile');
+              }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityLabel="Edit profile"
+            >
+              <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.profileTopRow}>
+            <TouchableOpacity activeOpacity={0.85} onPress={pickAndUploadProfileImage} style={styles.premiumAvatarRing}>
+              <View style={styles.premiumAvatar}>
+                {profileImageUrl ? (
+                  <Image source={{ uri: profileImageUrl }} style={styles.premiumAvatarImage} />
+                ) : (
+                  <Text style={styles.premiumAvatarText}>{profileForm.name.trim().charAt(0).toUpperCase() || 'C'}</Text>
+                )}
+              </View>
+              <View style={styles.premiumAvatarCam}>
+                <Ionicons name="camera" size={10} color="#1E3A8A" />
+              </View>
+            </TouchableOpacity>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.premiumName} numberOfLines={1}>{profileForm.name || 'MyFNG Customer'}</Text>
+              <Text style={styles.premiumPhone} numberOfLines={1}>
+                {profileForm.phone ? `+91 ${profileForm.phone}` : 'No phone linked'}
+              </Text>
+              <TouchableOpacity
+                activeOpacity={hasActiveMembership ? 1 : 0.8}
+                onPress={hasActiveMembership ? undefined : () => setActiveSubPage('Membership')}
+                style={[styles.premiumTierChip, hasActiveMembership ? styles.premiumTierChipActive : null]}
+              >
+                <Ionicons name={hasActiveMembership ? 'diamond' : 'sparkles'} size={11} color={hasActiveMembership ? '#0B1B3F' : '#FCD34D'} />
+                <Text style={[styles.premiumTierText, hasActiveMembership ? { color: '#0B1B3F' } : null]} numberOfLines={1}>
+                  {hasActiveMembership ? 'Prime Member' : 'Upgrade to Prime'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.premiumStatsRow}>
+            <TouchableOpacity style={styles.premiumStat} activeOpacity={0.8} onPress={() => setActiveSubPage('FNG Wallet')}>
+              <Text style={styles.premiumStatValue} numberOfLines={1}>₹{Math.round(Number(walletBalance || 0)).toLocaleString('en-IN')}</Text>
+              <Text style={styles.premiumStatLabel}>Wallet</Text>
+            </TouchableOpacity>
+            <View style={styles.premiumStatDivider} />
+            <TouchableOpacity
+              style={styles.premiumStat}
+              activeOpacity={0.8}
+              onPress={
+                vehicleCarouselData.length
+                  ? () => {
+                      setVehicleEntryOnly(false);
+                      setProfileStep(2);
+                      setActiveSubPage('My Profile');
+                    }
+                  : onPressAddVehicle
+              }
+            >
+              <Text style={styles.premiumStatValue}>{vehicleCarouselData.length}</Text>
+              <Text style={styles.premiumStatLabel}>{vehicleCarouselData.length === 1 ? 'Car' : 'Cars'}</Text>
+            </TouchableOpacity>
+            <View style={styles.premiumStatDivider} />
+            <TouchableOpacity style={styles.premiumStat} activeOpacity={0.8} onPress={() => setActiveSubPage('Order History')}>
+              <Text style={styles.premiumStatValue}>{(orders || []).length}</Text>
+              <Text style={styles.premiumStatLabel}>Bookings</Text>
+            </TouchableOpacity>
+          </View>
+
+          {dataLoading ? <Text style={styles.premiumSyncText}>Syncing account details…</Text> : null}
+          {renderVehicleSection(true)}
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.premiumGuestCard} onPress={() => navigation.navigate('Login')} activeOpacity={0.9}>
+          <View pointerEvents="none" style={styles.premiumGlowA} />
+          <View style={styles.premiumAvatarRing}>
+            <View style={styles.premiumAvatar}>
+              <Ionicons name="person" size={24} color="#FFFFFF" />
+            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.premiumName}>Welcome to MyFNG</Text>
+            <Text style={styles.premiumPhone}>Login to unlock rewards, wallet & live tracking</Text>
+          </View>
+          <View style={styles.premiumGuestCta}>
+            <Text style={styles.premiumGuestCtaText}>Login</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {isLoggedIn ? null : renderVehicleSection(false)}
 
       {pendingMembershipOffer && postBookingAppConfig.show_on_account ? (
         <View style={styles.membershipOfferMainWrap}>
@@ -3723,62 +3757,53 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       <SettingsSmartToolsExpandable navigation={navigation} />
 
       <Text style={styles.sectionHeading}>My Account</Text>
-      <View style={styles.menuGroup}>
-        {visibleMainMenu.map((item, idx) => {
+      <View style={styles.menuGrid}>
+        {visibleMainMenu.map((item) => {
           const meta = MENU_META[item.id] || DEFAULT_MENU_META;
-          const subtitle =
-            item.id === 'wallet' && isLoggedIn
-              ? `₹${Math.round(Number(walletBalance || 0)).toLocaleString('en-IN')} available`
-              : item.id === 'membership' && hasActiveMembership
-                ? 'Prime active · view benefits'
-                : meta.sub;
           return (
             <TouchableOpacity
               key={item.id}
-              style={[styles.menuRow, idx > 0 ? styles.menuRowDivider : null]}
-              activeOpacity={0.7}
+              style={styles.menuTile}
+              activeOpacity={0.75}
               onPress={() => {
                 setVehicleEntryOnly(false);
                 setActiveSubPage(item.label);
               }}
             >
               <View style={[styles.menuIconTile, { backgroundColor: meta.bg }]}>
-                <Ionicons name={item.icon} size={18} color={meta.fg} />
+                <Ionicons name={item.icon} size={16} color={meta.fg} />
                 {item.id === 'orders' && pendingMembershipOffer ? <View style={styles.menuOfferDot} /> : null}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.menuRowTitle} numberOfLines={1}>{item.label}</Text>
-                <Text style={styles.menuRowSub} numberOfLines={1}>{subtitle}</Text>
+                <Text style={styles.menuRowTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>{item.label}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#B6C0D1" />
             </TouchableOpacity>
           );
         })}
       </View>
 
       <Text style={styles.sectionHeading}>Legal & Support</Text>
-      <View style={styles.menuGroup}>
-        {visibleLegalMenu.map((item, idx) => {
+      <View style={styles.legalRow}>
+        {visibleLegalMenu.map((item) => {
           const meta = MENU_META[item.id] || DEFAULT_MENU_META;
           const danger = item.id === 'delete';
           return (
             <TouchableOpacity
               key={item.id}
-              style={[styles.menuRow, idx > 0 ? styles.menuRowDivider : null]}
+              style={styles.legalItem}
               activeOpacity={0.7}
               onPress={() => {
                 setVehicleEntryOnly(false);
                 setActiveSubPage(item.label);
               }}
+              accessibilityLabel={item.label}
             >
-              <View style={[styles.menuIconTile, { backgroundColor: meta.bg }]}>
-                <Ionicons name={item.icon} size={18} color={meta.fg} />
+              <View style={[styles.legalIcon, { backgroundColor: meta.bg }]}>
+                <Ionicons name={item.icon} size={19} color={meta.fg} />
               </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.menuRowTitle, danger ? { color: '#DC2626' } : null]} numberOfLines={1}>{item.label}</Text>
-                <Text style={styles.menuRowSub} numberOfLines={1}>{meta.sub}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={danger ? '#FCA5A5' : '#B6C0D1'} />
+              <Text style={[styles.legalLabel, danger ? { color: '#DC2626' } : null]} numberOfLines={1}>
+                {LEGAL_SHORT_LABELS[item.id] || item.label}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -3801,7 +3826,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
       {isLoggedIn ? (
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
-          <Ionicons name="log-out-outline" size={18} color="#DC2626" />
+          <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
           <Text style={styles.logoutText}>Log out</Text>
         </TouchableOpacity>
       ) : (
@@ -3829,16 +3854,25 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           2: { accent: '#F97316', bg: '#FFEDD5' },
           3: { accent: '#7C3AED', bg: '#EDE9FE' },
         } as const;
-        const STEP_CONTENT_STYLE = { backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 18, borderTopWidth: 1, borderTopColor: '#F1F4F9', gap: 4 } as const;
-        const STEP_LABEL_STYLE = { fontSize: 11, fontWeight: '700' as const, color: '#7A869A', textTransform: 'uppercase' as const, letterSpacing: 0.9, marginTop: 12, marginBottom: 6 };
-        const STEP_INPUT_STYLE = { paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: '#E3E8F1', borderRadius: 14, backgroundColor: '#F8FAFD', fontSize: 14, fontWeight: '600' as const, color: '#1E293B' };
-        const STEP_DATE_STYLE = { paddingHorizontal: 14, paddingVertical: 14, borderWidth: 1, borderColor: '#E3E8F1', borderRadius: 14, backgroundColor: '#F8FAFD', flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
-        const STEP_NEXT_BTN_STYLE = { marginTop: 18, borderRadius: 14, paddingVertical: 15, alignItems: 'center' as const };
-        const STEP_NEXT_BTN_TEXT_STYLE = { color: '#FFFFFF', fontSize: 14.5, fontWeight: '800' as const, letterSpacing: 0.2 };
-        const PLATE_BOX_STYLE = { flex: 1, paddingVertical: 14, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF', textAlign: 'center' as const, fontSize: 15, fontWeight: '800' as const, color: '#1E293B', textTransform: 'uppercase' as const };
+        const STEP_CONTENT_STYLE = { backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingTop: 2, paddingBottom: 14, borderTopWidth: 1, borderTopColor: '#F1F4F9', gap: 4 } as const;
+        const STEP_LABEL_STYLE = { fontSize: 11, fontWeight: '700' as const, color: '#64748B', letterSpacing: 0.2, marginTop: 10, marginBottom: 5 };
+        const STEP_INPUT_STYLE = { paddingHorizontal: 13, paddingVertical: 11, borderWidth: 1, borderColor: '#E6EAF2', borderRadius: 12, backgroundColor: '#F8FAFD', fontSize: 13.5, fontWeight: '600' as const, color: '#1E293B' };
+        const STEP_DATE_STYLE = { paddingHorizontal: 13, paddingVertical: 12, borderWidth: 1, borderColor: '#E6EAF2', borderRadius: 12, backgroundColor: '#F8FAFD', flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
+        const STEP_NEXT_BTN_STYLE = { marginTop: 14, borderRadius: 12, paddingVertical: 12, alignItems: 'center' as const };
+        const STEP_NEXT_BTN_TEXT_STYLE = { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' as const, letterSpacing: 0.2 };
+        const PLATE_BOX_STYLE = { flex: 1, paddingVertical: 11, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF', textAlign: 'center' as const, fontSize: 15, fontWeight: '800' as const, color: '#1E293B', textTransform: 'uppercase' as const };
         const profileTheme = getProfileCardTheme(currentMembership);
         const membershipExpiry = formatMembershipExpiry(currentMembership);
         const isPrimeMember = hasActiveMembership && Boolean(membershipDisplay);
+        const step3Done = !!odometerReading;
+        const completionChecks = [step1Done, !!profileForm.email, step2Done, step3Done];
+        const completionPct = Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100);
+        const nextMissingStep = !step1Done || !profileForm.email ? 1 : !step2Done ? 2 : !step3Done ? 3 : 0;
+        const PROFILE_STATS = [
+          { key: 'wallet', icon: 'wallet' as const, value: `₹${Math.round(Number(walletBalance || 0)).toLocaleString('en-IN')}`, label: 'Wallet', onPress: () => setActiveSubPage('FNG Wallet') },
+          { key: 'cars', icon: 'car-sport' as const, value: String(vehicleCarouselData.length), label: vehicleCarouselData.length === 1 ? 'Car' : 'Cars', onPress: () => setProfileStep(2) },
+          { key: 'orders', icon: 'receipt' as const, value: String(orders.length), label: orders.length === 1 ? 'Booking' : 'Bookings', onPress: () => setActiveSubPage('Order History') },
+        ];
         return (
           <View style={{ padding: 16, paddingBottom: 28, gap: 14, backgroundColor: '#F4F6FB' }}>
             {/* Compact Profile Header */}
@@ -3946,6 +3980,41 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                 )}
               </View>
 
+              {/* Quick stats: wallet · cars · bookings */}
+              <View style={{ flexDirection: 'row', marginHorizontal: 14, marginBottom: 14, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' }}>
+                {PROFILE_STATS.map((stat, i) => (
+                  <TouchableOpacity
+                    key={stat.key}
+                    activeOpacity={0.75}
+                    onPress={stat.onPress}
+                    style={{ flex: 1, alignItems: 'center', paddingVertical: 12, borderLeftWidth: i ? 1 : 0, borderLeftColor: 'rgba(255,255,255,0.14)' }}
+                  >
+                    <Ionicons name={stat.icon} size={15} color="rgba(255,255,255,0.9)" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800', marginTop: 4 }} numberOfLines={1}>{stat.value}</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 10.5, fontWeight: '600', marginTop: 1 }}>{stat.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Profile completion */}
+              <TouchableOpacity
+                activeOpacity={nextMissingStep ? 0.8 : 1}
+                onPress={nextMissingStep ? () => setProfileStep(nextMissingStep) : undefined}
+                style={{ paddingHorizontal: 18, paddingBottom: 16 }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11.5, fontWeight: '700' }}>
+                    {completionPct === 100 ? 'Profile complete' : 'Profile strength'}
+                  </Text>
+                  <Text style={{ color: completionPct === 100 ? '#34D399' : '#FCD34D', fontSize: 11.5, fontWeight: '800' }}>
+                    {completionPct === 100 ? '✓ 100%' : `${completionPct}% · Finish →`}
+                  </Text>
+                </View>
+                <View style={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' }}>
+                  <View style={{ width: `${completionPct}%`, height: 6, borderRadius: 3, backgroundColor: completionPct === 100 ? '#34D399' : '#FCD34D' }} />
+                </View>
+              </TouchableOpacity>
+
               {/* Row 2: membership strip — same structure for all users */}
               <TouchableOpacity
                 activeOpacity={isPrimeMember ? 1 : 0.75}
@@ -3999,15 +4068,15 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             </View>
 
             {!vehicleEntryOnly && selectedVehicle && isVehicleProfileIncomplete(selectedVehicle) ? (
-              <View style={styles.completeDetailsBanner}>
-                <Ionicons name="information-circle" size={18} color="#B45309" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.completeDetailsBannerTitle}>Complete your vehicle details</Text>
-                  <Text style={styles.completeDetailsBannerSub}>
-                    Add fuel type, registration year, and maintenance info for better service recommendations.
-                  </Text>
-                </View>
-              </View>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setProfileStep(2)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 12, paddingVertical: 9, paddingHorizontal: 12 }}
+              >
+                <Ionicons name="alert-circle" size={16} color="#D97706" />
+                <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: '#92400E' }} numberOfLines={1}>Complete your vehicle details</Text>
+                <Ionicons name="chevron-forward" size={14} color="#D97706" />
+              </TouchableOpacity>
             ) : null}
 
             {vehicleEntryOnly ? (
@@ -4017,45 +4086,154 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               </View>
             ) : null}
 
+            {/* My Garage: premium car cards with real photos */}
+            {allAssociatedVehicles.length > 0 ? (
+              <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 }}>My Garage</Text>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: '#E8EEFF' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#2754C8' }}>{allAssociatedVehicles.length}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      clearVehicleForm();
+                      setVehicleEntryOnly(true);
+                      setSelectedVehicleKey(null);
+                      setProfileStep(2);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+                  >
+                    <Ionicons name="add-circle" size={16} color="#2754C8" />
+                    <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#2754C8' }}>Add car</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  scrollEnabled={allAssociatedVehicles.length > 1}
+                  contentContainerStyle={{ gap: 10 }}
+                >
+                  {allAssociatedVehicles.map((v: any, idx: number) => {
+                    const vMake = String(v.make || v.vehicle_make || '').trim();
+                    const vModel = String(v.model || v.vehicle_model || '').trim();
+                    const vehicleKey = getVehicleKey(v, idx);
+                    const isActive = !vehicleEntryOnly && vehicleKey === selectedVehicleKey;
+                    const incomplete = isVehicleProfileIncomplete(v);
+                    const rawPlate = String(v.vehicle_number || '').replace(/\s+/g, '').toUpperCase();
+                    const plateMatch = rawPlate.match(/^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{1,4})$/);
+                    const plate = plateMatch ? plateMatch.slice(1).filter(Boolean).join(' ') : rawPlate;
+                    const fuel = v.fuel_type || v.vehicle_fuel_type ? toTitleCase(String(v.fuel_type || v.vehicle_fuel_type)) : '';
+                    const cardWidth = allAssociatedVehicles.length > 1 ? screenWidth - 32 - 48 : screenWidth - 32;
+                    return (
+                      <TouchableOpacity
+                        key={`garage-${vehicleKey}`}
+                        activeOpacity={0.9}
+                        onPress={() => {
+                          setVehicleEntryOnly(false);
+                          setSelectedVehicleKey(vehicleKey);
+                          fillVehicleFormFromRecord(v);
+                          setProfileStep(2);
+                        }}
+                        style={{
+                          width: cardWidth,
+                          height: 132,
+                          borderRadius: 22,
+                          backgroundColor: '#FFFFFF',
+                          overflow: 'hidden',
+                          borderWidth: isActive && allAssociatedVehicles.length > 1 ? 1.5 : 1,
+                          borderColor: isActive && allAssociatedVehicles.length > 1 ? '#2754C8' : '#E3EAF8',
+                          shadowColor: '#2754C8',
+                          shadowOffset: { width: 0, height: 8 },
+                          shadowOpacity: 0.1,
+                          shadowRadius: 16,
+                          elevation: 3,
+                        }}
+                      >
+                        <View pointerEvents="none" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '55%', backgroundColor: '#F1F5FF' }} />
+                        <VehicleImage vehicle={v} style={{ position: 'absolute', right: -6, bottom: 8, width: 170, height: 92 }} />
+                        <View style={{ flex: 1, padding: 16, justifyContent: 'space-between' }}>
+                          <View>
+                            <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#64748B', letterSpacing: 1.4 }} numberOfLines={1}>
+                              {(vMake || 'MY CAR').toUpperCase()}
+                            </Text>
+                            <Text style={{ fontSize: 19, fontWeight: '800', color: '#0F172A', marginTop: 2, letterSpacing: -0.3, maxWidth: cardWidth * 0.5 }} numberOfLines={1}>
+                              {vModel ? toTitleCase(vModel) : 'Vehicle'}
+                            </Text>
+                            {fuel ? (
+                              <Text style={{ fontSize: 11.5, fontWeight: '600', color: '#64748B', marginTop: 2 }}>{fuel}</Text>
+                            ) : null}
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {plate ? (
+                              <View style={{ flexDirection: 'row', alignItems: 'stretch', borderRadius: 6, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#0F172A' }}>
+                                <View style={{ backgroundColor: '#1D4ED8', paddingHorizontal: 4, justifyContent: 'center' }}>
+                                  <Text style={{ fontSize: 7, fontWeight: '900', color: '#FFFFFF' }}>IND</Text>
+                                </View>
+                                <Text style={{ fontSize: 11.5, fontWeight: '900', color: '#0F172A', letterSpacing: 0.8, paddingHorizontal: 7, paddingVertical: 3 }}>{plate}</Text>
+                              </View>
+                            ) : (
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>No number added</Text>
+                            )}
+
+                          </View>
+                        </View>
+                        {incomplete ? (
+                          <View style={{ position: 'absolute', top: 10, right: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 2, shadowColor: '#B45309', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 }}>
+                            <Ionicons name="alert-circle" size={18} color="#F59E0B" />
+                          </View>
+                        ) : isActive && allAssociatedVehicles.length > 1 ? (
+                          <View style={{ position: 'absolute', top: 12, right: 12, width: 20, height: 20, borderRadius: 10, backgroundColor: '#5B8CFF', alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                          </View>
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : null}
+
             {/* Step 1: Owner Information */}
             <View style={{
-              borderRadius: 22,
+              borderRadius: 18,
               borderWidth: 1,
               borderColor: profileStep === 1 ? `${STEP_COLORS[1].accent}55` : '#EEF1F6',
               backgroundColor: '#FFFFFF',
               overflow: 'hidden',
-              elevation: profileStep === 1 ? 6 : 2,
+              elevation: profileStep === 1 ? 4 : 1,
               shadowColor: profileStep === 1 ? STEP_COLORS[1].accent : '#0F172A',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: profileStep === 1 ? 0.14 : 0.05,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: profileStep === 1 ? 0.1 : 0.04,
               shadowRadius: 16,
             }}>
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => setProfileStep(profileStep === 1 ? 0 : 1)}
-                style={{ paddingHorizontal: 16, paddingVertical: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
+                style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: step1Done ? '#10B981' : STEP_COLORS[1].bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: step1Done ? '#DCFCE7' : STEP_COLORS[1].bg, alignItems: 'center', justifyContent: 'center' }}>
                     {step1Done ? (
-                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                      <Ionicons name="checkmark" size={17} color="#16A34A" />
                     ) : (
                       <Ionicons name="person" size={16} color={STEP_COLORS[1].accent} />
                     )}
                   </View>
                   <View>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 1 }}>STEP 1 OF 3</Text>
-                    <Text style={{ fontSize: 15.5, fontWeight: '800', color: '#0F172A', marginTop: 1 }}>Owner Information</Text>
-                    <Text style={{ fontSize: 12, color: '#7A869A', marginTop: 1 }}>Name, mobile & email</Text>
+                    <Text style={{ fontSize: 14.5, fontWeight: '800', color: '#0F172A', letterSpacing: -0.1 }}>Owner Information</Text>
+                    <Text style={{ fontSize: 11.5, color: '#7A869A', marginTop: 1 }}>Name, mobile & email</Text>
                   </View>
                 </View>
-                <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: profileStep === 1 ? STEP_COLORS[1].bg : '#F4F6FB', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 26, height: 26, borderRadius: 9, backgroundColor: profileStep === 1 ? STEP_COLORS[1].bg : '#F4F6FB', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name={profileStep === 1 ? 'chevron-up' : 'chevron-down'} size={16} color={profileStep === 1 ? STEP_COLORS[1].accent : '#94A3B8'} />
                 </View>
               </TouchableOpacity>
               {profileStep === 1 && (
                 <View style={STEP_CONTENT_STYLE}>
-                  <Text style={STEP_LABEL_STYLE}>FULL NAME</Text>
+                  <Text style={STEP_LABEL_STYLE}>Full Name</Text>
                   <TextInput
                     style={STEP_INPUT_STYLE}
                     value={profileForm.name}
@@ -4063,7 +4241,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     placeholder="My FNG Autocare"
                     placeholderTextColor="#9CA3AF"
                   />
-                  <Text style={STEP_LABEL_STYLE}>MOBILE NUMBER</Text>
+                  <Text style={STEP_LABEL_STYLE}>Mobile Number</Text>
                   <TextInput
                     style={[STEP_INPUT_STYLE, { backgroundColor: '#F1F5F9', color: '#64748B' }]}
                     value={profileForm.phone ? `+91 ${profileForm.phone}` : ''}
@@ -4071,7 +4249,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     placeholderTextColor="#9CA3AF"
                     editable={false}
                   />
-                  <Text style={STEP_LABEL_STYLE}>EMAIL ADDRESS</Text>
+                  <Text style={STEP_LABEL_STYLE}>Email Address</Text>
                   <TextInput
                     style={STEP_INPUT_STYLE}
                     value={profileForm.email}
@@ -4090,37 +4268,36 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
             {/* Step 2: Vehicle Specs */}
             <View style={{
-              borderRadius: 22,
+              borderRadius: 18,
               borderWidth: 1,
               borderColor: profileStep === 2 ? `${STEP_COLORS[2].accent}55` : '#EEF1F6',
               backgroundColor: '#FFFFFF',
               overflow: 'hidden',
-              elevation: profileStep === 2 ? 6 : 2,
+              elevation: profileStep === 2 ? 4 : 1,
               shadowColor: profileStep === 2 ? STEP_COLORS[2].accent : '#0F172A',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: profileStep === 2 ? 0.14 : 0.05,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: profileStep === 2 ? 0.1 : 0.04,
               shadowRadius: 16,
             }}>
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => setProfileStep(profileStep === 2 ? 0 : 2)}
-                style={{ paddingHorizontal: 16, paddingVertical: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
+                style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: step2Done ? '#10B981' : STEP_COLORS[2].bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: step2Done ? '#DCFCE7' : STEP_COLORS[2].bg, alignItems: 'center', justifyContent: 'center' }}>
                     {step2Done ? (
-                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                      <Ionicons name="checkmark" size={17} color="#16A34A" />
                     ) : (
                       <Ionicons name="car-sport" size={16} color={STEP_COLORS[2].accent} />
                     )}
                   </View>
                   <View>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 1 }}>STEP 2 OF 3</Text>
-                    <Text style={{ fontSize: 15.5, fontWeight: '800', color: '#0F172A', marginTop: 1 }}>Vehicle Specs</Text>
-                    <Text style={{ fontSize: 12, color: '#7A869A', marginTop: 1 }}>Model, fuel & number plate</Text>
+                    <Text style={{ fontSize: 14.5, fontWeight: '800', color: '#0F172A', letterSpacing: -0.1 }}>Vehicle Specs</Text>
+                    <Text style={{ fontSize: 11.5, color: '#7A869A', marginTop: 1 }}>Model, fuel & number plate</Text>
                   </View>
                 </View>
-                <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: profileStep === 2 ? STEP_COLORS[2].bg : '#F4F6FB', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 26, height: 26, borderRadius: 9, backgroundColor: profileStep === 2 ? STEP_COLORS[2].bg : '#F4F6FB', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name={profileStep === 2 ? 'chevron-up' : 'chevron-down'} size={16} color={profileStep === 2 ? STEP_COLORS[2].accent : '#94A3B8'} />
                 </View>
               </TouchableOpacity>
@@ -4129,7 +4306,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                   {/* Quick select from saved vehicles */}
                   {allAssociatedVehicles.length > 0 ? (
                     <View style={{ marginBottom: 14 }}>
-                      <Text style={STEP_LABEL_STYLE}>YOUR SAVED VEHICLES</Text>
+                      <Text style={STEP_LABEL_STYLE}>Your Saved Vehicles</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                         {allAssociatedVehicles.map((v: any, idx: number) => {
                           const vMake = v.make || v.vehicle_make || '';
@@ -4189,7 +4366,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     </View>
                   ) : null}
 
-                  <Text style={STEP_LABEL_STYLE}>CAR BRAND & MODEL</Text>
+                  <Text style={STEP_LABEL_STYLE}>Car Brand & Model</Text>
                   <View style={styles.carSearchWrap}>
                     <TextInput
                       style={STEP_INPUT_STYLE}
@@ -4233,7 +4410,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     ) : null}
                   </View>
 
-                  <Text style={STEP_LABEL_STYLE}>FUEL TYPE</Text>
+                  <Text style={STEP_LABEL_STYLE}>Fuel Type</Text>
                   <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                     {(['Petrol', 'Diesel', 'CNG'] as const).map((fuel) => {
                       const active = fuelType === fuel;
@@ -4259,7 +4436,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     })}
                   </View>
 
-                  <Text style={STEP_LABEL_STYLE}>REG. DATE</Text>
+                  <Text style={STEP_LABEL_STYLE}>Reg. Date</Text>
                   <TouchableOpacity style={STEP_DATE_STYLE} onPress={() => setShowRegDatePicker(true)} activeOpacity={0.85}>
                     <Text style={[styles.datePickerText, !regDate ? styles.datePickerTextPlaceholder : null]}>
                       {regDate || 'dd-mm-yyyy'}
@@ -4283,7 +4460,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     </View>
                   ) : null}
 
-                  <Text style={STEP_LABEL_STYLE}>VEHICLE NUMBER PLATE</Text>
+                  <Text style={STEP_LABEL_STYLE}>Vehicle Number Plate</Text>
                   <TextInput
                     style={STEP_INPUT_STYLE}
                     value={carNumberParts[0] || ''}
@@ -4302,39 +4479,42 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
             {/* Step 3: Maintenance Details */}
             <View style={{
-              borderRadius: 22,
+              borderRadius: 18,
               borderWidth: 1,
               borderColor: profileStep === 3 ? `${STEP_COLORS[3].accent}55` : '#EEF1F6',
               backgroundColor: '#FFFFFF',
               overflow: 'hidden',
-              elevation: profileStep === 3 ? 6 : 2,
+              elevation: profileStep === 3 ? 4 : 1,
               shadowColor: profileStep === 3 ? STEP_COLORS[3].accent : '#0F172A',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: profileStep === 3 ? 0.14 : 0.05,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: profileStep === 3 ? 0.1 : 0.04,
               shadowRadius: 16,
             }}>
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => setProfileStep(profileStep === 3 ? 0 : 3)}
-                style={{ paddingHorizontal: 16, paddingVertical: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
+                style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: STEP_COLORS[3].bg, alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="construct" size={16} color={STEP_COLORS[3].accent} />
+                  <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: step3Done ? '#DCFCE7' : STEP_COLORS[3].bg, alignItems: 'center', justifyContent: 'center' }}>
+                    {step3Done ? (
+                      <Ionicons name="checkmark" size={17} color="#16A34A" />
+                    ) : (
+                      <Ionicons name="construct" size={16} color={STEP_COLORS[3].accent} />
+                    )}
                   </View>
                   <View>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8', letterSpacing: 1 }}>STEP 3 OF 3</Text>
-                    <Text style={{ fontSize: 15.5, fontWeight: '800', color: '#0F172A', marginTop: 1 }}>Maintenance Details</Text>
-                    <Text style={{ fontSize: 12, color: '#7A869A', marginTop: 1 }}>Insurance, chassis & odometer</Text>
+                    <Text style={{ fontSize: 14.5, fontWeight: '800', color: '#0F172A', letterSpacing: -0.1 }}>Maintenance Details</Text>
+                    <Text style={{ fontSize: 11.5, color: '#7A869A', marginTop: 1 }}>Insurance, chassis & odometer</Text>
                   </View>
                 </View>
-                <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: profileStep === 3 ? STEP_COLORS[3].bg : '#F4F6FB', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 26, height: 26, borderRadius: 9, backgroundColor: profileStep === 3 ? STEP_COLORS[3].bg : '#F4F6FB', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name={profileStep === 3 ? 'chevron-up' : 'chevron-down'} size={16} color={profileStep === 3 ? STEP_COLORS[3].accent : '#94A3B8'} />
                 </View>
               </TouchableOpacity>
               {profileStep === 3 && (
                 <View style={STEP_CONTENT_STYLE}>
-                  <Text style={STEP_LABEL_STYLE}>CHASSIS (LAST 5)</Text>
+                  <Text style={STEP_LABEL_STYLE}>Chassis (last 5)</Text>
                   <TextInput
                     style={STEP_INPUT_STYLE}
                     maxLength={5}
@@ -4345,7 +4525,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     autoCapitalize="characters"
                   />
 
-                  <Text style={STEP_LABEL_STYLE}>INSURANCE EXPIRY</Text>
+                  <Text style={STEP_LABEL_STYLE}>Insurance Expiry</Text>
                   <TouchableOpacity style={STEP_DATE_STYLE} onPress={() => setShowInsuranceDatePicker(true)} activeOpacity={0.85}>
                     <Text style={[styles.datePickerText, !insuranceExpiry ? styles.datePickerTextPlaceholder : null]}>
                       {insuranceExpiry || 'dd-mm-yyyy'}
@@ -4369,7 +4549,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                     </View>
                   ) : null}
 
-                  <Text style={STEP_LABEL_STYLE}>CURRENT ODOMETER READING</Text>
+                  <Text style={STEP_LABEL_STYLE}>Current Odometer Reading</Text>
                   <View style={{ backgroundColor: '#121A29', borderRadius: 18, borderWidth: 3, borderColor: '#334155', paddingHorizontal: 14, paddingVertical: 8, marginTop: 4, position: 'relative', justifyContent: 'center' }}>
                     <TextInput
                       style={{ color: '#00F2FF', fontSize: 30, fontWeight: '900', textAlign: 'center', letterSpacing: 8, paddingVertical: 12 }}
@@ -4391,28 +4571,27 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               style={{
                 marginTop: 8,
                 marginHorizontal: 0,
-                borderRadius: 18,
-                paddingVertical: 17,
+                borderRadius: 14,
+                paddingVertical: 14,
                 paddingHorizontal: 22,
                 flexDirection: 'row',
                 justifyContent: 'center',
                 alignItems: 'center',
                 gap: 10,
-                backgroundColor: '#0046AD',
+                backgroundColor: '#2754C8',
                 overflow: 'hidden',
-                elevation: 10,
-                shadowColor: '#0046AD',
-                shadowOffset: { width: 0, height: 12 },
-                shadowOpacity: 0.4,
-                shadowRadius: 18,
+                elevation: 6,
+                shadowColor: '#2754C8',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.25,
+                shadowRadius: 14,
               }}
               onPress={handleRegisterSave}
               activeOpacity={0.9}
             >
-              <View style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: 50, backgroundColor: '#0084FF', opacity: 0.5 }} />
-              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2 }}>
-                {isLoggedIn ? (vehicleEntryOnly ? 'SAVE VEHICLE' : 'SAVE CHANGES') : 'REGISTER NOW'}
+              <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 0.2 }}>
+                {isLoggedIn ? (vehicleEntryOnly ? 'Save vehicle' : 'Save changes') : 'Register now'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -6577,25 +6756,27 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#EEF1F6', backgroundColor: '#FFFFFF' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2 },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
-  premiumHero: { backgroundColor: '#0B1B3F', borderRadius: 26, padding: 18, overflow: 'hidden', shadowColor: '#0B1B3F', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.28, shadowRadius: 22, elevation: 10 },
+  premiumBrandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  premiumBrandLogo: { width: 96, height: 26 },
+  premiumHero: { backgroundColor: '#2754C8', borderRadius: 24, padding: 16, overflow: 'hidden', shadowColor: '#2754C8', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.22, shadowRadius: 22, elevation: 10 },
   premiumGuestCard: { backgroundColor: '#0B1B3F', borderRadius: 26, padding: 18, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 14, elevation: 8, shadowColor: '#0B1B3F', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 18 },
   premiumGlowA: { position: 'absolute', top: -70, right: -50, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(39,84,200,0.55)' },
   premiumGlowB: { position: 'absolute', bottom: -90, left: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(252,211,77,0.08)' },
   premiumAvatarRing: { width: 66, height: 66, borderRadius: 33, padding: 3, borderWidth: 2, borderColor: 'rgba(252,211,77,0.85)', alignItems: 'center', justifyContent: 'center' },
-  premiumAvatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#2754C8', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  premiumAvatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1E3A8A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   premiumAvatarImage: { width: 56, height: 56 },
   premiumAvatarText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
-  premiumAvatarCam: { position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FCD34D', borderWidth: 2, borderColor: '#0B1B3F', alignItems: 'center', justifyContent: 'center' },
+  premiumAvatarCam: { position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FCD34D', borderWidth: 2, borderColor: '#2754C8', alignItems: 'center', justifyContent: 'center' },
   premiumName: { color: '#FFFFFF', fontSize: 19, fontWeight: '800', letterSpacing: -0.2 },
   premiumPhone: { color: 'rgba(255,255,255,0.7)', fontSize: 12.5, fontWeight: '500', marginTop: 2 },
   premiumTierChip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(252,211,77,0.5)', backgroundColor: 'rgba(252,211,77,0.1)' },
   premiumTierChipActive: { backgroundColor: '#FCD34D', borderColor: '#FCD34D' },
   premiumTierText: { color: '#FCD34D', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-  premiumEditBtn: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
-  premiumStatsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  premiumEditBtn: { width: 34, height: 34, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  premiumStatsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingVertical: 11, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   premiumStat: { flex: 1, alignItems: 'center' },
   premiumStatValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  premiumStatLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600', marginTop: 2, letterSpacing: 0.3 },
+  premiumStatLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '600', marginTop: 2, letterSpacing: 0.3 },
   premiumStatDivider: { width: 1, height: 26, backgroundColor: 'rgba(255,255,255,0.14)' },
   premiumSyncText: { marginTop: 10, fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: '600' },
   premiumGuestCta: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: '#FCD34D' },
@@ -6603,9 +6784,12 @@ const styles = StyleSheet.create({
   menuGroup: { backgroundColor: '#FFFFFF', borderRadius: 22, paddingHorizontal: 14, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2 },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13 },
   menuRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E6EAF2' },
-  menuIconTile: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  menuRowTitle: { fontSize: 14.5, fontWeight: '700', color: '#0F172A' },
-  menuRowSub: { fontSize: 12, color: '#7A869A', marginTop: 2 },
+  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
+  menuTile: { width: '48.8%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 9, paddingHorizontal: 9, borderWidth: 1, borderColor: '#EDF1F7', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
+  menuTileDanger: { borderColor: '#FDE2E2' },
+  menuIconTile: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  menuRowTitle: { fontSize: 11.5, fontWeight: '700', color: '#0F172A', letterSpacing: -0.2 },
+  menuRowSub: { fontSize: 10.5, color: '#7A869A', marginTop: 1 },
   connectCard: { backgroundColor: '#FFFFFF', borderRadius: 22, paddingVertical: 16, paddingHorizontal: 14, alignItems: 'center', gap: 12, marginTop: 4, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2 },
   connectTitle: { fontSize: 12, fontWeight: '700', color: '#7A869A', letterSpacing: 0.4 },
   profileCard: { backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: '#E5E7EB', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -6628,6 +6812,13 @@ const styles = StyleSheet.create({
   guestLoginLink: { marginTop: 2, fontSize: 11, fontWeight: '800', color: COLORS.primary },
   iconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   iconCircleGhost: { width: 36, height: 36 },
+  vehicleCardInHero: { backgroundColor: 'transparent', padding: 0, marginTop: 16, shadowOpacity: 0, elevation: 0 },
+  cardHeadingInHero: { color: 'rgba(255,255,255,0.8)' },
+  vehicleActionBtnInHero: { backgroundColor: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.22)' },
+  vehicleDotInHero: { backgroundColor: 'rgba(255,255,255,0.35)' },
+  vehicleDotActiveInHero: { width: 16, backgroundColor: '#FFFFFF' },
+  addVehicleCorner: { position: 'absolute', right: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#2754C8', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999, shadowColor: '#2754C8', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
+  addVehicleCornerText: { color: '#FFFFFF', fontSize: 8.5, fontWeight: '800' },
   vehicleCard: { backgroundColor: '#FFFFFF', borderRadius: 22, padding: 16, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2 },
   vehicleCardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   cardHeading: { fontSize: 11, fontWeight: '800', color: '#7A869A', textTransform: 'uppercase', letterSpacing: 1.2 },
@@ -6717,6 +6908,8 @@ const styles = StyleSheet.create({
   vehicleEmptySub: { fontSize: 11, fontWeight: '600', color: '#6B7280', textAlign: 'center' },
   addVehicleBtn: { marginTop: 12, borderRadius: 14, backgroundColor: '#2754C8', paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   addVehicleBtnProminent: { marginTop: 6 },
+  addVehicleLink: { marginTop: 10, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#EEF3FF' },
+  addVehicleLinkText: { color: '#2754C8', fontSize: 12, fontWeight: '800' },
   addVehicleBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleImgPlaceholder: { width: 200, height: 140, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { fontSize: 11, fontWeight: '800', color: '#7A869A', textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 8, marginLeft: 6 },
@@ -6744,8 +6937,13 @@ const styles = StyleSheet.create({
   gridCardText: { fontSize: 12, fontWeight: '700', color: '#111827', flex: 1 },
   socialRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
   socialBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F4F6FB', alignItems: 'center', justifyContent: 'center' },
-  logoutBtn: { marginTop: 4, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FECACA', paddingVertical: 15, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
-  logoutText: { color: '#DC2626', fontSize: 14, fontWeight: '800' },
+  vehicleIncompleteDot: { position: 'absolute', top: 10, right: 10, width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#B45309', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 },
+  logoutBtn: { marginTop: 4, borderRadius: 16, backgroundColor: '#DC2626', shadowColor: '#DC2626', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 14, elevation: 5, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  logoutText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  legalRow: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 18, paddingVertical: 14, paddingHorizontal: 6, borderWidth: 1, borderColor: '#EDF1F7', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 1 },
+  legalItem: { flex: 1, alignItems: 'center', gap: 7 },
+  legalIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  legalLabel: { fontSize: 11, fontWeight: '700', color: '#334155' },
   loginBtn: { marginTop: 4, borderRadius: 18, backgroundColor: '#2754C8', paddingVertical: 15, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   loginBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
