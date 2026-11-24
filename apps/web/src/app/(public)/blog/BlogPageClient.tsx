@@ -260,14 +260,22 @@ export default function BlogPageClient() {
 
   const formatDate = formatBlogDate;
 
-  const cover = (blog: Blog, className: string) => {
+  const cover = (blog: Blog, className: string, contain = false) => {
     const src = blog.featured_image
       ? normalizeBlogMediaUrl(blog.featured_image) || blog.featured_image
       : '';
     return (
       <div className={`relative overflow-hidden bg-gray-200 ${className}`}>
         {src ? (
-          <Image src={src} alt={blog.title} fill className="object-cover" />
+          contain ? (
+            <>
+              {/* Blurred backdrop fills the frame; the full cover sits on top uncropped */}
+              <Image src={src} alt="" aria-hidden fill className="scale-110 object-cover opacity-60 blur-xl" />
+              <Image src={src} alt={blog.title} fill priority className="object-contain" />
+            </>
+          ) : (
+            <Image src={src} alt={blog.title} fill className="object-cover" />
+          )
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-primary to-blue-600">
             <span className="text-4xl font-bold text-white">{blog.title.charAt(0).toUpperCase()}</span>
@@ -318,9 +326,9 @@ export default function BlogPageClient() {
               <>
                 <Link
                   href={`/blogs/${featured.slug}`}
-                  className="grid overflow-hidden rounded-3xl bg-white shadow-sm lg:grid-cols-2"
+                  className="grid overflow-hidden rounded-3xl bg-white shadow-sm lg:grid-cols-[3fr_2fr]"
                 >
-                  {cover(featured, 'h-full min-h-[240px] sm:min-h-[340px]')}
+                  {cover(featured, 'aspect-video lg:aspect-auto lg:h-full lg:min-h-[340px]', true)}
                   <div className="flex flex-col justify-center px-6 py-8 sm:px-10 sm:py-12">
                     <span className="mb-4 inline-flex w-fit rounded-full bg-[#FFF1E4] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#E07A2F]">
                       Featured{featured.category?.name ? ` · ${featured.category.name}` : ''}
