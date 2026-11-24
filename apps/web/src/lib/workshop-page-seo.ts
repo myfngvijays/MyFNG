@@ -81,7 +81,7 @@ async function fetchWorkshopPageSeoRaw(slug: string): Promise<WorkshopPageSeoRec
   const { data, error } = await supabaseAdmin
     .from('workshop_public_pages')
     .select(
-      'slug, meta_title, meta_description, meta_keywords, short_description, profile_image, cover_image, is_published, noindex, updated_at, published_at, gmb_data, workshop:workshops(name, city, address, state, pincode)',
+      'slug, meta_title, meta_description, meta_keywords, short_description, profile_image, cover_image, is_published, noindex, updated_at, published_at, gmb_data, workshop:workshops(name, city, address, state, pincode, is_active)',
     )
     .eq('slug', slug)
     .eq('is_published', true)
@@ -90,6 +90,8 @@ async function fetchWorkshopPageSeoRaw(slug: string): Promise<WorkshopPageSeoRec
   if (error || !data) return null;
 
   const workshop = (data as any).workshop || {};
+  // Workshop switched OFF in admin → treat the page as not live (404), same as the footer.
+  if (workshop.is_active === false) return null;
   return {
     slug: String(data.slug),
     meta_title: String(data.meta_title || '').trim(),
@@ -180,13 +182,18 @@ export async function listWorkshopSitemapEntries(): Promise<Array<{ slug: string
 
   const { data, error } = await supabaseAdmin
     .from('workshop_public_pages')
-    .select('slug, updated_at, published_at, noindex')
+    .select('slug, updated_at, published_at, noindex, workshop:workshops(is_active)')
     .eq('is_published', true)
     .eq('noindex', false);
 
   if (error || !data) return [];
 
-  return data.map((row: any) => ({
+  return data
+    .filter((row: any) => {
+      const ws = Array.isArray(row.workshop) ? row.workshop[0] : row.workshop;
+      return ws?.is_active !== false;
+    })
+    .map((row: any) => ({
     slug: String(row.slug),
     lastModified: new Date(row.updated_at || row.published_at || Date.now()),
   }));

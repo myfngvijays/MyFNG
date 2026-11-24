@@ -299,14 +299,17 @@ export default function WorkshopPublicPage() {
               <p className="mt-1 text-lg font-extrabold text-white">Four steps. One form.</p>
               <ol className="mt-3 grid flex-1 grid-cols-2 grid-rows-2 gap-2">
                 {[
-                  ['1', 'Fill this form'],
-                  ['2', 'We call you'],
-                  ['3', 'Free pickup'],
-                  ['4', 'Updates + warranty'],
-                ].map(([n, label]) => (
-                  <li key={n} className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ffc20a] text-xs font-extrabold text-[#003890]">{n}</span>
-                    <span className="text-[13px] font-semibold text-white">{label}</span>
+                  ['1', 'Fill this form', 'Name, mobile, car and pincode. Takes 30 seconds.'],
+                  ['2', 'We call you', 'Our advisor confirms the service and the price on call.'],
+                  ['3', 'Free pickup', 'We pick the car from your door and drop it back.'],
+                  ['4', 'Updates + warranty', 'Photo updates on WhatsApp and warranty on the job.'],
+                ].map(([n, label, desc]) => (
+                  <li key={n} className="flex flex-col justify-center gap-1.5 rounded-2xl bg-white/10 px-4 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ffc20a] text-xs font-extrabold text-[#003890]">{n}</span>
+                      <span className="text-[14px] font-bold text-white">{label}</span>
+                    </div>
+                    <p className="text-[12px] leading-snug text-white/75">{desc}</p>
                   </li>
                 ))}
               </ol>

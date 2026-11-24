@@ -24,7 +24,7 @@ export async function GET() {
     const slugs = FOOTER_WORKSHOP_LOCATIONS.map((loc) => loc.slug);
     const { data, error } = await supabaseAdmin
       .from('workshop_public_pages')
-      .select('slug')
+      .select('slug, workshop:workshops(is_active)')
       .eq('is_published', true)
       .in('slug', slugs);
 
@@ -35,7 +35,15 @@ export async function GET() {
       );
     }
 
-    const result = filterFooterLocationsByPublishedSlugs((data || []).map((row) => String(row.slug)));
+    // Hide pages whose workshop is switched OFF in admin (those pages don't open).
+    const result = filterFooterLocationsByPublishedSlugs(
+      (data || [])
+        .filter((row: any) => {
+          const ws = Array.isArray(row.workshop) ? row.workshop[0] : row.workshop;
+          return ws?.is_active !== false;
+        })
+        .map((row: any) => String(row.slug)),
+    );
     return NextResponse.json(
       { success: true, ...result },
       { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } },
