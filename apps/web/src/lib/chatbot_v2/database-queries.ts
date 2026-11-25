@@ -444,6 +444,41 @@ export async function getServicePlansByPincode({ category, carModel, pincode, ci
 
     console.log(`[DB] Found ${carMatches.length} car matches for "${carModel}"`);
 
+    // "MARUTI SWIFT" also substring-matches "Swift Dzire" (different class) → MULTIPLE_MATCHES and no
+    // prices at all. When the name matches one model exactly (with or without the make), use only that.
+    const norm = (v: unknown) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const wantedFull = norm(carModel);
+    const wantedModel = norm(modelOnly);
+    const exactMatches = carMatches.filter(
+      (car: any) =>
+        norm(`${car.make || ''}${car.model_name || ''}`) === wantedFull ||
+        norm(car.model_name) === wantedFull ||
+        norm(car.model_name) === wantedModel,
+    );
+    if (exactMatches.length > 0 && exactMatches.length < carMatches.length) {
+      console.log(`[DB] Narrowed to ${exactMatches.length} exact match(es) for "${carModel}"`);
+      carMatches.splice(0, carMatches.length, ...exactMatches);
+    }
+
+    // Old/alternate names ("SWIFT DZIRE" → DZIRE, "DZIRE TOUR" → DZIRE): no model contains the full
+    // name, so fall back to a model whose name is the last word(s) of what was typed.
+    if (carMatches.length === 0 && modelOnly) {
+      const typed = modelOnly.toLowerCase().replace(/\s+/g, ' ').trim();
+      const tail = allCars.filter((car: any) => {
+        const name = String(car.model_name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        return name.length >= 3 && (typed.endsWith(` ${name}`) || typed.startsWith(`${name} `));
+      });
+      if (tail.length > 0) {
+        // Prefer the model at the end of the name ("swift dzire" → dzire, not swift).
+        const ending = tail.filter((car: any) =>
+          typed.endsWith(` ${String(car.model_name || '').toLowerCase().replace(/\s+/g, ' ').trim()}`),
+        );
+        const picked = ending.length > 0 ? ending : tail;
+        console.log(`[DB] No direct match for "${carModel}", using ${picked.map((c: any) => c.model_name).join(', ')}`);
+        carMatches.push(...picked);
+      }
+    }
+
     if (carMatches.length === 0) {
       return [
         {
