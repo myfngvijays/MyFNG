@@ -65,18 +65,38 @@ function getChatPhone(row: any): string {
   return recipient || sender;
 }
 
-/** Trailing inbound streak (newest→oldest). Stops at first outbound or last_read_at. */
+type UnreadStreakEntry = { count: number; sealed: boolean; humanDir?: 'INBOUND' | 'OUTBOUND' };
+
+/**
+ * Bot / automation rows (MISA AI brain, booking agents) and delivery STATUS rows are not a human reply:
+ * they must not end the customer's unread streak or hide the chat from Pending.
+ */
+function isAutoReplyRow(row: any): boolean {
+  const direction = String(row?.direction || '').toUpperCase();
+  if (direction !== 'INBOUND' && direction !== 'OUTBOUND') return true;
+  if (direction === 'INBOUND') return false;
+  const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+  return Boolean(meta.brain_auto_reply || meta.agent_auto_reply);
+}
+
+/** Trailing inbound streak (newest→oldest). Stops at first human outbound or last_read_at. */
 function bumpUnreadStreak(
-  state: Map<string, { count: number; sealed: boolean }>,
+  state: Map<string, UnreadStreakEntry>,
   phone: string,
   direction: string,
   createdAt?: string | null,
   lastReadAt?: string | null,
+  autoReply = false,
 ) {
   let entry = state.get(phone);
   if (!entry) {
     entry = { count: 0, sealed: false };
     state.set(phone, entry);
+  }
+  // Newest message that is not a bot reply decides Pending: customer spoke last → awaiting a human.
+  if (autoReply) return;
+  if (!entry.humanDir) {
+    entry.humanDir = String(direction || '').toUpperCase() === 'INBOUND' ? 'INBOUND' : 'OUTBOUND';
   }
   if (entry.sealed) return;
   if (lastReadAt && createdAt) {
@@ -94,9 +114,15 @@ function bumpUnreadStreak(
   }
 }
 
+/** true = customer is waiting for a human reply (bot replies ignored); undefined = no recent messages scanned. */
+function awaitingReplyForChat(streak: Map<string, UnreadStreakEntry>, phone?: string): boolean | undefined {
+  const dir = phone ? streak.get(phone)?.humanDir : undefined;
+  return dir ? dir === 'INBOUND' : undefined;
+}
+
 function unreadCountForChat(
   chat: { last_direction?: string | null; unread_count?: number | null; last_message_at?: string | null },
-  streak?: Map<string, { count: number; sealed: boolean }>,
+  streak?: Map<string, UnreadStreakEntry>,
   phone?: string,
   readMap?: Map<string, string>,
 ): number {
@@ -371,13 +397,13 @@ async function getTelecallerWhatsappChats(
   }
 
   // Light unread enrich from recent WA messages (trailing inbound streak).
-  const unreadStreak = new Map<string, { count: number; sealed: boolean }>();
+  const unreadStreak = new Map<string, UnreadStreakEntry>();
   try {
     const phones = [...byPhone.keys()].slice(0, 120);
     if (phones.length > 0) {
       const { data: recentMsgs } = await db
         .from('whatsapp_messages')
-        .select('direction, sender_phone, recipient_phone, created_at')
+        .select('direction, sender_phone, recipient_phone, created_at, meta')
         .order('created_at', { ascending: false })
         .limit(1200);
       for (const row of recentMsgs || []) {
@@ -389,6 +415,7 @@ async function getTelecallerWhatsappChats(
           String(row?.direction || ''),
           row?.created_at,
           readMap?.get(phone),
+          isAutoReplyRow(row),
         );
         const existing = byPhone.get(phone);
         const rowTs = ts(row?.created_at);
@@ -410,6 +437,7 @@ async function getTelecallerWhatsappChats(
       ...rest,
       last_inbound_at: rest.last_inbound_at || lead_inbound_at || null,
       unread_count: unreadCountForChat(rest, unreadStreak, rest.phone, readMap),
+      awaiting_reply: awaitingReplyForChat(unreadStreak, rest.phone),
     }))
     .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
@@ -540,13 +568,13 @@ export async function GET(request: NextRequest) {
       // otherwise filter would be polluted with unrelated chats.
       // Skip message-merge when searching by name — keep name-matched leads only.
       const readMap = await loadReadMapForUser(supabaseAdmin, String(userProfile.id));
-      const unreadStreak = new Map<string, { count: number; sealed: boolean }>();
+      const unreadStreak = new Map<string, UnreadStreakEntry>();
       if (!assigneeScoped && !searchName) {
         try {
           const { data: recentMsgs } = await supabaseAdmin
             .from('whatsapp_messages')
             .select(
-              'direction, sender_phone, recipient_phone, message_type, text_body, media_caption, template_name, status, created_at',
+              'direction, sender_phone, recipient_phone, message_type, text_body, media_caption, template_name, status, created_at, meta',
             )
             .order('created_at', { ascending: false })
             .limit(800);
@@ -561,6 +589,7 @@ export async function GET(request: NextRequest) {
               String(row?.direction || ''),
               row?.created_at,
               readMap.get(phone),
+              isAutoReplyRow(row),
             );
             const preview = messagePreviewFromRow(row);
             const existing = byPhone.get(phone);
@@ -593,7 +622,7 @@ export async function GET(request: NextRequest) {
           const { data: recentMsgs } = await supabaseAdmin
             .from('whatsapp_messages')
             .select(
-              'direction, sender_phone, recipient_phone, created_at, message_type, text_body, media_caption, template_name, status',
+              'direction, sender_phone, recipient_phone, created_at, message_type, text_body, media_caption, template_name, status, meta',
             )
             .order('created_at', { ascending: false })
             .limit(1200);
@@ -606,6 +635,7 @@ export async function GET(request: NextRequest) {
               String(row?.direction || ''),
               row?.created_at,
               readMap.get(phone),
+              isAutoReplyRow(row),
             );
             const existing = byPhone.get(phone);
             const rowTs = ts(row?.created_at);
@@ -627,6 +657,7 @@ export async function GET(request: NextRequest) {
         .map((chat) => ({
           ...chat,
           unread_count: unreadCountForChat(chat, unreadStreak, chat.phone, readMap),
+          awaiting_reply: awaitingReplyForChat(unreadStreak, chat.phone),
         }))
         .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
@@ -657,6 +688,7 @@ export async function GET(request: NextRequest) {
               last_status: row?.status || null,
               last_message_at: row?.created_at || null,
               unread_count: unreadCountForChat(lead || { phone, last_message_at: row?.created_at }, unreadStreak, phone, readMap),
+              awaiting_reply: awaitingReplyForChat(unreadStreak, phone),
               wa_line: lead?.wa_line || '6161',
             });
           }
@@ -742,7 +774,7 @@ export async function GET(request: NextRequest) {
     const batchSize = 1000;
     const byPhone = new Map<string, any>();
     const readMap = await loadReadMapForUser(db, String(userProfile.id));
-    const unreadStreak = new Map<string, { count: number; sealed: boolean }>();
+    const unreadStreak = new Map<string, UnreadStreakEntry>();
     let scanned = 0;
     let cursorCreatedAt: string | null = null;
     let page = 0;
@@ -752,7 +784,7 @@ export async function GET(request: NextRequest) {
       let query = db
         .from('whatsapp_messages')
         .select(
-          'id, direction, sender_phone, recipient_phone, message_type, text_body, media_caption, template_name, status, created_at'
+          'id, direction, sender_phone, recipient_phone, message_type, text_body, media_caption, template_name, status, created_at, meta'
         )
         .order('created_at', { ascending: false })
         .limit(batchSize);
@@ -781,6 +813,7 @@ export async function GET(request: NextRequest) {
           String(row?.direction || ''),
           row?.created_at,
           readMap.get(phone),
+          isAutoReplyRow(row),
         );
         if (byPhone.has(phone)) continue;
 
@@ -806,6 +839,7 @@ export async function GET(request: NextRequest) {
     const chats = Array.from(byPhone.values()).map((chat) => ({
       ...chat,
       unread_count: unreadCountForChat(chat, unreadStreak, chat.phone, readMap),
+      awaiting_reply: awaitingReplyForChat(unreadStreak, chat.phone),
     }));
 
     return NextResponse.json({

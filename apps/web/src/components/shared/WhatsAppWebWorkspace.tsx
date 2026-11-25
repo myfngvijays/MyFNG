@@ -16,6 +16,8 @@ type ChatRow = {
   last_direction: string | null;
   last_inbound_at?: string | null;
   unread_count?: number | null;
+  /** From the API: customer spoke last and no human has replied yet (bot replies ignored). */
+  awaiting_reply?: boolean | null;
   customer_name?: string | null;
   assigned_telecaller_id?: string | null;
   assigned_telecaller_name?: string | null;
@@ -64,7 +66,9 @@ function saveClosedPhones(phones: Set<string>) {
   }
 }
 
+/** Pending = customer is waiting for a human reply. MISA AI / bot auto-replies don't count as a reply. */
 function isAwaitingReply(chat: ChatRow): boolean {
+  if (typeof chat.awaiting_reply === 'boolean') return chat.awaiting_reply;
   if (String(chat.last_direction || '').toUpperCase() !== 'INBOUND') return false;
   return resolveUnreadCount(chat) > 0;
 }
