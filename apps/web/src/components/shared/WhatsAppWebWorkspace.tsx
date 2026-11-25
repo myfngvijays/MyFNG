@@ -379,6 +379,8 @@ export default function WhatsAppWebWorkspace({
     if (!phone) return;
 
     const markRead = () => {
+      // A chat left open in a background tab/window must not keep marking new messages as read.
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       const row = rowsRef.current.find((r) => normalizePhone(r.phone) === phone);
       const lastAt = row?.last_message_at ? new Date(row.last_message_at).getTime() : 0;
       const readIso = new Date(Math.max(Date.now(), lastAt || 0)).toISOString();
@@ -399,7 +401,15 @@ export default function WhatsAppWebWorkspace({
 
     markRead();
     const id = window.setInterval(markRead, 8000);
-    return () => window.clearInterval(id);
+    // Coming back to this tab with the chat open counts as reading it.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') markRead();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [isOpen, selectedPhone]);
 
   useEffect(() => {
