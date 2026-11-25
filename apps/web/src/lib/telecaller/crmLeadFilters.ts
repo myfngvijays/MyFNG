@@ -71,9 +71,19 @@ export function applyCrmLeadDateRange(
   } else if (requested === 'last_call_at' || requested === 'activity') {
     col = 'last_call_at';
   } else {
-    // Activity date only when every picked status is an activity filter.
+    // Ringing / Interested / Will visit / Callback + a date = leads worked in that range.
+    // last_call_at is empty when the status is set without a logged call (or the call came from
+    // another dialer), so also accept leads modified in the range — otherwise "Today" shows none.
     const ids = splitCrmStatusFilter(filter);
-    if (ids.length && ids.every((id) => CRM_ACTIVITY_DATE_FILTERS.has(id))) col = 'last_call_at';
+    if (ids.length && ids.every((id) => CRM_ACTIVITY_DATE_FILTERS.has(id))) {
+      const range = (c: string) => {
+        const conds: string[] = [];
+        if (from) conds.push(`${c}.gte."${from}"`);
+        if (to) conds.push(`${c}.lte."${to}"`);
+        return conds.length > 1 ? `and(${conds.join(',')})` : conds[0];
+      };
+      return query.or(`${range('last_call_at')},${range('updated_at')}`);
+    }
   }
   let q = query;
   if (from) q = q.gte(col, from);
