@@ -196,6 +196,67 @@ function isSignatureValid(
   return secrets.some((secret) => signatureMatches(rawBody, signatureHeader, secret));
 }
 
+/**
+ * Meta redelivers the same inbound message (same wamid) when our response is slow,
+ * and delivers it once per subscribed app. Each delivery used to run the bots again,
+ * so one "Hi" got the MISA greeting several times. This returns true when this
+ * wamid was already stored, i.e. an earlier delivery owns the bot reply.
+ */
+async function isInboundAlreadyStored(db: any, providerMessageId: string): Promise<boolean> {
+  if (!providerMessageId) return false;
+  const { data, error } = await db
+    .from('whatsapp_messages')
+    .select('id')
+    .eq('provider_message_id', providerMessageId)
+    .eq('direction', 'INBOUND')
+    .limit(1);
+  if (error) {
+    console.error('[whatsapp-webhook] inbound dedupe lookup failed:', error.message || error);
+    return false;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
+type InboundClaim = { status: 'claimed' | 'duplicate' | 'failed'; error?: unknown };
+
+/**
+ * Stores the inbound row and decides which delivery owns the bot reply.
+ * - With the unique index on provider_message_id, a parallel duplicate fails with 23505.
+ * - Without it (index never applied), every parallel delivery inserts; the oldest row wins
+ *   and the others delete their own copy and skip the bots.
+ */
+async function claimInboundMessage(
+  db: any,
+  inboundRow: Record<string, unknown>,
+  providerMessageId: string,
+): Promise<InboundClaim> {
+  const { data: inserted, error: insertError } = await db
+    .from('whatsapp_messages')
+    .insert(inboundRow)
+    .select('id')
+    .maybeSingle();
+
+  if (insertError) {
+    if (String(insertError.code || '') === '23505') return { status: 'duplicate' };
+    return { status: 'failed', error: insertError };
+  }
+  if (!providerMessageId || !inserted?.id) return { status: 'claimed' };
+
+  const { data: rows, error: listError } = await db
+    .from('whatsapp_messages')
+    .select('id, created_at')
+    .eq('provider_message_id', providerMessageId)
+    .eq('direction', 'INBOUND')
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(10);
+  if (listError || !Array.isArray(rows) || rows.length <= 1) return { status: 'claimed' };
+  if (rows[0]?.id === inserted.id) return { status: 'claimed' };
+
+  await db.from('whatsapp_messages').delete().eq('id', inserted.id);
+  return { status: 'duplicate' };
+}
+
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('hub.mode');
   const verifyToken = request.nextUrl.searchParams.get('hub.verify_token');
@@ -308,6 +369,16 @@ export async function POST(request: NextRequest) {
         const contactProfile = contacts.find((c: any) => c?.wa_id === inbound?.from);
         const profileName = contactProfile?.profile?.name || null;
 
+        // Meta retry / second app subscription for a message we already handled → no bots again.
+        if (await isInboundAlreadyStored(db, providerMessageId)) {
+          skippedCount += 1;
+          console.log('[whatsapp-webhook] duplicate inbound delivery skipped', {
+            providerMessageId,
+            senderPhone,
+          });
+          continue;
+        }
+
         const membershipClaimButtonId = extractMembershipClaimButtonId(inbound);
         if (senderPhone && membershipClaimButtonId) {
           try {
@@ -385,22 +456,23 @@ export async function POST(request: NextRequest) {
           updated_at: now,
         };
 
-        const { error: inboundUpsertError } = await db.from('whatsapp_messages').upsert(inboundRow, {
-          onConflict: 'provider_message_id',
-        });
-
-        if (inboundUpsertError) {
-          // Fallback: plain insert helps when DB lacks/changes unique conflict config.
-          const { error: inboundInsertError } = await db.from('whatsapp_messages').insert(inboundRow);
-          if (inboundInsertError) {
-            failedCount += 1;
-            console.error('Failed to store inbound WhatsApp message:', {
-              providerMessageId,
-              upsertError: inboundUpsertError,
-              insertError: inboundInsertError,
-            });
-            continue;
-          }
+        // Insert-and-claim: only one delivery of a wamid runs the bots below.
+        const claim = await claimInboundMessage(db, inboundRow, providerMessageId);
+        if (claim.status === 'duplicate') {
+          skippedCount += 1;
+          console.log('[whatsapp-webhook] parallel duplicate inbound skipped', {
+            providerMessageId,
+            senderPhone,
+          });
+          continue;
+        }
+        if (claim.status === 'failed') {
+          failedCount += 1;
+          console.error('Failed to store inbound WhatsApp message:', {
+            providerMessageId,
+            insertError: claim.error,
+          });
+          continue;
         }
 
         inboundCount += 1;

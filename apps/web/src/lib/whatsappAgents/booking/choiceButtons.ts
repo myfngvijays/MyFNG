@@ -1,4 +1,5 @@
-import { sendReplyButtonsMessage } from '@/lib/services/whatsappService';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { normalizePhoneNumber, sendReplyButtonsMessage } from '@/lib/services/whatsappService';
 import { archiveAgentOutboundMessage } from '../shared/outbound';
 import { isGreetingMessage } from './intent';
 
@@ -74,7 +75,33 @@ export function shouldOfferMisaOrHumanChoice(
   return isGreetingMessage(message) || !misaChoice;
 }
 
+/** Same greeting buttons are not re-sent to a phone within this window. */
+const MISA_CHOICE_COOLDOWN_MS = 2 * 60 * 1000;
+
+async function wasChoiceSentRecently(phone: string): Promise<boolean> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return false;
+  const since = new Date(Date.now() - MISA_CHOICE_COOLDOWN_MS).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('whatsapp_messages')
+    .select('id')
+    .eq('direction', 'OUTBOUND')
+    .eq('recipient_phone', normalizePhoneNumber(phone))
+    .neq('status', 'FAILED')
+    .contains('meta', { route: 'MISA_CHOICE_BUTTONS' })
+    .gte('created_at', since)
+    .limit(1);
+  if (error) return false;
+  return Array.isArray(data) && data.length > 0;
+}
+
 export async function sendMisaOrHumanChoiceButtons(phone: string): Promise<boolean> {
+  // The buttons are already on the customer's screen — another copy looks like a broken bot.
+  // Report as sent so the router does not fall through to the brain for a second reply.
+  if (await wasChoiceSentRecently(phone)) {
+    console.log('[whatsapp-booking] MISA choice buttons skipped (sent recently)', { phone });
+    return true;
+  }
   const result = await sendReplyButtonsMessage({
     phoneNumber: phone,
     body: MISA_CHOICE_BODY,
