@@ -42,6 +42,7 @@
         "NSMicrophoneUsageDescription": "MyFNG uses the microphone so pickup staff can record voice notes for vehicle damage descriptions.",
         "NSUserTrackingUsageDescription": "MyFNG uses this identifier to measure ads and show relevant service offers.",
         "FacebookAppID": "2662238024237088",
+        "FacebookClientToken": "b4446535c329cd1757f461a13caa9924",
         "FacebookDisplayName": "MyFNG",
         "FacebookAutoInitEnabled": false,
         "FacebookAutoLogAppEventsEnabled": false,

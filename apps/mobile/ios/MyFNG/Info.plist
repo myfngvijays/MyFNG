@@ -77,6 +77,8 @@
     </array>
     <key>FacebookAppID</key>
     <string>2662238024237088</string>
+    <key>FacebookClientToken</key>
+    <string>b4446535c329cd1757f461a13caa9924</string>
     <key>FacebookDisplayName</key>
     <string>MyFNG</string>
     <key>FacebookAutoInitEnabled</key>

@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <!-- Play Console: keep tablets, Chromebooks and XR devices eligible (these are not essential). -->
+  <uses-feature android:name="android.hardware.screen.portrait" android:required="false" tools:replace="android:required"/>
+  <uses-feature android:name="android.hardware.wifi" android:required="false" tools:replace="android:required"/>
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>

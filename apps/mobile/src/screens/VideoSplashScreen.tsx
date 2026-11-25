@@ -3,14 +3,19 @@ import { Image, StatusBar, StyleSheet, View } from 'react-native';
 import { Asset } from 'expo-asset';
 import { WebView } from 'react-native-webview';
 
-/** Partner brand blue, shown until the first video frame. */
-const SPLASH_BG = '#021E6F';
-const VIDEO = require('../../assets/partner-splash.mp4');
 /** Leave the splash if the file never starts, instead of blocking login. */
 const START_TIMEOUT_MS = 12000;
 
 type Props = {
   onComplete: () => void;
+  /** Bundled clip, e.g. require('../../assets/partner-splash.mp4'). */
+  video: number;
+  /** Brand colour shown until the first video frame. */
+  background: string;
+  /** Playback volume 0–1 (default full). */
+  volume?: number;
+  /** 'cover' fills the screen (may crop sides); 'contain' shows the whole video. */
+  fit?: 'cover' | 'contain';
 };
 
 type ExpoVideoModule = {
@@ -19,6 +24,7 @@ type ExpoVideoModule = {
     setup: (player: {
       loop: boolean;
       muted: boolean;
+      volume: number;
       play: () => void;
       addListener: (event: string, cb: (payload?: { status?: string }) => void) => { remove: () => void };
     }) => void,
@@ -28,7 +34,7 @@ type ExpoVideoModule = {
   VideoView: React.ComponentType<{
     player: unknown;
     style?: object;
-    contentFit?: 'cover';
+    contentFit?: 'cover' | 'contain';
     nativeControls?: boolean;
     allowsFullscreen?: boolean;
     surfaceType?: 'textureView';
@@ -46,7 +52,7 @@ function loadExpoVideo(): ExpoVideoModule | null {
 
 const expoVideo = loadExpoVideo();
 
-function splashHtml(uri: string) {
+function splashHtml(uri: string, SPLASH_BG: string, volume: number, fit: 'cover' | 'contain') {
   const src = uri.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   return `<!DOCTYPE html>
 <html>
@@ -54,7 +60,7 @@ function splashHtml(uri: string) {
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <style>
   html, body { margin:0; padding:0; width:100%; height:100%; background:${SPLASH_BG}; overflow:hidden; }
-  video { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; background:${SPLASH_BG}; }
+  video { position:fixed; inset:0; width:100%; height:100%; object-fit:${fit}; background:${SPLASH_BG}; }
 </style>
 </head>
 <body>
@@ -68,7 +74,7 @@ function splashHtml(uri: string) {
   function reportPlaying() {
     if (reported) return;
     reported = true;
-    try { v.muted = false; } catch (e) {}
+    try { v.muted = false; v.volume = ${volume}; } catch (e) {}
     var ms = Math.round((v.duration || 4) * 1000);
     done('playing:' + ms);
   }
@@ -89,15 +95,15 @@ function splashHtml(uri: string) {
 }
 
 /**
- * Partner intro. Release builds play this with expo-video.
- * The current simulator binary has no ExpoVideo module, so the same file plays in the WebView that is already installed.
+ * Full-screen intro video (customer and partner apps). Release builds play it with expo-video.
+ * Binaries built before ExpoVideo play the same file in the WebView that is already installed.
  */
-export default function PartnerSplashScreen({ onComplete }: Props) {
-  if (expoVideo) return <SplashVideo onComplete={onComplete} />;
-  return <SplashWeb onComplete={onComplete} />;
+export default function VideoSplashScreen(props: Props) {
+  if (expoVideo) return <SplashVideo {...props} />;
+  return <SplashWeb {...props} />;
 }
 
-function SplashWeb({ onComplete }: Props) {
+function SplashWeb({ onComplete, video: VIDEO, background: SPLASH_BG, volume = 1, fit = 'cover' }: Props) {
   const done = useRef(false);
   const started = useRef(false);
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -132,15 +138,15 @@ function SplashWeb({ onComplete }: Props) {
         const slash = fileUri.lastIndexOf('/') + 1;
         const readUrl = fileUri.slice(0, slash);
         const fileName = fileUri.slice(slash);
-        setPage({ html: splashHtml(fileName), readUrl });
+        setPage({ html: splashHtml(fileName, SPLASH_BG, volume, fit), readUrl });
         return;
       }
-      setPage({ html: splashHtml(fileUri) });
+      setPage({ html: splashHtml(fileUri, SPLASH_BG, volume, fit) });
     })();
     return () => {
       cancelled = true;
     };
-  }, [finish]);
+  }, [finish, VIDEO, SPLASH_BG, volume, fit]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -153,15 +159,15 @@ function SplashWeb({ onComplete }: Props) {
   }, [finish]);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: SPLASH_BG }]}>
       <StatusBar hidden backgroundColor={SPLASH_BG} barStyle="light-content" />
       {page?.html ? (
         <WebView
           originWhitelist={['*']}
           source={{ html: page.html, baseUrl: page.readUrl }}
           allowingReadAccessToURL={page.readUrl}
-          style={styles.video}
-          containerStyle={styles.video}
+          style={[styles.video, { backgroundColor: SPLASH_BG }]}
+          containerStyle={[styles.video, { backgroundColor: SPLASH_BG }]}
           scrollEnabled={false}
           bounces={false}
           mediaPlaybackRequiresUserAction={false}
@@ -193,7 +199,7 @@ function SplashWeb({ onComplete }: Props) {
   );
 }
 
-function SplashVideo({ onComplete }: Props) {
+function SplashVideo({ onComplete, video: VIDEO, background: SPLASH_BG, volume = 1, fit = 'cover' }: Props) {
   const { useVideoPlayer, VideoView } = expoVideo as ExpoVideoModule;
   const done = useRef(false);
   const onCompleteRef = useRef(onComplete);
@@ -207,13 +213,14 @@ function SplashVideo({ onComplete }: Props) {
   const player = useVideoPlayer(VIDEO, (next) => {
     next.loop = false;
     next.muted = false;
+    next.volume = Math.max(0, Math.min(1, volume));
     next.play();
   });
 
   useEffect(() => {
     const endSub = player.addListener('playToEnd', finish);
-    const statusSub = player.addListener('statusChange', ({ status }) => {
-      if (status === 'error') finish();
+    const statusSub = player.addListener('statusChange', (payload) => {
+      if (payload?.status === 'error') finish();
     });
     const timer = setTimeout(finish, START_TIMEOUT_MS);
     return () => {
@@ -224,12 +231,12 @@ function SplashVideo({ onComplete }: Props) {
   }, [finish, player]);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: SPLASH_BG }]}>
       <StatusBar hidden backgroundColor={SPLASH_BG} barStyle="light-content" />
       <VideoView
         player={player}
-        style={styles.video}
-        contentFit="cover"
+        style={[styles.video, { backgroundColor: SPLASH_BG }]}
+        contentFit={fit}
         nativeControls={false}
         allowsFullscreen={false}
         surfaceType="textureView"
@@ -241,10 +248,8 @@ function SplashVideo({ onComplete }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: SPLASH_BG,
   },
   video: {
     flex: 1,
-    backgroundColor: SPLASH_BG,
   },
 });

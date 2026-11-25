@@ -64,8 +64,7 @@ import CustomerRegistrationScreen from './src/screens/dashboard/customer/Custome
 import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
 import CustomerWelcomeScreen from './src/screens/CustomerWelcomeScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import SplashScreen from './src/screens/SplashScreen';
-import PartnerSplashScreen from './src/screens/PartnerSplashScreen';
+import VideoSplashScreen from './src/screens/VideoSplashScreen';
 import CarLoading from './src/components/CarLoading';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
@@ -103,9 +102,15 @@ import WrongAppScreen from './src/screens/WrongAppScreen';
 
 const Stack = createNativeStackNavigator();
 
-/** Hard cap so splash never exceeds ~2s even if auth/update is slow. */
-const SPLASH_MAX_MS = 2000;
-const SPLASH_ANIMATION_MS = 1800;
+/** Safety only. The customer logo-reveal video (~4.8s) ends the splash; this stops a stuck one. */
+const SPLASH_MAX_MS = 9000;
+const CUSTOMER_SPLASH_VIDEO = require('./assets/customer-splash.mp4');
+/** Matches the video's own edge colour, so the bands above/below the fitted video blend in. */
+const CUSTOMER_SPLASH_BG = '#0B3891';
+/** Splash jingle at 30% so it is not loud on launch. */
+const CUSTOMER_SPLASH_VOLUME = 0.3;
+const PARTNER_SPLASH_VIDEO = require('./assets/partner-splash.mp4');
+const PARTNER_SPLASH_BG = '#021E6F';
 /** Safety only. Login waits until the partner video ends; this stops a stuck splash. */
 const PARTNER_SPLASH_MAX_MS = 20000;
 /** Partner app: the splash video plays only on the first open of each day. */
@@ -587,9 +592,9 @@ function AppContent() {
         // Checking today's splash (a few ms): plain brand blue, no flash of the video.
         return <View style={{ flex: 1, backgroundColor: '#021E6F' }} />;
       }
-      return <PartnerSplashScreen onComplete={handleSplashComplete} />;
+      return <VideoSplashScreen video={PARTNER_SPLASH_VIDEO} background={PARTNER_SPLASH_BG} onComplete={handleSplashComplete} />;
     }
-    return <SplashScreen durationMs={SPLASH_ANIMATION_MS} onComplete={handleSplashComplete} />;
+    return <VideoSplashScreen video={CUSTOMER_SPLASH_VIDEO} background={CUSTOMER_SPLASH_BG} volume={CUSTOMER_SPLASH_VOLUME} fit="contain" onComplete={handleSplashComplete} />;
   }
 
   if (!authReady) {
