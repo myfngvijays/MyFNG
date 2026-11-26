@@ -23,10 +23,9 @@ import { stripRawPricingUrlFromBody } from '@/lib/telecaller/pricingShareWhatsAp
 /** Telecaller WhatsApp pricing link validity (1 hour). Clamped 1–24h when overridden. */
 export const TELECALLER_PRICING_SHARE_TTL_HOURS = 1;
 const DEFAULT_TTL_HOURS = TELECALLER_PRICING_SHARE_TTL_HOURS;
-/** Closed 24h window — URL on CTA button (slug param). Requires Meta-approved `pricing_share_link_btn`. */
-const SHARE_TEMPLATE = 'pricing_share_link_btn';
-/** Legacy body-only template (full URL in {{4}}); fallback if button template not approved yet. */
-const SHARE_TEMPLATE_LEGACY = 'pricing_share_link';
+/** Closed 24h window — URL on CTA button (slug). Only `pricing_share_link_btn` (no legacy template). */
+export const PRICING_SHARE_WHATSAPP_TEMPLATE = 'pricing_share_link_btn';
+const SHARE_TEMPLATE = PRICING_SHARE_WHATSAPP_TEMPLATE;
 
 function pricingShareSlugFromUrl(url: string): string {
   const t = String(url || '').trim();
@@ -528,28 +527,24 @@ export async function sendPricingShareWhatsApp(input: {
     if (textRes.success) return { sent: true, channel: 'session_text' };
   }
 
-  // Closed 24h window: pricing_share_link_btn (body ×3 + URL button slug) or legacy pricing_share_link.
+  // Closed 24h window: always `pricing_share_link_btn` (body ×3 + "Pricing link" URL button = slug).
   const slug = pricingShareSlugFromUrl(url);
-  let usedTemplate = SHARE_TEMPLATE;
-  let tplRes = await sendTemplateMessage({
+  if (!slug) {
+    return { sent: false, error: 'invalid_pricing_slug' };
+  }
+
+  const tplRes = await sendTemplateMessage({
     phoneNumber: phone,
     templateName: SHARE_TEMPLATE,
     templateParams: [name, car, expiresLabel],
-    buttonUrlParams: slug ? [slug] : undefined,
+    buttonUrlParams: [slug],
     languageCode: 'en',
   });
-  if (!tplRes.success) {
-    usedTemplate = SHARE_TEMPLATE_LEGACY;
-    tplRes = await sendTemplateMessage({
-      phoneNumber: phone,
-      templateName: SHARE_TEMPLATE_LEGACY,
-      templateParams: [name, car, expiresLabel, url],
-      languageCode: 'en',
-    });
-  }
+
+  const archivedBody = stripRawPricingUrlFromBody(sessionMsg);
   await archiveAgentOutboundMessage({
     phone,
-    text: usedTemplate === SHARE_TEMPLATE ? stripRawPricingUrlFromBody(sessionMsg) : sessionMsg,
+    text: archivedBody,
     sendResult: tplRes,
     source: 'telecaller_pricing_share',
     meta: {
@@ -558,24 +553,24 @@ export async function sendPricingShareWhatsApp(input: {
       kind: 'pricing_share_link',
       url,
       used_template: true,
-      template_name: usedTemplate,
+      template_name: SHARE_TEMPLATE,
       template_params: [name, car, expiresLabel],
-      button_slug: slug || null,
+      button_slug: slug,
     },
   });
+
   if (tplRes.success) {
-    return {
-      sent: true,
-      channel:
-        usedTemplate === SHARE_TEMPLATE
-          ? 'pricing_share_link_btn_template'
-          : 'pricing_share_link_template',
-    };
+    return { sent: true, channel: 'pricing_share_link_btn_template' };
   }
 
+  const err = String(tplRes.error || '').toLowerCase();
+  const hint =
+    /template|not found|does not exist|approved/i.test(err)
+      ? ` Meta par "${SHARE_TEMPLATE}" approve hona chahiye (Templates → Push pricing button).`
+      : '';
   return {
     sent: false,
-    error: tplRes.error || 'whatsapp_send_failed',
+    error: `${tplRes.error || 'whatsapp_send_failed'}${hint}`,
   };
 }
 
@@ -627,7 +622,7 @@ export async function createAndSendPricingShare(input: {
       error: wa.error || 'whatsapp_send_failed',
       details: [
         'Pricing page created but WhatsApp send failed.',
-        'Share this link manually, or ensure customer has an open chat / approve pricing_share_link template.',
+        `Share link manually, open 24h chat, or approve template ${SHARE_TEMPLATE} on Meta.`,
         created.url,
       ],
     };

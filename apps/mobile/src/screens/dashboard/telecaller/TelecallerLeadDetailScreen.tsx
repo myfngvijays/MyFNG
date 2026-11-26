@@ -2314,7 +2314,7 @@ export default function TelecallerLeadDetailScreen({
               Alert.alert(
                 'WhatsApp',
                 e?.message ||
-                  'Could not send. Need open WhatsApp chat, or approve pricing_share_link template.',
+                  'Could not send. Customer ne 24h mein reply nahi kiya — pricing_share_link_btn template Meta par approved hona chahiye, ya open chat pe free text.',
               );
             } finally {
               setSendingPricing(false);
