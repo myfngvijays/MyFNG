@@ -405,7 +405,6 @@ export default function SuperAdminDashboard() {
       setRecentLeads(Array.isArray(json?.recentLeads) ? json.recentLeads : []);
       setAlerts(Array.isArray(json?.alerts) ? json.alerts : []);
       const ops = json?.telecallerLeadOps || {};
-      setSelectedTelecallerAssignee(null);
       setTelecallerLeadOps({
         totalCreated: Number(ops.totalCreated || 0),
         assignedCount: Number(ops.assignedCount || 0),
@@ -730,6 +729,7 @@ export default function SuperAdminDashboard() {
         />
 
         <TelecallerLeadOpsPanel
+          key={`telecaller-ops-${period}-${customStart}-${customEnd}`}
           ops={telecallerLeadOps}
           periodLabel={periodLabel}
           variant="admin"
