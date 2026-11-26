@@ -3,7 +3,10 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { inferPricingCategoriesFromLead } from '@/lib/telecaller/sendLeadPricingWhatsApp';
-import { createAndSendPricingShare } from '@/lib/telecaller/pricingShareLinks';
+import {
+  createAndSendPricingShare,
+  TELECALLER_PRICING_SHARE_TTL_HOURS,
+} from '@/lib/telecaller/pricingShareLinks';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 
 async function loadLeadRow(db: any, leadId: string) {
@@ -21,7 +24,7 @@ async function loadLeadRow(db: any, leadId: string) {
 
 /**
  * Create time-limited pricing page (myfng.in/p/{slug}) and WhatsApp the link.
- * Works for Periodic + all other categories. Default link TTL: 3 hours.
+ * Works for Periodic + all other categories. Default link TTL: 60 minutes.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -100,7 +103,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       leadId: row.id,
       leadNumber: row.lead_number,
       createdBy: userProfile?.id || user.id,
-      ttlHours: Number(body?.ttlHours) > 0 ? Number(body.ttlHours) : 3,
+      ttlHours:
+        Number(body?.ttlHours) > 0 ? Number(body.ttlHours) : TELECALLER_PRICING_SHARE_TTL_HOURS,
     });
 
     if (!result.sent) {
@@ -162,7 +166,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({
       success: true,
-      message: `Pricing link sent (valid ~6 hours).\n${result.url}`,
+      message: `Pricing link sent (valid 60 minutes).\n${result.url}`,
       shareUrl: result.url,
       expiresAt: result.expiresAt,
       result,

@@ -1,7 +1,7 @@
 /**
  * Time-limited public pricing share links: https://myfng.in/pricing/{slug}
  * (also available at /p/{slug} via rewrite)
- * Default TTL: 6 hours. Used by telecaller Send Pricing for all categories.
+ * Telecaller Send Pricing link TTL: 60 minutes (see TELECALLER_PRICING_SHARE_TTL_HOURS).
  */
 
 import { randomBytes } from 'crypto';
@@ -19,8 +19,21 @@ import { isSessionOpenForPhone } from '@/lib/whatsappBotFlow/sessionWindow';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 import { normalizePricingCategories } from '@/lib/telecaller/sendLeadPricingWhatsApp';
 
-const DEFAULT_TTL_HOURS = 6;
-const SHARE_TEMPLATE = 'pricing_share_link';
+/** Telecaller WhatsApp pricing link validity (1 hour). Clamped 1–24h when overridden. */
+export const TELECALLER_PRICING_SHARE_TTL_HOURS = 1;
+const DEFAULT_TTL_HOURS = TELECALLER_PRICING_SHARE_TTL_HOURS;
+/** Closed 24h window — URL on CTA button (slug param). Requires Meta-approved `pricing_share_link_btn`. */
+const SHARE_TEMPLATE = 'pricing_share_link_btn';
+/** Legacy body-only template (full URL in {{4}}); fallback if button template not approved yet. */
+const SHARE_TEMPLATE_LEGACY = 'pricing_share_link';
+
+function pricingShareSlugFromUrl(url: string): string {
+  const t = String(url || '').trim();
+  if (!t) return '';
+  const withoutQuery = t.split('?')[0];
+  const parts = withoutQuery.split('/').filter(Boolean);
+  return parts[parts.length - 1] || '';
+}
 
 /** Match WhatsApp copy: "28 Jul, 08:21 pm" (IST). */
 function formatPricingShareExpiry(expiresAt: string): string {
@@ -514,14 +527,25 @@ export async function sendPricingShareWhatsApp(input: {
     if (textRes.success) return { sent: true, channel: 'session_text' };
   }
 
-  // Closed 24h window (9696 lead, no 6161 reply): approved template, no failed free-text bubble.
-  // Must match whatsapp_templates.pricing_share_link: {{1}} name, {{2}} car, {{3}} expiry, {{4}} url
-  const tplRes = await sendTemplateMessage({
+  // Closed 24h window: pricing_share_link_btn (body ×3 + URL button slug) or legacy pricing_share_link.
+  const slug = pricingShareSlugFromUrl(url);
+  let usedTemplate = SHARE_TEMPLATE;
+  let tplRes = await sendTemplateMessage({
     phoneNumber: phone,
     templateName: SHARE_TEMPLATE,
-    templateParams: [name, car, expiresLabel, url],
+    templateParams: [name, car, expiresLabel],
+    buttonUrlParams: slug ? [slug] : undefined,
     languageCode: 'en',
   });
+  if (!tplRes.success) {
+    usedTemplate = SHARE_TEMPLATE_LEGACY;
+    tplRes = await sendTemplateMessage({
+      phoneNumber: phone,
+      templateName: SHARE_TEMPLATE_LEGACY,
+      templateParams: [name, car, expiresLabel, url],
+      languageCode: 'en',
+    });
+  }
   await archiveAgentOutboundMessage({
     phone,
     text: sessionMsg,
@@ -533,10 +557,19 @@ export async function sendPricingShareWhatsApp(input: {
       kind: 'pricing_share_link',
       url,
       used_template: true,
-      template_name: SHARE_TEMPLATE,
+      template_name: usedTemplate,
+      button_slug: slug || null,
     },
   });
-  if (tplRes.success) return { sent: true, channel: 'pricing_share_link_template' };
+  if (tplRes.success) {
+    return {
+      sent: true,
+      channel:
+        usedTemplate === SHARE_TEMPLATE
+          ? 'pricing_share_link_btn_template'
+          : 'pricing_share_link_template',
+    };
+  }
 
   return {
     sent: false,

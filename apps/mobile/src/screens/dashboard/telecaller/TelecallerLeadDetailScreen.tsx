@@ -2261,7 +2261,7 @@ export default function TelecallerLeadDetailScreen({
 
     Alert.alert(
       'Send pricing on WhatsApp?',
-      `${modeHint}\n\nCreates a pricing page link (valid 3 hours) and sends it on WhatsApp.`,
+      `${modeHint}\n\nCreates a pricing page link (valid 60 minutes) and sends it on WhatsApp.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -2294,7 +2294,7 @@ export default function TelecallerLeadDetailScreen({
                 res.message ||
                   (res.shareUrl
                     ? `Link: ${res.shareUrl}`
-                    : 'Pricing link sent on WhatsApp (valid ~3 hours).'),
+                    : 'Pricing link sent on WhatsApp (valid 60 minutes).'),
               );
             } catch (e: any) {
               Alert.alert(

@@ -708,6 +708,14 @@ export async function getCityByPincode(pincode: string, cityHint?: string | null
     const data = pickCityForPincode((rows || []) as any[], pincode, cityHint);
     if (data) return data;
 
+    // Many cities have empty city_pincodes (e.g. Nashik) so PIN 422001 never matches rows above.
+    // Pricing share links still carry lead city — use it before failing the lookup.
+    const hinted = cityHint ? await getCityByName(String(cityHint).trim()) : null;
+    if (hinted?.id) {
+      console.log(`[DB] PIN ${pincode} not in city_pincodes; using city hint ${hinted.name}`);
+      return hinted;
+    }
+
     if (error) {
       console.warn(`[DB] No city found for PIN ${pincode}:`, error.message);
     }
@@ -719,7 +727,7 @@ export async function getCityByPincode(pincode: string, cityHint?: string | null
       .eq('is_active', true);
 
     const matchedWorkshop = filterWorkshopsForPincode(workshopCandidates || [], pincode)[0];
-    if (!matchedWorkshop?.city) return null;
+    if (!matchedWorkshop?.city) return hinted || null;
 
     const cityName = String(matchedWorkshop.city || '').trim();
     const { data: cityByWorkshop } = await supabase
