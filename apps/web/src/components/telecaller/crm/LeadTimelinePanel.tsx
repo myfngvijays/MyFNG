@@ -1,28 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  CheckSquare,
-  ClipboardList,
-  Clock,
-  History,
-  Loader2,
-  MessageCircle,
-  Phone,
-  Plus,
-  X,
-} from 'lucide-react';
+import { CheckSquare, Clock, History, Loader2, Plus, X } from 'lucide-react';
 import { formatDateTimeIST } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
-import {
-  CallRecordingCardRow,
-  formatCallLogDuration,
-} from '@/components/telecaller/CallRecordingPlayer';
-import {
-  ADMIN_CRM_STATUS_OPTIONS,
-  leadStatusCardColors,
-  resolveAdminCrmStatusId,
-} from '@/lib/telecaller/leadDisplayStatus';
+import CompactCrmActivityRow, {
+  type CompactActivityRowModel,
+} from '@/components/telecaller/crm/CompactCrmActivityRow';
+import { ADMIN_CRM_STATUS_OPTIONS, resolveAdminCrmStatusId } from '@/lib/telecaller/leadDisplayStatus';
 import { looksLikeRingingText } from '@/lib/telecaller/callDisposition';
 import CrmFollowUpDateTime from '@/components/telecaller/crm/CrmFollowUpDateTime';
 import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
@@ -90,24 +75,6 @@ function prettifyDisposition(value?: string | null) {
   return text.replace(/_/g, ' ');
 }
 
-function dispositionBadgeStyle(statusLabel?: string | null) {
-  const c = leadStatusCardColors(String(statusLabel || ''));
-  return {
-    backgroundColor: c.badgeBg,
-    color: c.badgeText,
-    boxShadow: `inset 0 0 0 1px ${c.border}`,
-  } as React.CSSProperties;
-}
-
-/** Hide vendor tag in call notes shown to CRM users. */
-function displayCallNotes(notes: string | null | undefined): string {
-  return String(notes || '')
-    .replace(/\[Smartflo\]\s*/gi, '')
-    .replace(/\bSmartflo\b/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
-
 function fmtAt(value?: string | null) {
   const raw = formatDateTimeIST(value || null);
   if (!raw || raw === '—') return '—';
@@ -147,7 +114,6 @@ export default function LeadTimelinePanel({
   const [timelineItems, setTimelineItems] = useState<TimelineApiItem[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
-  const [activityShowAll, setActivityShowAll] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [taskForm, setTaskForm] = useState({
     follow_up_type: 'CALLBACK',
@@ -287,23 +253,86 @@ export default function LeadTimelinePanel({
     : null;
 
   const displayTimelineItems = useMemo(() => {
-    return timelineItems.filter((it) => {
-      const title = String(it.title || '').toLowerCase();
-      const id = String(it.id || '');
-      return !(id.startsWith('disp-') || title.startsWith('lead updated ·') || it.kind === 'whatsapp');
-    });
+    return timelineItems
+      .filter((it) => {
+        const title = String(it.title || '').toLowerCase();
+        const id = String(it.id || '');
+        return !(id.startsWith('disp-') || title.startsWith('lead updated ·'));
+      })
+      .sort((a, b) => Date.parse(String(b.at || '')) - Date.parse(String(a.at || '')));
   }, [timelineItems]);
 
-  const whatsappItems = useMemo(
-    () => timelineItems.filter((it) => it.kind === 'whatsapp'),
-    [timelineItems],
-  );
-  const [whatsappShowAll, setWhatsappShowAll] = useState(false);
   const usingApiFeed = timelineItems.length > 0;
-  const feedCount =
-    (usingApiFeed ? displayTimelineItems.length : activityFeed.length) + (pinnedStatusRow ? 1 : 0);
-  const visibleApiItems = activityShowAll ? displayTimelineItems : displayTimelineItems.slice(0, 8);
-  const visibleWhatsapp = whatsappShowAll ? whatsappItems : whatsappItems.slice(0, 6);
+
+  const feedRows = useMemo((): CompactActivityRowModel[] => {
+    const rows: CompactActivityRowModel[] = [];
+
+    if (pinnedStatusRow) {
+      rows.push({
+        id: pinnedStatusRow.id,
+        kind: 'system',
+        at: pinnedStatusRow.at,
+        title: String(pinnedStatusRow.title || 'Update'),
+        body: pinnedStatusRow.body,
+        meta: pinnedStatusRow.meta,
+      });
+    }
+
+    if (usingApiFeed) {
+      for (const it of displayTimelineItems) {
+        rows.push({
+          id: it.id,
+          kind: it.kind,
+          at: it.at,
+          title: it.title,
+          body: it.body,
+          meta: it.meta,
+        });
+      }
+    } else {
+      for (const item of activityFeed) {
+        if (item.kind === 'call') {
+          const log = item.log;
+          rows.push({
+            id: item.key,
+            kind: 'call',
+            at: String(log.created_at || ''),
+            title: 'Call',
+            body: log.notes,
+            meta: {
+              call_log_id: log.id,
+              call_status: log.call_status,
+              outcome: log.outcome,
+              duration: log.call_duration,
+              has_call_recording: Boolean(log.call_recording_url),
+              call_recording_url: log.call_recording_url,
+              by: log.telecaller?.full_name || log.telecaller_name,
+            },
+          });
+        } else {
+          const entry = item.entry;
+          rows.push({
+            id: item.key,
+            kind: 'update',
+            at: String(entry.at || ''),
+            title: String(entry.summary || entry.status || entry.event || 'Update'),
+            body: entry.remark || entry.lost_reason || null,
+          });
+        }
+      }
+    }
+
+    const seen = new Set<string>();
+    return rows
+      .filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return Boolean(row.at) || row.kind === 'call';
+      })
+      .sort((a, b) => Date.parse(String(b.at || '')) - Date.parse(String(a.at || '')));
+  }, [pinnedStatusRow, usingApiFeed, displayTimelineItems, activityFeed]);
+
+  const feedCount = feedRows.length;
   const hasAny =
     feedCount > 0 || Boolean(latestLabel) || Boolean(latestRemark);
 
@@ -525,34 +554,6 @@ export default function LeadTimelinePanel({
 
       {tab === 'history' ? (
         <>
-          {(latestLabel || latestRemark || couponMeta.last_call_at) && (
-            <div className="mb-2.5 grid grid-cols-1 gap-1.5">
-              <div className="rounded-lg border border-teal-100 bg-white px-2 py-1.5">
-                <p className="text-[8px] font-bold uppercase tracking-wide text-teal-700">Latest status</p>
-                <p className="mt-0.5 break-words text-[11px] font-semibold text-slate-900">{latestLabel || '—'}</p>
-              </div>
-              <div className="rounded-lg border border-teal-100 bg-white px-2 py-1.5">
-                <p className="text-[8px] font-bold uppercase tracking-wide text-teal-700">Latest remark</p>
-                <p className="mt-0.5 break-words text-[11px] font-semibold text-slate-900 line-clamp-2">
-                  {latestRemark || '—'}
-                </p>
-              </div>
-              <div className="rounded-lg border border-teal-100 bg-white px-2 py-1.5">
-                <p className="text-[8px] font-bold uppercase tracking-wide text-teal-700">Last activity</p>
-                <p className="mt-0.5 text-[11px] font-semibold text-slate-900">
-                  {fmtAt(
-                    String(
-                      couponMeta.last_call_at ||
-                        profileHistory[0]?.at ||
-                        callLogs[0]?.created_at ||
-                        '',
-                    ) || null,
-                  )}
-                </p>
-              </div>
-            </div>
-          )}
-
           {loadingTasks && profileHistory.length === 0 && callLogs.length === 0 ? (
             <div className="flex justify-center py-6 text-teal-600">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -562,264 +563,12 @@ export default function LeadTimelinePanel({
               No telecaller activity logged for this lead yet.
             </p>
           ) : (
-            <div className="relative max-h-[28rem] overflow-y-auto overflow-x-hidden pr-0.5">
-              {/* Vertical rail — centered through the 20px icon column */}
-              <div
-                className="pointer-events-none absolute bottom-2 left-[9px] top-2 w-0.5 bg-teal-200"
-                aria-hidden
-              />
-              <ul className="relative space-y-2">
-              {pinnedStatusRow ? (
-                <li className="relative flex items-start gap-2.5">
-                  <span className="relative z-10 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-white ring-2 ring-teal-50">
-                    <History className="h-2.5 w-2.5" />
-                  </span>
-                  <div className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
-                    <div className="flex items-start gap-2">
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                        <span className="break-words text-[11px] font-semibold text-gray-900">
-                          {pinnedStatusRow.title}
-                        </span>
-                        <span
-                          className="inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                          style={dispositionBadgeStyle(pinnedStatusRow.meta.status_label)}
-                        >
-                          {pinnedStatusRow.meta.status_label}
-                        </span>
-                      </div>
-                      <span className="shrink-0 whitespace-nowrap pt-0.5 text-[9px] tabular-nums text-gray-400">
-                        {fmtAt(pinnedStatusRow.at)}
-                      </span>
-                    </div>
-                    {pinnedStatusRow.body ? (
-                      <p className="mt-0.5 break-words text-[11px] leading-snug text-gray-700">
-                        {pinnedStatusRow.body}
-                      </p>
-                    ) : null}
-                  </div>
-                </li>
-              ) : null}
-              {usingApiFeed
-                ? visibleApiItems.map((row) => {
-                    const kind = row.kind;
-                    const waReceived = kind === 'whatsapp' && /received/i.test(row.title);
-                    const waSent = kind === 'whatsapp' && /sent/i.test(row.title);
-                    const iconWrap =
-                      kind === 'call'
-                        ? 'bg-violet-100 text-violet-800'
-                        : kind === 'whatsapp'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : kind === 'booking'
-                            ? 'bg-amber-100 text-amber-800'
-                            : kind === 'followup'
-                              ? 'bg-sky-100 text-sky-800'
-                              : 'bg-teal-100 text-teal-800';
-                    const Icon =
-                      kind === 'call'
-                        ? Phone
-                        : kind === 'whatsapp'
-                          ? MessageCircle
-                          : kind === 'booking'
-                            ? ClipboardList
-                            : kind === 'followup'
-                              ? Clock
-                              : History;
-                    const callLogId = String(row.meta?.call_log_id || '').trim();
-                    const hasRec =
-                      kind === 'call' &&
-                      Boolean(callLogId) &&
-                      (Boolean(row.meta?.has_call_recording) || Boolean(row.meta?.call_recording_url));
-                    const statusLabel = String(row.meta?.status_label || row.meta?.status || '');
-                    const notesText = displayCallNotes(row.body);
-                    const inner = (
-                      <>
-                        <div className="flex items-start gap-2">
-                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                            <span className="break-words text-[11px] font-semibold text-gray-900">
-                              {row.title}
-                            </span>
-                            {statusLabel && kind !== 'call' ? (
-                              <span
-                                className="inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                                style={dispositionBadgeStyle(statusLabel)}
-                              >
-                                {prettifyDisposition(statusLabel)}
-                              </span>
-                            ) : null}
-                          </div>
-                          <span className="shrink-0 whitespace-nowrap pt-0.5 text-[9px] tabular-nums text-gray-400">
-                            {fmtAt(row.at)}
-                          </span>
-                        </div>
-                        {notesText ? (
-                          <p className="mt-0.5 break-words text-[11px] leading-snug text-gray-700 whitespace-pre-line">
-                            {notesText}
-                          </p>
-                        ) : null}
-                        {row.meta?.by ? (
-                          <p className="mt-0.5 text-[10px] font-medium text-teal-800">{String(row.meta.by)}</p>
-                        ) : null}
-                        {kind === 'call' && !hasRec ? (
-                          <p className="mt-0.5 text-[9px] text-gray-400">No recording yet</p>
-                        ) : null}
-                      </>
-                    );
-                    return (
-                      <li key={row.id} className="relative flex items-start gap-2.5">
-                        <span
-                          className={`relative z-10 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ring-2 ring-teal-50 ${iconWrap}`}
-                        >
-                          <Icon className="h-2.5 w-2.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          {kind === 'call' && callLogId ? (
-                            <CallRecordingCardRow
-                              callLogId={callLogId}
-                              hasRecording={hasRec}
-                              durationSeconds={
-                                row.meta?.duration != null ? Number(row.meta.duration) : null
-                              }
-                            >
-                              {inner}
-                            </CallRecordingCardRow>
-                          ) : (
-                            <div
-                              className={`rounded-lg border px-2.5 py-2 shadow-sm ${
-                                waReceived
-                                  ? 'border-emerald-200 bg-emerald-50'
-                                  : waSent
-                                    ? 'border-sky-200 bg-sky-50'
-                                    : 'border-teal-100 bg-white'
-                              }`}
-                            >
-                              {inner}
-                            </div>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })
-                : (activityShowAll ? activityFeed : activityFeed.slice(0, 10)).map((item) => {
-                if (item.kind === 'update') {
-                  const entry = item.entry;
-                  const status = prettifyDisposition(entry.status || entry.previous_label || null);
-                  return (
-                    <li key={item.key} className="relative flex items-start gap-2.5">
-                      <span className="relative z-10 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-800 ring-2 ring-teal-50">
-                        <History className="h-2.5 w-2.5" />
-                      </span>
-                      <div className="min-w-0 flex-1 rounded-lg border border-teal-100 bg-white px-2.5 py-2 shadow-sm">
-                        <div className="flex items-start gap-2">
-                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                            {status ? (
-                              <span
-                                className="inline-flex max-w-full rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                                style={dispositionBadgeStyle(status)}
-                              >
-                                {status}
-                              </span>
-                            ) : null}
-                            {entry.event ? (
-                              <span className="max-w-full break-words text-[9px] font-medium uppercase tracking-wide text-gray-400">
-                                {String(entry.event).replace(/_/g, ' ')}
-                              </span>
-                            ) : null}
-                          </div>
-                          <span className="shrink-0 whitespace-nowrap pt-0.5 text-[9px] tabular-nums text-gray-400">
-                            {fmtAt(entry.at || null)}
-                          </span>
-                        </div>
-                        {entry.summary ? (
-                          <p className="mt-1 whitespace-pre-line break-words text-[11px] font-medium leading-snug text-gray-900">
-                            {entry.summary}
-                          </p>
-                        ) : null}
-                        {entry.remark ? (
-                          <p className="mt-0.5 break-words text-[10px] leading-snug text-gray-600">
-                            <span className="font-semibold text-gray-500">Remark:</span> {entry.remark}
-                          </p>
-                        ) : null}
-                        {entry.lost_reason ? (
-                          <p className="mt-0.5 text-[9px] text-gray-500">
-                            Lost reason: {entry.lost_reason}
-                          </p>
-                        ) : null}
-                      </div>
-                    </li>
-                  );
-                }
-
-                const log = item.log;
-                const telecallerName = log?.telecaller?.full_name || log?.telecaller_name || null;
-                const hasRec =
-                  Boolean(log.call_recording_url) || Boolean((log as any).has_call_recording);
-                const durLabel = formatCallLogDuration(log.call_duration);
-                const notesText = displayCallNotes(log.notes);
-                return (
-                  <li key={item.key} className="relative flex items-start gap-2.5">
-                    <span className="relative z-10 mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-800 ring-2 ring-teal-50">
-                      <Phone className="h-2.5 w-2.5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <CallRecordingCardRow
-                        callLogId={String(log.id || '')}
-                        hasRecording={hasRec}
-                        durationSeconds={
-                          log.call_duration != null ? Number(log.call_duration) : null
-                        }
-                      >
-                        <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                          <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 font-bold uppercase tracking-wide text-violet-800 ring-1 ring-violet-200">
-                            Call
-                          </span>
-                          {log.call_status ? (
-                            <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">
-                              {String(log.call_status).replace(/_/g, ' ')}
-                            </span>
-                          ) : null}
-                          {log.outcome ? (
-                            <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200">
-                              {String(log.outcome).replace(/_/g, ' ')}
-                            </span>
-                          ) : null}
-                          <span className="shrink-0 rounded-full bg-slate-50 px-1.5 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200">
-                            {durLabel === '—' ? 'Duration —' : durLabel}
-                          </span>
-                        </div>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
-                          {telecallerName ? (
-                            <span className="whitespace-nowrap font-medium text-teal-800">{telecallerName}</span>
-                          ) : null}
-                          <span className="whitespace-nowrap text-gray-400">
-                            {fmtAt(log.created_at || null)}
-                          </span>
-                        </div>
-                        {notesText ? (
-                          <p className="mt-0.5 break-words text-[11px] leading-snug text-gray-700">{notesText}</p>
-                        ) : null}
-                        {log.customer_response ? (
-                          <p className="mt-0.5 text-[10px] text-gray-500">Response: {log.customer_response}</p>
-                        ) : null}
-                        {!hasRec ? (
-                          <p className="mt-0.5 text-[9px] text-gray-400">No recording yet</p>
-                        ) : null}
-                      </CallRecordingCardRow>
-                    </div>
-                  </li>
-                );
-              })}
+            <div className="overflow-x-hidden rounded-lg border border-teal-100 bg-white px-2 pb-1">
+              <ul className="divide-y divide-slate-100">
+                {feedRows.map((row) => (
+                  <CompactCrmActivityRow key={row.id} row={row} />
+                ))}
               </ul>
-              {feedCount > 8 ? (
-                <button
-                  type="button"
-                  onClick={() => setActivityShowAll((v) => !v)}
-                  className="mt-2 w-full py-1.5 text-center text-[12px] font-bold text-[#004AAD]"
-                >
-                  {activityShowAll
-                    ? 'View less'
-                    : `View more (${Math.max(0, feedCount - 8)})`}
-                </button>
-              ) : null}
             </div>
           )}
         </>
@@ -875,51 +624,6 @@ export default function LeadTimelinePanel({
         </div>
       )}
 
-      <div className="mt-3 rounded-xl border border-emerald-100 bg-white p-2.5">
-        <p className="mb-2 flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800">
-          <MessageCircle className="h-3.5 w-3.5" />
-          WhatsApp
-          {whatsappItems.length > 0 ? (
-            <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] text-emerald-800">
-              {whatsappItems.length}
-            </span>
-          ) : null}
-        </p>
-        {whatsappItems.length === 0 ? (
-          <p className="px-1 pb-1 text-[11px] text-slate-400">No WhatsApp messages</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {visibleWhatsapp.map((row) => {
-              const received = /received/i.test(row.title);
-              return (
-                <li
-                  key={row.id}
-                  className={`rounded-lg border px-2.5 py-2 ${
-                    received ? 'border-emerald-200 bg-emerald-50' : 'border-sky-200 bg-sky-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-[11px] font-semibold text-slate-900">{row.title}</p>
-                    <span className="shrink-0 text-[9px] text-slate-400">{fmtAt(row.at)}</span>
-                  </div>
-                  {row.body ? (
-                    <p className="mt-0.5 whitespace-pre-line text-[11px] leading-snug text-slate-700">{row.body}</p>
-                  ) : null}
-                </li>
-              );
-            })}
-            {whatsappItems.length > 6 ? (
-              <button
-                type="button"
-                onClick={() => setWhatsappShowAll((v) => !v)}
-                className="w-full py-1 text-center text-[12px] font-bold text-[#004AAD]"
-              >
-                {whatsappShowAll ? 'Show less' : `Show all WhatsApp (${whatsappItems.length})`}
-              </button>
-            ) : null}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }

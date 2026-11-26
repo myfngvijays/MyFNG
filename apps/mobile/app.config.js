@@ -34,7 +34,7 @@ module.exports = ({ config }) => {
   return {
     ...base,
     name: partner ? 'MyFNG Partner' : base.name,
-    version: partner ? '1.1.1' : base.version,
+    version: partner ? '1.1.2' : base.version,
     icon: partner ? partnerIcon : base.icon,
     splash: {
       ...(base.splash || {}),
@@ -47,7 +47,7 @@ module.exports = ({ config }) => {
     android: {
       ...(base.android || {}),
       package: partner ? 'com.myfng.partner' : base.android && base.android.package,
-      versionCode: partner ? 11 : base.android && base.android.versionCode,
+      versionCode: partner ? 12 : base.android && base.android.versionCode,
       adaptiveIcon: partner
         ? {
             foregroundImage: partnerIcon,
@@ -65,7 +65,7 @@ module.exports = ({ config }) => {
     ios: {
       ...(base.ios || {}),
       bundleIdentifier: partner ? 'com.myfng.partner' : base.ios && base.ios.bundleIdentifier,
-      buildNumber: partner ? '11' : base.ios && base.ios.buildNumber,
+      buildNumber: partner ? '12' : base.ios && base.ios.buildNumber,
       config: {
         ...((base.ios && base.ios.config) || {}),
         googleMapsApiKey: googleMapsApiKey,

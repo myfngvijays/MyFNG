@@ -76,6 +76,13 @@ import {
   extractInboundCustomerMessage,
   redactLeadSourceForTelecaller,
 } from '../../../lib/redactLeadSource';
+import {
+  activityTimestampLabel,
+  compactCallSummary,
+  compactGenericLine,
+  compactWhatsappPreview,
+  whatsappDirectionInbound,
+} from '../../../lib/telecaller/compactActivityFeed';
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
 
@@ -518,7 +525,6 @@ export default function TelecallerLeadDetailScreen({
   const [addingReminder, setAddingReminder] = useState(false);
   const [editFollowUp, setEditFollowUp] = useState({ type: 'CALLBACK', date: '', time: '', reason: '' });
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
-  const [activityShowAll, setActivityShowAll] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [appActivityItems, setAppActivityItems] = useState<any[]>([]);
   const [appActivityLoading, setAppActivityLoading] = useState(false);
@@ -1462,28 +1468,38 @@ export default function TelecallerLeadDetailScreen({
         String(item.id || '').startsWith('hist-') ||
         item.kind === 'system' ||
         item.kind === 'booking';
+      const isWa = item.kind === 'whatsapp';
+      const waInbound = isWa ? whatsappDirectionInbound(String(item.title || ''), item.meta) : false;
+      const callSummary = isCall
+        ? compactCallSummary({
+            duration: item?.meta?.duration,
+            callStatus: String(item?.meta?.call_status || ''),
+            outcome: String(item?.meta?.outcome || ''),
+            notes: String(item.body || ''),
+            title: String(item.title || ''),
+          })
+        : null;
       pushUnique(out, {
         id: String(item.id || `${item.kind}-${item.at}`),
         kind: isCall ? 'call' : isHist ? 'update' : 'other',
         callLogId,
         hasRecording,
         sortAt: String(item.at || ''),
-        title: String(item.title || 'Update'),
-        notes: String(item.body || '')
-                .replace(/\[Smartflo\]\s*/gi, '')
-                .replace(/\bSmartflo\b/gi, '')
-                .trim(),
+        title: isCall
+          ? `${callSummary?.duration || '0s'} · ${callSummary?.statusText || 'CALL'}`
+          : isWa
+            ? `${waInbound ? 'Customer' : 'We sent'} · ${compactWhatsappPreview(String(item.body || ''), String(item.title || ''))}`
+            : compactGenericLine(String(item.title || 'Update'), item.body),
+        notes: isCall ? callSummary?.noteText || '(Note not added)' : '',
         badgeColor: isCall
           ? getCallStatusColor(item?.meta?.call_status, item?.meta?.outcome)
-          : /whatsapp received/i.test(String(item.title || ''))
-            ? '#D1FAE5'
-            : /whatsapp sent/i.test(String(item.title || ''))
-              ? '#E0F2FE'
-              : COLORS.orange + '22',
-        timeLabel: item.at
-          ? `${activityStamp(item.at)}${item?.meta?.by ? ` · ${item.meta.by}` : ''}`
-          : '',
-        noRecordingYet: isCall && !hasRecording,
+          : isWa
+            ? waInbound
+              ? '#D1FAE5'
+              : '#E0F2FE'
+            : COLORS.orange + '22',
+        timeLabel: item.at ? activityTimestampLabel(String(item.at)) : '',
+        noRecordingYet: false,
       });
     }
 
@@ -1550,17 +1566,24 @@ export default function TelecallerLeadDetailScreen({
       if (id && out.some((x) => x.callLogId === id)) continue;
       const hasRecording =
         Boolean(log.call_recording_url) || Boolean(log.has_call_recording);
+      const callSummary = compactCallSummary({
+        duration: log.call_duration,
+        callStatus: log.call_status,
+        outcome: log.outcome,
+        notes: log.notes,
+        title: 'Call',
+      });
       pushUnique(out, {
         id: `call-${id || log.created_at}`,
         kind: 'call',
         callLogId: id,
         hasRecording,
         sortAt: String(log.created_at || ''),
-        title: formatCallLogLabel(log.call_status, log.outcome, log.notes),
-        notes: stripDispositionPrefix(log.notes || ''),
+        title: `${callSummary.duration} · ${callSummary.statusText}`,
+        notes: callSummary.noteText,
         badgeColor: getCallStatusColor(log.call_status, log.outcome),
-        timeLabel: activityStamp(log.created_at),
-        noRecordingYet: !hasRecording,
+        timeLabel: activityTimestampLabel(String(log.created_at || '')),
+        noRecordingYet: false,
       });
     }
 
@@ -1587,14 +1610,6 @@ export default function TelecallerLeadDetailScreen({
     );
   }, [timelineItems, callLogs, followUps, profileHistory]);
 
-  const detailActivity = React.useMemo(
-    () => activityItems.filter((item) => !/whatsapp/i.test(item.title)),
-    [activityItems],
-  );
-  const whatsappActivity = React.useMemo(
-    () => activityItems.filter((item) => /whatsapp/i.test(item.title)),
-    [activityItems],
-  );
   const visibleAppActivityItems = React.useMemo(() => {
     if (!isTelecallerRole) return appActivityItems;
     return appActivityItems.filter((item) => {
@@ -1733,7 +1748,6 @@ export default function TelecallerLeadDetailScreen({
     setWaShowAll(false);
     setLeadOverviewOpen(false);
     setServicePriceOpen(false);
-    setActivityShowAll(false);
     setAppActivityShowAll(false);
   }, [leadId]);
 
@@ -4023,15 +4037,20 @@ export default function TelecallerLeadDetailScreen({
           <Text style={styles.sectionTitle}>
             Activity{activityItems.length > 0 ? ` (${activityItems.length})` : ''}
           </Text>
-          {!editing ? (
-            <TouchableOpacity
-              style={styles.addIconBtn}
-              onPress={() => setShowActivityForm(!showActivityForm)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Icon name="plus-circle" size={26} color={COLORS.primary} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={handleOpenWhatsApp} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 12 }}>WhatsApp</Text>
             </TouchableOpacity>
-          ) : null}
+            {!editing ? (
+              <TouchableOpacity
+                style={styles.addIconBtn}
+                onPress={() => setShowActivityForm(!showActivityForm)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon name="plus-circle" size={26} color={COLORS.primary} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
         {!editing && showActivityForm ? (
@@ -4177,14 +4196,12 @@ export default function TelecallerLeadDetailScreen({
             <Text style={styles.emptyText}>No activity yet</Text>
           ) : (
             <>
-              {(activityShowAll ? detailActivity : detailActivity.slice(0, 5)).map((item, index, list) => {
+              {activityItems.map((item, index, list) => {
               const isPlaying =
                 item.kind === 'call' &&
                 item.hasRecording &&
                 item.callLogId &&
                 playingCallLogId === item.callLogId;
-              const statusOnly = bareStatusNote(item.notes);
-              const stamp = splitActivityStamp(item.timeLabel);
               return (
                 <View
                   key={item.id}
@@ -4193,19 +4210,16 @@ export default function TelecallerLeadDetailScreen({
                   <View style={[styles.actDot, { backgroundColor: activityAccent(item) }]} />
                   <View style={styles.actCopy}>
                     <View style={styles.actHead}>
-                      <Text style={styles.actTitle}>{item.title}</Text>
+                      <Text style={styles.actTitle} numberOfLines={1}>
+                        {item.title}
+                        {item.notes ? (
+                          <Text style={styles.actBodyItalic}> · {item.notes}</Text>
+                        ) : null}
+                      </Text>
                       {item.timeLabel ? (
-                        <View style={styles.actTimeCol}>
-                          <Text style={styles.actTime}>{stamp.date}</Text>
-                          {stamp.time ? <Text style={styles.actTimeSub}>{stamp.time}</Text> : null}
-                        </View>
+                        <Text style={styles.actTime}>{item.timeLabel}</Text>
                       ) : null}
                     </View>
-                    {statusOnly ? (
-                      <Text style={styles.actStatus}>{statusOnly}</Text>
-                    ) : item.notes ? (
-                      <Text style={styles.actBody}>{item.notes}</Text>
-                    ) : null}
                     {item.kind === 'call' && item.hasRecording && item.callLogId ? (
                       <TouchableOpacity
                         onPress={() =>
@@ -4215,11 +4229,8 @@ export default function TelecallerLeadDetailScreen({
                         }
                         style={styles.actPlay}
                       >
-                        <Text style={styles.actPlayText}>{isPlaying ? 'Stop' : 'Play recording'}</Text>
+                        <Text style={styles.actPlayText}>{isPlaying ? 'Stop' : 'Play'}</Text>
                       </TouchableOpacity>
-                    ) : null}
-                    {item.noRecordingYet ? (
-                      <Text style={styles.actMuted}>No recording yet</Text>
                     ) : null}
                     {isPlaying ? (
                       <CallRecordingInlinePlayer
@@ -4231,64 +4242,6 @@ export default function TelecallerLeadDetailScreen({
                 </View>
               );
             })}
-              {detailActivity.length > 5 ? (
-                <TouchableOpacity
-                  onPress={() => setActivityShowAll((v) => !v)}
-                  style={{ paddingVertical: 10, alignItems: 'center' }}
-                >
-                  <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
-                    {activityShowAll
-                      ? 'View less'
-                      : `Show more (${detailActivity.length - 5})`}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.waHead}>
-          <Text style={styles.sectionTitle}>WhatsApp{whatsappActivity.length ? ` (${whatsappActivity.length})` : ''}</Text>
-          <TouchableOpacity onPress={handleOpenWhatsApp}>
-            <Text style={styles.waOpen}>Open chat</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.sectionContent}>
-          {whatsappActivity.length === 0 ? (
-            <View style={styles.waEmpty}>
-              <Icon name="message-text" size={28} color="#94A3B8" />
-              <Text style={styles.waEmptyTitle}>No WhatsApp messages</Text>
-              <Text style={styles.waEmptySub}>Pricing and reminders you send will show here.</Text>
-            </View>
-          ) : (
-            <>
-              {(waShowAll ? whatsappActivity : whatsappActivity.slice(0, 5)).map((item) => (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.logCard,
-                    /received/i.test(item.title)
-                      ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
-                      : { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' },
-                  ]}
-                >
-                  <Text style={styles.logBadgeText}>{item.title}</Text>
-                  {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
-                  <Text style={styles.logTime}>{item.timeLabel}</Text>
-                </View>
-              ))}
-              {whatsappActivity.length > 5 ? (
-                <TouchableOpacity
-                  onPress={() => setWaShowAll((v) => !v)}
-                  style={{ paddingVertical: 10, alignItems: 'center' }}
-                >
-                  <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
-                    {waShowAll ? 'View less' : `Show more (${whatsappActivity.length - 5})`}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
             </>
           )}
         </View>
@@ -6466,18 +6419,18 @@ const styles = StyleSheet.create({
   },
   actRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingBottom: 12,
-    marginBottom: 12,
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#E6EDF5',
   },
   actRowLast: { borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 },
-  actDot: { width: 7, height: 7, borderRadius: 4, marginTop: 4 },
+  actDot: { width: 7, height: 7, borderRadius: 4 },
   actCopy: { flex: 1, minWidth: 0, gap: 2 },
-  actHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  actHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   actTitle: { flex: 1, fontSize: 12, fontWeight: '700', color: '#0F2744', lineHeight: 16 },
+  actBodyItalic: { fontSize: 11, fontWeight: '400', fontStyle: 'italic', color: '#94A3B8' },
   actBody: { fontSize: 11, color: '#475569', lineHeight: 15 },
   actStatus: {
     alignSelf: 'flex-start',
@@ -6491,7 +6444,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   actTimeCol: { flexShrink: 0, alignItems: 'flex-end' },
-  actTime: { fontSize: 10, color: '#94A3B8', lineHeight: 13, textAlign: 'right' },
+  actTime: { flexShrink: 0, fontSize: 10, color: '#94A3B8', lineHeight: 13, fontWeight: '600' },
   actTimeSub: { fontSize: 10, color: '#94A3B8', lineHeight: 13, textAlign: 'right' },
   actMuted: { fontSize: 11, color: '#94A3B8' },
   actPlay: {

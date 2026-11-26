@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { isPremiumLuxuryClass, PREMIUM_LUXURY_PRICING_MESSAGE } from '@/lib/vehicleClassPricing';
+import { fetchServicePriceForBooking } from '@/lib/servicePricing';
 import { applyPeriodicFilterWording } from '@/lib/periodicFilterWording';
 import ConsentCheckboxes, {
   requiredConsentsGranted,
@@ -610,9 +611,7 @@ export default function BookServicePage() {
       const supabase = createClient();
       const cityId = formData.city.id;
       const vehicleClass = formData.carModel.class || null;
-      const premiumLuxury = isPremiumLuxuryClass(vehicleClass);
-      // Get city's zone_id if available
-      const { data: cityData, error: cityError } = await supabase
+      const { data: cityData } = await supabase
         .from('cities')
         .select('zone_id')
         .eq('id', cityId)
@@ -620,109 +619,22 @@ export default function BookServicePage() {
 
       const zoneId = cityData?.zone_id || null;
 
-      // Simplified pricing: city + class > city > zone + class > zone > class > default
       const pricingMap: Record<string, number> = {};
 
-      // Fetch all pricing in parallel for better performance
       const pricingPromises = serviceTypes.map(async (service) => {
-        let price = null;
-
         try {
-          // Priority 1: City + Class
-          if (vehicleClass) {
-            const { data, error } = await supabase
-              .from('workshop_service_pricing')
-              .select('custom_price')
-              .eq('service_type_id', service.id)
-              .eq('city_id', cityId)
-              .eq('class', vehicleClass)
-              .eq('is_active', true)
-              .limit(1)
-              .maybeSingle();
-            
-            if (!error && data?.custom_price) {
-              price = parseFloat(data.custom_price);
-            }
-          }
-
-          // Priority 2: City only (skip for premium luxury — no generic fallback prices)
-          if (!price && !premiumLuxury) {
-            const { data, error } = await supabase
-              .from('workshop_service_pricing')
-              .select('custom_price')
-              .eq('service_type_id', service.id)
-              .eq('city_id', cityId)
-              .is('class', null)
-              .eq('is_active', true)
-              .limit(1)
-              .maybeSingle();
-            
-            if (!error && data?.custom_price) {
-              price = parseFloat(data.custom_price);
-            }
-          }
-
-          // Priority 3: Zone + Class
-          if (!price && zoneId && vehicleClass) {
-            const { data, error } = await supabase
-              .from('workshop_service_pricing')
-              .select('custom_price')
-              .eq('service_type_id', service.id)
-              .eq('zone_id', zoneId)
-              .eq('class', vehicleClass)
-              .eq('is_active', true)
-              .limit(1)
-              .maybeSingle();
-            
-            if (!error && data?.custom_price) {
-              price = parseFloat(data.custom_price);
-            }
-          }
-
-          // Priority 4: Zone only (skip for premium luxury)
-          if (!price && !premiumLuxury && zoneId) {
-            const { data, error } = await supabase
-              .from('workshop_service_pricing')
-              .select('custom_price')
-              .eq('service_type_id', service.id)
-              .eq('zone_id', zoneId)
-              .is('class', null)
-              .eq('is_active', true)
-              .limit(1)
-              .maybeSingle();
-            
-            if (!error && data?.custom_price) {
-              price = parseFloat(data.custom_price);
-            }
-          }
-
-          // Priority 5: Class only
-          if (!price && vehicleClass) {
-            const { data, error } = await supabase
-              .from('workshop_service_pricing')
-              .select('custom_price')
-              .eq('service_type_id', service.id)
-              .eq('class', vehicleClass)
-              .is('city_id', null)
-              .is('zone_id', null)
-              .eq('is_active', true)
-              .limit(1)
-              .maybeSingle();
-            
-            if (!error && data?.custom_price) {
-              price = parseFloat(data.custom_price);
-            }
-          }
-
-          // No matching city/zone/class row: leave price empty.
-          // Do not substitute the cheapest price from another city or car class.
+          const price = await fetchServicePriceForBooking(
+            supabase,
+            service.id,
+            cityId,
+            zoneId,
+            vehicleClass,
+          );
+          return { serviceId: service.id, price: price || 0 };
         } catch (err) {
-          // Silently handle errors - use default price
           console.debug(`Pricing fetch error for ${service.name}:`, err);
+          return { serviceId: service.id, price: 0 };
         }
-
-        // Default: 0 if no pricing found
-        return { serviceId: service.id, price: price || 0 };
       });
 
       const results = await Promise.allSettled(pricingPromises);

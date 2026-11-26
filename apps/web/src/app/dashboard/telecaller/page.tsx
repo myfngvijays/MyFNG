@@ -935,7 +935,9 @@ export default function TelecallerCrmHomePage() {
             {/* Quick Actions — web only, above analytics (phone order unchanged) */}
             <div className="rounded-2xl border border-[#C7D7F5] bg-[#F4F8FF] p-3.5 sm:p-4">
               <h2 className="text-[14px] font-bold text-[#023D95] mb-2">Quick Actions</h2>
-              <div className="grid grid-cols-3 gap-2">
+              <div
+                className={`grid grid-cols-3 gap-2 ${isLeadManager ? 'lg:grid-cols-7' : 'lg:grid-cols-6'}`}
+              >
                 {[
                   {
                     href: `${base}/book?mode=book`,

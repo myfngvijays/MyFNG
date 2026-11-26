@@ -169,6 +169,10 @@
     gap: 1rem;
     padding-bottom: 2rem;
   }
+  .lead-page-frame > .resizable-lead-layout {
+    flex: 1;
+    min-height: 0;
+  }
   .lead-page-split {
     display: flex;
     flex-direction: column;
@@ -201,6 +205,12 @@
       overflow-x: hidden;
       overflow-y: auto;
       overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+    }
+    .lead-drawer-scroll {
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
     }
   }
   @container lead-drawer (min-width: 980px) {

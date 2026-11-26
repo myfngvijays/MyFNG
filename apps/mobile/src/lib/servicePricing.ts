@@ -3,11 +3,21 @@ import type { BookingDraft } from './bookingDraft';
 import { getDraftDisplayPrices } from './bookingDraft';
 import { isPremiumLuxuryClass } from './vehicleClassPricing';
 
+function toPrice(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function pickBestCustomerPrice(raw: unknown[]): number {
+  const prices = raw.map(toPrice).filter((p) => p > 0);
+  if (!prices.length) return 0;
+  return Math.min(...prices);
+}
+
 /**
  * Resolve customer-facing service price from workshop_service_pricing.
- * Only returns a price when city / zone / class tier matches — never falls back
- * to unrelated workshop rows (avoids showing placeholder values like 101, 102…).
- * Premium luxury: exact class tier only — no generic fallbacks.
+ * Zone-level (city_id null) matches Zone Prices before city overrides;
+ * lowest price among matching workshop rows.
  */
 export async function fetchServicePriceForBooking(
   serviceTypeId: string,
@@ -15,40 +25,40 @@ export async function fetchServicePriceForBooking(
   zoneId: string | null,
   vehicleClass: string | null,
 ): Promise<number> {
-  const tryPrice = async (filters: Record<string, string | null>) => {
+  const tryBestPrice = async (filters: Record<string, string | null>) => {
     let q = supabase
       .from('workshop_service_pricing')
       .select('custom_price')
       .eq('service_type_id', serviceTypeId)
       .eq('is_active', true)
-      .limit(1);
+      .limit(200);
     for (const [k, v] of Object.entries(filters)) {
       if (v === null) q = q.is(k, null);
       else q = q.eq(k, v);
     }
-    const { data } = await q.maybeSingle();
-    const p = Number((data as { custom_price?: number })?.custom_price || 0);
-    return Number.isFinite(p) && p > 0 ? p : 0;
+    const { data } = await q;
+    return pickBestCustomerPrice((data || []).map((row: { custom_price?: unknown }) => row.custom_price));
   };
 
-  if (cityId && vehicleClass) {
-    const p = await tryPrice({ city_id: cityId, class: vehicleClass });
-    if (p) return p;
-  }
-  if (!isPremiumLuxuryClass(vehicleClass) && cityId) {
-    const p = await tryPrice({ city_id: cityId, class: null });
-    if (p) return p;
-  }
   if (zoneId && vehicleClass) {
-    const p = await tryPrice({ zone_id: zoneId, class: vehicleClass });
+    const p = await tryBestPrice({ zone_id: zoneId, class: vehicleClass, city_id: null });
     if (p) return p;
   }
   if (!isPremiumLuxuryClass(vehicleClass) && zoneId) {
-    const p = await tryPrice({ zone_id: zoneId, class: null });
+    const p = await tryBestPrice({ zone_id: zoneId, class: null, city_id: null });
+    if (p) return p;
+  }
+
+  if (cityId && vehicleClass) {
+    const p = await tryBestPrice({ city_id: cityId, class: vehicleClass });
+    if (p) return p;
+  }
+  if (!isPremiumLuxuryClass(vehicleClass) && cityId) {
+    const p = await tryBestPrice({ city_id: cityId, class: null });
     if (p) return p;
   }
   if (vehicleClass) {
-    const p = await tryPrice({ class: vehicleClass, city_id: null, zone_id: null });
+    const p = await tryBestPrice({ class: vehicleClass, city_id: null, zone_id: null });
     if (p) return p;
   }
   return 0;

@@ -16,6 +16,7 @@ import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
 import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
+import ResizableLeadSidebarLayout from '@/components/telecaller/crm/ResizableLeadSidebarLayout';
 import AppActivityTimeline from '@/components/admin/AppActivityTimeline';
 import LeadIqCard from '@/components/admin/LeadIqCard';
 import {
@@ -963,8 +964,10 @@ export function LeadDetailContent({
         />
         <BookingPriceCard leadId={String(leadId)} className="mb-3" />
         {editing ? (
-          <div className={isPanel ? 'lead-detail-split min-w-0' : 'lead-page-split'}>
-            <div className={isPanel ? 'min-w-0' : 'lead-page-col min-w-0 space-y-4'}>
+          <ResizableLeadSidebarLayout
+            unifiedScroll={isPanel}
+            main={
+              <div className="min-w-0 space-y-4">
               <CrmLeadEditForm
                 leadId={leadId}
                 seedLead={lead}
@@ -988,8 +991,10 @@ export function LeadDetailContent({
                 onShare={() => void openSharePanel()}
                 onDraftChange={setPricingDraft}
               />
-            </div>
-            <div className={isPanel ? 'lg:sticky lg:top-4 z-20 min-w-0 space-y-3 self-start' : 'lead-page-col z-20 min-w-0 space-y-3'}>
+              </div>
+            }
+            sidebar={
+              <div className="z-20 min-w-0 space-y-3 lg:pr-1">
               <div id="lead-sidebar-save" className="lg:sticky lg:top-0 lg:z-20 lg:bg-[#f4f7fb] lg:pb-1" />
               {/* "Open your MyFNG app" card shows here while a website call waits for the phone. */}
               <div id="lead-dial-handoff-slot" className="empty:hidden" />
@@ -1129,7 +1134,8 @@ export function LeadDetailContent({
               />
               ) : null}
             </div>
-          </div>
+            }
+          />
         ) : (
           <>
         <div className="relative overflow-hidden rounded-2xl bg-[#023D95] text-white p-4 sm:p-6 shadow-lg">

@@ -435,7 +435,11 @@ export async function GET(request: NextRequest) {
         at: String((msg as any).created_at),
         title: dir === 'INBOUND' ? 'WhatsApp received' : 'WhatsApp sent',
         body: waText || null,
-        meta: { status: (msg as any).status, message_type: (msg as any).message_type },
+        meta: {
+          status: (msg as any).status,
+          message_type: (msg as any).message_type,
+          direction: dir === 'INBOUND' ? 'INBOUND' : 'OUTBOUND',
+        },
       });
     }
 

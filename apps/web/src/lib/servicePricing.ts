@@ -1,6 +1,7 @@
 /**
  * Customer-facing price resolution from workshop_service_pricing.
- * Same tier order as book-service page and mobile app.
+ * Aligns with Zone Prices (zone-level, city_id null) before city overrides;
+ * when several workshop rows match, uses the lowest active price.
  */
 
 import { isPremiumLuxuryClass } from './vehicleClassPricing';
@@ -8,6 +9,12 @@ import { isPremiumLuxuryClass } from './vehicleClassPricing';
 function toPrice(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function pickBestCustomerPrice(raw: unknown[]): number {
+  const prices = raw.map(toPrice).filter((p) => p > 0);
+  if (!prices.length) return 0;
+  return Math.min(...prices);
 }
 
 type SupabaseClient = {
@@ -21,50 +28,65 @@ export async function fetchServicePriceForBooking(
   zoneId: string | null,
   vehicleClass: string | null,
 ): Promise<number> {
-  const tryPrice = async (filters: Record<string, string | null>) => {
+  const tryBestPrice = async (filters: Record<string, string | null>) => {
     let q = supabase
       .from('workshop_service_pricing')
       .select('custom_price')
       .eq('service_type_id', serviceTypeId)
       .eq('is_active', true)
-      .limit(1);
+      .limit(200);
 
     for (const [k, v] of Object.entries(filters)) {
       if (v === null) q = q.is(k, null);
       else q = q.eq(k, v);
     }
 
-    const { data } = await q.maybeSingle();
-    return toPrice((data as { custom_price?: number })?.custom_price);
+    const { data } = await q;
+    return pickBestCustomerPrice((data || []).map((row: { custom_price?: unknown }) => row.custom_price));
   };
 
-  if (cityId && vehicleClass) {
-    const p = await tryPrice({ city_id: cityId, class: vehicleClass });
-    if (p) return p;
-  }
-  if (!isPremiumLuxuryClass(vehicleClass)) {
-    if (cityId) {
-      const p = await tryPrice({ city_id: cityId, class: null });
-      if (p) return p;
-    }
-  }
+  // 1–2: Zone Prices sheet (zone + class, city_id null) before city overrides
   if (zoneId && vehicleClass) {
-    const p = await tryPrice({ zone_id: zoneId, class: vehicleClass });
+    const p = await tryBestPrice({ zone_id: zoneId, class: vehicleClass, city_id: null });
     if (p) return p;
   }
-  if (!isPremiumLuxuryClass(vehicleClass)) {
-    if (zoneId) {
-      const p = await tryPrice({ zone_id: zoneId, class: null });
-      if (p) return p;
-    }
-  }
-  if (vehicleClass) {
-    const p = await tryPrice({ class: vehicleClass, city_id: null, zone_id: null });
+  if (!isPremiumLuxuryClass(vehicleClass) && zoneId) {
+    const p = await tryBestPrice({ zone_id: zoneId, class: null, city_id: null });
     if (p) return p;
   }
 
-  // No class/city/zone match: return 0. Do not use the cheapest row in the country.
+  if (cityId && vehicleClass) {
+    const p = await tryBestPrice({ city_id: cityId, class: vehicleClass });
+    if (p) return p;
+  }
+  if (!isPremiumLuxuryClass(vehicleClass) && cityId) {
+    const p = await tryBestPrice({ city_id: cityId, class: null });
+    if (p) return p;
+  }
+
+  if (vehicleClass) {
+    const p = await tryBestPrice({ class: vehicleClass, city_id: null, zone_id: null });
+    if (p) return p;
+  }
+
   return 0;
+}
+
+export async function fetchServicePricingMap(
+  supabase: SupabaseClient,
+  serviceTypeIds: string[],
+  cityId: string | null,
+  zoneId: string | null,
+  vehicleClass: string | null,
+): Promise<Record<string, number>> {
+  const next: Record<string, number> = {};
+  await Promise.all(
+    serviceTypeIds.map(async (id) => {
+      const p = await fetchServicePriceForBooking(supabase, id, cityId, zoneId, vehicleClass);
+      if (p > 0) next[id] = p;
+    }),
+  );
+  return next;
 }
 
 export function normalizeCategoryKey(name: string): string {

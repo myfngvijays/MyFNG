@@ -105,18 +105,33 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
-def partnerApp = (System.getenv("APP_VARIANT") ?: "").equalsIgnoreCase("partner")
-// Unset APP_VARIANT = customer listing (com.myfng.app), same default as app.config.js.
-def customerApp = (System.getenv("APP_VARIANT") ?: "customer").equalsIgnoreCase("customer")
 
 android {
-    if (partnerApp) {
-        // Partner release drops permissions only the customer app needs (see the file).
-        sourceSets.release.manifest.srcFile 'src/partnerRelease/AndroidManifest.xml'
-        sourceSets.main.res.srcDirs += ['src/partner/res']
-    } else if (customerApp) {
-        // Customer release drops staff-only permissions (auto call, call-end return, splash video).
-        sourceSets.release.manifest.srcFile 'src/customerRelease/AndroidManifest.xml'
+    flavorDimensions "variant"
+    productFlavors {
+        customer {
+            dimension "variant"
+            applicationId "com.myfng.app"
+            versionCode 50
+            versionName "1.5.0"
+            resValue "color", "splashscreen_background", "#F0F7FF"
+        }
+        partner {
+            dimension "variant"
+            applicationId "com.myfng.partner"
+            versionCode 12
+            versionName "1.1.2"
+            resValue "string", "app_name", "MyFNG Partner"
+            resValue "color", "splashscreen_background", "#021E6F"
+        }
+    }
+    sourceSets {
+        partnerRelease {
+            manifest.srcFile 'src/partnerRelease/AndroidManifest.xml'
+        }
+        customerRelease {
+            manifest.srcFile 'src/customerRelease/AndroidManifest.xml'
+        }
     }
     ndkVersion rootProject.ext.ndkVersion
 
@@ -125,14 +140,8 @@ android {
 
     namespace 'com.myfng.app'
     defaultConfig {
-        applicationId partnerApp ? 'com.myfng.partner' : 'com.myfng.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Partner listing is 1.1.1 (build 11). Customer app is 1.5.0 (50).
-        versionCode partnerApp ? 11 : 50
-        versionName partnerApp ? "1.1.1" : "1.5.0"
-        // First frame of the partner splash video. Customer launch screen stays light blue.
-        resValue "color", "splashscreen_background", (partnerApp ? "#021E6F" : "#F0F7FF")
 
         buildConfigField("boolean", "REACT_NATIVE_UNSTABLE_USE_RUNTIME_SCHEDULER_ALWAYS", (findProperty("reactNative.unstable_useRuntimeSchedulerAlways") ?: true).toString())
         manifestPlaceholders = [

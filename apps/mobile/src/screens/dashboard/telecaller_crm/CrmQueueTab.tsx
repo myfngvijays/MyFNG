@@ -35,7 +35,7 @@ import {
 } from '../../../lib/crmFilterPrefs';
 import { leadStatusCardColors, leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
 import { mergeCrmStatusFilters } from '../../../lib/telecaller/crmStatusFilters';
-import { leadMatchesCrmQueueFilter } from '../../../lib/telecaller/crmLeadFilters';
+import { leadMatchesCrmQueueFilter, splitCrmStatusFilter } from '../../../lib/telecaller/crmLeadFilters';
 import { emitCrmViewsChanged } from '../../../components/telecaller/CrmSavedFiltersDrawerSection';
 import { crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
 import { titleCasePersonName } from '../../../lib/personName';
@@ -275,7 +275,16 @@ export default function CrmQueueTab({
   const setCustomEnd = onCustomEndChange || setCustomEndLocal;
 
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
-  const statusLabel = statusFilters.find((c) => c.id === filter)?.label || 'Lead Status';
+  const pickedStatuses = useMemo(() => splitCrmStatusFilter(filter), [filter]);
+  const statusLabel = useMemo(() => {
+    if (!pickedStatuses.length) {
+      return statusFilters.find((c) => c.id === 'all')?.label || 'Lead Status';
+    }
+    if (pickedStatuses.length === 1) {
+      return statusFilters.find((c) => c.id === pickedStatuses[0])?.label || 'Lead Status';
+    }
+    return `${pickedStatuses.length} statuses`;
+  }, [pickedStatuses, statusFilters]);
   const lostReasonLabel =
     LOST_REASON_FILTERS.find((c) => c.id === lostReason)?.label || 'All lost reasons';
   const otherReasonLabel = otherReason.trim() || 'All other reasons';
@@ -333,8 +342,9 @@ export default function CrmQueueTab({
     let status = String(filters?.filter || 'all');
     if (status === 'FRESH' || status === 'NEW') status = 'new';
     if (status === 'CALLBACK') status = 'callback';
-    const lost = status === 'lost' ? String(filters?.lostReason || '') : '';
-    const other = status === 'other' ? String(filters?.otherReason || '') : '';
+    const picked = splitCrmStatusFilter(status);
+    const lost = picked.includes('lost') ? String(filters?.lostReason || '') : '';
+    const other = picked.includes('other') ? String(filters?.otherReason || '') : '';
     const preset = (filters?.datePreset || 'all_time') as CrmDatePreset;
     const field = filters?.dateField === 'modified' ? 'modified' : 'created';
     setFilter(status);
@@ -586,12 +596,21 @@ export default function CrmQueueTab({
       if (viewMode === 'chart') params.set('for_chart', '1');
       if (appliedQ.trim()) params.set('q', appliedQ.trim());
       if (filter && filter !== 'all') {
-        const apiFilter =
-          filter === 'FRESH' || filter === 'NEW' ? 'new' : filter === 'CALLBACK' ? 'callback' : filter.toLowerCase();
-        params.set('filter', apiFilter);
+        const apiFilter = filter
+          .split(',')
+          .map((part) => {
+            const p = part.trim();
+            if (!p || p === 'all') return '';
+            if (p === 'FRESH' || p === 'NEW') return 'new';
+            if (p === 'CALLBACK') return 'callback';
+            return p.toLowerCase();
+          })
+          .filter(Boolean)
+          .join(',');
+        if (apiFilter) params.set('filter', apiFilter);
       }
-      if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
-      if (filter === 'other' && otherReason.trim()) params.set('other_reason', otherReason.trim());
+      if (pickedStatuses.includes('lost') && lostReason.trim()) params.set('lost_reason', lostReason.trim());
+      if (pickedStatuses.includes('other') && otherReason.trim()) params.set('other_reason', otherReason.trim());
       if (city.trim()) params.set('city', city.trim());
       if (priority.trim()) params.set('priority', priority.trim());
       if (dateField === 'modified') params.set('date_field', 'updated_at');
@@ -635,6 +654,7 @@ export default function CrmQueueTab({
     customEnd,
     viewMode,
     advHasRecording,
+    pickedStatuses,
   ]);
 
   useEffect(() => {
@@ -663,8 +683,9 @@ export default function CrmQueueTab({
     if (next === 'FRESH' || next === 'NEW') next = 'new';
     if (next === 'CALLBACK') next = 'callback';
     setFilter(next);
-    if (next !== 'lost') setLostReason('');
-    if (next !== 'other') setOtherReason('');
+    const picked = splitCrmStatusFilter(next);
+    if (!picked.includes('lost')) setLostReason('');
+    if (!picked.includes('other')) setOtherReason('');
   }, [initialFilter]);
 
   const persistLocalFilters = (partial: {
@@ -683,6 +704,22 @@ export default function CrmQueueTab({
   }) => {
     void saveTelecallerCrmFilterPrefs(partial);
   };
+
+  const applyStatusFilter = useCallback(
+    (next: string) => {
+      const picked = splitCrmStatusFilter(next);
+      setFilter(next);
+      onFilterChange?.(next);
+      if (!picked.includes('lost')) setLostReason('');
+      if (!picked.includes('other')) setOtherReason('');
+      persistLocalFilters({
+        statusFilter: next,
+        lostReason: picked.includes('lost') ? lostReason : '',
+        otherReason: picked.includes('other') ? otherReason : '',
+      });
+    },
+    [lostReason, otherReason, onFilterChange],
+  );
 
   const displayedLeads = useMemo(() => {
     return leads.filter((lead) => {
@@ -837,6 +874,65 @@ export default function CrmQueueTab({
                   ) : null}
                 </TouchableOpacity>
               ))}
+            </ScrollView>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderMultiStatusSelect = (opts?: { fullWidth?: boolean }) => {
+    const options = statusFilters.filter((c) => c.id !== 'all');
+    const picked = pickedStatuses;
+    const summary =
+      picked.length === 0
+        ? statusFilters.find((c) => c.id === 'all')?.label || 'All statuses'
+        : picked.length === 1
+          ? statusFilters.find((c) => c.id === picked[0])?.label || picked[0]
+          : `${picked.length} selected`;
+    const open = openDropdown === 'status';
+    const toggle = (id: string) => {
+      const nextIds = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
+      applyStatusFilter(nextIds.length ? nextIds.join(',') : 'all');
+    };
+    return (
+      <View style={[styles.selectWrap, opts?.fullWidth && { flex: 1 }]}>
+        <Text style={styles.filterLabel}>Lead status</Text>
+        <TouchableOpacity
+          style={styles.selectBtn}
+          onPress={() => setOpenDropdown(open ? null : 'status')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.selectBtnText} numberOfLines={1}>
+            {summary}
+          </Text>
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+        {open ? (
+          <View style={styles.selectMenu}>
+            <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              <TouchableOpacity
+                style={[styles.selectItem, picked.length === 0 && styles.selectItemActive]}
+                onPress={() => applyStatusFilter('all')}
+              >
+                <Text style={[styles.selectItemText, picked.length === 0 && styles.selectItemTextActive]}>
+                  {statusFilters.find((c) => c.id === 'all')?.label || 'All statuses'}
+                </Text>
+                {picked.length === 0 ? <Ionicons name="checkmark" size={16} color={COLORS.primary} /> : null}
+              </TouchableOpacity>
+              {options.map((opt) => {
+                const active = picked.includes(opt.id);
+                return (
+                  <TouchableOpacity
+                    key={`status-${opt.id}`}
+                    style={[styles.selectItem, active && styles.selectItemActive]}
+                    onPress={() => toggle(opt.id)}
+                  >
+                    <Text style={[styles.selectItemText, active && styles.selectItemTextActive]}>{opt.label}</Text>
+                    {active ? <Ionicons name="checkmark" size={16} color={COLORS.primary} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         ) : null}
@@ -1037,38 +1133,47 @@ export default function CrmQueueTab({
                   nestedScrollEnabled
                   keyboardShouldPersistTaps="handled"
                 >
-                  {statusFilters.map((c) => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.selectItem, filter === c.id && styles.selectItemActive]}
-                      onPress={() => {
-                        setFilter(c.id);
-                        onFilterChange?.(c.id);
-                        const nextLost = c.id === 'lost' ? lostReason : '';
-                        const nextOther = c.id === 'other' ? otherReason : '';
-                        if (c.id !== 'lost') setLostReason('');
-                        if (c.id !== 'other') setOtherReason('');
-                        persistLocalFilters({
-                          statusFilter: c.id,
-                          lostReason: nextLost,
-                          otherReason: nextOther,
-                        });
-                        setOpenDropdown(null);
-                      }}
+                  <TouchableOpacity
+                    style={[styles.selectItem, pickedStatuses.length === 0 && styles.selectItemActive]}
+                    onPress={() => {
+                      applyStatusFilter('all');
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.selectItemText,
+                        pickedStatuses.length === 0 && styles.selectItemTextActive,
+                      ]}
                     >
-                      <Text
-                        style={[
-                          styles.selectItemText,
-                          filter === c.id && styles.selectItemTextActive,
-                        ]}
-                      >
-                        {c.label}
-                      </Text>
-                      {filter === c.id ? (
-                        <Ionicons name="checkmark" size={16} color={COLORS.primary} />
-                      ) : null}
-                    </TouchableOpacity>
-                  ))}
+                      {statusFilters.find((c) => c.id === 'all')?.label || 'All statuses'}
+                    </Text>
+                    {pickedStatuses.length === 0 ? (
+                      <Ionicons name="checkmark" size={16} color={COLORS.primary} />
+                    ) : null}
+                  </TouchableOpacity>
+                  {statusFilters
+                    .filter((c) => c.id !== 'all')
+                    .map((c) => {
+                      const active = pickedStatuses.includes(c.id);
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[styles.selectItem, active && styles.selectItemActive]}
+                          onPress={() => {
+                            const nextIds = active
+                              ? pickedStatuses.filter((x) => x !== c.id)
+                              : [...pickedStatuses, c.id];
+                            applyStatusFilter(nextIds.length ? nextIds.join(',') : 'all');
+                          }}
+                        >
+                          <Text style={[styles.selectItemText, active && styles.selectItemTextActive]}>
+                            {c.label}
+                          </Text>
+                          {active ? <Ionicons name="checkmark" size={16} color={COLORS.primary} /> : null}
+                        </TouchableOpacity>
+                      );
+                    })}
                 </ScrollView>
               </View>
             ) : null}
@@ -1126,7 +1231,7 @@ export default function CrmQueueTab({
           </View>
         </View>
 
-        {filter === 'lost' ? (
+        {pickedStatuses.includes('lost') ? (
           <View
             style={[
               styles.dateDropdownWrap,
@@ -1185,7 +1290,7 @@ export default function CrmQueueTab({
           </View>
         ) : null}
 
-        {filter === 'other' ? (
+        {pickedStatuses.includes('other') ? (
           <View
             style={[
               styles.dateDropdownWrap,
@@ -1526,23 +1631,7 @@ export default function CrmQueueTab({
               </Text>
               <View style={{ height: 12 }} />
               <View style={styles.filterPair}>
-                <View style={styles.filterHalf}>
-                  {renderSelect(
-                    'status',
-                    'Lead status',
-                    filter,
-                    statusFilters.map((c) => ({ value: c.id, label: c.label })),
-                    (v) => {
-                      setFilter(v);
-                      onFilterChange?.(v);
-                      const nextLost = v === 'lost' ? lostReason : '';
-                      const nextOther = v === 'other' ? otherReason : '';
-                      if (v !== 'lost') setLostReason('');
-                      if (v !== 'other') setOtherReason('');
-                      persistLocalFilters({ statusFilter: v, lostReason: nextLost, otherReason: nextOther });
-                    },
-                  )}
-                </View>
+                <View style={styles.filterHalf}>{renderMultiStatusSelect()}</View>
                 <View style={styles.filterHalf}>
                   {renderSelect(
                     'dateField',
@@ -1560,7 +1649,7 @@ export default function CrmQueueTab({
                   )}
                 </View>
               </View>
-              {filter === 'lost'
+              {pickedStatuses.includes('lost')
                 ? renderSelect(
                     'lostReason',
                     'Lost reason',
@@ -1572,7 +1661,7 @@ export default function CrmQueueTab({
                     },
                   )
                 : null}
-              {filter === 'other'
+              {pickedStatuses.includes('other')
                 ? renderSelect(
                     'otherReason',
                     'Other reason',
