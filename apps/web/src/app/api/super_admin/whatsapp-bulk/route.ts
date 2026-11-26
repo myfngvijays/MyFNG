@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { sendTemplateMessage } from '@/lib/services/whatsappService';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 import { ensureOtpTemplateForAccount } from '@/lib/services/whatsappAuthenticationOtpTemplate';
+import { ensurePricingShareButtonForAccount } from '@/lib/services/ensurePricingShareButtonTemplate';
+import { resolveWabaForTemplates } from '@/lib/services/whatsappTemplateWabaResolve';
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const BATCH_SIZE = 20;
@@ -923,6 +925,7 @@ export async function POST(request: NextRequest) {
     if (action === 'connect_account') return connectAccount(db, body);
     if (action === 'sync_account_templates') return syncAccountTemplates(db, auth.userId, body);
     if (action === 'ensure_account_otp') return ensureAccountOtp(db, auth.userId, body);
+    if (action === 'ensure_account_pricing_share_btn') return ensureAccountPricingShareBtn(db, body);
     if (action === 'activate_account') return activateAccount(db, body);
     if (action === 'delete_account') return deleteAccount(db, body);
 
@@ -1110,76 +1113,6 @@ async function testSend(db: any, userId: string, actorName: string, role: string
   return NextResponse.json({ success: true, message_id: result.messageId || null });
 }
 
-async function graphGet(apiUrl: string, accessToken: string, path: string) {
-  const response = await fetch(`${apiUrl}/${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: 'no-store',
-  });
-  const json = await response.json().catch(() => ({}));
-  return { ok: response.ok, json };
-}
-
-async function idHasTemplates(apiUrl: string, accessToken: string, id: string) {
-  const result = await graphGet(apiUrl, accessToken, `${id}/message_templates?fields=id&limit=1`);
-  if (result.ok) return true;
-  return !/nonexisting field|message_templates/i.test(String(result.json?.error?.message || ''));
-}
-
-async function wabaOwnsPhone(apiUrl: string, accessToken: string, wabaId: string, phoneNumberId: string) {
-  const result = await graphGet(apiUrl, accessToken, `${wabaId}/phone_numbers?fields=id&limit=50`);
-  return (result.json?.data || []).some((row: { id?: string }) => String(row.id) === phoneNumberId);
-}
-
-async function wabasUnderBusiness(apiUrl: string, accessToken: string, businessId: string) {
-  const ids: string[] = [];
-  for (const edge of ['owned_whatsapp_business_accounts', 'client_whatsapp_business_accounts']) {
-    const result = await graphGet(apiUrl, accessToken, `${businessId}/${edge}?fields=id&limit=20`);
-    for (const row of result.json?.data || []) ids.push(String(row.id || ''));
-  }
-  return Array.from(new Set(ids.filter(Boolean)));
-}
-
-async function resolveWabaForTemplates(apiUrl: string, accessToken: string, phoneNumberId: string, candidateId: string) {
-  const nested = candidateId ? await wabasUnderBusiness(apiUrl, accessToken, candidateId) : [];
-  const pool = Array.from(new Set([candidateId, ...nested].filter(Boolean)));
-  for (const id of pool) {
-    if (!(await idHasTemplates(apiUrl, accessToken, id))) continue;
-    if (await wabaOwnsPhone(apiUrl, accessToken, id, phoneNumberId)) return id;
-  }
-  const usable = [];
-  for (const id of nested) {
-    if (await idHasTemplates(apiUrl, accessToken, id)) usable.push(id);
-  }
-  if (usable.length === 1) return usable[0];
-  return discoverWabaId(apiUrl, accessToken, phoneNumberId, '');
-}
-
-async function discoverWabaId(apiUrl: string, accessToken: string, phoneNumberId: string, savedWabaId: string) {
-  if (savedWabaId) return savedWabaId;
-  const debug = await fetch(`${apiUrl}/debug_token?input_token=${encodeURIComponent(accessToken)}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const payload = await debug.json().catch(() => ({}));
-  const appId = String(payload?.data?.app_id || '');
-  const appSecret = String(process.env.WHATSAPP_APP_SECRET || '');
-  let scopes = Array.isArray(payload?.data?.granular_scopes) ? payload.data.granular_scopes : [];
-  if (appId && appSecret && !scopes.some((scope: { target_ids?: string[] }) => scope?.target_ids?.length)) {
-    const appToken = `${appId}|${appSecret}`;
-    const again = await fetch(`${apiUrl}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(appToken)}`);
-    const againPayload = await again.json().catch(() => ({}));
-    if (Array.isArray(againPayload?.data?.granular_scopes)) scopes = againPayload.data.granular_scopes;
-  }
-  const ids = Array.from(new Set(scopes.flatMap((scope: { target_ids?: string[] }) => scope?.target_ids || [])));
-  for (const id of ids) {
-    const phones = await fetch(`${apiUrl}/${id}/phone_numbers?fields=id&limit=50`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const json = await phones.json().catch(() => ({}));
-    if ((json.data || []).some((row: { id?: string }) => String(row.id) === phoneNumberId)) return String(id);
-  }
-  return String(ids[0] || '');
-}
-
 function metaAccountPhone(meta: any) {
   return String(meta?.account_phone || '').replace(/\D/g, '').slice(-10);
 }
@@ -1299,6 +1232,63 @@ async function syncAccountTemplates(db: any, userId: string, body: any) {
     display_phone: account.data.display_phone,
     waba_id: wabaId,
   });
+}
+
+async function ensureAccountPricingShareBtn(db: any, body: any) {
+  const id = String(body?.id || '').trim();
+  if (!id || id === 'settings') {
+    return NextResponse.json(
+      { error: 'Account switcher se +91 95949 00505 (connected) select karke Push pricing (button) dabao.' },
+      { status: 400 },
+    );
+  }
+  const account = await db
+    .from('wa_bulk_accounts')
+    .select('id, label, display_phone, phone_number_id, waba_id, access_token, api_url')
+    .eq('id', id)
+    .maybeSingle();
+  if (account.error || !account.data) {
+    return NextResponse.json({ error: account.error?.message || 'Account not found' }, { status: 404 });
+  }
+  const apiUrl = String(account.data.api_url || 'https://graph.facebook.com/v25.0').replace(/\/$/, '');
+  let accessToken = String(account.data.access_token || '').trim();
+  if (!accessToken) {
+    const creds = await getResolvedWhatsAppAgentsCredentials();
+    accessToken = String(creds.whatsapp_access_token || '').trim();
+  }
+  const phoneNumberId = String(account.data.phone_number_id || '').replace(/\D/g, '');
+  const providedWabaId = String(body?.waba_id || account.data.waba_id || '').replace(/\D/g, '');
+  const wabaId = await resolveWabaForTemplates(apiUrl, accessToken, phoneNumberId, providedWabaId);
+  if (!wabaId) {
+    return NextResponse.json(
+      {
+        error:
+          'Is number ka WABA id resolve nahi hua. WhatsApp Manager se asset_id copy karke account card par paste karo, phir dubara push karo.',
+      },
+      { status: 400 },
+    );
+  }
+  if (account.data.waba_id !== wabaId) await db.from('wa_bulk_accounts').update({ waba_id: wabaId }).eq('id', id);
+  try {
+    const result = await ensurePricingShareButtonForAccount({
+      apiUrl,
+      accessToken,
+      wabaId,
+      phoneNumberId,
+      displayPhone: String(account.data.display_phone || ''),
+    });
+    return NextResponse.json({
+      success: result.success,
+      ...result,
+      display_phone: account.data.display_phone,
+      waba_id: wabaId,
+    });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: String((error as { message?: string })?.message || 'Could not push pricing_share_link_btn') },
+      { status: 502 },
+    );
+  }
 }
 
 async function ensureAccountOtp(db: any, userId: string, body: any) {

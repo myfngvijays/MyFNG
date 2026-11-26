@@ -582,17 +582,32 @@ export default function WhatsAppTemplateManager() {
   };
 
   const handleEnsurePricingShareBtn = async () => {
+    const selected = waAccount.selected;
+    const connected = selected?.source === 'connected' && selected.id && selected.id !== 'settings';
     const confirmed = window.confirm(
-      'Create + push pricing_share_link_btn on BOTH WABAs?\n\n' +
-        '• Settings WABA (9594996161 / env)\n' +
-        '• Every active connected account in Bulk WhatsApp\n\n' +
-        'UTILITY · body ×3 · button "Pricing link" → https://myfng.in/pricing/{{slug}}',
+      connected
+        ? `Push pricing_share_link_btn on ${selected.display_phone} (00505 / connected)?\n\n` +
+            'UTILITY · body ×3 · button "Pricing link" → https://myfng.in/pricing/{{slug}}'
+        : 'Create + push pricing_share_link_btn on 6161 + 00505 (saare connected numbers)?\n\n' +
+            '• +91 95949 96161 (settings)\n' +
+            '• Har connected account (e.g. +91 95949 00505)\n\n' +
+            '00505 ke liye account upar switch karke bhi alag push kar sakte ho.',
     );
     if (!confirmed) return;
 
     setEnsuringPricingBtn(true);
     try {
-      const res = await fetch('/api/whatsapp/templates/ensure-pricing-share-btn', { method: 'POST' });
+      const res = connected
+        ? await fetch('/api/super_admin/whatsapp-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'ensure_account_pricing_share_btn',
+              id: selected.id,
+              waba_id: selected.waba_id || '',
+            }),
+          })
+        : await fetch('/api/whatsapp/templates/ensure-pricing-share-btn', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data?.success) {
         const detail = Array.isArray(data?.wabaResults)

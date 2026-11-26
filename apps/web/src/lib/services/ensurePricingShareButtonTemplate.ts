@@ -7,6 +7,8 @@ import {
   pushWhatsAppTemplateToMeta,
   type WhatsAppTemplatePushResult,
 } from '@/lib/services/whatsappTemplateMetaPush';
+import { resolveWabaForTemplates } from '@/lib/services/whatsappTemplateWabaResolve';
+import { isOtpWhatsAppLine } from '@/lib/services/whatsappService';
 
 export const PRICING_SHARE_BTN_TEMPLATE_NAME = 'pricing_share_link_btn';
 
@@ -55,41 +57,10 @@ export type PricingShareWabaPushResult = {
   message: string;
 };
 
-function credsFromBulkAccount(row: {
-  access_token?: string | null;
-  phone_number_id?: string | null;
-  waba_id?: string | null;
-  api_url?: string | null;
-  display_phone?: string | null;
-  label?: string | null;
-}): ResolvedWhatsAppAgentsCredentials | null {
-  const token = String(row.access_token || '').trim();
-  const wabaId = String(row.waba_id || '').replace(/\D/g, '');
-  const phoneNumberId = String(row.phone_number_id || '').replace(/\D/g, '');
-  if (!token || !wabaId || !phoneNumberId) return null;
-  return {
-    openai_api_key: '',
-    whatsapp_access_token: token,
-    whatsapp_phone_number_id: phoneNumberId,
-    whatsapp_business_account_id: wabaId,
-    whatsapp_api_url: String(row.api_url || 'https://graph.facebook.com/v25.0').replace(/\/$/, ''),
-    whatsapp_app_secret: '',
-    whatsapp_webhook_verify_token: '',
-    cron_secret: '',
-    telecrm_webhook_secret: '',
-    source: 'environment',
-  };
-}
-
-export async function ensurePricingShareButtonTemplateOnMeta(): Promise<{
-  success: boolean;
-  message: string;
-  templateId?: string;
-  wabaResults: PricingShareWabaPushResult[];
-}> {
+async function upsertLocalPricingShareRow() {
   const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
   if (!supabaseAdmin) {
-    return { success: false, message: adminError || 'Admin DB not configured', wabaResults: [] };
+    return { ok: false as const, message: adminError || 'Admin DB not configured' };
   }
 
   const upsertRow = {
@@ -110,7 +81,7 @@ export async function ensurePricingShareButtonTemplateOnMeta(): Promise<{
     .upsert(upsertRow, { onConflict: 'template_name' });
 
   if (upsertError) {
-    return { success: false, message: upsertError.message || 'Failed to save local template', wabaResults: [] };
+    return { ok: false as const, message: upsertError.message || 'Failed to save local template' };
   }
 
   const { data: row, error: fetchError } = await supabaseAdmin
@@ -122,13 +93,96 @@ export async function ensurePricingShareButtonTemplateOnMeta(): Promise<{
     .maybeSingle();
 
   if (fetchError || !row?.id) {
-    return {
-      success: false,
-      message: fetchError?.message || 'Template row missing after upsert',
-      wabaResults: [],
-    };
+    return { ok: false as const, message: fetchError?.message || 'Template row missing after upsert' };
   }
 
+  return { ok: true as const, row, supabaseAdmin };
+}
+
+function credsFromResolved(input: {
+  apiUrl: string;
+  accessToken: string;
+  wabaId: string;
+  phoneNumberId: string;
+}): ResolvedWhatsAppAgentsCredentials {
+  return {
+    openai_api_key: '',
+    whatsapp_access_token: input.accessToken,
+    whatsapp_phone_number_id: input.phoneNumberId.replace(/\D/g, ''),
+    whatsapp_business_account_id: input.wabaId.replace(/\D/g, ''),
+    whatsapp_api_url: input.apiUrl.replace(/\/$/, ''),
+    whatsapp_app_secret: '',
+    whatsapp_webhook_verify_token: '',
+    cron_secret: '',
+    telecrm_webhook_secret: '',
+    source: 'environment',
+  };
+}
+
+export async function ensurePricingShareButtonForAccount(input: {
+  apiUrl: string;
+  accessToken: string;
+  wabaId: string;
+  phoneNumberId: string;
+  displayPhone?: string;
+}): Promise<{
+  success: boolean;
+  message: string;
+  templateId?: string;
+  metaStatus?: string;
+  wabaId: string;
+  display_phone?: string;
+}> {
+  const saved = await upsertLocalPricingShareRow();
+  if (!saved.ok) {
+    return { success: false, message: saved.message, wabaId: input.wabaId };
+  }
+
+  const creds = credsFromResolved({
+    apiUrl: input.apiUrl,
+    accessToken: input.accessToken,
+    wabaId: input.wabaId,
+    phoneNumberId: input.phoneNumberId,
+  });
+
+  try {
+    const push: WhatsAppTemplatePushResult = await pushWhatsAppTemplateToMeta(saved.row as any, {
+      creds,
+      skipLocalMetaUpdate: true,
+    });
+    const phoneLabel = input.displayPhone || input.phoneNumberId;
+    return {
+      success: true,
+      templateId: saved.row.id,
+      wabaId: input.wabaId,
+      metaStatus: push.metaStatus,
+      display_phone: input.displayPhone,
+      message:
+        push.message ||
+        `pricing_share_link_btn submitted on ${phoneLabel} WABA (${push.metaStatus}). Dono numbers isi WABA par ho to ek push kaafi hai.`,
+    };
+  } catch (e: unknown) {
+    return {
+      success: false,
+      templateId: saved.row.id,
+      wabaId: input.wabaId,
+      message: String((e as { message?: string })?.message || 'Meta push failed'),
+    };
+  }
+}
+
+export async function ensurePricingShareButtonTemplateOnMeta(): Promise<{
+  success: boolean;
+  message: string;
+  templateId?: string;
+  wabaResults: PricingShareWabaPushResult[];
+}> {
+  const saved = await upsertLocalPricingShareRow();
+  if (!saved.ok) {
+    return { success: false, message: saved.message, wabaResults: [] };
+  }
+
+  const { row, supabaseAdmin } = saved;
   const wabaResults: PricingShareWabaPushResult[] = [];
   const pushedWabaIds = new Set<string>();
 
@@ -138,12 +192,21 @@ export async function ensurePricingShareButtonTemplateOnMeta(): Promise<{
     updateLocal: boolean,
   ) => {
     const wabaId = String(creds.whatsapp_business_account_id || '').replace(/\D/g, '');
-    if (!wabaId || pushedWabaIds.has(wabaId)) {
+    if (!wabaId) {
       wabaResults.push({
         label,
-        wabaId: wabaId || '—',
+        wabaId: '—',
+        ok: false,
+        message: 'Missing WABA id',
+      });
+      return;
+    }
+    if (pushedWabaIds.has(wabaId)) {
+      wabaResults.push({
+        label,
+        wabaId,
         ok: true,
-        message: wabaId ? 'Skipped — same WABA already pushed' : 'Skipped — missing WABA id',
+        message: 'Same WABA — template already submitted (6161 + 00505 dono is number par chal sakte hain)',
       });
       return;
     }
@@ -170,43 +233,84 @@ export async function ensurePricingShareButtonTemplateOnMeta(): Promise<{
     }
   };
 
+  let settingsCreds: ResolvedWhatsAppAgentsCredentials | null = null;
   try {
-    const settingsCreds = await getResolvedWhatsAppAgentsCredentials(true);
-    await pushOne(
-      settingsCreds,
-      settingsCreds.whatsapp_phone_number_id
-        ? `Settings · ${settingsCreds.whatsapp_business_account_id}`
-        : 'Settings WABA (env)',
-      true,
-    );
+    settingsCreds = await getResolvedWhatsAppAgentsCredentials(true);
+    const settingsWaba = String(settingsCreds.whatsapp_business_account_id || '').replace(/\D/g, '');
+    const settingsPhone = String(settingsCreds.whatsapp_phone_number_id || '').replace(/\D/g, '');
+    const resolvedSettingsWaba =
+      settingsPhone && settingsCreds.whatsapp_access_token
+        ? await resolveWabaForTemplates(
+            settingsCreds.whatsapp_api_url,
+            settingsCreds.whatsapp_access_token,
+            settingsPhone,
+            settingsWaba,
+          )
+        : settingsWaba;
+    if (resolvedSettingsWaba && resolvedSettingsWaba !== settingsWaba) {
+      settingsCreds = {
+        ...settingsCreds,
+        whatsapp_business_account_id: resolvedSettingsWaba,
+      };
+    }
+    await pushOne(settingsCreds, '+91 95949 96161 (settings)', true);
   } catch (e: unknown) {
     wabaResults.push({
-      label: 'Settings WABA (env)',
+      label: '+91 95949 96161 (settings)',
       wabaId: '—',
       ok: false,
       message: String((e as { message?: string })?.message || 'Settings WABA not configured'),
     });
   }
 
-  // Every connected number (not only the active send account) may be on a different WABA.
   const { data: bulkAccounts } = await supabaseAdmin
     .from('wa_bulk_accounts')
     .select('id, label, display_phone, phone_number_id, waba_id, access_token, api_url, is_active')
     .order('created_at', { ascending: true });
 
   for (const account of bulkAccounts || []) {
-    const creds = credsFromBulkAccount(account);
-    if (!creds) {
+    const phoneNumberId = String(account.phone_number_id || '').replace(/\D/g, '');
+    let accessToken = String(account.access_token || '').trim();
+    if (!accessToken && settingsCreds?.whatsapp_access_token) {
+      accessToken = String(settingsCreds.whatsapp_access_token).trim();
+    }
+    const apiUrl = String(account.api_url || settingsCreds?.whatsapp_api_url || 'https://graph.facebook.com/v25.0').replace(
+      /\/$/,
+      '',
+    );
+    const label =
+      account.display_phone ||
+      (isOtpWhatsAppLine(String(account.display_phone || ''), phoneNumberId) ? '+91 95949 00505' : 'Connected number');
+
+    if (!accessToken || !phoneNumberId) {
       wabaResults.push({
-        label: String(account.label || account.display_phone || 'Connected account'),
+        label: String(label),
         wabaId: String(account.waba_id || '—'),
         ok: false,
-        message: 'Missing token, WABA id, or phone_number_id on this account',
+        message: 'Missing access token or phone_number_id',
       });
       continue;
     }
-    const label = `${account.label || account.display_phone || 'Connected'} · ${account.display_phone || ''}`.trim();
-    await pushOne(creds, label, false);
+
+    const providedWaba = String(account.waba_id || '').replace(/\D/g, '');
+    const wabaId = await resolveWabaForTemplates(apiUrl, accessToken, phoneNumberId, providedWaba);
+    if (!wabaId) {
+      wabaResults.push({
+        label: String(label),
+        wabaId: providedWaba || '—',
+        ok: false,
+        message: 'WABA resolve failed — paste asset_id on Bulk WhatsApp account card',
+      });
+      continue;
+    }
+
+    if (providedWaba !== wabaId) {
+      await supabaseAdmin.from('wa_bulk_accounts').update({ waba_id: wabaId }).eq('id', account.id);
+    }
+
+    const creds = credsFromResolved({ apiUrl, accessToken, wabaId, phoneNumberId });
+    const pushLabel = `${label}${account.label ? ` (${account.label})` : ''}`;
+    await pushOne(creds, pushLabel, false);
   }
 
   const okCount = wabaResults.filter((r) => r.ok).length;
@@ -215,8 +319,8 @@ export async function ensurePricingShareButtonTemplateOnMeta(): Promise<{
 
   const summary =
     failCount === 0
-      ? `pricing_share_link_btn submitted on ${okCount} WABA(s).`
-      : `${okCount} WABA OK, ${failCount} failed — see details.`;
+      ? `pricing_share_link_btn — ${okCount} WABA(s) (6161 + 00505 / connected).`
+      : `${okCount} OK, ${failCount} failed — 00505 ke liye account select karke bhi Push try karo.`;
 
   return {
     success,
