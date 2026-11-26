@@ -1,6 +1,6 @@
 import { runMisaAgent } from '@/lib/chatbot_v2/runAgent';
 import { getBookingsBySession } from '@/lib/chatbot_v2/booking';
-import { formatWhatsAppReply } from '@/lib/whatsappBotFlow/formatReply';
+import { formatMisaWhatsAppOutbound } from '@/lib/chatbot_v2/misaReplyDisclaimer';
 import { performWhatsAppHandoff } from '@/lib/whatsappBotFlow/handoff';
 import { isRsaRelatedMessage } from '@/lib/whatsappBotFlow/rsaIntent';
 import {
@@ -318,11 +318,16 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
 
   if (agent.pricing && isPeriodicPricing(agent.pricing)) {
     const carModel = extractCarModelFromMessage(message);
-    reply = truncateForWhatsApp(
-      formatWhatsAppReply(formatPeriodicPricingForWhatsApp(agent.pricing, { carModel })),
-    );
+    reply = formatMisaWhatsAppOutbound(formatPeriodicPricingForWhatsApp(agent.pricing, { carModel }), {
+      inboundMessage: message,
+      hasPricing: true,
+    });
   } else {
-    reply = truncateForWhatsApp(formatWhatsAppReply(agent.response));
+    reply = formatMisaWhatsAppOutbound(agent.response, {
+      inboundMessage: message,
+      hasPricing: Boolean(agent.pricing?.length),
+      hasWorkshops: Boolean(agent.workshops?.items?.length),
+    });
   }
 
   if (!input.dryRun) {

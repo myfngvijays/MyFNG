@@ -18,6 +18,7 @@ type ChatMessage = {
 };
 
 import type { MisaBookingChannel } from './misaLeadSource';
+import { finalizeMisaCustomerReply } from './misaReplyDisclaimer';
 import { buildWorkshopCarouselFromToolRows, type WorkshopCarouselPayload } from './workshopUi';
 
 export type RunAgentOptions = {
@@ -251,8 +252,18 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
     });
   }
 
+  const channel = bookingChannel || 'WEBSITE';
+  const customerResponse =
+    channel === 'WHATSAPP'
+      ? finalResponse
+      : finalizeMisaCustomerReply(finalResponse, channel, {
+          inboundMessage: message,
+          hasPricing: Boolean(pricing?.length),
+          hasWorkshops: Boolean(workshops?.items?.length),
+        });
+
   return {
-    response: finalResponse,
+    response: customerResponse,
     sessionData,
     model,
     pricing,

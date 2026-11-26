@@ -67,7 +67,9 @@ import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
 import ReminderHeaderIcon from '@/components/ReminderHeaderIcon';
 import WhatsAppWebWorkspace from '@/components/shared/WhatsAppWebWorkspace';
+import WhatsAppInboundSideToast from '@/components/shared/WhatsAppInboundSideToast';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
+import { visibleWhatsAppText } from '@/lib/whatsapp/visibleMessageText';
 import { dashboardRolesMatch, getRoleDashboardHome } from '@/lib/dashboard/roleHome';
 import IncomingClickToCallBanner from '@/components/telecaller/crm/IncomingClickToCallBanner';
 import PhoneDialHandoffBanner from '@/components/telecaller/PhoneDialHandoff';
@@ -518,16 +520,78 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       return d.startsWith('91') ? d : `91${d}`;
     };
 
+    const roleUpper = String(role || '').toUpperCase();
+
+    const pushToast = async (customerPhone: string, row: any) => {
+      if (waWorkspaceOpen) return;
+      let preview =
+        visibleWhatsAppText(row) ||
+        String(row.text_body || row.media_caption || '').trim() ||
+        'New WhatsApp message';
+      if (/^template:/i.test(preview)) preview = 'New WhatsApp message';
+      let customerName = '';
+      try {
+        const last10 = customerPhone.replace(/\D/g, '').slice(-10);
+        if (last10.length === 10) {
+          let q = supabase
+            .from('service_leads')
+            .select('customer_name')
+            .ilike('customer_phone', `%${last10}`)
+            .is('deleted_at', null)
+            .limit(1);
+          if (roleUpper === 'TELECALLER') {
+            q = q.eq('assigned_telecaller_id', profileId);
+          }
+          const { data: leadRow } = await q.maybeSingle();
+          customerName = String(leadRow?.customer_name || '').trim();
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        window.dispatchEvent(
+          new CustomEvent('myfng:wa-inbound-toast', {
+            detail: { phone: customerPhone, preview, customerName },
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const inboundAllowedForUser = (customerPhone: string) => {
+      if (roleUpper !== 'TELECALLER') return true;
+      const set = waAssignedPhonesRef.current;
+      if (set.size === 0) return false;
+      return set.has(customerPhone);
+    };
+
     const init = async () => {
       try {
+        const phones = new Set<string>();
         const { data: assignments } = await supabase
           .from('whatsapp_chat_assignments')
           .select('phone')
           .contains('assigned_to_ids', [profileId]);
+        for (const a of assignments || []) {
+          const p = normPhone(String(a.phone || ''));
+          if (p) phones.add(p);
+        }
+        if (roleUpper === 'TELECALLER') {
+          const { data: leads } = await supabase
+            .from('service_leads')
+            .select('customer_phone')
+            .eq('assigned_telecaller_id', profileId)
+            .is('deleted_at', null)
+            .limit(600);
+          for (const row of leads || []) {
+            const p = normPhone(String(row.customer_phone || ''));
+            if (p) phones.add(p);
+          }
+        }
         if (cancelled) return;
-        const phones = new Set((assignments || []).map((a: any) => normPhone(a.phone)));
         waAssignedPhonesRef.current = phones;
-        if (phones.size === 0) { setWaUnreadCount(0); return; }
+        if (roleUpper === 'TELECALLER' && phones.size === 0) setWaUnreadCount(0);
       } catch {
         // ignore
       }
@@ -582,6 +646,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             /* ignore */
           }
           if (dir !== 'INBOUND') return;
+          if (!inboundAllowedForUser(customerPhone)) return;
           setWaUnreadCount((prev) => prev + 1);
           try {
             window.dispatchEvent(new CustomEvent('myfng:wa-unread-bump'));
@@ -589,6 +654,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
             /* ignore */
           }
           playMessageSound();
+          void pushToast(customerPhone, row);
         }
       )
       .on(
@@ -608,7 +674,16 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       stopCallRing();
       supabase.removeChannel(channel);
     };
-  }, [whatsappFabEnabled, loading, userProfile?.id, playMessageSound, startCallRing, stopCallRing]);
+  }, [
+    whatsappFabEnabled,
+    loading,
+    userProfile?.id,
+    role,
+    waWorkspaceOpen,
+    playMessageSound,
+    startCallRing,
+    stopCallRing,
+  ]);
 
   const handleOpenWaList = useCallback(() => {
     setWaUnreadCount(0);
@@ -1594,6 +1669,17 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
 
       {whatsappFabEnabled ? (
         <>
+          <WhatsAppInboundSideToast
+            enabled={!waWorkspaceOpen}
+            onOpenChat={(phone, preview) => {
+              setWaUnreadCount(0);
+              stopCallRing();
+              const digits = String(phone || '').replace(/\D/g, '');
+              setWaPreviewPhone(digits.length === 10 ? `91${digits}` : digits);
+              setWaPreviewMessage(preview);
+              setWaWorkspaceOpen(true);
+            }}
+          />
           {!waWorkspaceOpen ? (
             <button
               type="button"

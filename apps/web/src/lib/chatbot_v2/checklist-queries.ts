@@ -95,6 +95,32 @@ function detectPointsHint(text: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+let periodicServiceTypeIdsCache: Set<string> | null = null;
+
+/** Service package rows under Super Admin → Inventory → Packages → Car Periodic Service. */
+async function getCarPeriodicServiceTypeIds(db: ReturnType<typeof dbClient>): Promise<Set<string>> {
+  if (!db) return new Set();
+  if (periodicServiceTypeIdsCache) return periodicServiceTypeIdsCache;
+  try {
+    const { data: cat } = await db
+      .from('categories')
+      .select('id')
+      .ilike('name', 'Car Periodic Service')
+      .maybeSingle();
+    if (!cat?.id) {
+      periodicServiceTypeIdsCache = new Set();
+      return periodicServiceTypeIdsCache;
+    }
+    const { data: types } = await db.from('service_types').select('id').eq('category_uuid', cat.id);
+    periodicServiceTypeIdsCache = new Set((types || []).map((t: { id: string }) => String(t.id)));
+    return periodicServiceTypeIdsCache;
+  } catch (err) {
+    console.error('[CHECKLIST] periodic category lookup failed:', err);
+    periodicServiceTypeIdsCache = new Set();
+    return periodicServiceTypeIdsCache;
+  }
+}
+
 /**
  * Get checklist by service_type UUID (preferred for View plans selection).
  */
@@ -159,7 +185,11 @@ async function getChecklistByTierOilPoints(input: {
         .eq('points', pointsHint)
         .limit(30);
 
-      const rows = byPoints || [];
+      const periodicIds = await getCarPeriodicServiceTypeIds(db);
+      const rows = (byPoints || []).filter(
+        (r: { service_type_id?: string }) =>
+          !periodicIds.size || periodicIds.has(String(r.service_type_id || '')),
+      );
       if (rows.length) {
         const stIds = rows.map((r: any) => r.service_type_id).filter(Boolean);
         const { data: stRows } = stIds.length
@@ -203,11 +233,12 @@ async function getChecklistByTierOilPoints(input: {
 
     if (!tier) return { ...EMPTY };
 
-    const { data: serviceTypes } = await db
-      .from('service_types')
-      .select('id, name')
-      .ilike('name', `%${tier}%`)
-      .limit(40);
+    const periodicIds = await getCarPeriodicServiceTypeIds(db);
+    let stQuery = db.from('service_types').select('id, name').ilike('name', `%${tier}%`).limit(40);
+    if (periodicIds.size) {
+      stQuery = stQuery.in('id', [...periodicIds]);
+    }
+    const { data: serviceTypes } = await stQuery;
 
     const matched =
       (serviceTypes || [])
@@ -252,9 +283,35 @@ async function getChecklistByTierOilPoints(input: {
 /**
  * Get checklist for a specific service by name
  */
-export async function getServiceChecklist(serviceName: string): Promise<any[]> {
-  const resolved = await resolveServiceChecklist({ serviceName });
+export async function getServiceChecklist(
+  serviceName: string,
+  options?: { inventoryOnly?: boolean },
+): Promise<any[]> {
+  const resolved = await resolveServiceChecklist({
+    serviceName,
+    inventoryOnly: options?.inventoryOnly,
+  });
   return resolved.items;
+}
+
+/** MISA / chatbot — checklist from Super Admin Service Packages only (no hardcoded fallback). */
+export async function getMisaInventoryServiceChecklist(
+  serviceName: string,
+  extras?: {
+    serviceTypeId?: string | null;
+    tier?: string | null;
+    oil?: 'semi' | 'full' | null;
+    pointsHint?: number | null;
+  },
+): Promise<ServiceChecklistResult> {
+  return resolveServiceChecklist({
+    serviceName,
+    serviceTypeId: extras?.serviceTypeId,
+    tier: extras?.tier,
+    oil: extras?.oil,
+    pointsHint: extras?.pointsHint,
+    inventoryOnly: true,
+  });
 }
 
 function pointsMatch(got: number | null | undefined, hint: number | null): boolean {
@@ -271,6 +328,8 @@ export async function resolveServiceChecklist(input: {
   tier?: string | null;
   oil?: 'semi' | 'full' | null;
   pointsHint?: number | null;
+  /** When true (MISA), never use periodicChecklistFallbacks — inventory DB only. */
+  inventoryOnly?: boolean;
 }): Promise<ServiceChecklistResult> {
   const name = String(input.serviceName || '').trim();
   const tier = String(input.tier || detectTier(name) || '').trim() || null;
@@ -325,24 +384,27 @@ export async function resolveServiceChecklist(input: {
     }
   }
 
-  // 4) Hardcoded periodic fallback — always returns full point list for 15/30/50/60
-  const fallback = getPeriodicChecklistFallback({
-    points: pointsHint,
-    tier,
-    serviceName: name || tier,
-  });
-  if (fallback?.items?.length) {
-    return {
-      items: fallback.items,
-      points: fallback.points,
-      serviceTypeId: byId.serviceTypeId || null,
-      serviceName: name || fallback.title,
-      title: fallback.title,
-    };
+  if (!input.inventoryOnly) {
+    // 4) Hardcoded periodic fallback — telecaller / legacy paths only
+    const fallback = getPeriodicChecklistFallback({
+      points: pointsHint,
+      tier,
+      serviceName: name || tier,
+    });
+    if (fallback?.items?.length) {
+      return {
+        items: fallback.items,
+        points: fallback.points,
+        serviceTypeId: byId.serviceTypeId || null,
+        serviceName: name || fallback.title,
+        title: fallback.title,
+      };
+    }
+
+    // 5) Last resort: whatever DB had (even if points mismatch)
+    if (byId.items.length) return byId;
   }
 
-  // 5) Last resort: whatever DB had (even if points mismatch)
-  if (byId.items.length) return byId;
   return { ...EMPTY };
 }
 

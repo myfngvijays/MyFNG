@@ -1,5 +1,6 @@
 import { processWhatsAppBrainMessage, type BrainProcessResult } from '@/lib/whatsappBotFlow/brain';
 import type { BrainProcessInput } from '@/lib/whatsappBotFlow/brain';
+import { isMisaQuietHours } from '@/lib/whatsappBotFlow/misaOfficeHours';
 import { processBookingAgentMessage, type BookingAgentResult } from './booking/handler';
 import { processChaseAgentEvent, shouldRouteToChaseAgent, type ChaseAgentResult } from './chase/handler';
 import { isPhoneLeadLost } from './lostLeadGuard';
@@ -26,6 +27,14 @@ export async function processInboundWhatsAppMessage(
     return {
       handled: false,
       skippedReason: 'lead_marked_lost',
+      latencyMs: 0,
+    } as InboundWhatsAppResult;
+  }
+
+  if (!input.dryRun && isMisaQuietHours()) {
+    return {
+      handled: false,
+      skippedReason: 'misa_office_hours_quiet',
       latencyMs: 0,
     } as InboundWhatsAppResult;
   }

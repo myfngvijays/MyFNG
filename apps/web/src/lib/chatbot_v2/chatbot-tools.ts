@@ -13,7 +13,11 @@ import {
   sendBookingOtpForPhone,
   verifyBookingOtpForPhone,
 } from './bookingOtp';
-import { getServiceChecklist } from './checklist-queries';
+import { getMisaInventoryServiceChecklist } from './checklist-queries';
+import {
+  filterPeriodicChecklistForCustomer,
+  MISA_PERIODIC_PACKAGE_RULES,
+} from './misaPackageKnowledge';
 import type { MisaBookingChannel } from './misaLeadSource';
 import type { SessionData } from './session';
 import { isValidVehicleNumber, normalizeVehicleNumber } from './vehicleNumber';
@@ -127,7 +131,7 @@ export const CHATBOT_TOOLS = [
     function: {
       name: 'get_service_details',
       description:
-        "Get detailed checklist/description of what's included in a specific service. Use when user asks 'what's included' or wants service details.",
+        "Get checklist from Super Admin Service Packages (inventory DB) for a specific plan name. Use when user asks what's included. Do not guess items — only tool output.",
       parameters: {
         type: 'object',
         properties: {
@@ -417,11 +421,17 @@ export async function executeToolCall(
               pincode,
               city,
             });
+            const isPeriodic = /car periodic/i.test(String(service_category || ''));
             return {
               success: true,
               pricing,
               plan_count: sorted.length,
-              instruction: `List ALL ${sorted.length} service plans returned. Do not show only 3.`,
+              instruction: `List ALL ${sorted.length} service plans returned. Do not show only 3.${
+                isPeriodic
+                  ? ' Package names, points, and checklist_items are from Super Admin Service Packages — use ONLY this data for what is included; never invent checklist lines.'
+                  : ' Use service_name, points, and checklist_items from this response only — do not invent package contents.'
+              }`,
+              data_source: 'super_admin_service_packages',
               location: `PIN ${pincode}`,
             };
           } else if (plans.length > 0 && (plans[0] as any).error) {
@@ -529,18 +539,35 @@ export async function executeToolCall(
       case 'get_service_details': {
         const { service_name } = args;
 
-        const checklist = await getServiceChecklist(service_name);
+        const resolved = await getMisaInventoryServiceChecklist(String(service_name || ''));
+        const periodic = /periodic|basic service|general service|premium service|platinum/i.test(
+          String(service_name || ''),
+        );
+        const rawChecklist = resolved.items || [];
+        const checklist =
+          periodic && rawChecklist.length
+            ? filterPeriodicChecklistForCustomer(rawChecklist)
+            : rawChecklist;
 
         if (checklist && checklist.length > 0) {
           return {
             success: true,
-            service_name: service_name,
-            checklist: checklist,
+            data_source: 'super_admin_service_packages',
+            service_name: resolved.serviceName || service_name,
+            service_type_id: resolved.serviceTypeId,
+            points: resolved.points ?? checklist.length,
+            checklist_title: resolved.title || null,
+            checklist,
+            instruction:
+              'List only these checklist items. Do not add items from memory or other sources.',
+            ...(periodic ? { package_rules: MISA_PERIODIC_PACKAGE_RULES } : {}),
           };
         } else {
           return {
             success: false,
-            message: 'Detailed checklist will be provided by our team when you book the service.',
+            data_source: 'super_admin_service_packages',
+            message:
+              'No checklist in Service Packages for this name. Use exact plan name from get_service_pricing, or say our team will share the full list at booking.',
           };
         }
       }

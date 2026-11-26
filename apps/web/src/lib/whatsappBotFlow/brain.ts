@@ -30,6 +30,8 @@ import { getFlowSession, upsertFlowSession } from './sessionStore';
 import { isRsaRelatedMessage } from './rsaIntent';
 import { performWhatsAppHandoff } from './handoff';
 import { sendBrainOutboundMessage } from './sessionWindow';
+import { MISA_PERIODIC_PACKAGE_RULES } from '@/lib/chatbot_v2/misaPackageKnowledge';
+import { formatMisaWhatsAppOutbound } from '@/lib/chatbot_v2/misaReplyDisclaimer';
 
 const WHATSAPP_CHANNEL_RULES = `
 # WHATSAPP CHANNEL RULES (MANDATORY)
@@ -42,8 +44,9 @@ const WHATSAPP_CHANNEL_RULES = `
 - When get_service_pricing returns plans, list EVERY plan in the pricing array — never truncate to 3.
 - Follow plan_count and instruction fields from tool results exactly.
 - Keep replies concise; avoid repeating service name in title and description lines.
-- Group output: Semi Synthetic plans first, then Fully Synthetic.
-- One line per plan: Tier · points · price (no duplicate paragraphs).
+- Group output: Semi Synthetic plans first, then Fully Synthetic (Basic→General→Premium→Platinum in each group).
+- One line per plan: Tier · points · price (no duplicate paragraphs). Points come from each plan's \`points\` / \`checklist_count\` in get_service_pricing — not from memory.
+- Periodic plan names only from pricing tool (Basic/General/Premium/Platinum × Semi/Fully). Wheel alignment is NOT in periodic unless that plan's inventory checklist says so (normally book Car Tyre & Wheel Care separately).
 - Periodic package time, if asked: Platinum is minimum 2 days. Basic, General, and Premium are same-day only if the car reaches the workshop before 11:30 AM–12 noon. Arrival after 12 noon (including 4–5 PM) means next day, not same day. Extra work found during the job can also push it past the same day. Never quote hours (not "3 to 4 hours").
 - Workshop reply: nearest first, then the next option, in exactly this layout (one blank line between blocks, address in normal case not ALL CAPS, "LANDMARK -" becomes "Near …", " · X km" only when distance_km is known, map URL as plain text — never [text](link)):
 📍 *Here is the nearest workshop for you:*
@@ -59,6 +62,9 @@ Number: 9152307030
 Map Link: [map url]
 
 Would you like to book at the nearest workshop, or the next one? Reply *1* or *2*.
+- Do NOT add "AI can make mistakes" yourself — the system appends a short note on important replies.
+
+${MISA_PERIODIC_PACKAGE_RULES}
 `;
 
 const TOOL_GROUPS: Record<keyof WhatsAppBrainToolsConfig, string[]> = {
@@ -193,9 +199,10 @@ async function tryPricingContextReply(input: {
   if (!filtered?.length) return null;
 
   const carModel = String(session?.variables?.last_car || '').trim() || null;
-  const reply = truncateForWhatsApp(
-    formatPeriodicPricingForWhatsApp(filtered, { carModel }),
-  );
+  const reply = formatMisaWhatsAppOutbound(formatPeriodicPricingForWhatsApp(filtered, { carModel }), {
+    inboundMessage: input.message,
+    hasPricing: true,
+  });
 
   if (input.dryRun) {
     return {
@@ -239,11 +246,10 @@ async function tryRsaHandoffReply(input: {
 }): Promise<BrainProcessResult | null> {
   if (!isRsaRelatedMessage(input.message)) return null;
 
-  const reply = truncateForWhatsApp(
-    formatWhatsAppReply(
-      'Got it — this sounds like *Roadside Assistance (RSA)* (towing, breakdown, flat tyre, battery, etc.).\n\n' +
-        'Connecting you to our RSA team. Please share your location/pincode and car details if you have not already.',
-    ),
+  const reply = formatMisaWhatsAppOutbound(
+    'Got it — this sounds like *Roadside Assistance (RSA)* (towing, breakdown, flat tyre, battery, etc.).\n\n' +
+      'Connecting you to our RSA team. Please share your location/pincode and car details if you have not already.',
+    { inboundMessage: input.message },
   );
 
   if (input.dryRun) {
@@ -301,8 +307,9 @@ async function sendPeriodicPricingReply(input: {
 }): Promise<{ reply: string; sent: boolean; usedInteractive: boolean }> {
   const carModel = extractCarModelFromMessage(input.message);
   const grouped = groupPeriodicPlans(input.plans);
-  const textReply = truncateForWhatsApp(
+  const textReply = formatMisaWhatsAppOutbound(
     formatPeriodicPricingForWhatsApp(input.plans, { carModel }),
+    { inboundMessage: input.message, hasPricing: true },
   );
 
   if (input.dryRun) {
@@ -318,7 +325,7 @@ async function sendPeriodicPricingReply(input: {
       body: 'Tap below to view Semi & Fully Synthetic plans with prices.',
       buttonLabel: 'View plans',
       sections,
-      footer: 'Reply with plan name to book',
+      footer: 'MISA AI can make mistakes — confirm details with team. Reply plan name to book.',
     });
 
     if (listResult.success) {
@@ -418,7 +425,11 @@ async function runAiBrain(input: {
       });
     }
   } else {
-    reply = truncateForWhatsApp(formatWhatsAppReply(agent.response));
+    reply = formatMisaWhatsAppOutbound(agent.response, {
+      inboundMessage: input.message,
+      hasPricing: Boolean(agent.pricing?.length),
+      hasWorkshops: Boolean(agent.workshops?.items?.length),
+    });
     if (!input.dryRun) {
       const sendResult = await sendBrainTextReply({
         phone: input.phone,
