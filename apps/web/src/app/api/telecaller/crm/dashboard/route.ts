@@ -11,6 +11,7 @@ import {
 import { applyCrmNewLeadFilter } from '@/lib/telecaller/crmLeadFilters';
 import { healStuckRingingFromActivity } from '@/lib/telecaller/healLeadDispositions';
 import { healStaleFollowUps } from '@/lib/telecaller/crmFollowUpClose';
+import { aggregateTelecallerLeadOps } from '@/lib/telecaller/telecallerLeadOpsAggregate';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -504,6 +505,18 @@ export async function GET(request: NextRequest) {
     });
 
     const trend = Object.values(seriesMap);
+
+    const teamOpsView = seesAll && !telecallerFilter;
+    const telecallerLeadOps = await aggregateTelecallerLeadOps(db, {
+      applyPeriod: (q) => {
+        if (allTime) return q;
+        if (rangeStart) q = q.gte('created_at', rangeStart);
+        if (rangeEnd) q = q.lte('created_at', rangeEnd);
+        return q;
+      },
+      assigneeId: teamOpsView ? null : telecallerFilter || teleCallerId,
+    });
+
     if (!(metrics.data || []).length && todayCalls && fromYmd === today && toYmd === today && !allTime) {
       const todayPoint = trend[trend.length - 1] as any;
       if (todayPoint) {
@@ -560,6 +573,8 @@ export async function GET(request: NextRequest) {
         id: profile.id,
         name: (profile as any).full_name || null,
       },
+      telecaller_lead_ops: telecallerLeadOps,
+      telecaller_lead_ops_variant: teamOpsView ? 'admin' : 'self',
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Dashboard failed' }, { status: 500 });

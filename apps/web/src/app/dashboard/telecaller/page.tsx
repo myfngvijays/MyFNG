@@ -15,7 +15,9 @@ import {
   loadTelecallerCrmFilterPrefs,
   saveTelecallerCrmFilterPrefs,
 } from '@/lib/telecaller/crmFilterPrefs';
-import { leadStatusKpiColors } from '@/lib/telecaller/leadDisplayStatus';
+import { crmDisplayLabelToFilterId, leadStatusKpiColors } from '@/lib/telecaller/leadDisplayStatus';
+import type { TelecallerLeadOpsData } from '@/lib/telecaller/telecallerLeadOpsAggregate';
+import TelecallerLeadOpsPanel from '@/components/telecaller/TelecallerLeadOpsPanel';
 import {
   Phone,
   Calendar,
@@ -138,6 +140,36 @@ function leadInitials(name?: string | null): string {
   return `${first[0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
+const EMPTY_TELECALLER_LEAD_OPS: TelecallerLeadOpsData = {
+  totalCreated: 0,
+  assignedCount: 0,
+  unassignedCount: 0,
+  byAssignee: [],
+  byCrmStatus: [],
+  byLeadSource: [],
+  assigneeSlices: {},
+  unassignedKey: '__unassigned__',
+  sampleTruncated: false,
+};
+
+function crmLeadsFilterFromLabel(label: string): string | null {
+  const id = crmDisplayLabelToFilterId(label);
+  if (!id) return null;
+  const map: Record<string, string> = {
+    FRESH: 'new',
+    RINGING: 'ringing',
+    INTERESTED: 'interested',
+    WILL_VISIT: 'will_visit',
+    CALLBACK: 'callback',
+    BOOKING_CONFIRMED: 'booking_confirmed',
+    IN_SERVICE: 'in_service',
+    SERVICE_DONE: 'service_done',
+    LOST: 'lost',
+    OTHER: 'other',
+  };
+  return map[id] || id.toLowerCase();
+}
+
 function formatLeadAgo(iso?: string | null): string {
   if (!iso) return '';
   const t = new Date(iso).getTime();
@@ -198,6 +230,8 @@ export default function TelecallerCrmHomePage() {
   const [customEnd, setCustomEnd] = useState(() => loadTelecallerCrmFilterPrefs().customEnd);
   const [dateOpen, setDateOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [telecallerLeadOps, setTelecallerLeadOps] = useState<TelecallerLeadOpsData>(EMPTY_TELECALLER_LEAD_OPS);
+  const [leadOpsVariant, setLeadOpsVariant] = useState<'admin' | 'self'>('self');
   const [ready, setReady] = useState(false);
   const inFlight = useRef(false);
   const kpisRef = useRef<Kpis>({});
@@ -328,6 +362,8 @@ export default function TelecallerCrmHomePage() {
           setLeaderboard(Array.isArray(json.leaderboard) ? json.leaderboard : []);
         }
         setProfileName(json?.profile?.name || 'Telecaller');
+        setTelecallerLeadOps(json?.telecaller_lead_ops || EMPTY_TELECALLER_LEAD_OPS);
+        setLeadOpsVariant(json?.telecaller_lead_ops_variant === 'admin' ? 'admin' : 'self');
         setLoadError(null);
         setReady(true);
       } finally {
@@ -446,6 +482,18 @@ export default function TelecallerCrmHomePage() {
       href: `${base}/followups`,
     },
   ];
+
+  const openOpsLeads = useCallback(
+    (opts: { filter?: string | null; source?: string; q?: string }) => {
+      const params = new URLSearchParams();
+      if (opts.filter) params.set('filter', opts.filter);
+      if (opts.source) params.set('source', opts.source);
+      if (opts.q) params.set('q', opts.q);
+      const qs = params.toString();
+      router.push(qs ? `${base}/leads?${qs}` : `${base}/leads`);
+    },
+    [router, base],
+  );
 
   const activityBars = trend.map((t) => ({
     label: t.label || String(t.date || '').slice(5) || '',
@@ -693,6 +741,43 @@ export default function TelecallerCrmHomePage() {
                 </div>
               </div>
             ) : null}
+
+            <TelecallerLeadOpsPanel
+              ops={telecallerLeadOps}
+              periodLabel={datePreset === 'custom' ? dateRange.label : dateLabel}
+              variant={leadOpsVariant}
+              title={
+                leadOpsVariant === 'admin'
+                  ? isLeadManager
+                    ? 'Team — leads & assignment'
+                    : 'Telecaller — leads & assignment'
+                  : undefined
+              }
+              selfLabel={formatDashName(profileName)}
+              footerHint="click chip → leads"
+              onLeadsReceivedClick={() => openOpsLeads({})}
+              onCrmStatusClick={(crmLabel, ctx) => {
+                const filter = crmLeadsFilterFromLabel(crmLabel);
+                if (leadOpsVariant === 'admin' && ctx.assigneeName) {
+                  const params = new URLSearchParams();
+                  if (filter) params.set('filter', filter);
+                  params.set('q', ctx.assigneeName === 'UNASSIGNED' ? '' : ctx.assigneeName);
+                  if (ctx.assigneeName === 'UNASSIGNED') params.set('unassigned', '1');
+                  router.push(`${base}/leads?${params.toString()}`);
+                  return;
+                }
+                openOpsLeads({ filter, q: filter ? undefined : crmLabel });
+              }}
+              onSourceClick={(source, ctx) => {
+                const params = new URLSearchParams();
+                params.set('source', source);
+                if (leadOpsVariant === 'admin' && ctx.assigneeName && ctx.assigneeName !== 'UNASSIGNED') {
+                  params.set('q', ctx.assigneeName);
+                }
+                if (ctx.assigneeName === 'UNASSIGNED') params.set('unassigned', '1');
+                router.push(`${base}/leads?${params.toString()}`);
+              }}
+            />
 
             {/* KPI grid — 6 and 6 */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
