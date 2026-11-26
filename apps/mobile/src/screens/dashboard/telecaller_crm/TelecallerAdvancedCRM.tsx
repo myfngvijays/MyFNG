@@ -44,6 +44,8 @@ import CrmEngageTab from './CrmEngageTab';
 import CrmWorkshopLocatorTab from './CrmWorkshopLocatorTab';
 import CrmMeTab from './CrmMeTab';
 import CallRecordingCard from '../../../components/telecaller/CallRecordingCard';
+import CrmSavedFiltersDrawerSection from '../../../components/telecaller/CrmSavedFiltersDrawerSection';
+import CrmTransferredLeadsTab from './CrmTransferredLeadsTab';
 import { isRecordingFolderPickerBusy } from '../../../lib/callRecordingSync';
 import CallRecordingsList from '../../../components/telecaller/CallRecordingsList';
 import { COLORS } from '../../../constants/theme';
@@ -106,6 +108,13 @@ const LM_NAV: NavRow[] = [
   { type: 'section', id: 'sec-daily', label: 'Daily' },
   { type: 'item', id: 'home', label: 'Home', icon: 'home-outline', kind: 'tab' },
   { type: 'item', id: 'queue', label: 'Leads', icon: 'clipboard-outline', kind: 'tab' },
+  {
+    type: 'item',
+    id: 'transferred',
+    label: 'Transferred Leads',
+    icon: 'swap-horizontal-outline',
+    kind: 'tab',
+  },
   {
     type: 'item',
     id: 'reminders',
@@ -419,6 +428,13 @@ const TC_NAV: NavRow[] = [
   { type: 'item', id: 'queue', label: 'Leads', icon: 'clipboard-outline', kind: 'tab' },
   {
     type: 'item',
+    id: 'transferred',
+    label: 'Transferred Leads',
+    icon: 'swap-horizontal-outline',
+    kind: 'tab',
+  },
+  {
+    type: 'item',
     id: 'reminders',
     label: 'Reminders',
     icon: 'alarm-outline',
@@ -623,6 +639,10 @@ export default function TelecallerAdvancedCRM() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuSlide = useRef(new Animated.Value(320)).current;
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
+  const [pendingSavedView, setPendingSavedView] = useState<{
+    token: number;
+    filters: Record<string, unknown>;
+  } | null>(null);
   const [queueQuery, setQueueQuery] = useState('');
   const [engageSegment, setEngageSegment] = useState('followups');
   const [bookMode, setBookMode] = useState<'book' | 'lead' | null>(null);
@@ -888,8 +908,11 @@ export default function TelecallerAdvancedCRM() {
     void saveTelecallerCrmFilterPrefs({ customEnd: value, datePreset: 'custom' });
   }, []);
   const persistQueueFilter = useCallback((value: string) => {
-    setQueueFilter(value);
-    void saveTelecallerCrmFilterPrefs({ statusFilter: value });
+    let next = value;
+    if (next === 'FRESH' || next === 'NEW') next = 'new';
+    if (next === 'CALLBACK') next = 'callback';
+    setQueueFilter(next);
+    void saveTelecallerCrmFilterPrefs({ statusFilter: next });
   }, []);
 
   const goHome = () => {
@@ -1107,6 +1130,7 @@ export default function TelecallerAdvancedCRM() {
   const showQueue = prefsReady;
   const homeActive = tab === 'home' && !detailLeadId;
   const queueActive = tab === 'queue' && !detailLeadId;
+  const transferredActive = tab === 'transferred' && !detailLeadId;
 
   return (
     <SafeAreaView
@@ -1272,6 +1296,8 @@ export default function TelecallerAdvancedCRM() {
               initialFilter={queueFilter}
               initialQuery={queueQuery}
               onFilterChange={persistQueueFilter}
+              pendingSavedView={pendingSavedView}
+              onPendingSavedViewApplied={() => setPendingSavedView(null)}
               onOpenMenu={openMenu}
               onAddLead={() => {
                 setBookMode('lead');
@@ -1280,6 +1306,16 @@ export default function TelecallerAdvancedCRM() {
               onOpenLead={(id) => openLead(id, true)}
               onEditLead={(id) => openLead(id, true)}
             />
+          </View>
+        ) : null}
+
+        {prefsReady ? (
+          <View
+            style={[styles.body, transferredActive ? styles.activeTab : HIDDEN_TAB]}
+            pointerEvents={transferredActive ? 'auto' : 'none'}
+            collapsable={false}
+          >
+            <CrmTransferredLeadsTab onOpenMenu={openMenu} />
           </View>
         ) : null}
 
@@ -1516,7 +1552,7 @@ export default function TelecallerAdvancedCRM() {
                   }
                   if (row.type === 'item') {
                     const active = row.kind === 'tab' && tab === row.id && !detailLeadId;
-                    return (
+                    const itemRow = (
                       <TouchableOpacity
                         key={row.id}
                         style={[styles.tcRow, active && styles.tcRowActive]}
@@ -1539,6 +1575,23 @@ export default function TelecallerAdvancedCRM() {
                         </Text>
                       </TouchableOpacity>
                     );
+                    if (row.id === 'queue') {
+                      return (
+                        <React.Fragment key={row.id}>
+                          {itemRow}
+                          <CrmSavedFiltersDrawerSection
+                            collapsed={false}
+                            onApply={(filters) => {
+                              setMenuOpen(false);
+                              setTab('queue');
+                              setDetailLeadId(null);
+                              setPendingSavedView({ token: Date.now(), filters });
+                            }}
+                          />
+                        </React.Fragment>
+                      );
+                    }
+                    return itemRow;
                   }
                   if (row.type !== 'group') return null;
                   const open = Boolean(drawerOpenGroups[row.id]);

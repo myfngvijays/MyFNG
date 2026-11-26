@@ -19,6 +19,7 @@ import CarLoading from '../../../components/CarLoading';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
+import { sanitizeVehicleNumberInput } from '../../../lib/telecaller/serviceLeadVehicleNumber';
 import {
   CRM_DATE_PRESETS,
   resolveCrmDateRange,
@@ -859,7 +860,8 @@ export default function CrmHomeTab({
           <Text style={styles.navyEmpty}>No cars in service</Text>
         ) : (
           inServiceLeads.map((lead, idx) => {
-            const vehicle = [lead.vehicle_number, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' · ');
+            const reg = sanitizeVehicleNumberInput(lead.vehicle_number);
+            const vehicle = [reg, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' · ');
             const name = String(lead.customer_name || 'Customer').trim();
             return (
               <TouchableOpacity

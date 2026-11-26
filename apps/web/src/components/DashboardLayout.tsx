@@ -60,6 +60,7 @@ import {
   PanelLeftOpen,
   ChevronDown,
   Settings2,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -1138,6 +1139,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       'TELECALLER': [
         { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/telecaller/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        {
+          href: '/dashboard/telecaller/transferred-leads',
+          icon: <ArrowLeftRight className="w-5 h-5" />,
+          label: 'Transferred Leads',
+        },
         { href: '/dashboard/telecaller/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         { href: '/dashboard/telecaller/booking-confirmed', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Booking Confirmed' },
         { href: '/dashboard/telecaller/deleted-leads', icon: <ArchiveRestore className="w-5 h-5" />, label: 'Deleted Leads' },

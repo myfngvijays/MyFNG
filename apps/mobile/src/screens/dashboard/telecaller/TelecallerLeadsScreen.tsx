@@ -21,6 +21,7 @@ import { parseIds } from '../../../lib/parseIds';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants/theme';
 import { redactLeadSourceForTelecaller } from '../../../lib/redactLeadSource';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
+import { sanitizeVehicleNumberInput } from '../../../lib/telecaller/serviceLeadVehicleNumber';
 
 export default function TelecallerLeadsScreen({ navigation, route }: any) {
   const { user } = useAuth();
@@ -245,9 +246,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         <Icon name="car" size={16} color={COLORS.textSecondary} />
         <Text style={styles.infoText}>
           Reg:{' '}
-          {item.vehicle_number && String(item.vehicle_number).toUpperCase() !== 'NA'
-            ? String(item.vehicle_number).toUpperCase()
-            : 'N/A'}
+          {sanitizeVehicleNumberInput(item.vehicle_number) || '—'}
         </Text>
       </View>
       <View style={styles.infoRow}>

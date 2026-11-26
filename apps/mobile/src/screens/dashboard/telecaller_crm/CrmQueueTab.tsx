@@ -35,11 +35,14 @@ import {
 } from '../../../lib/crmFilterPrefs';
 import { leadStatusCardColors, leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
 import { mergeCrmStatusFilters } from '../../../lib/telecaller/crmStatusFilters';
+import { leadMatchesCrmQueueFilter } from '../../../lib/telecaller/crmLeadFilters';
+import { emitCrmViewsChanged } from '../../../components/telecaller/CrmSavedFiltersDrawerSection';
 import { crmLeadClosedForFollowUp } from '../../../lib/telecaller/crmFollowUpClose';
 import { titleCasePersonName } from '../../../lib/personName';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import { MlScorePill } from '../../../components/telecaller/LeadBrainCard';
 import { isPendingBookingLead, pendingBookingPill } from '../../../lib/telecaller/pendingBooking';
+import { sanitizeVehicleNumberInput } from '../../../lib/telecaller/serviceLeadVehicleNumber';
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -64,6 +67,9 @@ type Props = {
   managerOps?: boolean;
   onOpenMenu?: () => void;
   onAddLead?: () => void;
+  /** Parent menu: apply a saved CRM filter view */
+  pendingSavedView?: { token: number; filters: Record<string, unknown> } | null;
+  onPendingSavedViewApplied?: () => void;
 };
 
 type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'otherReason' | 'city' | 'priority' | 'quick' | null;
@@ -192,6 +198,8 @@ export default function CrmQueueTab({
   managerOps = false,
   onOpenMenu,
   onAddLead,
+  pendingSavedView,
+  onPendingSavedViewApplied,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [leads, setLeads] = useState<any[]>([]);
@@ -256,7 +264,6 @@ export default function CrmQueueTab({
   const [bulkWaOpen, setBulkWaOpen] = useState(false);
   const [bulkWaText, setBulkWaText] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
-  const [savedViews, setSavedViews] = useState<Array<{ id: string; name: string; filters: any }>>([]);
   const [viewName, setViewName] = useState('');
   const [savingView, setSavingView] = useState(false);
 
@@ -290,28 +297,15 @@ export default function CrmQueueTab({
     advIncomplete,
     advFollowUp,
     advHasVehicle,
+    advHasRecording,
     advHasCoupon,
   };
 
-  const loadSavedViews = useCallback(async () => {
-    try {
-      const data = await apiFetch<any>('/api/lead-manager/saved-views');
-      const rows = (Array.isArray(data?.views) ? data.views : [])
-        .filter((row: any) => row?.filters?.kind === 'crm_leads')
-        .map((row: any) => ({
-          id: String(row.id),
-          name: String(row.name || 'View'),
-          filters: row.filters,
-        }));
-      setSavedViews(rows);
-    } catch {
-      setSavedViews([]);
-    }
-  }, []);
-
   useEffect(() => {
-    if (showFilters) void loadSavedViews();
-  }, [showFilters, loadSavedViews]);
+    if (!pendingSavedView?.filters) return;
+    applySavedView(pendingSavedView.filters);
+    onPendingSavedViewApplied?.();
+  }, [pendingSavedView?.token]);
 
   const saveCurrentView = async () => {
     const label = viewName.trim();
@@ -326,8 +320,8 @@ export default function CrmQueueTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: label, filters: currentViewFilters }),
       });
-      await loadSavedViews();
-      Alert.alert('Saved', 'Filter view save ho gaya');
+      emitCrmViewsChanged();
+      Alert.alert('Saved', 'Filter view save ho gaya — ab menu → Filters mein dikhega');
     } catch (e: any) {
       Alert.alert('Save failed', String(e?.message || 'Could not save view'));
     } finally {
@@ -336,7 +330,9 @@ export default function CrmQueueTab({
   };
 
   const applySavedView = (filters: any) => {
-    const status = String(filters?.filter || 'all');
+    let status = String(filters?.filter || 'all');
+    if (status === 'FRESH' || status === 'NEW') status = 'new';
+    if (status === 'CALLBACK') status = 'callback';
     const lost = status === 'lost' ? String(filters?.lostReason || '') : '';
     const other = status === 'other' ? String(filters?.otherReason || '') : '';
     const preset = (filters?.datePreset || 'all_time') as CrmDatePreset;
@@ -589,7 +585,11 @@ export default function CrmQueueTab({
       });
       if (viewMode === 'chart') params.set('for_chart', '1');
       if (appliedQ.trim()) params.set('q', appliedQ.trim());
-      if (filter && filter !== 'all') params.set('filter', filter);
+      if (filter && filter !== 'all') {
+        const apiFilter =
+          filter === 'FRESH' || filter === 'NEW' ? 'new' : filter === 'CALLBACK' ? 'callback' : filter.toLowerCase();
+        params.set('filter', apiFilter);
+      }
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
       if (filter === 'other' && otherReason.trim()) params.set('other_reason', otherReason.trim());
       if (city.trim()) params.set('city', city.trim());
@@ -658,11 +658,13 @@ export default function CrmQueueTab({
   }, [load, localPrefsReady]);
 
   useEffect(() => {
-    if (initialFilter) {
-      setFilter(initialFilter);
-      if (initialFilter !== 'lost') setLostReason('');
-      if (initialFilter !== 'other') setOtherReason('');
-    }
+    if (!initialFilter) return;
+    let next = initialFilter;
+    if (next === 'FRESH' || next === 'NEW') next = 'new';
+    if (next === 'CALLBACK') next = 'callback';
+    setFilter(next);
+    if (next !== 'lost') setLostReason('');
+    if (next !== 'other') setOtherReason('');
   }, [initialFilter]);
 
   const persistLocalFilters = (partial: {
@@ -683,8 +685,8 @@ export default function CrmQueueTab({
   };
 
   const displayedLeads = useMemo(() => {
-    if (appliedQ.trim()) return leads;
     return leads.filter((lead) => {
+      if (filter && filter !== 'all' && !leadMatchesCrmQueueFilter(lead, filter)) return false;
       if (advIncomplete && !lead.is_incomplete) return false;
       if (advFollowUp) {
         if (crmLeadClosedForFollowUp(lead)) return false;
@@ -693,10 +695,8 @@ export default function CrmQueueTab({
         }
       }
       if (advHasVehicle) {
-        const reg = String(lead.vehicle_number || '')
-          .trim()
-          .toUpperCase();
-        if (!reg || reg === 'NA' || reg === '—') return false;
+        const reg = sanitizeVehicleNumberInput(lead.vehicle_number);
+        if (!reg) return false;
       }
       if (advHasCoupon) {
         const code = String(lead.coupon_code || lead.coupon_meta?.coupon_code || '').trim();
@@ -704,7 +704,7 @@ export default function CrmQueueTab({
       }
       return true;
     });
-  }, [leads, appliedQ, advIncomplete, advFollowUp, advHasVehicle, advHasCoupon]);
+  }, [leads, filter, advIncomplete, advFollowUp, advHasVehicle, advHasCoupon, advHasRecording]);
 
   const statusChartData = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1521,15 +1521,9 @@ export default function CrmQueueTab({
               >
                 <Text style={styles.primaryText}>{savingView ? 'Saving…' : 'Save this filter'}</Text>
               </TouchableOpacity>
-              {savedViews.map((row) => (
-                <TouchableOpacity
-                  key={row.id}
-                  style={[styles.selectItem, { marginTop: 6 }]}
-                  onPress={() => applySavedView(row.filters)}
-                >
-                  <Text style={styles.selectItemText}>{row.name}</Text>
-                </TouchableOpacity>
-              ))}
+              <Text style={[styles.filterLabel, { marginTop: 6, fontSize: 12, color: COLORS.textSecondary }]}>
+                Saved views ab menu → Filters mein dikhte hain
+              </Text>
               <View style={{ height: 12 }} />
               <View style={styles.filterPair}>
                 <View style={styles.filterHalf}>

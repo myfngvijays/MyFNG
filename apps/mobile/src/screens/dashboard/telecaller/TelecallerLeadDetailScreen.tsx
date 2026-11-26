@@ -52,7 +52,11 @@ import {
   ADMIN_CRM_STATUS_OPTIONS,
   resolveAdminCrmStatusId,
 } from '../../../lib/telecaller/adminCrmStatus';
-import { serviceLeadVehicleNumber } from '../../../lib/telecaller/serviceLeadVehicleNumber';
+import {
+  sanitizeVehicleNumberInput,
+  serviceLeadVehicleNumber,
+} from '../../../lib/telecaller/serviceLeadVehicleNumber';
+import { loadCrmWorkshops } from '../../../lib/telecaller/loadCrmWorkshops';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
@@ -315,7 +319,7 @@ function buildFormFromLead(data: any): EditForm {
     city_id: data?.city_id || '',
     city: cityName,
     pincode: pin,
-    vehicle_number: data?.vehicle_number || '',
+    vehicle_number: sanitizeVehicleNumberInput(data?.vehicle_number),
     vehicle_make: data?.vehicle_make || '',
     model_id: data?.model_id || '',
     vehicle_model: data?.vehicle_model || '',
@@ -490,14 +494,13 @@ export default function TelecallerLeadDetailScreen({
   const saveBarBottomPad = Math.max(insets.bottom, 10) + 16;
   const { leadId } = route.params;
   const roleCode = String(userProfile?.role?.role_code || '').toUpperCase();
-  const showLeadIq =
-    showLeadIqProp !== false &&
-    (roleCode === 'TELECALLER' ||
-      roleCode === 'LEAD_MANAGER' ||
-      roleCode === 'SUPER_ADMIN' ||
-      roleCode === 'SUB_ADMIN' ||
-      showLeadIqProp === true);
-  const canSeeMlDl = showLeadIq;
+  const canSeeMlDl =
+    roleCode === 'TELECALLER' ||
+    roleCode === 'LEAD_MANAGER' ||
+    roleCode === 'SUPER_ADMIN' ||
+    roleCode === 'SUB_ADMIN' ||
+    showLeadIqProp === true;
+  const isTelecallerRole = roleCode === 'TELECALLER';
 
   const [lead, setLead] = useState<any>(null);
   const [repeatCustomer, setRepeatCustomer] = useState(false);
@@ -515,8 +518,9 @@ export default function TelecallerLeadDetailScreen({
   const [appActivityItems, setAppActivityItems] = useState<any[]>([]);
   const [appActivityLoading, setAppActivityLoading] = useState(false);
   const [appActivityShowAll, setAppActivityShowAll] = useState(false);
-  const [leadIq, setLeadIq] = useState<any>(null);
-  const [leadIqRunning, setLeadIqRunning] = useState(false);
+  const [waShowAll, setWaShowAll] = useState(false);
+  const [leadOverviewOpen, setLeadOverviewOpen] = useState(false);
+  const [servicePriceOpen, setServicePriceOpen] = useState(false);
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -559,7 +563,14 @@ export default function TelecallerLeadDetailScreen({
   const [initialServiceAddons, setInitialServiceAddons] = useState<string[]>([]);
   const [pinWorkshops, setPinWorkshops] = useState<any[]>([]);
   const [loadingPinWs, setLoadingPinWs] = useState(false);
+  const [workshopSearchQuery, setWorkshopSearchQuery] = useState('');
   const [showAllWorkshops, setShowAllWorkshops] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveInFlightRef = React.useRef(false);
+  const userEditedRef = React.useRef(false);
+  const skipAutoSaveRef = React.useRef(true);
+  const statusSaveRequestedRef = React.useRef(false);
+  const saveLeadRef = React.useRef<(quiet?: boolean) => Promise<boolean>>(async () => true);
   const [profileHistory, setProfileHistory] = useState<any[]>([]);
 
   const [activityData, setActivityData] = useState({
@@ -578,8 +589,14 @@ export default function TelecallerLeadDetailScreen({
   const [customFieldDefs, setCustomFieldDefs] = useState<Array<{ id: string; name: string }>>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
-  const setEditField = (key: keyof EditForm, value: any) =>
+  const touchLead = () => {
+    userEditedRef.current = true;
+  };
+
+  const setEditField = (key: keyof EditForm, value: any) => {
+    userEditedRef.current = true;
     setEditForm((prev) => ({ ...prev, [key]: value }));
+  };
 
   useEffect(() => {
     if (!leadId) return;
@@ -701,8 +718,9 @@ export default function TelecallerLeadDetailScreen({
         const next = { ...prev };
         if (empty(next.customer_name) && fill.customer_name) next.customer_name = titleCasePersonName(String(fill.customer_name));
         if (empty(next.customer_email) && fill.customer_email) next.customer_email = String(fill.customer_email);
-        if (empty(next.vehicle_number) && fill.vehicle_number) {
-          next.vehicle_number = String(fill.vehicle_number);
+        const fillPlate = sanitizeVehicleNumberInput(fill.vehicle_number);
+        if (empty(next.vehicle_number) && fillPlate) {
+          next.vehicle_number = fillPlate;
         }
         if (empty(next.vehicle_make) && fill.vehicle_make) next.vehicle_make = String(fill.vehicle_make);
         if (empty(next.vehicle_model) && fill.vehicle_model) next.vehicle_model = String(fill.vehicle_model);
@@ -864,17 +882,20 @@ export default function TelecallerLeadDetailScreen({
     navigation?.goBack?.();
   };
 
-  const saveLeadEdits = async () => {
-    if (!leadId) return;
-    if (!editForm.customer_name.trim()) {
+  const saveLeadEdits = async (quiet = false): Promise<boolean> => {
+    if (!leadId) return false;
+    if (quiet && saveInFlightRef.current) return false;
+    if (!quiet && !editForm.customer_name.trim()) {
       Alert.alert('Missing info', 'Customer name required');
-      return;
+      return false;
     }
-    if (!/^[6-9]\d{9}$/.test(editForm.customer_phone.replace(/\D/g, ''))) {
+    if (!quiet && !/^[6-9]\d{9}$/.test(editForm.customer_phone.replace(/\D/g, ''))) {
       Alert.alert('Missing info', 'Valid 10-digit phone required');
-      return;
+      return false;
     }
+    saveInFlightRef.current = true;
     setSaving(true);
+    if (quiet) setAutoSaveState('saving');
     try {
       const start = slotIso(editForm.pickup_date, editForm.pickup_time);
       const endHour = editForm.pickup_time
@@ -1177,8 +1198,9 @@ export default function TelecallerLeadDetailScreen({
             ? '\nBooking saved — WhatsApp confirmation not sent.'
             : '';
 
-      // Persist activity disposition (including Ringing)
-      try {
+      // Call log + follow-up only when activity changed (avoid spam on field autosave)
+      if (activityTouchedRef.current || !quiet) {
+        try {
         const selected =
           statusOptions.find((r) => r.id === activityData.result) || RINGING;
         const otherItem = selected.id === 'OTHER' ? activityData.otherReason.trim() : '';
@@ -1190,9 +1212,11 @@ export default function TelecallerLeadDetailScreen({
               : selected.label;
         const whenIso = combineDateAndTime(activityData.date, activityData.time);
         if ((selected.requires_follow_up || selected.id === 'CALLBACK') && !whenIso) {
-          Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
+          if (!quiet) Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
           setSaving(false);
-          return;
+          saveInFlightRef.current = false;
+          if (quiet) setAutoSaveState('error');
+          return false;
         }
         const notesParts = [
           `[${statusLabel}]`,
@@ -1281,8 +1305,9 @@ export default function TelecallerLeadDetailScreen({
             note: `Auto-closed — ${statusLabel}`,
           });
         }
-      } catch (actErr) {
-        console.warn('[LeadDetail] activity log during save failed', actErr);
+        } catch (actErr) {
+          console.warn('[LeadDetail] activity log during save failed', actErr);
+        }
       }
 
       activityTouchedRef.current = false;
@@ -1298,13 +1323,21 @@ export default function TelecallerLeadDetailScreen({
       setEditing(true);
       await fetchLeadDetails();
       void fetchActivityTimeline();
-      Alert.alert('Updated', `Lead saved successfully.${waNote}`);
+      userEditedRef.current = false;
+      skipAutoSaveRef.current = false;
+      setAutoSaveState('saved');
+      if (!quiet) Alert.alert('Updated', `Lead saved successfully.${waNote}`);
+      return true;
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to update lead');
+      setAutoSaveState('error');
+      if (!quiet) Alert.alert('Error', e?.message || 'Failed to update lead');
+      return false;
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   };
+  saveLeadRef.current = saveLeadEdits;
 
   const selectedResult: CallDisposition =
     statusOptions.find((r) => r.id === activityData.result) || RINGING;
@@ -1345,6 +1378,9 @@ export default function TelecallerLeadDetailScreen({
     };
     setStatusSaving(true);
     setEditing(true);
+    activityTouchedRef.current = true;
+    statusSaveRequestedRef.current = true;
+    userEditedRef.current = true;
     setActivityData((prev) => ({
       ...prev,
       result: opt.id,
@@ -1553,35 +1589,16 @@ export default function TelecallerLeadDetailScreen({
     () => activityItems.filter((item) => /whatsapp/i.test(item.title)),
     [activityItems],
   );
+  const visibleAppActivityItems = React.useMemo(() => {
+    if (!isTelecallerRole) return appActivityItems;
+    return appActivityItems.filter((item) => {
+      const kind = String(item?.kind || '').toLowerCase();
+      if (kind === 'booking') return true;
+      const title = String(item?.title || '');
+      return /app booking/i.test(title);
+    });
+  }, [appActivityItems, isTelecallerRole]);
 
-  const fetchLeadIq = async () => {
-    if (!leadId) return;
-    try {
-      const data = await apiFetch<any>(
-        `/api/super_admin/lead-iq?lead_id=${encodeURIComponent(leadId)}`,
-      );
-      setLeadIq(data?.brief || null);
-    } catch {
-      setLeadIq(null);
-    }
-  };
-
-  const generateLeadIq = async (deep: boolean) => {
-    if (!leadId) return;
-    setLeadIqRunning(true);
-    try {
-      const data = await apiFetch<any>('/api/super_admin/lead-iq', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_id: leadId, deep }),
-      });
-      setLeadIq(data?.brief || null);
-    } catch (e: any) {
-      Alert.alert('Lead IQ', e?.message || 'Failed');
-    } finally {
-      setLeadIqRunning(false);
-    }
-  };
 
   const fetchActivityTimeline = async () => {
     if (!leadId) return;
@@ -1620,25 +1637,22 @@ export default function TelecallerLeadDetailScreen({
     );
   }, [lead]);
 
-  const loadWorkshopsForPincode = async (pin: string, cityName?: string) => {
+  const loadWorkshopsForPincode = async (pin: string, cityName?: string, searchQ?: string) => {
     const pincode = String(pin || '').replace(/\D/g, '').slice(0, 6);
-    if (!/^\d{6}$/.test(pincode)) {
+    const q = String(searchQ || '').trim();
+    if (!/^\d{6}$/.test(pincode) && q.length < 2) {
       setPinWorkshops([]);
       return;
     }
     setLoadingPinWs(true);
     try {
-      // Auto-fill city from pincode mapping when possible
-      if (!cityName) {
+      if (!cityName && /^\d{6}$/.test(pincode)) {
         try {
           const { data: cityRows } = await supabase
             .from('cities')
             .select('id, name, city_pincodes')
             .eq('is_active', true);
-          const hit = (cityRows || []).find((c: any) => {
-            const raw = String(c.city_pincodes || '');
-            return raw.includes(pincode);
-          });
+          const hit = (cityRows || []).find((c: any) => String(c.city_pincodes || '').includes(pincode));
           let resolvedName = String(hit?.name || '').trim();
           let resolvedId = String(hit?.id || '').trim();
           if (!resolvedName) {
@@ -1665,53 +1679,13 @@ export default function TelecallerLeadDetailScreen({
         }
       }
 
-      const params = new URLSearchParams();
-      params.set('pincode', pincode);
-      if (cityName) params.set('city', cityName);
-      const apiData = await apiFetch<any>(`/api/telecaller/crm/workshops?${params.toString()}`).catch(
-        () => null,
-      );
-      let list = Array.isArray(apiData?.workshops) ? apiData.workshops : [];
-      if (list.length === 0) {
-        const [{ data: rows }, { data: pageRows }] = await Promise.all([
-          supabase
-            .from('workshops')
-            .select('id, name, workshop_name, workshop_area, near_famous_area, city, state, address, short_address, landmark, pincode, phone, is_verified, is_active')
-            .eq('is_verified', true)
-            .eq('is_active', true)
-            .limit(80),
-          supabase
-            .from('workshop_public_pages')
-            .select('workshop_id, gmb_data')
-            .eq('is_published', true),
-        ]);
-        const gmbByWorkshop = new Map<string, Record<string, unknown>>();
-        for (const page of (pageRows as any[]) || []) {
-          const workshopId = String(page?.workshop_id || '').trim();
-          const gmb = page?.gmb_data;
-          if (workshopId && gmb && typeof gmb === 'object') {
-            gmbByWorkshop.set(workshopId, gmb as Record<string, unknown>);
-          }
-        }
-        list = (rows || []).map((w: any) => {
-          const gmb = gmbByWorkshop.get(String(w.id)) || null;
-          return {
-            id: w.id,
-            name: w.name || w.workshop_name,
-            city: w.city,
-            address: workshopPublicPageAddress(w, gmb),
-            short_address: w.short_address,
-            pincode: w.pincode,
-            phone: w.phone,
-          };
-        });
-        if (cityName) {
-          list = list.filter((w: any) =>
-            String(w.city || '').toLowerCase().includes(String(cityName).toLowerCase()),
-          );
-        }
-      }
-      setPinWorkshops(list.slice(0, 30));
+      const list = await loadCrmWorkshops({
+        pincode,
+        city: cityName || editForm.city,
+        cityId: editForm.city_id,
+        q,
+      });
+      setPinWorkshops(list);
     } catch {
       setPinWorkshops([]);
     } finally {
@@ -1727,11 +1701,11 @@ export default function TelecallerLeadDetailScreen({
       return;
     }
     const t = setTimeout(() => {
-      loadWorkshopsForPincode(pin, editForm.city || undefined);
+      loadWorkshopsForPincode(pin, editForm.city || undefined, workshopSearchQuery);
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, editForm.pincode, editForm.city]);
+  }, [editing, editForm.pincode, editForm.city, workshopSearchQuery]);
 
   useEffect(() => {
     if (!editing) return;
@@ -1746,14 +1720,48 @@ export default function TelecallerLeadDetailScreen({
 
   useEffect(() => {
     activityTouchedRef.current = false;
+    userEditedRef.current = false;
+    skipAutoSaveRef.current = true;
+    setAutoSaveState('idle');
+    setWorkshopSearchQuery('');
+    setWaShowAll(false);
+    setLeadOverviewOpen(false);
+    setServicePriceOpen(false);
+    setActivityShowAll(false);
+    setAppActivityShowAll(false);
   }, [leadId]);
+
+  useEffect(() => {
+    if (!editing || loading || !lead) return;
+    if (!userEditedRef.current) {
+      skipAutoSaveRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      void saveLeadRef.current(true);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [editing, loading, lead, editForm, activityData, customFieldValues, secondCar, referredBy, showSecondCar]);
+
+  useEffect(() => {
+    if (!editing || loading) return;
+    if (!statusSaveRequestedRef.current) return;
+    statusSaveRequestedRef.current = false;
+    void saveLeadRef.current(true);
+  }, [activityData.result, activityData.lostReason, activityData.otherReason, editing, loading]);
+
+  useEffect(
+    () => () => {
+      if (userEditedRef.current) void saveLeadRef.current(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     fetchLeadDetails();
     void fetchActivityTimeline();
-    if (showLeadIq) void fetchLeadIq();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId, showLeadIq]);
+  }, [leadId]);
 
   useEffect(() => {
     if (!lead) return;
@@ -2779,45 +2787,6 @@ export default function TelecallerLeadDetailScreen({
         ) : null}
       </View>
 
-      {showLeadIq ? (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Lead IQ</Text>
-        <View style={styles.sectionContent}>
-          <View style={styles.iqBtnRow}>
-            <TouchableOpacity
-              style={styles.iqBtnGenerate}
-              disabled={leadIqRunning}
-              onPress={() => void generateLeadIq(false)}
-            >
-              <Text style={styles.iqBtnGenerateText}>{leadIqRunning ? '…' : 'Generate'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iqBtnDeep}
-              disabled={leadIqRunning}
-              onPress={() => void generateLeadIq(true)}
-            >
-              <Text style={styles.iqBtnDeepText}>Deep AI</Text>
-            </TouchableOpacity>
-          </View>
-          {leadIq ? (
-            <>
-              <Text style={{ fontWeight: '800', color: COLORS.textPrimary, marginBottom: 4 }}>
-                {leadIq.verdict}
-              </Text>
-              <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 6 }}>
-                {leadIq.intent_level} · {leadIq.decision_stage} · {leadIq.temperature}
-              </Text>
-              <Text style={{ fontSize: 12, color: COLORS.textPrimary }}>{leadIq.next_move}</Text>
-            </>
-          ) : (
-            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-              History se intent + next move. Generate free, Deep AI playbook use karta hai.
-            </Text>
-          )}
-        </View>
-      </View>
-      ) : null}
-
       {/* Coupon — view only at top; in edit mode it lives under Booking confirmed → Pickup */}
       {!editing ? (
       <View style={styles.section}>
@@ -2979,7 +2948,7 @@ export default function TelecallerLeadDetailScreen({
                 </TouchableOpacity>
               </View>
 
-              {/^\d{6}$/.test(editForm.pincode) ? (
+              {/^\d{6}$/.test(editForm.pincode) || workshopSearchQuery.trim().length >= 2 ? (
                 <View style={styles.workshopPickBox}>
                   <View style={styles.workshopPickHead}>
                     <Text style={styles.fieldCaption}>Workshop for this lead</Text>
@@ -2989,10 +2958,21 @@ export default function TelecallerLeadDetailScreen({
                       </TouchableOpacity>
                     ) : null}
                   </View>
+                  <TextInput
+                    style={[styles.input, { marginBottom: 8 }]}
+                    value={workshopSearchQuery}
+                    onChangeText={setWorkshopSearchQuery}
+                    placeholder="Search workshop naam (2+ letters) ya PIN se nearby"
+                    placeholderTextColor={COLORS.textSecondary}
+                  />
                   {loadingPinWs ? (
                     <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 10 }} />
                   ) : pinWorkshops.length === 0 ? (
-                    <Text style={styles.mutedValue}>No workshops found for this pincode</Text>
+                    <Text style={styles.mutedValue}>
+                      {workshopSearchQuery.trim().length >= 2
+                        ? 'Is naam se workshop nahi mila — spelling check karo'
+                        : 'Is PIN ke paas workshop nahi mila. Search se naam likho.'}
+                    </Text>
                   ) : (
                     (() => {
                       const preview =
@@ -3006,13 +2986,14 @@ export default function TelecallerLeadDetailScreen({
                         <TouchableOpacity
                           key={w.id}
                           style={[styles.workshopPickRow, active && styles.workshopPickRowActive]}
-                          onPress={() =>
+                          onPress={() => {
+                            touchLead();
                             setEditForm((prev) => ({
                               ...prev,
                               workshop_id: w.id,
                               workshop_name: areaName,
-                            }))
-                          }
+                            }));
+                          }}
                           activeOpacity={0.85}
                         >
                           <View style={{ flex: 1, minWidth: 0 }}>
@@ -3141,7 +3122,9 @@ export default function TelecallerLeadDetailScreen({
           <View style={styles.fillPill}>
             <Text style={styles.fillPillText}>
               {[
-                editing ? editForm.vehicle_number : lead?.vehicle_number,
+                editing
+                  ? editForm.vehicle_number
+                  : sanitizeVehicleNumberInput(lead?.vehicle_number),
                 editing ? editForm.vehicle_model || carDisplay : lead?.vehicle_model,
                 editing ? editForm.vehicle_fuel_type : lead?.vehicle_fuel_type,
                 editing ? editForm.vehicle_year : lead?.vehicle_year,
@@ -3254,7 +3237,9 @@ export default function TelecallerLeadDetailScreen({
               <DetailRow
                 icon="car"
                 label="Registration"
-                value={lead.vehicle_number || 'Not provided'}
+                value={
+                  displayRegistrationNumber(lead.vehicle_number) || '—'
+                }
               />
               <View style={styles.detailGrid}>
                 <DetailRow
@@ -3339,7 +3324,7 @@ export default function TelecallerLeadDetailScreen({
                       vehicle_number: v.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
                     }))
                   }
-                  placeholder="e.g. MH01BJ7842 or NA"
+                  placeholder="e.g. MH01BJ7842"
                 />
                 <CarModelSearchField
                   label="SECOND CAR MODEL"
@@ -3390,12 +3375,24 @@ export default function TelecallerLeadDetailScreen({
 
       {/* Lead Overview — no source / UTM */}
       <View style={styles.section}>
-        <View style={styles.sectionTitleRow}>
+        <TouchableOpacity
+          style={styles.sectionTitleRow}
+          onPress={() => setLeadOverviewOpen((v) => !v)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+        >
           <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
             <Icon name="clipboard-list" size={16} color="#B45309" />
           </View>
-          <Text style={styles.sectionTitle}>Lead Overview</Text>
-        </View>
+          <Text style={[styles.sectionTitle, styles.sectionTitleGrow]}>Lead Overview</Text>
+          <Icon
+            name={leadOverviewOpen ? 'minus' : 'plus'}
+            size={22}
+            color="#64748B"
+            style={styles.sectionToggleIcon}
+          />
+        </TouchableOpacity>
+        {leadOverviewOpen ? (
         <View style={styles.sectionContent}>
           <View style={styles.overviewTiles}>
             <View style={styles.ovTile}>
@@ -3596,15 +3593,21 @@ export default function TelecallerLeadDetailScreen({
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
       </View>
 
       {/* Service Details */}
       <View style={styles.section}>
-        <View style={styles.sectionTitleRow}>
+        <TouchableOpacity
+          style={styles.sectionTitleRow}
+          onPress={() => setServicePriceOpen((v) => !v)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+        >
           <View style={[styles.sectionIconWrap, { backgroundColor: '#D1FAE5' }]}>
             <Icon name="wrench" size={16} color={COLORS.green} />
           </View>
-          <Text style={styles.sectionTitle}>Service & Price</Text>
+          <Text style={[styles.sectionTitle, styles.sectionTitleGrow]}>Service & Price</Text>
           <View style={styles.nonePill}>
             <Text style={styles.nonePillText}>
               {(editing ? editForm.service_types : serviceTypeNames).length
@@ -3612,7 +3615,14 @@ export default function TelecallerLeadDetailScreen({
                 : 'None added'}
             </Text>
           </View>
-        </View>
+          <Icon
+            name={servicePriceOpen ? 'minus' : 'plus'}
+            size={22}
+            color="#64748B"
+            style={styles.sectionToggleIcon}
+          />
+        </TouchableOpacity>
+        {servicePriceOpen ? (
         <View style={styles.sectionContent}>
           {!editing ? (
             (() => {
@@ -3998,6 +4008,7 @@ export default function TelecallerLeadDetailScreen({
             </>
           )}
         </View>
+        ) : null}
       </View>
 
       {/* Activity timeline — always visible in edit + view (same CRM API as web / LM) */}
@@ -4160,7 +4171,7 @@ export default function TelecallerLeadDetailScreen({
             <Text style={styles.emptyText}>No activity yet</Text>
           ) : (
             <>
-              {(activityShowAll ? detailActivity : detailActivity.slice(0, 10)).map((item, index, list) => {
+              {(activityShowAll ? detailActivity : detailActivity.slice(0, 5)).map((item, index, list) => {
               const isPlaying =
                 item.kind === 'call' &&
                 item.hasRecording &&
@@ -4214,7 +4225,7 @@ export default function TelecallerLeadDetailScreen({
                 </View>
               );
             })}
-              {detailActivity.length > 10 ? (
+              {detailActivity.length > 5 ? (
                 <TouchableOpacity
                   onPress={() => setActivityShowAll((v) => !v)}
                   style={{ paddingVertical: 10, alignItems: 'center' }}
@@ -4222,7 +4233,7 @@ export default function TelecallerLeadDetailScreen({
                   <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
                     {activityShowAll
                       ? 'View less'
-                      : `View more (${detailActivity.length - 10})`}
+                      : `Show more (${detailActivity.length - 5})`}
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -4246,21 +4257,33 @@ export default function TelecallerLeadDetailScreen({
               <Text style={styles.waEmptySub}>Pricing and reminders you send will show here.</Text>
             </View>
           ) : (
-            whatsappActivity.slice(0, 8).map((item) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.logCard,
-                  /received/i.test(item.title)
-                    ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
-                    : { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' },
-                ]}
-              >
-                <Text style={styles.logBadgeText}>{item.title}</Text>
-                {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
-                <Text style={styles.logTime}>{item.timeLabel}</Text>
-              </View>
-            ))
+            <>
+              {(waShowAll ? whatsappActivity : whatsappActivity.slice(0, 5)).map((item) => (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.logCard,
+                    /received/i.test(item.title)
+                      ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
+                      : { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' },
+                  ]}
+                >
+                  <Text style={styles.logBadgeText}>{item.title}</Text>
+                  {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
+                  <Text style={styles.logTime}>{item.timeLabel}</Text>
+                </View>
+              ))}
+              {whatsappActivity.length > 5 ? (
+                <TouchableOpacity
+                  onPress={() => setWaShowAll((v) => !v)}
+                  style={{ paddingVertical: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
+                    {waShowAll ? 'View less' : `Show more (${whatsappActivity.length - 5})`}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           )}
         </View>
       </View>
@@ -4269,25 +4292,28 @@ export default function TelecallerLeadDetailScreen({
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>
-            App activity{appActivityItems.length > 0 ? ` (${appActivityItems.length})` : ''}
+            App activity
+            {visibleAppActivityItems.length > 0 ? ` (${visibleAppActivityItems.length})` : ''}
           </Text>
         </View>
         {appActivityLoading ? (
           <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />
-        ) : appActivityItems.length === 0 ? (
+        ) : visibleAppActivityItems.length === 0 ? (
           <Text style={[styles.logNotes, { color: COLORS.textSecondary, paddingVertical: 8 }]}>
-            No app activity yet
+            {isTelecallerRole ? 'No app booking yet' : 'No app activity yet'}
           </Text>
         ) : (
           <>
-            {(appActivityShowAll ? appActivityItems : appActivityItems.slice(0, 10)).map((item: any) => (
+            {(appActivityShowAll ? visibleAppActivityItems : visibleAppActivityItems.slice(0, 5)).map(
+              (item: any) => (
               <View key={item.id || `${item.kind}-${item.at}`} style={styles.logCard}>
                 <Text style={styles.logBadgeText}>{item.title}</Text>
                 {item.body ? <Text style={styles.logNotes}>{String(item.body)}</Text> : null}
                 <Text style={styles.logTime}>{item.at ? formatDateTime(item.at) : '—'}</Text>
               </View>
-            ))}
-            {appActivityItems.length > 10 ? (
+            ),
+            )}
+            {visibleAppActivityItems.length > 5 ? (
               <TouchableOpacity
                 onPress={() => setAppActivityShowAll((v) => !v)}
                 style={{ paddingVertical: 10, alignItems: 'center' }}
@@ -4295,7 +4321,7 @@ export default function TelecallerLeadDetailScreen({
                 <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>
                   {appActivityShowAll
                     ? 'View less'
-                    : `View more (${appActivityItems.length - 10})`}
+                    : `Show more (${visibleAppActivityItems.length - 5})`}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -4569,6 +4595,13 @@ export default function TelecallerLeadDetailScreen({
               <Icon name="close" size={22} color={COLORS.textPrimary} />
             </TouchableOpacity>
           </View>
+          <TextInput
+            style={[styles.input, { marginHorizontal: 16, marginBottom: 8 }]}
+            value={workshopSearchQuery}
+            onChangeText={setWorkshopSearchQuery}
+            placeholder="Search workshop naam"
+            placeholderTextColor={COLORS.textSecondary}
+          />
           <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
             {pinWorkshops.map((w) => {
               const active = editForm.workshop_id === w.id;
@@ -4634,11 +4667,18 @@ export default function TelecallerLeadDetailScreen({
 
     {editing ? (
       <View style={[styles.saveBar, { paddingBottom: saveBarBottomPad }]}>
+        {saving || autoSaveState === 'saving' || autoSaveState === 'error' ? (
+          <Text style={styles.autoSaveHint}>
+            {saving || autoSaveState === 'saving'
+              ? 'Saving…'
+              : 'Save failed — Save & update booking dabayein'}
+          </Text>
+        ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TouchableOpacity
             style={[styles.saveBarBtn, { flex: 1 }, saving && { opacity: 0.65 }]}
             disabled={saving}
-            onPress={saveLeadEdits}
+            onPress={() => void saveLeadEdits(false)}
           >
             {saving ? (
               <ActivityIndicator color="#fff" />
@@ -4724,13 +4764,18 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
 }
 
 function formatPlate(raw: string) {
-  const v = String(raw || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const v = sanitizeVehicleNumberInput(raw);
   if (!v) return '';
   const head = v.slice(0, 4);
   const tail = v.slice(4);
   const num = tail.match(/\d{1,4}$/)?.[0] || '';
   const series = num ? tail.slice(0, tail.length - num.length) : tail;
   return [head.slice(0, 2), head.slice(2, 4), series, num].filter(Boolean).join(' ');
+}
+
+function displayRegistrationNumber(v: unknown): string {
+  const raw = sanitizeVehicleNumberInput(v);
+  return raw ? formatPlate(raw) : '';
 }
 
 function shiftIstYmd(days: number) {
@@ -5519,6 +5564,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.textHeading,
   },
+  sectionTitleGrow: {
+    flex: 1,
+  },
+  sectionToggleIcon: {
+    marginLeft: 4,
+  },
   sectionContent: {
     backgroundColor: '#fff',
     borderRadius: 18,
@@ -5837,6 +5888,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderTopWidth: 1,
     borderTopColor: '#E8EEF7',
+  },
+  autoSaveHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+    textAlign: 'center',
   },
   saveBarBtn: {
     backgroundColor: COLORS.primary,

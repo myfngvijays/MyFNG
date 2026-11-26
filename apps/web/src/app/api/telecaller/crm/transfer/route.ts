@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
+import { istDayBounds } from '@/lib/telecaller/crmDateRange';
+import { titleCasePersonName } from '@/lib/personName';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +42,9 @@ export async function POST(request: NextRequest) {
 
     const { data: lead } = await db
       .from('service_leads')
-      .select('id, assigned_telecaller_id, status')
+      .select(
+        'id, assigned_telecaller_id, status, customer_name, coupon_meta, is_incomplete, telecaller_remarks',
+      )
       .eq('id', leadId)
       .maybeSingle();
 
@@ -59,6 +64,7 @@ export async function POST(request: NextRequest) {
       if (updErr) return NextResponse.json({ error: updErr.message }, { status: 400 });
     }
 
+    const statusSnapshot = leadDisplayStatus(lead);
     const { data: transfer, error } = await db
       .from('telecaller_lead_transfers')
       .insert([{
@@ -68,6 +74,8 @@ export async function POST(request: NextRequest) {
         transfer_type: transferType,
         reason,
         status: 'COMPLETED',
+        lead_status_at_transfer: String(lead.status || '').trim() || null,
+        lead_display_status_at_transfer: statusSnapshot || null,
       }])
       .select('*')
       .single();
@@ -136,7 +144,64 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, transfers: data || [] });
     }
 
-    return NextResponse.json({ error: 'Specify peers=1 or lead_id' }, { status: 400 });
+    if (searchParams.get('outgoing') === '1') {
+      const { supabaseAdmin } = getSupabaseAdmin();
+      const db: any = supabaseAdmin || supabase;
+      const roleCode = String((profile as any)?.roles?.role_code || '').toUpperCase();
+      const scopeId = String(searchParams.get('from_telecaller_id') || '').trim() || String(profile.id);
+
+      if (roleCode === 'TELECALLER' && scopeId !== String(profile.id)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+
+      let query = db
+        .from('telecaller_lead_transfers')
+        .select(
+          `id, created_at, transfer_type, lead_display_status_at_transfer, lead_status_at_transfer,
+          to:to_telecaller_id(full_name),
+          lead:lead_id(customer_name, status, coupon_meta, is_incomplete, telecaller_remarks)`,
+        )
+        .eq('from_telecaller_id', scopeId)
+        .in('transfer_type', ['TRANSFER', 'ESCALATE'])
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      const allTime = searchParams.get('all_time') === '1';
+      if (!allTime) {
+        const fromYmd = String(searchParams.get('from') || '').slice(0, 10);
+        const toYmd = String(searchParams.get('to') || '').slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(fromYmd)) {
+          query = query.gte('created_at', istDayBounds(fromYmd).start);
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(toYmd)) {
+          query = query.lte('created_at', istDayBounds(toYmd).end);
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+      const items = (data || []).map((row: any) => {
+        const lead = row.lead && typeof row.lead === 'object' ? row.lead : {};
+        const atTransfer =
+          String(row.lead_display_status_at_transfer || '').trim() ||
+          String(row.lead_status_at_transfer || '').trim() ||
+          '—';
+        const nowStatus = leadDisplayStatus(lead) || '—';
+        return {
+          id: row.id,
+          transferred_at: row.created_at,
+          customer_name: titleCasePersonName(lead.customer_name) || 'Unknown',
+          transferred_to: String(row.to?.full_name || '').trim() || '—',
+          status_at_transfer: atTransfer,
+          status_now: nowStatus,
+        };
+      });
+
+      return NextResponse.json({ success: true, items, count: items.length });
+    }
+
+    return NextResponse.json({ error: 'Specify peers=1, lead_id, or outgoing=1' }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Failed' }, { status: 500 });
   }

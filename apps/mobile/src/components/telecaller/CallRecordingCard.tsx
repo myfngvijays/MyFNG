@@ -16,6 +16,7 @@ import {
   pickRecordingFolder,
   checkRecordingFolder,
   NOT_PHONE_FOLDER_MESSAGE,
+  RECORDING_FOLDER_PICK_HINT,
   loadRecordingSyncHistory,
   queueManualRecordingSync,
   subscribeRecordingSyncHistory,
@@ -185,6 +186,10 @@ export default function CallRecordingCard() {
       setToast('Call recording sync sirf Android phone par chalta hai.');
       return;
     }
+    if (!folderCheck?.ok) {
+      setToast('Pehle Recording folder select karein (Internal storage → Recordings → Call).');
+      return;
+    }
     const label = windowLabel();
     const state = queueManualRecordingSync({ sinceMs: windowMs(), windowLabel: label });
     setToast(state === 'queued' ? `Ek sync chal raha hai — uske baad ${label} wala chalega.` : `Sync started (${label})`);
@@ -251,6 +256,7 @@ export default function CallRecordingCard() {
         </View>
         <View style={styles.suggestRow}>
           <Text style={styles.suggest}>Suggested folder: Internal storage / Recordings / Call</Text>
+          <Text style={styles.suggestHint}>{RECORDING_FOLDER_PICK_HINT}</Text>
         </View>
       </View>
 
@@ -264,9 +270,9 @@ export default function CallRecordingCard() {
             <Ionicons name="chevron-down" size={16} color="#64748B" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.syncBtn, (running || !IS_ANDROID) && styles.btnOff]}
+            style={[styles.syncBtn, (running || !IS_ANDROID || !folderCheck?.ok) && styles.btnOff]}
             onPress={runSync}
-            disabled={running || !IS_ANDROID}
+            disabled={running || !IS_ANDROID || !folderCheck?.ok}
           >
             {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncBtnText}>SYNC</Text>}
           </TouchableOpacity>
@@ -545,6 +551,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   suggest: { color: '#7C3AED', fontSize: 13, fontWeight: '600' },
+  suggestHint: { marginTop: 8, color: '#64748B', fontSize: 12, fontWeight: '600', lineHeight: 17 },
   syncBar: {
     backgroundColor: '#fff',
     borderRadius: 18,
