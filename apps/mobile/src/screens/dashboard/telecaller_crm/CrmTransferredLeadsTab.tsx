@@ -38,6 +38,7 @@ export default function CrmTransferredLeadsTab({ onOpenMenu }: { onOpenMenu?: ()
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<TransferredLeadRow[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>('all_time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -49,6 +50,7 @@ export default function CrmTransferredLeadsTab({ onOpenMenu }: { onOpenMenu?: ()
   );
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       const params = new URLSearchParams({ outgoing: '1' });
       if (range.allTime) {
@@ -57,12 +59,17 @@ export default function CrmTransferredLeadsTab({ onOpenMenu }: { onOpenMenu?: ()
         params.set('from', range.startYmd);
         params.set('to', range.endYmd);
       }
-      const data = await apiFetch<{ items?: TransferredLeadRow[] }>(
+      const data = await apiFetch<{ items?: TransferredLeadRow[]; error?: string }>(
         `/api/telecaller/crm/transfer?${params.toString()}`,
       );
+      if (data && typeof data === 'object' && 'error' in data && data.error && !data.items) {
+        throw new Error(String(data.error));
+      }
       setItems(Array.isArray(data?.items) ? data.items : []);
-    } catch {
+    } catch (e: unknown) {
       setItems([]);
+      const msg = e instanceof Error ? e.message : 'Load failed';
+      setLoadError(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -102,13 +109,24 @@ export default function CrmTransferredLeadsTab({ onOpenMenu }: { onOpenMenu?: ()
         <FlatList
           data={items}
           keyExtractor={(row) => row.id}
-          contentContainerStyle={{ paddingHorizontal: SPACING.md, paddingBottom: 24 + insets.bottom }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          style={styles.listCard}
+          contentContainerStyle={[
+            styles.listCardInner,
+            items.length === 0 && styles.listCardInnerEmpty,
+            { paddingBottom: 24 + insets.bottom },
+          ]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#047857" />}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="swap-horizontal-outline" size={40} color={COLORS.gray[300]} />
-              <Text style={styles.emptyTitle}>No transferred leads</Text>
-              <Text style={styles.emptySub}>Is date range mein koi transfer nahi mila.</Text>
+              <Ionicons name="swap-horizontal-outline" size={40} color="#6EE7B7" />
+              <Text style={styles.emptyTitle}>
+                {loadError ? 'Transfers load nahi ho paaye' : 'No transferred leads'}
+              </Text>
+              <Text style={styles.emptySub}>
+                {loadError
+                  ? loadError
+                  : 'Is date range mein koi transfer nahi mila — nayi transfer ke baad yahan dikhegi.'}
+              </Text>
             </View>
           }
           renderItem={({ item, index }) => (
@@ -133,7 +151,7 @@ export default function CrmTransferredLeadsTab({ onOpenMenu }: { onOpenMenu?: ()
                 <Ionicons name="arrow-forward" size={16} color="#94A3B8" style={{ marginTop: 14 }} />
                 <View style={styles.statusCol}>
                   <Text style={styles.statusLbl}>Now</Text>
-                  <Text style={[styles.statusVal, { color: '#1D4ED8' }]}>{item.status_now || '—'}</Text>
+                  <Text style={[styles.statusVal, { color: '#047857' }]}>{item.status_now || '—'}</Text>
                 </View>
               </View>
             </View>
@@ -210,34 +228,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#D1FAE5',
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#A7F3D0',
   },
   dateChipText: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  countText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  countText: { fontSize: 12, fontWeight: '700', color: '#047857' },
+  listCard: {
+    flex: 1,
+    marginHorizontal: SPACING.md,
+    marginTop: 10,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    overflow: 'hidden',
+  },
+  listCardInner: { paddingHorizontal: 12, paddingTop: 8 },
+  listCardInnerEmpty: { flexGrow: 1, justifyContent: 'center' },
   empty: { alignItems: 'center', paddingVertical: 48, gap: 8 },
-  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#334155' },
-  emptySub: { fontSize: 13, color: '#64748B', textAlign: 'center', paddingHorizontal: 24 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#065F46' },
+  emptySub: { fontSize: 13, color: '#047857', textAlign: 'center', paddingHorizontal: 24 },
   card: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 14,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  cardDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
-  cardLast: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
   },
+  cardDivider: {},
+  cardLast: { marginBottom: 4 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   name: { flex: 1, fontSize: 16, fontWeight: '800', color: '#0F172A' },
   date: { fontSize: 11, fontWeight: '600', color: '#64748B' },

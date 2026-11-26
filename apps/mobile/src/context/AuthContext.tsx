@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { User } from '@supabase/supabase-js';
 import { getSupabaseAccessToken, rememberAccessToken, supabase, withTimeout, clearAccessToken } from '../lib/supabase';
 import {
@@ -59,11 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Register mobile FCM token after login and keep the single active device in sync.
   useEffect(() => {
     if (!user?.id) return;
-    void registerAndSyncFcmPushToken(user.id).catch(() => null);
-    const unsubscribe = subscribeToFcmTokenRefresh(() => {
-      void registerAndSyncFcmPushToken(user.id).catch(() => null);
+    const sync = () => void registerAndSyncFcmPushToken(user.id).catch(() => null);
+    sync();
+    const unsubscribe = subscribeToFcmTokenRefresh(() => sync());
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') sync();
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      sub.remove();
+    };
   }, [user?.id]);
 
   useEffect(() => {

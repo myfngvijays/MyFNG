@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -10,7 +10,6 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  Clock,
   Phone,
   UserCheck,
   Shield,
@@ -48,6 +47,7 @@ import {
 } from 'recharts';
 import DailyBlogScheduleCard from '@/components/blog/DailyBlogScheduleCard';
 import BookingConfirmedTodayCard from '@/components/crm/BookingConfirmedTodayCard';
+import { crmDisplayLabelToFilterId } from '@/lib/telecaller/leadDisplayStatus';
 
 const CHART_COLORS = ['#004AAD', '#0066FF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -287,11 +287,33 @@ export default function SuperAdminDashboard() {
   const [topWorkshops, setTopWorkshops] = useState<{ id: string; name: string; leads: number }[]>([]);
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
+  const [telecallerLeadOps, setTelecallerLeadOps] = useState({
+    totalCreated: 0,
+    assignedCount: 0,
+    unassignedCount: 0,
+    byAssignee: [] as { telecaller_id: string; name: string; count: number }[],
+    byCrmStatus: [] as { name: string; count: number }[],
+    byLeadSource: [] as { name: string; count: number }[],
+    assigneeSlices: {} as Record<
+      string,
+      {
+        count: number;
+        byCrmStatus: { name: string; count: number }[];
+        byLeadSource: { name: string; count: number }[];
+      }
+    >,
+    unassignedKey: '__unassigned__',
+    sampleTruncated: false,
+  });
+  const [selectedTelecallerAssignee, setSelectedTelecallerAssignee] = useState<string | null>(null);
 
   const openBookingsLeads = useCallback(
     (opts: {
       sourceLabel?: string;
       status?: string;
+      leadStatus?: string;
+      crmStatusLabel?: string;
+      assigneeName?: string;
       leadType?: string;
       startYmd?: string;
       endYmd?: string;
@@ -315,11 +337,60 @@ export default function SuperAdminDashboard() {
       }
       if (opts.sourceLabel) params.set('source_label', opts.sourceLabel);
       if (opts.status) params.set('status', opts.status);
+      if (opts.leadStatus) params.set('lead_status', opts.leadStatus);
+      if (opts.crmStatusLabel) params.set('crm_status_label', opts.crmStatusLabel);
+      if (opts.assigneeName) params.set('assignee', opts.assigneeName);
       if (opts.leadType) params.set('lead_type', opts.leadType);
       if (opts.search) params.set('search', opts.search);
       router.push(`/dashboard/super_admin/bookings?${params.toString()}`);
     },
     [router, period, customStart, customEnd]
+  );
+
+  const telecallerOpsView = useMemo(() => {
+    const unKey = telecallerLeadOps.unassignedKey || '__unassigned__';
+    if (!selectedTelecallerAssignee) {
+      return {
+        label: 'All assignees',
+        total: telecallerLeadOps.totalCreated,
+        byCrmStatus: telecallerLeadOps.byCrmStatus,
+        byLeadSource: telecallerLeadOps.byLeadSource,
+      };
+    }
+    const slice = telecallerLeadOps.assigneeSlices[selectedTelecallerAssignee];
+    const label =
+      selectedTelecallerAssignee === unKey
+        ? 'Unassigned'
+        : telecallerLeadOps.byAssignee.find((a) => a.telecaller_id === selectedTelecallerAssignee)?.name ||
+          'Assignee';
+    return {
+      label,
+      total: slice?.count || 0,
+      byCrmStatus: slice?.byCrmStatus || [],
+      byLeadSource: slice?.byLeadSource || [],
+    };
+  }, [selectedTelecallerAssignee, telecallerLeadOps]);
+
+  const resolveBookingsAssignee = useCallback((): string | undefined => {
+    if (!selectedTelecallerAssignee) return undefined;
+    const unKey = telecallerLeadOps.unassignedKey || '__unassigned__';
+    if (selectedTelecallerAssignee === unKey) return 'UNASSIGNED';
+    const row = telecallerLeadOps.byAssignee.find((a) => a.telecaller_id === selectedTelecallerAssignee);
+    return row?.name || telecallerOpsView.label;
+  }, [selectedTelecallerAssignee, telecallerLeadOps, telecallerOpsView.label]);
+
+  const openCrmStatusLeads = useCallback(
+    (crmLabel: string) => {
+      const assigneeName = resolveBookingsAssignee();
+      const id = crmDisplayLabelToFilterId(crmLabel);
+      const label = String(crmLabel || '').trim();
+      openBookingsLeads({
+        assigneeName,
+        crmStatusLabel: label,
+        ...(id ? { leadStatus: id } : { search: label }),
+      });
+    },
+    [openBookingsLeads, resolveBookingsAssignee],
   );
 
   useEffect(() => {
@@ -367,6 +438,20 @@ export default function SuperAdminDashboard() {
       setTopWorkshops(Array.isArray(json?.topWorkshops) ? json.topWorkshops : []);
       setRecentLeads(Array.isArray(json?.recentLeads) ? json.recentLeads : []);
       setAlerts(Array.isArray(json?.alerts) ? json.alerts : []);
+      const ops = json?.telecallerLeadOps || {};
+      setSelectedTelecallerAssignee(null);
+      setTelecallerLeadOps({
+        totalCreated: Number(ops.totalCreated || 0),
+        assignedCount: Number(ops.assignedCount || 0),
+        unassignedCount: Number(ops.unassignedCount || 0),
+        byAssignee: Array.isArray(ops.byAssignee) ? ops.byAssignee : [],
+        byCrmStatus: Array.isArray(ops.byCrmStatus) ? ops.byCrmStatus : [],
+        byLeadSource: Array.isArray(ops.byLeadSource) ? ops.byLeadSource : [],
+        assigneeSlices:
+          ops.assigneeSlices && typeof ops.assigneeSlices === 'object' ? ops.assigneeSlices : {},
+        unassignedKey: String(ops.unassignedKey || '__unassigned__'),
+        sampleTruncated: Boolean(ops.sampleTruncated),
+      });
     } catch (err: any) {
       console.warn('Dashboard fetch failed:', err?.message || err);
       setError(err?.message || 'Failed to load dashboard');
@@ -384,7 +469,6 @@ export default function SuperAdminDashboard() {
     lines.push(['Key Metrics', 'Accepted (pipeline)', String(globalMetrics.acceptedLeads)].join(','));
     lines.push(['Key Metrics', 'Rejected', String(globalMetrics.rejectedLeads)].join(','));
     lines.push(['Key Metrics', 'Conversion %', String(globalMetrics.conversionRate)].join(','));
-    lines.push(['Key Metrics', 'SLA Breaches (open)', String(globalMetrics.slaBreaches)].join(','));
     lines.push(['Key Metrics', 'Period Revenue', String(globalMetrics.dailyRevenue)].join(','));
     lines.push(['Key Metrics', 'This Month Revenue', String(globalMetrics.monthlyRevenue)].join(','));
     lines.push(['Key Metrics', 'Workshops (verified)', String(globalMetrics.activeWorkshops)].join(','));
@@ -395,6 +479,15 @@ export default function SuperAdminDashboard() {
     lines.push(['Key Metrics', 'Avg Rating', String(globalMetrics.avgRating)].join(','));
     for (const row of charts.leadSourceBreakdown) {
       lines.push(['Lead Source', `"${row.name}"`, String(row.value)].join(','));
+    }
+    lines.push(['Telecaller ops', 'Received', String(telecallerLeadOps.totalCreated)].join(','));
+    lines.push(['Telecaller ops', 'Assigned', String(telecallerLeadOps.assignedCount)].join(','));
+    lines.push(['Telecaller ops', 'Unassigned', String(telecallerLeadOps.unassignedCount)].join(','));
+    for (const row of telecallerLeadOps.byAssignee) {
+      lines.push(['Assignee', `"${row.name}"`, String(row.count)].join(','));
+    }
+    for (const row of telecallerLeadOps.byCrmStatus) {
+      lines.push(['CRM Status', `"${row.name}"`, String(row.count)].join(','));
     }
     for (const row of topWorkshops) {
       lines.push(['Top Workshop', `"${row.name}"`, String(row.leads)].join(','));
@@ -565,19 +658,21 @@ export default function SuperAdminDashboard() {
         </div>
 
         {/* Alerts */}
-        {alerts.length > 0 && (
-          <div className="space-y-2">
-            {alerts.map((alert) => {
+        {alerts.filter((a) => a.id !== 'sla').length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {alerts
+              .filter((a) => a.id !== 'sla')
+              .map((alert) => {
               const styles = alertStyles(alert.type);
               return (
                 <div
                   key={alert.id}
-                  className={`${styles.bg} border ${styles.border} rounded-xl p-4 flex items-start gap-3`}
+                  className={`${styles.bg} border ${styles.border} rounded-lg px-3 py-2 flex items-center gap-2`}
                 >
-                  <AlertCircle className={`w-5 h-5 ${styles.color} mt-0.5 flex-shrink-0`} />
+                  <AlertCircle className={`w-4 h-4 ${styles.color} flex-shrink-0`} />
                   <div className="flex-1 min-w-0">
-                    <h3 className={`font-semibold ${styles.color}`}>{alert.title}</h3>
-                    <p className="text-sm text-gray-600 mt-0.5">{alert.message}</p>
+                    <h3 className={`text-sm font-semibold ${styles.color}`}>{alert.title}</h3>
+                    <p className="text-xs text-gray-600 truncate">{alert.message}</p>
                   </div>
                   {alert.href ? (
                     <Link
@@ -598,11 +693,11 @@ export default function SuperAdminDashboard() {
           <h2 className="text-lg font-bold text-gray-900 mb-1">
             Key Metrics — <span className="text-blue-600">{periodLabel}</span>
           </h2>
-          <p className="text-xs text-gray-500 mb-3">
-            Leads / Accepted / Rejected / New customers follow the selected period. Workshops, total customers,
-            complaints, SLA &amp; RSA Active are live snapshots.
+          <p className="text-xs text-gray-500 mb-2">
+            Leads / Accepted / Rejected / New customers follow the selected period. Workshops &amp; complaints are live
+            snapshots.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
             <MetricCard
               icon={<Phone className="w-5 h-5" />}
               label={`Leads (${periodLabel})`}
@@ -630,13 +725,6 @@ export default function SuperAdminDashboard() {
               value={`${globalMetrics.conversionRate}%`}
               iconBg="bg-emerald-100"
               iconColor="text-emerald-600"
-            />
-            <MetricCard
-              icon={<Clock className="w-5 h-5" />}
-              label="SLA Breach (open)"
-              value={globalMetrics.slaBreaches}
-              iconBg="bg-orange-100"
-              iconColor="text-orange-600"
             />
             <MetricCard
               icon={<Store className="w-5 h-5" />}
@@ -674,6 +762,202 @@ export default function SuperAdminDashboard() {
           viewAllHref="/dashboard/super_admin/booking-confirmed"
           leadHref={(row) => `/dashboard/super_admin/bookings?lead=${encodeURIComponent(row.lead_number || row.id)}`}
         />
+
+        <div className="rounded-xl shadow-sm border border-slate-300 bg-slate-100 p-4 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-blue-600" />
+                Telecaller — leads &amp; assignment
+                <span className="text-sm font-semibold text-blue-600">({periodLabel})</span>
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Assignee bar par click karo — CRM status (right) aur lead source (neeche full width) dono filter honge.
+              </p>
+              {telecallerLeadOps.sampleTruncated ? (
+                <p className="text-xs text-amber-600 mt-1">
+                  Large range — counts capped at sample limit; use shorter period for exact totals.
+                </p>
+              ) : null}
+            </div>
+            <Link
+              href="/dashboard/super_admin/telecaller-distribution"
+              className="text-xs font-semibold text-blue-600 inline-flex items-center gap-1"
+            >
+              Distribution <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTelecallerAssignee(null);
+                openBookingsLeads();
+              }}
+              className={`rounded-lg border border-blue-100 bg-blue-50/80 px-3 py-2 text-left hover:bg-blue-50 ${
+                !selectedTelecallerAssignee ? 'ring-2 ring-blue-400' : ''
+              }`}
+            >
+              <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Leads received</p>
+              <p className="text-2xl font-extrabold text-[#023D95] leading-tight">{telecallerLeadOps.totalCreated}</p>
+            </button>
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Assigned</p>
+              <p className="text-2xl font-extrabold text-emerald-800 leading-tight">{telecallerLeadOps.assignedCount}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedTelecallerAssignee(
+                  telecallerLeadOps.unassignedCount > 0 ? telecallerLeadOps.unassignedKey : null,
+                )
+              }
+              className={`rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2 text-left hover:bg-amber-50/90 ${
+                selectedTelecallerAssignee === telecallerLeadOps.unassignedKey ? 'ring-2 ring-amber-500' : ''
+              }`}
+            >
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Unassigned</p>
+              <p className="text-2xl font-extrabold text-amber-900 leading-tight">{telecallerLeadOps.unassignedCount}</p>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-gray-900 mb-1">Assigned to (count)</h3>
+              <p className="text-xs text-gray-500 mb-2">Bar click → filter CRM status on the right</p>
+              {telecallerLeadOps.byAssignee.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">No assigned leads in this period</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(180, telecallerLeadOps.byAssignee.length * 32)}>
+                  <BarChart
+                    layout="vertical"
+                    data={telecallerLeadOps.byAssignee}
+                    margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" horizontal={false} />
+                    <XAxis type="number" fontSize={11} tick={{ fill: '#6B7280' }} allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={108}
+                      fontSize={10}
+                      tick={{ fill: '#374151' }}
+                    />
+                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                    <Bar
+                      dataKey="count"
+                      name="Leads"
+                      radius={[0, 4, 4, 0]}
+                      cursor="pointer"
+                      onClick={(entry: { payload?: { telecaller_id?: string } }) => {
+                        const id = String(entry?.payload?.telecaller_id || '').trim();
+                        if (id) setSelectedTelecallerAssignee(id);
+                      }}
+                    >
+                      {telecallerLeadOps.byAssignee.map((row) => (
+                        <Cell
+                          key={row.telecaller_id}
+                          fill={
+                            selectedTelecallerAssignee === row.telecaller_id ? '#0066FF' : '#004AAD'
+                          }
+                          fillOpacity={
+                            selectedTelecallerAssignee &&
+                            selectedTelecallerAssignee !== row.telecaller_id
+                              ? 0.35
+                              : 1
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            <div className="min-w-0 lg:border-l lg:border-slate-300/80 lg:pl-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <span className="text-sm font-bold text-gray-900">
+                  CRM status — <span className="text-blue-600">{telecallerOpsView.label}</span>
+                  <span className="text-gray-500 font-semibold"> ({telecallerOpsView.total} leads)</span>
+                </span>
+                {selectedTelecallerAssignee ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTelecallerAssignee(null)}
+                    className="text-xs font-bold text-blue-600 hover:underline"
+                  >
+                    Show all
+                  </button>
+                ) : null}
+              </div>
+
+              {telecallerOpsView.byCrmStatus.length === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center">No leads</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {telecallerOpsView.byCrmStatus.map((row, i) => {
+                    const total = telecallerOpsView.total || 1;
+                    const pct = Math.round(((row.count || 0) / total) * 100);
+                    return (
+                      <button
+                        key={`st-${row.name}`}
+                        type="button"
+                        onClick={() => openCrmStatusLeads(row.name)}
+                        className="flex w-full items-center gap-3 rounded-lg px-0.5 py-0.5 text-left hover:bg-white/80"
+                        title="Open leads with this CRM status"
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-sm font-medium text-gray-800">{row.name}</span>
+                            <span className="text-xs text-gray-500 shrink-0 tabular-nums">
+                              {row.count} · {pct}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.max(pct, 2)}%`,
+                                backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-slate-300/80 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                Lead source —{' '}
+                <span className="text-blue-600 normal-case">{telecallerOpsView.label}</span>
+                <span className="text-gray-500 font-semibold normal-case"> ({telecallerOpsView.total} leads)</span>
+              </h3>
+              <span className="text-[10px] text-gray-500">{periodLabel} · click chip → bookings</span>
+            </div>
+            <OpsMetricChipGrid
+              rows={telecallerOpsView.byLeadSource}
+              total={telecallerOpsView.total}
+              colorOffset={3}
+              onRowClick={(name) =>
+                openBookingsLeads({
+                  sourceLabel: name,
+                  assigneeName: resolveBookingsAssignee(),
+                })
+              }
+            />
+          </div>
+        </div>
 
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -815,7 +1099,12 @@ export default function SuperAdminDashboard() {
                     <button
                       key={row.name}
                       type="button"
-                      onClick={() => openBookingsLeads({ sourceLabel: String(row.name || '') })}
+                      onClick={() =>
+                        openBookingsLeads({
+                          sourceLabel: String(row.name || ''),
+                          assigneeName: resolveBookingsAssignee(),
+                        })
+                      }
                       className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left hover:bg-blue-50/80"
                     >
                       <span
@@ -1089,17 +1378,61 @@ export default function SuperAdminDashboard() {
   );
 }
 
+function OpsMetricChipGrid({
+  rows,
+  total,
+  colorOffset = 0,
+  onRowClick,
+}: {
+  rows: Array<{ name: string; count: number }>;
+  total: number;
+  colorOffset?: number;
+  onRowClick: (name: string) => void;
+}) {
+  if (!rows.length) {
+    return <p className="text-xs text-gray-500 py-2 text-center">No data</p>;
+  }
+  const denom = total || 1;
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-2 w-full">
+      {rows.map((row, i) => {
+        const pct = Math.round(((row.count || 0) / denom) * 100);
+        const color = CHART_COLORS[(i + colorOffset) % CHART_COLORS.length];
+        return (
+          <button
+            key={`chip-${row.name}`}
+            type="button"
+            onClick={() => onRowClick(row.name)}
+            className="grid w-full grid-cols-[0.625rem_minmax(0,1fr)_auto_auto] items-center gap-x-2 rounded-md py-1 px-0.5 text-left hover:bg-white/80"
+            title={`${row.name} · ${row.count} · ${pct}%`}
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full justify-self-center"
+              style={{ backgroundColor: color }}
+            />
+            <span className="min-w-0 truncate text-[11px] font-medium text-gray-700">{row.name}</span>
+            <span className="text-sm font-extrabold text-gray-900 tabular-nums">{row.count}</span>
+            <span className="text-[10px] font-bold text-violet-800 bg-violet-100 px-1.5 py-0.5 rounded tabular-nums shrink-0">
+              {pct}%
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function MetricCard({ icon, label, value, sublabel, iconBg, iconColor }: any) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg ${iconBg} ${iconColor} flex items-center justify-center flex-shrink-0`}>
+    <div className="bg-white rounded-lg border border-gray-100 shadow-sm p-2.5 hover:shadow-md transition-shadow">
+      <div className="flex items-center gap-2">
+        <div className={`w-8 h-8 rounded-md ${iconBg} ${iconColor} flex items-center justify-center flex-shrink-0`}>
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xl font-bold text-gray-900 truncate">{value}</p>
-          <p className="text-xs text-gray-500 truncate">{label}</p>
-          {sublabel ? <p className="text-[10px] text-gray-400 truncate">{sublabel}</p> : null}
+          <p className="text-lg font-bold text-gray-900 truncate leading-tight">{value}</p>
+          <p className="text-[10px] text-gray-500 truncate leading-tight">{label}</p>
+          {sublabel ? <p className="text-[9px] text-gray-400 truncate">{sublabel}</p> : null}
         </div>
       </div>
     </div>

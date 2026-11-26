@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveBookingSource } from '@/lib/booking-lead-utils';
+import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -386,6 +387,129 @@ async function fetchLeadsForCharts(db: any, cfg: PeriodConfig, chartStartIso: st
   return rows;
 }
 
+/** Leads created in the selected period — assignee + CRM-style status counts. */
+async function fetchTelecallerLeadOps(db: any, cfg: PeriodConfig) {
+  const pageSize = 1000;
+  const maxPages = 30;
+  const rows: any[] = [];
+
+  for (let page = 0; page < maxPages; page++) {
+    let q = applyPeriodFilter(
+      db
+        .from('service_leads')
+        .select(
+          'id, assigned_telecaller_id, status, is_incomplete, coupon_meta, deleted_at, lead_source, created_from, lead_type',
+        )
+        .is('deleted_at', null),
+      'created_at',
+      cfg,
+    )
+      .order('created_at', { ascending: false })
+      .range(page * pageSize, page * pageSize + pageSize - 1);
+
+    const { data, error } = await q;
+    if (error) break;
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+
+  const UNASSIGNED_KEY = '__unassigned__';
+
+  type Slice = { status: Map<string, number>; source: Map<string, number>; count: number };
+  const sliceFor = (map: Map<string, Slice>, key: string): Slice => {
+    let s = map.get(key);
+    if (!s) {
+      s = { status: new Map(), source: new Map(), count: 0 };
+      map.set(key, s);
+    }
+    return s;
+  };
+
+  const assigneeMap = new Map<string, number>();
+  let unassigned = 0;
+  const statusMap = new Map<string, number>();
+  const sourceMap = new Map<string, number>();
+  const slices = new Map<string, Slice>();
+
+  for (const row of rows) {
+    const assigneeId = row?.assigned_telecaller_id ? String(row.assigned_telecaller_id) : '';
+    const sliceKey = assigneeId || UNASSIGNED_KEY;
+    if (!assigneeId) unassigned += 1;
+    else assigneeMap.set(assigneeId, (assigneeMap.get(assigneeId) || 0) + 1);
+
+    const crmLabel = leadDisplayStatus(row) || 'Unknown';
+    statusMap.set(crmLabel, (statusMap.get(crmLabel) || 0) + 1);
+
+    const sourceLabel =
+      resolveBookingSource(row as Record<string, any>).booking_source_label || 'Other';
+    sourceMap.set(sourceLabel, (sourceMap.get(sourceLabel) || 0) + 1);
+
+    const slice = sliceFor(slices, sliceKey);
+    slice.count += 1;
+    slice.status.set(crmLabel, (slice.status.get(crmLabel) || 0) + 1);
+    slice.source.set(sourceLabel, (slice.source.get(sourceLabel) || 0) + 1);
+  }
+
+  const mapToRows = (m: Map<string, number>) =>
+    [...m.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+  const assigneeSlices: Record<
+    string,
+    { byCrmStatus: { name: string; count: number }[]; byLeadSource: { name: string; count: number }[]; count: number }
+  > = {};
+  for (const [key, slice] of slices.entries()) {
+    assigneeSlices[key] = {
+      count: slice.count,
+      byCrmStatus: mapToRows(slice.status),
+      byLeadSource: mapToRows(slice.source),
+    };
+  }
+
+  const assigneeIds = [...assigneeMap.keys()];
+  const nameById = new Map<string, string>();
+  if (assigneeIds.length) {
+    const { data: users } = await db
+      .from('users_login')
+      .select('id, full_name, email')
+      .in('id', assigneeIds.slice(0, 200));
+    for (const u of users || []) {
+      const id = String(u?.id || '');
+      const name = String(u?.full_name || u?.email || 'Telecaller').trim();
+      if (id) nameById.set(id, name);
+    }
+  }
+
+  const byAssignee = [...assigneeMap.entries()]
+    .map(([telecaller_id, count]) => ({
+      telecaller_id,
+      name: nameById.get(telecaller_id) || 'Telecaller',
+      count,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+
+  const byCrmStatus = mapToRows(statusMap);
+  const byLeadSource = mapToRows(sourceMap);
+
+  const totalCreated = rows.length;
+  const assignedCount = totalCreated - unassigned;
+
+  return {
+    totalCreated,
+    assignedCount,
+    unassignedCount: unassigned,
+    byAssignee,
+    byCrmStatus,
+    byLeadSource,
+    assigneeSlices,
+    unassignedKey: UNASSIGNED_KEY,
+    sampleTruncated: rows.length >= pageSize * maxPages,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClientFromRequest(request);
@@ -432,7 +556,11 @@ export async function GET(request: NextRequest) {
       fraudOpen,
     ] = await Promise.all([
       safeCount(
-        applyPeriodFilter(db.from('service_leads').select('id', { count: 'exact', head: true }), 'created_at', periodCfg)
+        applyPeriodFilter(
+          db.from('service_leads').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+          'created_at',
+          periodCfg,
+        ),
       ),
       safeCount(
         applyPeriodFilter(
@@ -739,7 +867,10 @@ export async function GET(request: NextRequest) {
     // --------------------
     // Charts + tables (paginated sample)
     // --------------------
-    const leadsSample = await fetchLeadsForCharts(db, periodCfg, chartStartIso);
+    const [leadsSample, telecallerLeadOps] = await Promise.all([
+      fetchLeadsForCharts(db, periodCfg, chartStartIso),
+      fetchTelecallerLeadOps(db, periodCfg),
+    ]);
 
     const dailyLeadsTrend = chartBuckets.map((bucket) => {
       const dayLeads = leadsSample.filter((l: any) => {
@@ -988,6 +1119,7 @@ export async function GET(request: NextRequest) {
         membershipPlanDistribution,
         leadStatusDistribution,
       },
+      telecallerLeadOps,
       topWorkshops,
       recentLeads,
       alerts,

@@ -107,17 +107,30 @@ export async function requestOsNotificationPermission(): Promise<boolean> {
   return true;
 }
 
-function resolveDeviceName(): string {
-  if (Platform.OS === 'ios') {
-    return isIosSimulator() ? 'iOS Simulator' : 'iOS';
+function resolveAppPackageId(): string | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Application = require('expo-application') as { applicationId?: string | null };
+    const id = String(Application.applicationId || '').trim();
+    return id || null;
+  } catch {
+    return null;
   }
-  if (Platform.OS === 'android') {
+}
+
+function resolveDeviceName(): string {
+  let label = Platform.OS;
+  if (Platform.OS === 'ios') {
+    label = isIosSimulator() ? 'iOS Simulator' : 'iOS';
+  } else if (Platform.OS === 'android') {
     const brand = String((Platform.constants as { Brand?: string } | undefined)?.Brand || '').trim();
     const model = String((Platform.constants as { Model?: string } | undefined)?.Model || '').trim();
-    if (isAndroidEmulator()) return 'Android Emulator';
-    return [brand, model].filter(Boolean).join(' ') || 'Android';
+    if (isAndroidEmulator()) label = 'Android Emulator';
+    else label = [brand, model].filter(Boolean).join(' ') || 'Android';
   }
-  return Platform.OS;
+  const pkg = resolveAppPackageId();
+  if (pkg) return `${label} | app=${pkg}`;
+  return label;
 }
 
 async function resolveDeviceId(): Promise<string | null> {
@@ -218,6 +231,7 @@ async function persistStaffFcmToken(
         platform: PUSH_PLATFORM,
         device_name: deviceName,
         device_id: deviceId,
+        app_package: resolveAppPackageId(),
       }),
     });
     trackEvent('push_token_registered', { method: 'staff_api' });
@@ -437,6 +451,16 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
         customerName: String(data.customer_name || ''),
         direction: String(data.direction || ''),
         sessionId: String(data.session_id || ''),
+      });
+      return;
+    }
+    const pushType = String(data.type || '');
+    if (pushType === 'LEAD_ASSIGNED' && data.lead_id) {
+      const { emitNewLeadPopup } = require('../components/telecaller/NewLeadPopup');
+      emitNewLeadPopup({
+        leadId: String(data.lead_id),
+        name: String(data.customer_name || 'New lead'),
+        phone: data.customer_phone ? String(data.customer_phone) : null,
       });
       return;
     }

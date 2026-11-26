@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
+import { appendAppPackageToDeviceName } from '@/lib/push/partnerDevice';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,8 +13,8 @@ function isFcmToken(token: string): boolean {
   return !/\s/.test(value);
 }
 
-async function requireStaffUser() {
-  const supabase = await createClient();
+async function requireStaffUser(request: NextRequest) {
+  const supabase = await createClientFromRequest(request);
   const {
     data: { user },
     error,
@@ -47,7 +48,7 @@ async function requireStaffUser() {
 }
 
 export async function POST(request: NextRequest) {
-  const ctx = await requireStaffUser();
+  const ctx = await requireStaffUser(request);
   if ('response' in ctx) return ctx.response;
 
   const { userId, supabaseAdmin } = ctx;
@@ -63,7 +64,13 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date().toISOString();
-  const deviceName = body?.device_name ? String(body.device_name).slice(0, 120) : null;
+  const deviceNameRaw = body?.device_name ? String(body.device_name).slice(0, 120) : null;
+  const appPackage = body?.app_package ? String(body.app_package).trim() : null;
+  const deviceName = deviceNameRaw
+    ? appendAppPackageToDeviceName(deviceNameRaw, appPackage).slice(0, 120)
+    : appPackage
+      ? appendAppPackageToDeviceName('Mobile', appPackage).slice(0, 120)
+      : null;
   const deviceId = body?.device_id ? String(body.device_id).slice(0, 120) : null;
 
   await supabaseAdmin
@@ -121,8 +128,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true, registered: true, platform });
 }
 
-export async function DELETE() {
-  const ctx = await requireStaffUser();
+export async function DELETE(request: NextRequest) {
+  const ctx = await requireStaffUser(request);
   if ('response' in ctx) return ctx.response;
 
   const { userId, supabaseAdmin } = ctx;

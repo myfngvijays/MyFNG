@@ -1800,6 +1800,8 @@ function SuperAdminBookingsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [leadStatusFilter, setLeadStatusFilter] = useState<CrmLeadStatusFilter>('ALL');
+  /** Exact CRM list label from super-admin dashboard (matches leadDisplayStatus). */
+  const [crmStatusLabelFilter, setCrmStatusLabelFilter] = useState('');
   const [crmStatusOptions, setCrmStatusOptions] = useState(
     ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({ id: opt.id, label: opt.label })),
   );
@@ -2272,7 +2274,10 @@ function SuperAdminBookingsPage() {
     if (statusFilter !== 'ALL') {
       leads = leads.filter((lead) => String(lead.status || 'NEW').toUpperCase() === statusFilter);
     }
-    if (leadStatusFilter !== 'ALL') {
+    if (crmStatusLabelFilter.trim()) {
+      const want = crmStatusLabelFilter.trim().toLowerCase();
+      leads = leads.filter((lead) => leadDisplayStatus(lead).toLowerCase() === want);
+    } else if (leadStatusFilter !== 'ALL') {
       leads = leads.filter((lead) => resolveAdminCrmStatusId(lead) === leadStatusFilter);
     }
     if (leadTypeFilter) {
@@ -2338,6 +2343,7 @@ function SuperAdminBookingsPage() {
     searchTerm,
     statusFilter,
     leadStatusFilter,
+    crmStatusLabelFilter,
     leadTypeFilter,
     assigneeFilter,
     messageTriggerFilter,
@@ -2441,7 +2447,7 @@ function SuperAdminBookingsPage() {
   // Reset to first page whenever filters / search change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [sourceFilter, couponFilter, statusFilter, leadStatusFilter, assigneeFilter, messageTriggerFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter, tagIds, listSort]);
+  }, [sourceFilter, couponFilter, statusFilter, leadStatusFilter, crmStatusLabelFilter, assigneeFilter, messageTriggerFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter, tagIds, listSort]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -2502,6 +2508,7 @@ function SuperAdminBookingsPage() {
     couponFilter !== 'ALL' ||
     statusFilter !== 'ALL' ||
     leadStatusFilter !== 'ALL' ||
+    Boolean(crmStatusLabelFilter.trim()) ||
     recordingFilter !== 'ALL' ||
     assigneeFilter.length > 0 ||
     messageTriggerFilter.length > 0 ||
@@ -2763,6 +2770,12 @@ function SuperAdminBookingsPage() {
     if ((STATUS_OPTIONS as readonly string[]).includes(status)) {
       setStatusFilter(status as (typeof STATUS_OPTIONS)[number]);
     }
+
+    const crmLabel = String(searchParams.get('crm_status_label') || '').trim();
+    if (crmLabel) setCrmStatusLabelFilter(crmLabel);
+
+    const assignee = String(searchParams.get('assignee') || '').trim();
+    if (assignee) setAssigneeFilter([assignee]);
 
     const leadStatus = String(searchParams.get('lead_status') || '')
       .trim()
@@ -3749,7 +3762,10 @@ function SuperAdminBookingsPage() {
                     <FilterSelect
                       label="Lead status"
                       value={leadStatusFilter}
-                      onChange={(v) => setLeadStatusFilter(v as CrmLeadStatusFilter)}
+                      onChange={(v) => {
+                        setCrmStatusLabelFilter('');
+                        setLeadStatusFilter(v as CrmLeadStatusFilter);
+                      }}
                       className="min-w-[160px]"
                     >
                       <option value="ALL">All lead statuses</option>

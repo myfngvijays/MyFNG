@@ -323,6 +323,31 @@ export const ADMIN_CRM_STATUS_OPTIONS = [
 
 export type AdminCrmStatusId = (typeof ADMIN_CRM_STATUS_OPTIONS)[number]['id'];
 
+/** Map dashboard / list label → `lead_status` query on admin bookings. */
+export function crmDisplayLabelToFilterId(label: string): string | null {
+  const t = String(label || '').trim();
+  if (!t) return null;
+  const lower = t.toLowerCase();
+  const exact = ADMIN_CRM_STATUS_OPTIONS.find((o) => o.label.toLowerCase() === lower);
+  if (exact) return exact.id;
+  if (lower === 'fresh' || lower === 'new') return 'FRESH';
+  if (lower.includes('ringing')) return 'RINGING';
+  if (lower.includes('interested')) return 'INTERESTED';
+  if (lower.includes('will visit') || lower.includes('visit')) return 'WILL_VISIT';
+  if (lower.includes('follow-up') || lower.includes('follow up') || lower.includes('callback')) return 'CALLBACK';
+  if (lower.includes('booking')) return 'BOOKING_CONFIRMED';
+  if (lower.includes('in service')) return 'IN_SERVICE';
+  if (lower.includes('service done') || lower === 'completed') return 'SERVICE_DONE';
+  if (lower.startsWith('lost') || lower.includes('not interested')) return 'LOST';
+  if (lower.startsWith('other')) return 'OTHER';
+  const code = t
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+  if (/^[A-Z][A-Z0-9_]{1,39}$/.test(code)) return code;
+  return null;
+}
+
 export type CrmStatusChoice = { id: string; label: string };
 
 /** Built-in labels stay. Extra rows from Lead Status (Attempted Contact, etc.) are appended. */

@@ -29,6 +29,7 @@ import {
   Crown,
 } from 'lucide-react';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
+import { isTransferAuditNoteText } from '@/lib/telecaller/leadRemarkFields';
 import {
   emptySecondCar,
   parseSecondCar,
@@ -1255,7 +1256,10 @@ export default function CrmLeadEditForm({
           ? String(meta.address_type)
           : 'home') as 'home' | 'work' | 'other',
 
-        notes: leadData.notes || '',
+        notes: (() => {
+          const n = String(leadData.notes || '').trim();
+          return isTransferAuditNoteText(n) ? '' : n;
+        })(),
         lead_priority: leadData.lead_priority || 'NORMAL',
         activity_result: (() => {
           const raw = String(leadData?.coupon_meta?.last_call_result || '').toUpperCase().trim();
@@ -1270,7 +1274,11 @@ export default function CrmLeadEditForm({
         })(),
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
         other_reason: String(leadData?.coupon_meta?.last_other_reason || ''),
-        activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
+        activity_notes: String(
+          leadData?.coupon_meta?.telecaller_remarks ||
+            (isTransferAuditNoteText(String(leadData?.notes || '')) ? '' : leadData?.notes) ||
+            '',
+        ).trim(),
         repeat_customer: (() => {
           const flag = leadData?.coupon_meta?.repeat_customer;
           if (flag === true || flag === 1) return true;

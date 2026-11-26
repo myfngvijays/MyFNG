@@ -1,6 +1,8 @@
 import 'server-only';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { sendFcmPush } from '@/lib/push/fcmPush';
+import { apnsTopicForStaffDevice } from '@/lib/push/partnerDevice';
+import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
 
 type DialPushInput = {
   telecallerId: string;
@@ -91,6 +93,7 @@ export async function sendPhoneDial(input: DialPushInput): Promise<{
   if (token) {
     const deviceName = String((device as { device_name?: string } | null)?.device_name || '');
     const os = /ios|iphone/i.test(deviceName) ? 'ios' : 'android';
+    const pushConfig = await loadPushFirebaseConfig();
     const who = customerName || to;
     const delivery = await sendFcmPush([
       {
@@ -99,7 +102,7 @@ export async function sendPhoneDial(input: DialPushInput): Promise<{
         body: `Calling ${who}`,
         priority: 'high',
         os,
-        apnsTopic: 'com.myfng.partner',
+        apnsTopic: apnsTopicForStaffDevice(deviceName, pushConfig.ios_bundle_id || 'com.myfng.app'),
         data: {
           kind: 'SIM_DIAL',
           phone: to,

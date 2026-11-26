@@ -33,6 +33,13 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { shouldKeepPreviousDashboardKpis } from '@/lib/telecaller/crmDashboardGuard';
+import {
+  readCrmNewLeadPopupEnabled,
+  readCrmNewLeadSoundEnabled,
+  readCrmNewLeadSoundId,
+} from '@/lib/telecaller/crmNewLeadPopupPref';
+import { playCrmNewLeadWebSound } from '@/lib/telecaller/crmNewLeadWebSound';
+import toast from 'react-hot-toast';
 import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import BookingConfirmedTodayCard from '@/components/crm/BookingConfirmedTodayCard';
@@ -194,6 +201,7 @@ export default function TelecallerCrmHomePage() {
   const [ready, setReady] = useState(false);
   const inFlight = useRef(false);
   const kpisRef = useRef<Kpis>({});
+  const seenFreshLeadIdsRef = useRef<Set<string> | null>(null);
   kpisRef.current = kpis;
 
   const persistDate = (next: {
@@ -268,6 +276,43 @@ export default function TelecallerCrmHomePage() {
         if (!res.ok) throw new Error(json?.error || 'Failed');
         const nextKpis = json.kpis || {};
         const nextFresh = Array.isArray(json.fresh_leads) ? json.fresh_leads : [];
+        const freshIds = nextFresh
+          .map((row: { id?: string }) => String(row.id || ''))
+          .filter(Boolean);
+        if (seenFreshLeadIdsRef.current === null) {
+          seenFreshLeadIdsRef.current = new Set(freshIds);
+        } else if (readCrmNewLeadPopupEnabled()) {
+          const seen = seenFreshLeadIdsRef.current;
+          for (const lead of nextFresh) {
+            const id = String((lead as { id?: string }).id || '').trim();
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            const name = formatDashName((lead as { customer_name?: string | null }).customer_name);
+            if (readCrmNewLeadSoundEnabled()) {
+              playCrmNewLeadWebSound(readCrmNewLeadSoundId());
+            }
+            toast(
+              (t) => (
+                <button
+                  type="button"
+                  onClick={() => toast.dismiss(t.id)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left shadow-lg"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-extrabold text-emerald-800">
+                    +
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-xs font-bold uppercase tracking-wide text-emerald-700">
+                      New lead
+                    </span>
+                    <span className="block truncate text-sm font-extrabold text-slate-900">{name}</span>
+                  </span>
+                </button>
+              ),
+              { duration: 2600 },
+            );
+          }
+        }
         if (
           force ||
           !shouldKeepPreviousDashboardKpis(kpisRef.current, nextKpis, nextFresh.length)
@@ -916,16 +961,40 @@ export default function TelecallerCrmHomePage() {
             </div>
 
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
-                <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">Cars in service</h2>
+              <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] p-3.5 shadow-sm">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h2 className="text-[14px] font-bold text-[#1E3A8A]">Cars in service</h2>
+                  <Link
+                    href={`${base}/leads?filter=in_service`}
+                    className="rounded-full border border-[#93C5FD] bg-[#DBEAFE] px-2 py-0.5 text-[11px] font-semibold text-[#1E40AF]"
+                  >
+                    View all
+                  </Link>
+                </div>
                 {inServiceLeads.length === 0 ? <p className="text-sm text-slate-500">No cars in service</p> : (
-                  <ul className="divide-y divide-slate-100">
-                    {inServiceLeads.map((lead) => (
-                      <li key={lead.id} className="py-1.5">
-                        <Link href={`${base}/leads/${lead.id}`} className="block truncate text-[12px] font-semibold text-slate-900">{formatDashName(lead.customer_name)}</Link>
-                        <span className="block truncate text-[10px] text-slate-500">{[lead.vehicle_number, lead.vehicle_make, lead.vehicle_model, lead.city].filter(Boolean).join(' · ') || 'In service'}</span>
-                      </li>
-                    ))}
+                  <ul className="divide-y divide-[#BFDBFE]/60">
+                    {inServiceLeads.map((lead) => {
+                      const name = formatDashName(lead.customer_name);
+                      const line = [lead.vehicle_number, lead.vehicle_make, lead.vehicle_model, lead.city]
+                        .filter(Boolean)
+                        .join(' · ') || 'In service';
+                      return (
+                        <li key={lead.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
+                          <Link href={`${base}/leads/${lead.id}`} className="flex min-w-0 flex-1 items-center gap-2 hover:opacity-90">
+                            <span className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[#DBEAFE] text-[11px] font-extrabold text-[#1D4ED8]">
+                              {leadInitials(name)}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[12px] font-semibold text-slate-900">{name}</span>
+                              <span className="block truncate text-[10px] text-slate-600">{line}</span>
+                            </span>
+                          </Link>
+                          <span className="shrink-0 rounded-full border border-[#93C5FD] bg-[#DBEAFE] px-2 py-0.5 text-[10px] font-bold text-[#1E40AF]">
+                            In service
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

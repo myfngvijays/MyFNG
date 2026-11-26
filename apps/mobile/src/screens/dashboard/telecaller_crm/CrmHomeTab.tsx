@@ -19,6 +19,8 @@ import CarLoading from '../../../components/CarLoading';
 import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
+import { openWhatsApp } from '../../../lib/phone';
+import { titleCasePersonName } from '../../../lib/personName';
 import { sanitizeVehicleNumberInput } from '../../../lib/telecaller/serviceLeadVehicleNumber';
 import {
   CRM_DATE_PRESETS,
@@ -706,52 +708,57 @@ export default function CrmHomeTab({
       ) : null}
 
       {nextCall ? (
-        <View style={styles.nextCard}>
-          <View style={styles.nextTop}>
-            <Text style={styles.nextEyebrow}>NEXT CALL</Text>
-            <View style={styles.dueChip}>
-              <Text style={styles.dueChipText}>Due {formatReminderClock(nextCall.scheduled_time) || 'now'}</Text>
+        <TouchableOpacity
+          style={styles.nextCard}
+          activeOpacity={0.9}
+          onPress={() => {
+            const leadId = nextCall.lead_id || nextCall.lead?.id;
+            if (leadId) onNavigate('TelecallerLeadDetail', { leadId });
+          }}
+        >
+          <View style={styles.nextCardRow}>
+            <View style={styles.nextCardCopy}>
+              <Text style={styles.nextEyebrow}>NEXT CALL</Text>
+              <Text style={styles.nextWhen} numberOfLines={1}>
+                {formatReminderClock(nextCall.scheduled_time) || 'Due now'}
+              </Text>
+              <Text style={styles.nextName} numberOfLines={1}>
+                {titleCasePersonName(nextCall.lead?.customer_name) || 'Customer'}
+              </Text>
+              <Text style={styles.nextMeta} numberOfLines={1}>
+                {String(nextCall.lead?.customer_phone || '').trim() || '—'}
+              </Text>
+            </View>
+            <View style={styles.nextIconStack}>
+              <TouchableOpacity
+                style={styles.nextIconBtnCall}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  void clickToCallCustomer({
+                    customerPhone: nextCall.lead?.customer_phone,
+                    leadId: nextCall.lead_id || nextCall.lead?.id,
+                    customerName: nextCall.lead?.customer_name,
+                  });
+                }}
+                accessibilityLabel="Call"
+              >
+                <Ionicons name="call" size={18} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.nextIconBtnWa}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  const phone = String(nextCall.lead?.customer_phone || '').trim();
+                  if (phone) void openWhatsApp(phone);
+                  else onOpenWhatsApp();
+                }}
+                accessibilityLabel="WhatsApp"
+              >
+                <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+              </TouchableOpacity>
             </View>
           </View>
-          <Text style={styles.nextName} numberOfLines={1}>
-            {String(nextCall.lead?.customer_name || 'Customer').trim()}
-          </Text>
-          <Text style={styles.nextMeta} numberOfLines={1}>
-            {[nextCall.lead?.customer_phone, (nextCall.lead as { city?: string } | undefined)?.city].filter(Boolean).join(' · ') || 'Follow-up'}
-          </Text>
-          {nextCall.reason ? (
-            <Text style={styles.nextNote} numberOfLines={2}>{nextCall.reason}</Text>
-          ) : null}
-          <View style={styles.nextActions}>
-            <TouchableOpacity
-              style={styles.nextCallBtn}
-              onPress={() =>
-                void clickToCallCustomer({
-                  customerPhone: nextCall.lead?.customer_phone,
-                  leadId: nextCall.lead_id || nextCall.lead?.id,
-                  customerName: nextCall.lead?.customer_name,
-                })
-              }
-            >
-              <Ionicons name="call" size={15} color="#fff" />
-              <Text style={styles.nextCallBtnText}>Call now</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.nextGhost} onPress={onOpenWhatsApp}>
-              <Ionicons name="logo-whatsapp" size={16} color="#86EFAC" />
-              <Text style={styles.nextGhostText}>WhatsApp</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.nextGhost}
-              onPress={() => {
-                const leadId = nextCall.lead_id || nextCall.lead?.id;
-                if (leadId) onNavigate('TelecallerLeadDetail', { leadId });
-              }}
-            >
-              <Ionicons name="create-outline" size={16} color="#CBD5E1" />
-              <Text style={styles.nextGhostText}>Note</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        </TouchableOpacity>
       ) : null}
 
       <Text style={styles.blockTitle}>Quick actions</Text>
@@ -898,8 +905,8 @@ export default function CrmHomeTab({
                   onPress={() => onNavigate('TelecallerLeadDetail', { leadId: lead.id })}
                   activeOpacity={0.85}
                 >
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{leadInitials(name)}</Text>
+                  <View style={[styles.avatar, styles.avatarFresh]}>
+                    <Text style={[styles.avatarText, styles.avatarTextFresh]}>{leadInitials(name)}</Text>
                   </View>
                   <View style={styles.navyCopy}>
                     <Text style={styles.navyName} numberOfLines={1}>
@@ -911,9 +918,9 @@ export default function CrmHomeTab({
                     </Text>
                   </View>
                 </TouchableOpacity>
-                <Text style={styles.navyAgo}>{formatLeadAgo(lead.created_at)}</Text>
+                <Text style={[styles.navyAgo, styles.navyAgoFresh]}>{formatLeadAgo(lead.created_at)}</Text>
                 <TouchableOpacity
-                  style={styles.navyCall}
+                  style={[styles.navyCall, styles.navyCallFresh]}
                   onPress={() =>
                     void clickToCallCustomer({
                       customerPhone: lead.customer_phone,
@@ -924,7 +931,7 @@ export default function CrmHomeTab({
                   }
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="call" size={14} color={COLORS.primary} />
+                  <Ionicons name="call" size={14} color="#047857" />
                 </TouchableOpacity>
               </View>
             );
@@ -996,7 +1003,7 @@ export default function CrmHomeTab({
         )}
       </View>
 
-      <View style={styles.listCardFresh}>
+      <View style={styles.listCardInService}>
         <View style={styles.cardHead}>
           <Text style={styles.cardTitle}>Cars in service</Text>
           <TouchableOpacity onPress={() => onNavigate('queue', { filter: 'in_service' })} activeOpacity={0.8}>
@@ -1017,15 +1024,15 @@ export default function CrmHomeTab({
                 onPress={() => onNavigate('TelecallerLeadDetail', { leadId: lead.id })}
                 activeOpacity={0.85}
               >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{leadInitials(name)}</Text>
+                <View style={[styles.avatar, styles.avatarInService]}>
+                  <Text style={[styles.avatarText, styles.avatarTextInService]}>{leadInitials(name)}</Text>
                 </View>
                 <View style={styles.navyCopy}>
                   <Text style={styles.navyName} numberOfLines={1}>{name}</Text>
                   <Text style={styles.navyMeta} numberOfLines={1}>{vehicle || lead.city || 'In service'}</Text>
                 </View>
-                <View style={styles.statusPillBlue}>
-                  <Text style={styles.statusPillTextBlue}>In service</Text>
+                <View style={styles.statusPillInService}>
+                  <Text style={styles.statusPillTextInService}>In service</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -1494,14 +1501,24 @@ const styles = StyleSheet.create({
   perfValue: { fontSize: 20, fontWeight: '800', color: COLORS.primary },
   perfLabel: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   listCardFresh: {
-    backgroundColor: '#fff',
+    backgroundColor: '#ECFDF5',
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 4,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E6EDF5',
+    borderColor: '#A7F3D0',
+  },
+  listCardInService: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 4,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
   listCardRemind: {
     backgroundColor: '#fff',
@@ -1566,11 +1583,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarRemind: { backgroundColor: '#FFEDD5' },
+  avatarFresh: { backgroundColor: '#D1FAE5' },
+  avatarInService: { backgroundColor: '#DBEAFE' },
   avatarText: { fontSize: 11, fontWeight: '800', color: '#004AAD' },
+  avatarTextFresh: { color: '#047857' },
+  avatarTextInService: { color: '#1D4ED8' },
   avatarTextRemind: { color: '#C2410C' },
   navyName: { fontSize: 13, fontWeight: '700', color: '#0F2744' },
   navyMeta: { fontSize: 11, color: '#64748B', marginTop: 1 },
   navyAgo: { width: 70, textAlign: 'right', fontSize: 11, lineHeight: 14, fontWeight: '600', color: COLORS.primary },
+  navyAgoFresh: { color: '#047857' },
   navyCall: {
     width: 34,
     height: 34,
@@ -1579,6 +1601,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  navyCallFresh: { backgroundColor: '#D1FAE5' },
   remindCall: {
     width: 28,
     height: 28,
@@ -1614,19 +1637,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionText: { fontSize: 11, fontWeight: '700', color: '#0F2744', textAlign: 'center' },
-  nextCard: { backgroundColor: '#0F2744', borderRadius: 18, padding: 16, marginBottom: 14, gap: 3 },
-  nextTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  nextEyebrow: { color: '#93C5FD', fontSize: 11, fontWeight: '800', letterSpacing: 0.6 },
-  dueChip: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  dueChipText: { color: '#FDE68A', fontSize: 11, fontWeight: '800' },
-  nextName: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  nextMeta: { color: '#CBD5E1', fontSize: 13, fontWeight: '600', marginTop: 2 },
-  nextNote: { color: '#94A3B8', fontSize: 12, lineHeight: 16, marginTop: 4 },
-  nextActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  nextCallBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#16A34A', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
-  nextCallBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  nextGhost: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 10, paddingVertical: 8 },
-  nextGhostText: { color: '#E2E8F0', fontSize: 12, fontWeight: '700' },
+  nextCard: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    ...SHADOWS.small,
+  },
+  nextCardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nextCardCopy: { flex: 1, minWidth: 0, gap: 1 },
+  nextEyebrow: { color: '#047857', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  nextWhen: { color: '#B45309', fontSize: 11, fontWeight: '700', marginBottom: 2 },
+  nextName: { color: '#065F46', fontSize: 16, fontWeight: '800' },
+  nextMeta: { color: '#047857', fontSize: 12, fontWeight: '600' },
+  nextIconStack: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nextIconBtnCall: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextIconBtnWa: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#D1FAE5',
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pipeCard: { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#E6EDF5', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, marginBottom: 12 },
   pipeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
   pipeLabel: { width: 112, fontSize: 13, fontWeight: '700', color: '#334155' },
@@ -1704,6 +1752,15 @@ const styles = StyleSheet.create({
   statusPillTextAmber: { color: '#B45309' },
   statusPillBlue: { backgroundColor: '#E0F2FE', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
   statusPillTextBlue: { color: '#0369A1', fontSize: 11, fontWeight: '700' },
+  statusPillInService: {
+    backgroundColor: '#DBEAFE',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+  },
+  statusPillTextInService: { color: '#1E40AF', fontSize: 11, fontWeight: '700' },
   remindAccent: { width: 3, alignSelf: 'stretch', borderRadius: 2, marginRight: 2 },
   dayBadge: { width: 36, alignItems: 'center', justifyContent: 'center' },
   dayBadgeNum: { fontSize: 13, fontWeight: '800', color: '#004AAD', lineHeight: 16 },

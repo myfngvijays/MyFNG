@@ -432,7 +432,13 @@ export default function NotificationsScreen({ navigation, hideChrome }: any) {
             style={[styles.filterChip, filter === f.id && styles.filterChipOn]}
             onPress={() => setFilter(f.id)}
           >
-            <Text style={[styles.filterText, filter === f.id && styles.filterTextOn]}>{f.label}</Text>
+            <Text
+              style={[styles.filterText, filter === f.id && styles.filterTextOn]}
+              includeFontPadding={false}
+              textAlignVertical="center"
+            >
+              {f.label}
+            </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -497,21 +503,36 @@ const styles = StyleSheet.create({
   filters: {
     backgroundColor: COLORS.white,
     flexGrow: 0,
+    flexShrink: 0,
+    minHeight: 52,
+    maxHeight: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.gray[200],
   },
   filtersContent: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingRight: SPACING.lg,
   },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minHeight: 34,
     borderRadius: 20,
     backgroundColor: COLORS.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterChipOn: { backgroundColor: COLORS.primary },
-  filterText: { fontSize: 12, fontWeight: '700', color: COLORS.gray[600] },
+  filterText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+    lineHeight: 16,
+  },
   filterTextOn: { color: '#fff' },
   listPad: { padding: SPACING.md, paddingBottom: 40 },
   emptyWrap: { flexGrow: 1, justifyContent: 'center', padding: SPACING.lg },

@@ -29,10 +29,13 @@ module.exports = ({ config }) => {
   const appVariant =
     appVariantRaw === 'customer' || appVariantRaw === 'partner' ? appVariantRaw : 'unified';
   const partner = appVariant === 'partner';
+  const partnerIcon = './assets/partner-app-icon.png';
 
   return {
     ...base,
+    name: partner ? 'MyFNG Partner' : base.name,
     version: partner ? '1.1.1' : base.version,
+    icon: partner ? partnerIcon : base.icon,
     splash: {
       ...(base.splash || {}),
       backgroundColor: partner ? '#021E6F' : base.splash && base.splash.backgroundColor,
@@ -45,6 +48,12 @@ module.exports = ({ config }) => {
       ...(base.android || {}),
       package: partner ? 'com.myfng.partner' : base.android && base.android.package,
       versionCode: partner ? 11 : base.android && base.android.versionCode,
+      adaptiveIcon: partner
+        ? {
+            foregroundImage: partnerIcon,
+            backgroundColor: '#021E6F',
+          }
+        : base.android && base.android.adaptiveIcon,
       config: {
         ...((base.android && base.android.config) || {}),
         googleMaps: {

@@ -10,6 +10,8 @@ import {
   RefreshControl,
   TextInput,
   Image,
+  Switch,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +21,22 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import { formatDateDMY } from '../../../lib/dateFormat';
+import {
+  CRM_NEW_LEAD_POPUP_PREF_EVENT,
+  getCrmNewLeadPopupEnabled,
+  setCrmNewLeadPopupEnabled,
+  CRM_NEW_LEAD_SOUND_PREF_EVENT,
+  getCrmNewLeadSoundEnabled,
+  setCrmNewLeadSoundEnabled,
+  getCrmNewLeadSoundId,
+  setCrmNewLeadSoundId,
+} from '../../../lib/crmNewLeadPopupPrefs';
+import { emitNewLeadPopupDemo } from '../../../components/telecaller/NewLeadPopup';
+import {
+  CRM_NEW_LEAD_SOUND_OPTIONS,
+  playCrmNewLeadSound,
+  type CrmNewLeadSoundId,
+} from '../../../lib/crmNewLeadSounds';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 
@@ -56,6 +74,36 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [department, setDepartment] = useState('');
+  const [newLeadPopupOn, setNewLeadPopupOn] = useState(true);
+  const [newLeadSoundOn, setNewLeadSoundOn] = useState(true);
+  const [newLeadSoundId, setNewLeadSoundIdState] = useState<CrmNewLeadSoundId>('bright');
+
+  useEffect(() => {
+    void Promise.all([
+      getCrmNewLeadPopupEnabled(),
+      getCrmNewLeadSoundEnabled(),
+      getCrmNewLeadSoundId(),
+    ]).then(([popup, sound, id]) => {
+      setNewLeadPopupOn(popup);
+      setNewLeadSoundOn(sound);
+      setNewLeadSoundIdState(id);
+    });
+    const popupSub = DeviceEventEmitter.addListener(
+      CRM_NEW_LEAD_POPUP_PREF_EVENT,
+      (e: { enabled?: boolean }) => setNewLeadPopupOn(e?.enabled !== false),
+    );
+    const soundSub = DeviceEventEmitter.addListener(
+      CRM_NEW_LEAD_SOUND_PREF_EVENT,
+      (e: { soundEnabled?: boolean; soundId?: CrmNewLeadSoundId }) => {
+        if (typeof e?.soundEnabled === 'boolean') setNewLeadSoundOn(e.soundEnabled);
+        if (e?.soundId) setNewLeadSoundIdState(e.soundId);
+      },
+    );
+    return () => {
+      popupSub.remove();
+      soundSub.remove();
+    };
+  }, []);
 
   const loadAansh = useCallback(async () => {
     try {
@@ -373,6 +421,86 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
         </View>
       </View>
 
+      <Text style={styles.section}>App settings</Text>
+      <View style={styles.card}>
+        <View style={styles.settingRow}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={styles.settingTitle}>New lead popup</Text>
+            <Text style={styles.settingSub}>
+              Jab nayi lead aaye to 2–3 second ka green popup dikhe (CRM kisi bhi tab par).
+            </Text>
+          </View>
+          <Switch
+            value={newLeadPopupOn}
+            onValueChange={(on) => {
+              setNewLeadPopupOn(on);
+              void setCrmNewLeadPopupEnabled(on);
+            }}
+            trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
+            thumbColor={newLeadPopupOn ? '#047857' : '#F8FAFC'}
+          />
+        </View>
+        <View style={[styles.settingRow, { marginTop: 14 }]}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={styles.settingTitle}>Popup sound</Text>
+            <Text style={styles.settingSub}>Nayi lead popup ke saath notification tone.</Text>
+          </View>
+          <Switch
+            value={newLeadSoundOn}
+            onValueChange={(on) => {
+              setNewLeadSoundOn(on);
+              void setCrmNewLeadSoundEnabled(on);
+            }}
+            trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
+            thumbColor={newLeadSoundOn ? '#047857' : '#F8FAFC'}
+          />
+        </View>
+        {newLeadSoundOn ? (
+          <View style={styles.soundList}>
+            <Text style={styles.soundListTitle}>Choose notification (tap ▶ to sample)</Text>
+            {CRM_NEW_LEAD_SOUND_OPTIONS.map((opt) => {
+              const selected = newLeadSoundId === opt.id;
+              return (
+                <View key={opt.id} style={[styles.soundRow, selected && styles.soundRowOn]}>
+                  <TouchableOpacity
+                    style={styles.soundPick}
+                    onPress={() => {
+                      setNewLeadSoundIdState(opt.id);
+                      void setCrmNewLeadSoundId(opt.id);
+                    }}
+                  >
+                    <Ionicons
+                      name={selected ? 'radio-button-on' : 'radio-button-off'}
+                      size={20}
+                      color={selected ? COLORS.primary : '#94A3B8'}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.soundLabel}>{opt.label}</Text>
+                      <Text style={styles.soundHint}>{opt.hint}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.soundPlay}
+                    onPress={() => void playCrmNewLeadSound(opt.id)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="play" size={16} color={COLORS.primary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+        <TouchableOpacity
+          style={styles.previewPopupBtn}
+          onPress={() => emitNewLeadPopupDemo()}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="play-circle-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.previewPopupText}>Preview demo popup + sound</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Attendance */}
       <Text style={styles.section}>Attendance</Text>
       <Text style={styles.subTight}>Punch in when you start calling. Punch out when you leave.</Text>
@@ -510,6 +638,44 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
     ...SHADOWS.small,
+  },
+  settingRow: { flexDirection: 'row', alignItems: 'center' },
+  settingTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textHeading },
+  settingSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4, lineHeight: 17 },
+  previewPopupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,74,173,0.2)',
+    backgroundColor: '#F0F7FF',
+  },
+  previewPopupText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
+  soundList: { marginTop: 12, gap: 8 },
+  soundListTitle: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 4 },
+  soundRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    overflow: 'hidden',
+  },
+  soundRowOn: { borderColor: 'rgba(0,74,173,0.35)', backgroundColor: '#F0F7FF' },
+  soundPick: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10 },
+  soundLabel: { fontSize: 14, fontWeight: '800', color: COLORS.textHeading },
+  soundHint: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  soundPlay: {
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    borderLeftWidth: 1,
+    borderLeftColor: '#E2E8F0',
+    backgroundColor: '#fff',
   },
   premiumCard: {
     borderRadius: 16,

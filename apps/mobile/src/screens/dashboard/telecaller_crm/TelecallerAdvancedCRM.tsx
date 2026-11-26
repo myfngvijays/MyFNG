@@ -57,6 +57,20 @@ import {
   loadTelecallerCrmFilterPrefs,
   saveTelecallerCrmFilterPrefs,
 } from '../../../lib/crmFilterPrefs';
+import { apiFetch } from '../../../lib/api';
+import {
+  CRM_NEW_LEAD_POPUP_PREF_EVENT,
+  CRM_NEW_LEAD_SOUND_PREF_EVENT,
+  getCrmNewLeadPopupEnabled,
+  getCrmNewLeadSoundEnabled,
+  getCrmNewLeadSoundId,
+} from '../../../lib/crmNewLeadPopupPrefs';
+import { playCrmNewLeadSound, type CrmNewLeadSoundId } from '../../../lib/crmNewLeadSounds';
+import {
+  CRM_NEW_LEAD_POPUP_EVENT,
+  NewLeadPopupCard,
+  type NewLeadPopupPayload,
+} from '../../../components/telecaller/NewLeadPopup';
 
 /** Keep Home / Leads mounted at full size so search / pickers stay usable after resume. */
 const HIDDEN_TAB: ViewStyle = {
@@ -665,6 +679,11 @@ export default function TelecallerAdvancedCRM() {
   const [floatNotes, setFloatNotes] = useState<
     Array<{ key: string; leadId: string; name: string; reason: string; whenLabel: string; title: string }>
   >([]);
+  const [newLeadPopups, setNewLeadPopups] = useState<NewLeadPopupPayload[]>([]);
+  const newLeadPopupEnabled = useRef(true);
+  const newLeadSoundEnabled = useRef(true);
+  const newLeadSoundId = useRef<CrmNewLeadSoundId>('bright');
+  const seenFreshLeadIds = useRef<Set<string> | null>(null);
   const firedSlots = useRef(new Set<string>());
 
   const checkSameDayFloats = useCallback(async () => {
@@ -753,6 +772,100 @@ export default function TelecallerAdvancedCRM() {
     const t = setInterval(() => void checkSameDayFloats(), 20_000);
     return () => clearInterval(t);
   }, [checkSameDayFloats]);
+
+  const pushNewLeadPopup = useCallback((payload: NewLeadPopupPayload) => {
+    if (!newLeadPopupEnabled.current && !payload.demo) return;
+    const leadId = String(payload.leadId || '').trim();
+    if (!leadId) return;
+    setNewLeadPopups((prev) => {
+      if (prev.some((row) => row.leadId === leadId)) return prev;
+      return [...prev, { ...payload, leadId }].slice(-2);
+    });
+    if (newLeadSoundEnabled.current) {
+      void playCrmNewLeadSound(newLeadSoundId.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    void Promise.all([
+      getCrmNewLeadPopupEnabled(),
+      getCrmNewLeadSoundEnabled(),
+      getCrmNewLeadSoundId(),
+    ]).then(([popup, soundOn, soundId]) => {
+      newLeadPopupEnabled.current = popup;
+      newLeadSoundEnabled.current = soundOn;
+      newLeadSoundId.current = soundId;
+    });
+    const prefSub = DeviceEventEmitter.addListener(
+      CRM_NEW_LEAD_POPUP_PREF_EVENT,
+      (e: { enabled?: boolean }) => {
+        newLeadPopupEnabled.current = e?.enabled !== false;
+      },
+    );
+    const soundSub = DeviceEventEmitter.addListener(
+      CRM_NEW_LEAD_SOUND_PREF_EVENT,
+      (e: { soundEnabled?: boolean; soundId?: CrmNewLeadSoundId }) => {
+        if (typeof e?.soundEnabled === 'boolean') newLeadSoundEnabled.current = e.soundEnabled;
+        if (e?.soundId) newLeadSoundId.current = e.soundId;
+      },
+    );
+    const popupSub = DeviceEventEmitter.addListener(
+      CRM_NEW_LEAD_POPUP_EVENT,
+      (p: NewLeadPopupPayload) => pushNewLeadPopup(p),
+    );
+    return () => {
+      prefSub.remove();
+      soundSub.remove();
+      popupSub.remove();
+    };
+  }, [pushNewLeadPopup]);
+
+  const pollFreshLeadPopups = useCallback(async () => {
+    if (preview) return;
+    try {
+      const res = await apiFetch<{ fresh_leads?: Array<{ id?: string; customer_name?: string; customer_phone?: string }> }>(
+        '/api/telecaller/crm/dashboard?all=1',
+        { timeoutMs: 20000 },
+      );
+      const fresh = Array.isArray(res?.fresh_leads) ? res.fresh_leads : [];
+      const ids = fresh.map((row) => String(row.id || '')).filter(Boolean);
+      if (seenFreshLeadIds.current === null) {
+        seenFreshLeadIds.current = new Set(ids);
+        return;
+      }
+      const seen = seenFreshLeadIds.current;
+      for (const row of fresh) {
+        const id = String(row.id || '').trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        pushNewLeadPopup({
+          leadId: id,
+          name: String(row.customer_name || 'New lead'),
+          phone: row.customer_phone ? String(row.customer_phone) : null,
+        });
+      }
+      if (seen.size > 600) {
+        for (const id of ids) seen.add(id);
+        const keep = new Set(ids);
+        seenFreshLeadIds.current = keep;
+      }
+    } catch {
+      /* optional poll */
+    }
+  }, [preview, pushNewLeadPopup]);
+
+  useEffect(() => {
+    if (preview) return;
+    void pollFreshLeadPopups();
+    const t = setInterval(() => void pollFreshLeadPopups(), 20_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void pollFreshLeadPopups();
+    });
+    return () => {
+      clearInterval(t);
+      sub.remove();
+    };
+  }, [pollFreshLeadPopups, preview]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1475,6 +1588,26 @@ export default function TelecallerAdvancedCRM() {
         </View>
       ) : null}
 
+      {newLeadPopups.length > 0 ? (
+        <View style={styles.newLeadPopupHost} pointerEvents="box-none">
+          {newLeadPopups.map((note) => (
+            <NewLeadPopupCard
+              key={note.leadId}
+              payload={note}
+              onOpen={() => {
+                setNewLeadPopups((prev) => prev.filter((row) => row.leadId !== note.leadId));
+                if (note.demo || note.leadId === 'demo-new-lead') return;
+                setDetailLeadId(note.leadId);
+                setDetailEditing(false);
+              }}
+              onDismiss={() =>
+                setNewLeadPopups((prev) => prev.filter((row) => row.leadId !== note.leadId))
+              }
+            />
+          ))}
+        </View>
+      ) : null}
+
       {preview ? null : (
       <Modal
         visible={menuOpen}
@@ -1928,6 +2061,16 @@ const styles = StyleSheet.create({
     left: 28,
     right: 36,
     zIndex: 40,
+    gap: 8,
+  },
+  newLeadPopupHost: {
+    position: 'absolute',
+    top: '16%',
+    left: 0,
+    right: 0,
+    zIndex: 55,
+    alignItems: 'center',
+    paddingHorizontal: 18,
     gap: 8,
   },
   floatCard: {

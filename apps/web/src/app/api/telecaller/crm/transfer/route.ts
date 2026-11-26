@@ -4,13 +4,14 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
 import { istDayBounds } from '@/lib/telecaller/crmDateRange';
-import { titleCasePersonName } from '@/lib/personName';
+import { titleCasePersonName } from '@/lib/telecaller/personName';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/telecaller/crm/transfer
  * Peer transfer / soft-share a service lead to another telecaller.
+ * TRANSFER / ESCALATE: only assigned_telecaller_id changes; lead row is otherwise untouched.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -42,9 +43,7 @@ export async function POST(request: NextRequest) {
 
     const { data: lead } = await db
       .from('service_leads')
-      .select(
-        'id, assigned_telecaller_id, status, customer_name, coupon_meta, is_incomplete, telecaller_remarks',
-      )
+      .select('id, assigned_telecaller_id, status, customer_name, coupon_meta, is_incomplete')
       .eq('id', leadId)
       .maybeSingle();
 
@@ -56,9 +55,6 @@ export async function POST(request: NextRequest) {
         .update({
           assigned_telecaller_id: toId,
           updated_at: new Date().toISOString(),
-          notes: reason
-            ? `${lead.status || ''} | Transferred: ${reason}`.trim()
-            : undefined,
         })
         .eq('id', leadId);
       if (updErr) return NextResponse.json({ error: updErr.message }, { status: 400 });
@@ -154,31 +150,44 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
 
-      let query = db
-        .from('telecaller_lead_transfers')
-        .select(
-          `id, created_at, transfer_type, lead_display_status_at_transfer, lead_status_at_transfer,
+      const embedSelect =
+        `id, created_at, transfer_type,
           to:to_telecaller_id(full_name),
-          lead:lead_id(customer_name, status, coupon_meta, is_incomplete, telecaller_remarks)`,
-        )
-        .eq('from_telecaller_id', scopeId)
-        .in('transfer_type', ['TRANSFER', 'ESCALATE'])
-        .order('created_at', { ascending: false })
-        .limit(500);
+          lead:lead_id(customer_name, status, coupon_meta, is_incomplete, telecaller_remarks)`;
 
-      const allTime = searchParams.get('all_time') === '1';
-      if (!allTime) {
-        const fromYmd = String(searchParams.get('from') || '').slice(0, 10);
-        const toYmd = String(searchParams.get('to') || '').slice(0, 10);
-        if (/^\d{4}-\d{2}-\d{2}$/.test(fromYmd)) {
-          query = query.gte('created_at', istDayBounds(fromYmd).start);
+      const runOutgoingQuery = (withSnapshot: boolean) => {
+        const select = withSnapshot
+          ? `id, created_at, transfer_type, lead_display_status_at_transfer, lead_status_at_transfer,
+          to:to_telecaller_id(full_name),
+          lead:lead_id(customer_name, status, coupon_meta, is_incomplete, telecaller_remarks)`
+          : embedSelect;
+
+        let q = db
+          .from('telecaller_lead_transfers')
+          .select(select)
+          .eq('from_telecaller_id', scopeId)
+          .in('transfer_type', ['TRANSFER', 'ESCALATE'])
+          .order('created_at', { ascending: false })
+          .limit(500);
+
+        const allTime = searchParams.get('all_time') === '1';
+        if (!allTime) {
+          const fromYmd = String(searchParams.get('from') || '').slice(0, 10);
+          const toYmd = String(searchParams.get('to') || '').slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(fromYmd)) {
+            q = q.gte('created_at', istDayBounds(fromYmd).start);
+          }
+          if (/^\d{4}-\d{2}-\d{2}$/.test(toYmd)) {
+            q = q.lte('created_at', istDayBounds(toYmd).end);
+          }
         }
-        if (/^\d{4}-\d{2}-\d{2}$/.test(toYmd)) {
-          query = query.lte('created_at', istDayBounds(toYmd).end);
-        }
+        return q;
+      };
+
+      let { data, error } = await runOutgoingQuery(true);
+      if (error && /lead_(display_)?status_at_transfer/i.test(String(error.message || ''))) {
+        ({ data, error } = await runOutgoingQuery(false));
       }
-
-      const { data, error } = await query;
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
       const items = (data || []).map((row: any) => {

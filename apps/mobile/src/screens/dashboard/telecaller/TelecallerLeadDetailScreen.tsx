@@ -340,7 +340,12 @@ function buildFormFromLead(data: any): EditForm {
     workshop_id: data?.workshop_id || '',
     workshop_name: data?.workshop?.name || '',
     lead_priority: data?.lead_priority || 'NORMAL',
-    telecaller_remark: String(data?.notes || '').trim(),
+    telecaller_remark: (() => {
+      const raw = String(data?.notes || '').trim();
+      const transferAudit = /^\w*\s*\|\s*Transferred:/i.test(raw) || /^Transferred from/i.test(raw);
+      const fromNotes = transferAudit ? '' : raw;
+      return String(fromNotes || meta.telecaller_remarks || '').trim();
+    })(),
     repeat_customer: (() => {
       const flag = meta.repeat_customer;
       if (flag === true || flag === 1) return true;
@@ -831,6 +836,7 @@ export default function TelecallerLeadDetailScreen({
         : {
             date: followUp?.ymd || '',
             time: followUp ? snapTimeToTenMinutes(followUp.hm) : '',
+            notes: String(meta.telecaller_remarks || data?.notes || '').trim(),
           }),
     }));
   };

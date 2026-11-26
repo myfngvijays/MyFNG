@@ -132,12 +132,12 @@ export default function TransferredLeadsPanel() {
           Loading…
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-16 text-center">
-          <SwapHorizontal className="mx-auto mb-2 h-9 w-9 text-slate-300" />
-          <p className font-bold text-slate-600">No transferred leads in this range</p>
+        <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 py-16 text-center">
+          <SwapHorizontal className="mx-auto mb-2 h-9 w-9 text-emerald-300" />
+          <p className="font-bold text-emerald-900">No transferred leads in this range</p>
         </div>
       ) : (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <ul className="divide-y divide-emerald-100 overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50 shadow-sm">
           {items.map((row) => (
             <li key={row.id} className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -153,7 +153,7 @@ export default function TransferredLeadsPanel() {
                 <ArrowRight className="h-4 w-4 text-slate-300" />
                 <div>
                   <p className="text-[10px] font-bold uppercase text-slate-400">Now</p>
-                  <p className="font-bold text-[#1D4ED8]">{row.status_now}</p>
+                  <p className="font-bold text-emerald-700">{row.status_now}</p>
                 </div>
               </div>
             </li>

@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { deactivateFcmTokens, sendFcmPush } from '@/lib/push/fcmPush';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 import { sendWebPush, type WebPushSubscription } from '@/lib/push/webPush';
+import { apnsTopicForStaffDevice, parseDeviceNameBase } from '@/lib/push/partnerDevice';
+import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
 
 type PrefRow = {
   push_enabled: boolean;
@@ -47,7 +49,7 @@ async function getFcmTokens(userId: string) {
 }
 
 function inferDeviceOs(deviceName: string | null | undefined): 'ios' | 'android' | 'unknown' {
-  const name = String(deviceName || '').toLowerCase();
+  const name = parseDeviceNameBase(deviceName).toLowerCase();
   if (name.includes('ios') || name.includes('iphone') || name.includes('ipad')) return 'ios';
   if (name.includes('android')) return 'android';
   return 'unknown';
@@ -94,14 +96,22 @@ export async function dispatchPushToUser(userId: string, notification: Notificat
   try {
     const tokens = await getFcmTokens(userId);
     if (tokens.length > 0) {
+      const pushConfig = await loadPushFirebaseConfig();
+      const defaultIosBundle = pushConfig.ios_bundle_id || 'com.myfng.app';
+      const urgent =
+        String(meta.kind || '') === 'CALLER_ID' ||
+        String(notification.type || '') === 'LEAD_ASSIGNED' ||
+        notification.priority === 'HIGH' ||
+        notification.priority === 'URGENT';
       const delivery = await sendFcmPush(
         tokens.map((device) => ({
           token: device.token,
           os: inferDeviceOs(device.device_name),
+          apnsTopic: apnsTopicForStaffDevice(device.device_name, defaultIosBundle),
           title,
           body,
           data,
-          priority: String(meta.kind || '') === 'CALLER_ID' ? 'high' : 'default',
+          priority: urgent ? 'high' : 'default',
         })),
       );
       if (delivery.invalidTokens.length) {

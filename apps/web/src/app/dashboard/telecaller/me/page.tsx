@@ -31,6 +31,19 @@ import {
   readUiFontPx,
   saveUiFontPx,
 } from '@/lib/uiFontSize';
+import {
+  readCrmNewLeadPopupEnabled,
+  saveCrmNewLeadPopupEnabled,
+  readCrmNewLeadSoundEnabled,
+  saveCrmNewLeadSoundEnabled,
+  readCrmNewLeadSoundId,
+  saveCrmNewLeadSoundId,
+} from '@/lib/telecaller/crmNewLeadPopupPref';
+import {
+  CRM_NEW_LEAD_SOUND_OPTIONS,
+  playCrmNewLeadWebSound,
+  type CrmNewLeadSoundId,
+} from '@/lib/telecaller/crmNewLeadWebSound';
 
 type Profile = {
   id: string;
@@ -85,9 +98,15 @@ export default function TelecallerMyProfilePage() {
     department: '',
   });
   const [fontPx, setFontPx] = useState(UI_FONT_DEFAULT);
+  const [newLeadPopupOn, setNewLeadPopupOn] = useState(true);
+  const [newLeadSoundOn, setNewLeadSoundOn] = useState(true);
+  const [newLeadSoundId, setNewLeadSoundId] = useState<CrmNewLeadSoundId>('bright');
 
   useEffect(() => {
     setFontPx(readUiFontPx() ?? UI_FONT_DEFAULT);
+    setNewLeadPopupOn(readCrmNewLeadPopupEnabled());
+    setNewLeadSoundOn(readCrmNewLeadSoundEnabled());
+    setNewLeadSoundId(readCrmNewLeadSoundId());
   }, []);
 
   const changeFontPx = (next: number | null) => {
@@ -489,6 +508,138 @@ export default function TelecallerMyProfilePage() {
                   </button>
                 </div>
               </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-bold text-[#023D95]">New lead popup</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Jab nayi lead assign ho, CRM par ~2 second ka banner dikhe. Saved on this browser.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={newLeadPopupOn}
+                  onClick={() => {
+                    const next = !newLeadPopupOn;
+                    setNewLeadPopupOn(next);
+                    saveCrmNewLeadPopupEnabled(next);
+                  }}
+                  className={`relative inline-flex h-10 w-[3.25rem] shrink-0 items-center rounded-full border transition ${
+                    newLeadPopupOn
+                      ? 'border-emerald-400 bg-emerald-500'
+                      : 'border-slate-200 bg-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-8 w-8 rounded-full bg-white shadow transition ${
+                      newLeadPopupOn ? 'translate-x-[1.35rem]' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                <span className="text-sm font-bold text-slate-800">Popup sound</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={newLeadSoundOn}
+                  onClick={() => {
+                    const next = !newLeadSoundOn;
+                    setNewLeadSoundOn(next);
+                    saveCrmNewLeadSoundEnabled(next);
+                  }}
+                  className={`relative inline-flex h-10 w-[3.25rem] shrink-0 items-center rounded-full border transition ${
+                    newLeadSoundOn
+                      ? 'border-emerald-400 bg-emerald-500'
+                      : 'border-slate-200 bg-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-8 w-8 rounded-full bg-white shadow transition ${
+                      newLeadSoundOn ? 'translate-x-[1.35rem]' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              {newLeadSoundOn ? (
+                <ul className="mt-3 space-y-2">
+                  {CRM_NEW_LEAD_SOUND_OPTIONS.map((opt) => (
+                    <li
+                      key={opt.id}
+                      className={`flex items-stretch overflow-hidden rounded-xl border ${
+                        newLeadSoundId === opt.id
+                          ? 'border-[#004AAD]/30 bg-[#F0F7FF]'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewLeadSoundId(opt.id);
+                          saveCrmNewLeadSoundId(opt.id);
+                        }}
+                        className="flex flex-1 items-start gap-2 px-3 py-2.5 text-left"
+                      >
+                        <span
+                          className={`mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 ${
+                            newLeadSoundId === opt.id
+                              ? 'border-[#004AAD] bg-[#004AAD]'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                        />
+                        <span>
+                          <span className="block text-sm font-extrabold text-slate-900">{opt.label}</span>
+                          <span className="block text-xs text-slate-500">{opt.hint}</span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => playCrmNewLeadWebSound(opt.id)}
+                        className="border-l border-slate-200 bg-white px-4 text-xs font-bold text-[#004AAD]"
+                      >
+                        ▶
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (readCrmNewLeadSoundEnabled()) {
+                    playCrmNewLeadWebSound(readCrmNewLeadSoundId());
+                  }
+                  toast(
+                    (t) => (
+                      <button
+                        type="button"
+                        onClick={() => toast.dismiss(t.id)}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left shadow-lg"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-extrabold text-emerald-800">
+                          +
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-bold uppercase tracking-wide text-emerald-700">
+                            New lead
+                          </span>
+                          <span className="block truncate text-sm font-extrabold text-slate-900">
+                            Ramesh Shahani (Demo)
+                          </span>
+                          <span className="block text-xs font-semibold text-slate-500">9876543210</span>
+                        </span>
+                      </button>
+                    ),
+                    { duration: 2600 },
+                  );
+                }}
+                className="mt-4 w-full rounded-xl border border-[#004AAD]/20 bg-[#F0F7FF] px-4 py-2.5 text-sm font-bold text-[#004AAD] hover:bg-[#E0F2FF]"
+              >
+                Preview demo popup + sound
+              </button>
             </section>
 
             {/* Attendance */}

@@ -113,6 +113,7 @@ android {
     if (partnerApp) {
         // Partner release drops permissions only the customer app needs (see the file).
         sourceSets.release.manifest.srcFile 'src/partnerRelease/AndroidManifest.xml'
+        sourceSets.main.res.srcDirs += ['src/partner/res']
     } else if (customerApp) {
         // Customer release drops staff-only permissions (auto call, call-end return, splash video).
         sourceSets.release.manifest.srcFile 'src/customerRelease/AndroidManifest.xml'
