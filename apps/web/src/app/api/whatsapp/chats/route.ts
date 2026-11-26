@@ -6,6 +6,11 @@ import { loadWaAccountScope, messageInWaScope } from '@/lib/whatsapp/accountScop
 import { loadOtpOutbounds, mergeOtpChats } from '@/lib/whatsapp/otpInbox';
 import { visibleWhatsAppText } from '@/lib/whatsapp/visibleMessageText';
 import { toWhatsAppPhone } from '@/lib/phoneIntl';
+import {
+  isWhatsAppInboxAutoReplyRow,
+  resolveWhatsAppInboxPending,
+  type WaInboxLeadTouchFields,
+} from '@/lib/whatsapp/inboxPending';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -65,19 +70,14 @@ function getChatPhone(row: any): string {
   return recipient || sender;
 }
 
-type UnreadStreakEntry = { count: number; sealed: boolean; humanDir?: 'INBOUND' | 'OUTBOUND' };
-
-/**
- * Bot / automation rows (MISA AI brain, booking agents) and delivery STATUS rows are not a human reply:
- * they must not end the customer's unread streak or hide the chat from Pending.
- */
-function isAutoReplyRow(row: any): boolean {
-  const direction = String(row?.direction || '').toUpperCase();
-  if (direction !== 'INBOUND' && direction !== 'OUTBOUND') return true;
-  if (direction === 'INBOUND') return false;
-  const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
-  return Boolean(meta.brain_auto_reply || meta.agent_auto_reply);
-}
+type UnreadStreakEntry = {
+  count: number;
+  sealed: boolean;
+  /** Newest message in thread (incl. MISA / bots) — drives Pending tab. */
+  latestDir?: 'INBOUND' | 'OUTBOUND';
+  /** Newest non-bot message — unread / “needs human” streak. */
+  humanDir?: 'INBOUND' | 'OUTBOUND';
+};
 
 /** Trailing inbound streak (newest→oldest). Stops at first human outbound or last_read_at. */
 function bumpUnreadStreak(
@@ -93,7 +93,11 @@ function bumpUnreadStreak(
     entry = { count: 0, sealed: false };
     state.set(phone, entry);
   }
-  // Newest message that is not a bot reply decides Pending: customer spoke last → awaiting a human.
+  const dirUp = String(direction || '').toUpperCase();
+  if (!entry.latestDir && (dirUp === 'INBOUND' || dirUp === 'OUTBOUND')) {
+    entry.latestDir = dirUp === 'INBOUND' ? 'INBOUND' : 'OUTBOUND';
+  }
+  // Unread streak ignores bot rows; Pending tab uses latestDir above.
   if (autoReply) return;
   if (!entry.humanDir) {
     entry.humanDir = String(direction || '').toUpperCase() === 'INBOUND' ? 'INBOUND' : 'OUTBOUND';
@@ -114,10 +118,39 @@ function bumpUnreadStreak(
   }
 }
 
-/** true = customer is waiting for a human reply (bot replies ignored); undefined = no recent messages scanned. */
-function awaitingReplyForChat(streak: Map<string, UnreadStreakEntry>, phone?: string): boolean | undefined {
-  const dir = phone ? streak.get(phone)?.humanDir : undefined;
-  return dir ? dir === 'INBOUND' : undefined;
+/** Pending tab: customer sent the last message in the thread (any reply — MISA or human — clears this). */
+function awaitingReplyForChat(
+  streak: Map<string, UnreadStreakEntry>,
+  phone?: string,
+  lastDirection?: string | null,
+): boolean | undefined {
+  const latest = phone ? streak.get(phone)?.latestDir : undefined;
+  if (latest) return latest === 'INBOUND';
+  const human = phone ? streak.get(phone)?.humanDir : undefined;
+  if (human) return human === 'INBOUND';
+  const d = String(lastDirection || '').toUpperCase();
+  if (d === 'INBOUND' || d === 'OUTBOUND') return d === 'INBOUND';
+  return undefined;
+}
+
+function finalizeAwaitingReply(
+  unreadStreak: Map<string, UnreadStreakEntry>,
+  chat: {
+    phone?: string;
+    last_direction?: string | null;
+    last_inbound_at?: string | null;
+    _lead_touch?: WaInboxLeadTouchFields;
+  },
+): boolean {
+  let fromThread = awaitingReplyForChat(unreadStreak, chat.phone, chat.last_direction);
+  if (fromThread === undefined) {
+    fromThread = String(chat.last_direction || '').toUpperCase() === 'INBOUND';
+  }
+  return resolveWhatsAppInboxPending({
+    awaitingFromThread: Boolean(fromThread),
+    lead: chat._lead_touch,
+    waLastInboundAt: chat.last_inbound_at,
+  });
 }
 
 function unreadCountForChat(
@@ -188,7 +221,7 @@ async function loadTelecallerLeadPhones(
   let query = db
     .from('service_leads')
     .select(
-      'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at',
+      'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, last_call_at, total_calls',
     )
     .is('deleted_at', null)
     .not('customer_phone', 'is', null)
@@ -209,7 +242,7 @@ async function loadTelecallerLeadPhones(
     const retry = await db
       .from('service_leads')
       .select(
-        'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at',
+        'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, last_call_at, total_calls',
       )
       .is('deleted_at', null)
       .not('customer_phone', 'is', null)
@@ -243,6 +276,12 @@ async function loadTelecallerLeadPhones(
       last_message_at: metaInboundAt || row.updated_at || row.created_at || null,
       last_inbound_at: metaInboundAt,
       wa_line: waLineFromLead(row),
+      _lead_touch: {
+        last_call_at: row.last_call_at,
+        updated_at: row.updated_at,
+        total_calls: row.total_calls,
+        coupon_meta: meta,
+      } satisfies WaInboxLeadTouchFields,
     });
   }
 
@@ -262,7 +301,7 @@ async function loadAllCrmLeadPhones(
   const searchName = String(opts?.searchName || '').trim();
 
   const selectCols =
-    'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, assigned_telecaller_id, assigned_telecaller:users_login!assigned_telecaller_id(id, full_name)';
+    'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, last_call_at, total_calls, assigned_telecaller_id, assigned_telecaller:users_login!assigned_telecaller_id(id, full_name)';
 
   let query = db
     .from('service_leads')
@@ -287,7 +326,7 @@ async function loadAllCrmLeadPhones(
     let retry = db
       .from('service_leads')
       .select(
-        'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, assigned_telecaller_id',
+        'customer_phone, customer_name, problem_description, description, coupon_meta, lead_source, updated_at, created_at, last_call_at, total_calls, assigned_telecaller_id',
       )
       .not('customer_phone', 'is', null)
       .order('updated_at', { ascending: false })
@@ -329,6 +368,12 @@ async function loadAllCrmLeadPhones(
       last_message_at: metaInboundAt || row.updated_at || row.created_at || null,
       last_inbound_at: metaInboundAt,
       wa_line: waLineFromLead(row),
+      _lead_touch: {
+        last_call_at: row.last_call_at,
+        updated_at: row.updated_at,
+        total_calls: row.total_calls,
+        coupon_meta: meta,
+      } satisfies WaInboxLeadTouchFields,
     });
   }
 
@@ -415,7 +460,7 @@ async function getTelecallerWhatsappChats(
           String(row?.direction || ''),
           row?.created_at,
           readMap?.get(phone),
-          isAutoReplyRow(row),
+          isWhatsAppInboxAutoReplyRow(row),
         );
         const existing = byPhone.get(phone);
         const rowTs = ts(row?.created_at);
@@ -433,12 +478,20 @@ async function getTelecallerWhatsappChats(
   // Skip N+1 whatsapp_messages enrich — lead preview is enough for inbox list.
   // Opening a chat loads full history separately.
   const chats = Array.from(byPhone.values())
-    .map(({ lead_message_preview: _lp, lead_inbound_at, whatsapp_inbound: _wi, ...rest }) => ({
-      ...rest,
-      last_inbound_at: rest.last_inbound_at || lead_inbound_at || null,
-      unread_count: unreadCountForChat(rest, unreadStreak, rest.phone, readMap),
-      awaiting_reply: awaitingReplyForChat(unreadStreak, rest.phone),
-    }))
+    .map(({ lead_message_preview: _lp, lead_inbound_at, whatsapp_inbound: _wi, _lead_touch, ...rest }) => {
+      const last_inbound_at = rest.last_inbound_at || lead_inbound_at || null;
+      return {
+        ...rest,
+        last_inbound_at,
+        unread_count: unreadCountForChat(rest, unreadStreak, rest.phone, readMap),
+        awaiting_reply: finalizeAwaitingReply(unreadStreak, {
+          phone: rest.phone,
+          last_direction: rest.last_direction,
+          last_inbound_at,
+          _lead_touch,
+        }),
+      };
+    })
     .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
   return {
@@ -589,7 +642,7 @@ export async function GET(request: NextRequest) {
               String(row?.direction || ''),
               row?.created_at,
               readMap.get(phone),
-              isAutoReplyRow(row),
+              isWhatsAppInboxAutoReplyRow(row),
             );
             const preview = messagePreviewFromRow(row);
             const existing = byPhone.get(phone);
@@ -635,7 +688,7 @@ export async function GET(request: NextRequest) {
               String(row?.direction || ''),
               row?.created_at,
               readMap.get(phone),
-              isAutoReplyRow(row),
+              isWhatsAppInboxAutoReplyRow(row),
             );
             const existing = byPhone.get(phone);
             const rowTs = ts(row?.created_at);
@@ -654,10 +707,10 @@ export async function GET(request: NextRequest) {
       }
 
       let chats = Array.from(byPhone.values())
-        .map((chat) => ({
+        .map(({ _lead_touch, ...chat }) => ({
           ...chat,
           unread_count: unreadCountForChat(chat, unreadStreak, chat.phone, readMap),
-          awaiting_reply: awaitingReplyForChat(unreadStreak, chat.phone),
+          awaiting_reply: finalizeAwaitingReply(unreadStreak, { ...chat, _lead_touch }),
         }))
         .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
@@ -688,7 +741,12 @@ export async function GET(request: NextRequest) {
               last_status: row?.status || null,
               last_message_at: row?.created_at || null,
               unread_count: unreadCountForChat(lead || { phone, last_message_at: row?.created_at }, unreadStreak, phone, readMap),
-              awaiting_reply: awaitingReplyForChat(unreadStreak, phone),
+              awaiting_reply: finalizeAwaitingReply(unreadStreak, {
+                phone,
+                last_direction: row?.direction,
+                last_inbound_at: lead?.last_inbound_at,
+                _lead_touch: lead?._lead_touch,
+              }),
               wa_line: lead?.wa_line || '6161',
             });
           }
@@ -813,7 +871,7 @@ export async function GET(request: NextRequest) {
           String(row?.direction || ''),
           row?.created_at,
           readMap.get(phone),
-          isAutoReplyRow(row),
+          isWhatsAppInboxAutoReplyRow(row),
         );
         if (byPhone.has(phone)) continue;
 
@@ -836,10 +894,10 @@ export async function GET(request: NextRequest) {
       if (rows.length < batchSize || !cursorCreatedAt) break;
     }
 
-    const chats = Array.from(byPhone.values()).map((chat) => ({
+    const chats = Array.from(byPhone.values()).map(({ _lead_touch, ...chat }) => ({
       ...chat,
       unread_count: unreadCountForChat(chat, unreadStreak, chat.phone, readMap),
-      awaiting_reply: awaitingReplyForChat(unreadStreak, chat.phone),
+      awaiting_reply: finalizeAwaitingReply(unreadStreak, { ...chat, _lead_touch }),
     }));
 
     return NextResponse.json({

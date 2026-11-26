@@ -4,6 +4,7 @@ import {
   sendTextMessage,
   type WhatsAppSendResult,
 } from '@/lib/services/whatsappService';
+import { isHumanOutboundArchiveSource } from '@/lib/whatsapp/inboxPending';
 
 export async function sendAgentTextMessage(input: {
   phone: string;
@@ -41,8 +42,12 @@ export async function archiveAgentOutboundMessage(input: {
   if (!supabaseAdmin) return;
 
   const now = new Date().toISOString();
+  const humanOutbound = isHumanOutboundArchiveSource(input.source);
+  const automationTag = humanOutbound ? { human_outbound: true as const } : { agent_auto_reply: true as const };
   const meta =
-    input.meta && typeof input.meta === 'object' ? { agent_auto_reply: true, source: input.source, ...input.meta } : { agent_auto_reply: true, source: input.source };
+    input.meta && typeof input.meta === 'object'
+      ? { source: input.source, ...automationTag, ...input.meta }
+      : { source: input.source, ...automationTag };
   const templateName = String((meta as Record<string, unknown>).template_name || '').trim() || null;
   const templateParams = (meta as Record<string, unknown>).template_params;
   const buttonSlug = (meta as Record<string, unknown>).button_slug;

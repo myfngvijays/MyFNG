@@ -66,7 +66,7 @@ function saveClosedPhones(phones: Set<string>) {
   }
 }
 
-/** Pending = customer is waiting for a human reply. MISA AI / bot auto-replies don't count as a reply. */
+/** Pending = customer last in WA thread; MISA/telecaller WA reply or CRM call/save clears it. */
 function isAwaitingReply(chat: ChatRow): boolean {
   if (typeof chat.awaiting_reply === 'boolean') return chat.awaiting_reply;
   if (String(chat.last_direction || '').toUpperCase() !== 'INBOUND') return false;

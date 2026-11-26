@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Calendar, Loader2, RefreshCw, SwapHorizontal } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Calendar, Loader2, RefreshCw } from 'lucide-react';
 import { CRM_DATE_PRESETS, resolveCrmDateRange, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
 
 type Row = {
@@ -133,7 +133,7 @@ export default function TransferredLeadsPanel() {
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 py-16 text-center">
-          <SwapHorizontal className="mx-auto mb-2 h-9 w-9 text-emerald-300" />
+          <ArrowLeftRight className="mx-auto mb-2 h-9 w-9 text-emerald-300" />
           <p className="font-bold text-emerald-900">No transferred leads in this range</p>
         </div>
       ) : (
