@@ -257,6 +257,8 @@ type Props = {
   /** Poll latest Fresh leads only while Home is visible. */
   isActive?: boolean;
   onRemindersCount?: (count: number) => void;
+  /** Keeps Leads queue search in sync while typing on Home */
+  onSearchQueryChange?: (q: string) => void;
 };
 
 export default function CrmHomeTab({
@@ -271,8 +273,23 @@ export default function CrmHomeTab({
   onCustomEndChange,
   isActive = true,
   onRemindersCount,
+  onSearchQueryChange,
 }: Props) {
   const [leadQ, setLeadQ] = useState('');
+  const [leadHitsOpen, setLeadHitsOpen] = useState(false);
+  const [leadHits, setLeadHits] = useState<
+    Array<{
+      id: string;
+      customer_name?: string | null;
+      customer_phone?: string | null;
+      lead_number?: string | null;
+      vehicle_number?: string | null;
+      vehicle_model?: string | null;
+    }>
+  >([]);
+  const [leadHitsTotal, setLeadHitsTotal] = useState(0);
+  const [leadHitsLoading, setLeadHitsLoading] = useState(false);
+  const showHitsPanel = leadHitsOpen && leadQ.trim().length >= 2;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<any>(null);
@@ -297,6 +314,43 @@ export default function CrmHomeTab({
 
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
+
+  useEffect(() => {
+    onSearchQueryChange?.(leadQ);
+  }, [leadQ, onSearchQueryChange]);
+
+  // Live search while typing (same API as web home)
+  useEffect(() => {
+    const q = leadQ.trim();
+    if (q.length < 2) {
+      setLeadHits([]);
+      setLeadHitsTotal(0);
+      setLeadHitsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLeadHitsLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q, limit: '8' });
+        const json = await apiFetch<{ leads?: unknown[]; total?: number }>(
+          `/api/telecaller/crm/leads?${params.toString()}`,
+          { timeoutMs: 15000 },
+        );
+        if (cancelled) return;
+        setLeadHits(Array.isArray(json?.leads) ? (json.leads as typeof leadHits) : []);
+        setLeadHitsTotal(Number(json?.total || 0));
+      } catch {
+        if (!cancelled) setLeadHits([]);
+      } finally {
+        if (!cancelled) setLeadHitsLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [leadQ]);
 
   const load = useCallback(async (force = false) => {
     if (isPartnerPreview()) {
@@ -475,6 +529,56 @@ export default function CrmHomeTab({
     { label: 'Reports', icon: 'bar-chart-outline' as const, color: '#EA580C', bg: '#FFF7ED', chip: '#FFEDD5', border: '#FED7AA', go: () => onNavigate('reports') },
   ];
 
+  const hitsPanelBody =
+    leadHitsLoading && leadHits.length === 0 ? (
+      <Text style={styles.heroHitsMeta}>Searching…</Text>
+    ) : leadHits.length === 0 ? (
+      <Text style={styles.heroHitsMeta}>No leads found</Text>
+    ) : (
+      <>
+        {leadHits.map((hit) => {
+          const reg = sanitizeVehicleNumberInput(hit.vehicle_number);
+          const sub = [hit.customer_phone, hit.lead_number, reg || null, hit.vehicle_model]
+            .filter(Boolean)
+            .join(' · ');
+          return (
+            <TouchableOpacity
+              key={hit.id}
+              style={styles.heroHitRow}
+              onPress={() => {
+                setLeadHitsOpen(false);
+                onNavigate('TelecallerLeadDetail', { leadId: hit.id });
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.heroHitName} numberOfLines={1}>
+                {hit.customer_name || 'Unnamed lead'}
+              </Text>
+              {sub ? (
+                <Text style={styles.heroHitSub} numberOfLines={1}>
+                  {sub}
+                </Text>
+              ) : null}
+            </TouchableOpacity>
+          );
+        })}
+        {leadHitsTotal > leadHits.length ? (
+          <TouchableOpacity
+            style={styles.heroHitMore}
+            onPress={() => {
+              const q = leadQ.trim();
+              setLeadHitsOpen(false);
+              onNavigate('queue', { q });
+            }}
+          >
+            <Text style={styles.heroHitMoreText}>
+              See all {leadHitsTotal.toLocaleString('en-IN')} results
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </>
+    );
+
   return (
     <ScrollView
       style={styles.container}
@@ -482,6 +586,8 @@ export default function CrmHomeTab({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(true); }} colors={[COLORS.primary]} />}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      removeClippedSubviews={!showHitsPanel}
+      onScrollBeginDrag={() => setLeadHitsOpen(false)}
     >
       {loadError && !data ? (
         <View style={styles.loadBanner}>
@@ -496,7 +602,7 @@ export default function CrmHomeTab({
           </TouchableOpacity>
         </View>
       ) : null}
-      <View style={styles.hero}>
+      <View style={[styles.hero, showHitsPanel ? styles.heroHitsFront : null]}>
         <View style={styles.heroTop}>
           <View style={styles.heroAvatar}>
             <Text style={styles.heroAvatarText}>{leadInitials(displayName)}</Text>
@@ -532,26 +638,67 @@ export default function CrmHomeTab({
             </TouchableOpacity>
           </View>
         )}
-        <View style={styles.heroSearch}>
-          <Ionicons name="search" size={16} color="#64748B" />
-          <TextInput
-            value={leadQ}
-            onChangeText={setLeadQ}
-            placeholder="Search name, mobile, car number"
-            placeholderTextColor="#94A3B8"
-            style={styles.heroSearchInput}
-            returnKeyType="search"
-            onSubmitEditing={() => {
-              const q = leadQ.trim();
-              if (!q) return;
-              onNavigate('queue', { q });
-            }}
-          />
-          <TouchableOpacity style={styles.leadsChip} onPress={() => onNavigate('queue')} activeOpacity={0.85}>
-            <Text style={styles.leadsChipText}>Leads</Text>
-          </TouchableOpacity>
+        <View collapsable={false} style={styles.heroSearchWrap}>
+          <View style={styles.heroSearch}>
+            <Ionicons name="search" size={16} color="#64748B" />
+            <TextInput
+              value={leadQ}
+              onChangeText={(v) => {
+                setLeadQ(v);
+                setLeadHitsOpen(true);
+              }}
+              onFocus={() => setLeadHitsOpen(true)}
+              placeholder="Search name, mobile, car number"
+              placeholderTextColor="#94A3B8"
+              style={styles.heroSearchInput}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              onSubmitEditing={() => {
+                const q = leadQ.trim();
+                if (!q) return;
+                setLeadHitsOpen(false);
+                onNavigate('queue', { q });
+              }}
+            />
+            {leadQ.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setLeadQ('');
+                  setLeadHits([]);
+                  setLeadHitsTotal(0);
+                  setLeadHitsOpen(false);
+                  onSearchQueryChange?.('');
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="close-circle" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.leadsChip}
+              onPress={() => {
+                const q = leadQ.trim();
+                onNavigate('queue', q ? { q } : undefined);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.leadsChipText}>Leads</Text>
+            </TouchableOpacity>
+          </View>
+          {showHitsPanel ? (
+            <ScrollView
+              style={styles.heroHitsFloat}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
+            >
+              {hitsPanelBody}
+            </ScrollView>
+          ) : null}
         </View>
       </View>
+      <View style={showHitsPanel ? styles.belowHits : undefined} pointerEvents="box-none">
       {loading && !data ? (
         <View style={{ paddingVertical: 8 }}>
           <CarLoading size="compact" label="Loading MyFNG CRM..." />
@@ -1016,6 +1163,7 @@ export default function CrmHomeTab({
         }))}
       />
 
+      </View>
     </ScrollView>
   );
 }
@@ -1033,6 +1181,11 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
     gap: 10,
+    overflow: 'visible',
+  },
+  heroHitsFront: {
+    zIndex: 200,
+    elevation: 200,
   },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   heroAvatar: {
@@ -1070,6 +1223,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   breakBtnText: { color: '#004AAD', fontSize: 13, fontWeight: '800' },
+  heroSearchWrap: {
+    position: 'relative',
+    zIndex: 210,
+    elevation: 210,
+  },
   heroSearch: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1081,6 +1239,42 @@ const styles = StyleSheet.create({
     height: 44,
   },
   heroSearchInput: { flex: 1, fontSize: 13, color: '#0F172A', paddingVertical: 0 },
+  heroHitsFloat: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 48,
+    maxHeight: 280,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...SHADOWS.large,
+    overflow: 'hidden',
+    zIndex: 220,
+    elevation: 220,
+  },
+  belowHits: {
+    zIndex: 0,
+    elevation: 0,
+  },
+  heroHitsMeta: { paddingHorizontal: 14, paddingVertical: 12, fontSize: 12, fontWeight: '600', color: '#64748B' },
+  heroHitRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  heroHitName: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  heroHitSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  heroHitMore: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  heroHitMoreText: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
   leadsChip: { backgroundColor: '#E8F1FF', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
   leadsChipText: { color: '#004AAD', fontSize: 12, fontWeight: '800' },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },

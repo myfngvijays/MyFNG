@@ -1245,6 +1245,7 @@ export default function TelecallerAdvancedCRM() {
               embedInShell
               isActive={homeActive}
               onRemindersCount={undefined}
+              onSearchQueryChange={setQueueQuery}
               onNavigate={(screen, params) => {
                 if (preview) {
                   if (screen === 'queue' || screen === 'engage' || screen === 'me') {
@@ -1327,7 +1328,7 @@ export default function TelecallerAdvancedCRM() {
               route={{ params: { leadId: detailLeadId } }}
               embedded
               initialEditing={detailEditing}
-              showLeadIq
+              showLeadIq={false}
             />
           </View>
         ) : null}

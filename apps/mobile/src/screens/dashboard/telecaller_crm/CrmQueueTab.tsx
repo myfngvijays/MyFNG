@@ -214,9 +214,9 @@ export default function CrmQueueTab({
   const [appliedQ, setAppliedQ] = useState(initialQuery);
   const [filter, setFilter] = useState(initialFilter);
   useEffect(() => {
-    if (!initialQuery.trim()) return;
-    setQ(initialQuery);
-    setAppliedQ(initialQuery);
+    const next = String(initialQuery || '');
+    setQ(next);
+    setAppliedQ(next);
   }, [initialQuery]);
   const [statusFilters, setStatusFilters] = useState(DEFAULT_STATUS_FILTERS);
   const [crmStatusChoices, setCrmStatusChoices] = useState<Array<{ id: string; label: string }>>([
