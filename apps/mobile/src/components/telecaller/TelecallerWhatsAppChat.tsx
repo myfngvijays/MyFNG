@@ -119,9 +119,31 @@ function templateParamsOf(m: Msg): string[] {
   return Array.isArray(raw) ? raw.map((value) => String(value ?? '').trim()).filter(Boolean) : [];
 }
 
+function pricingShareButtonLabel(m: Msg): string | null {
+  const tpl = String(m.template_name || (m.meta as any)?.template_name || '').toLowerCase();
+  if (tpl === 'pricing_share_link_btn' || (m.meta as any)?.button_slug) return 'Pricing link';
+  return null;
+}
+
+function stripPricingUrlLines(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return true;
+      if (/^https?:\/\//i.test(t)) return false;
+      if (/myfng\.in\/(pricing|p)\//i.test(t)) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function messageText(m: Msg): string {
   const params = templateParamsOf(m);
   const rawBody = String(m.text_body || '').trim();
+  const pricingBtn = pricingShareButtonLabel(m);
   const caption = String(m.media_caption || '').trim();
   const body = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'STICKER'].includes(rawBody.toUpperCase())
     ? ''
@@ -145,6 +167,7 @@ function messageText(m: Msg): string {
       if (inside) return inside;
       return 'Template message';
     }
+    if (pricingBtn) return stripPricingUrlLines(body);
     return body;
   }
   if (params.length) return params.join('\n');
@@ -611,7 +634,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
           renderItem={({ item }) => {
             const outbound = String(item.direction || '').toUpperCase() === 'OUTBOUND';
             const body = messageText(item);
-            const tpl = String(item.template_name || '').trim();
+            const tpl = String(item.template_name || (item.meta as any)?.template_name || '').trim();
+            const pricingCta = pricingShareButtonLabel(item);
             const showImage = isImageMessage(item);
             const mediaUrl = showImage ? resolveMediaUrl(item) : null;
             const quote = String(item.meta?.reply_preview || '').trim();
@@ -668,6 +692,11 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
                     <Text style={styles.bubbleText} selectable>
                       {body}
                     </Text>
+                  ) : null}
+                  {pricingCta ? (
+                    <View style={styles.templateUrlBtn}>
+                      <Text style={styles.templateUrlBtnText}>{pricingCta}</Text>
+                    </View>
                   ) : null}
                   <View style={styles.metaRow}>
                     <Text style={styles.bubbleTime}>{formatBubbleTime(item.created_at)}</Text>
@@ -1079,6 +1108,18 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.2,
+  },
+  templateUrlBtn: {
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0,0,0,0.08)',
+    paddingTop: 8,
+    alignItems: 'center',
+  },
+  templateUrlBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#027EB5',
   },
   bubbleText: { fontSize: 13, color: WA.text, lineHeight: 18 },
   bubbleImage: {

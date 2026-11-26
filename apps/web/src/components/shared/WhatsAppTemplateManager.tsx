@@ -210,6 +210,7 @@ export default function WhatsAppTemplateManager() {
   const [syncing, setSyncing] = useState(false);
   const [repushing, setRepushing] = useState(false);
   const [ensuringOtp, setEnsuringOtp] = useState(false);
+  const [ensuringPricingBtn, setEnsuringPricingBtn] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createStep, setCreateStep] = useState<1 | 2 | 3>(1);
   const [search, setSearch] = useState('');
@@ -580,6 +581,48 @@ export default function WhatsAppTemplateManager() {
     }
   };
 
+  const handleEnsurePricingShareBtn = async () => {
+    const confirmed = window.confirm(
+      'Create + push pricing_share_link_btn on BOTH WABAs?\n\n' +
+        '• Settings WABA (9594996161 / env)\n' +
+        '• Every active connected account in Bulk WhatsApp\n\n' +
+        'UTILITY · body ×3 · button "Pricing link" → https://myfng.in/pricing/{{slug}}',
+    );
+    if (!confirmed) return;
+
+    setEnsuringPricingBtn(true);
+    try {
+      const res = await fetch('/api/whatsapp/templates/ensure-pricing-share-btn', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        const detail = Array.isArray(data?.wabaResults)
+          ? data.wabaResults
+              .filter((r: { ok?: boolean }) => !r.ok)
+              .map((r: { label?: string; message?: string }) => `${r.label}: ${r.message}`)
+              .slice(0, 3)
+              .join('\n')
+          : '';
+        throw new Error([data?.error, detail].filter(Boolean).join('\n') || 'Meta push failed');
+      }
+      const lines = Array.isArray(data?.wabaResults)
+        ? data.wabaResults.map(
+            (r: { label?: string; ok?: boolean; metaStatus?: string; message?: string }) =>
+              `${r.ok ? '✓' : '✗'} ${r.label}${r.metaStatus ? ` (${r.metaStatus})` : ''}`,
+          )
+        : [];
+      toast.success(
+        lines.length ? `${data?.message || 'Done'}\n${lines.join('\n')}` : data?.message || 'Submitted to Meta',
+        { duration: 6000 },
+      );
+      setSearch('pricing_share_link_btn');
+      await loadTemplates(true);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to push pricing_share_link_btn');
+    } finally {
+      setEnsuringPricingBtn(false);
+    }
+  };
+
   const handleRepushAllTemplates = async () => {
     const confirmed = window.confirm(
       'Repush all templates to Meta using current env credentials (WHATSAPP_BUSINESS_ACCOUNT_ID + WHATSAPP_ACCESS_TOKEN).\n\nUpdate env first, then run this. Templates go to the WABA in env — not the old account.\n\nContinue?'
@@ -632,7 +675,7 @@ export default function WhatsAppTemplateManager() {
             <button
               type="button"
               onClick={handleEnsureOtpTemplate}
-              disabled={ensuringOtp || repushing || syncing}
+              disabled={ensuringOtp || ensuringPricingBtn || repushing || syncing}
               className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
               title="Create AUTHENTICATION otp template on current Meta WABA"
             >
@@ -641,8 +684,18 @@ export default function WhatsAppTemplateManager() {
             </button>
             <button
               type="button"
+              onClick={handleEnsurePricingShareBtn}
+              disabled={ensuringPricingBtn || ensuringOtp || repushing || syncing}
+              className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-60"
+              title="Upsert pricing_share_link_btn + submit to Meta (telecaller pricing WhatsApp)"
+            >
+              <RefreshCcw className="mr-1 h-4 w-4" />
+              {ensuringPricingBtn ? 'Pushing…' : 'Push pricing (button)'}
+            </button>
+            <button
+              type="button"
               onClick={handleRepushAllTemplates}
-              disabled={repushing || syncing || ensuringOtp}
+              disabled={repushing || syncing || ensuringOtp || ensuringPricingBtn}
               className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
               title="Push all local templates to the WABA in env (after updating credentials)"
             >
@@ -652,7 +705,7 @@ export default function WhatsAppTemplateManager() {
             <button
               type="button"
               onClick={handleSyncTemplates}
-              disabled={syncing || repushing}
+              disabled={syncing || repushing || ensuringPricingBtn}
               className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               title="Sync templates from Meta"
             >

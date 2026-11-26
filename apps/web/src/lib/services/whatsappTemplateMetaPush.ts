@@ -181,11 +181,22 @@ function isAlreadyOnMetaError(message: string) {
 
 export async function pushWhatsAppTemplateToMeta(
   localTemplate: WhatsAppTemplatePushRow,
-  options?: { skipIfOnMeta?: boolean },
+  options?: {
+    skipIfOnMeta?: boolean;
+    creds?: ResolvedWhatsAppAgentsCredentials;
+    /** When pushing the same template to a second WABA, avoid overwriting local meta. */
+    skipLocalMetaUpdate?: boolean;
+  },
 ): Promise<WhatsAppTemplatePushResult> {
   const templateName = String(localTemplate.template_name);
   const skipIfOnMeta = options?.skipIfOnMeta !== false;
-  const creds = await assertWhatsAppTemplatePushConfig();
+  const skipLocalMetaUpdate = options?.skipLocalMetaUpdate === true;
+  const creds = options?.creds
+    ? options.creds
+    : await assertWhatsAppTemplatePushConfig();
+  if (!creds.whatsapp_access_token?.trim() || !creds.whatsapp_business_account_id?.trim()) {
+    throw new Error('WhatsApp access token or WABA id missing for push');
+  }
 
   if (isAuthenticationOtpTemplate(templateName, localTemplate.category)) {
     const result = await ensureOtpTemplateOnCurrentWaba();
@@ -204,7 +215,9 @@ export async function pushWhatsAppTemplateToMeta(
   if (existingOnMeta) {
     const metaStatus = String(existingOnMeta?.status || 'PENDING').toUpperCase();
     if (skipIfOnMeta && ['APPROVED', 'PENDING', 'IN_APPEAL'].includes(metaStatus)) {
-      await updateLocalTemplateMeta(localTemplate.id, existingOnMeta, 'meta_repush_linked');
+      if (!skipLocalMetaUpdate) {
+        await updateLocalTemplateMeta(localTemplate.id, existingOnMeta, 'meta_repush_linked');
+      }
       return {
         template_name: templateName,
         action: 'linked',
@@ -239,7 +252,9 @@ export async function pushWhatsAppTemplateToMeta(
   }
 
   const metaStatus = String(verified?.status || 'PENDING').toUpperCase();
-  await updateLocalTemplateMeta(localTemplate.id, verified, 'meta_repush_create');
+  if (!skipLocalMetaUpdate) {
+    await updateLocalTemplateMeta(localTemplate.id, verified, 'meta_repush_create');
+  }
 
   return {
     template_name: templateName,

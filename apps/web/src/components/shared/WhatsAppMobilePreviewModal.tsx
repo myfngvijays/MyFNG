@@ -38,6 +38,11 @@ import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 import WhatsAppTemplatePickerModal from '@/components/shared/WhatsAppTemplatePickerModal';
 import { formatPhoneDisplay } from '@/lib/phoneIntl';
+import {
+  formatPricingShareBubbleBody,
+  isPricingShareButtonMessage,
+  PRICING_SHARE_BUTTON_LABEL,
+} from '@/lib/telecaller/pricingShareWhatsAppPreview';
 
 interface WhatsAppMobilePreviewModalProps {
   isOpen: boolean;
@@ -3501,14 +3506,25 @@ export default function WhatsAppMobilePreviewModal({
                           ''
                       ).trim()
                     : '';
-                const isTemplateMessage = Boolean(msg?.template_name);
-                const currentTemplate = msg?.template_name
-                  ? templateMap.get(String(msg.template_name || '').trim().toLowerCase()) || null
+                const templateKey = String(
+                  msg?.template_name || msg?.meta?.template_name || '',
+                )
+                  .trim()
+                  .toLowerCase();
+                const isTemplateMessage = Boolean(templateKey);
+                const currentTemplate = templateKey
+                  ? templateMap.get(templateKey) || null
                   : null;
                 const templateText = currentTemplate
                   ? fillTemplateBodyFromArray(currentTemplate, msg?.payload?.request?.template_params || msg?.payload?.request?.params)
                   : '';
-                const templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
+                let templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
+                if (
+                  !templateButtons.length &&
+                  (templateKey === 'pricing_share_link_btn' || msg?.meta?.button_slug)
+                ) {
+                  templateButtons = [{ text: PRICING_SHARE_BUTTON_LABEL, type: 'URL' }];
+                }
                 const templateDisplayName = isTemplateMessage
                   ? templateTitle({
                       display_name: currentTemplate?.display_name,
@@ -3516,7 +3532,7 @@ export default function WhatsAppMobilePreviewModal({
                     })
                   : '';
                 const templateTechName = String(
-                  currentTemplate?.template_name || msg?.template_name || '',
+                  currentTemplate?.template_name || msg?.template_name || msg?.meta?.template_name || '',
                 ).trim();
                 const templateCat = templateCategoryMeta(currentTemplate?.category);
                 const messageType = String(msg.message_type || '').trim().toUpperCase();
@@ -3588,9 +3604,13 @@ export default function WhatsAppMobilePreviewModal({
                   ? ''
                   : rawTextBody;
 
+                const pricingShareBody = isPricingShareButtonMessage(msg)
+                  ? formatPricingShareBubbleBody(msg) || templateText
+                  : '';
                 const bubbleText =
+                  pricingShareBody ||
                   textBody ||
-                  (isTemplateMessage ? templateText || `Template: ${msg.template_name}` : '') ||
+                  (isTemplateMessage ? templateText || `Template: ${templateKey || msg.template_name}` : '') ||
                   interactiveText ||
                   callEventText ||
                   String(msg.media_caption || '').trim() ||

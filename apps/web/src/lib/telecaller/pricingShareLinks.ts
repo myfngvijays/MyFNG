@@ -18,6 +18,7 @@ import { sendAgentTextMessage, archiveAgentOutboundMessage } from '@/lib/whatsap
 import { isSessionOpenForPhone } from '@/lib/whatsappBotFlow/sessionWindow';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 import { normalizePricingCategories } from '@/lib/telecaller/sendLeadPricingWhatsApp';
+import { stripRawPricingUrlFromBody } from '@/lib/telecaller/pricingShareWhatsAppPreview';
 
 /** Telecaller WhatsApp pricing link validity (1 hour). Clamped 1–24h when overridden. */
 export const TELECALLER_PRICING_SHARE_TTL_HOURS = 1;
@@ -548,7 +549,7 @@ export async function sendPricingShareWhatsApp(input: {
   }
   await archiveAgentOutboundMessage({
     phone,
-    text: sessionMsg,
+    text: usedTemplate === SHARE_TEMPLATE ? stripRawPricingUrlFromBody(sessionMsg) : sessionMsg,
     sendResult: tplRes,
     source: 'telecaller_pricing_share',
     meta: {
@@ -558,6 +559,7 @@ export async function sendPricingShareWhatsApp(input: {
       url,
       used_template: true,
       template_name: usedTemplate,
+      template_params: [name, car, expiresLabel],
       button_slug: slug || null,
     },
   });

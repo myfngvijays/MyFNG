@@ -28,7 +28,7 @@ VALUES (
   E'Hi {{1}},\n\nSharing MyFNG *full service pricing* for *{{2}}*.\n\nView all packages (Periodic, AC, Engine, Denting & more) — valid until {{3}}.\n\nSelect plans on the page and send back on WhatsApp, or reply *BOOK*. — Team MyFNG',
   '["customer_name","car_model","expiry_date_time"]'::jsonb,
   '["Yunick","MARUTI WAGON R","28 Jul, 08:21 pm"]'::jsonb,
-  false,
+  true,
   jsonb_build_object(
     'purpose', 'telecaller_pricing_share',
     'source', 'local_draft',

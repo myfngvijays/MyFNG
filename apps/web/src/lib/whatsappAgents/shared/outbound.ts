@@ -41,18 +41,36 @@ export async function archiveAgentOutboundMessage(input: {
   if (!supabaseAdmin) return;
 
   const now = new Date().toISOString();
+  const meta =
+    input.meta && typeof input.meta === 'object' ? { agent_auto_reply: true, source: input.source, ...input.meta } : { agent_auto_reply: true, source: input.source };
+  const templateName = String((meta as Record<string, unknown>).template_name || '').trim() || null;
+  const templateParams = (meta as Record<string, unknown>).template_params;
+  const buttonSlug = (meta as Record<string, unknown>).button_slug;
+
   await supabaseAdmin.from('whatsapp_messages').insert({
     provider_message_id: input.sendResult.messageId || null,
     direction: 'OUTBOUND',
-    message_type: 'TEXT',
+    message_type: templateName ? 'TEMPLATE' : 'TEXT',
+    template_name: templateName,
     sender_phone: null,
     recipient_phone: normalizePhoneNumber(input.phone),
     text_body: input.text,
     status: input.sendResult.success ? 'SENT' : 'FAILED',
     status_at: now,
     error_message: input.sendResult.success ? null : input.sendResult.error || 'Agent send failed',
-    payload: { source: input.source, response: input.sendResult.raw || null },
-    meta: { agent_auto_reply: true, source: input.source, ...(input.meta || {}) },
+    payload: {
+      source: input.source,
+      response: input.sendResult.raw || null,
+      ...(templateName
+        ? {
+            request: {
+              template_params: Array.isArray(templateParams) ? templateParams : undefined,
+              button_url_params: buttonSlug ? [String(buttonSlug)] : undefined,
+            },
+          }
+        : {}),
+    },
+    meta,
     updated_at: now,
   });
 }
