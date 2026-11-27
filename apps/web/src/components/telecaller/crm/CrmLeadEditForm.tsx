@@ -1720,6 +1720,11 @@ export default function CrmLeadEditForm({
   const [saveSlot, setSaveSlot] = useState<HTMLElement | null>(null);
   const [brainOpen, setBrainOpen] = useState(false);
   useEffect(() => {
+    const openIq = () => setBrainOpen(true);
+    window.addEventListener('myfng:open-lead-iq', openIq);
+    return () => window.removeEventListener('myfng:open-lead-iq', openIq);
+  }, []);
+  useEffect(() => {
     if (!embedded) return;
     setSaveSlot(document.getElementById('lead-sidebar-save'));
   }, [embedded, leadId]);

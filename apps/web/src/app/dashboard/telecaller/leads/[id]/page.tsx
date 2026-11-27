@@ -1089,6 +1089,7 @@ export function LeadDetailContent({
                   });
                 }}
                 onSendPricing={() => void sendPricingWhatsApp()}
+                onLeadIq={() => window.dispatchEvent(new CustomEvent('myfng:open-lead-iq'))}
               />
             ) : null}
             </>

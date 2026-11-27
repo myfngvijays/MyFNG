@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckSquare, ChevronDown, Loader2, PhoneCall } from 'lucide-react';
+import { Brain, CheckSquare, ChevronDown, Loader2, PhoneCall } from 'lucide-react';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 export default function LeadPanelQuickActions({
@@ -8,6 +8,7 @@ export default function LeadPanelQuickActions({
   onWhatsApp,
   onTask,
   onSendPricing,
+  onLeadIq,
   calling = false,
   sendingPricing = false,
   sendPricingReady = true,
@@ -18,6 +19,7 @@ export default function LeadPanelQuickActions({
   onWhatsApp: () => void;
   onTask: () => void;
   onSendPricing: () => void;
+  onLeadIq?: () => void;
   calling?: boolean;
   sendingPricing?: boolean;
   /** Pincode + car model filled — required before send pricing */
@@ -30,6 +32,10 @@ export default function LeadPanelQuickActions({
 
   const btn =
     'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-0.5 py-2 transition hover:bg-white/10 disabled:opacity-45';
+
+  const vRule = (
+    <div className="my-1.5 w-px shrink-0 self-stretch bg-white/35" aria-hidden role="presentation" />
+  );
 
   return (
     <div
@@ -49,6 +55,7 @@ export default function LeadPanelQuickActions({
         />
         <span className="text-[10px] font-bold uppercase tracking-wide text-white/95">Call</span>
       </button>
+      {vRule}
       <button type="button" className={btn} onClick={onTask} title="Task / reminder">
         <span className="inline-flex items-center gap-0.5 text-white">
           <CheckSquare className="h-5 w-5" />
@@ -56,10 +63,12 @@ export default function LeadPanelQuickActions({
         </span>
         <span className="text-[10px] font-bold uppercase tracking-wide text-white/95">Task</span>
       </button>
+      {vRule}
       <button type="button" className={btn} disabled={!hasPhone} onClick={onWhatsApp} title="WhatsApp chat">
         <WhatsAppIcon className="h-5 w-5 text-[#7dffb0]" />
         <span className="text-[10px] font-bold uppercase tracking-wide text-white/95">WhatsApp</span>
       </button>
+      {vRule}
       <button
         type="button"
         className={`${btn} ${!pricingOk ? 'opacity-75' : ''}`}
@@ -81,6 +90,16 @@ export default function LeadPanelQuickActions({
         <span className="max-w-[4.5rem] text-center text-[9px] font-bold uppercase leading-tight tracking-wide text-white/95">
           Send pricing
         </span>
+      </button>
+      {vRule}
+      <button
+        type="button"
+        className={btn}
+        onClick={() => onLeadIq?.()}
+        title="Lead IQ — recordings & call insights"
+      >
+        <Brain className="h-5 w-5 text-amber-300" />
+        <span className="text-[10px] font-bold uppercase tracking-wide text-white/95">Lead IQ</span>
       </button>
       </div>
       <div className="h-[3px] w-full bg-white" aria-hidden />
