@@ -40,6 +40,79 @@ export function pricingShareLinkTag(expiresAt: string | null | undefined, nowMs 
   return t > nowMs ? 'link_active' : 'link_expired';
 }
 
+export function normalizePricingShareUrl(url: string): string {
+  return String(url || '')
+    .trim()
+    .replace(/^.*?(https?:\/\/\S+)/i, '$1')
+    .trim();
+}
+
+export function resolvePricingShareUrlFromMessage(msg: {
+  meta?: unknown;
+}): { url: string; slug: string } {
+  const meta = msg.meta && typeof msg.meta === 'object' ? (msg.meta as Record<string, unknown>) : {};
+  let url = normalizePricingShareUrl(String(meta.url || ''));
+  const slug = String(meta.button_slug || '')
+    .trim()
+    .toLowerCase();
+  if (!url && slug) url = pricingSharePublicUrl(slug);
+  return { url, slug };
+}
+
+function formatPricingShareTimelineExpiry(iso: string): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+export type PricingShareTimelineActivity = {
+  id: string;
+  kind: 'whatsapp';
+  at: string;
+  title: string;
+  body: string;
+  meta: {
+    event: 'PRICING_SHARE';
+    pricing_link_tag: 'link_active' | 'link_expired';
+    share_url: string | null;
+    expires_at: string | null;
+    by: string | null;
+  };
+};
+
+export function buildPricingShareTimelineActivity(input: {
+  id: string;
+  at: string;
+  url: string;
+  expiresAt?: string | null;
+  by?: string | null;
+}): PricingShareTimelineActivity {
+  const url = normalizePricingShareUrl(input.url);
+  const expiresAt = String(input.expiresAt || '').trim();
+  const tag = pricingShareLinkTag(expiresAt);
+  const expiryLabel = expiresAt ? formatPricingShareTimelineExpiry(expiresAt) : '';
+  return {
+    id: input.id,
+    kind: 'whatsapp',
+    at: input.at,
+    title: tag === 'link_expired' ? 'Pricing link · expired' : 'Pricing link · active',
+    body: [url, expiryLabel ? `Valid until ${expiryLabel}` : null].filter(Boolean).join('\n'),
+    meta: {
+      event: 'PRICING_SHARE',
+      pricing_link_tag: tag,
+      share_url: url || null,
+      expires_at: expiresAt || null,
+      by: String(input.by || '').trim() || null,
+    },
+  };
+}
+
 export function buildPricingShareProfileHistoryEntry(input: {
   url: string;
   expiresAt: string;

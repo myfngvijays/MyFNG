@@ -16,7 +16,16 @@ import {
   isAdminCustomRepairLead,
 } from '@/lib/admin-checkout-lead-group';
 import { buildLeadOwnerSegments, leadOwnerAt } from '@/lib/telecaller/activityOwnerAtTime';
-import { pricingShareLinkTag } from '@/lib/telecaller/pricingShareLinks';
+import {
+  buildPricingShareTimelineActivity,
+  normalizePricingShareUrl,
+  pricingSharePublicUrl,
+  resolvePricingShareUrlFromMessage,
+} from '@/lib/telecaller/pricingShareLinks';
+import {
+  formatPricingShareBubbleBody,
+  isPricingShareButtonMessage,
+} from '@/lib/telecaller/pricingShareWhatsAppPreview';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -51,6 +60,17 @@ function friendlyPipelineStatus(status: string | null | undefined): string {
 function crmStatusLabel(lead: any): string {
   const id = resolveAdminCrmStatusId(lead);
   return ADMIN_CRM_STATUS_OPTIONS.find((opt) => opt.id === id)?.label || friendlyPipelineStatus(lead?.status);
+}
+
+function pushPricingShareActivity(
+  items: Array<{ id: string; kind: string; at: string; title: string; body?: string | null; meta?: Record<string, unknown> }>,
+  seen: Set<string>,
+  input: { id: string; at: string; url: string; expiresAt?: string | null; by?: string | null },
+) {
+  const url = normalizePricingShareUrl(input.url);
+  if (!url || !input.at || seen.has(url)) return;
+  seen.add(url);
+  items.push(buildPricingShareTimelineActivity({ ...input, url }));
 }
 
 async function requireCrmUser(request: NextRequest) {
@@ -187,7 +207,7 @@ export async function GET(request: NextRequest) {
       ...siblingLeads.map((r) => [String(r.id), String(r.lead_number || '')] as [string, string]),
     ]);
 
-    const [callsRes, fuRes, waRes, archivedRes, eventsRes] = await Promise.all([
+    const [callsRes, fuRes, waRes, shareLinksRes, archivedRes, eventsRes] = await Promise.all([
       safeSelect(
         () =>
           supabaseAdmin
@@ -230,7 +250,7 @@ export async function GET(request: NextRequest) {
               supabaseAdmin
                 .from('whatsapp_messages')
                 .select(
-                  'id, direction, message_type, text_body, media_caption, template_name, status, created_at, sender_phone, recipient_phone, created_by, actor:created_by(full_name)',
+                  'id, direction, message_type, text_body, media_caption, template_name, status, created_at, sender_phone, recipient_phone, created_by, meta, actor:created_by(full_name)',
                 )
                 .or(`sender_phone.eq.${phone},recipient_phone.eq.${phone}`)
                 .order('created_at', { ascending: false })
@@ -244,6 +264,22 @@ export async function GET(request: NextRequest) {
                 .limit(40),
           )
         : Promise.resolve({ data: [] as any[], error: null }),
+      safeSelect(
+        () =>
+          supabaseAdmin
+            .from('pricing_share_links')
+            .select('id, slug, expires_at, created_at, lead_id')
+            .in('lead_id', relatedLeadIds)
+            .order('created_at', { ascending: false })
+            .limit(30),
+        () =>
+          supabaseAdmin
+            .from('pricing_share_links')
+            .select('slug, expires_at, created_at, lead_id')
+            .in('lead_id', relatedLeadIds)
+            .order('created_at', { ascending: false })
+            .limit(30),
+      ),
       phone10
         ? safeSelect(
             () =>
@@ -299,6 +335,17 @@ export async function GET(request: NextRequest) {
     };
 
     const items: Item[] = [];
+    const pricingShareExpiresBySlug = new Map<string, string>();
+    for (const row of shareLinksRes.data || []) {
+      const slug = String((row as any).slug || '')
+        .trim()
+        .toLowerCase();
+      const exp = String((row as any).expires_at || '').trim();
+      if (slug && exp && !pricingShareExpiresBySlug.has(slug)) {
+        pricingShareExpiresBySlug.set(slug, exp);
+      }
+    }
+    const pricingShareSeen = new Set<string>();
 
     items.push({
       id: `lead-created-${leadId}`,
@@ -436,9 +483,15 @@ export async function GET(request: NextRequest) {
 
     for (const msg of waRes.data || []) {
       const dir = String((msg as any).direction || '').toUpperCase();
-      const waText = String(
+      const rawText = String(
         (msg as any).text_body || (msg as any).media_caption || (msg as any).template_name || '',
       ).trim();
+      const msgLike = {
+        template_name: (msg as any).template_name,
+        text_body: (msg as any).text_body,
+        meta: (msg as any).meta,
+      };
+      const waText = formatPricingShareBubbleBody(msgLike) || rawText;
       const waActor = String((msg as any).actor?.full_name || '').trim();
       items.push({
         id: `wa-${(msg as any).id}`,
@@ -453,6 +506,18 @@ export async function GET(request: NextRequest) {
           by: waActor || null,
         },
       });
+      if (dir === 'OUTBOUND' && isPricingShareButtonMessage(msgLike)) {
+        const { url, slug } = resolvePricingShareUrlFromMessage(msgLike);
+        if (url) {
+          pushPricingShareActivity(items, pricingShareSeen, {
+            id: `pricing-wa-${(msg as any).id}`,
+            at: String((msg as any).created_at),
+            url,
+            expiresAt: pricingShareExpiresBySlug.get(slug) || null,
+            by: waActor || null,
+          });
+        }
+      }
     }
 
     const transferRes = await safeSelect(() =>
@@ -529,7 +594,7 @@ export async function GET(request: NextRequest) {
       if (event === 'PRICING_SHARE') {
         const shareUrl = String(h.share_url || '')
           .trim()
-          .replace(/^.*?(https?:\/\/\S+)/i, '$1')
+          .replace(/^.*?(https?:\/\S+)/i, '$1')
           .trim();
         const url =
           shareUrl ||
@@ -538,31 +603,13 @@ export async function GET(request: NextRequest) {
             .map((line: string) => line.trim())
             .find((line: string) => /^https?:\/\//i.test(line)) ||
           '';
-        const expiresAt = String(h.expires_at || '').trim();
-        const tag = pricingShareLinkTag(expiresAt);
-        const expiryLabel = expiresAt
-          ? new Date(expiresAt).toLocaleString('en-IN', {
-              timeZone: 'Asia/Kolkata',
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true,
-            })
-          : '';
-        items.push({
+        const expiresAt = String(h.expires_at || '').trim() || null;
+        pushPricingShareActivity(items, pricingShareSeen, {
           id: `hist-${leadId}-${i}`,
-          kind: 'whatsapp',
           at,
-          title: tag === 'link_expired' ? 'Pricing link · expired' : 'Pricing link · active',
-          body: [url, expiryLabel ? `Valid until ${expiryLabel}` : null].filter(Boolean).join('\n'),
-          meta: {
-            event: 'PRICING_SHARE',
-            pricing_link_tag: tag,
-            share_url: url || null,
-            expires_at: expiresAt || null,
-            by: String(h.by_name || h.by || '').trim() || null,
-          },
+          url,
+          expiresAt,
+          by: String(h.by_name || h.by || '').trim() || null,
         });
         continue;
       }
@@ -618,6 +665,41 @@ export async function GET(request: NextRequest) {
           by: String(h.by_name || h.by || '').trim() || null,
         },
       });
+    }
+
+    const ps = meta.pricing_share;
+    if (ps && typeof ps === 'object') {
+      const url = normalizePricingShareUrl(String((ps as any).url || ''));
+      const expiresAt = String((ps as any).expires_at || '').trim() || null;
+      const at =
+        String(meta.pricing_whatsapp_sent_at || '').trim() ||
+        String((ps as any).sent_at || '').trim() ||
+        '';
+      if (url && at) {
+        pushPricingShareActivity(items, pricingShareSeen, {
+          id: `pricing-meta-${leadId}`,
+          at,
+          url,
+          expiresAt,
+          by: null,
+        });
+      }
+    }
+
+    for (const row of shareLinksRes.data || []) {
+      const slug = String((row as any).slug || '').trim();
+      const url = slug ? pricingSharePublicUrl(slug) : '';
+      const at = String((row as any).created_at || '').trim();
+      const expiresAt = String((row as any).expires_at || '').trim() || null;
+      if (url && at) {
+        pushPricingShareActivity(items, pricingShareSeen, {
+          id: `pricing-link-${String((row as any).id || slug)}`,
+          at,
+          url,
+          expiresAt,
+          by: null,
+        });
+      }
     }
 
     // Soft-deleted same-phone leads (even if history write missed)
