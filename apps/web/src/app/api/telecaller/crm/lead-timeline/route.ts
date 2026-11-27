@@ -16,6 +16,7 @@ import {
   isAdminCustomRepairLead,
 } from '@/lib/admin-checkout-lead-group';
 import { buildLeadOwnerSegments, leadOwnerAt } from '@/lib/telecaller/activityOwnerAtTime';
+import { pricingShareLinkTag } from '@/lib/telecaller/pricingShareLinks';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -525,6 +526,46 @@ export async function GET(request: NextRequest) {
       const at = String(h.at || '').trim();
       if (!at) continue;
       const event = String(h.event || '');
+      if (event === 'PRICING_SHARE') {
+        const shareUrl = String(h.share_url || '')
+          .trim()
+          .replace(/^.*?(https?:\/\/\S+)/i, '$1')
+          .trim();
+        const url =
+          shareUrl ||
+          String(h.summary || '')
+            .split('\n')
+            .map((line: string) => line.trim())
+            .find((line: string) => /^https?:\/\//i.test(line)) ||
+          '';
+        const expiresAt = String(h.expires_at || '').trim();
+        const tag = pricingShareLinkTag(expiresAt);
+        const expiryLabel = expiresAt
+          ? new Date(expiresAt).toLocaleString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              day: '2-digit',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            })
+          : '';
+        items.push({
+          id: `hist-${leadId}-${i}`,
+          kind: 'whatsapp',
+          at,
+          title: tag === 'link_expired' ? 'Pricing link · expired' : 'Pricing link · active',
+          body: [url, expiryLabel ? `Valid until ${expiryLabel}` : null].filter(Boolean).join('\n'),
+          meta: {
+            event: 'PRICING_SHARE',
+            pricing_link_tag: tag,
+            share_url: url || null,
+            expires_at: expiresAt || null,
+            by: String(h.by_name || h.by || '').trim() || null,
+          },
+        });
+        continue;
+      }
       const isMerge = event === 'PHONE_DUPLICATE_MERGED';
       if (isMerge && h.previous_label) histMergeIds.add(String(h.previous_label));
       const statusLabel = friendlyPipelineStatus(h.status || h.previous_status);

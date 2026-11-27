@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, MessageCircle, Moon, RefreshCw, Search, Sun, X } from 'lucide-react';
+import { Crown, Loader2, MessageCircle, Moon, RefreshCw, Search, Sun, X } from 'lucide-react';
 import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
 import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
 import { isWhatsAppSessionWindowClosed } from '@/lib/whatsapp/sessionWindow';
@@ -22,6 +22,7 @@ type ChatRow = {
   assigned_telecaller_id?: string | null;
   assigned_telecaller_name?: string | null;
   wa_line?: '9696' | '6161' | null;
+  has_membership?: boolean | null;
 };
 
 type PeerRow = { id: string; full_name?: string | null; phone?: string | null };
@@ -784,6 +785,12 @@ export default function WhatsAppWebWorkspace({
                             style={{ color: colors.text }}
                           >
                             <span className="truncate">{name || formatPhone(phone)}</span>
+                            {chat.has_membership ? (
+                              <Crown
+                                className="h-3.5 w-3.5 shrink-0 text-amber-500"
+                                aria-label="Membership customer"
+                              />
+                            ) : null}
                             {bucket ? (
                               <span
                                 className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"

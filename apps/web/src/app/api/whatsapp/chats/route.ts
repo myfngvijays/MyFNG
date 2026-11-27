@@ -11,6 +11,7 @@ import {
   resolveWhatsAppInboxPending,
   type WaInboxLeadTouchFields,
 } from '@/lib/whatsapp/inboxPending';
+import { attachMembershipFlags } from '@/lib/crm/membershipCustomer';
 
 const ALLOWED_ROLE_CODES = [
   'SUPER_ADMIN',
@@ -380,6 +381,19 @@ async function loadAllCrmLeadPhones(
   return byPhone;
 }
 
+async function enrichChatsWithMembership(db: any, chats: any[]) {
+  if (!chats?.length) return chats;
+  try {
+    const flagged = await attachMembershipFlags(
+      db,
+      chats.map((c) => ({ ...c, customer_phone: c.phone })),
+    );
+    return chats.map((c, i) => ({ ...c, has_membership: Boolean(flagged[i]?.has_membership) }));
+  } catch {
+    return chats.map((c) => ({ ...c, has_membership: false }));
+  }
+}
+
 function touchLastInbound(chat: any, direction: string, createdAt: unknown) {
   if (String(direction || '').trim().toUpperCase() !== 'INBOUND') return;
   const rowTs = ts(createdAt);
@@ -494,10 +508,12 @@ async function getTelecallerWhatsappChats(
     })
     .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
+  const enriched = await enrichChatsWithMembership(db, chats);
+
   return {
-    chats,
-    count: chats.length,
-    lead_count: chats.length,
+    chats: enriched,
+    count: enriched.length,
+    lead_count: enriched.length,
     scanned_messages: 0,
   };
 }
@@ -760,6 +776,8 @@ export async function GET(request: NextRequest) {
         console.warn('[whatsapp/chats] otp inbox merge skipped', otpErr);
       }
 
+      chats = await enrichChatsWithMembership(supabaseAdmin ?? db, chats);
+
       return NextResponse.json({
         success: true,
         chats,
@@ -900,10 +918,12 @@ export async function GET(request: NextRequest) {
       awaiting_reply: finalizeAwaitingReply(unreadStreak, { ...chat, _lead_touch }),
     }));
 
+    const enriched = await enrichChatsWithMembership(db, chats);
+
     return NextResponse.json({
       success: true,
-      chats,
-      count: chats.length,
+      chats: enriched,
+      count: enriched.length,
       scanned_messages: scanned,
     });
   } catch (error: any) {

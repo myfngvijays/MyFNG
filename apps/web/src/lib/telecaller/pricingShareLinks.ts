@@ -1,7 +1,7 @@
 /**
  * Time-limited public pricing share links: https://myfng.in/pricing/{slug}
  * (also available at /p/{slug} via rewrite)
- * Telecaller Send Pricing link TTL: 60 minutes (see TELECALLER_PRICING_SHARE_TTL_HOURS).
+ * Telecaller Send Pricing link TTL: 6 hours (see TELECALLER_PRICING_SHARE_TTL_HOURS).
  */
 
 import { randomBytes } from 'crypto';
@@ -27,12 +27,50 @@ import {
   PRICING_SHARE_BUTTON_LABEL,
 } from '@/lib/telecaller/pricingShareWhatsAppPreview';
 
-/** Telecaller WhatsApp pricing link validity (1 hour). Clamped 1–24h when overridden. */
-export const TELECALLER_PRICING_SHARE_TTL_HOURS = 1;
+/** Telecaller WhatsApp pricing link validity (6 hours). Clamped 1–24h when overridden. */
+export const TELECALLER_PRICING_SHARE_TTL_HOURS = 6;
 const DEFAULT_TTL_HOURS = TELECALLER_PRICING_SHARE_TTL_HOURS;
 /** Closed 24h window — URL on CTA button (slug). Only `pricing_share_link_btn` (no legacy template). */
 export const PRICING_SHARE_WHATSAPP_TEMPLATE = 'pricing_share_link_btn';
 const SHARE_TEMPLATE = PRICING_SHARE_WHATSAPP_TEMPLATE;
+
+export function pricingShareLinkTag(expiresAt: string | null | undefined, nowMs = Date.now()): 'link_active' | 'link_expired' {
+  const t = expiresAt ? Date.parse(String(expiresAt)) : NaN;
+  if (!Number.isFinite(t)) return 'link_active';
+  return t > nowMs ? 'link_active' : 'link_expired';
+}
+
+export function buildPricingShareProfileHistoryEntry(input: {
+  url: string;
+  expiresAt: string;
+  slug?: string | null;
+  sentWhatsapp?: boolean;
+  byName?: string | null;
+  byId?: string | null;
+  at?: string;
+}): Record<string, unknown> {
+  const at = input.at || new Date().toISOString();
+  const url = String(input.url || '').trim();
+  const expiresLabel = formatPricingShareExpiry(input.expiresAt);
+  const tag = pricingShareLinkTag(input.expiresAt, Date.parse(at));
+  const sent = input.sentWhatsapp !== false;
+  return {
+    at,
+    event: 'PRICING_SHARE',
+    summary: sent
+      ? `Pricing link sent on WhatsApp\n${url}`
+      : `Pricing link created\n${url}`,
+    share_url: url,
+    slug: input.slug || null,
+    expires_at: input.expiresAt,
+    pricing_link_tag: tag,
+    remark: tag === 'link_active' ? 'Link active' : 'Link expired',
+    by: input.byName || null,
+    by_name: input.byName || null,
+    by_id: input.byId || null,
+    expires_label: expiresLabel,
+  };
+}
 
 function pricingShareSlugFromUrl(url: string): string {
   const t = String(url || '').trim();

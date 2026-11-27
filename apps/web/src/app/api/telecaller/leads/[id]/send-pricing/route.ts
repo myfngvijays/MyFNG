@@ -4,9 +4,11 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { inferPricingCategoriesFromLead } from '@/lib/telecaller/sendLeadPricingWhatsApp';
 import {
+  buildPricingShareProfileHistoryEntry,
   createAndSendPricingShare,
   TELECALLER_PRICING_SHARE_TTL_HOURS,
 } from '@/lib/telecaller/pricingShareLinks';
+import { formatDateTimeIST } from '@/lib/utils';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 
 async function loadLeadRow(db: any, leadId: string) {
@@ -24,7 +26,7 @@ async function loadLeadRow(db: any, leadId: string) {
 
 /**
  * Create time-limited pricing page (myfng.in/p/{slug}) and WhatsApp the link.
- * Works for Periodic + all other categories. Default link TTL: 60 minutes.
+ * Works for Periodic + all other categories. Default link TTL: 6 hours.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -107,7 +109,46 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         Number(body?.ttlHours) > 0 ? Number(body.ttlHours) : TELECALLER_PRICING_SHARE_TTL_HOURS,
     });
 
+    async function persistPricingShareMeta(sentWhatsapp: boolean) {
+      if (!result.url || !result.expiresAt) return;
+      try {
+        const prevMeta =
+          row.coupon_meta && typeof row.coupon_meta === 'object' ? { ...row.coupon_meta } : {};
+        const nowIso = new Date().toISOString();
+        const editorName = String(userProfile?.full_name || '').trim() || null;
+        if (sentWhatsapp) {
+          prevMeta.pricing_whatsapp_sent_at = nowIso;
+          prevMeta.pricing_whatsapp_sent_by = user.id;
+        }
+        prevMeta.pricing_share = {
+          url: result.url,
+          slug: result.slug,
+          expires_at: result.expiresAt,
+          channel: result.channel,
+          categories,
+        };
+        const prevHistory = Array.isArray(prevMeta.profile_history) ? prevMeta.profile_history : [];
+        const historyEntry = buildPricingShareProfileHistoryEntry({
+          url: String(result.url || ''),
+          expiresAt: String(result.expiresAt || ''),
+          slug: result.slug,
+          sentWhatsapp,
+          byName: editorName,
+          byId: userProfile?.id || user.id,
+          at: nowIso,
+        });
+        prevMeta.profile_history = [historyEntry, ...prevHistory].slice(0, 50);
+        await db
+          .from('service_leads')
+          .update({ coupon_meta: prevMeta, updated_at: nowIso })
+          .eq('id', leadId);
+      } catch {
+        /* optional */
+      }
+    }
+
     if (!result.sent) {
+      await persistPricingShareMeta(false);
       const status =
         result.error === 'pincode_required' ||
         result.error === 'car_model_required' ||
@@ -144,29 +185,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    try {
-      const prevMeta =
-        row.coupon_meta && typeof row.coupon_meta === 'object' ? { ...row.coupon_meta } : {};
-      prevMeta.pricing_whatsapp_sent_at = new Date().toISOString();
-      prevMeta.pricing_whatsapp_sent_by = user.id;
-      prevMeta.pricing_share = {
-        url: result.url,
-        slug: result.slug,
-        expires_at: result.expiresAt,
-        channel: result.channel,
-        categories,
-      };
-      await db
-        .from('service_leads')
-        .update({ coupon_meta: prevMeta, updated_at: new Date().toISOString() })
-        .eq('id', leadId);
-    } catch {
-      /* optional */
-    }
+    await persistPricingShareMeta(true);
+
+    const expiryHint = result.expiresAt
+      ? formatDateTimeIST(result.expiresAt)
+      : `${TELECALLER_PRICING_SHARE_TTL_HOURS} hours`;
 
     return NextResponse.json({
       success: true,
-      message: `Pricing link sent (valid 60 minutes).\n${result.url}`,
+      message: `Pricing link sent (valid ${TELECALLER_PRICING_SHARE_TTL_HOURS} hours · until ${expiryHint}).\n${result.url}`,
       shareUrl: result.url,
       expiresAt: result.expiresAt,
       result,

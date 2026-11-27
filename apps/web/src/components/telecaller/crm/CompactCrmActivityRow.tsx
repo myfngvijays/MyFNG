@@ -119,17 +119,31 @@ export default function CompactCrmActivityRow({
       </div>
     );
   } else if (kind === 'whatsapp') {
+    const pricingTag = String(row.meta?.pricing_link_tag || '');
+    const isPricingShare = String(row.meta?.event || '') === 'PRICING_SHARE';
     main = (
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-        <span
-          className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
-            waInbound ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
-          }`}
-        >
-          {waInbound ? 'Customer' : 'We sent'}
-        </span>
+        {isPricingShare && pricingTag ? (
+          <span
+            className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
+              pricingTag === 'link_expired'
+                ? 'bg-rose-100 text-rose-800'
+                : 'bg-emerald-100 text-emerald-800'
+            }`}
+          >
+            {pricingTag === 'link_expired' ? 'Link expired' : 'Link active'}
+          </span>
+        ) : (
+          <span
+            className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
+              waInbound ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+            }`}
+          >
+            {waInbound ? 'Customer' : 'We sent'}
+          </span>
+        )}
         <p className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-900">
-          {compactWhatsappPreview(row.body, row.title)}
+          {isPricingShare ? row.title : compactWhatsappPreview(row.body, row.title)}
         </p>
       </div>
     );
