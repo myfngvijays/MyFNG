@@ -221,6 +221,23 @@ function flatNumberedChecklist(plan: PlanCard): string[] {
   return checklistLabels(plan).filter(Boolean);
 }
 
+/** Periodic tiers: how many leading checklist items match the previous package tier. */
+function periodicIncludedFromLowerTier(plan: PlanCard, isPeriodic: boolean): number {
+  if (!isPeriodic) return 0;
+  const t = displayPlanTitle(plan, true).toLowerCase();
+  if (t.includes('general')) return TIER_POINTS_REF.Basic || 15;
+  if (t.includes('premium')) return TIER_POINTS_REF.General || 30;
+  if (t.includes('platinum')) return TIER_POINTS_REF.Premium || 50;
+  return 0;
+}
+
+const TIER_POINTS_REF = { Basic: 15, General: 30, Premium: 50, Platinum: 60 };
+
+function formatActivityPoints(count: number) {
+  if (count <= 0) return 'Points included';
+  return `${count} points`;
+}
+
 /** Card preview for Periodic: 4 short points, skip oil-filter + long lines */
 function previewChecklistLabels(plan: PlanCard, limit = 4, preferShort = false): string[] {
   let labels = checklistLabels(plan);
@@ -668,8 +685,8 @@ export default function PricingSharePage() {
                         </div>
                       </div>
                       <div className="flex-shrink-0 text-right">
-                        <div className="text-xs font-bold text-brand-primary sm:text-sm">
-                          {pts > 0 ? `${pts} pts` : 'Points'}
+                        <div className="text-sm font-extrabold leading-tight text-brand-primary sm:text-base">
+                          {formatActivityPoints(pts)}
                         </div>
                       </div>
                     </div>
@@ -704,7 +721,7 @@ export default function PricingSharePage() {
                       <button
                         type="button"
                         onClick={() => setDetails({ plan, category: activeCategory })}
-                        className="rounded-full border-2 border-brand-primary bg-white px-3 py-2.5 text-center text-xs font-extrabold text-brand-primary transition hover:bg-blue-50 sm:text-sm"
+                        className="rounded-full bg-emerald-600 px-3 py-2.5 text-center text-xs font-extrabold text-white shadow-sm transition hover:bg-emerald-700 sm:text-sm"
                       >
                         View all points
                         {pts > 0 ? ` (${pts})` : ''}
@@ -763,7 +780,7 @@ export default function PricingSharePage() {
         <div className="fixed inset-0 z-[70] flex items-end justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDetails(null)} />
           <div
-            className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl animate-in slide-in-from-bottom duration-200"
+            className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border-b-[6px] border-gray-300 bg-white shadow-2xl ring-1 ring-inset ring-gray-200 animate-in slide-in-from-bottom duration-200"
             style={{ height: '62vh', maxHeight: '62vh' }}
           >
             <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-gray-300" />
@@ -785,7 +802,7 @@ export default function PricingSharePage() {
                   {pointsCount(details.plan) > 0 ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-700">
                       <CheckCircle className="h-3 w-3 text-green-600" />
-                      {pointsCount(details.plan)} pts
+                      {formatActivityPoints(pointsCount(details.plan))}
                     </span>
                   ) : null}
                   <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">
@@ -810,8 +827,8 @@ export default function PricingSharePage() {
                   {/periodic/i.test(details.category) ? '1000 kms / 1 Month' : 'NA'}
                 </span>
                 {pointsCount(details.plan) > 0 ? (
-                  <span className="ml-auto font-bold text-brand-primary">
-                    {pointsCount(details.plan)} pts
+                  <span className="ml-auto text-sm font-extrabold text-brand-primary">
+                    {formatActivityPoints(pointsCount(details.plan))}
                   </span>
                 ) : null}
               </div>
@@ -840,6 +857,12 @@ export default function PricingSharePage() {
 
               {(() => {
                 const items = flatNumberedChecklist(details.plan);
+                const periodic = /periodic/i.test(details.category);
+                const includedBaseline = periodicIncludedFromLowerTier(details.plan, periodic);
+                const extraCount =
+                  includedBaseline > 0 ? Math.max(0, items.length - includedBaseline) : 0;
+                const basicRowCls =
+                  'rounded-md border-l-4 border-slate-200 bg-white px-2.5 py-1.5 font-medium text-gray-900 shadow-sm ring-1 ring-slate-100';
                 if (!items.length) {
                   return (
                     <p className="py-4 text-center text-sm text-gray-600">
@@ -848,27 +871,55 @@ export default function PricingSharePage() {
                   );
                 }
                 return (
-                  <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-snug text-gray-800">
-                    {items.map((item, idx) => (
-                      <li key={`pt-${idx}`} className="break-words pr-1">
-                        {item}
-                      </li>
-                    ))}
-                  </ol>
+                  <div className="space-y-2">
+                    {includedBaseline > 0 ? (
+                      <p className="rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] leading-snug text-slate-800 ring-1 ring-slate-200">
+                        <span className="font-extrabold text-gray-900">1–{includedBaseline}</span>
+                        {' · same as Basic package (white rows). '}
+                        {extraCount > 0 ? (
+                          <span className="font-extrabold text-emerald-800">
+                            {includedBaseline + 1}–{items.length} = +{extraCount} extra points (green).
+                          </span>
+                        ) : null}
+                      </p>
+                    ) : null}
+                    <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-snug text-gray-800">
+                      {items.map((item, idx) => {
+                        const isIncluded = includedBaseline > 0 && idx < includedBaseline;
+                        const isExtra = includedBaseline > 0 && idx >= includedBaseline;
+                        return (
+                          <li
+                            key={`pt-${idx}`}
+                            className={`break-words pr-1 ${
+                              isExtra
+                                ? 'rounded-md border-l-4 border-emerald-500 bg-emerald-50/90 px-2.5 py-1.5 text-gray-900'
+                                : basicRowCls
+                            }`}
+                          >
+                            {item}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </div>
                 );
               })()}
 
               {/periodic/i.test(details.category) ? (
-                <p className="mt-2 pb-2 text-[10px] italic text-red-600">
+                <p className="mt-2 pb-[0.25in] text-[10px] italic text-red-600">
                   * Spare part replacements charged at actual cost. Service packages use
                   company-recommended oil and filters.
                 </p>
               ) : (
-                <p className="mt-2 pb-2 text-[10px] italic text-red-600">
+                <p className="mt-2 pb-[0.25in] text-[10px] italic text-red-600">
                   * This includes only labor charges. Additional parts billed at actual cost.
                 </p>
               )}
             </div>
+            <div
+              className="shrink-0 border-t-2 border-gray-300 bg-gray-100 pb-[max(14px,env(safe-area-inset-bottom))] pt-2.5"
+              aria-hidden
+            />
           </div>
         </div>
       ) : null}
