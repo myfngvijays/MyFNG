@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useRouter, usePathname, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -98,6 +98,7 @@ export function LeadDetailContent({
   const [pricingDraft, setPricingDraft] = useState({ pincode: '', carModel: '' });
   const [pricingNotice, setPricingNotice] = useState('');
   const [calling, setCalling] = useState(false);
+  const callingRef = useRef(false);
   const [serviceGroups, setServiceGroups] = useState<Array<{ category: string; names: string[] }>>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
@@ -508,7 +509,8 @@ export function LeadDetailContent({
   }
 
   async function handleClickToCall() {
-    if (!lead?.customer_phone || calling) return;
+    if (!lead?.customer_phone || callingRef.current) return;
+    callingRef.current = true;
     setCalling(true);
     try {
       const result = await requestClickToCall({
@@ -519,6 +521,7 @@ export function LeadDetailContent({
         toast.error(result.error || 'Could not send the call to your phone');
       }
     } finally {
+      callingRef.current = false;
       setCalling(false);
     }
   }

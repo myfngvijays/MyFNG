@@ -35,6 +35,9 @@ export function announcePhoneDial(detail: { callLogId?: string; phone: string })
   );
 }
 
+let inflightClickToCall: Promise<ClickToCallResult> | null = null;
+let inflightClickToCallKey = '';
+
 export async function requestClickToCall(input: {
   to: string;
   from?: string | null;
@@ -44,7 +47,14 @@ export async function requestClickToCall(input: {
   const to = normalizeClickToCallPhone(input.to);
   if (!to) return { ok: false, error: 'Invalid customer phone' };
 
+  const dedupeKey = `${String(input.leadId || '').trim()}:${to}`;
+  if (inflightClickToCall && inflightClickToCallKey === dedupeKey) {
+    return inflightClickToCall;
+  }
+
   const fetchFn = input.fetchImpl || fetch;
+  inflightClickToCallKey = dedupeKey;
+  inflightClickToCall = (async () => {
   try {
     const res = await fetchFn('/api/telecaller/click-to-call', {
       method: 'POST',
@@ -76,5 +86,12 @@ export async function requestClickToCall(input: {
     };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Network error' };
+  }
+  })();
+  try {
+    return await inflightClickToCall;
+  } finally {
+    inflightClickToCall = null;
+    inflightClickToCallKey = '';
   }
 }

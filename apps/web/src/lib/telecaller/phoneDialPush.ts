@@ -54,8 +54,28 @@ export async function sendPhoneDial(input: DialPushInput): Promise<{
     customerName = String((lead as { customer_name?: string } | null)?.customer_name || '');
   }
 
+  const pendingCutoff = new Date(Date.now() - 45_000).toISOString();
   let callLogId: string | null = null;
-  if (leadId) {
+  let reusedPending = false;
+
+  const { data: pendingRow } = await supabaseAdmin
+    .from('telecaller_call_logs')
+    .select('id, lead_id')
+    .eq('telecaller_id', input.telecallerId)
+    .eq('call_status', 'DEVICE_PENDING')
+    .eq('phone_number', to)
+    .gte('created_at', pendingCutoff)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (pendingRow?.id && !input.alreadyDialed) {
+    callLogId = String(pendingRow.id);
+    reusedPending = true;
+    if (!leadId && pendingRow.lead_id) {
+      leadId = String(pendingRow.lead_id);
+    }
+  } else if (leadId) {
     const { data: inserted } = await supabaseAdmin
       .from('telecaller_call_logs')
       .insert({
@@ -76,6 +96,14 @@ export async function sendPhoneDial(input: DialPushInput): Promise<{
 
   if (input.alreadyDialed) {
     return { ok: true, callLogId, message: 'Opening the phone dialer' };
+  }
+
+  if (reusedPending) {
+    return {
+      ok: true,
+      callLogId,
+      message: 'Call is already on your phone — open the MyFNG app if you do not see it.',
+    };
   }
 
   const { data: device } = await supabaseAdmin

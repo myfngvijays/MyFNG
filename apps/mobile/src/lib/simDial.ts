@@ -13,6 +13,8 @@ let lastKey = '';
 let lastAt = 0;
 let lastOpenedLeadId = '';
 let lastDialAt = 0;
+/** Same push + poll can arrive together — block concurrent handleSimDialPush for one dial. */
+const dialInFlight = new Set<string>();
 
 export function phoneFromDialPush(data?: Record<string, unknown> | null): string {
   return String(data?.phone || data?.to || '').replace(/\D/g, '').slice(-10);
@@ -85,6 +87,8 @@ export async function handleSimDialPush(data?: Record<string, unknown> | null): 
   const key = callLogId || `${phone}:${leadId}`;
   const now = Date.now();
 
+  if (dialInFlight.has(key)) return;
+
   if (callLogId) {
     const prior = await wasDialHandled(callLogId);
     if (prior) {
@@ -113,17 +117,22 @@ export async function handleSimDialPush(data?: Record<string, unknown> | null): 
     return;
   }
 
-  lastKey = key;
-  lastAt = now;
-  lastDialAt = now;
-  if (leadId) {
-    lastOpenedLeadId = leadId;
-    requestOpenCrmLead(leadId);
+  dialInFlight.add(key);
+  try {
+    lastKey = key;
+    lastAt = now;
+    lastDialAt = now;
+    if (leadId) {
+      lastOpenedLeadId = leadId;
+      requestOpenCrmLead(leadId);
+    }
+    if (callLogId) await markDialHandled(callLogId, leadId);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await placePhoneCall(phone);
+    if (callLogId) await ackDial(callLogId);
+  } finally {
+    dialInFlight.delete(key);
   }
-  if (callLogId) void markDialHandled(callLogId, leadId);
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  await placePhoneCall(phone);
-  if (callLogId) await ackDial(callLogId);
 }
 
 /** After returning from the phone app, reopen the same CRM lead without redialing. */
