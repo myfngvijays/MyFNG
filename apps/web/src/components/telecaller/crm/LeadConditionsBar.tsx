@@ -159,9 +159,12 @@ function defaultCondition(key: string): LeadCondition {
 export default function LeadConditionsBar({
   conditions,
   onChange,
+  autoApply = true,
 }: {
   conditions: LeadCondition[];
   onChange: (next: LeadCondition[]) => void;
+  /** When true, each valid edit updates the list immediately (no Apply click). */
+  autoApply?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -208,9 +211,17 @@ export default function LeadConditionsBar({
     setOpen(true);
   };
 
-  const apply = (c: LeadCondition) => {
+  const upsertCondition = (c: LeadCondition, valid: boolean) => {
     const exists = conditions.some((x) => x.id === c.id);
+    if (!valid) {
+      if (exists) onChange(conditions.filter((x) => x.id !== c.id));
+      return;
+    }
     onChange(exists ? conditions.map((x) => (x.id === c.id ? c : x)) : [...conditions, c]);
+  };
+
+  const apply = (c: LeadCondition, valid: boolean) => {
+    upsertCondition(c, valid);
     close();
   };
 
@@ -279,9 +290,11 @@ export default function LeadConditionsBar({
             <ConditionEditor
               condition={editing}
               options={options}
+              autoApply={autoApply}
               onBack={() => setEditing(null)}
               onCancel={close}
               onApply={apply}
+              onLiveChange={upsertCondition}
             />
           ) : (
             <div>
@@ -355,15 +368,19 @@ export default function LeadConditionsBar({
 function ConditionEditor({
   condition,
   options,
+  autoApply,
   onBack,
   onCancel,
   onApply,
+  onLiveChange,
 }: {
   condition: LeadCondition;
   options: Options;
+  autoApply?: boolean;
   onBack: () => void;
   onCancel: () => void;
-  onApply: (c: LeadCondition) => void;
+  onApply: (c: LeadCondition, valid: boolean) => void;
+  onLiveChange?: (c: LeadCondition, valid: boolean) => void;
 }) {
   const [c, setC] = useState<LeadCondition>(condition);
   const set = (patch: Partial<LeadCondition>) => setC((prev) => ({ ...prev, ...patch }));
@@ -393,6 +410,20 @@ function ConditionEditor({
     if (c.preset === 'custom') return Boolean(c.from || c.to);
     return true;
   }, [c, field]);
+
+  const liveSyncKey = useRef('');
+  useEffect(() => {
+    if (!autoApply || !onLiveChange) return;
+    const delay =
+      field && (field.type === 'text' || field.type === 'number') ? 400 : 0;
+    const payload = JSON.stringify({ c, valid });
+    const t = window.setTimeout(() => {
+      if (liveSyncKey.current === payload) return;
+      liveSyncKey.current = payload;
+      onLiveChange(c, valid);
+    }, delay);
+    return () => window.clearTimeout(t);
+  }, [autoApply, c, valid, field, onLiveChange]);
 
   const hasNot = (yes: string, no: string) => (
     <div>
@@ -600,17 +631,33 @@ function ConditionEditor({
       </div>
       {body}
       <div className="flex justify-end gap-2 border-t border-slate-100 pt-2">
+        {autoApply ? (
+          <p className="mr-auto self-center text-[11px] font-medium text-slate-500">
+            Filters update as you select
+          </p>
+        ) : null}
         <button type="button" onClick={onCancel} className="h-8 rounded-lg px-3 text-xs font-bold text-slate-600 hover:bg-slate-100">
-          Cancel
+          {autoApply ? 'Close' : 'Cancel'}
         </button>
-        <button
-          type="button"
-          disabled={!valid}
-          onClick={() => onApply(c)}
-          className="h-8 rounded-lg bg-[#004AAD] px-4 text-xs font-bold text-white disabled:opacity-40"
-        >
-          Apply
-        </button>
+        {!autoApply ? (
+          <button
+            type="button"
+            disabled={!valid}
+            onClick={() => onApply(c, valid)}
+            className="h-8 rounded-lg bg-[#004AAD] px-4 text-xs font-bold text-white disabled:opacity-40"
+          >
+            Apply
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={!valid}
+            onClick={() => onApply(c, valid)}
+            className="h-8 rounded-lg bg-[#004AAD] px-4 text-xs font-bold text-white disabled:opacity-40"
+          >
+            Done
+          </button>
+        )}
       </div>
     </div>
   );
@@ -639,7 +686,7 @@ function OptionChecklist({
           </button>
         ) : null}
       </div>
-      {options.length > 8 ? (
+      {options.length > 3 ? (
         <input className={`${inputCls} mb-1.5`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" />
       ) : null}
       <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200">

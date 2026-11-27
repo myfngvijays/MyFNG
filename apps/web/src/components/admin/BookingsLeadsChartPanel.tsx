@@ -13,7 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Download } from 'lucide-react';
-import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
+import { leadDisplayStatus, leadStatusCardColors } from '@/lib/telecaller/leadDisplayStatus';
 
 type Lead = Record<string, any>;
 
@@ -32,7 +32,6 @@ type DimensionDef = { id: ChartDimension; label: string; managerOnly?: boolean }
 const ALL_DIMENSIONS: DimensionDef[] = [
   { id: 'created_on', label: 'Created on' },
   { id: 'status', label: 'Status' },
-  { id: 'tc_update', label: 'TC Update' },
   { id: 'lost_reason', label: 'Lost reasons' },
   { id: 'assignee', label: 'Assignee', managerOnly: true },
   { id: 'calls_placed', label: 'Number of calls placed' },
@@ -40,20 +39,26 @@ const ALL_DIMENSIONS: DimensionDef[] = [
   { id: 'city', label: 'City' },
 ];
 
+/** Non-status dimensions (source, city, …) — stable per label, not sorted index. */
 const BAR_COLORS = [
-  '#059669',
-  '#004AAD',
+  '#0EA5E9',
   '#8B5CF6',
-  '#10B981',
   '#F59E0B',
-  '#EF4444',
-  '#06B6D4',
   '#EC4899',
   '#6366F1',
   '#84CC16',
   '#F97316',
+  '#14B8A6',
+  '#A855F7',
+  '#E11D48',
   '#64748B',
+  '#CA8A04',
 ];
+
+const DIMENSION_HINT: Partial<Record<ChartDimension, string>> = {
+  status: 'Lead status — same label as the table and telecaller CRM (one status per lead)',
+  lost_reason: 'Why the lead was marked Lost (sub-reasons; use Status tab for Lost count)',
+};
 
 const ACTIVE_TAB = '#004AAD';
 const MAX_BARS = 24;
@@ -330,6 +335,32 @@ function formatPct(pct: number) {
 
 const CALLS_ORDER = ['0', '1', '2', '3', '4', '5 - 10', '10+'];
 
+function hashBarColor(seed: string): string {
+  let h = 0;
+  const s = String(seed || 'Other');
+  for (let i = 0; i < s.length; i += 1) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return BAR_COLORS[Math.abs(h) % BAR_COLORS.length];
+}
+
+/** Bar fill aligned with CRM chips — Lost always red, Ringing slate, not index-order greens. */
+function chartBarFillColor(label: string, dimension: ChartDimension): string {
+  const key = String(label || '').trim();
+  const upper = key.toUpperCase();
+  if (!key || key === 'Unknown' || key.startsWith('Other (')) {
+    return '#94A3B8';
+  }
+  if (dimension === 'status' || dimension === 'tc_update' || dimension === 'lost_reason') {
+    if (upper === 'LOST' || /^LOST\b/.test(upper) || /^lost\b/i.test(key)) {
+      return '#DC2626';
+    }
+    const { badgeText } = leadStatusCardColors(key);
+    if (badgeText) return badgeText;
+  }
+  return hashBarColor(key);
+}
+
 /** Same order as home KPI tiles — always show these status bars (incl. 0). */
 const STATUS_CHART_ORDER = [
   'Fresh',
@@ -413,9 +444,9 @@ function aggregateLeads(
     ];
   }
 
-  return entries.map((row, idx) => ({
+  return entries.map((row) => ({
     ...row,
-    color: BAR_COLORS[idx % BAR_COLORS.length],
+    color: chartBarFillColor(row.key, dimension),
   }));
 }
 
@@ -612,6 +643,11 @@ export default function BookingsLeadsChartPanel({
               {onBarClick ? ' · click a bar to open leads' : ''}
               {rows.length > 8 ? ' · scroll → for all labels' : ''}
             </p>
+            {DIMENSION_HINT[activeDimension] ? (
+              <p className="mt-1 max-w-3xl text-[11px] font-medium leading-snug text-slate-600">
+                {DIMENSION_HINT[activeDimension]}
+              </p>
+            ) : null}
           </div>
           <p className="text-lg font-black tabular-nums text-[#023D95]">
             {total.toLocaleString('en-IN')}

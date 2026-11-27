@@ -1,8 +1,9 @@
 'use client';
 
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin, Phone, Plus, Minus } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin, Phone, Plus, Minus, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
@@ -38,6 +39,8 @@ import {
   NO_MESSAGE_TRIGGER,
   resolveLeadSourceBadgeTheme,
   computeServiceLeadOverview,
+  matchesBookingSourceFilter,
+  leadHasPromoCoupon,
   type LeadSourceBadgeKind,
 } from '@/lib/booking-lead-utils';
 import { formatPreferredSlotLabel } from '@/lib/preferred-slot';
@@ -58,11 +61,16 @@ import { resolveReportDateRange, REPORT_DATE_PRESETS, type ReportDatePreset } fr
 import { leadStatusCardColors, leadDisplayStatus, ADMIN_CRM_STATUS_OPTIONS, mergeAdminStatusChoices, resolveAdminCrmStatusId, LOST_REASON_FILTERS } from '@/lib/telecaller/leadDisplayStatus';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import BookingsSavedViews from '@/components/admin/bookings/BookingsSavedViews';
+import LeadConditionsBar from '@/components/telecaller/crm/LeadConditionsBar';
 import {
   EMPTY_BOOKINGS_VIEW,
+  joinBookingsFilterTokens,
   normalizeBookingsViewFilters,
+  parseBookingsFilterTokens,
   type BookingsViewSnapshot,
 } from '@/lib/bookings/savedViewFilters';
+import { leadMatchesLeadConditions } from '@/lib/crm/leadConditionsClient';
+import { parseLeadConditions, serializeLeadConditions, type LeadCondition } from '@/lib/crm/leadConditions';
 import {
   getMisaOtpVerifiedLabel,
   inferMisaOtpChannel,
@@ -1558,7 +1566,7 @@ function LeadTrackingSection({ item, compact = false }: { item: Record<string, a
   );
 }
 
-function sourceFilterLabel(source: (typeof SOURCE_OPTIONS)[number]) {
+function sourceFilterLabel(source: string) {
   switch (source) {
     case 'ALL':
       return 'All Sources';
@@ -1639,34 +1647,7 @@ function StatCard({
   );
 }
 
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  children,
-  className = '',
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <label className={`inline-flex h-8 min-w-[120px] items-center ${className}`} title={label}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={label}
-        className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
-      >
-        {children}
-      </select>
-    </label>
-  );
-}
-
-function couponFilterLabel(coupon: (typeof COUPON_OPTIONS)[number]) {
+function couponFilterLabel(coupon: string) {
   switch (coupon) {
     case 'ALL':
       return 'All discounts';
@@ -1683,7 +1664,23 @@ function couponFilterLabel(coupon: (typeof COUPON_OPTIONS)[number]) {
   }
 }
 
-function recordingFilterLabel(v: (typeof RECORDING_OPTIONS)[number]) {
+function matchesCouponFilterChoice(lead: Record<string, any>, coupon: string): boolean {
+  const enriched = lead.booking_source ? lead : enrichBookingLead(lead);
+  const code = String(coupon || '').toUpperCase();
+  if (code === 'YES') return Boolean(enriched.has_coupon_applied);
+  if (code === 'NO') return !enriched.has_coupon_applied;
+  if (code === 'REFERRAL') return Boolean(enriched.referral_reward_applied);
+  if (code === 'PROMO') return leadHasPromoCoupon(enriched);
+  return true;
+}
+
+function toggleBookingFilterToken(prev: string[], token: string): string[] {
+  const key = String(token || '').trim().toUpperCase();
+  if (!key) return prev;
+  return prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key];
+}
+
+function recordingFilterLabel(v: string) {
   switch (v) {
     case 'YES':
       return 'Has recording';
@@ -1702,6 +1699,9 @@ function FilterMultiSelect({
   allLabel,
   className = '',
   footer,
+  searchable = true,
+  menuMinWidth = 260,
+  grow = true,
 }: {
   label: string;
   options: { value: string; label: string }[];
@@ -1710,18 +1710,60 @@ function FilterMultiSelect({
   allLabel: string;
   className?: string;
   footer?: React.ReactNode;
+  searchable?: boolean;
+  /** Dropdown panel min width (px). Use ~360 for long trigger labels. */
+  menuMinWidth?: number;
+  /** When false, fixed-width chip for single-line filter bar */
+  grow?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  const repositionMenu = useCallback(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    setMenuPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    repositionMenu();
+    window.addEventListener('resize', repositionMenu);
+    window.addEventListener('scroll', repositionMenu, true);
+    return () => {
+      window.removeEventListener('resize', repositionMenu);
+      window.removeEventListener('scroll', repositionMenu, true);
+    };
+  }, [open, repositionMenu]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const shownOptions =
+    searchable && q
+      ? options.filter(
+          (opt) => opt.label.toLowerCase().includes(q) || opt.value.toLowerCase().includes(q),
+        )
+      : options;
 
   const selectedLabels = selected.map(
     (value) => options.find((opt) => opt.value === value)?.label || value,
@@ -1739,55 +1781,111 @@ function FilterMultiSelect({
     onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]);
   };
 
+  const Checkbox = ({ checked }: { checked: boolean }) => (
+    <span
+      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition ${
+        checked ? 'border-[#004AAD] bg-[#004AAD] text-white' : 'border-slate-300 bg-white'
+      }`}
+      aria-hidden
+    >
+      {checked ? <Check className="h-3 w-3 stroke-[3]" /> : null}
+    </span>
+  );
+
   return (
-    <div className={`relative min-w-[140px] ${className}`} ref={ref}>
+    <div
+      className={`relative ${grow ? 'min-w-0 flex-1' : 'shrink-0'} ${className}`}
+      ref={ref}
+    >
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         title={`${label} — tick more than one`}
         aria-label={label}
-        className="flex h-8 w-full items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-left text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
+        className="flex h-8 w-full min-w-[120px] items-center justify-between gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-left text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
       >
         <span className="truncate">{display}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-gray-500 transition ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open ? (
-        <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-          <button
-            type="button"
-            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-              selected.length === 0 ? 'bg-blue-50 font-semibold text-blue-800' : 'text-gray-700'
-            }`}
-            onClick={() => onChange([])}
-          >
-            <span className="flex h-4 w-4 items-center justify-center rounded border border-gray-300 text-[10px] leading-none">
-              {selected.length === 0 ? '✓' : ''}
-            </span>
-            {allLabel}
-          </button>
-          {options.map((opt) => {
-            const checked = selected.includes(opt.value);
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                  checked ? 'bg-blue-50 font-semibold text-blue-800' : 'text-gray-700'
-                }`}
-                onClick={() => toggle(opt.value)}
-              >
-                <span className="flex h-4 w-4 items-center justify-center rounded border border-gray-300 text-[10px] leading-none">
-                  {checked ? '✓' : ''}
-                </span>
-                {opt.label}
-              </button>
-            );
-          })}
-          {footer ? (
-            <div className="sticky bottom-0 border-t border-gray-100 bg-white px-3 py-2">{footer}</div>
-          ) : null}
-        </div>
-      ) : null}
+      {open && menuPos && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="max-h-[min(70vh,420px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+              style={{
+                position: 'fixed',
+                top: menuPos.top,
+                left: menuPos.left,
+                minWidth: Math.max(menuMinWidth, menuPos.width),
+                maxWidth: 'min(92vw, 440px)',
+                zIndex: 10050,
+              }}
+            >
+              {searchable && options.length > 0 ? (
+                <div className="sticky top-0 z-10 border-b border-slate-100 bg-white p-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder={`Search ${label.toLowerCase()}…`}
+                      className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 text-xs font-medium text-slate-800 outline-none focus:border-[#004AAD] focus:bg-white focus:ring-2 focus:ring-[#004AAD]/20"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <div className="max-h-[min(52vh,340px)] overflow-y-auto py-1">
+                <button
+                  type="button"
+                  className={`flex w-full items-start gap-2.5 px-2.5 py-2 text-left hover:bg-slate-50 ${
+                    selected.length === 0 ? 'bg-blue-50/80' : ''
+                  }`}
+                  onClick={() => onChange([])}
+                >
+                  <Checkbox checked={selected.length === 0} />
+                  <span
+                    className={`min-w-0 flex-1 text-[11px] font-semibold leading-snug ${
+                      selected.length === 0 ? 'text-[#004AAD]' : 'text-slate-700'
+                    }`}
+                  >
+                    {allLabel}
+                  </span>
+                </button>
+                {shownOptions.length === 0 ? (
+                  <p className="px-3 py-3 text-center text-xs text-slate-500">No match</p>
+                ) : null}
+                {shownOptions.map((opt) => {
+                  const checked = selected.includes(opt.value);
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`flex w-full items-start gap-2.5 px-2.5 py-2 text-left hover:bg-slate-50 ${
+                        checked ? 'bg-blue-50/80' : ''
+                      }`}
+                      onClick={() => toggle(opt.value)}
+                    >
+                      <Checkbox checked={checked} />
+                      <span
+                        className={`min-w-0 flex-1 whitespace-normal break-words text-left text-[11px] font-medium leading-snug ${
+                          checked ? 'font-semibold text-[#004AAD]' : 'text-slate-800'
+                        }`}
+                      >
+                        {opt.label}
+                      </span>
+                    </button>
+                  );
+                })}
+                {footer ? (
+                  <div className="sticky bottom-0 border-t border-slate-100 bg-white px-2.5 py-2">{footer}</div>
+                ) : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -1798,18 +1896,18 @@ function SuperAdminBookingsPage() {
   const router = useRouter();
   const [showUploadCrm, setShowUploadCrm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
-  const [leadStatusFilter, setLeadStatusFilter] = useState<CrmLeadStatusFilter>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [leadStatusFilter, setLeadStatusFilter] = useState<string[]>([]);
   /** Exact CRM list label from super-admin dashboard (matches leadDisplayStatus). */
   const [crmStatusLabelFilter, setCrmStatusLabelFilter] = useState('');
   const [crmStatusOptions, setCrmStatusOptions] = useState(
     ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({ id: opt.id, label: opt.label })),
   );
-  const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_OPTIONS)[number]>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [sourceLabelFilter, setSourceLabelFilter] = useState('');
   const [leadTypeFilter, setLeadTypeFilter] = useState('');
-  const [couponFilter, setCouponFilter] = useState<(typeof COUPON_OPTIONS)[number]>('ALL');
-  const [recordingFilter, setRecordingFilter] = useState<(typeof RECORDING_OPTIONS)[number]>('ALL');
+  const [couponFilter, setCouponFilter] = useState<string[]>([]);
+  const [recordingFilter, setRecordingFilter] = useState<string[]>([]);
   const [recordingLeadIds, setRecordingLeadIds] = useState<Set<string> | null>(null);
   const [loadingRecordingIds, setLoadingRecordingIds] = useState(false);
   /** Empty = all assignees. Values: UNASSIGNED or telecaller name. */
@@ -1817,6 +1915,7 @@ function SuperAdminBookingsPage() {
   /** Empty = all message triggers. Values: trigger id or NONE. */
   const [messageTriggerFilter, setMessageTriggerFilter] = useState<string[]>([]);
   const [messageTriggersCatalog, setMessageTriggersCatalog] = useState<MessageTrigger[]>([]);
+  const [leadConditions, setLeadConditions] = useState<LeadCondition[]>([]);
   const [datePreset, setDatePreset] = useState<ReportDatePreset>('last_30_days');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -2237,6 +2336,22 @@ function SuperAdminBookingsPage() {
     [messageTriggersCatalog],
   );
 
+  const leadConditionsCtx = useMemo(
+    () => ({
+      tagIdsByLead: leadTagMap,
+      triggerIdByLead: (lead: unknown) => {
+        const catalogIds = new Set(activeMessageTriggers.map((trigger) => trigger.id));
+        const stored = getLeadStoredMessageTrigger(lead as ServiceLead);
+        const currentId = stored && catalogIds.has(stored.id) ? stored.id : null;
+        const hit = currentId
+          ? { id: currentId }
+          : resolveLeadMessageTrigger(lead as ServiceLead, activeMessageTriggers);
+        return hit?.id && catalogIds.has(hit.id) ? hit.id : null;
+      },
+    }),
+    [leadTagMap, activeMessageTriggers],
+  );
+
   const messageTriggerOptions = useMemo(() => {
     const groups = new Map<string, { label: string; ids: string[] }>();
     for (const trigger of activeMessageTriggers) {
@@ -2259,6 +2374,11 @@ function SuperAdminBookingsPage() {
 
   const isGlobalSearch = searchTerm.trim().length > 0;
 
+  const recordingFilterNeedsIndex = useMemo(() => {
+    if (recordingFilter.length === 0) return false;
+    return recordingFilter.includes('YES') || recordingFilter.includes('NO');
+  }, [recordingFilter]);
+
   const baseFilteredServiceLeads = useMemo(() => {
     if (isGlobalSearch) {
       // Search = all leads, all time, other filters ignored. Until the server answers,
@@ -2266,19 +2386,30 @@ function SuperAdminBookingsPage() {
       return globalSearchLeads ?? filterBookingLeads(serviceLeads, { search: searchTerm });
     }
     let leads = filterBookingLeads(serviceLeads, {
-      source: sourceFilter,
+      source: 'ALL',
       sourceLabel: sourceLabelFilter,
-      hasCoupon: couponFilter,
+      hasCoupon: 'ALL',
       search: searchTerm,
     });
-    if (statusFilter !== 'ALL') {
-      leads = leads.filter((lead) => String(lead.status || 'NEW').toUpperCase() === statusFilter);
+    if (sourceFilter.length > 0) {
+      leads = leads.filter((lead) => {
+        const enriched = lead.booking_source ? lead : enrichBookingLead(lead);
+        return sourceFilter.some((source) => matchesBookingSourceFilter(enriched, source));
+      });
+    }
+    if (couponFilter.length > 0) {
+      leads = leads.filter((lead) => couponFilter.some((coupon) => matchesCouponFilterChoice(lead, coupon)));
+    }
+    if (statusFilter.length > 0) {
+      const wanted = new Set(statusFilter.map((s) => s.toUpperCase()));
+      leads = leads.filter((lead) => wanted.has(String(lead.status || 'NEW').toUpperCase()));
     }
     if (crmStatusLabelFilter.trim()) {
       const want = crmStatusLabelFilter.trim().toLowerCase();
       leads = leads.filter((lead) => leadDisplayStatus(lead).toLowerCase() === want);
-    } else if (leadStatusFilter !== 'ALL') {
-      leads = leads.filter((lead) => resolveAdminCrmStatusId(lead) === leadStatusFilter);
+    } else if (leadStatusFilter.length > 0) {
+      const wanted = new Set(leadStatusFilter.map((s) => s.toUpperCase()));
+      leads = leads.filter((lead) => wanted.has(resolveAdminCrmStatusId(lead)));
     }
     if (leadTypeFilter) {
       const want = leadTypeFilter.toUpperCase();
@@ -2314,16 +2445,21 @@ function SuperAdminBookingsPage() {
         return selectedIds.has(hit.id);
       });
     }
-    if (recordingFilter !== 'ALL') {
-      if (!recordingLeadIds) {
-        // Wait until recording index loads — avoid flashing full list
-        return [];
+    if (recordingFilter.length > 0) {
+      const wantYes = recordingFilter.includes('YES');
+      const wantNo = recordingFilter.includes('NO');
+      if (!(wantYes && wantNo) && (wantYes || wantNo)) {
+        if (!recordingLeadIds) {
+          return [];
+        }
+        leads = leads.filter((lead) => {
+          const id = String(lead.id || '').trim();
+          const has = recordingLeadIds.has(id);
+          if (wantYes) return has;
+          if (wantNo) return !has;
+          return true;
+        });
       }
-      leads = leads.filter((lead) => {
-        const id = String(lead.id || '').trim();
-        const has = recordingLeadIds.has(id);
-        return recordingFilter === 'YES' ? has : !has;
-      });
     }
     if (tagIds.length > 0) {
       if (!tagMapsReady) return [];
@@ -2331,6 +2467,9 @@ function SuperAdminBookingsPage() {
         const have = leadTagMap.get(String(lead.id || '')) || new Set<string>();
         return tagMode === 'all' ? tagIds.every((id) => have.has(id)) : tagIds.some((id) => have.has(id));
       });
+    }
+    if (leadConditions.length > 0) {
+      leads = leads.filter((lead) => leadMatchesLeadConditions(lead, leadConditions, leadConditionsCtx));
     }
     return leads;
   }, [
@@ -2354,6 +2493,8 @@ function SuperAdminBookingsPage() {
     tagMode,
     leadTagMap,
     tagMapsReady,
+    leadConditions,
+    leadConditionsCtx,
   ]);
 
   const checkoutIndex = useMemo(() => buildCheckoutLeadIndex(serviceLeads), [serviceLeads]);
@@ -2447,7 +2588,7 @@ function SuperAdminBookingsPage() {
   // Reset to first page whenever filters / search change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [sourceFilter, couponFilter, statusFilter, leadStatusFilter, crmStatusLabelFilter, assigneeFilter, messageTriggerFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter, tagIds, listSort]);
+  }, [sourceFilter, couponFilter, statusFilter, leadStatusFilter, crmStatusLabelFilter, assigneeFilter, messageTriggerFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter, tagIds, listSort, leadConditions]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -2504,12 +2645,12 @@ function SuperAdminBookingsPage() {
   }, [visibleColumns]);
 
   const hasActiveLeadFilters =
-    sourceFilter !== 'ALL' ||
-    couponFilter !== 'ALL' ||
-    statusFilter !== 'ALL' ||
-    leadStatusFilter !== 'ALL' ||
+    sourceFilter.length > 0 ||
+    couponFilter.length > 0 ||
+    statusFilter.length > 0 ||
+    leadStatusFilter.length > 0 ||
     Boolean(crmStatusLabelFilter.trim()) ||
-    recordingFilter !== 'ALL' ||
+    recordingFilter.length > 0 ||
     assigneeFilter.length > 0 ||
     messageTriggerFilter.length > 0 ||
     tagIds.length > 0 ||
@@ -2548,11 +2689,11 @@ function SuperAdminBookingsPage() {
   const viewSnapshot = useMemo<BookingsViewSnapshot>(
     () =>
       normalizeBookingsViewFilters({
-        source: sourceFilter,
-        status: statusFilter,
-        leadStatus: leadStatusFilter,
-        coupon: couponFilter,
-        recording: recordingFilter,
+        source: joinBookingsFilterTokens(sourceFilter),
+        status: joinBookingsFilterTokens(statusFilter),
+        leadStatus: joinBookingsFilterTokens(leadStatusFilter),
+        coupon: joinBookingsFilterTokens(couponFilter),
+        recording: joinBookingsFilterTokens(recordingFilter),
         assignees: assigneeFilter,
         search: searchTerm,
         sourceLabel: sourceLabelFilter,
@@ -2564,6 +2705,7 @@ function SuperAdminBookingsPage() {
         tagMode,
         messageTriggers: messageTriggerFilter,
         sort: listSort,
+        cond: leadConditions.length ? serializeLeadConditions(leadConditions) : '',
       }),
     [
       sourceFilter,
@@ -2582,38 +2724,22 @@ function SuperAdminBookingsPage() {
       tagMode,
       messageTriggerFilter,
       listSort,
+      leadConditions,
     ],
   );
 
   const applyViewSnapshot = (nextRaw: BookingsViewSnapshot) => {
     const next = normalizeBookingsViewFilters(nextRaw);
-    setSourceFilter(
-      (SOURCE_OPTIONS as readonly string[]).includes(next.source)
-        ? (next.source as (typeof SOURCE_OPTIONS)[number])
-        : 'ALL',
-    );
-    setStatusFilter(
-      (STATUS_OPTIONS as readonly string[]).includes(next.status)
-        ? (next.status as (typeof STATUS_OPTIONS)[number])
-        : 'ALL',
-    );
+    setSourceFilter(parseBookingsFilterTokens(next.source, SOURCE_OPTIONS));
+    setStatusFilter(parseBookingsFilterTokens(next.status, STATUS_OPTIONS));
+    const leadStatusTokens = parseBookingsFilterTokens(next.leadStatus);
     setLeadStatusFilter(
-      next.leadStatus === 'ALL' ||
-        CRM_LEAD_STATUS_IDS.has(next.leadStatus) ||
-        /^[A-Z][A-Z0-9_]*$/.test(next.leadStatus)
-        ? (next.leadStatus as CrmLeadStatusFilter)
-        : 'ALL',
+      leadStatusTokens.filter(
+        (id) => CRM_LEAD_STATUS_IDS.has(id) || /^[A-Z][A-Z0-9_]*$/.test(id),
+      ),
     );
-    setCouponFilter(
-      (COUPON_OPTIONS as readonly string[]).includes(next.coupon)
-        ? (next.coupon as (typeof COUPON_OPTIONS)[number])
-        : 'ALL',
-    );
-    setRecordingFilter(
-      (RECORDING_OPTIONS as readonly string[]).includes(next.recording)
-        ? (next.recording as (typeof RECORDING_OPTIONS)[number])
-        : 'ALL',
-    );
+    setCouponFilter(parseBookingsFilterTokens(next.coupon, COUPON_OPTIONS));
+    setRecordingFilter(parseBookingsFilterTokens(next.recording, RECORDING_OPTIONS));
     setAssigneeFilter(next.assignees);
     setSearchTerm(next.search);
     setSourceLabelFilter(next.sourceLabel);
@@ -2625,6 +2751,7 @@ function SuperAdminBookingsPage() {
     setTagMode(next.tagMode);
     setMessageTriggerFilter(next.messageTriggers);
     setListSort(next.sort);
+    setLeadConditions(parseLeadConditions(next.cond || ''));
   };
 
   const clearLeadFilters = () => {
@@ -2634,6 +2761,7 @@ function SuperAdminBookingsPage() {
       customStart,
       customEnd,
     });
+    setLeadConditions([]);
     setChartDrill(null);
   };
 
@@ -2767,8 +2895,8 @@ function SuperAdminBookingsPage() {
     const status = String(searchParams.get('status') || '')
       .trim()
       .toUpperCase();
-    if ((STATUS_OPTIONS as readonly string[]).includes(status)) {
-      setStatusFilter(status as (typeof STATUS_OPTIONS)[number]);
+    if (status) {
+      setStatusFilter(parseBookingsFilterTokens(status, STATUS_OPTIONS));
     }
 
     const crmLabel = String(searchParams.get('crm_status_label') || '').trim();
@@ -2780,15 +2908,17 @@ function SuperAdminBookingsPage() {
     const leadStatus = String(searchParams.get('lead_status') || '')
       .trim()
       .toUpperCase();
-    if (leadStatus === 'ALL' || CRM_LEAD_STATUS_IDS.has(leadStatus) || /^[A-Z][A-Z0-9_]*$/.test(leadStatus)) {
-      setLeadStatusFilter(leadStatus as CrmLeadStatusFilter);
+    if (leadStatus) {
+      setLeadStatusFilter(
+        parseBookingsFilterTokens(leadStatus).filter(
+          (id) => CRM_LEAD_STATUS_IDS.has(id) || /^[A-Z][A-Z0-9_]*$/.test(id),
+        ),
+      );
     }
 
-    const source = String(searchParams.get('source') || '')
-      .trim()
-      .toUpperCase();
-    if ((SOURCE_OPTIONS as readonly string[]).includes(source)) {
-      setSourceFilter(source as (typeof SOURCE_OPTIONS)[number]);
+    const source = String(searchParams.get('source') || '').trim();
+    if (source) {
+      setSourceFilter(parseBookingsFilterTokens(source, SOURCE_OPTIONS));
     }
 
     const sourceLabel = String(searchParams.get('source_label') || '').trim();
@@ -2808,8 +2938,13 @@ function SuperAdminBookingsPage() {
     const hasRec = String(searchParams.get('has_recording') || '')
       .trim()
       .toUpperCase();
-    if ((RECORDING_OPTIONS as readonly string[]).includes(hasRec)) {
-      setRecordingFilter(hasRec as (typeof RECORDING_OPTIONS)[number]);
+    if (hasRec) {
+      setRecordingFilter(parseBookingsFilterTokens(hasRec, RECORDING_OPTIONS));
+    }
+
+    const coupon = String(searchParams.get('has_coupon') || '').trim();
+    if (coupon) {
+      setCouponFilter(parseBookingsFilterTokens(coupon, COUPON_OPTIONS));
     }
 
     setUrlFiltersReady(true);
@@ -2830,7 +2965,7 @@ function SuperAdminBookingsPage() {
   }, [urlFiltersReady]);
 
   useEffect(() => {
-    if (recordingFilter === 'ALL') {
+    if (!recordingFilterNeedsIndex) {
       setLoadingRecordingIds(false);
       return;
     }
@@ -2858,7 +2993,7 @@ function SuperAdminBookingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [recordingFilter]);
+  }, [recordingFilterNeedsIndex]);
 
   useEffect(() => {
     if (tagIds.length === 0) {
@@ -3104,7 +3239,7 @@ function SuperAdminBookingsPage() {
       const updatedLead = enrichBookingLead(json.lead || { ...lead, status: newStatus });
 
       setServiceLeads((prev) => {
-        if (statusFilter !== 'ALL' && newStatus !== statusFilter) {
+        if (statusFilter.length > 0 && !statusFilter.includes(newStatus)) {
           return prev.filter((row) => row.id !== lead.id);
         }
         return prev.map((row) => (row.id === lead.id ? updatedLead : row));
@@ -3362,7 +3497,7 @@ function SuperAdminBookingsPage() {
       if (!res.ok) throw new Error(json?.error || 'Bulk status update failed');
       const idSet = new Set(ids);
       setServiceLeads((prev) => {
-        if (statusFilter !== 'ALL' && bulkStatus !== statusFilter) {
+        if (statusFilter.length > 0 && !statusFilter.includes(bulkStatus)) {
           return prev.filter((l) => !idSet.has(String(l.id)));
         }
         return prev.map((l) => (idSet.has(String(l.id)) ? ({ ...l, status: bulkStatus } as any) : l));
@@ -3411,11 +3546,11 @@ function SuperAdminBookingsPage() {
         if (customStart) params.set('start', customStart);
         if (customEnd) params.set('end', customEnd);
       }
-      if (statusFilter !== 'ALL') params.set('status', statusFilter);
-      if (leadStatusFilter !== 'ALL') params.set('lead_status', leadStatusFilter);
+      if (statusFilter.length) params.set('status', joinBookingsFilterTokens(statusFilter));
+      if (leadStatusFilter.length) params.set('lead_status', joinBookingsFilterTokens(leadStatusFilter));
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
-      if (sourceFilter !== 'ALL') params.set('source', sourceFilter);
-      if (couponFilter !== 'ALL') params.set('has_coupon', couponFilter);
+      if (sourceFilter.length) params.set('source', joinBookingsFilterTokens(sourceFilter));
+      if (couponFilter.length) params.set('has_coupon', joinBookingsFilterTokens(couponFilter));
 
       const res = await fetch(`/api/super_admin/leads?${params.toString()}`);
       if (!res.ok) {
@@ -3674,30 +3809,27 @@ function SuperAdminBookingsPage() {
           </div>
 
           {!showUploadCrm ? (
-            <div className="mt-2">
+            <div className="mt-2 w-full space-y-2">
               <BookingsSavedViews
                 snapshot={viewSnapshot}
                 onApply={applyViewSnapshot}
-                sourceOptions={SOURCE_OPTIONS.map((source) => ({
+                sourceOptions={SOURCE_OPTIONS.filter((s) => s !== 'ALL').map((source) => ({
                   value: source,
                   label: sourceFilterLabel(source),
                 }))}
-                statusOptions={STATUS_OPTIONS.map((status) => ({
+                statusOptions={STATUS_OPTIONS.filter((s) => s !== 'ALL').map((status) => ({
                   value: status,
-                  label: status === 'ALL' ? 'All booking statuses' : status.replace(/_/g, ' '),
+                  label: status.replace(/_/g, ' '),
                 }))}
-                leadStatusOptions={[
-                  { value: 'ALL', label: 'All lead statuses' },
-                  ...ADMIN_CRM_STATUS_OPTIONS.map((opt) => ({
-                    value: opt.id,
-                    label: opt.label,
-                  })),
-                ]}
-                couponOptions={COUPON_OPTIONS.map((coupon) => ({
+                leadStatusOptions={crmStatusOptions.map((opt) => ({
+                  value: opt.id,
+                  label: opt.label,
+                }))}
+                couponOptions={COUPON_OPTIONS.filter((c) => c !== 'ALL').map((coupon) => ({
                   value: coupon,
                   label: couponFilterLabel(coupon),
                 }))}
-                recordingOptions={RECORDING_OPTIONS.map((opt) => ({
+                recordingOptions={RECORDING_OPTIONS.filter((o) => o !== 'ALL').map((opt) => ({
                   value: opt,
                   label: recordingFilterLabel(opt),
                 }))}
@@ -3708,98 +3840,137 @@ function SuperAdminBookingsPage() {
                 ]}
                 messageTriggerOptions={messageTriggerOptions}
               />
+              <div className="grid w-full grid-cols-1 gap-2 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-violet-50/70 p-2 lg:grid-cols-2">
+                <LeadConditionsBar
+                  conditions={leadConditions}
+                  onChange={(next) => setLeadConditions(next)}
+                />
+                <label className="relative flex min-h-[42px] items-center rounded-xl border border-white/80 bg-white/90 px-2 shadow-sm">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    id="bookings-search"
+                    name="bookings-search"
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search name, phone, vehicle…"
+                    className="h-10 w-full rounded-lg border-0 bg-transparent pl-9 pr-8 text-sm font-medium text-slate-800 focus:outline-none focus:ring-0"
+                    autoComplete="off"
+                  />
+                  {searchTerm.trim() ? (
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                      onClick={() => setSearchTerm('')}
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </label>
+              </div>
             </div>
           ) : null}
 
           {!showUploadCrm ? (
-            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <ReportDateRangeFilter
-                  variant="compact"
-                  preset={datePreset}
-                  customStart={customStart}
-                  customEnd={customEnd}
-                  onChange={handleDateRangeChange}
-                />
+            <div className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
+              <div className="grid w-full grid-cols-2 items-stretch gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9">
+                <div className="min-w-0">
+                  <ReportDateRangeFilter
+                    variant="compact"
+                    preset={datePreset}
+                    customStart={customStart}
+                    customEnd={customEnd}
+                    onChange={handleDateRangeChange}
+                  />
+                </div>
 
-                    <FilterSelect
+                    <FilterMultiSelect
+                      grow
                       label="Source"
-                      value={sourceFilter}
-                      onChange={(v) => setSourceFilter(v as (typeof SOURCE_OPTIONS)[number])}
-                    >
-                      {SOURCE_OPTIONS.map((source) => (
-                        <option key={source} value={source}>
-                          {sourceFilterLabel(source)}
-                        </option>
-                      ))}
-                    </FilterSelect>
+                      allLabel="All sources"
+                      selected={sourceFilter}
+                      onChange={setSourceFilter}
+                      className="min-w-0"
+                      searchable
+                      options={SOURCE_OPTIONS.filter((s) => s !== 'ALL').map((source) => ({
+                        value: source,
+                        label: sourceFilterLabel(source),
+                      }))}
+                    />
 
-                    <FilterSelect
+                    <FilterMultiSelect
+                      grow
                       label="Discount"
-                      value={couponFilter}
-                      onChange={(v) => setCouponFilter(v as (typeof COUPON_OPTIONS)[number])}
-                    >
-                      {COUPON_OPTIONS.map((coupon) => (
-                        <option key={coupon} value={coupon}>
-                          {couponFilterLabel(coupon)}
-                        </option>
-                      ))}
-                    </FilterSelect>
+                      allLabel="All discounts"
+                      selected={couponFilter}
+                      onChange={setCouponFilter}
+                      className="min-w-0"
+                      searchable
+                      options={COUPON_OPTIONS.filter((c) => c !== 'ALL').map((coupon) => ({
+                        value: coupon,
+                        label: couponFilterLabel(coupon),
+                      }))}
+                    />
 
-                    <FilterSelect
+                    <FilterMultiSelect
+                      grow
                       label="Booking status"
-                      value={statusFilter}
-                      onChange={(v) => setStatusFilter(v as (typeof STATUS_OPTIONS)[number])}
-                      className="min-w-[150px]"
-                    >
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status === 'ALL' ? 'All booking statuses' : status.replace(/_/g, ' ')}
-                        </option>
-                      ))}
-                    </FilterSelect>
+                      allLabel="All booking status"
+                      selected={statusFilter}
+                      onChange={setStatusFilter}
+                      className="min-w-0"
+                      searchable
+                      options={STATUS_OPTIONS.filter((s) => s !== 'ALL').map((status) => ({
+                        value: status,
+                        label: status.replace(/_/g, ' '),
+                      }))}
+                    />
 
-                    <FilterSelect
+                    <FilterMultiSelect
+                      grow
                       label="Lead status"
-                      value={leadStatusFilter}
-                      onChange={(v) => {
+                      allLabel="All lead statuses"
+                      selected={leadStatusFilter}
+                      onChange={(next) => {
                         setCrmStatusLabelFilter('');
-                        setLeadStatusFilter(v as CrmLeadStatusFilter);
+                        setLeadStatusFilter(next);
                       }}
-                      className="min-w-[160px]"
-                    >
-                      <option value="ALL">All lead statuses</option>
-                      {crmStatusOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </FilterSelect>
+                      className="min-w-0"
+                      searchable
+                      options={crmStatusOptions.map((opt) => ({
+                        value: opt.id,
+                        label: opt.label,
+                      }))}
+                    />
 
-                    <FilterSelect
+                    <FilterMultiSelect
+                      grow
                       label="Recording"
-                      value={recordingFilter}
-                      onChange={(v) => setRecordingFilter(v as (typeof RECORDING_OPTIONS)[number])}
-                      className="min-w-[120px]"
-                    >
-                      {RECORDING_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {recordingFilterLabel(opt)}
-                        </option>
-                      ))}
-                    </FilterSelect>
-                    {recordingFilter !== 'ALL' && loadingRecordingIds ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                      allLabel="All recordings"
+                      selected={recordingFilter}
+                      onChange={setRecordingFilter}
+                      className="min-w-0"
+                      searchable
+                      options={RECORDING_OPTIONS.filter((o) => o !== 'ALL').map((opt) => ({
+                        value: opt,
+                        label: recordingFilterLabel(opt),
+                      }))}
+                    />
+                    {recordingFilterNeedsIndex && loadingRecordingIds ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-slate-500">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
                       </span>
                     ) : null}
 
                     <FilterMultiSelect
+                      grow
                       label="Assignee"
-                      allLabel="Assignee"
+                      allLabel="All assignees"
                       selected={assigneeFilter}
                       onChange={setAssigneeFilter}
-                      className="min-w-[150px]"
+                      className="min-w-0"
+                      searchable
                       options={[
                         { value: 'UNASSIGNED', label: 'Unassigned' },
                         ...assigneeOptions.active.map((name) => ({ value: name, label: name })),
@@ -3829,19 +4000,23 @@ function SuperAdminBookingsPage() {
                     />
 
                     <FilterMultiSelect
+                      grow
                       label="Trigger"
-                      allLabel="Trigger"
+                      allLabel="All triggers"
                       selected={messageTriggerFilter}
                       onChange={setMessageTriggerFilter}
-                      className="min-w-[140px]"
+                      className="min-w-0"
                       options={messageTriggerOptions}
+                      searchable
+                      menuMinWidth={380}
                     />
 
-                {(sourceFilter !== 'ALL' ||
-                  couponFilter !== 'ALL' ||
-                  statusFilter !== 'ALL' ||
-                  leadStatusFilter !== 'ALL' ||
-                  recordingFilter !== 'ALL' ||
+                {(sourceFilter.length > 0 ||
+                  leadConditions.length > 0 ||
+                  couponFilter.length > 0 ||
+                  statusFilter.length > 0 ||
+                  leadStatusFilter.length > 0 ||
+                  recordingFilter.length > 0 ||
                   assigneeFilter.length > 0 ||
                   messageTriggerFilter.length > 0 ||
                   tagIds.length > 0 ||
@@ -3851,37 +4026,11 @@ function SuperAdminBookingsPage() {
                   <button
                     type="button"
                     onClick={clearLeadFilters}
-                    className="h-8 px-2 text-xs font-semibold text-[#004AAD] hover:bg-blue-50 rounded-md"
+                    className="col-span-full h-8 justify-self-end px-2 text-xs font-semibold text-[#004AAD] hover:bg-blue-50 rounded-md sm:col-span-1 lg:col-auto"
                   >
                     Clear
                   </button>
                 ) : null}
-
-                <label className="relative min-w-[220px] flex-1 max-w-sm shrink-0">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      id="bookings-search"
-                      name="bookings-search"
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Search name, phone, vehicle..."
-                      className="h-8 w-full rounded-md border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004AAD]/30"
-                      autoComplete="off"
-                    />
-                    {searchTerm.trim() ? (
-                      <button
-                        type="button"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                        onClick={() => setSearchTerm('')}
-                        aria-label="Clear search"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </div>
-                </label>
 
               </div>
 
@@ -4135,59 +4284,59 @@ function SuperAdminBookingsPage() {
                 label="App Booking"
                 value={serviceLeadOverview.app}
                 icon={<Smartphone className="h-4 w-4" />}
-                onClick={() => setSourceFilter(sourceFilter === 'APP' ? 'ALL' : 'APP')}
-                active={sourceFilter === 'APP'}
+                onClick={() => setSourceFilter((prev) => toggleBookingFilterToken(prev, 'APP'))}
+                active={sourceFilter.includes('APP')}
               />
               <StatCard
                 label="Website"
                 value={serviceLeadOverview.website}
                 icon={<Globe className="h-4 w-4" />}
-                onClick={() => setSourceFilter(sourceFilter === 'WEBSITE' ? 'ALL' : 'WEBSITE')}
-                active={sourceFilter === 'WEBSITE'}
+                onClick={() => setSourceFilter((prev) => toggleBookingFilterToken(prev, 'WEBSITE'))}
+                active={sourceFilter.includes('WEBSITE')}
               />
               <StatCard
                 label="MISA AI"
                 value={serviceLeadOverview.misa}
                 icon={<Bot className="h-4 w-4" />}
-                onClick={() => setSourceFilter(sourceFilter === 'MISA' ? 'ALL' : 'MISA')}
-                active={sourceFilter === 'MISA'}
+                onClick={() => setSourceFilter((prev) => toggleBookingFilterToken(prev, 'MISA'))}
+                active={sourceFilter.includes('MISA')}
               />
               <StatCard
                 label="Google Ads"
                 value={serviceLeadOverview.googleAds}
                 icon={<Megaphone className="h-4 w-4" />}
-                onClick={() => setSourceFilter(sourceFilter === 'GOOGLE' ? 'ALL' : 'GOOGLE')}
-                active={sourceFilter === 'GOOGLE'}
+                onClick={() => setSourceFilter((prev) => toggleBookingFilterToken(prev, 'GOOGLE'))}
+                active={sourceFilter.includes('GOOGLE')}
               />
               <StatCard
                 label="Meta / Insta Ads"
                 value={serviceLeadOverview.metaAds}
                 icon={<Megaphone className="h-4 w-4" />}
-                onClick={() => setSourceFilter(sourceFilter === 'META' ? 'ALL' : 'META')}
-                active={sourceFilter === 'META'}
+                onClick={() => setSourceFilter((prev) => toggleBookingFilterToken(prev, 'META'))}
+                active={sourceFilter.includes('META')}
               />
               <StatCard
                 label="Promo Coupon"
                 value={serviceLeadOverview.withPromoCoupon}
                 icon={<Ticket className="h-4 w-4" />}
                 accentClassName="bg-orange-300/30 text-orange-100"
-                onClick={() => setCouponFilter(couponFilter === 'PROMO' ? 'ALL' : 'PROMO')}
-                active={couponFilter === 'PROMO'}
+                onClick={() => setCouponFilter((prev) => toggleBookingFilterToken(prev, 'PROMO'))}
+                active={couponFilter.includes('PROMO')}
               />
               <StatCard
                 label="Refer & Rise"
                 value={serviceLeadOverview.withReferralReward}
                 icon={<Gift className="h-4 w-4" />}
                 accentClassName="bg-amber-300/30 text-amber-100"
-                onClick={() => setCouponFilter(couponFilter === 'REFERRAL' ? 'ALL' : 'REFERRAL')}
-                active={couponFilter === 'REFERRAL'}
+                onClick={() => setCouponFilter((prev) => toggleBookingFilterToken(prev, 'REFERRAL'))}
+                active={couponFilter.includes('REFERRAL')}
               />
               <StatCard
                 label="New Leads"
                 value={serviceLeadOverview.newLeads}
                 icon={<UserRound className="h-4 w-4" />}
-                onClick={() => setStatusFilter(statusFilter === 'NEW' ? 'ALL' : 'NEW')}
-                active={statusFilter === 'NEW'}
+                onClick={() => setStatusFilter((prev) => toggleBookingFilterToken(prev, 'NEW'))}
+                active={statusFilter.includes('NEW')}
               />
             </div>
           </div>
@@ -4425,7 +4574,7 @@ function SuperAdminBookingsPage() {
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">{error}</div>
-        ) : recordingFilter !== 'ALL' && (loadingRecordingIds || !recordingLeadIds) ? (
+        ) : recordingFilterNeedsIndex && (loadingRecordingIds || !recordingLeadIds) ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
             <p className="text-sm text-gray-600 mt-3">Loading recordings filter...</p>

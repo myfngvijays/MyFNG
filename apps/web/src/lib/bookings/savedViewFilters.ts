@@ -23,6 +23,8 @@ export type BookingsViewSnapshot = {
   tagMode: BookingsTagMode;
   messageTriggers: string[];
   sort: BookingsViewSort;
+  /** Serialized LeadConditionsBar payload (same as telecaller ?cond=). */
+  cond: string;
 };
 
 export const EMPTY_BOOKINGS_VIEW: BookingsViewSnapshot = {
@@ -43,6 +45,7 @@ export const EMPTY_BOOKINGS_VIEW: BookingsViewSnapshot = {
   tagMode: 'any',
   messageTriggers: [],
   sort: 'newest',
+  cond: '',
 };
 
 export type BookingsViewConditionKey =
@@ -66,6 +69,29 @@ function asString(value: unknown, fallback = ''): string {
 function asStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => asString(item)).filter(Boolean))];
+}
+
+/** Parse saved view / URL field: `ALL` or comma-separated codes. */
+export function parseBookingsFilterTokens(raw: unknown, allowed?: readonly string[]): string[] {
+  const text = asString(raw).toUpperCase();
+  if (!text || text === 'ALL') return [];
+  const allowedSet = allowed
+    ? new Set(allowed.map((a) => String(a).toUpperCase()).filter((a) => a !== 'ALL'))
+    : null;
+  const parts = text.includes(',') ? text.split(',') : [text];
+  return [
+    ...new Set(
+      parts
+        .map((p) => p.trim().toUpperCase())
+        .filter(Boolean)
+        .filter((p) => !allowedSet || allowedSet.has(p)),
+    ),
+  ];
+}
+
+export function joinBookingsFilterTokens(values: string[]): string {
+  const clean = [...new Set(values.map((v) => asString(v).toUpperCase()).filter(Boolean))];
+  return clean.length ? clean.join(',') : 'ALL';
 }
 
 export function normalizeBookingsViewFilters(raw: unknown): BookingsViewSnapshot {
@@ -95,6 +121,7 @@ export function normalizeBookingsViewFilters(raw: unknown): BookingsViewSnapshot
     tagMode,
     messageTriggers: asStringList(src.messageTriggers || src.message_triggers),
     sort,
+    cond: asString(src.cond || src.conditions),
   };
 }
 
@@ -119,7 +146,8 @@ export function bookingsViewFiltersEqual(a: BookingsViewSnapshot, b: BookingsVie
     a.sort === b.sort &&
     sortedKey(a.assignees) === sortedKey(b.assignees) &&
     sortedKey(a.tagIds) === sortedKey(b.tagIds) &&
-    sortedKey(a.messageTriggers) === sortedKey(b.messageTriggers)
+    sortedKey(a.messageTriggers) === sortedKey(b.messageTriggers) &&
+    a.cond === b.cond
   );
 }
 

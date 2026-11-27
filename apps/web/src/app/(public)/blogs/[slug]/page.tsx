@@ -587,9 +587,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap{font-family:'Poppins',sans-serif;font-size:13px;color:#222;}
           .blog-html-wrap *{box-sizing:border-box;}
           .blog-html-wrap h1,.blog-html-wrap h2,.blog-html-wrap h3,.blog-html-wrap h4,.blog-html-wrap h5,.blog-html-wrap h6{font-family:'Poppins',sans-serif;color:#111827;}
-          .blog-html-wrap .container{max-width:1200px;margin:auto;padding:20px;}
-          .blog-html-wrap .breadcrumb{font-size:14px;color:#888;margin-bottom:20px;}
-          .blog-html-wrap .blog-title{font-size:36px;font-weight:700;margin-bottom:10px;color:#111827;line-height:1.2;}
+          .blog-html-wrap{padding-top:8.5rem;}
+          @media (min-width:640px){.blog-html-wrap{padding-top:9.25rem;}}
+          @media (min-width:768px){.blog-html-wrap{padding-top:10rem;}}
+          @media (min-width:1024px){.blog-html-wrap{padding-top:11rem;}}
+          .blog-html-wrap .container{max-width:1200px;margin:auto;padding:12px 20px 20px;}
+          .blog-html-wrap .breadcrumb{font-size:13px;color:#64748b;margin:0 0 14px;padding-top:4px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;line-height:1.5;position:relative;z-index:1;}
+          .blog-html-wrap .breadcrumb a{color:#0a4ea3;font-weight:600;text-decoration:none;}
+          .blog-html-wrap .breadcrumb a:hover{text-decoration:underline;}
+          .blog-html-wrap .breadcrumb .bc-sep{color:#94a3b8;font-weight:500;}
+          .blog-html-wrap .breadcrumb .bc-current{color:#334155;font-weight:600;}
+          .blog-html-wrap .blog-title{font-size:36px;font-weight:700;margin:8px 0 14px;color:#111827;line-height:1.2;}
           .blog-html-wrap .blog-meta{font-size:13px;color:#777;margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;}
           .blog-html-wrap .blog-meta a{color:#0a4ea3;font-weight:600;text-decoration:none;}
           .blog-html-wrap .blog-meta a:hover{text-decoration:underline;}
@@ -730,10 +738,28 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         ) : null}
         <Navbar />
         <div className="blog-html-wrap">
-          <div className="container" style={{ marginTop: '80px' }}>
-            <div className="breadcrumb">
-              Home &gt; Blogs {breadcrumbCategory?.name ? `> ${breadcrumbCategory.name}` : ''} &gt; {transformed.title}
-            </div>
+          <div className="container">
+            <nav className="breadcrumb" aria-label="Breadcrumb">
+              <Link href="/">Home</Link>
+              <span className="bc-sep" aria-hidden>
+                ›
+              </span>
+              <Link href="/blogs">Blogs</Link>
+              {breadcrumbCategory?.name ? (
+                <>
+                  <span className="bc-sep" aria-hidden>
+                    ›
+                  </span>
+                  <Link href={`/blogs?category=${encodeURIComponent(breadcrumbCategory.id || '')}`}>
+                    {breadcrumbCategory.name}
+                  </Link>
+                </>
+              ) : null}
+              <span className="bc-sep" aria-hidden>
+                ›
+              </span>
+              <span className="bc-current line-clamp-2">{transformed.title}</span>
+            </nav>
 
             <h1 className="blog-title">{transformed.title}</h1>
 

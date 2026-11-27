@@ -101,12 +101,17 @@ function MultiPick({
   selected,
   onChange,
   allLabel,
+  searchable,
 }: {
   options: Option[];
   selected: string[];
   onChange: (next: string[]) => void;
   allLabel: string;
+  searchable?: boolean;
 }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const shown = q ? options.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)) : options;
   return (
     <div className="min-w-[220px]">
       <button
@@ -121,7 +126,20 @@ function MultiPick({
         </span>
         {allLabel}
       </button>
-      {options.map((opt) => {
+      {searchable !== false && options.length > 4 ? (
+        <div className="px-2 pb-1">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="w-full rounded-lg border border-indigo-100 py-1.5 pl-7 pr-2 text-xs outline-none focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+        </div>
+      ) : null}
+      {shown.map((opt) => {
         const checked = selected.includes(opt.value);
         return (
           <button
@@ -437,8 +455,8 @@ export default function BookingsSavedViews({
         </div>
       </aside>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-          <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex w-full flex-wrap items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
@@ -479,301 +497,7 @@ export default function BookingsSavedViews({
             ) : null}
           </div>
 
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          <div className="relative" ref={addRef}>
-            <button
-              type="button"
-              onClick={() => setAddOpen((open) => !open)}
-              className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-[#004AAD] hover:bg-blue-50"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Condition
-            </button>
-            {addOpen ? (
-              <div className="absolute left-0 top-full z-50 mt-1 w-[min(100vw-2rem,320px)] rounded-xl border border-indigo-100 bg-white p-2 shadow-xl">
-                <div className="relative mb-2">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                  <input
-                    value={addQuery}
-                    onChange={(e) => setAddQuery(e.target.value)}
-                    placeholder="Add a new condition"
-                    className="w-full rounded-lg border border-indigo-200 py-2 pl-8 pr-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200"
-                    autoFocus
-                  />
-                </div>
-                <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Fields</p>
-                <div className="max-h-64 overflow-y-auto">
-                  {filteredConditions.length === 0 ? (
-                    <p className="px-2 py-3 text-xs text-gray-500">All conditions are already added.</p>
-                  ) : (
-                    filteredConditions.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => addCondition(item.key)}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-indigo-50"
-                        >
-                          <Icon className="h-4 w-4 text-indigo-500" />
-                          <span>
-                            <span className="block text-sm font-semibold text-gray-800">{item.label}</span>
-                            <span className="block text-[11px] text-gray-500">{item.hint}</span>
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          {visibleConditions.map((key) => {
-            const meta = CONDITION_CATALOG.find((item) => item.key === key);
-            if (!meta) return null;
-            const Icon = meta.icon;
-            return (
-              <div
-                key={key}
-                className="relative flex min-h-[36px] max-w-full items-center gap-1.5 rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-900 ring-1 ring-indigo-100"
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
-                <span className="shrink-0">{meta.label}</span>
-                {key === 'lead_tag' ? (
-                  <select
-                    value={snapshot.tagMode}
-                    onChange={(e) => patch({ tagMode: e.target.value === 'all' ? 'all' : 'any' })}
-                    className="rounded border-0 bg-white/80 py-0.5 text-xs font-semibold text-indigo-800"
-                  >
-                    <option value="any">Is Any</option>
-                    <option value="all">Is All</option>
-                  </select>
-                ) : (
-                  <span className="text-indigo-400">Is</span>
-                )}
-                {key === 'lead_tag' ? (
-                  <button
-                    type="button"
-                    onClick={() => setOpenChip(openChip === key ? null : key)}
-                    className="inline-flex max-w-[200px] items-center gap-1 truncate rounded bg-white px-1.5 py-0.5"
-                  >
-                    {snapshot.tagIds.length === 0
-                      ? 'Any'
-                      : snapshot.tagIds
-                          .map((id) => tags.find((tag) => tag.id === id)?.name || id)
-                          .slice(0, 3)
-                          .join(' | ') + (snapshot.tagIds.length > 3 ? '…' : '')}
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                ) : null}
-                {key === 'created_on' ? (
-                  <button
-                    type="button"
-                    onClick={() => setOpenChip(openChip === key ? null : key)}
-                    className="inline-flex items-center gap-1 rounded bg-white px-1.5 py-0.5"
-                  >
-                    <Calendar className="h-3 w-3" />
-                    {snapshot.datePreset === 'all_time' ? 'Any' : createdOnLabel}
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                ) : null}
-                {key === 'assignee' ? (
-                  <button
-                    type="button"
-                    onClick={() => setOpenChip(openChip === key ? null : key)}
-                    className="inline-flex max-w-[180px] truncate rounded bg-white px-1.5 py-0.5"
-                  >
-                    {snapshot.assignees.length === 0
-                      ? 'Any'
-                      : snapshot.assignees.length === 1
-                        ? snapshot.assignees[0]
-                        : `${snapshot.assignees[0]} +${snapshot.assignees.length - 1}`}
-                    <ChevronDown className="ml-1 inline h-3 w-3" />
-                  </button>
-                ) : null}
-                {key === 'message_trigger' ? (
-                  <button
-                    type="button"
-                    onClick={() => setOpenChip(openChip === key ? null : key)}
-                    className="inline-flex max-w-[200px] truncate rounded bg-white px-1.5 py-0.5"
-                  >
-                    {snapshot.messageTriggers.length === 0
-                      ? 'Any'
-                      : snapshot.messageTriggers.length === 1
-                        ? messageTriggerOptions.find((opt) => opt.value === snapshot.messageTriggers[0])?.label ||
-                          snapshot.messageTriggers[0]
-                        : `${
-                            messageTriggerOptions.find((opt) => opt.value === snapshot.messageTriggers[0])?.label ||
-                            snapshot.messageTriggers[0]
-                          } +${snapshot.messageTriggers.length - 1}`}
-                    <ChevronDown className="ml-1 inline h-3 w-3" />
-                  </button>
-                ) : null}
-                {key === 'status' ? (
-                  <select
-                    value={snapshot.status}
-                    onChange={(e) => patch({ status: e.target.value })}
-                    className="max-w-[160px] rounded border-0 bg-white py-0.5 text-xs font-semibold"
-                  >
-                    {statusOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                {key === 'lead_status' ? (
-                  <select
-                    value={snapshot.leadStatus}
-                    onChange={(e) => patch({ leadStatus: e.target.value })}
-                    className="max-w-[180px] rounded border-0 bg-white py-0.5 text-xs font-semibold"
-                  >
-                    {leadStatusOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                {key === 'source' ? (
-                  <select
-                    value={snapshot.source}
-                    onChange={(e) => patch({ source: e.target.value })}
-                    className="max-w-[160px] rounded border-0 bg-white py-0.5 text-xs font-semibold"
-                  >
-                    {sourceOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                {key === 'discount' ? (
-                  <select
-                    value={snapshot.coupon}
-                    onChange={(e) => patch({ coupon: e.target.value })}
-                    className="max-w-[160px] rounded border-0 bg-white py-0.5 text-xs font-semibold"
-                  >
-                    {couponOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                {key === 'recording' ? (
-                  <select
-                    value={snapshot.recording}
-                    onChange={(e) => patch({ recording: e.target.value })}
-                    className="max-w-[160px] rounded border-0 bg-white py-0.5 text-xs font-semibold"
-                  >
-                    {recordingOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                {key === 'lead_type' ? (
-                  <input
-                    value={snapshot.leadType}
-                    onChange={(e) => patch({ leadType: e.target.value.toUpperCase() })}
-                    placeholder="Type"
-                    className="w-24 rounded border-0 bg-white px-1.5 py-0.5 text-xs font-semibold outline-none"
-                  />
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => removeCondition(key)}
-                  className="rounded-full bg-indigo-200 p-0.5 text-indigo-800 hover:bg-indigo-300"
-                  aria-label={`Remove ${meta.label}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-
-                {key === 'lead_tag' ? (
-                  <ChipMenu open={openChip === key} onClose={() => setOpenChip(null)} className="min-w-[240px]">
-                    <MultiPick
-                      options={tagOptions}
-                      selected={snapshot.tagIds}
-                      onChange={(tagIds) => patch({ tagIds })}
-                      allLabel="Any tag"
-                    />
-                  </ChipMenu>
-                ) : null}
-                {key === 'created_on' ? (
-                  <ChipMenu open={openChip === key} onClose={() => setOpenChip(null)}>
-                    <button
-                      type="button"
-                      className={`flex w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 ${
-                        snapshot.datePreset === 'all_time' ? 'bg-indigo-50 font-semibold text-indigo-800' : 'text-gray-700'
-                      }`}
-                      onClick={() => {
-                        patch({ datePreset: 'all_time', customStart: '', customEnd: '' });
-                        setOpenChip(null);
-                      }}
-                    >
-                      Any
-                    </button>
-                    {REPORT_DATE_PRESETS.filter((p) => p.value !== 'all_time').map((preset) => (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        className={`flex w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 ${
-                          snapshot.datePreset === preset.value
-                            ? 'bg-indigo-50 font-semibold text-indigo-800'
-                            : 'text-gray-700'
-                        }`}
-                        onClick={() => {
-                          patch({ datePreset: preset.value as ReportDatePreset });
-                          setOpenChip(null);
-                        }}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                    {snapshot.datePreset === 'custom' ? (
-                      <div className="flex gap-2 border-t border-gray-100 px-3 py-2">
-                        <input
-                          type="date"
-                          value={snapshot.customStart}
-                          onChange={(e) => patch({ datePreset: 'custom', customStart: e.target.value })}
-                          className="w-full rounded border border-gray-200 px-1 py-1 text-xs"
-                        />
-                        <input
-                          type="date"
-                          value={snapshot.customEnd}
-                          onChange={(e) => patch({ datePreset: 'custom', customEnd: e.target.value })}
-                          className="w-full rounded border border-gray-200 px-1 py-1 text-xs"
-                        />
-                      </div>
-                    ) : null}
-                  </ChipMenu>
-                ) : null}
-                {key === 'assignee' ? (
-                  <ChipMenu open={openChip === key} onClose={() => setOpenChip(null)}>
-                    <MultiPick
-                      options={assigneeOptions}
-                      selected={snapshot.assignees}
-                      onChange={(assignees) => patch({ assignees })}
-                      allLabel="Any assignee"
-                    />
-                  </ChipMenu>
-                ) : null}
-                {key === 'message_trigger' ? (
-                  <ChipMenu open={openChip === key} onClose={() => setOpenChip(null)}>
-                    <MultiPick
-                      options={messageTriggerOptions}
-                      selected={snapshot.messageTriggers}
-                      onChange={(messageTriggers) => patch({ messageTriggers })}
-                      allLabel="Any trigger"
-                    />
-                  </ChipMenu>
-                ) : null}
-              </div>
-            );
-          })}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <select
             value={snapshot.sort}
             onChange={(e) => patch({ sort: e.target.value === 'oldest' ? 'oldest' : 'newest' })}
