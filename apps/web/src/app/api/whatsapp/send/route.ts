@@ -55,24 +55,28 @@ async function hasCustomerRepliedOnSenderLine(recipientPhone: string): Promise<b
   }
 }
 
-/** quick_note_with_button when it is active + Meta APPROVED locally, else myfng_quick_note. */
-async function pickClosedWindowNoteTemplate(): Promise<string> {
+const CLOSED_WINDOW_TELECALLER_TEMPLATE = 'quick_note_with_button';
+
+/** Closed 24h window: only OK-button utility template (myfng_quick_note disabled). */
+async function pickClosedWindowNoteTemplate(): Promise<string | null> {
   try {
     const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
     const { supabaseAdmin } = getSupabaseAdmin();
-    if (!supabaseAdmin) return 'myfng_quick_note';
+    if (!supabaseAdmin) return null;
     const { data } = await supabaseAdmin
       .from('whatsapp_templates')
       .select('is_active, meta')
-      .eq('template_name', 'quick_note_with_button')
+      .eq('template_name', CLOSED_WINDOW_TELECALLER_TEMPLATE)
       .maybeSingle();
     const meta = (data?.meta || {}) as Record<string, any>;
     const status = String(meta.status || meta.raw?.status || '').toUpperCase();
-    if (data && data.is_active !== false && status === 'APPROVED') return 'quick_note_with_button';
+    if (data && data.is_active !== false && status === 'APPROVED') {
+      return CLOSED_WINDOW_TELECALLER_TEMPLATE;
+    }
   } catch {
-    /* fall back below */
+    /* no fallback */
   }
-  return 'myfng_quick_note';
+  return null;
 }
 
 function normalizePhone(phone: string): string {
@@ -375,8 +379,14 @@ export async function POST(request: NextRequest) {
       const sessionOpen = await hasCustomerRepliedOnSenderLine(recipientPhone);
       const replyToMessageId = String(body?.reply_to_message_id || '').trim();
       const sendClosedWindowNote = async () => {
-        // OK-button note once Meta approves it; otherwise the plain quick note.
         const templateName = await pickClosedWindowNoteTemplate();
+        if (!templateName) {
+          return {
+            success: false,
+            error:
+              '24h window closed. Enable Meta-approved quick_note_with_button (plain myfng_quick_note is off).',
+          };
+        }
         const laid = layoutTemplateParam(text);
         sentViaTemplateName = templateName;
         requestPayload = {
@@ -493,6 +503,15 @@ export async function POST(request: NextRequest) {
       const languageCode = String(body?.language || 'en').trim() || 'en';
       if (!templateName) {
         return NextResponse.json({ error: 'template_name is required for template type' }, { status: 400 });
+      }
+      if (templateName.toLowerCase() === 'myfng_quick_note') {
+        return NextResponse.json(
+          {
+            error:
+              'Template myfng_quick_note is disabled for telecaller closed-window sends. Use quick_note_with_button.',
+          },
+          { status: 400 },
+        );
       }
 
       // Resolve expected {{n}} count from local template (frictionless = 1)

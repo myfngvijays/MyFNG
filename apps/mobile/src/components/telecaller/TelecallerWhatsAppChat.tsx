@@ -245,8 +245,8 @@ function resolveFrictionlessTemplate(rows: WaTemplate[]): WaTemplate | null {
     String((row?.meta as any)?.status || '')
       .trim()
       .toUpperCase();
-  // quick_note_with_button (OK button) wins once Meta approves it; until then myfng_quick_note.
-  const preferredNames = ['quick_note_with_button', 'myfng_quick_note'];
+  // Closed-window telecaller: only OK-button template (myfng_quick_note disabled).
+  const preferredNames = ['quick_note_with_button'];
   for (const name of preferredNames) {
     const row = byName(name);
     if (row && metaStatus(row) === 'APPROVED') return row;
@@ -255,11 +255,7 @@ function resolveFrictionlessTemplate(rows: WaTemplate[]): WaTemplate | null {
     const row = byName(name);
     if (row) return row;
   }
-  return (
-    active.find((row) => Boolean(row?.meta && (row.meta as any).frictionless) && metaStatus(row) === 'APPROVED') ||
-    active.find((row) => Boolean(row?.meta && (row.meta as any).frictionless)) ||
-    null
-  );
+  return null;
 }
 
 function defaultParamsForTemplate(template: WaTemplate | null, customerName?: string | null): string[] {
@@ -365,7 +361,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
       const name = String(row.template_name || '').toLowerCase();
       if (cat.includes('auth') || name.includes('otp') || name.startsWith('auth_')) return false;
       // Telecaller API only returns Quick note — keep client in sync
-      if (telecallerScopedTemplates && name !== 'myfng_quick_note' && name !== 'quick_note_with_button') return false;
+      if (telecallerScopedTemplates && name !== 'quick_note_with_button') return false;
       if (!q) return true;
       return (
         name.includes(q) ||
@@ -468,8 +464,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack, on
       const fr = frictionlessTemplate;
       if (!fr?.template_name) {
         Alert.alert(
-          'Frictionless template missing',
-          'Run SQL 332 and Push myfng_closed_window_note (UTILITY), then Sync templates.',
+          'Button template missing',
+          'Push quick_note_with_button (UTILITY + OK button), Sync until Meta Approved. Plain myfng_quick_note is off.',
         );
         openTemplatePicker();
         return;

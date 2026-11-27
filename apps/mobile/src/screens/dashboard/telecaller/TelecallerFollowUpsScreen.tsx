@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatDateTime, formatIstDateGB, formatIstDayMonthTime } from "@/lib/dateFormat";
 import {
   View,
@@ -135,6 +135,11 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   const [completionTarget, setCompletionTarget] = useState<any | null>(null);
   const [completionNotes, setCompletionNotes] = useState('');
   const [showCompletion, setShowCompletion] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<25 | 50 | 75 | 100>(25);
 
   const calendarLabel =
     customStart === customEnd
@@ -211,6 +216,29 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
   useEffect(() => {
     fetchFollowUps();
   }, [filter, searchTerm, typeFilter, priorityFilter, customStart, customEnd, role, user?.email]);
+
+  useEffect(() => {
+    clearSelection();
+  }, [filter, searchTerm, typeFilter, priorityFilter, customStart, customEnd, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, searchTerm, typeFilter, priorityFilter, customStart, customEnd, pageSize]);
+
+  const totalItems = followUps.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const pageStart = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = Math.min(safePage * pageSize, totalItems);
+
+  const pagedFollowUps = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return followUps.slice(start, start + pageSize);
+  }, [followUps, safePage, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   // Handle hardware back button
   useEffect(() => {
@@ -380,11 +408,22 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           `lead_number.ilike.${quote(safe)}`,
         ];
         if (phone.length >= 4) parts.push(`customer_phone.ilike.${quote(phone)}`);
+        const { data: leadHits, error: leadSearchErr } = await supabase
+          .from('service_leads')
+          .select('id')
+          .is('deleted_at', null)
+          .or(parts.join(','))
+          .limit(120);
+        if (leadSearchErr) throw leadSearchErr;
+        const matchedLeadIds = (leadHits || []).map((row: { id?: string }) => String(row.id || '')).filter(Boolean);
+        if (!matchedLeadIds.length) {
+          list = [];
+        } else {
         let searchQuery = supabase
           .from('telecaller_follow_ups')
           .select(`
             *,
-            lead:lead_id!inner(
+            lead:lead_id(
               lead_number,
               customer_name,
               customer_phone,
@@ -396,7 +435,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             telecaller:telecaller_id(full_name)
           `)
           .eq('status', filter === 'completed' ? 'COMPLETED' : 'PENDING')
-          .or(parts.join(','), { referencedTable: 'lead' })
+          .in('lead_id', matchedLeadIds)
           .order('scheduled_time', { ascending: true });
         if (!canSeeTeam && profile?.id) {
           searchQuery = searchQuery.eq('telecaller_id', profile.id);
@@ -408,6 +447,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           list = list.filter((fu: any) => !pendingLeadIds.has(String(fu.lead_id)));
         } else {
           list = list.filter((fu: any) => !crmLeadClosedForFollowUp(fu.lead));
+        }
         }
       } else if (filter === 'completed') {
         let doneQuery = supabase
@@ -636,6 +676,120 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     ]);
   };
 
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  };
+
+  const toggleSelectRow = (id: string) => {
+    const key = String(id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    const pendingVisible = pagedFollowUps.filter((fu) => fu.status === 'PENDING');
+    const allSelected =
+      pendingVisible.length > 0 && pendingVisible.every((fu) => selectedIds.has(String(fu.id)));
+    if (allSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(pendingVisible.map((fu) => String(fu.id))));
+  };
+
+  const syncLeadsAfterBulk = async (targets: any[]) => {
+    const seen = new Set<string>();
+    for (const row of targets) {
+      const leadId = String(row?.lead_id || '');
+      if (!leadId || seen.has(leadId)) continue;
+      seen.add(leadId);
+      const isCallback = String(row.follow_up_type || '').toUpperCase() === 'CALLBACK';
+      await syncLeadCallbackFields(leadId, null, { keepDisposition: isCallback });
+    }
+  };
+
+  const bulkMarkCompleted = () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || bulkBusy) return;
+    Alert.alert('Mark done', `${ids.length} reminder(s) complete karein?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Done',
+        onPress: async () => {
+          setBulkBusy(true);
+          try {
+            const { data: profile } = await supabase
+              .from('users_login')
+              .select('id')
+              .ilike('email', String(user?.email || ''))
+              .maybeSingle();
+            const now = new Date().toISOString();
+            const { error } = await supabase
+              .from('telecaller_follow_ups')
+              .update({
+                status: 'COMPLETED',
+                completed_at: now,
+                completed_by: profile?.id || null,
+                updated_at: now,
+              })
+              .in('id', ids)
+              .eq('status', 'PENDING');
+            if (error) throw error;
+            const targets = followUps.filter((fu) => selectedIds.has(String(fu.id)));
+            await syncLeadsAfterBulk(targets);
+            clearSelection();
+            fetchFollowUps();
+            Alert.alert('Done', `${ids.length} reminder(s) complete.`);
+          } catch (error) {
+            console.error('Bulk complete follow-ups:', error);
+            Alert.alert('Error', 'Bulk complete failed.');
+          } finally {
+            setBulkBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const bulkCancelFollowUps = () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || bulkBusy) return;
+    Alert.alert('Cancel reminders', `${ids.length} reminder(s) cancel karein?`, [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes',
+        style: 'destructive',
+        onPress: async () => {
+          setBulkBusy(true);
+          try {
+            const now = new Date().toISOString();
+            const { error } = await supabase
+              .from('telecaller_follow_ups')
+              .update({ status: 'CANCELLED', updated_at: now })
+              .in('id', ids)
+              .eq('status', 'PENDING');
+            if (error) throw error;
+            const targets = followUps.filter((fu) => selectedIds.has(String(fu.id)));
+            await syncLeadsAfterBulk(targets);
+            clearSelection();
+            fetchFollowUps();
+            Alert.alert('Cancelled', `${ids.length} reminder(s) cancelled.`);
+          } catch (error) {
+            console.error('Bulk cancel follow-ups:', error);
+            Alert.alert('Error', 'Bulk cancel failed.');
+          } finally {
+            setBulkBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
   const handleMarkMissed = async (followUpId: string) => {
     Alert.alert(
       'Cancel Follow-up',
@@ -813,14 +967,43 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     const flagColor = priorityTint(item.priority);
     const accent = isOverdue || isCancelled ? '#DC2626' : '#16A34A';
 
+    const rowSelected = selectedIds.has(String(item.id));
+
     return (
       <Pressable
         key={item.id}
-        style={[styles.row, { borderLeftColor: accent }]}
-        onPress={() => handleViewLead(item.lead_id)}
+        style={[
+          styles.row,
+          { borderLeftColor: accent },
+          rowSelected ? { backgroundColor: '#EFF6FF' } : null,
+        ]}
+        onPress={() => {
+          if (selectMode && isPending) {
+            toggleSelectRow(item.id);
+            return;
+          }
+          handleViewLead(item.lead_id);
+        }}
+        onLongPress={() => {
+          if (!isPending) return;
+          setSelectMode(true);
+          toggleSelectRow(item.id);
+        }}
       >
         <View style={styles.cardHead}>
+          {selectMode && isPending ? (
+            <TouchableOpacity
+              style={styles.rowCheck}
+              onPress={() => toggleSelectRow(item.id)}
+              accessibilityLabel={rowSelected ? 'Deselect reminder' : 'Select reminder'}
+            >
+              <Icon name={rowSelected ? 'checkbox-marked' : 'checkbox-blank-outline'} size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : null}
           <View style={styles.nameRow}>
+            <Text style={styles.srNo} accessibilityLabel={`Serial number ${(safePage - 1) * pageSize + index + 1}`}>
+              {(safePage - 1) * pageSize + index + 1}.
+            </Text>
             <Text style={styles.customerName} numberOfLines={1}>
               {item.lead?.customer_name || 'Customer'}
             </Text>
@@ -918,12 +1101,37 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             <Icon name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Reminders</Text>
-          <View style={{ width: 40 }} />
+          {filter !== 'completed' ? (
+            <TouchableOpacity
+              style={styles.selectHeaderBtn}
+              onPress={() => {
+                if (selectMode) clearSelection();
+                else setSelectMode(true);
+              }}
+            >
+              <Text style={styles.selectHeaderBtnText}>{selectMode ? 'Done' : 'Select'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 56 }} />
+          )}
         </View>
       ) : (
         <View style={styles.embeddedTitleRow}>
           <Icon name="alarm" size={18} color={COLORS.primary} />
           <Text style={styles.embeddedTitle}>Reminders</Text>
+          {filter !== 'completed' ? (
+            <TouchableOpacity
+              style={styles.selectEmbeddedBtn}
+              onPress={() => {
+                if (selectMode) clearSelection();
+                else setSelectMode(true);
+              }}
+            >
+              <Text style={[styles.selectHeaderBtnText, { color: COLORS.primary }]}>
+                {selectMode ? 'Done' : 'Select'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
 
@@ -944,6 +1152,44 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           <Icon name="filter" size={18} color={COLORS.primary} />
         </TouchableOpacity>
       </View>
+
+      {totalItems > 0 ? (
+        <View style={styles.pagerRow}>
+          <Text style={styles.pagerMeta}>
+            {totalItems === 0 ? 'No reminders' : `${pageStart}–${pageEnd} of ${totalItems}`}
+          </Text>
+          <View style={styles.pagerSizeRow}>
+            {([25, 50, 75, 100] as const).map((n) => (
+              <TouchableOpacity
+                key={n}
+                style={[styles.pagerSizeChip, pageSize === n ? styles.pagerSizeChipActive : null]}
+                onPress={() => setPageSize(n)}
+              >
+                <Text style={[styles.pagerSizeText, pageSize === n ? styles.pagerSizeTextActive : null]}>{n}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.pagerNav}>
+            <TouchableOpacity
+              style={[styles.pagerNavBtn, safePage <= 1 ? styles.pagerNavBtnDisabled : null]}
+              disabled={safePage <= 1}
+              onPress={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <Text style={styles.pagerNavText}>Prev</Text>
+            </TouchableOpacity>
+            <Text style={styles.pagerPageLabel}>
+              {safePage}/{totalPages}
+            </Text>
+            <TouchableOpacity
+              style={[styles.pagerNavBtn, safePage >= totalPages ? styles.pagerNavBtnDisabled : null]}
+              disabled={safePage >= totalPages}
+              onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              <Text style={styles.pagerNavText}>Next</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
 
       <ScrollView
         style={styles.scrollView}
@@ -966,9 +1212,34 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             </Text>
           </View>
         ) : (
-          followUps.map((item, index) => renderFollowUp(item, index, followUps.length))
+          pagedFollowUps.map((item, index) => renderFollowUp(item, index, pagedFollowUps.length))
         )}
       </ScrollView>
+
+      {selectMode && filter !== 'completed' ? (
+        <View style={[styles.bulkBar, embedded ? { bottom: 92 } : null]}>
+          <TouchableOpacity onPress={toggleSelectAllVisible} style={styles.bulkBarSide}>
+            <Text style={styles.bulkBarLink}>All</Text>
+          </TouchableOpacity>
+          <Text style={styles.bulkBarCount}>{selectedIds.size} selected</Text>
+          <TouchableOpacity
+            disabled={selectedIds.size === 0 || bulkBusy}
+            onPress={bulkMarkCompleted}
+            style={[styles.bulkAct, styles.bulkActDone, selectedIds.size === 0 ? styles.bulkActDisabled : null]}
+          >
+            <Icon name="check" size={16} color="#fff" />
+            <Text style={styles.bulkActText}>Done</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            disabled={selectedIds.size === 0 || bulkBusy}
+            onPress={bulkCancelFollowUps}
+            style={[styles.bulkAct, styles.bulkActCancel, selectedIds.size === 0 ? styles.bulkActDisabled : null]}
+          >
+            <Icon name="close" size={16} color="#fff" />
+            <Text style={styles.bulkActText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {showCompletion && (
         <View style={styles.completionCard}>
@@ -1602,6 +1873,74 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textSecondary,
   },
+  pagerRow: {
+    marginHorizontal: 16,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 8,
+  },
+  pagerMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  pagerSizeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  pagerSizeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  pagerSizeChipActive: {
+    backgroundColor: '#E8F1FF',
+    borderColor: COLORS.primary,
+  },
+  pagerSizeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  pagerSizeTextActive: {
+    color: COLORS.primary,
+  },
+  pagerNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  pagerNavBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  pagerNavBtnDisabled: {
+    opacity: 0.4,
+  },
+  pagerNavText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  pagerPageLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1853,12 +2192,99 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.primary,
   },
+  selectHeaderBtn: {
+    minWidth: 56,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  selectHeaderBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  selectEmbeddedBtn: {
+    marginLeft: 'auto',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#E8F1FF',
+  },
+  rowCheck: {
+    marginRight: 4,
+    paddingVertical: 2,
+  },
+  bulkBar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#0F172A',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  bulkBarSide: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  bulkBarLink: {
+    color: '#93C5FD',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  bulkBarCount: {
+    flex: 1,
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  bulkAct: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  bulkActDone: {
+    backgroundColor: '#059669',
+  },
+  bulkActCancel: {
+    backgroundColor: '#DC2626',
+  },
+  bulkActDisabled: {
+    opacity: 0.45,
+  },
+  bulkActText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   nameRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     minWidth: 0,
+  },
+  srNo: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+    minWidth: 22,
+    fontVariant: ['tabular-nums'],
   },
   customerName: {
     flexShrink: 1,

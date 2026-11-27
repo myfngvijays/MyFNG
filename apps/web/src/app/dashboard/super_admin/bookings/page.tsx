@@ -475,6 +475,30 @@ function formatCurrency(value?: number | string | null) {
   return `Rs ${num.toLocaleString('en-IN')}`;
 }
 
+function LeadMessageTableCell({
+  message,
+  onView,
+}: {
+  message: string | null;
+  onView: (full: string) => void;
+}) {
+  const text = String(message || '').trim();
+  if (!text) return <span className="text-gray-300">—</span>;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onView(text);
+      }}
+      className="block w-full min-w-0 truncate text-left text-[11px] leading-5 text-gray-700 hover:text-blue-800"
+      title="Click for full message"
+    >
+      {text}
+    </button>
+  );
+}
+
 function SourceBadgeIcon({ kind }: { kind: LeadSourceBadgeKind }) {
   if (kind === 'google') {
     return (
@@ -1943,6 +1967,7 @@ function SuperAdminBookingsPage() {
   const [totalInRange, setTotalInRange] = useState<number | null>(null);
 
   const [detailOpen, setDetailOpen] = useState(false);
+  const [inboundMessagePopup, setInboundMessagePopup] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<Record<string, any> | null>(null);
   const [detailTitle, setDetailTitle] = useState('');
   const [phoneBookingsOpen, setPhoneBookingsOpen] = useState(false);
@@ -3840,7 +3865,7 @@ function SuperAdminBookingsPage() {
                 ]}
                 messageTriggerOptions={messageTriggerOptions}
               />
-              <div className="grid w-full grid-cols-1 gap-2 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-violet-50/70 p-2 lg:grid-cols-2">
+              <div className="grid w-full grid-cols-1 items-start gap-2 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-violet-50/70 p-2 lg:grid-cols-2">
                 <LeadConditionsBar
                   conditions={leadConditions}
                   onChange={(next) => setLeadConditions(next)}
@@ -4696,7 +4721,7 @@ function SuperAdminBookingsPage() {
                       <tr
                         key={String(lead.id || `${lead.lead_number}-${lead.created_at}`)}
                         onClick={() => openDetail('Service Lead Details', lead)}
-                        className={`border-b border-gray-100 cursor-pointer transition ${
+                        className={`h-12 border-b border-gray-100 cursor-pointer transition ${
                           isSelected
                             ? 'bg-blue-50 hover:bg-blue-100/60'
                             : `${zebra} hover:bg-sky-50/80`
@@ -4756,10 +4781,11 @@ function SuperAdminBookingsPage() {
                           </td>
                         ) : null}
                         {showCol('message') ? (
-                          <td className="px-3 py-2.5 min-w-[220px] max-w-[360px] align-top">
-                            <span className="block whitespace-pre-wrap break-words text-[11px] leading-snug text-gray-700">
-                              {getLeadInboundWhatsAppMessage(lead) || '—'}
-                            </span>
+                          <td className="px-3 py-3 min-w-[220px] max-w-[360px] align-middle">
+                            <LeadMessageTableCell
+                              message={getLeadInboundWhatsAppMessage(lead)}
+                              onView={setInboundMessagePopup}
+                            />
                           </td>
                         ) : null}
                         {showCol('leadsCount') ? (
@@ -5503,6 +5529,40 @@ function SuperAdminBookingsPage() {
           </div>
         </div>
       ) : null}
+
+      {inboundMessagePopup && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/50 p-4"
+              onClick={() => setInboundMessagePopup(null)}
+            >
+              <div
+                className="flex max-h-[min(80vh,520px)] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-labelledby="inbound-message-title"
+              >
+                <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3">
+                  <h3 id="inbound-message-title" className="text-sm font-bold text-gray-900">
+                    Inbound message
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setInboundMessagePopup(null)}
+                    className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                    aria-label="Close"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words text-gray-800">
+                  {inboundMessagePopup}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {detailOpen && detailItem ? (
         <div className="fixed inset-0 z-50 flex justify-end">

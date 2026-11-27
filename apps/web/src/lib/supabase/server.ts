@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { headers } from 'next/headers';
 import { Database } from '@/types/database';
 import type { NextRequest } from 'next/server';
+import { userFromSupabaseAuthCookies } from '@/lib/supabase/authCookies';
 
 function extractBearerToken(authHeader: string | null | undefined): string | null {
   if (!authHeader) return null;
@@ -125,8 +126,20 @@ export const createClientFromRequest = async (request: NextRequest) => {
   const cookieClient = buildCookieClient(supabaseUrl, supabaseKey, cookieStore, request);
   if (!bearer) return cookieClient;
 
-  // A leftover cookie must not hide a fresh browser session token.
-  const { data } = await cookieClient.auth.getUser();
-  if (data?.user) return cookieClient;
+  // Prefer cookie session for this browser unless Bearer is for a different user (mobile / stale header).
+  const cookieUser = userFromSupabaseAuthCookies(request);
+  const bearerSub = (() => {
+    try {
+      const part = bearer.split('.')[1] || '';
+      const padded = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
+      const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as { sub?: string };
+      return String(payload?.sub || '').trim();
+    } catch {
+      return '';
+    }
+  })();
+  if (!cookieUser || !bearerSub || cookieUser.id === bearerSub) {
+    return cookieClient;
+  }
   return bearerClient();
 };

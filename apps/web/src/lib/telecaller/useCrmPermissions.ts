@@ -31,7 +31,8 @@ export function useCrmPermissions(options?: { enabled?: boolean }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/telecaller/crm/permissions');
+        const { crmFetch } = await import('@/lib/telecaller/crmFetch');
+        const res = await crmFetch('/api/telecaller/crm/permissions');
         const json = await res.json();
         if (!cancelled && res.ok && json?.permissions) {
           setPermissions(normalizeCrmPermissions(json.permissions));

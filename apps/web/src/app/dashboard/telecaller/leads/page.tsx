@@ -56,11 +56,13 @@ import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import CrmDatePickerModal from '@/components/telecaller/crm/CrmDatePickerModal';
 import LeadsSavedViews, { type CrmLeadsViewSnapshot } from '@/components/telecaller/crm/LeadsSavedViews';
 import LeadConditionsBar from '@/components/telecaller/crm/LeadConditionsBar';
+import { useCrmPermissions } from '@/lib/telecaller/useCrmPermissions';
 import { parseLeadConditions, serializeLeadConditions, type LeadCondition } from '@/lib/crm/leadConditions';
 import { LeadDetailContent } from './[id]/page';
 import ResizableTelecallerLeadDrawer from '@/components/telecaller/crm/ResizableTelecallerLeadDrawer';
 import { leadSourceTag, type LeadSourceKind, type LeadSourceTag } from '@/lib/telecaller/leadSourceTag';
 import BookingPriceCard from '@/components/telecaller/crm/BookingPriceCard';
+import { crmFetch } from '@/lib/telecaller/crmFetch';
 
 const BOOKING_ROW_BG = '#FEF3C7';
 
@@ -651,6 +653,8 @@ const PRIORITY_OPTIONS = [
 function TelecallerCrmLeadsContent() {
   const pathname = usePathname();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
+  const { permissions: crmPerms } = useCrmPermissions({ enabled: !isLeadManager });
+  const showLeadFromColumn = isLeadManager || crmPerms.view_lead_source;
   const searchParams = useSearchParams();
   const router = useRouter();
   const filterParam = searchParams?.get('filter');
@@ -824,12 +828,13 @@ function TelecallerCrmLeadsContent() {
   const showCol = (key: LeadsColumnKey) => {
     if (key === 'source' && !isLeadManager) return false;
     if (key === 'mlScore' && !isLeadManager) return false;
+    if (key === 'leadFrom' && !showLeadFromColumn) return false;
     return Boolean(visibleColumns[key]);
   };
 
   const visibleTableCols = useMemo(() => {
     return LEADS_TABLE_COLUMNS.filter((c) => showCol(c.key));
-  }, [visibleColumns, isLeadManager]);
+  }, [visibleColumns, isLeadManager, showLeadFromColumn]);
 
   const COL_MIN_PX: Record<LeadsColumnKey, number> = {
     leadNumber: 124,
@@ -1533,7 +1538,7 @@ function TelecallerCrmLeadsContent() {
           params.set('for_chart', '1');
           params.set('limit', String(pageLimit));
           params.set('page', String(pageNum));
-          const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
+          const res = await crmFetch(`/api/telecaller/crm/leads?${params.toString()}`);
           const data = await res.json();
           if (loadGen.current !== gen) return;
           if (!res.ok) {
@@ -1559,7 +1564,7 @@ function TelecallerCrmLeadsContent() {
         const params = new URLSearchParams(baseParams);
         params.set('limit', String(pageSize));
         params.set('page', String(page));
-        const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
+        const res = await crmFetch(`/api/telecaller/crm/leads?${params.toString()}`);
         const data = await res.json();
         if (loadGen.current !== gen) return;
         if (!res.ok) {
@@ -2883,7 +2888,11 @@ function TelecallerCrmLeadsContent() {
                         <p className="mt-1 text-sm font-semibold text-slate-700">
                           {lead.customer_phone || '—'}
                         </p>
-                        <div className="mt-1"><LeadSourceLine tag={srcTag} /></div>
+                        {showLeadFromColumn && srcTag ? (
+                          <div className="mt-1">
+                            <LeadSourceLine tag={srcTag} />
+                          </div>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isLeadManager ? (

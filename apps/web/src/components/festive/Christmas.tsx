@@ -6,10 +6,12 @@ import { DEFAULT_TOP_OFFER_BANNER, type FestiveTheme, type TopOfferBannerConfig 
 
 /**
  * Christmas look for the public website. Switched on/off from
- * Super Admin → Top Offer Banner → "Christmas theme" (system_settings website_top_offer_banner).
+ * Super Admin → Top Offer Banner → Christmas theme + Christmas sound (system_settings website_top_offer_banner).
  */
 
-let festivePromise: Promise<FestiveTheme> | null = null;
+export type FestivePublicConfig = { theme: FestiveTheme; sound: boolean };
+
+let festiveConfigPromise: Promise<FestivePublicConfig> | null = null;
 
 /** `?festive=christmas` in the URL previews the theme in this browser only (no admin change). */
 export function festivePreviewFromUrl(): FestiveTheme | null {
@@ -29,31 +31,44 @@ export function festivePreviewFromUrl(): FestiveTheme | null {
   }
 }
 
-function loadFestiveTheme(): Promise<FestiveTheme> {
+export function loadFestivePublicConfig(): Promise<FestivePublicConfig> {
   const preview = festivePreviewFromUrl();
-  if (preview) return Promise.resolve(preview);
-  if (!festivePromise) {
-    festivePromise = fetch('/api/public/top-offer-banner', { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((json) => (json?.config?.festive_theme === 'christmas' ? 'christmas' : 'none') as FestiveTheme)
-      .catch(() => 'none' as FestiveTheme);
+  if (preview === 'christmas') {
+    const soundOff = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('festive_sound') === '0';
+    return Promise.resolve({ theme: 'christmas', sound: !soundOff });
   }
-  return festivePromise;
+  if (!festiveConfigPromise) {
+    festiveConfigPromise = fetch('/api/public/top-offer-banner', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        const christmas = json?.config?.festive_theme === 'christmas';
+        return {
+          theme: (christmas ? 'christmas' : 'none') as FestiveTheme,
+          sound: christmas && json?.config?.festive_sound === true,
+        };
+      })
+      .catch(() => ({ theme: 'none' as FestiveTheme, sound: false }));
+  }
+  return festiveConfigPromise;
 }
 
-/** Current festive theme ('none' until loaded). */
-export function useFestiveTheme(): FestiveTheme {
-  const [theme, setTheme] = useState<FestiveTheme>('none');
+export function useFestivePublicConfig(): FestivePublicConfig {
+  const [cfg, setCfg] = useState<FestivePublicConfig>({ theme: 'none', sound: false });
   useEffect(() => {
     let cancelled = false;
-    void loadFestiveTheme().then((t) => {
-      if (!cancelled) setTheme(t);
+    void loadFestivePublicConfig().then((next) => {
+      if (!cancelled) setCfg(next);
     });
     return () => {
       cancelled = true;
     };
   }, []);
-  return theme;
+  return cfg;
+}
+
+/** Current festive theme ('none' until loaded). */
+export function useFestiveTheme(): FestiveTheme {
+  return useFestivePublicConfig().theme;
 }
 
 /** Red–green Christmas colours for the top offer banner (admin colours stay saved for later). */

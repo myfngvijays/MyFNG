@@ -199,7 +199,7 @@ export async function GET() {
         const name = String(row?.template_name || '')
           .trim()
           .toLowerCase();
-        if (name !== 'myfng_quick_note' && name !== 'quick_note_with_button') return false;
+        if (name !== 'quick_note_with_button') return false;
         const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
         return meta.crm_telecaller === true || meta.crm_telecaller === '1' || meta.crm_telecaller === 1;
       });

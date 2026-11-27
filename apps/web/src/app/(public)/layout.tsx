@@ -4,6 +4,7 @@ import CookieConsentBanner from '@/components/dpdp/CookieConsentBanner';
 import GatedPublicTrackers from '@/components/dpdp/GatedPublicTrackers';
 import OpenAiAdsHeadScript from '@/components/dpdp/OpenAiAdsHeadScript';
 import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
+import ChristmasFestiveSound from '@/components/festive/ChristmasFestiveSound';
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
@@ -13,6 +14,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       <GatedPublicTrackers />
       <CookieConsentBanner />
       <AppDownloadPopup />
+      <ChristmasFestiveSound />
       {children}
     </>
   );

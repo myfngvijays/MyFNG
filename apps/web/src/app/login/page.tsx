@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { getRoleDashboardHome } from '@/lib/dashboard/roleHome';
+import { useAuthStore } from '@/store/authStore';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +16,20 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const withTimeout = async <T,>(p: PromiseLike<T>, ms: number, label: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Promise.resolve(p),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} timed out — check network / Supabase`)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -21,39 +37,59 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-      
-      // Sign in with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+
+      const { data: authData, error: authError } = await withTimeout(
+        supabase.auth.signInWithPassword({ email: email.trim(), password }),
+        20000,
+        'Sign in',
+      );
 
       if (authError) throw authError;
+      if (!authData?.user?.id) throw new Error('Sign in failed');
 
-      // Get user profile with role information
-      const { data: userProfile, error: profileError } = await supabase
-        .from('users_login')
-        .select(`
-          *,
-          role:roles(role_code, role_name),
-          workshop:workshops(*)
-        `)
-        .eq('id', authData.user.id)
-        .single();
+      const profileSelect = 'id, email, full_name, is_active, role:roles(role_code, role_name)';
+      let userProfile: {
+        id: string;
+        is_active?: boolean | null;
+        role?: { role_code?: string } | null;
+        email?: string | null;
+        full_name?: string | null;
+      } | null = null;
 
-      if (profileError) throw profileError;
+      const { data: byId, error: byIdErr } = await withTimeout(
+        supabase.from('users_login').select(profileSelect).eq('id', authData.user.id).maybeSingle(),
+        8000,
+        'Profile',
+      );
+      userProfile = byId;
+      if (!userProfile && email.trim()) {
+        try {
+          const byEmailRes = await withTimeout(
+            supabase.from('users_login').select(profileSelect).ilike('email', email.trim()).maybeSingle(),
+            6000,
+            'Profile',
+          );
+          userProfile = byEmailRes.data;
+        } catch {
+          /* keep id lookup result */
+        }
+      }
+      if (!userProfile && byIdErr) throw byIdErr;
+      if (!userProfile) throw new Error('Profile not found for this login.');
 
-      if (!userProfile.is_active) {
+      if (userProfile.is_active === false) {
+        await supabase.auth.signOut({ scope: 'local' });
         throw new Error('Your account is inactive. Please contact support.');
       }
 
-      const { getLoginGeoHint, postRecordLogin } = await import('@/lib/auth/postRecordLogin');
-      const {
-        ensureTelecallerPunchInOnLogin,
-        isTelecallerFloorRole,
-      } = await import('@/lib/telecaller/ensurePunchInOnLogin');
-      const { getRoleDashboardHome } = await import('@/lib/dashboard/roleHome');
-      const roleCode = userProfile.role.role_code;
+      const roleCode = String(userProfile.role?.role_code || '').trim();
+      if (!roleCode) throw new Error('Your account has no role assigned.');
+
+      const { setUser, setUserProfile, setRole } = useAuthStore.getState();
+      setUser(authData.user);
+      setUserProfile(userProfile);
+      setRole(roleCode);
+
       const nextRaw = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : '';
       const oauthNext =
         nextRaw &&
@@ -62,11 +98,17 @@ export default function LoginPage() {
         !nextRaw.includes('://')
           ? nextRaw
           : null;
-      router.push(oauthNext || getRoleDashboardHome(roleCode));
+
+      setLoading(false);
+      router.replace(oauthNext || getRoleDashboardHome(roleCode));
 
       void (async () => {
         try {
-          const geo = await getLoginGeoHint(2500);
+          const { getLoginGeoHint, postRecordLogin } = await import('@/lib/auth/postRecordLogin');
+          const { ensureTelecallerPunchInOnLogin, isTelecallerFloorRole } = await import(
+            '@/lib/telecaller/ensurePunchInOnLogin'
+          );
+          const geo = await getLoginGeoHint(1500);
           await postRecordLogin({
             platform: 'web',
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
@@ -83,10 +125,8 @@ export default function LoginPage() {
           /* audit / punch-in must not bounce the user after login */
         }
       })();
-      
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');
-    } finally {
       setLoading(false);
     }
   };

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   CheckSquare,
@@ -170,8 +171,15 @@ export default function LeadConditionsBar({
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<LeadCondition | null>(null);
   const [options, setOptions] = useState<Options>(optionsCache || {});
-  const boxRef = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const [menuPos, setMenuPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!open && !conditions.length) return;
@@ -182,10 +190,43 @@ export default function LeadConditionsBar({
     };
   }, [open, conditions.length]);
 
+  const placePopover = () => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const width = Math.min(Math.max(r.width, 360), window.innerWidth - 16);
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8);
+    const maxHeight = Math.min(480, Math.floor(window.innerHeight * 0.72));
+    const gap = 8;
+    const spaceAbove = r.top - gap;
+    const spaceBelow = window.innerHeight - r.bottom - gap;
+    const openAbove = spaceAbove >= 200 || spaceAbove >= spaceBelow;
+    const top = openAbove
+      ? Math.max(8, r.top - Math.min(maxHeight, spaceAbove))
+      : Math.min(window.innerHeight - maxHeight - 8, r.bottom + gap);
+    setMenuPos({ top, left, width, maxHeight });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    placePopover();
+    window.addEventListener('resize', placePopover);
+    window.addEventListener('scroll', placePopover, true);
+    return () => {
+      window.removeEventListener('resize', placePopover);
+      window.removeEventListener('scroll', placePopover, true);
+    };
+  }, [open, editing, conditions.length]);
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) close();
+      const t = e.target as Node;
+      if (anchorRef.current?.contains(t) || popoverRef.current?.contains(t)) return;
+      close();
     };
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     document.addEventListener('mousedown', onDown);
@@ -229,8 +270,100 @@ export default function LeadConditionsBar({
   const activities = ACTIVITY_DEFS.filter((a) => !s || a.label.toLowerCase().includes(s));
   const fields = FIELD_DEFS.filter((f) => !s || f.label.toLowerCase().includes(s));
 
+  const pickerPanel =
+    open && menuPos ? (
+      <div
+        ref={popoverRef}
+        role="dialog"
+        aria-label="Add or edit lead condition"
+        className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5"
+        style={{
+          position: 'fixed',
+          top: menuPos.top,
+          left: menuPos.left,
+          width: menuPos.width,
+          maxHeight: menuPos.maxHeight,
+          zIndex: 10050,
+        }}
+      >
+        {editing ? (
+          <ConditionEditor
+            condition={editing}
+            options={options}
+            autoApply={autoApply}
+            onBack={() => setEditing(null)}
+            onCancel={close}
+            onApply={apply}
+            onLiveChange={upsertCondition}
+          />
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-2 py-1.5">
+              <button
+                type="button"
+                onClick={close}
+                aria-label="Close"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  ref={searchRef}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Add a new condition — search a field or activity"
+                  className="h-8 w-full rounded-lg border border-slate-200 pl-8 pr-2 text-xs font-semibold focus:border-[#004AAD] focus:outline-none"
+                />
+              </div>
+            </div>
+            {activities.length ? (
+              <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-slate-100 px-2 py-2">
+                {activities.map((a) => {
+                  const Icon = ICONS[a.icon];
+                  return (
+                    <button
+                      key={a.key}
+                      type="button"
+                      title={a.hint}
+                      onClick={() => pick(a.key)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 hover:border-[#004AAD] hover:bg-blue-50 hover:text-[#023D95]"
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+              <div className="px-1 pb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Fields</div>
+              {fields.length ? (
+                <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {fields.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => pick(f.key)}
+                      className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      <span className="truncate">{f.label}</span>
+                      <span className="shrink-0 text-[10px] font-bold uppercase text-slate-300">{f.type}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="px-1 py-2 text-xs text-slate-400">No field matches “{search}”.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    ) : null;
+
   return (
-    <div ref={boxRef} className="rounded-xl border border-slate-200 bg-white">
+    <div ref={anchorRef} className="relative rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5">
         <ListFilter className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
         {conditions.map((c) => {
@@ -284,83 +417,7 @@ export default function LeadConditionsBar({
         ) : null}
       </div>
 
-      {open ? (
-        <div className="border-t border-slate-100">
-          {editing ? (
-            <ConditionEditor
-              condition={editing}
-              options={options}
-              autoApply={autoApply}
-              onBack={() => setEditing(null)}
-              onCancel={close}
-              onApply={apply}
-              onLiveChange={upsertCondition}
-            />
-          ) : (
-            <div>
-              <div className="flex items-center gap-2 border-b border-slate-100 px-2 py-1.5">
-                <button
-                  type="button"
-                  onClick={close}
-                  aria-label="Close"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <div className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    ref={searchRef}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Add a new condition — search a field or activity"
-                    className="h-8 w-full rounded-lg border border-slate-200 pl-8 pr-2 text-xs font-semibold focus:border-[#004AAD] focus:outline-none"
-                  />
-                </div>
-              </div>
-              {activities.length ? (
-                <div className="flex flex-wrap gap-1.5 border-b border-slate-100 px-2 py-2">
-                  {activities.map((a) => {
-                    const Icon = ICONS[a.icon];
-                    return (
-                      <button
-                        key={a.key}
-                        type="button"
-                        title={a.hint}
-                        onClick={() => pick(a.key)}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 hover:border-[#004AAD] hover:bg-blue-50 hover:text-[#023D95]"
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                        {a.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-              <div className="max-h-72 overflow-y-auto px-2 py-1.5">
-                <div className="px-1 pb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Fields</div>
-                {fields.length ? (
-                  <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-2 lg:grid-cols-3">
-                    {fields.map((f) => (
-                      <button
-                        key={f.key}
-                        type="button"
-                        onClick={() => pick(f.key)}
-                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        <span className="truncate">{f.label}</span>
-                        <span className="shrink-0 text-[10px] font-bold uppercase text-slate-300">{f.type}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="px-1 py-2 text-xs text-slate-400">No field matches “{search}”.</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : null}
+      {typeof document !== 'undefined' && pickerPanel ? createPortal(pickerPanel, document.body) : null}
     </div>
   );
 }

@@ -16,6 +16,8 @@ export type TopOfferBannerConfig = {
   button_text: string;
   /** Site-wide festive look (banner colours, snowfall, Santa hat on logo, hero line). 'none' = normal. */
   festive_theme: FestiveTheme;
+  /** Soft bell sound on public pages when Christmas theme is on. */
+  festive_sound: boolean;
 };
 
 export type FestiveTheme = 'none' | 'christmas';
@@ -35,6 +37,7 @@ export const DEFAULT_TOP_OFFER_BANNER: TopOfferBannerConfig = {
   button_background: '#ffffff',
   button_text: '#1d4ed8',
   festive_theme: 'none',
+  festive_sound: false,
 };
 
 const SETTING_KEY = 'website_top_offer_banner';
@@ -78,6 +81,7 @@ export function normalizeTopOfferBanner(input?: Partial<TopOfferBannerConfig> | 
     button_background: hex(input?.button_background, base.button_background),
     button_text: hex(input?.button_text, base.button_text),
     festive_theme: input?.festive_theme === 'christmas' ? 'christmas' : 'none',
+    festive_sound: input?.festive_theme === 'christmas' && input?.festive_sound === true,
   };
 }
 

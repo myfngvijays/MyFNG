@@ -120,6 +120,10 @@ export default function FollowUpsPage() {
   const [viewMonth0, setViewMonth0] = useState(() => Number(initialStart.slice(5, 7)) - 1);
   const [rangeTap, setRangeTap] = useState<'start' | 'end'>('start');
   const [priorityMenuId, setPriorityMenuId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<25 | 50 | 75 | 100>(25);
 
   async function setFollowUpPriority(followUpId: string, priority: string) {
     const supabase = createClient();
@@ -193,8 +197,12 @@ export default function FollowUpsPage() {
   }, [searchTerm]);
 
   useEffect(() => {
+    setPage(1);
+  }, [filter, customStart, customEnd, pickMode, debouncedSearch, typeFilter, priorityFilter, pageSize]);
+
+  useEffect(() => {
     fetchFollowUps();
-  }, [filter, customStart, customEnd, pickMode, scopeAll, debouncedSearch]);
+  }, [filter, customStart, customEnd, pickMode, scopeAll, debouncedSearch, typeFilter, priorityFilter, page, pageSize]);
 
   useEffect(() => {
     if (!calendarOpen) return;
@@ -213,14 +221,57 @@ export default function FollowUpsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: userProfile } = await supabase
+      const { data: userProfile, error: profileError } = await supabase
         .from('users_login')
         .select('id')
-        .eq('email', user.email)
-        .single();
+        .ilike('email', user.email || '')
+        .maybeSingle();
+
+      if (profileError) throw profileError;
 
       const searchText = debouncedSearch.replace(/[%_,]/g, ' ').trim();
       const searching = searchText.length >= 2;
+      const todayBounds = istDayBounds(istYmd());
+      let searchLeadIds: string[] | null = null;
+
+      const scopeFollowUps = (q: any) => {
+        if (!scopeAll && userProfile?.id) {
+          return q.eq('telecaller_id', userProfile.id);
+        }
+        return q;
+      };
+
+      const applyFollowUpFilters = (q: any) => {
+        let next = scopeFollowUps(q);
+        if (filter === 'completed') {
+          next = next.eq('status', 'COMPLETED');
+        } else {
+          next = next.eq('status', 'PENDING');
+        }
+        if (!searching && filter !== 'completed') {
+          if (filter === 'today') {
+            next = next.gte('scheduled_time', todayBounds.start).lte('scheduled_time', todayBounds.end);
+          } else if (filter === 'calendar') {
+            let start = customStart;
+            let end = pickMode === 'single' ? customStart : customEnd;
+            if (start > end) {
+              const tmp = start;
+              start = end;
+              end = tmp;
+            }
+            const startBound = istDayBounds(start).start;
+            const endBound = istDayBounds(end).end;
+            next = next.gte('scheduled_time', startBound).lte('scheduled_time', endBound);
+          }
+        }
+        if (typeFilter === 'CALLBACK') {
+          next = next.eq('follow_up_type', 'CALLBACK');
+        }
+        if (priorityFilter !== 'ALL') {
+          next = next.eq('priority', priorityFilter);
+        }
+        return next;
+      };
 
       // Name/phone search only looks at this caller's reminders. Skip the full pending scan.
       if (!searching) {
@@ -236,23 +287,8 @@ export default function FollowUpsPage() {
         setPendingLeadIds(pendingIds);
       }
 
-      const leadEmbed = searching
-        ? 'lead:service_leads!inner(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model, status, coupon_meta)'
-        : 'lead:service_leads(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model, status, coupon_meta)';
-
-      let query = supabase
-        .from('telecaller_follow_ups')
-        .select(`
-          *,
-          ${leadEmbed},
-          telecaller:users_login!telecaller_id(id, full_name)
-        `, { count: 'exact' });
-
-      if (!scopeAll && userProfile?.id) {
-        query = query.eq('telecaller_id', userProfile.id);
-      }
-
-      const todayBounds = istDayBounds(istYmd());
+      const leadSelect =
+        'lead:service_leads!lead_id(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model, status, coupon_meta, deleted_at)';
 
       if (searching) {
         const digits = searchText.replace(/\D/g, '');
@@ -262,37 +298,59 @@ export default function FollowUpsPage() {
           `lead_number.ilike.${quoteIlike(searchText)}`,
         ];
         if (phone.length >= 4) parts.push(`customer_phone.ilike.${quoteIlike(phone)}`);
-        query = query.or(parts.join(','), { referencedTable: 'lead' });
+        const { data: leadHits, error: leadSearchErr } = await supabase
+          .from('service_leads')
+          .select('id')
+          .is('deleted_at', null)
+          .or(parts.join(','))
+          .limit(120);
+        if (leadSearchErr) throw leadSearchErr;
+        searchLeadIds = (leadHits || []).map((row: { id?: string }) => String(row.id || '')).filter(Boolean);
+        if (!searchLeadIds.length) {
+          setFollowUps([]);
+          setResultCount(0);
+          return;
+        }
+      }
+
+      let query = applyFollowUpFilters(
+        supabase.from('telecaller_follow_ups').select(`
+          *,
+          ${leadSelect},
+          telecaller:users_login!telecaller_id(id, full_name)
+        `),
+      );
+      if (searchLeadIds?.length) {
+        query = query.in('lead_id', searchLeadIds);
       }
 
       if (filter === 'completed') {
-        query = query.eq('status', 'COMPLETED').order('completed_at', { ascending: false });
+        query = query.order('completed_at', { ascending: false });
       } else {
-        query = query.eq('status', 'PENDING');
-        if (!searching && filter === 'today') {
-          query = query
-            .gte('scheduled_time', todayBounds.start)
-            .lte('scheduled_time', todayBounds.end);
-        } else if (!searching && filter === 'calendar') {
-          let start = customStart;
-          let end = pickMode === 'single' ? customStart : customEnd;
-          if (start > end) {
-            const tmp = start;
-            start = end;
-            end = tmp;
-          }
-          const startBound = istDayBounds(start).start;
-          const endBound = istDayBounds(end).end;
-          query = query.gte('scheduled_time', startBound).lte('scheduled_time', endBound);
-        }
         query = query.order('scheduled_time', { ascending: true });
       }
 
-      const { data, error, count } = await query.limit(searching ? 50 : scopeAll ? 500 : 200);
+      const offset = (page - 1) * pageSize;
+      let countQ = applyFollowUpFilters(
+        supabase.from('telecaller_follow_ups').select('id', { count: 'exact', head: true }),
+      );
+      if (searchLeadIds?.length) {
+        countQ = countQ.in('lead_id', searchLeadIds);
+      }
+      const [listRes, countRes] = await Promise.all([
+        query.range(offset, offset + pageSize - 1),
+        countQ,
+      ]);
+      const { data, error } = listRes;
 
       if (error) throw error;
+      const count = countRes.count;
+      if (countRes.error) {
+        console.warn('Follow-up count unavailable:', countRes.error.message || countRes.error);
+      }
       const { crmLeadClosedForFollowUp } = await import('@/lib/telecaller/crmFollowUpClose');
       const rows = (data || []).filter((fu: any) => {
+        if (fu.lead?.deleted_at) return false;
         if (filter === 'completed') return true;
         return !crmLeadClosedForFollowUp(fu.lead);
       });
@@ -318,7 +376,11 @@ export default function FollowUpsPage() {
       setFollowUps(rows);
       setResultCount(typeof count === 'number' ? count : rows.length);
     } catch (error) {
-      console.error('Error fetching follow-ups:', error);
+      const msg =
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as { message?: string }).message)
+          : String(error);
+      console.error('Error fetching follow-ups:', msg || error);
     } finally {
       setLoading(false);
     }
@@ -398,25 +460,184 @@ export default function FollowUpsPage() {
     }
   }
 
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [filter, debouncedSearch, typeFilter, priorityFilter, customStart, customEnd, pickMode, page]);
+
   const filteredFollowUps = useMemo(() => {
     return followUps.filter((fu) => {
       if (filter === 'completed' && pendingLeadIds.has(String(fu.lead_id))) return false;
-      if (typeFilter === 'CALLBACK') {
-        if (String(fu.follow_up_type || '').toUpperCase() !== 'CALLBACK') return false;
-      }
-      if (priorityFilter !== 'ALL' && String(fu.priority || 'NORMAL').toUpperCase() !== priorityFilter) return false;
-      if (!searchTerm.trim()) return true;
-      const search = searchTerm.trim().toLowerCase();
-      const searchDigits = search.replace(/\D/g, '');
-      const phoneDigits = String(fu.lead?.customer_phone || '').replace(/\D/g, '');
-      return (
-        fu.lead?.customer_name?.toLowerCase().includes(search) ||
-        (searchDigits.length >= 4 && phoneDigits.includes(searchDigits.slice(-10))) ||
-        fu.lead?.lead_number?.toLowerCase().includes(search) ||
-        fu.reason?.toLowerCase().includes(search)
-      );
+      return true;
     });
-  }, [followUps, searchTerm, typeFilter, priorityFilter, filter, pendingLeadIds]);
+  }, [followUps, filter, pendingLeadIds]);
+
+  const totalPages = Math.max(1, Math.ceil(resultCount / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const pageStart = resultCount === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = Math.min(safePage * pageSize, resultCount);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const followUpsPager = (
+    <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/80 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs font-semibold text-slate-500">
+        {resultCount === 0
+          ? 'No reminders'
+          : `Showing ${pageStart}–${pageEnd} of ${resultCount.toLocaleString('en-IN')}`}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
+          Per page
+          <select
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value) as 25 | 50 | 75 | 100)}
+          >
+            {[25, 50, 75, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={safePage <= 1 || loading}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
+        >
+          Prev
+        </button>
+        <span className="text-xs font-bold text-slate-600 tabular-nums">
+          {safePage} / {totalPages}
+        </span>
+        <button
+          type="button"
+          disabled={safePage >= totalPages || loading}
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+
+  const selectableRows = useMemo(
+    () => filteredFollowUps.filter((fu) => fu.status === 'PENDING'),
+    [filteredFollowUps],
+  );
+
+  const allPageSelected =
+    selectableRows.length > 0 && selectableRows.every((fu) => selectedIds.has(String(fu.id)));
+
+  const somePageSelected = selectableRows.some((fu) => selectedIds.has(String(fu.id)));
+
+  function toggleSelectRow(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    if (allPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const fu of selectableRows) next.delete(String(fu.id));
+        return next;
+      });
+      return;
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const fu of selectableRows) next.add(String(fu.id));
+      return next;
+    });
+  }
+
+  async function resolveProfileId(supabase: ReturnType<typeof createClient>) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user?.email) return null;
+    const { data: userProfile } = await supabase
+      .from('users_login')
+      .select('id')
+      .ilike('email', user.email)
+      .maybeSingle();
+    return userProfile?.id ? String(userProfile.id) : null;
+  }
+
+  async function bulkMarkCompleted() {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || bulkBusy) return;
+    const notes = prompt(`Mark ${ids.length} reminder(s) as done. Notes (optional, same for all):`);
+    if (notes === null) return;
+
+    const supabase = createClient();
+    setBulkBusy(true);
+    try {
+      const completedBy = await resolveProfileId(supabase);
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('telecaller_follow_ups')
+        .update({
+          status: 'COMPLETED',
+          completed_at: now,
+          completed_by: completedBy,
+          completion_notes: notes.trim() || null,
+          updated_at: now,
+        })
+        .in('id', ids)
+        .eq('status', 'PENDING');
+
+      if (error) throw error;
+      setSelectedIds(new Set());
+      await fetchFollowUps();
+      alert(`${ids.length} reminder(s) marked done.`);
+    } catch (error) {
+      console.error('Bulk complete follow-ups:', error);
+      alert('Bulk complete failed. Try again or fewer items.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkCancelFollowUps() {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || bulkBusy) return;
+    if (!confirm(`Cancel ${ids.length} selected reminder(s)?`)) return;
+
+    const supabase = createClient();
+    setBulkBusy(true);
+    try {
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('telecaller_follow_ups')
+        .update({
+          status: 'CANCELLED',
+          updated_at: now,
+        })
+        .in('id', ids)
+        .eq('status', 'PENDING');
+
+      if (error) throw error;
+      setSelectedIds(new Set());
+      await fetchFollowUps();
+      alert(`${ids.length} reminder(s) cancelled.`);
+    } catch (error) {
+      console.error('Bulk cancel follow-ups:', error);
+      alert('Bulk cancel failed. Try again or fewer items.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   const calendarLabel =
     pickMode === 'single' || customStart === customEnd
@@ -660,7 +881,40 @@ export default function FollowUpsPage() {
           </div>
         </div>
 
+        {filter !== 'completed' && selectedIds.size > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#004AAD]/25 bg-blue-50 px-3 py-2.5 sm:px-4">
+            <span className="text-sm font-extrabold text-[#004AAD]">{selectedIds.size} selected</span>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void bulkMarkCompleted()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              <CheckCircle className="h-3.5 w-3.5" />
+              Mark done
+            </button>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void bulkCancelFollowUps()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
+            >
+              <XCircle className="h-3.5 w-3.5" />
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => setSelectedIds(new Set())}
+              className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
+
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          {resultCount > 0 ? followUpsPager : null}
           {filteredFollowUps.length === 0 ? (
             <div className="py-10 text-center">
               <Calendar className="w-10 h-10 text-gray-400 mx-auto mb-3" />
@@ -671,6 +925,21 @@ export default function FollowUpsPage() {
               <table className="min-w-[1040px] w-full text-left text-sm">
                 <thead className="bg-[#004AAD] text-white">
                   <tr>
+                    {filter !== 'completed' ? (
+                      <th className="w-10 px-2 py-2 font-bold text-center">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all on page"
+                          checked={allPageSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = somePageSelected && !allPageSelected;
+                          }}
+                          onChange={toggleSelectAllOnPage}
+                          className="h-4 w-4 cursor-pointer rounded border-white/40 accent-emerald-500"
+                        />
+                      </th>
+                    ) : null}
+                    <th className="w-12 px-2 py-2 font-bold text-center">Sr No</th>
                     <th className="px-3 py-2 font-bold">Name</th>
                     <th className="px-3 py-2 font-bold">Description</th>
                     <th className="px-3 py-2 font-bold">Assignee</th>
@@ -682,7 +951,7 @@ export default function FollowUpsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-            {filteredFollowUps.map((followUp) => {
+            {filteredFollowUps.map((followUp, rowIndex) => {
               const timeStatus = getTimeStatus(followUp.scheduled_time);
               const pending = followUp.status === 'PENDING';
               const late = pending && timeStatus.urgent && timeStatus.color === 'red';
@@ -703,7 +972,28 @@ export default function FollowUpsPage() {
               const note = String(followUp.reason || '').trim();
               const noteLong = note.length > 72;
               return (
-                <tr key={followUp.id} className="h-16 hover:bg-slate-50">
+                <tr
+                  key={followUp.id}
+                  className={`h-16 hover:bg-slate-50 ${selectedIds.has(String(followUp.id)) ? 'bg-blue-50/80' : ''}`}
+                >
+                  {filter !== 'completed' ? (
+                    <td className="px-2 align-middle text-center">
+                      {pending ? (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${followUp.lead?.customer_name || 'reminder'}`}
+                          checked={selectedIds.has(String(followUp.id))}
+                          onChange={() => toggleSelectRow(followUp.id)}
+                          className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#004AAD]"
+                        />
+                      ) : (
+                        <span className="inline-block w-4" />
+                      )}
+                    </td>
+                  ) : null}
+                  <td className="px-2 align-middle text-center text-xs font-bold text-slate-500 tabular-nums">
+                    {(safePage - 1) * pageSize + rowIndex + 1}
+                  </td>
                   <td className="px-3 align-middle">
                     <Link href={leadHref(followUp.lead_id)} className="line-clamp-1 font-bold text-slate-900 hover:underline">
                       {followUp.lead?.customer_name || 'Unknown'}
@@ -842,6 +1132,7 @@ export default function FollowUpsPage() {
               </table>
             </div>
           )}
+          {resultCount > 0 ? followUpsPager : null}
         </div>
       </div>
     </DashboardLayout>

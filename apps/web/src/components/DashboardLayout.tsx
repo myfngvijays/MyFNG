@@ -739,14 +739,19 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
   };
 
   const checkAuth = async () => {
+    const cached = useAuthStore.getState();
+    const hasCachedSession = Boolean(cached.user?.id && cached.userProfile?.id);
+    if (hasCachedSession) {
+      setLoading(false);
+    }
     try {
       const supabase = createClient();
       // Keep auth gate snappy — long waits make every login feel stuck on spinner.
-      const AUTH_MS = 4500;
+      const AUTH_MS = hasCachedSession ? 4000 : 7000;
       let authUser: { id: string; email?: string | null; phone?: string | null } | null = null;
 
       try {
-        const sessionRes = await withTimeout(supabase.auth.getSession(), AUTH_MS, 'auth.getSession');
+        const sessionRes = await withTimeout(supabase.auth.getSession(), 2500, 'auth.getSession');
         authUser = sessionRes?.data?.session?.user || null;
       } catch (sessionErr) {
         console.warn('auth.getSession slow/failed, retrying via getUser:', sessionErr);
@@ -762,6 +767,16 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       }
 
       if (!authUser) {
+        try {
+          const retrySession = await supabase.auth.getSession();
+          authUser = retrySession?.data?.session?.user || null;
+        } catch {
+          /* no-op */
+        }
+      }
+
+      if (!authUser) {
+        if (hasCachedSession) return;
         router.push('/login');
         return;
       }
@@ -775,27 +790,28 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       const email = (authUser.email || '').trim();
       const phone = (authUser.phone || '').trim();
 
-      // Parallel profile lookup — don't wait id then email then phone serially (was up to 24s).
       let profile: any = null;
       try {
-        const lookups: PromiseLike<any>[] = [
+        const { data: byId } = await withTimeout(
           supabase.from('users_login').select(selectProfile).eq('id', authUser.id).maybeSingle(),
-        ];
-        if (email) {
-          lookups.push(
-            supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle(),
-          );
-        }
-        if (phone) {
-          lookups.push(
-            supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle(),
-          );
-        }
-        const results = await withTimeout(Promise.all(lookups), AUTH_MS, 'users_login profile');
-        for (const r of results) {
-          if (r?.data) {
-            profile = r.data;
-            break;
+          AUTH_MS,
+          'users_login by id',
+        );
+        profile = byId || null;
+        if (!profile && (email || phone)) {
+          const lookups: PromiseLike<any>[] = [];
+          if (email) {
+            lookups.push(supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle());
+          }
+          if (phone) {
+            lookups.push(supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle());
+          }
+          const results = await withTimeout(Promise.all(lookups), AUTH_MS, 'users_login profile fallback');
+          for (const r of results) {
+            if (r?.data) {
+              profile = r.data;
+              break;
+            }
           }
         }
       } catch {

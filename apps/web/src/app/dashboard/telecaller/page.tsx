@@ -45,6 +45,7 @@ import toast from 'react-hot-toast';
 import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import BookingConfirmedTodayCard from '@/components/crm/BookingConfirmedTodayCard';
+import { crmFetch } from '@/lib/telecaller/crmFetch';
 import {
   Bar,
   BarChart,
@@ -269,7 +270,7 @@ export default function TelecallerCrmHomePage() {
     setLeadHitsLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/telecaller/crm/leads?q=${encodeURIComponent(q)}&limit=8`, {
+        const res = await crmFetch(`/api/telecaller/crm/leads?q=${encodeURIComponent(q)}&limit=8`, {
           signal: ctrl.signal,
         });
         const json = await res.json().catch(() => ({}));
@@ -303,7 +304,7 @@ export default function TelecallerCrmHomePage() {
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 45000);
       try {
-        const res = await fetch(`/api/telecaller/crm/dashboard?${params.toString()}`, {
+        const res = await crmFetch(`/api/telecaller/crm/dashboard?${params.toString()}`, {
           signal: controller.signal,
         });
         const json = await res.json().catch(() => ({}));

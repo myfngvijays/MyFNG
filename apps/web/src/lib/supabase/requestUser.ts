@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import type { User } from '@supabase/supabase-js';
+import { userFromSupabaseAuthCookies } from '@/lib/supabase/authCookies';
 
 type AuthUser = Pick<User, 'id'> & { email?: string | null; phone?: string | null };
 
@@ -59,10 +60,14 @@ function userFromBearer(request: NextRequest): AuthUser | null {
   };
 }
 
-async function getUserWithCap(
-  supabase: { auth: { getUser: () => Promise<{ data: { user: User | null }; error: { message?: string } | null }> } },
-  capMs = 4000,
-) {
+type AuthClient = {
+  auth: {
+    getUser: () => Promise<{ data: { user: User | null }; error: { message?: string } | null }>;
+    getSession: () => Promise<{ data: { session: { user: User | null } | null }; error: { message?: string } | null }>;
+  };
+};
+
+async function getUserWithCap(supabase: AuthClient, capMs = 6000) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -79,14 +84,36 @@ async function getUserWithCap(
   }
 }
 
-/** Cookie/Bearer getUser, with JWT fallback when GoTrue is slow or timed out. */
-export async function getRequestUser(
-  supabase: { auth: { getUser: () => Promise<{ data: { user: User | null }; error: { message?: string } | null }> } },
-  request: NextRequest,
-): Promise<AuthOk | AuthFail> {
+async function getSessionWithCap(supabase: AuthClient, capMs = 2500) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    return await Promise.race([
+      supabase.auth.getSession(),
+      new Promise<{ data: { session: null }; error: { message: string } }>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ data: { session: null }, error: { message: 'AUTH_TIMEOUT' } }),
+          capMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Cookie/Bearer getUser, with JWT fallback when GoTrue is slow or timed out. */
+export async function getRequestUser(supabase: AuthClient, request: NextRequest): Promise<AuthOk | AuthFail> {
+  const cookieUser = userFromSupabaseAuthCookies(request);
+
+  try {
+    const sessionRes = await getSessionWithCap(supabase);
+    if (sessionRes?.data?.session?.user?.id) {
+      return { ok: true, user: sessionRes.data.session.user };
+    }
+
     const { data, error } = await getUserWithCap(supabase);
     if (data?.user?.id) return { ok: true, user: data.user };
+    if (cookieUser) return { ok: true, user: cookieUser };
     const fallback = userFromBearer(request);
     if (fallback) return { ok: true, user: fallback };
     if (error && isAuthNetworkError(error)) {
@@ -94,6 +121,7 @@ export async function getRequestUser(
     }
     return { ok: false, status: 401, error: 'Unauthorized' };
   } catch (e) {
+    if (cookieUser) return { ok: true, user: cookieUser };
     const fallback = userFromBearer(request);
     if (fallback) return { ok: true, user: fallback };
     if (isAuthNetworkError(e)) {

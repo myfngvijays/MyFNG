@@ -283,16 +283,8 @@ function resolveFrictionlessTemplate(rows: TemplateOption[]): TemplateOption | n
       .trim()
       .toUpperCase();
 
-  // Prefer Meta-approved first so closed-window send actually works
-  // quick_note_with_button (OK button) wins once Meta approves it; until then myfng_quick_note.
-  const preferredNames = [
-    'quick_note_with_button',
-    'myfng_quick_note',
-    'myfng_support_note',
-    'myfng_closed_window_note',
-    'myfng_msg_note_safe',
-    'myfng_msg_note',
-  ];
+  // Closed-window telecaller: only OK-button template (myfng_quick_note disabled).
+  const preferredNames = ['quick_note_with_button'];
   for (const name of preferredNames) {
     const row = byName(name);
     if (row && metaStatus(row) === 'APPROVED') return row;
@@ -301,11 +293,7 @@ function resolveFrictionlessTemplate(rows: TemplateOption[]): TemplateOption | n
     const row = byName(name);
     if (row) return row;
   }
-  return (
-    active.find((row) => Boolean(row?.meta?.frictionless) && metaStatus(row) === 'APPROVED') ||
-    active.find((row) => Boolean(row?.meta?.frictionless)) ||
-    null
-  );
+  return null;
 }
 
 function resolvePaymentTemplateName(rows: TemplateOption[]): string | null {
@@ -2525,7 +2513,7 @@ export default function WhatsAppMobilePreviewModal({
         const fr = frictionlessTemplate;
         if (!fr?.template_name) {
           toast.error(
-            'Closed-window note template is missing. Submit/push myfng_closed_window_note (UTILITY) first.',
+            'Closed window: Meta-approved quick_note_with_button chahiye (myfng_quick_note band hai). Push + Sync templates.',
           );
           setActiveType('template');
           return;

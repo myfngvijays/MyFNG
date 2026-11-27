@@ -120,13 +120,42 @@ export default function TopOfferBannerAdmin() {
               type="checkbox"
               className="mt-0.5"
               checked={config.festive_theme === 'christmas'}
-              onChange={(event) => set('festive_theme', event.target.checked ? 'christmas' : 'none')}
+              onChange={(event) => {
+                const on = event.target.checked;
+                setConfig((prev) => ({
+                  ...prev,
+                  festive_theme: on ? 'christmas' : 'none',
+                  festive_sound: on ? prev.festive_sound : false,
+                }));
+              }}
             />
             <span>
               <span className="font-semibold">🎄 Christmas theme on the website</span>
               <span className="block text-xs text-red-800/80">
                 Red–green banner, light snowfall on the home page, Santa hat on the logo and a festive line in the
                 home hero. Turn off after New Year — everything goes back to normal.
+              </span>
+            </span>
+          </label>
+          <label
+            className={`mt-3 flex items-start gap-2 rounded-lg border p-3 text-sm ${
+              config.festive_theme === 'christmas'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                : 'border-gray-200 bg-gray-50 text-gray-500'
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              disabled={config.festive_theme !== 'christmas'}
+              checked={config.festive_theme === 'christmas' && config.festive_sound === true}
+              onChange={(event) => set('festive_sound', event.target.checked)}
+            />
+            <span>
+              <span className="font-semibold">🔔 Christmas sound on the website</span>
+              <span className="block text-xs opacity-80">
+                Jingle Bells (~10s clip, repeats every 3 min; visitor can mute with the speaker button). Only when
+                Christmas theme is on.
               </span>
             </span>
           </label>

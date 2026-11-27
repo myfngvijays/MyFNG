@@ -4,6 +4,7 @@ import {
   type CrmPermissions,
 } from '@/lib/telecaller/crmPermissions';
 import { normalizeRoleCode } from '@/lib/telecaller/crmRoles';
+import { telecallerHidesLeadSource } from '@/lib/telecaller/hideLeadSourceForUser';
 
 /**
  * Resolve effective CRM permissions for a users_login id.
@@ -21,7 +22,7 @@ export async function resolveCrmPermissionsForUser(
 
   const { data: userRow } = await db
     .from('users_login')
-    .select('crm_permission_template_id')
+    .select('crm_permission_template_id, full_name, phone, email')
     .eq('id', userId)
     .maybeSingle();
 
@@ -50,15 +51,23 @@ export async function resolveCrmPermissionsForUser(
   }
 
   if (!template) {
+    const permissions = { ...DEFAULT_CALLER_PERMISSIONS };
+    if (telecallerHidesLeadSource(userRow)) {
+      permissions.view_lead_source = false;
+    }
     return {
-      permissions: { ...DEFAULT_CALLER_PERMISSIONS },
+      permissions,
       templateId: null,
       templateName: 'Built-in Default Caller',
     };
   }
 
+  const permissions = mergeCrmPermissions(code, template.permissions);
+  if (telecallerHidesLeadSource(userRow)) {
+    permissions.view_lead_source = false;
+  }
   return {
-    permissions: mergeCrmPermissions(code, template.permissions),
+    permissions,
     templateId: String(template.id),
     templateName: String(template.name || 'Template'),
   };
