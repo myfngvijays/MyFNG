@@ -90,6 +90,8 @@ type Props = {
   requireSchedule?: boolean;
   /** Workshop is chosen next to the customer pincode instead. */
   hideWorkshops?: boolean;
+  /** Drawer — single-row date/time */
+  compact?: boolean;
 };
 
 export default function CrmPickupVisitStep({
@@ -103,6 +105,7 @@ export default function CrmPickupVisitStep({
   hideVehicleNumber = false,
   requireSchedule = false,
   hideWorkshops = false,
+  compact = false,
 }: Props) {
   const pickupRequired = forcePickup ? true : value.pickup_required;
   const [workshops, setWorkshops] = useState<any[]>([]);
@@ -181,52 +184,152 @@ export default function CrmPickupVisitStep({
     <span className="text-xs font-normal text-gray-400"> (optional)</span>
   );
 
+  const modeToggle = !forcePickup ? (
+    <div className="flex shrink-0 gap-1.5">
+      <button
+        type="button"
+        onClick={() => setMode(false)}
+        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold ${
+          modeChosen && !pickupRequired
+            ? 'border-[#004AAD] bg-[#004AAD] text-white'
+            : 'border-slate-300 bg-white text-slate-700'
+        }`}
+      >
+        <MapPin className="h-3.5 w-3.5" /> Visit
+      </button>
+      <button
+        type="button"
+        onClick={() => setMode(true)}
+        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold ${
+          modeChosen && pickupRequired
+            ? 'border-[#004AAD] bg-[#004AAD] text-white'
+            : 'border-slate-300 bg-white text-slate-700'
+        }`}
+      >
+        <Navigation className="h-3.5 w-3.5" /> Pickup
+      </button>
+    </div>
+  ) : (
+    <span className="rounded-full bg-[#004AAD]/10 px-2 py-0.5 text-[11px] font-bold text-[#004AAD]">
+      Pickup required
+    </span>
+  );
+
+  const dateControls = (
+    <>
+      {dateOptions.map((opt) => {
+        const active = value.pickup_date === opt.dateStr;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onChange({ pickup_date: opt.dateStr, pickup_time: '' })}
+            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${
+              active
+                ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                : 'border-gray-300 bg-gray-50 text-gray-700 hover:border-[#004AAD]/40'
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+      <div className="relative inline-flex shrink-0 items-center gap-1 overflow-hidden rounded-lg border border-gray-300 bg-gray-50 px-2.5 py-1.5 text-xs font-bold text-gray-700">
+        <Calendar className="pointer-events-none h-3.5 w-3.5" />
+        <span className="pointer-events-none">Pick date</span>
+        <input
+          ref={dateInputRef}
+          type="date"
+          value={value.pickup_date && value.pickup_date >= todayStr ? value.pickup_date : ''}
+          min={todayClosed ? tomorrowStr : todayStr}
+          onChange={(e) => onChange({ pickup_date: e.target.value, pickup_time: '' })}
+          onClick={(e) => {
+            const el = e.currentTarget;
+            try {
+              if (typeof (el as any).showPicker === 'function') (el as any).showPicker();
+            } catch {
+              /* noop */
+            }
+          }}
+          className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+          aria-label="Pick calendar date"
+        />
+      </div>
+      {value.pickup_date ? (
+        <button
+          type="button"
+          onClick={() => onChange({ pickup_date: '', pickup_time: '' })}
+          className="shrink-0 text-[11px] font-semibold text-slate-500 underline"
+        >
+          Clear
+        </button>
+      ) : null}
+    </>
+  );
+
+  const timeControls =
+    value.pickup_date &&
+    slots.map((slot) => {
+      const past = isTimeSlotPastForDate(slot.value, value.pickup_date, todayStr);
+      const active = value.pickup_time === slot.value;
+      return (
+        <button
+          key={slot.value}
+          type="button"
+          disabled={past}
+          onClick={() => onChange({ pickup_time: slot.value })}
+          className={`shrink-0 whitespace-nowrap rounded-lg border px-2 py-1.5 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+            active
+              ? 'border-[#004AAD] bg-[#004AAD] text-white'
+              : 'border-gray-300 bg-gray-50 text-gray-700 hover:border-[#004AAD]/40'
+          }`}
+        >
+          {slot.label}
+        </button>
+      );
+    });
+
   return (
     <div>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-base font-extrabold text-gray-900">Pickup / Visit</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {pickupRequired ? 'Doorstep pickup' : 'Workshop visit'}
-            {!requireSchedule ? ' — date/time optional until booking confirmed' : ' — date & time required'}
-          </p>
+      {compact ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-gray-600">
+              {pickupRequired ? 'Doorstep pickup' : 'Workshop visit'}
+              {!requireSchedule ? ' · date/time optional' : ' · date/time required'}
+            </p>
+            {modeToggle}
+          </div>
+          {modeChosen || forcePickup ? (
+            <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto rounded-lg border-2 border-gray-300 bg-white p-2 [-webkit-overflow-scrolling:touch]">
+              <span className="shrink-0 text-xs font-bold text-slate-700">Date</span>
+              {dateControls}
+              {value.pickup_date ? (
+                <>
+                  <span className="shrink-0 text-slate-300">|</span>
+                  <span className="shrink-0 text-xs font-bold text-slate-700">Time</span>
+                  {timeControls}
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-
-        {!forcePickup ? (
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={() => setMode(false)}
-              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-bold ${
-                modeChosen && !pickupRequired
-                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                  : 'border-slate-200 bg-white text-slate-700'
-              }`}
-            >
-              <MapPin className="h-3.5 w-3.5" /> Visit
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode(true)}
-              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-bold ${
-                modeChosen && pickupRequired
-                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                  : 'border-slate-200 bg-white text-slate-700'
-              }`}
-            >
-              <Navigation className="h-3.5 w-3.5" /> Pickup
-            </button>
+      ) : (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-base font-extrabold text-gray-900">Pickup / Visit</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {pickupRequired ? 'Doorstep pickup' : 'Workshop visit'}
+              {!requireSchedule ? ' — date/time optional until booking confirmed' : ' — date & time required'}
+            </p>
           </div>
-        ) : (
-          <div className="rounded-full bg-[#004AAD]/10 px-3 py-1 text-[11px] font-bold text-[#004AAD]">
-            Pickup required
-          </div>
-        )}
-      </div>
+          {modeToggle}
+        </div>
+      )}
 
       {modeChosen || forcePickup ? (
       <>
-      {!hideVehicleNumber ? (
+      {!compact && !hideVehicleNumber ? (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <label className="mb-2 block text-sm font-bold text-gray-800">Vehicle Number *</label>
           <input
@@ -243,62 +346,14 @@ export default function CrmPickupVisitStep({
         </div>
       ) : null}
 
+      {!compact ? (
+        <>
       <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <label className="mb-2 block text-sm font-bold text-gray-800">
           {pickupRequired ? 'Pickup Date' : 'Visit Date'}
           {reqMark}
         </label>
-        <div className="flex flex-wrap gap-2 items-center">
-          {dateOptions.map((opt) => {
-            const active = value.pickup_date === opt.dateStr;
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => onChange({ pickup_date: opt.dateStr, pickup_time: '' })}
-                className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
-                  active
-                    ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                    : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-[#004AAD]/40'
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-          <div className="relative inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 hover:border-[#004AAD]/40 overflow-hidden">
-            <Calendar className="h-3.5 w-3.5 pointer-events-none" />
-            <span className="pointer-events-none">Pick date</span>
-            <input
-              ref={dateInputRef}
-              type="date"
-              value={value.pickup_date && value.pickup_date >= todayStr ? value.pickup_date : ''}
-              min={todayClosed ? tomorrowStr : todayStr}
-              onChange={(e) => onChange({ pickup_date: e.target.value, pickup_time: '' })}
-              onClick={(e) => {
-                const el = e.currentTarget;
-                try {
-                  if (typeof (el as any).showPicker === 'function') {
-                    (el as any).showPicker();
-                  }
-                } catch {
-                  /* native picker opens via click */
-                }
-              }}
-              className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
-              aria-label="Pick calendar date"
-            />
-          </div>
-          {value.pickup_date ? (
-            <button
-              type="button"
-              onClick={() => onChange({ pickup_date: '', pickup_time: '' })}
-              className="text-[11px] font-semibold text-slate-500 underline"
-            >
-              Clear
-            </button>
-          ) : null}
-        </div>
+        <div className="flex flex-wrap items-center gap-2">{dateControls}</div>
         {value.pickup_date ? (
           <p className="mt-2 text-xs text-gray-500">Selected: {formatDateDMShort(value.pickup_date)}</p>
         ) : null}
@@ -310,28 +365,10 @@ export default function CrmPickupVisitStep({
             {pickupRequired ? 'Pickup Time' : 'Visit Time'}
             {reqMark}
           </label>
-          <div className="grid grid-cols-3 gap-2">
-            {slots.map((slot) => {
-              const past = isTimeSlotPastForDate(slot.value, value.pickup_date, todayStr);
-              const active = value.pickup_time === slot.value;
-              return (
-                <button
-                  key={slot.value}
-                  type="button"
-                  disabled={past}
-                  onClick={() => onChange({ pickup_time: slot.value })}
-                  className={`whitespace-nowrap rounded-xl border px-1 py-2.5 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                    active
-                      ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                      : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-[#004AAD]/40'
-                  }`}
-                >
-                  {slot.label}
-                </button>
-              );
-            })}
-          </div>
+          <div className="grid grid-cols-3 gap-2">{timeControls}</div>
         </div>
+      ) : null}
+        </>
       ) : null}
 
       {value.pickup_time && pickupRequired ? (

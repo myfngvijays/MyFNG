@@ -15,6 +15,7 @@ import {
   checkoutServiceName,
   isAdminCustomRepairLead,
 } from '@/lib/admin-checkout-lead-group';
+import { buildLeadOwnerSegments, leadOwnerAt } from '@/lib/telecaller/activityOwnerAtTime';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -228,7 +229,7 @@ export async function GET(request: NextRequest) {
               supabaseAdmin
                 .from('whatsapp_messages')
                 .select(
-                  'id, direction, message_type, text_body, media_caption, template_name, status, created_at, sender_phone, recipient_phone',
+                  'id, direction, message_type, text_body, media_caption, template_name, status, created_at, sender_phone, recipient_phone, created_by, actor:created_by(full_name)',
                 )
                 .or(`sender_phone.eq.${phone},recipient_phone.eq.${phone}`)
                 .order('created_at', { ascending: false })
@@ -269,13 +270,21 @@ export async function GET(request: NextRequest) {
                 .limit(20),
           )
         : Promise.resolve({ data: [] as any[], error: null }),
-      safeSelect(() =>
-        supabaseAdmin
-          .from('lead_events')
-          .select('id, event_type, description, created_at')
-          .in('lead_id', relatedLeadIds)
-          .order('created_at', { ascending: false })
-          .limit(40),
+      safeSelect(
+        () =>
+          supabaseAdmin
+            .from('lead_events')
+            .select('id, event_type, event_description, actor_name, metadata, created_at')
+            .in('lead_id', relatedLeadIds)
+            .order('created_at', { ascending: false })
+            .limit(40),
+        () =>
+          supabaseAdmin
+            .from('lead_events')
+            .select('id, event_type, created_at')
+            .in('lead_id', relatedLeadIds)
+            .order('created_at', { ascending: false })
+            .limit(40),
       ),
     ]);
 
@@ -429,6 +438,7 @@ export async function GET(request: NextRequest) {
       const waText = String(
         (msg as any).text_body || (msg as any).media_caption || (msg as any).template_name || '',
       ).trim();
+      const waActor = String((msg as any).actor?.full_name || '').trim();
       items.push({
         id: `wa-${(msg as any).id}`,
         kind: 'whatsapp',
@@ -439,9 +449,69 @@ export async function GET(request: NextRequest) {
           status: (msg as any).status,
           message_type: (msg as any).message_type,
           direction: dir === 'INBOUND' ? 'INBOUND' : 'OUTBOUND',
+          by: waActor || null,
         },
       });
     }
+
+    const transferRes = await safeSelect(() =>
+      supabaseAdmin
+        .from('telecaller_lead_transfers')
+        .select(
+          'id, created_at, transfer_type, reason, from_telecaller_id, to_telecaller_id, from:from_telecaller_id(full_name), to:to_telecaller_id(full_name)',
+        )
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+        .limit(40),
+    );
+
+    const transferRows = (transferRes.data || []).map((t: any) => ({
+      created_at: String(t.created_at || ''),
+      from_telecaller_id: String(t.from_telecaller_id || ''),
+      to_telecaller_id: String(t.to_telecaller_id || ''),
+      from_name: String(t.from?.full_name || '').trim(),
+      to_name: String(t.to?.full_name || '').trim(),
+    }));
+
+    for (const t of transferRes.data || []) {
+      const fromName = String((t as any).from?.full_name || 'Telecaller').trim();
+      const toName = String((t as any).to?.full_name || 'Telecaller').trim();
+      const type = String((t as any).transfer_type || 'TRANSFER').toUpperCase();
+      const title =
+        type === 'ESCALATE'
+          ? `Lead escalated · ${fromName} → ${toName}`
+          : `Lead transferred · ${fromName} → ${toName}`;
+      items.push({
+        id: `xfer-${(t as any).id}`,
+        kind: 'system',
+        at: String((t as any).created_at),
+        title,
+        body: String((t as any).reason || '').trim() || null,
+        meta: {
+          event: 'LEAD_TRANSFER',
+          transfer: true,
+          from_name: fromName,
+          to_name: toName,
+          by: fromName,
+        },
+      });
+    }
+
+    let currentAssigneeName = '';
+    const assignedId = String((lead as any).assigned_telecaller_id || '');
+    if (assignedId) {
+      const who = await safeSelect(() =>
+        supabaseAdmin.from('users_login').select('full_name').eq('id', assignedId).maybeSingle(),
+      );
+      currentAssigneeName = String((who.data as any)?.full_name || '').trim();
+    }
+
+    const ownerSegments = buildLeadOwnerSegments(
+      transferRows,
+      String((lead as any).created_at || ''),
+      assignedId,
+      currentAssigneeName,
+    );
 
     const meta =
       (lead as any).coupon_meta && typeof (lead as any).coupon_meta === 'object'
@@ -504,6 +574,7 @@ export async function GET(request: NextRequest) {
           status_label: statusLabel,
           workshop_name: h.workshop_name || null,
           remark: h.remark || null,
+          by: String(h.by_name || h.by || '').trim() || null,
         },
       });
     }
@@ -570,12 +641,30 @@ export async function GET(request: NextRequest) {
     }
 
     for (const ev of eventsRes.data || []) {
+      const evType = String((ev as any).event_type || '').toLowerCase();
+      const actor = String((ev as any).actor_name || '').trim();
+      const desc = String((ev as any).event_description || (ev as any).description || '').trim();
+      let title = desc || String((ev as any).event_type || 'Event').replace(/_/g, ' ');
+      if (/assign|reassign/.test(evType)) {
+        title = desc || (actor ? `Lead assigned to ${actor}` : title);
+      } else if (/created|manual|add/.test(evType) && actor) {
+        title = desc || `Lead added by ${actor}`;
+      } else if (/tag/.test(evType)) {
+        title = desc || `Lead tag · ${title}`;
+      }
       items.push({
         id: `evt-${(ev as any).id}`,
         kind: 'system',
         at: String((ev as any).created_at),
-        title: String((ev as any).event_type || 'Event').replace(/_/g, ' '),
-        body: String((ev as any).description || '').trim() || null,
+        title,
+        body: desc && desc !== title ? desc : null,
+        meta: {
+          event: (ev as any).event_type,
+          by: actor || null,
+          ...(typeof (ev as any).metadata === 'object' && (ev as any).metadata
+            ? (ev as any).metadata
+            : {}),
+        },
       });
     }
 
@@ -611,6 +700,23 @@ export async function GET(request: NextRequest) {
           body: dispRemark,
           meta: { status: crmId, status_label: crmLabel },
         });
+      }
+    }
+
+    const AUTO_ACTOR_SKIP =
+      /\b(waca|misa|whatsapp_admin|template|api\s*request|smartflo|pricing\s*sent)\b/i;
+    for (const it of items) {
+      if (String(it.meta?.by || '').trim()) continue;
+      if (it.meta?.transfer) continue;
+      const hay = `${it.title} ${it.body || ''}`;
+      const msgType = String(it.meta?.message_type || '').toLowerCase();
+      if (it.kind === 'whatsapp' && msgType && msgType !== 'text' && AUTO_ACTOR_SKIP.test(hay)) {
+        continue;
+      }
+      if (AUTO_ACTOR_SKIP.test(hay) && it.kind !== 'call' && it.kind !== 'whatsapp') continue;
+      const owner = leadOwnerAt(ownerSegments, it.at);
+      if (owner?.name) {
+        it.meta = { ...(it.meta || {}), by: owner.name };
       }
     }
 

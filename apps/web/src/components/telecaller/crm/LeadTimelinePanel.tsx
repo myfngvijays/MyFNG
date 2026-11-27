@@ -9,7 +9,7 @@ import CompactCrmActivityRow, {
 } from '@/components/telecaller/crm/CompactCrmActivityRow';
 import { ADMIN_CRM_STATUS_OPTIONS, resolveAdminCrmStatusId } from '@/lib/telecaller/leadDisplayStatus';
 import { looksLikeRingingText } from '@/lib/telecaller/callDisposition';
-import CrmFollowUpDateTime from '@/components/telecaller/crm/CrmFollowUpDateTime';
+import CallReminderForm, { type CallReminderDraft } from '@/components/telecaller/crm/CallReminderForm';
 import { istDateTimeToIso } from '@/lib/telecaller/crmDateRange';
 
 type ProfileHistoryItem = {
@@ -96,6 +96,7 @@ export default function LeadTimelinePanel({
   lead = null,
   callLogs: callLogsProp,
   refreshKey = 0,
+  openTaskSignal = 0,
 }: {
   leadId: string;
   /** Lead row — used for coupon_meta.profile_history + latest status summary */
@@ -104,6 +105,8 @@ export default function LeadTimelinePanel({
   callLogs?: CallLog[];
   /** Bump from parent after logging a call / follow-up so feed reloads. */
   refreshKey?: number;
+  /** Increment from parent (Task quick action) → open Task tab + add form */
+  openTaskSignal?: number;
 }) {
   const [tab, setTab] = useState<'history' | 'tasks'>('history');
   const [callLogs, setCallLogs] = useState<CallLog[]>(
@@ -115,12 +118,23 @@ export default function LeadTimelinePanel({
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
-  const [taskForm, setTaskForm] = useState({
+  const [taskForm, setTaskForm] = useState<CallReminderDraft>({
     follow_up_type: 'CALLBACK',
     scheduled_time: '',
     reason: '',
     priority: 'NORMAL',
   });
+  const [removingTaskId, setRemovingTaskId] = useState<string | null>(null);
+  const [pinnedActivityIds, setPinnedActivityIds] = useState<Set<string>>(() => new Set());
+
+  const togglePinActivity = useCallback((id: string) => {
+    setPinnedActivityIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const loadCalls = useCallback(async () => {
     setLoadingLogs(true);
@@ -162,6 +176,12 @@ export default function LeadTimelinePanel({
     void loadCalls();
     void loadTasks();
   }, [loadCalls, loadTasks, refreshKey]);
+
+  useEffect(() => {
+    if (!openTaskSignal) return;
+    setTab('tasks');
+    setShowAddTask(true);
+  }, [openTaskSignal]);
 
   useEffect(() => {
     if (Array.isArray(callLogsProp) && callLogsProp.length > 0 && callLogs.length === 0) {
@@ -317,6 +337,10 @@ export default function LeadTimelinePanel({
             at: String(entry.at || ''),
             title: String(entry.summary || entry.status || entry.event || 'Update'),
             body: entry.remark || entry.lost_reason || null,
+            meta: {
+              event: entry.event || null,
+              by: String((entry as any).by_name || (entry as any).by || '').trim() || null,
+            },
           });
         }
       }
@@ -331,6 +355,13 @@ export default function LeadTimelinePanel({
       })
       .sort((a, b) => Date.parse(String(b.at || '')) - Date.parse(String(a.at || '')));
   }, [pinnedStatusRow, usingApiFeed, displayTimelineItems, activityFeed]);
+
+  const sortedFeedRows = useMemo(() => {
+    if (pinnedActivityIds.size === 0) return feedRows;
+    const pinned = feedRows.filter((r) => pinnedActivityIds.has(r.id));
+    const rest = feedRows.filter((r) => !pinnedActivityIds.has(r.id));
+    return [...pinned, ...rest];
+  }, [feedRows, pinnedActivityIds]);
 
   const feedCount = feedRows.length;
   const hasAny =
@@ -414,8 +445,6 @@ export default function LeadTimelinePanel({
       setSavingTask(false);
     }
   };
-
-  const [removingTaskId, setRemovingTaskId] = useState<string | null>(null);
 
   /** Remove a reminder (late / active / closed). Delete; if RLS blocks delete, mark it CANCELLED. */
   const removeTask = async (t: TaskRow) => {
@@ -503,7 +532,10 @@ export default function LeadTimelinePanel({
   );
 
   return (
-    <div className="min-w-0 w-full rounded-2xl border border-teal-200 bg-teal-50/50 p-3 shadow-sm sm:p-4">
+    <div
+      id={`lead-timeline-${leadId}`}
+      className="min-w-0 w-full rounded-2xl border border-teal-200 bg-teal-50/50 p-3 shadow-sm sm:p-4"
+    >
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className="flex rounded-xl bg-white/80 p-0.5 text-[11px] font-bold ring-1 ring-teal-100">
           <button
@@ -565,8 +597,13 @@ export default function LeadTimelinePanel({
           ) : (
             <div className="overflow-x-hidden rounded-lg border border-teal-100 bg-white px-2 pb-1">
               <ul className="divide-y divide-slate-100">
-                {feedRows.map((row) => (
-                  <CompactCrmActivityRow key={row.id} row={row} />
+                {sortedFeedRows.map((row) => (
+                  <CompactCrmActivityRow
+                    key={row.id}
+                    row={row}
+                    pinned={pinnedActivityIds.has(row.id)}
+                    onTogglePin={togglePinActivity}
+                  />
                 ))}
               </ul>
             </div>
@@ -579,43 +616,21 @@ export default function LeadTimelinePanel({
       ) : (
         <div className="space-y-2">
           {showAddTask ? (
-            <div className="mb-2 space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-              <select
-                className="w-full rounded-lg border px-2 py-1.5 text-sm"
-                value={taskForm.follow_up_type}
-                onChange={(e) => setTaskForm({ ...taskForm, follow_up_type: e.target.value })}
-              >
-                <option value="CALLBACK">Call reminder / Follow-up</option>
-                <option value="PRICE_CONFIRMATION">Price confirmation</option>
-                <option value="INFO_PENDING">Info pending</option>
-                <option value="SLOT_CONFIRMATION">Slot confirmation</option>
-              </select>
-              <CrmFollowUpDateTime
-                date={taskForm.scheduled_time.slice(0, 10)}
-                time={taskForm.scheduled_time.includes('T') ? taskForm.scheduled_time.slice(11, 16) : ''}
-                required
-                onChange={({ date, time }) =>
-                  setTaskForm({
-                    ...taskForm,
-                    scheduled_time: date && time ? `${date}T${time}` : '',
-                  })
-                }
+            <div className="mb-2">
+              <p className="mb-1.5 text-xs text-slate-500">
+                Create Followup for:{' '}
+                <span className="font-bold text-violet-700">Me</span>
+              </p>
+              <CallReminderForm
+                value={taskForm}
+                onChange={setTaskForm}
+                onSubmit={() => {
+                  if (savingTask) return;
+                  void addTask();
+                }}
+                onCancel={() => setShowAddTask(false)}
+                submitLabel={savingTask ? 'Saving…' : 'Schedule reminder'}
               />
-              <textarea
-                className="w-full rounded-lg border px-2 py-1.5 text-sm"
-                rows={2}
-                placeholder="Description / note…"
-                value={taskForm.reason}
-                onChange={(e) => setTaskForm({ ...taskForm, reason: e.target.value })}
-              />
-              <button
-                type="button"
-                disabled={savingTask}
-                onClick={() => void addTask()}
-                className="w-full rounded-lg bg-[#004AAD] py-1.5 text-xs font-bold text-white disabled:opacity-50"
-              >
-                {savingTask ? 'Saving…' : 'Create task'}
-              </button>
             </div>
           ) : null}
           {renderTaskGroup('Late', 'text-rose-700', taskBuckets.late)}

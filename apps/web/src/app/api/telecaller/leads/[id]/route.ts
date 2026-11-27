@@ -600,12 +600,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (fieldLines.length) {
       const prevHistory = Array.isArray(prevMeta.profile_history) ? prevMeta.profile_history : [];
+      const editorName = String(userProfile?.full_name || '').trim() || null;
       const historyEntry = {
         at: nowIso,
         summary: fieldLines.join('\n'),
         event: 'FIELDS',
         previous_label: prevStatus || null,
         status: nextStatus || null,
+        by: editorName,
+        by_name: editorName,
+        by_id: userProfile?.id || null,
       };
       update.coupon_meta = {
         ...nextMeta,

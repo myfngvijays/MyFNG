@@ -17,6 +17,8 @@ type Props = {
   displayValue?: string;
   onSelect: (car: CrmCarSelection) => void;
   onClear?: () => void;
+  inputName?: string;
+  invalid?: boolean;
 };
 
 export default function CrmCarSearch({
@@ -25,6 +27,8 @@ export default function CrmCarSearch({
   displayValue = '',
   onSelect,
   onClear,
+  inputName = 'crm_car_model',
+  invalid = false,
 }: Props) {
   const [query, setQuery] = useState(displayValue);
   const [suggestions, setSuggestions] = useState<CrmCarSelection[]>([]);
@@ -107,6 +111,7 @@ export default function CrmCarSearch({
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input
           type="text"
+          name={inputName}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -116,7 +121,11 @@ export default function CrmCarSearch({
             if (suggestions.length > 0) setOpen(true);
           }}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-gray-200 py-2.5 pl-9 pr-10 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+          className={`w-full rounded-xl border py-2.5 pl-9 pr-10 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 ${
+            invalid
+              ? 'border-rose-500 ring-rose-500/25 focus:border-rose-500 focus:ring-rose-500/25'
+              : 'border-gray-200 focus:border-[#004AAD] focus:ring-[#004AAD]/20'
+          }`}
         />
         {query ? (
           <button

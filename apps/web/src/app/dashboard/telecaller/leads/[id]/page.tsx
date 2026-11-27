@@ -16,6 +16,7 @@ import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
 import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
+import LeadPanelQuickActions from '@/components/telecaller/crm/LeadPanelQuickActions';
 import ResizableLeadSidebarLayout from '@/components/telecaller/crm/ResizableLeadSidebarLayout';
 import AppActivityTimeline from '@/components/admin/AppActivityTimeline';
 import LeadIqCard from '@/components/admin/LeadIqCard';
@@ -86,6 +87,7 @@ export function LeadDetailContent({
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
+  const [openTaskSignal, setOpenTaskSignal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(true);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
@@ -765,11 +767,14 @@ export function LeadDetailContent({
   const draftCar = String(pricingDraft.carModel || '').trim();
   const savedCar = [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ').trim();
   const pricingCar = draftCar || savedCar;
-  const pricingGap = !/^\d{6}$/.test(pricingPin)
-    ? 'Pincode is empty on this lead. Send pricing stops until a 6-digit pincode is filled.'
-    : !pricingCar
+  const pincodeFieldError = !/^\d{6}$/.test(pricingPin) ? '6-digit pincode required' : undefined;
+  const carModelFieldError = !pricingCar ? 'Car model required for pricing' : undefined;
+  const sendPricingReady = /^\d{6}$/.test(pricingPin) && Boolean(pricingCar);
+  const legacyCarBanner =
+    !isPanel && carModelFieldError
       ? 'Car model is empty on this lead. Send pricing stops until the car model is filled.'
       : '';
+  const pricingBanner = pricingNotice || legacyCarBanner;
 
   const sendPricingWhatsApp = async () => {
     const pincode = pricingPin;
@@ -781,11 +786,21 @@ export function LeadDetailContent({
       : [];
     const pricingCategories = savedCategories.length ? savedCategories : ['Car Periodic Service'];
     if (!/^\d{6}$/.test(pincode)) {
-      setPricingNotice('Fill a 6-digit pincode on the lead first.');
+      setPricingNotice('');
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLInputElement>('input[name="pincode"]');
+        el?.focus();
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
       return;
     }
     if (!carModel) {
-      setPricingNotice('Fill the car model on the lead first.');
+      setPricingNotice('');
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLInputElement>('input[name="crm_car_model"]');
+        el?.focus();
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
       return;
     }
     setPricingNotice('');
@@ -842,17 +857,57 @@ export function LeadDetailContent({
     );
   }
 
+  const panelHeader = isPanel ? (
+    <div className="sticky top-0 z-40 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
+      <div className="min-w-0 flex-1">
+        <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-gray-900 sm:text-base">
+          <Car className="h-4 w-4 shrink-0 text-brand-primary" />
+          <span className="truncate">Service Lead Details</span>
+          {lead.customer_name || lead.customer_phone ? (
+            <span className="hidden font-normal text-gray-500 sm:inline">
+              · {[lead.customer_name, lead.customer_phone].filter(Boolean).join(' · ')}
+            </span>
+          ) : null}
+        </h3>
+        {repeatCustomer ? (
+          <p className="mt-0.5 truncate pl-5 text-[10px] font-semibold text-amber-800">
+            Repeat Customer{repeatRemark ? ` · ${repeatRemark}` : ''}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        <div id="lead-panel-header-actions" className="flex flex-wrap items-center gap-1.5" />
+        {onPanelClose ? (
+          <button
+            type="button"
+            onClick={onPanelClose}
+            className="rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+            aria-label="Close lead"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        ) : null}
+      </div>
+      {pricingBanner ? (
+        <p className="absolute left-4 right-4 top-full z-30 mt-0.5 text-[11px] font-semibold text-rose-600">
+          {pricingBanner}
+        </p>
+      ) : null}
+    </div>
+  ) : null;
+
   return wrap(
     <>
       <div
         className={
           isPanel
-            ? 'w-full min-w-0 space-y-3 px-2.5 py-2 sm:px-3'
+            ? 'flex h-full min-h-0 w-full min-w-0 flex-col bg-white'
             : editing
               ? 'lead-page-frame mx-auto w-full min-w-0 max-w-none'
               : 'mx-auto w-full min-w-0 max-w-none space-y-4 pb-8 sm:space-y-5'
         }
       >
+        {panelHeader}
         {!isPanel ? (
           <div className="lg:hidden">
             <div className="rounded-t-2xl bg-[#004AAD] px-4 pb-12 pt-4">
@@ -953,17 +1008,91 @@ export function LeadDetailContent({
             </div>
           </div>
         ) : null}
-        <PendingBookingBanner
-          lead={lead}
-          calling={calling}
-          onCall={() => void handleClickToCall()}
-          onUpdated={() => {
-            setTimelineRefreshKey((k) => k + 1);
-            void fetchLeadDetails();
-          }}
-        />
-        <BookingPriceCard leadId={String(leadId)} className="mb-3" />
+        {!isPanel ? (
+          <PendingBookingBanner
+            lead={lead}
+            calling={calling}
+            onCall={() => void handleClickToCall()}
+            onUpdated={() => {
+              setTimelineRefreshKey((k) => k + 1);
+              void fetchLeadDetails();
+            }}
+          />
+        ) : null}
+        {!isPanel ? <BookingPriceCard leadId={String(leadId)} className="mb-3" /> : null}
         {editing ? (
+          isPanel ? (
+            <>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 py-2 pb-28 sm:px-3">
+              <CrmLeadEditForm
+                leadId={leadId}
+                seedLead={lead}
+                embedded
+                bookingsPanelStyle
+                isLeadManagerRole={isLeadManager}
+                calling={calling}
+                onCancel={onPanelClose || exitEditing}
+                onSaved={() => {
+                  setTimelineRefreshKey((k) => k + 1);
+                  void fetchLeadDetails();
+                }}
+                onActivity={() => setTimelineRefreshKey((k) => k + 1)}
+                onCall={() => void handleClickToCall()}
+                onWhatsApp={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('myfng:open-wa-chat', {
+                      detail: {
+                        phone: String(lead?.customer_phone || '').replace(/\D/g, ''),
+                        preview: lead?.problem_description || undefined,
+                      },
+                    }),
+                  );
+                }}
+                onShare={() => void openSharePanel()}
+                onDraftChange={setPricingDraft}
+                externalFieldErrors={{
+                  ...(pincodeFieldError ? { pincode: pincodeFieldError } : {}),
+                  ...(carModelFieldError ? { vehicle_make: carModelFieldError } : {}),
+                }}
+              />
+              <LeadTimelinePanel
+                leadId={leadId}
+                lead={lead}
+                callLogs={callLogs}
+                refreshKey={timelineRefreshKey}
+                openTaskSignal={openTaskSignal}
+              />
+            </div>
+            {lead ? (
+              <LeadPanelQuickActions
+                calling={calling}
+                sendingPricing={sendingPricing}
+                sendPricingReady={sendPricingReady}
+                phone={lead.customer_phone}
+                onCall={() => void handleClickToCall()}
+                onWhatsApp={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('myfng:open-wa-chat', {
+                      detail: {
+                        phone: String(lead.customer_phone || '').replace(/\D/g, ''),
+                        preview: lead.problem_description || undefined,
+                      },
+                    }),
+                  );
+                }}
+                onTask={() => {
+                  setOpenTaskSignal((n) => n + 1);
+                  requestAnimationFrame(() => {
+                    document
+                      .getElementById(`lead-timeline-${leadId}`)
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  });
+                }}
+                onSendPricing={() => void sendPricingWhatsApp()}
+              />
+            ) : null}
+            </>
+          ) : (
           <ResizableLeadSidebarLayout
             unifiedScroll={isPanel}
             main={
@@ -1023,8 +1152,8 @@ export function LeadDetailContent({
                   <WhatsAppIcon className="w-4 h-4" />
                   {sendingPricing ? 'Sending…' : 'Send pricing on WhatsApp'}
                 </button>
-                {pricingNotice || pricingGap ? (
-                  <p className="mt-2 text-xs font-semibold leading-snug text-rose-600">{pricingNotice || pricingGap}</p>
+                {pricingBanner ? (
+                  <p className="mt-2 text-xs font-semibold leading-snug text-rose-600">{pricingBanner}</p>
                 ) : null}
               </div>
 
@@ -1136,6 +1265,7 @@ export function LeadDetailContent({
             </div>
             }
           />
+          )
         ) : (
           <>
         <div className="relative overflow-hidden rounded-2xl bg-[#023D95] text-white p-4 sm:p-6 shadow-lg">

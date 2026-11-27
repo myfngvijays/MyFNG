@@ -1,4 +1,5 @@
 import { formatDateTimeIST } from '@/lib/utils';
+import { initialsFromName } from '@/lib/telecaller/crmReportsRange';
 
 /** TeleCRM-style compact activity lines (calls, WhatsApp, updates). */
 
@@ -109,10 +110,119 @@ export function compactWhatsappPreview(body: string | null | undefined, title: s
 }
 
 export function compactGenericLine(title: string, body?: string | null): string {
-  const t = String(title || '').trim();
+  const t = activityHeadline(title, body);
   const b = String(body || '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (b && !b.startsWith('[')) return clipFeedText(b.length > t.length ? b : `${t} · ${b}`, 58);
-  return clipFeedText(t, 58);
+  if (b && !b.startsWith('[') && t !== b) {
+    const combined = b.length > t.length ? b : `${t} · ${b}`;
+    return clipFeedText(combined, 72);
+  }
+  return clipFeedText(t, 72);
+}
+
+const AUTO_HAY_RE =
+  /\b(waca|misa|whatsapp_admin|template|auto\s*msg|automated|bot\b|api\s*request|smartflo|pricing\s*sent)/i;
+
+export function activityIsAutomated(
+  title: string,
+  body?: string | null,
+  meta?: Record<string, unknown>,
+): boolean {
+  const template = String(meta?.message_type || meta?.template_name || '').toLowerCase();
+  if (template && template !== 'text') return true;
+  const hay = [title, body, String(meta?.event || ''), String(meta?.title || '')].join(' ');
+  return AUTO_HAY_RE.test(hay);
+}
+
+function pickName(raw: string): string {
+  return String(raw || '')
+    .replace(/\s+by\s+.+$/i, '')
+    .replace(/[·,].*$/, '')
+    .trim();
+}
+
+/** Right-side badge(s): actor for the row, or from→to on transfer. */
+export function activityEndInitials(
+  title: string,
+  body?: string | null,
+  meta?: Record<string, unknown>,
+): string[] {
+  if (meta?.transfer) {
+    const from = String(meta?.from_name || meta?.by || '').trim();
+    const to = String(meta?.to_name || '').trim();
+    const badges = [initialsFromName(from), initialsFromName(to)].filter((x) => x && x !== '?');
+    if (badges.length) return badges.slice(0, 2);
+  }
+  const by = String(meta?.by || meta?.actor_name || meta?.telecaller_name || '').trim();
+  if (by) return [initialsFromName(by)];
+
+  return activityAssigneeInitials(title, body, meta);
+}
+
+/** Initials for assignee(s): current actor, reassign from→to, or "added by". */
+export function activityAssigneeInitials(
+  title: string,
+  body?: string | null,
+  meta?: Record<string, unknown>,
+): string[] {
+  const out: string[] = [];
+  const by = String(meta?.by || meta?.actor_name || meta?.telecaller_name || '').trim();
+  if (by) out.push(initialsFromName(by));
+
+  const text = `${title}\n${body || ''}`;
+  const transferred = text.match(/lead\s+transferred\s*·\s*([^→\n]+?)\s*→\s*([^\n]+)/i);
+  if (transferred) {
+    out.push(initialsFromName(pickName(transferred[1])));
+    out.push(initialsFromName(pickName(transferred[2])));
+    return Array.from(new Set(out.filter((x) => x && x !== '?')));
+  }
+  const reassignAlt = text.match(/reassign(?:ed)?\s+from\s+([^->\n]+?)\s*(?:->|→)\s*([^\n·,]+)/i);
+  if (reassignAlt) {
+    out.push(initialsFromName(pickName(reassignAlt[1])));
+    out.push(initialsFromName(pickName(reassignAlt[2])));
+  }
+
+  const assigned = text.match(/lead\s+assigned\s+to\s+([^\n·,]+)/i);
+  if (assigned) out.push(initialsFromName(pickName(assigned[1])));
+
+  const added = text.match(/lead\s+added\s+by\s+([^\n·,]+)/i);
+  if (added) out.push(initialsFromName(pickName(added[1])));
+
+  const createdBy = text.match(/(?:created|added)\s+by\s+([^\n·,]+)/i);
+  if (createdBy) out.push(initialsFromName(pickName(createdBy[1])));
+
+  return Array.from(new Set(out.filter((x) => x && x !== '?')));
+}
+
+export function activityHeadline(title: string, body?: string | null): string {
+  const t = String(title || '').trim();
+  const lines = String(body || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const tagLine = lines.find((l) => /^leadtag\s*:/i.test(l));
+  if (tagLine) {
+    const m = tagLine.match(/^leadtag\s*:\s*(.+?)\s*(?:->|→)\s*(.+)$/i);
+    if (m) return `Lead tag · ${m[2].trim()}`;
+    return clipFeedText(tagLine.replace(/^leadtag\s*:\s*/i, 'Lead tag · '), 58);
+  }
+
+  if (/^details updated$/i.test(t) && lines[0]) return clipFeedText(lines[0], 58);
+
+  if (/lead\s+transferred/i.test(t)) return t;
+
+  if (/reassign/i.test(t) || /reassign/i.test(body || '')) {
+    const m = `${t}\n${body || ''}`.match(
+      /reassign(?:ed)?\s+from\s+([^->\n]+?)\s*(?:->|→)\s*([^\n]+)/i,
+    );
+    if (m) return `Lead reassigned · ${pickName(m[1])} → ${pickName(m[2])}`;
+  }
+
+  if (/^lead created$/i.test(t)) return 'Lead created';
+
+  if (/^status\s*:/i.test(t)) return clipFeedText(t.replace(/^status\s*:\s*/i, 'Status · '), 58);
+
+  return t;
 }

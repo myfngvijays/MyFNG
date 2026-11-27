@@ -58,6 +58,7 @@ import LeadsSavedViews, { type CrmLeadsViewSnapshot } from '@/components/telecal
 import LeadConditionsBar from '@/components/telecaller/crm/LeadConditionsBar';
 import { parseLeadConditions, serializeLeadConditions, type LeadCondition } from '@/lib/crm/leadConditions';
 import { LeadDetailContent } from './[id]/page';
+import ResizableTelecallerLeadDrawer from '@/components/telecaller/crm/ResizableTelecallerLeadDrawer';
 import { leadSourceTag, type LeadSourceKind, type LeadSourceTag } from '@/lib/telecaller/leadSourceTag';
 import BookingPriceCard from '@/components/telecaller/crm/BookingPriceCard';
 
@@ -3051,7 +3052,7 @@ function TelecallerCrmLeadsContent() {
             className="absolute inset-0 bg-slate-900/40"
             onClick={closeLead}
           />
-          <div className="telecaller-lead-drawer relative flex h-full w-full min-w-0 flex-col bg-[#f4f7fb] shadow-2xl min-[1100px]:w-[calc(100vw-7rem)] min-[1536px]:w-[min(1360px,calc(100vw-9rem))]">
+          <ResizableTelecallerLeadDrawer>
             {navLeadIds.length > 0 ? (
               <div className="flex shrink-0 items-center justify-end gap-2 border-b border-slate-200 bg-white px-3 py-2">
                 <button
@@ -3081,7 +3082,7 @@ function TelecallerCrmLeadsContent() {
                 </button>
               </div>
             ) : null}
-            <div className="lead-drawer-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <LeadDetailContent
                 panelLeadId={openLeadId}
                 onPanelClose={closeLead}
@@ -3089,7 +3090,7 @@ function TelecallerCrmLeadsContent() {
               />
             </div>
             <div id="lead-drawer-actions" className="hidden" />
-          </div>
+          </ResizableTelecallerLeadDrawer>
         </div>
       ) : null}
     </DashboardLayout>

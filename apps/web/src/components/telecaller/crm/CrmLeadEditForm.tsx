@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type ComponentType } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -102,6 +102,20 @@ const ACTIVITY_OPTIONS = [
   { id: 'OTHER', label: 'Other', lead_status: null },
 ] as const;
 
+function panelStatusTone(activityResult: string): string {
+  const a = String(activityResult || 'FRESH').toUpperCase();
+  if (a === 'LOST') return 'border-rose-400 bg-rose-50 text-rose-950';
+  if (a === 'OTHER') return 'border-violet-400 bg-violet-50 text-violet-950';
+  if (a === 'BOOKING_CONFIRMED') return 'border-emerald-400 bg-emerald-50 text-emerald-950';
+  if (a === 'IN_SERVICE') return 'border-blue-500 bg-blue-50 text-blue-950';
+  if (a === 'SERVICE_DONE') return 'border-teal-500 bg-teal-50 text-teal-950';
+  if (a === 'WILL_VISIT') return 'border-violet-400 bg-violet-50 text-violet-950';
+  if (a === 'CALLBACK') return 'border-sky-400 bg-sky-50 text-sky-950';
+  if (a === 'INTERESTED') return 'border-orange-400 bg-orange-50 text-orange-950';
+  if (a === 'RINGING') return 'border-slate-400 bg-slate-100 text-slate-900';
+  return 'border-blue-500 bg-blue-50 text-blue-950';
+}
+
 function headerCardClass(activityResult: string): string {
   const a = String(activityResult || '').toUpperCase();
   if (a === 'LOST') return 'bg-rose-700';
@@ -180,9 +194,10 @@ function composeSmartAddress(parts: {
     .join(', ');
 }
 
-function fieldCls(hasError?: boolean, disabled?: boolean) {
+function fieldCls(hasError?: boolean, disabled?: boolean, compact?: boolean) {
   return [
-    'w-full min-w-0 max-w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition',
+    'w-full min-w-0 max-w-full border text-slate-900 shadow-sm transition',
+    compact ? 'rounded-lg px-2.5 py-1.5 text-sm' : 'rounded-xl px-3.5 py-2.5 text-sm',
     'placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#023D95]/20 focus:border-[#023D95]',
     disabled ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : 'bg-white hover:border-slate-300',
     hasError ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200',
@@ -341,12 +356,18 @@ async function describeLeadActivity(
 function FieldLabel({
   children,
   required,
+  compact,
 }: {
   children: ReactNode;
   required?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+    <label
+      className={`block font-bold uppercase tracking-wide text-slate-500 ${
+        compact ? 'mb-0.5 text-[10px]' : 'mb-1.5 text-[11px]'
+      }`}
+    >
       {children}
       {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
     </label>
@@ -514,7 +535,7 @@ function OtherReasonField({
 
   const selectCls = header
     ? 'h-10 min-w-[150px] max-w-[200px] rounded-xl bg-white text-[#023D95] pl-3 pr-8 text-xs font-bold shadow-sm outline-none'
-    : fieldCls();
+    : ic();
   return (
     <div className={header ? 'flex flex-wrap items-center gap-1.5' : 'sm:col-span-2'}>
       {header ? null : <FieldLabel>Other</FieldLabel>}
@@ -540,7 +561,7 @@ function OtherReasonField({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void addItem()}
           placeholder="Naya other item"
-          className={header ? 'h-10 w-32 rounded-xl bg-white px-3 text-xs font-semibold text-slate-800 outline-none' : fieldCls()}
+          className={header ? 'h-10 w-32 rounded-xl bg-white px-3 text-xs font-semibold text-slate-800 outline-none' : ic()}
         />
         <button
           type="button"
@@ -559,11 +580,14 @@ function SectionCard({
   title,
   icon: Icon,
   tone = 'slate',
+  compact = false,
   children,
 }: {
   title: string;
   icon: ComponentType<{ className?: string }>;
   tone?: 'slate' | 'emerald' | 'sky' | 'amber' | 'violet' | 'indigo';
+  /** Bookings drawer — dense admin-style sections */
+  compact?: boolean;
   children: ReactNode;
 }) {
   const tones: Record<string, string> = {
@@ -574,6 +598,27 @@ function SectionCard({
     violet: 'border-violet-200/80 bg-gradient-to-br from-violet-50/60 to-white',
     indigo: 'border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 to-white',
   };
+  const compactTones: Record<string, string> = {
+    slate: 'border-slate-400 bg-white',
+    emerald: 'border-emerald-400 bg-emerald-50/80',
+    sky: 'border-sky-400 bg-sky-50/70',
+    amber: 'border-amber-400 bg-amber-50/75',
+    violet: 'border-violet-400 bg-violet-50/60',
+    indigo: 'border-indigo-400 bg-indigo-50/70',
+  };
+  if (compact) {
+    return (
+      <section
+        className={`min-w-0 rounded-xl border-2 p-3 shadow-md ${compactTones[tone] || compactTones.slate}`}
+      >
+        <p className="mb-2 flex items-center gap-1.5 border-b border-slate-300/80 pb-1.5 text-xs font-bold uppercase tracking-wide text-[#023D95]">
+          <Icon className="h-4 w-4 shrink-0" />
+          {title}
+        </p>
+        {children}
+      </section>
+    );
+  }
   return (
     <section className={`min-w-0 rounded-2xl border p-4 shadow-sm sm:p-5 ${tones[tone]}`}>
       <div className="mb-4 flex items-center gap-2.5">
@@ -590,6 +635,10 @@ function SectionCard({
 export type CrmLeadEditFormProps = {
   leadId: string;
   embedded?: boolean;
+  /** Super Admin bookings drawer style — white panel, no blue hero / pipeline. */
+  bookingsPanelStyle?: boolean;
+  /** Portal target for status + Save in telecaller drawer header (element id). */
+  panelHeaderActionsId?: string;
   /** WhatsApp ke side panel: layout column ke andar, save bar screen pe nahi. */
   sidePanel?: boolean;
   onCancel?: () => void;
@@ -599,6 +648,8 @@ export type CrmLeadEditFormProps = {
   onWhatsApp?: () => void;
   onShare?: () => void;
   onDraftChange?: (draft: { pincode: string; carModel: string }) => void;
+  /** Panel / pricing: show inline on field instead of global banner */
+  externalFieldErrors?: Partial<Record<'pincode' | 'vehicle_make', string>>;
   calling?: boolean;
   isLeadManagerRole?: boolean;
   seedLead?: Record<string, any> | null;
@@ -647,6 +698,8 @@ function YearPicker({
 export default function CrmLeadEditForm({
   leadId,
   embedded = false,
+  bookingsPanelStyle = false,
+  panelHeaderActionsId = 'lead-panel-header-actions',
   sidePanel = false,
   onCancel,
   onSaved,
@@ -655,6 +708,7 @@ export default function CrmLeadEditForm({
   onWhatsApp,
   onShare,
   onDraftChange,
+  externalFieldErrors,
   calling = false,
   isLeadManagerRole,
   seedLead = null,
@@ -703,6 +757,7 @@ export default function CrmLeadEditForm({
   const [reasonQuery, setReasonQuery] = useState('');
   const statusBtnRef = useRef<HTMLButtonElement>(null);
   const [statusPos, setStatusPos] = useState<{ top: number; right: number } | null>(null);
+  const [panelActionsHost, setPanelActionsHost] = useState<HTMLElement | null>(null);
   const [carDisplay, setCarDisplay] = useState('');
   const [showSecondCar, setShowSecondCar] = useState(false);
   const [secondCar, setSecondCar] = useState<CrmSecondCar>(emptySecondCar());
@@ -837,6 +892,17 @@ export default function CrmLeadEditForm({
       cancelled = true;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (!bookingsPanelStyle) {
+      setPanelActionsHost(null);
+      return;
+    }
+    const pick = () => setPanelActionsHost(document.getElementById(panelHeaderActionsId));
+    pick();
+    const id = window.requestAnimationFrame(pick);
+    return () => window.cancelAnimationFrame(id);
+  }, [bookingsPanelStyle, panelHeaderActionsId, leadId]);
 
   useEffect(() => {
     if (!statusOpen) return;
@@ -1769,7 +1835,151 @@ export default function CrmLeadEditForm({
 
   const dockFooter = saveSlot;
   const inDrawer = Boolean(dockFooter);
-  const compact = inDrawer || sidePanel;
+  const compact = inDrawer || sidePanel || bookingsPanelStyle;
+  const showTelecallerHero = !bookingsPanelStyle;
+  const ic = (hasError?: boolean, disabled?: boolean) => fieldCls(hasError, disabled, bookingsPanelStyle);
+  const grid4 = bookingsPanelStyle
+    ? 'grid grid-cols-2 gap-2 lg:grid-cols-4'
+    : sidePanel
+      ? 'grid grid-cols-1 gap-3'
+      : 'grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4';
+
+  const statusReason =
+    formData.activity_result === 'LOST'
+      ? String(formData.lost_reason || '').trim()
+      : formData.activity_result === 'OTHER'
+        ? String(formData.other_reason || '').trim()
+        : '';
+
+  const statusTone = panelStatusTone(formData.activity_result);
+
+  const bookingsPanelToolbar = (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex min-w-0 max-w-full items-center gap-1.5">
+        <button
+          ref={statusBtnRef}
+          type="button"
+          aria-label="Change lead status"
+          aria-expanded={statusOpen}
+          onClick={() => {
+            setStatusPanel('list');
+            setReasonQuery('');
+            setStatusOpen((open) => !open);
+          }}
+          className={`inline-flex h-9 min-w-[116px] max-w-[150px] items-center justify-between gap-2 rounded-lg border-2 px-2.5 text-sm font-bold shadow-sm ${statusTone}`}
+        >
+          <span className="truncate">
+            {activityOptions.find((option) => option.id === formData.activity_result)?.label ||
+              formData.activity_result ||
+              'Fresh'}
+          </span>
+          <span aria-hidden className="text-[10px] text-slate-400">
+            ▾
+          </span>
+        </button>
+        {formData.activity_result === 'LOST' || formData.activity_result === 'OTHER' ? (
+          <button
+            type="button"
+            onClick={() => {
+              setStatusPanel(formData.activity_result === 'LOST' ? 'lost' : 'other');
+              setReasonQuery('');
+              setStatusOpen(true);
+            }}
+            className="inline-flex h-9 min-w-[120px] max-w-[160px] items-center gap-1 rounded-lg border-2 border-slate-200 bg-white px-2 text-left text-[11px] font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+            title={statusReason || 'Pick reason'}
+          >
+            <span className="shrink-0 text-slate-400" aria-hidden>
+              ↳
+            </span>
+            <span className="min-w-0 flex-1 truncate">{statusReason || 'Reason…'}</span>
+            <span className="shrink-0 text-[10px] text-slate-400" aria-hidden>
+              ▾
+            </span>
+          </button>
+        ) : null}
+      </div>
+      {statusOpen && statusPos
+        ? createPortal(
+            <div
+              data-lead-status-menu
+              style={{ top: statusPos.top, right: statusPos.right }}
+              className="fixed z-[11000] w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl"
+            >
+              {statusPanel === 'list' ? (
+                <div className="max-h-[360px] overflow-y-auto py-1">
+                  {(activityOptions.some((option) => option.id === formData.activity_result)
+                    ? activityOptions
+                    : [
+                        ...activityOptions,
+                        { id: formData.activity_result, label: formData.activity_result, lead_status: 'NEW' },
+                      ]
+                  ).map((option) => {
+                    const active = option.id === formData.activity_result;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          if (option.id === 'LOST' || option.id === 'OTHER') {
+                            setStatusPanel(option.id === 'LOST' ? 'lost' : 'other');
+                            setReasonQuery('');
+                            return;
+                          }
+                          touchLead();
+                          statusSaveRequested.current = true;
+                          setFormData((prev) => ({ ...prev, activity_result: option.id }));
+                          setStatusOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm ${
+                          active ? 'bg-[#2563eb] font-semibold text-white' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="w-4 text-xs">{active ? '✓' : ''}</span>
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <ReasonPicker
+                  kind={statusPanel}
+                  query={reasonQuery}
+                  onQuery={setReasonQuery}
+                  reasons={statusPanel === 'lost' ? lostReasonOptions : otherReasonOptions}
+                  selected={statusPanel === 'lost' ? formData.lost_reason : formData.other_reason}
+                  onBack={() => {
+                    setStatusPanel('list');
+                    setReasonQuery('');
+                  }}
+                  onPick={(reason) => {
+                    touchLead();
+                    statusSaveRequested.current = true;
+                    setFormData((prev) =>
+                      statusPanel === 'lost'
+                        ? { ...prev, activity_result: 'LOST', lost_reason: reason }
+                        : { ...prev, activity_result: 'OTHER', other_reason: reason },
+                    );
+                    setStatusOpen(false);
+                  }}
+                  onCreated={(reason) => {
+                    setOtherReasonOptions((prev) => (prev.includes(reason) ? prev : [...prev, reason]));
+                  }}
+                />
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
+      <button
+        type="submit"
+        form="crm-lead-edit-form"
+        disabled={saving}
+        className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-60"
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
+  );
 
   const saveBar = (
     <div
@@ -1830,10 +2040,17 @@ export default function CrmLeadEditForm({
       className={
         sidePanel
           ? 'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#f4f7fb]'
-          : `${embedded ? 'w-full' : 'max-w-5xl mx-auto'} ${inDrawer ? 'space-y-3 pb-2' : 'space-y-4 pb-28'} ${embedded ? '' : 'px-3 sm:px-4'}`
+          : bookingsPanelStyle
+            ? 'flex w-full min-w-0 flex-col bg-white'
+            : `${embedded ? 'w-full' : 'max-w-5xl mx-auto'} ${inDrawer ? 'space-y-3 pb-2' : 'space-y-4 pb-28'} ${embedded ? '' : 'px-3 sm:px-4'}`
       }
     >
-      <div className={sidePanel ? 'shrink-0 px-3 pt-3' : inDrawer ? 'sticky top-0 z-30 space-y-2 bg-[#f4f7fb] pb-2' : ''}>
+      {showTelecallerHero ? (
+      <div
+        className={
+          sidePanel ? 'shrink-0 px-3 pt-3' : inDrawer ? 'sticky top-0 z-30 space-y-2 bg-[#f4f7fb] pb-2' : ''
+        }
+      >
       <div
         className={`relative overflow-hidden rounded-2xl text-white shadow-lg transition-colors ${headerCardClass(formData.activity_result)} ${compact ? 'p-3' : 'p-4 sm:p-6'}`}
       >
@@ -2067,6 +2284,8 @@ export default function CrmLeadEditForm({
         </div>
       </div>
       </div>
+      ) : null}
+      {bookingsPanelStyle && panelActionsHost ? createPortal(bookingsPanelToolbar, panelActionsHost) : null}
 
       <form
         id="crm-lead-edit-form"
@@ -2076,11 +2295,29 @@ export default function CrmLeadEditForm({
         // change event — mark the form edited on any click / key too so autosave picks them up.
         onClickCapture={touchLead}
         onKeyDownCapture={touchLead}
-        noValidate className={sidePanel ? 'min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-3' : 'space-y-4'}>
-        <SectionCard title="Customer Details" icon={User} tone="emerald">
-          <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'}>
+        noValidate
+        className={
+          sidePanel
+            ? 'min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-3 py-3'
+            : bookingsPanelStyle
+              ? 'space-y-2.5'
+              : 'space-y-4'
+        }
+      >
+        <SectionCard title="Customer Details" icon={User} tone="emerald" compact={bookingsPanelStyle}>
+          <div
+            className={
+              bookingsPanelStyle
+                ? grid4
+                : sidePanel
+                  ? 'grid grid-cols-1 gap-3'
+                  : 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4'
+            }
+          >
             <div>
-              <FieldLabel required>Customer Name</FieldLabel>
+              <FieldLabel compact={bookingsPanelStyle} required>
+                Customer Name
+              </FieldLabel>
               <input
                 type="text"
                 name="customer_name"
@@ -2090,13 +2327,15 @@ export default function CrmLeadEditForm({
                   const customer_name = titleCasePersonName(e.target.value);
                   setFormData((prev) => ({ ...prev, customer_name }));
                 }}
-                className={fieldCls(Boolean(errors.customer_name))}
+                className={ic(Boolean(errors.customer_name))}
                 required
               />
               {errors.customer_name ? <p className="mt-1 text-xs text-rose-600">{errors.customer_name}</p> : null}
             </div>
             <div>
-              <FieldLabel required>Phone Number</FieldLabel>
+              <FieldLabel compact={bookingsPanelStyle} required>
+                Phone Number
+              </FieldLabel>
               <div className="relative">
                 <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 {isForeignPhone(formData.customer_phone) ? (
@@ -2107,7 +2346,7 @@ export default function CrmLeadEditForm({
                     value={formatPhoneDisplay(formData.customer_phone)}
                     readOnly
                     title="International number — country code kept"
-                    className={`${fieldCls(Boolean(errors.customer_phone))} pl-9 bg-amber-50`}
+                    className={`${ic(Boolean(errors.customer_phone))} pl-9 bg-amber-50`}
                   />
                 ) : (
                   <input
@@ -2121,7 +2360,7 @@ export default function CrmLeadEditForm({
                       setLookupHint(null);
                     }}
                     onBlur={(e) => void lookupCustomerByPhone(e.target.value)}
-                    className={`${fieldCls(Boolean(errors.customer_phone))} pl-9`}
+                    className={`${ic(Boolean(errors.customer_phone))} pl-9`}
                     maxLength={10}
                     required
                   />
@@ -2133,26 +2372,29 @@ export default function CrmLeadEditForm({
                 </p>
               ) : lookupHint ? (
                 <p className="mt-1 text-xs font-semibold text-[#004AAD]">{lookupHint}</p>
-              ) : (
+              ) : bookingsPanelStyle ? null : (
                 <p className="mt-1 text-[10px] text-slate-400">Auto-fills name / car / address if this number exists in DB</p>
               )}
               {errors.customer_phone ? <p className="mt-1 text-xs text-rose-600">{errors.customer_phone}</p> : null}
             </div>
-          </div>
-          <div className={sidePanel ? 'mt-3 grid grid-cols-1 gap-3' : 'mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3'}>
             <div>
-              <FieldLabel>Alternate Phone</FieldLabel>
-              <input type="tel" name="customer_alternate_phone" value={formData.customer_alternate_phone} onChange={handleChange} className={fieldCls()} maxLength={10} />
+              <FieldLabel compact={bookingsPanelStyle}>Alternate Phone</FieldLabel>
+              <input type="tel" name="customer_alternate_phone" value={formData.customer_alternate_phone} onChange={handleChange} className={ic()} maxLength={10} />
             </div>
             <div>
-              <FieldLabel>Email</FieldLabel>
+              <FieldLabel compact={bookingsPanelStyle}>Email</FieldLabel>
               <div className="relative">
                 <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input type="email" name="customer_email" value={formData.customer_email} onChange={handleChange} className={`${fieldCls()} pl-9`} />
+                <input type="email" name="customer_email" value={formData.customer_email} onChange={handleChange} className={`${ic()} pl-9`} />
               </div>
             </div>
             <div>
-              <FieldLabel>Pincode</FieldLabel>
+              <div className="mb-0.5 flex items-center justify-between gap-1">
+                <FieldLabel compact={bookingsPanelStyle}>Pincode</FieldLabel>
+                {bookingsPanelStyle && formData.city ? (
+                  <span className="truncate text-[10px] font-semibold text-[#004AAD]">{formData.city}</span>
+                ) : null}
+              </div>
               <div className="relative">
                 <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -2169,54 +2411,72 @@ export default function CrmLeadEditForm({
                     }));
                     if (pin.length === 6) void resolveCityFromPincode(pin);
                   }}
-                  className={`${fieldCls(Boolean(errors.pincode))} pl-9`}
+                  className={`${ic(Boolean(errors.pincode || externalFieldErrors?.pincode))} pl-9`}
                   maxLength={6}
                   inputMode="numeric"
                 />
               </div>
-              {resolvingCity ? (
+              {!bookingsPanelStyle && resolvingCity ? (
                 <p className="mt-1 text-xs text-slate-500">Finding city…</p>
-              ) : formData.city ? (
+              ) : !bookingsPanelStyle && formData.city ? (
                 <p className="mt-1 text-xs font-semibold text-[#004AAD]">{formData.city}</p>
-              ) : formData.pincode.length === 6 ? (
+              ) : !bookingsPanelStyle && formData.pincode.length === 6 ? (
                 <p className="mt-1 text-xs text-slate-500">Pincode saved. Area city map mein nahi hai.</p>
+              ) : bookingsPanelStyle && resolvingCity ? (
+                <p className="mt-0.5 text-[10px] text-slate-500">Finding city…</p>
               ) : null}
-              {errors.pincode || errors.city_id ? (
-                <p className="mt-1 text-xs text-rose-600">{errors.pincode || errors.city_id}</p>
+              {errors.pincode || externalFieldErrors?.pincode || errors.city_id ? (
+                <p className="mt-1 text-xs text-rose-600">
+                  {errors.pincode || externalFieldErrors?.pincode || errors.city_id}
+                </p>
               ) : null}
-            </div>
-            <div className={sidePanel ? 'min-w-0' : 'sm:col-span-3'}>
-              <CrmWorkshopPicker
-                pincode={formData.pincode}
-                city={formData.city}
-                cityId={formData.city_id}
-                workshopId={formData.workshop_id}
-                workshopName={formData.workshop_name}
-                onPick={(id, name) =>
-                  setFormData((prev) => ({ ...prev, workshop_id: id, workshop_name: name }))
-                }
-              />
             </div>
             <div>
-              <FieldLabel>Flat / Building</FieldLabel>
-              <input type="text" name="flat_number" value={formData.flat_number} onChange={handleChange} className={fieldCls()} placeholder="Flat / house no." />
+              <FieldLabel compact={bookingsPanelStyle}>Flat / Building</FieldLabel>
+              <input type="text" name="flat_number" value={formData.flat_number} onChange={handleChange} className={ic()} placeholder="Flat / house no." />
             </div>
             <div>
-              <FieldLabel>Area / Street</FieldLabel>
-              <input type="text" name="area" value={formData.area} onChange={handleChange} className={fieldCls(Boolean(errors.area))} placeholder="Society, road, locality" />
+              <FieldLabel compact={bookingsPanelStyle}>Area / Street</FieldLabel>
+              <input type="text" name="area" value={formData.area} onChange={handleChange} className={ic(Boolean(errors.area))} placeholder="Society, road, locality" />
               {errors.area ? <p className="mt-1 text-xs text-rose-600">{errors.area}</p> : null}
             </div>
             <div>
-              <FieldLabel>Landmark</FieldLabel>
-              <input type="text" name="landmark" value={formData.landmark} onChange={handleChange} className={fieldCls()} placeholder="Near …" />
+              <FieldLabel compact={bookingsPanelStyle}>Landmark</FieldLabel>
+              <input type="text" name="landmark" value={formData.landmark} onChange={handleChange} className={ic()} placeholder="Near …" />
             </div>
+            {!bookingsPanelStyle ? (
+              <div
+                className={
+                  sidePanel ? 'min-w-0' : 'sm:col-span-2 lg:col-span-4'
+                }
+              >
+                <CrmWorkshopPicker
+                  pincode={formData.pincode}
+                  city={formData.city}
+                  cityId={formData.city_id}
+                  workshopId={formData.workshop_id}
+                  workshopName={formData.workshop_name}
+                  onPick={(id, name) =>
+                    setFormData((prev) => ({ ...prev, workshop_id: id, workshop_name: name }))
+                  }
+                />
+              </div>
+            ) : null}
           </div>
         </SectionCard>
 
-        <SectionCard title="Vehicle Details" icon={Car} tone="sky">
-          <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'}>
-            <div className={sidePanel ? 'min-w-0' : 'col-span-2 lg:col-span-1'}>
-              <FieldLabel>Vehicle Number</FieldLabel>
+        <SectionCard title="Vehicle Details" icon={Car} tone="sky" compact={bookingsPanelStyle}>
+          <div
+            className={
+              bookingsPanelStyle
+                ? grid4
+                : sidePanel
+                  ? 'grid grid-cols-1 gap-3'
+                  : 'grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'
+            }
+          >
+            <div className={bookingsPanelStyle ? 'min-w-0' : sidePanel && !bookingsPanelStyle ? 'min-w-0' : 'col-span-2 lg:col-span-1'}>
+              <FieldLabel compact={bookingsPanelStyle}>Vehicle Number</FieldLabel>
               <input
                 type="text"
                 name="vehicle_number"
@@ -2227,16 +2487,17 @@ export default function CrmLeadEditForm({
                     vehicle_number: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12),
                   }))
                 }
-                className={`${fieldCls(Boolean(errors.vehicle_number))} uppercase tracking-wide font-semibold`}
+                className={`${ic(Boolean(errors.vehicle_number))} uppercase tracking-wide font-semibold`}
                 placeholder="MH12AB1234 or NA"
               />
               {errors.vehicle_number ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_number}</p> : null}
             </div>
-            <div className={sidePanel ? 'min-w-0' : 'col-span-2 lg:col-span-2'}>
+            <div className={bookingsPanelStyle ? 'min-w-0' : sidePanel ? 'min-w-0' : 'col-span-2 lg:col-span-2'}>
               <CrmCarSearch
                 label="Car Model"
                 placeholder="Type model (e.g. Swift, City, Rapid)"
                 displayValue={carDisplay}
+                invalid={Boolean(errors.vehicle_make || externalFieldErrors?.vehicle_make)}
                 onSelect={(car) => {
                   touchLead();
                   setFormData((prev) => ({
@@ -2266,10 +2527,36 @@ export default function CrmLeadEditForm({
                   setCarDisplay('');
                 }}
               />
-              {errors.vehicle_make ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_make}</p> : null}
+              {errors.vehicle_make || externalFieldErrors?.vehicle_make ? (
+                <p className="mt-1 text-xs text-rose-600">
+                  {errors.vehicle_make || externalFieldErrors?.vehicle_make}
+                </p>
+              ) : null}
             </div>
-            {!showSecondCar ? (
-              <div className={sidePanel ? 'min-w-0' : 'col-span-2 flex items-end lg:col-span-1'}>
+            {bookingsPanelStyle ? (
+              <div className="col-span-2 min-w-0">
+                <FieldLabel compact>Workshop</FieldLabel>
+                <CrmWorkshopPicker
+                  compact
+                  pincode={formData.pincode}
+                  city={formData.city}
+                  cityId={formData.city_id}
+                  workshopId={formData.workshop_id}
+                  workshopName={formData.workshop_name}
+                  onPick={(id, name) =>
+                    setFormData((prev) => ({ ...prev, workshop_id: id, workshop_name: name }))
+                  }
+                />
+              </div>
+            ) : null}
+            {!bookingsPanelStyle && !showSecondCar ? (
+              <div
+                className={
+                  sidePanel
+                    ? 'min-w-0'
+                    : 'col-span-2 flex items-end lg:col-span-1'
+                }
+              >
                 <button
                   type="button"
                   onClick={() => {
@@ -2278,24 +2565,26 @@ export default function CrmLeadEditForm({
                     setSecondCar(emptySecondCar());
                     setSecondCarDisplay('');
                   }}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-sm font-bold text-sky-800 hover:bg-sky-100"
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-sm font-bold text-sky-800 hover:bg-sky-100"
                 >
-                  <Car className="h-4 w-4" />
+                  <Car className="h-4 w-4 shrink-0" />
                   Add second car
                 </button>
               </div>
             ) : null}
             <div>
-              <FieldLabel>Year</FieldLabel>
+              <FieldLabel compact={bookingsPanelStyle}>
+                {bookingsPanelStyle ? 'Registration Year' : 'Year'}
+              </FieldLabel>
               <YearPicker
                 value={formData.vehicle_year}
-                className={fieldCls()}
+                className={ic()}
                 onChange={(year) => setFormData((prev) => ({ ...prev, vehicle_year: year }))}
               />
             </div>
             <div>
-              <FieldLabel>Fuel Type</FieldLabel>
-              <select name="vehicle_fuel_type" value={formData.vehicle_fuel_type} onChange={handleChange} className={fieldCls(Boolean(errors.vehicle_fuel_type))}>
+              <FieldLabel compact={bookingsPanelStyle}>Fuel Type</FieldLabel>
+              <select name="vehicle_fuel_type" value={formData.vehicle_fuel_type} onChange={handleChange} className={ic(Boolean(errors.vehicle_fuel_type))}>
                 <option value="">Select (optional)</option>
                 <option value="PETROL">Petrol</option>
                 <option value="DIESEL">Diesel</option>
@@ -2306,22 +2595,42 @@ export default function CrmLeadEditForm({
               {errors.vehicle_fuel_type ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_fuel_type}</p> : null}
             </div>
             <div>
-              <FieldLabel>Odometer (km)</FieldLabel>
-              <input type="number" name="odometer_km" value={formData.odometer_km} onChange={handleChange} className={fieldCls()} />
+              <FieldLabel compact={bookingsPanelStyle}>Odometer (km)</FieldLabel>
+              <input type="number" name="odometer_km" value={formData.odometer_km} onChange={handleChange} className={ic()} />
             </div>
-            <div>
-              <FieldLabel>Make / Model</FieldLabel>
-              <input
-                type="text"
-                value={[formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ') || '—'}
-                disabled
-                className={fieldCls(false, true)}
-              />
-            </div>
+            {bookingsPanelStyle && !showSecondCar ? (
+              <div className="min-w-0">
+                <FieldLabel compact>&nbsp;</FieldLabel>
+                <button
+                  type="button"
+                  onClick={() => {
+                    touchLead();
+                    setShowSecondCar(true);
+                    setSecondCar(emptySecondCar());
+                    setSecondCarDisplay('');
+                  }}
+                  className={`${ic()} inline-flex min-h-0 w-full items-center justify-center gap-1 border-dashed border-sky-300 bg-sky-50/80 text-[11px] font-bold text-sky-900 hover:bg-sky-100`}
+                >
+                  <Car className="h-3.5 w-3.5 shrink-0" />
+                  Add 2nd car
+                </button>
+              </div>
+            ) : null}
+            {!bookingsPanelStyle ? (
+              <div>
+                <FieldLabel>Make / Model</FieldLabel>
+                <input
+                  type="text"
+                  value={[formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ') || '—'}
+                  disabled
+                  className={ic(false, true)}
+                />
+              </div>
+            ) : null}
           </div>
 
           {showSecondCar ? (
-            <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/70 p-3 sm:p-4">
+            <div className={`rounded-xl border border-sky-200 bg-sky-50/70 ${bookingsPanelStyle ? 'mt-2 p-2.5' : 'mt-5 p-3 sm:p-4'}`}>
               <div className="mb-3 flex items-center justify-between gap-2">
                 <p className="text-sm font-black text-sky-900">Second car</p>
                 <button
@@ -2355,7 +2664,7 @@ export default function CrmLeadEditForm({
                         vehicle_number: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12),
                       }))
                     }
-                    className={`${fieldCls(Boolean(errors.second_vehicle_number))} uppercase tracking-wide font-semibold`}
+                    className={`${ic(Boolean(errors.second_vehicle_number))} uppercase tracking-wide font-semibold`}
                     placeholder="MH12AB1234 or NA"
                   />
                   {errors.second_vehicle_number ? (
@@ -2402,7 +2711,7 @@ export default function CrmLeadEditForm({
                   <FieldLabel>Year</FieldLabel>
                   <YearPicker
                     value={secondCar.vehicle_year}
-                    className={fieldCls()}
+                    className={ic()}
                     onChange={(year) => setSecondCar((prev) => ({ ...prev, vehicle_year: year }))}
                   />
                 </div>
@@ -2411,7 +2720,7 @@ export default function CrmLeadEditForm({
                   <select
                     value={secondCar.vehicle_fuel_type}
                     onChange={(e) => setSecondCar((prev) => ({ ...prev, vehicle_fuel_type: e.target.value }))}
-                    className={fieldCls()}
+                    className={ic()}
                   >
                     <option value="PETROL">Petrol</option>
                     <option value="DIESEL">Diesel</option>
@@ -2426,7 +2735,7 @@ export default function CrmLeadEditForm({
                     type="number"
                     value={secondCar.odometer_km}
                     onChange={(e) => setSecondCar((prev) => ({ ...prev, odometer_km: e.target.value }))}
-                    className={fieldCls()}
+                    className={ic()}
                   />
                 </div>
               </div>
@@ -2434,15 +2743,15 @@ export default function CrmLeadEditForm({
           ) : null}
         </SectionCard>
 
-        <SectionCard title="Lead Overview" icon={FileText} tone="slate">
-          <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'}>
+        <SectionCard title="Lead Overview" icon={FileText} tone="slate" compact={bookingsPanelStyle}>
+          <div className={bookingsPanelStyle ? grid4 : sidePanel ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'}>
             <div>
               <FieldLabel>Lead Number</FieldLabel>
-              <input type="text" value={lead.lead_number || '—'} disabled className={fieldCls(false, true)} />
+              <input type="text" value={lead.lead_number || '—'} disabled className={ic(false, true)} />
             </div>
             <div>
               <FieldLabel>Priority</FieldLabel>
-              <select name="lead_priority" value={formData.lead_priority} onChange={handleChange} className={fieldCls()}>
+              <select name="lead_priority" value={formData.lead_priority} onChange={handleChange} className={ic()}>
                 <option value="NORMAL">NORMAL</option>
                 <option value="HIGH">HIGH</option>
                 <option value="URGENT">URGENT</option>
@@ -2464,34 +2773,99 @@ export default function CrmLeadEditForm({
                     : '—'
                 }
                 disabled
-                className={fieldCls(false, true)}
+                className={ic(false, true)}
               />
             </div>
             <div>
               <LeadTagsPanel leadId={leadId} canManage={isLeadManager} variant="field" />
             </div>
-            <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4'}>
-              <CrmReferredByField
-                leadId={leadId}
-                value={referredBy}
-                onChange={(next) => {
-                  touchLead();
-                  setReferredBy(next);
-                }}
-                referredTo={referredTo}
-                leadHref={(id) => `${base}/leads/${id}`}
-                className="space-y-3"
-              />
-              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={Boolean(formData.repeat_customer)}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, repeat_customer: e.target.checked }))}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            {bookingsPanelStyle ? (
+              <>
+                <div className="min-w-0">
+                  <FieldLabel compact>Referred By</FieldLabel>
+                  <CrmReferredByField
+                    leadId={leadId}
+                    value={referredBy}
+                    onChange={(next) => {
+                      touchLead();
+                      setReferredBy(next);
+                    }}
+                    referredTo={referredTo}
+                    leadHref={(id) => `${base}/leads/${id}`}
+                    className="space-y-0"
+                    hideLabel
+                    dense
+                  />
+                </div>
+                <div className="min-w-0">
+                  <FieldLabel compact>Workshop Remark</FieldLabel>
+                  <textarea
+                    name="activity_notes"
+                    value={formData.activity_notes}
+                    onChange={handleChange}
+                    rows={2}
+                    className={`${ic()} min-h-[2.25rem] max-h-28 resize-y`}
+                    placeholder="Workshop remark"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <FieldLabel compact>Telecaller Remark</FieldLabel>
+                  <textarea
+                    name="notes"
+                    value={formData.notes}
+                    onChange={handleChange}
+                    rows={2}
+                    className={`${ic()} min-h-[2.25rem] max-h-28 resize-y`}
+                    placeholder="Telecaller remark"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <FieldLabel compact>Repeat</FieldLabel>
+                  <label className={`${ic()} flex min-h-[2.25rem] cursor-pointer items-center gap-2`}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formData.repeat_customer)}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, repeat_customer: e.target.checked }))
+                      }
+                      className="h-4 w-4 shrink-0 rounded border-slate-400"
+                    />
+                    <span className="text-xs font-semibold normal-case tracking-normal text-slate-800">
+                      Repeat
+                    </span>
+                  </label>
+                </div>
+              </>
+            ) : (
+              <div
+                className={
+                  sidePanel
+                    ? 'grid grid-cols-1 gap-3'
+                    : 'col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4'
+                }
+              >
+                <CrmReferredByField
+                  leadId={leadId}
+                  value={referredBy}
+                  onChange={(next) => {
+                    touchLead();
+                    setReferredBy(next);
+                  }}
+                  referredTo={referredTo}
+                  leadHref={(id) => `${base}/leads/${id}`}
+                  className="space-y-3"
                 />
-                <span className="text-xs font-semibold text-slate-900">Repeat Customer</span>
-              </label>
-            </div>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formData.repeat_customer)}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, repeat_customer: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span className="text-xs font-semibold text-slate-900">Repeat Customer</span>
+                </label>
+              </div>
+            )}
             {customFieldDefs.length > 0 ? (
               <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'sm:col-span-2 lg:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-2'}>
                 {customFieldDefs.map((field) => (
@@ -2502,28 +2876,31 @@ export default function CrmLeadEditForm({
                       onChange={(e) =>
                         setCustomFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))
                       }
-                      className={fieldCls()}
+                      className={ic()}
                     />
                   </div>
                 ))}
               </div>
             ) : null}
-            <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4'}>
-              <div>
-                <FieldLabel>Workshop Remark</FieldLabel>
-                <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Workshop remark" />
+            {!bookingsPanelStyle ? (
+              <div className={sidePanel ? 'grid grid-cols-1 gap-3' : 'col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-4'}>
+                <div>
+                  <FieldLabel>Workshop Remark</FieldLabel>
+                  <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={ic()} rows={3} placeholder="Workshop remark" />
+                </div>
+                <div>
+                  <FieldLabel>Telecaller Remark</FieldLabel>
+                  <textarea name="notes" value={formData.notes} onChange={handleChange} className={ic()} rows={3} placeholder="Telecaller remark" />
+                </div>
               </div>
-              <div>
-                <FieldLabel>Telecaller Remark</FieldLabel>
-                <textarea name="notes" value={formData.notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Telecaller remark" />
-              </div>
-            </div>
+            ) : null}
           </div>
         </SectionCard>
 
-        <SectionCard title="Service Details" icon={Wrench} tone="amber">
-          <div className="space-y-4">
+        <SectionCard title="Service Details" icon={Wrench} tone="amber" compact={bookingsPanelStyle}>
+          <div className={bookingsPanelStyle ? 'space-y-2.5' : 'space-y-4'}>
             <CrmServicePlanPicker
+              compact={bookingsPanelStyle}
               selectedIds={formData.service_types}
               onChange={(ids) => {
                 touchLead();
@@ -2570,14 +2947,45 @@ export default function CrmLeadEditForm({
             )}
 
             <div>
+              {!bookingsPanelStyle ? (
               <div className="mb-2 flex items-center justify-between gap-2">
                 <FieldLabel>Coupons</FieldLabel>
-                <button type="button" className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-200" onClick={saveCouponsOnly} disabled={couponSaving}>
+                <button
+                  type="button"
+                  className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-200"
+                  onClick={saveCouponsOnly}
+                  disabled={couponSaving}
+                >
                   {couponSaving ? 'Saving…' : 'Save coupons'}
                 </button>
               </div>
-              <div className={sidePanel ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-stretch'}>
-                <div className="max-h-24 overflow-auto rounded-xl border border-slate-200 bg-white p-1.5">
+              ) : (
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <FieldLabel compact>Coupons · Message</FieldLabel>
+                  <button
+                    type="button"
+                    className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
+                    onClick={saveCouponsOnly}
+                    disabled={couponSaving}
+                  >
+                    {couponSaving ? 'Saving…' : 'Save coupons'}
+                  </button>
+                </div>
+              )}
+              <div
+                className={
+                  bookingsPanelStyle
+                    ? 'grid grid-cols-1 items-stretch gap-2 lg:grid-cols-12'
+                    : sidePanel
+                      ? 'grid grid-cols-1 gap-2'
+                      : 'grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-stretch'
+                }
+              >
+                <div
+                  className={`overflow-auto rounded-lg border-2 border-slate-300 bg-white p-1.5 ${
+                    bookingsPanelStyle ? 'max-h-20 lg:col-span-4' : 'max-h-24 rounded-xl'
+                  }`}
+                >
                   {couponsLoading ? (
                     <div className="p-2 text-xs text-slate-500">Loading coupons…</div>
                   ) : availableCoupons.length === 0 ? (
@@ -2592,8 +3000,21 @@ export default function CrmLeadEditForm({
                             : `${code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
                         const checked = selectedCodes.includes(code);
                         return (
-                          <label key={c.id} className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-sm ${checked ? 'bg-blue-50 text-[#023D95]' : 'text-slate-800 hover:bg-slate-50'}`}>
-                            <input type="checkbox" checked={checked} onChange={(e) => { if (e.target.checked) addCouponCode(code); else removeCouponCode(code); }} />
+                          <label
+                            key={c.id}
+                            className={`flex cursor-pointer items-center gap-1.5 px-1.5 py-0.5 ${
+                              bookingsPanelStyle ? 'rounded-md text-xs' : 'rounded-lg px-2 py-1 text-sm'
+                            } ${checked ? 'bg-blue-50 text-[#023D95]' : 'text-slate-800 hover:bg-slate-50'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              className={bookingsPanelStyle ? 'h-3 w-3' : undefined}
+                              onChange={(e) => {
+                                if (e.target.checked) addCouponCode(code);
+                                else removeCouponCode(code);
+                              }}
+                            />
                             <span className="truncate font-medium">{label}</span>
                           </label>
                         );
@@ -2601,30 +3022,92 @@ export default function CrmLeadEditForm({
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <input className={`${fieldCls()} min-w-0 flex-1`} placeholder="Add coupon code" value={manualCoupon} onChange={(e) => setManualCoupon((e.target.value || '').toUpperCase())} />
-                  <button type="button" className="h-10 shrink-0 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50" onClick={() => { addCouponCode(manualCoupon); setManualCoupon(''); }} disabled={!manualCoupon.trim()}>Add</button>
+                <div className={`flex items-center gap-1.5 ${bookingsPanelStyle ? 'lg:col-span-3' : ''}`}>
+                  <input
+                    className={`${ic()} min-w-0 flex-1`}
+                    placeholder="Add coupon code"
+                    value={manualCoupon}
+                    onChange={(e) => setManualCoupon((e.target.value || '').toUpperCase())}
+                  />
+                  <button
+                    type="button"
+                    className={`shrink-0 rounded-lg bg-slate-100 font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50 ${
+                      bookingsPanelStyle ? 'h-8 px-2 text-xs' : 'h-10 rounded-xl px-3 text-sm'
+                    }`}
+                    onClick={() => {
+                      addCouponCode(manualCoupon);
+                      setManualCoupon('');
+                    }}
+                    disabled={!manualCoupon.trim()}
+                  >
+                    Add
+                  </button>
                 </div>
+                {bookingsPanelStyle ? (
+                  <div className="min-w-0 lg:col-span-5">
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      Customer message
+                    </p>
+                    <textarea
+                      readOnly
+                      value={formData.problem_description?.trim() || ''}
+                      placeholder="Customer message"
+                      rows={2}
+                      className={`${ic()} min-h-[2.5rem] max-h-40 resize-y overflow-auto whitespace-pre-wrap bg-slate-50 text-sm leading-snug text-slate-800`}
+                    />
+                  </div>
+                ) : null}
               </div>
               {selectedCodes.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  <div className="flex flex-wrap gap-2">
+                <div className={`${bookingsPanelStyle ? 'mt-1 space-y-1' : 'mt-2 space-y-2'}`}>
+                  <div className="flex flex-wrap gap-1">
                     {selectedCodes.map((code) => (
-                      <button key={code} type="button" className="text-xs px-2.5 py-1 rounded-full bg-[#023D95]/10 text-[#023D95] font-bold hover:bg-[#023D95]/15" onClick={() => removeCouponCode(code)}>{code} ×</button>
+                      <button
+                        key={code}
+                        type="button"
+                        className={`rounded-full bg-[#023D95]/10 font-bold text-[#023D95] hover:bg-[#023D95]/15 ${
+                          bookingsPanelStyle ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs'
+                        }`}
+                        onClick={() => removeCouponCode(code)}
+                      >
+                        {code} ×
+                      </button>
                     ))}
                   </div>
-                  <select className={fieldCls()} value={appliedCoupon} onChange={(e) => setAppliedCoupon(e.target.value)}>
-                    <option value="">Applied coupon (optional)</option>
-                    {selectedCodes.map((c) => (<option key={c} value={c}>{c}</option>))}
-                  </select>
-                  <button type="button" className="w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50" onClick={() => { touchLead(); setCouponCodes([]); setAppliedCoupon(''); setManualCoupon(''); }}>Clear all coupons</button>
+                  {!bookingsPanelStyle ? (
+                    <select className={ic()} value={appliedCoupon} onChange={(e) => setAppliedCoupon(e.target.value)}>
+                      <option value="">Applied coupon (optional)</option>
+                      {selectedCodes.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  ) : appliedCoupon ? (
+                    <p className="text-[10px] font-semibold text-slate-600">Applied: {appliedCoupon}</p>
+                  ) : null}
+                  {!bookingsPanelStyle ? (
+                    <button
+                      type="button"
+                      className="w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                      onClick={() => {
+                        touchLead();
+                        setCouponCodes([]);
+                        setAppliedCoupon('');
+                        setManualCoupon('');
+                      }}
+                    >
+                      Clear all coupons
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
 
+            {!bookingsPanelStyle ? (
             <div>
               <FieldLabel>Customer Message</FieldLabel>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 whitespace-pre-wrap min-h-[4.5rem]">
+              <div className="min-h-[4.5rem] whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800">
                 {formData.problem_description?.trim() || (
                   <span className="text-slate-400">No customer message</span>
                 )}
@@ -2633,11 +3116,13 @@ export default function CrmLeadEditForm({
                 Read-only — customer enquiry text (WhatsApp number / trigger hidden).
               </p>
             </div>
+            ) : null}
           </div>
         </SectionCard>
 
-        <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
+        <SectionCard title="Pickup / Visit" icon={MapPin} tone="indigo" compact={bookingsPanelStyle}>
           <CrmPickupVisitStep
+            compact={bookingsPanelStyle}
             value={{
               pickup_required: formData.pickup_required,
               vehicle_number: formData.vehicle_number || '',
@@ -2680,9 +3165,13 @@ export default function CrmLeadEditForm({
             hideVehicleNumber
             hideWorkshops
           />
-        </div>
+        </SectionCard>
 
-        {sidePanel ? null : inDrawer && dockFooter ? createPortal(saveBar, dockFooter) : saveBar}
+        {sidePanel || bookingsPanelStyle
+          ? null
+          : inDrawer && dockFooter
+            ? createPortal(saveBar, dockFooter)
+            : saveBar}
         <LeadRecordingBrain leadId={leadId} open={brainOpen} onClose={() => setBrainOpen(false)} />
       </form>
       {sidePanel ? (

@@ -15,6 +15,8 @@ export default function CrmReferredByField({
   referredTo,
   leadHref,
   className,
+  hideLabel = false,
+  dense = false,
 }: {
   leadId: string;
   value: CrmReferredBy | null;
@@ -22,7 +24,13 @@ export default function CrmReferredByField({
   referredTo: Hit[];
   leadHref: (id: string) => string;
   className?: string;
+  /** Parent already shows FieldLabel — avoid duplicate "Referred by". */
+  hideLabel?: boolean;
+  dense?: boolean;
 }) {
+  const inputCls = dense
+    ? 'w-full min-w-0 rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-sm text-slate-800 shadow-sm outline-none focus:border-[#023D95] focus:ring-2 focus:ring-[#023D95]/20'
+    : 'w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-[#023D95] focus:ring-2 focus:ring-[#023D95]/15';
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<Hit[]>([]);
   const [searching, setSearching] = useState(false);
@@ -57,9 +65,11 @@ export default function CrmReferredByField({
   return (
     <div className={className || 'sm:col-span-2 lg:col-span-4 space-y-3'}>
       <div>
-        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-600">
-          Referred by
-        </label>
+        {hideLabel ? null : (
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-600">
+            Referred by
+          </label>
+        )}
         {value ? (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
             <UserPlus className="h-4 w-4 text-violet-700" />
@@ -90,13 +100,17 @@ export default function CrmReferredByField({
           </div>
         ) : (
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search
+              className={`pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 ${
+                dense ? 'h-3.5 w-3.5' : 'h-4 w-4 left-3'
+              }`}
+            />
             <input
               type="text"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search referrer — CRM lead or app customer"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-[#023D95] focus:ring-2 focus:ring-[#023D95]/15"
+              className={inputCls}
             />
             {searching ? (
               <p className="mt-1 text-[11px] text-slate-500">Searching…</p>

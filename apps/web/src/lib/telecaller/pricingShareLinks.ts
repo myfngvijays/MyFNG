@@ -13,12 +13,19 @@ import {
   type PricingPlanItem,
 } from '@/lib/whatsappBotFlow/periodicPlansUi';
 import { getPeriodicChecklistFallback } from '@/lib/services/periodicChecklistFallbacks';
-import { normalizePhoneNumber, sendTemplateMessage } from '@/lib/services/whatsappService';
-import { sendAgentTextMessage, archiveAgentOutboundMessage } from '@/lib/whatsappAgents/shared/outbound';
+import {
+  normalizePhoneNumber,
+  sendCtaUrlMessage,
+  sendTemplateMessage,
+} from '@/lib/services/whatsappService';
+import { archiveAgentOutboundMessage } from '@/lib/whatsappAgents/shared/outbound';
 import { isSessionOpenForPhone } from '@/lib/whatsappBotFlow/sessionWindow';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 import { normalizePricingCategories } from '@/lib/telecaller/sendLeadPricingWhatsApp';
-import { stripRawPricingUrlFromBody } from '@/lib/telecaller/pricingShareWhatsAppPreview';
+import {
+  buildPricingShareTemplateBody,
+  PRICING_SHARE_BUTTON_LABEL,
+} from '@/lib/telecaller/pricingShareWhatsAppPreview';
 
 /** Telecaller WhatsApp pricing link validity (1 hour). Clamped 1–24h when overridden. */
 export const TELECALLER_PRICING_SHARE_TTL_HOURS = 1;
@@ -500,39 +507,28 @@ export async function sendPricingShareWhatsApp(input: {
   const car = String(input.carModel || '').trim() || 'your car';
   const url = String(input.url || '').trim();
   const expiresLabel = formatPricingShareExpiry(input.expiresAt);
-  const sessionMsg = [
-    `Hi ${name},`,
-    '',
-    `Sharing MyFNG *full service pricing* for *${car}*.`,
-    '',
-    `View all packages (Periodic, AC, Engine, Denting & more) here — valid until ${expiresLabel}:`,
-    url,
-    '',
-    'Select plans on the page and send back on WhatsApp, or reply *BOOK*. — Team MyFNG',
-  ].join('\n');
+  const archivedBody = buildPricingShareTemplateBody({
+    customerName: name,
+    carModel: car,
+    expiresLabel,
+  });
 
-  const sessionOpen = await isSessionOpenForPhone(phone);
-  if (sessionOpen) {
-    const textRes = await sendAgentTextMessage({
-      phone,
-      message: sessionMsg,
-      source: 'telecaller_pricing_share',
-      meta: {
-        lead_id: input.leadId || null,
-        lead_number: input.leadNumber || null,
-        kind: 'pricing_share_link',
-        url,
-      },
-    });
-    if (textRes.success) return { sent: true, channel: 'session_text' };
-  }
-
-  // Closed 24h window: always `pricing_share_link_btn` (body ×3 + "Pricing link" URL button = slug).
   const slug = pricingShareSlugFromUrl(url);
   if (!slug) {
     return { sent: false, error: 'invalid_pricing_slug' };
   }
 
+  const shareMeta = {
+    lead_id: input.leadId || null,
+    lead_number: input.leadNumber || null,
+    kind: 'pricing_share_link',
+    url,
+    template_name: SHARE_TEMPLATE,
+    template_params: [name, car, expiresLabel],
+    button_slug: slug,
+  };
+
+  // Always prefer `pricing_share_link_btn` (link on button — not in body). Open & closed 24h window.
   const tplRes = await sendTemplateMessage({
     phoneNumber: phone,
     templateName: SHARE_TEMPLATE,
@@ -541,26 +537,41 @@ export async function sendPricingShareWhatsApp(input: {
     languageCode: 'en',
   });
 
-  const archivedBody = stripRawPricingUrlFromBody(sessionMsg);
-  await archiveAgentOutboundMessage({
-    phone,
-    text: archivedBody,
-    sendResult: tplRes,
-    source: 'telecaller_pricing_share',
-    meta: {
-      lead_id: input.leadId || null,
-      lead_number: input.leadNumber || null,
-      kind: 'pricing_share_link',
-      url,
-      used_template: true,
-      template_name: SHARE_TEMPLATE,
-      template_params: [name, car, expiresLabel],
-      button_slug: slug,
-    },
-  });
-
   if (tplRes.success) {
+    await archiveAgentOutboundMessage({
+      phone,
+      text: archivedBody,
+      sendResult: tplRes,
+      source: 'telecaller_pricing_share',
+      meta: { ...shareMeta, used_template: true },
+    });
     return { sent: true, channel: 'pricing_share_link_btn_template' };
+  }
+
+  const sessionOpen = await isSessionOpenForPhone(phone);
+  if (sessionOpen) {
+    const ctaBody = archivedBody.replace(/\*/g, '');
+    const ctaRes = await sendCtaUrlMessage({
+      phoneNumber: phone,
+      body: ctaBody,
+      displayText: PRICING_SHARE_BUTTON_LABEL,
+      url,
+      footer: 'Team MyFNG',
+    });
+    if (ctaRes.success) {
+      await archiveAgentOutboundMessage({
+        phone,
+        text: archivedBody,
+        sendResult: ctaRes,
+        source: 'telecaller_pricing_share',
+        meta: {
+          ...shareMeta,
+          used_template: false,
+          used_cta_url: true,
+        },
+      });
+      return { sent: true, channel: 'session_cta_url' };
+    }
   }
 
   const err = String(tplRes.error || '').toLowerCase();

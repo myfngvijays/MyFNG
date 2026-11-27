@@ -21,6 +21,8 @@ type ChecklistTpl = {
 type Props = {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
+  /** Telecaller drawer — tighter chips, list, search */
+  compact?: boolean;
   title?: string;
   subtitle?: string;
   cityId?: string | null;
@@ -102,6 +104,7 @@ function normalizeChecklistItems(raw: unknown): string[] {
 export default function CrmServicePlanPicker({
   selectedIds,
   onChange,
+  compact = false,
   title = 'Service Types',
   subtitle = 'Pick by category — Periodic, AC, Brake, Engine, etc.',
   cityId,
@@ -380,8 +383,14 @@ export default function CrmServicePlanPicker({
     });
   };
 
+  const selectedChips = useMemo(() => {
+    return selectedIds
+      .map((id) => allServices.find((s) => s.id === id))
+      .filter(Boolean) as CrmServiceItem[];
+  }, [selectedIds, allServices]);
+
   return (
-    <div className="space-y-2">
+    <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
       {title ? (
         <div>
           <label className="block text-xs sm:text-sm font-medium text-text-body">
@@ -391,50 +400,53 @@ export default function CrmServicePlanPicker({
         </div>
       ) : null}
 
-      {selectedByCategory.length > 0 ? (
-        <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3 sm:p-4 space-y-2">
-          <p className="text-xs sm:text-sm font-medium text-gray-600">
-            Selected ({selectedIds.length})
-          </p>
-          {selectedByCategory.map(([cat, items]) => (
-            <div key={cat}>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-800/80 mb-1">
-                {titleCaseCat(cat)}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {items.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => toggle(s.id)}
-                    className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm font-medium hover:bg-blue-200"
-                    title="Remove"
-                  >
-                    {s.name}
-                    <X className="w-3 h-3 opacity-70" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          {couponPayable && String(couponCode || '').trim() ? (
-            <p className="text-[11px] font-bold text-[#023D95]">
-              WhatsApp amount after {String(couponCode).trim().toUpperCase()}: {inr(couponPayable.total)}
+      {selectedChips.length > 0 && !compact ? (
+          <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3 sm:p-4 space-y-2">
+            <p className="text-xs sm:text-sm font-medium text-gray-600">
+              Selected ({selectedIds.length})
             </p>
-          ) : null}
-        </div>
-      ) : (
+            {selectedByCategory.map(([cat, items]) => (
+              <div key={cat}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-800/80 mb-1">
+                  {titleCaseCat(cat)}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {items.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggle(s.id)}
+                      className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm font-medium hover:bg-blue-200"
+                      title="Remove"
+                    >
+                      {s.name}
+                      <X className="w-3 h-3 opacity-70" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {couponPayable && String(couponCode || '').trim() ? (
+              <p className="text-[11px] font-bold text-[#023D95]">
+                WhatsApp amount after {String(couponCode).trim().toUpperCase()}: {inr(couponPayable.total)}
+              </p>
+            ) : null}
+          </div>
+      ) : !compact ? (
         <p className="text-[11px] text-gray-500">No services selected</p>
-      )}
+      ) : null}
 
       {loading ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-brand-primary" />
+        <div className={`flex justify-center ${compact ? 'py-3' : 'py-8'}`}>
+          <Loader2 className={`animate-spin text-brand-primary ${compact ? 'h-5 w-5' : 'h-6 w-6'}`} />
         </div>
       ) : (
         <>
           {categories.length > 0 ? (
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            <div
+              className={`flex flex-wrap items-center gap-1.5 ${compact ? 'justify-between pb-0.5' : 'pb-1 -mx-1 px-1'}`}
+            >
+              <div className={`flex min-w-0 flex-1 overflow-x-auto ${compact ? 'gap-1' : 'gap-2'}`}>
               {categories.map((c) => {
                 const active = c === selectedCategory;
                 const count = selectedIds.filter(
@@ -445,10 +457,12 @@ export default function CrmServicePlanPicker({
                     key={c}
                     type="button"
                     onClick={() => setSelectedCategory(c)}
-                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs sm:text-sm font-semibold border transition ${
+                    className={`shrink-0 rounded-full border font-semibold transition ${
+                      compact ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-xs sm:text-sm'
+                    } ${
                       active
                         ? 'border-brand-primary bg-brand-primary text-white'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-brand-primary/40'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-brand-primary/40'
                     }`}
                   >
                     {titleCaseCat(c)}
@@ -464,9 +478,27 @@ export default function CrmServicePlanPicker({
                   </button>
                 );
               })}
+              </div>
+              {compact && selectedChips.length > 0 ? (
+                <div className="flex max-w-[46%] shrink-0 flex-wrap items-center justify-end gap-0.5">
+                  {selectedChips.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggle(s.id)}
+                      className="inline-flex max-w-[7.5rem] items-center gap-0.5 truncate rounded-full border border-teal-500 bg-teal-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm hover:bg-teal-700"
+                      title="Remove"
+                    >
+                      <span className="truncate">{s.name}</span>
+                      <X className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
+          {!compact ? (
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
             <input
@@ -474,14 +506,15 @@ export default function CrmServicePlanPicker({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={`Search in ${titleCaseCat(selectedCategory) || 'services'}…`}
-              className="input text-xs sm:text-sm pl-9"
+              className="input w-full text-xs sm:text-sm pl-9"
             />
           </div>
+          ) : null}
 
           {isPeriodicCategory ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-medium text-gray-600">Engine Oil:</span>
-              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+              <div className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5">
                 <button
                   type="button"
                   onClick={() => setOilType('semi')}
@@ -504,8 +537,18 @@ export default function CrmServicePlanPicker({
             </div>
           ) : null}
 
-          <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-100">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1.5">
+          <div
+            className={`overflow-y-auto rounded-lg border-2 border-gray-300 bg-white ${
+              compact ? 'max-h-36' : 'max-h-56'
+            }`}
+          >
+          <div
+            className={`grid gap-1.5 p-1.5 ${
+              compact
+                ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
+                : 'grid-cols-1 sm:grid-cols-2'
+            }`}
+          >
             {servicesInCategory.length === 0 ? (
               <p className="text-xs sm:text-sm text-gray-500 sm:col-span-2 py-4 text-center">
                 No plans in this category
@@ -521,25 +564,25 @@ export default function CrmServicePlanPicker({
                 return (
                   <div
                     key={service.id}
-                    className={`flex flex-col gap-1.5 p-2.5 border rounded-lg transition ${
+                    className={`flex flex-col gap-1.5 rounded-lg border p-2.5 transition ${
                       selected
                         ? 'border-brand-primary bg-blue-50/50'
-                        : 'border-gray-200 hover:bg-gray-50'
+                        : 'border-gray-300 hover:bg-gray-50'
                     }`}
                   >
-                    <label className="flex items-start gap-2 sm:gap-3 cursor-pointer">
+                    <label className="flex cursor-pointer items-start gap-2 sm:gap-3">
                       <input
                         type="checkbox"
                         checked={selected}
                         onChange={() => toggle(service.id)}
-                        className="mt-0.5 sm:mt-1 flex-shrink-0"
+                        className="mt-0.5 shrink-0 sm:mt-1"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <div className="font-medium text-xs sm:text-sm text-text-heading flex items-center gap-1.5 min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-text-heading sm:text-sm">
                             <span className="min-w-0">{service.name}</span>
                             {selected ? (
-                              <Check className="w-3.5 h-3.5 text-brand-primary shrink-0" />
+                              <Check className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
                             ) : null}
                           </div>
                           <div className="shrink-0 text-right leading-tight">
@@ -560,7 +603,7 @@ export default function CrmServicePlanPicker({
                           </div>
                         </div>
                         {service.description ? (
-                          <div className="text-xs sm:text-sm text-text-body mt-0.5 line-clamp-2 pr-14">
+                          <div className="mt-0.5 line-clamp-2 pr-2 text-xs text-text-body sm:text-sm">
                             {service.description}
                           </div>
                         ) : null}

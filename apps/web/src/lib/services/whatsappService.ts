@@ -207,6 +207,39 @@ export async function sendReplyButtonsMessage(input: {
   });
 }
 
+/** In-session alternative to URL-button template — "Visit website" CTA, no link line in body. */
+export async function sendCtaUrlMessage(input: {
+  phoneNumber: string;
+  body: string;
+  displayText: string;
+  url: string;
+  footer?: string;
+}): Promise<WhatsAppSendResult> {
+  const to = normalizePhoneNumber(input.phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+  const url = String(input.url || '').trim();
+  if (!/^https:\/\//i.test(url)) return { success: false, error: 'CTA URL must be https' };
+  if (!input.body?.trim()) return { success: false, error: 'Message body is required' };
+
+  return sendMessagePayload({
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'cta_url',
+      body: { text: input.body.trim().slice(0, 1024) },
+      footer: input.footer?.trim() ? { text: input.footer.trim().slice(0, 60) } : undefined,
+      action: {
+        name: 'cta_url',
+        parameters: {
+          display_text: String(input.displayText || 'Open link').trim().slice(0, 20),
+          url,
+        },
+      },
+    },
+  });
+}
+
 export async function sendListMessage(input: {
   phoneNumber: string;
   body: string;

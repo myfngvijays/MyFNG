@@ -71,11 +71,13 @@ export default function CallReminderForm({
   value,
   onChange,
   onSubmit,
+  onCancel,
   submitLabel = 'Schedule reminder',
 }: {
   value: CallReminderDraft;
   onChange: (next: CallReminderDraft) => void;
   onSubmit: () => void;
+  onCancel?: () => void;
   submitLabel?: string;
 }) {
   const [mode, setMode] = useState<string>('');
@@ -211,13 +213,22 @@ export default function CallReminderForm({
         className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
         rows={2}
       />
-      <button
-        type="button"
-        onClick={onSubmit}
-        className="w-full rounded-lg bg-[#004AAD] py-1.5 text-xs font-bold text-white"
-      >
-        {submitLabel}
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        {onCancel ? (
+          <button type="button" onClick={onCancel} className="text-xs font-semibold text-slate-500 underline">
+            Cancel
+          </button>
+        ) : (
+          <span />
+        )}
+        <button
+          type="button"
+          onClick={onSubmit}
+          className="rounded-lg bg-[#004AAD] px-4 py-1.5 text-xs font-bold text-white"
+        >
+          {submitLabel}
+        </button>
+      </div>
     </div>
   );
 }
