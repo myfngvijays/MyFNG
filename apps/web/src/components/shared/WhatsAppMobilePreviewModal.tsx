@@ -35,6 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatClientNetworkError } from '@/lib/formatClientNetworkError';
 import { createClient } from '@/lib/supabase/client';
 import WhatsAppTemplatePickerModal from '@/components/shared/WhatsAppTemplatePickerModal';
 import { formatPhoneDisplay } from '@/lib/phoneIntl';
@@ -822,7 +823,17 @@ export default function WhatsAppMobilePreviewModal({
     try {
       let id = String(leadId || '').trim();
       if (!id) {
-        const res = await fetch(`/api/telecaller/crm/leads?q=${encodeURIComponent(phone10)}&limit=10`);
+        const ctl = new AbortController();
+        const t = window.setTimeout(() => ctl.abort(), 20_000);
+        let res: Response;
+        try {
+          res = await fetch(`/api/telecaller/crm/leads?q=${encodeURIComponent(phone10)}&limit=10`, {
+            signal: ctl.signal,
+            credentials: 'include',
+          });
+        } finally {
+          window.clearTimeout(t);
+        }
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || 'Lead nahi mila');
         const rows = Array.isArray(json?.leads) ? json.leads : [];
@@ -841,7 +852,7 @@ export default function WhatsAppMobilePreviewModal({
       onClose();
       router.push(`${base}/leads?lead=${encodeURIComponent(id)}`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Lead nahi khul paya');
+      toast.error(formatClientNetworkError(err, 'Lead nahi khul paya'));
     } finally {
       setOpeningLead(false);
     }

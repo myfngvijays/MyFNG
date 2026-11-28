@@ -65,6 +65,8 @@ function applyPriorityFilter(query: any, priority: string) {
 }
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 function leadMessagePreview(lead: Record<string, any>): string | null {
   const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};

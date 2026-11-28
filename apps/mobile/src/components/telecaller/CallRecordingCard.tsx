@@ -14,9 +14,11 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   loadRecordingFolder,
   pickRecordingFolder,
+  saveRecordingFolderFromPath,
   checkRecordingFolder,
   NOT_PHONE_FOLDER_MESSAGE,
   RECORDING_FOLDER_PICK_HINT,
+  DEFAULT_RECORDING_FS_PATH,
   loadRecordingSyncHistory,
   queueManualRecordingSync,
   subscribeRecordingSyncHistory,
@@ -25,6 +27,7 @@ import {
   type RecordingSyncHistoryRow,
   type RecordingSyncProgress,
 } from '../../lib/callRecordingSync';
+import { isFsRecordingUri } from '../../lib/callRecordingSafNative';
 
 const PURPLE = '#5B2EE6';
 const IS_ANDROID = Platform.OS === 'android';
@@ -97,6 +100,8 @@ export default function CallRecordingCard() {
   const [unit, setUnit] = useState<(typeof UNITS)[number]['id']>('minutes');
   const [customAmount, setCustomAmount] = useState('15');
   const [picking, setPicking] = useState(false);
+  const [pathDraft, setPathDraft] = useState(DEFAULT_RECORDING_FS_PATH);
+  const [savingPath, setSavingPath] = useState(false);
   const [progress, setProgress] = useState<RecordingSyncProgress | null>(null);
   const [history, setHistory] = useState<RecordingSyncHistoryRow[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -118,6 +123,8 @@ export default function CallRecordingCard() {
         if (!alive) return;
         setFolder(row);
         verifyFolder(row);
+        const fs = String(row?.fsPath || (row?.uri?.startsWith('fs:') ? row.uri.slice(3) : ''));
+        if (fs) setPathDraft(fs.replace(/^\/storage\/emulated\/0\/?/, ''));
       })
       .catch(() => alive && setFolder(null));
     void loadRecordingSyncHistory().then((rows) => {
@@ -157,6 +164,20 @@ export default function CallRecordingCard() {
     const count = Math.max(1, Number(customAmount) || 1);
     const unitLabel = UNITS.find((row) => row.id === unit)?.label || 'Minutes';
     return `${count} ${unitLabel}`;
+  };
+
+  const savePath = async () => {
+    setSavingPath(true);
+    try {
+      const next = await saveRecordingFolderFromPath(pathDraft);
+      setFolder(next);
+      verifyFolder(next);
+      setToast('Path saved ✓');
+    } catch (e: unknown) {
+      setToast(e instanceof Error ? e.message : 'Path save fail');
+    } finally {
+      setSavingPath(false);
+    }
   };
 
   const selectFolder = async () => {
@@ -248,11 +269,40 @@ export default function CallRecordingCard() {
             disabled={picking || !IS_ANDROID}
           >
             {picking ? (
-              <ActivityIndicator color="#fff" />
+              <>
+                <ActivityIndicator color="#fff" />
+                <Text style={[styles.selectBtnText, { marginLeft: 8 }]}>Opening…</Text>
+              </>
             ) : (
-              <Text style={styles.selectBtnText}>{folderName ? 'Change folder' : 'Select folder'}</Text>
+              <Text style={styles.selectBtnText}>
+                {folderName && !isFsRecordingUri(folder?.uri || '') ? 'Change folder' : 'Select folder (My Files)'}
+              </Text>
             )}
           </TouchableOpacity>
+          <Text style={styles.orDivider}>ya path likh kar save karein</Text>
+          <View style={styles.pathRow}>
+            <TextInput
+              style={styles.pathInput}
+              value={pathDraft}
+              onChangeText={setPathDraft}
+              placeholder={DEFAULT_RECORDING_FS_PATH}
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={IS_ANDROID}
+            />
+            <TouchableOpacity
+              style={[styles.savePathBtn, (!IS_ANDROID || savingPath) && styles.btnOff]}
+              onPress={() => void savePath()}
+              disabled={!IS_ANDROID || savingPath}
+            >
+              {savingPath ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.savePathBtnText}>Save path</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={styles.suggestRow}>
           <Text style={styles.suggest}>Suggested folder: Internal storage / Recordings / Call</Text>
@@ -534,6 +584,41 @@ const styles = StyleSheet.create({
   historySub: { fontSize: 11, color: '#64748B', marginTop: 2 },
   pill: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
   pillText: { fontSize: 11, fontWeight: '800' },
+  orDivider: {
+    marginTop: 14,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  pathRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    paddingHorizontal: 16,
+  },
+  pathInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+  },
+  savePathBtn: {
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minWidth: 92,
+    alignItems: 'center',
+  },
+  savePathBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 },
   selectBtn: {
     marginTop: 14,
     backgroundColor: PURPLE,
@@ -542,6 +627,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minWidth: 140,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   selectBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   suggestRow: {

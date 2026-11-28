@@ -452,6 +452,11 @@ async function probeSmsOtp(): Promise<{ status: ProbeStatus; note: string | null
   }
 }
 
+export async function getProbesForSync(): Promise<Record<ComponentKey, ProbeStatus>> {
+  const bundle = await getProbes();
+  return bundle.value;
+}
+
 async function getProbes(): Promise<{
   value: Record<ComponentKey, ProbeStatus>;
   notes: Partial<Record<ComponentKey, string>>;
@@ -499,6 +504,7 @@ type IncidentRow = {
   impact: IncidentImpact;
   component_keys: string[] | null;
   state: IncidentState;
+  source?: string | null;
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
@@ -530,6 +536,7 @@ export type StatusIncident = {
   title: string;
   impact: IncidentImpact;
   state: IncidentState;
+  source: 'manual' | 'auto';
   componentKeys: ComponentKey[];
   createdAt: string;
   updatedAt: string;
@@ -548,11 +555,14 @@ export type StatusMaintenance = {
 };
 
 function mapIncident(row: IncidentRow, updates: UpdateRow[]): StatusIncident {
+  const source =
+    row.source === 'auto' || row.title === 'Automatic health check' ? 'auto' : 'manual';
   return {
     id: row.id,
     title: row.title,
     impact: row.impact,
     state: row.state,
+    source,
     componentKeys: parseComponentKeys(row.component_keys),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -584,18 +594,23 @@ export async function loadStatusRecords(): Promise<{
 }> {
   const client = admin();
   if (!client) return { tablesReady: false, incidents: [], maintenances: [] };
-  const [incidentsRes, maintenanceRes] = await Promise.all([
-    client
+  let incidentsRes = await client
+    .from('status_incidents')
+    .select('id, title, impact, component_keys, state, source, created_at, updated_at, resolved_at')
+    .order('created_at', { ascending: false })
+    .limit(80);
+  if (incidentsRes.error && /source|column/i.test(String(incidentsRes.error.message || ''))) {
+    incidentsRes = await client
       .from('status_incidents')
       .select('id, title, impact, component_keys, state, created_at, updated_at, resolved_at')
       .order('created_at', { ascending: false })
-      .limit(80),
-    client
-      .from('status_maintenances')
-      .select('id, title, body, component_keys, starts_at, ends_at, state, created_at, updated_at')
-      .order('starts_at', { ascending: false })
-      .limit(80),
-  ]);
+      .limit(80);
+  }
+  const maintenanceRes = await client
+    .from('status_maintenances')
+    .select('id, title, body, component_keys, starts_at, ends_at, state, created_at, updated_at')
+    .order('starts_at', { ascending: false })
+    .limit(80);
   if (isMissingTable(incidentsRes.error) || isMissingTable(maintenanceRes.error)) {
     return { tablesReady: false, incidents: [], maintenances: [] };
   }
@@ -630,8 +645,11 @@ function affects(keys: ComponentKey[], component: ComponentKey): boolean {
 }
 
 export async function buildPublicStatus() {
-  const [probeBundle, records] = await Promise.all([getProbes(), loadStatusRecords()]);
+  const probeBundle = await getProbes();
   const probes = probeBundle.value;
+  const { syncAutomatedStatusIncident } = await import('@/lib/status/autoIncidentSync');
+  await syncAutomatedStatusIncident(probes);
+  const records = await loadStatusRecords();
   const now = Date.now();
   const openIncidents = records.incidents.filter((item) => item.state !== 'resolved');
   const liveMaintenance = records.maintenances.filter((item) => maintenanceIsLive(item, now));
@@ -675,6 +693,7 @@ export async function buildPublicStatus() {
         id: item.id,
         kind: 'incident' as const,
         title: item.title,
+        auto: item.source === 'auto',
         endedAt: item.resolvedAt || item.updatedAt,
         updates: item.updates,
       })),
@@ -706,8 +725,14 @@ export async function buildPublicStatus() {
 }
 
 export function publicPayload(full: Awaited<ReturnType<typeof buildPublicStatus>>) {
-  const { tablesReady: _tables, catalog: _catalog, allIncidents: _allIncidents, allMaintenances: _allMaintenances, ...safe } = full;
-  return safe;
+  const {
+    tablesReady,
+    catalog: _catalog,
+    allIncidents: _allIncidents,
+    allMaintenances: _allMaintenances,
+    ...safe
+  } = full;
+  return { ...safe, historyEnabled: tablesReady };
 }
 
 function assertTitle(value: unknown) {
@@ -739,18 +764,34 @@ export async function createIncident(input: {
   const componentKeys = parseComponentKeys(input.componentKeys);
   const body = assertBody(input.body);
   const now = new Date().toISOString();
-  const { data, error } = await client
+  let insertRes = await client
     .from('status_incidents')
     .insert({
       title,
       impact,
       component_keys: componentKeys,
       state,
+      source: 'manual',
       created_at: now,
       updated_at: now,
     })
     .select('id')
     .single();
+  if (insertRes.error && /source|column/i.test(String(insertRes.error.message || ''))) {
+    insertRes = await client
+      .from('status_incidents')
+      .insert({
+        title,
+        impact,
+        component_keys: componentKeys,
+        state,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+  }
+  const { data, error } = insertRes;
   if (error || !data) {
     if (isMissingTable(error)) throw new Error('Run database/385_public_status_page.sql first.');
     throw new Error('Could not create the incident.');

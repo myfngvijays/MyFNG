@@ -29,6 +29,7 @@ import {
   Crown,
 } from 'lucide-react';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
+import { formatClientNetworkError } from '@/lib/formatClientNetworkError';
 import { isTransferAuditNoteText } from '@/lib/telecaller/leadRemarkFields';
 import {
   emptySecondCar,
@@ -1176,13 +1177,19 @@ export default function CrmLeadEditForm({
     setLoading(true);
 
     try {
-      const { data, error: leadError } = await supabase
+      const leadQuery = supabase
         .from('service_leads')
         .select(
           `*, assigned_telecaller:assigned_telecaller_id(id, full_name, phone), workshop:workshops(name)`,
         )
         .eq('id', leadId)
         .single();
+      const { data, error: leadError } = await Promise.race([
+        leadQuery,
+        new Promise<{ data: null; error: { message: string } }>((resolve) =>
+          window.setTimeout(() => resolve({ data: null, error: { message: 'Lead load timed out' } }), 25_000),
+        ),
+      ]);
       if (leadError) throw leadError;
       const leadData = data;
 
@@ -1425,7 +1432,7 @@ export default function CrmLeadEditForm({
 
     } catch (error) {
       console.error('Error fetching lead:', error);
-      setError('Failed to load lead details');
+      setError(formatClientNetworkError(error, 'Failed to load lead details'));
     } finally {
       setLoading(false);
     }

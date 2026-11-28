@@ -1,13 +1,18 @@
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, PermissionsAndroid } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { apiFetch } from './api';
 import {
   nativeCallRecordingSafAvailable,
+  nativeCheckFsPath,
   nativeCheckRecordingFolder,
   nativeListAudioEntries,
+  nativeListAudioFromFsPath,
+  nativeNormalizeFsPath,
   nativePickRecordingFolder,
   normalizeSafTreeUri,
+  isFsRecordingUri,
+  fsPathFromRecordingUri,
 } from './callRecordingSafNative';
 
 const STORE_KEY = 'myfng.telecaller.callRecordingFolder';
@@ -39,6 +44,8 @@ export type RecordingFolder = {
   uri: string;
   label: string;
   autoSince: number;
+  /** Absolute path when uri is `fs:...` */
+  fsPath?: string;
 };
 
 export type SyncResult = {
@@ -148,14 +155,27 @@ export function getRecordingSyncProgress() {
 const LOCAL_STORAGE_AUTHORITY = 'com.android.externalstorage.documents';
 
 export function isPhoneStorageFolder(uri: string) {
+  if (isFsRecordingUri(uri)) return true;
   return String(uri || '').startsWith(`content://${LOCAL_STORAGE_AUTHORITY}/`);
+}
+
+export const DEFAULT_RECORDING_FS_PATH = 'Recordings/Call';
+
+export function labelFromFsPath(absPath: string) {
+  const root = '/storage/emulated/0';
+  const norm = String(absPath || '').replace(/\\/g, '/');
+  if (norm.startsWith(root)) {
+    const tail = norm.slice(root.length).replace(/^\/+/, '');
+    return tail ? `Internal storage / ${tail.split('/').join(' / ')}` : 'Internal storage';
+  }
+  return norm.split('/').filter(Boolean).join(' / ') || 'Recording folder';
 }
 
 export const NOT_PHONE_FOLDER_MESSAGE =
   'Ye phone ka folder nahi hai (Google Drive / cloud folder chuna gaya). "Change folder" dabakar left menu se phone ki memory kholein → Recordings → Call chunein → "Use this folder" → Allow.';
 
 export const RECORDING_FOLDER_PICK_HINT =
-  'Samsung par: "Open from" mein Google Drive mat chunein. Apne phone ka naam (Internal storage) kholein → Recordings → Call → neeche "USE THIS FOLDER" → Allow. Folder khali dikhe to bhi theek hai — files sync ke waqt padhi jati hain.';
+  'Select folder par My Files / phone storage khulega (Drive nahi). Agar Drive dikhe to back karke dubara Select folder dabayein. Ya neeche path likh kar Save path karein — default: Recordings/Call';
 
 function cloudFolderLabel(uri: string) {
   const u = String(uri || '');
@@ -166,6 +186,7 @@ function cloudFolderLabel(uri: string) {
 
 /** "Internal storage / Recordings / Call" from a SAF tree URI. */
 function folderLabel(uri: string) {
+  if (isFsRecordingUri(uri)) return labelFromFsPath(fsPathFromRecordingUri(uri));
   if (uri && String(uri).startsWith('content://') && !isPhoneStorageFolder(uri)) return cloudFolderLabel(uri);
   try {
     const decoded = decodeURIComponent(String(uri || ''));
@@ -245,6 +266,20 @@ async function folderAccessOk(uri: string) {
   return check.ok;
 }
 
+async function ensureFsReadPermission() {
+  if (Platform.OS !== 'android') return;
+  const api = Number(Platform.Version);
+  try {
+    if (api >= 33) {
+      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO);
+    } else if (api >= 23) {
+      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+    }
+  } catch {
+    /* best effort */
+  }
+}
+
 /** Phone copy wins (it is the one with the Android permission); server copy only fills an empty phone. */
 export async function loadRecordingFolder() {
   const local = await readFolder();
@@ -268,14 +303,62 @@ export async function loadRecordingFolder() {
     }
   }
   if (!row?.uri) return null;
-  if (Platform.OS === 'android' && !(await folderAccessOk(row.uri))) {
-    await AsyncStorage.removeItem(STORE_KEY);
-    return null;
+  if (Platform.OS === 'android') {
+    let accessOk = await folderAccessOk(row.uri);
+    if (!accessOk) {
+      await new Promise((r) => setTimeout(r, 500));
+      accessOk = await folderAccessOk(row.uri);
+    }
+    if (!accessOk) {
+      await AsyncStorage.removeItem(STORE_KEY);
+      return null;
+    }
   }
   if (local?.uri !== row.uri) {
     await AsyncStorage.setItem(STORE_KEY, JSON.stringify(row));
   }
   return row;
+}
+
+export async function saveRecordingFolderFromPath(input: string) {
+  if (Platform.OS !== 'android') {
+    throw new Error('Call recording sync sirf Android phone par chalta hai.');
+  }
+  await ensureFsReadPermission();
+  const trimmed = input.trim();
+  if (!trimmed) throw new Error('Path likhiye — jaise Recordings/Call');
+  let abs = trimmed;
+  if (nativeCallRecordingSafAvailable()) {
+    const normalized = await nativeNormalizeFsPath(trimmed);
+    if (normalized) abs = normalized;
+  } else {
+    const t = trimmed.replace(/^internal storage[/\s]+/i, '').replace(/^\/+/, '');
+    abs = t.startsWith('storage/') ? `/${t}` : `/storage/emulated/0/${t}`;
+  }
+  const verify = await checkRecordingFolder(`fs:${abs}`);
+  if (!verify.ok) {
+    throw new Error(
+      verify.error ||
+        'Folder nahi mila ya permission nahi. Path check karein (jaise Recordings/Call).',
+    );
+  }
+  const label = labelFromFsPath(abs);
+  const next: RecordingFolder = {
+    uri: `fs:${abs}`,
+    fsPath: abs,
+    label,
+    autoSince: Date.now(),
+  };
+  await AsyncStorage.setItem(STORE_KEY, JSON.stringify(next));
+  void apiFetch('/api/telecaller/profile/recording-path', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uri: next.uri, label: next.label, auto_since: next.autoSince }),
+    timeoutMs: 10000,
+  }).catch(() => {
+    /* kept on the phone */
+  });
+  return next;
 }
 
 export async function saveRecordingFolder(uri: string) {
@@ -337,7 +420,12 @@ export async function pickRecordingFolder() {
           'Folder padh nahi paa rahe. Internal storage → Recordings → Call chunein, phir Allow dabayein.',
       );
     }
-    return await saveRecordingFolder(directoryUri);
+    const saved = await saveRecordingFolder(directoryUri);
+    if (verify.audio === 0) {
+      saved.label = `${saved.label || 'Recording folder'} · abhi 0 file (Call ke andar ho to SYNC chalega)`;
+      await AsyncStorage.setItem(STORE_KEY, JSON.stringify(saved));
+    }
+    return saved;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : '';
     if (/pending|already/i.test(msg)) {
@@ -353,6 +441,12 @@ export async function pickRecordingFolder() {
 /** Reads the chosen folder now — confirms Android still allows access and counts audio files. */
 export async function checkRecordingFolder(uri: string): Promise<{ ok: boolean; audio: number; error?: string }> {
   if (Platform.OS !== 'android') return { ok: false, audio: 0, error: 'Android only' };
+  if (isFsRecordingUri(uri)) {
+    const path = fsPathFromRecordingUri(uri);
+    const native = await nativeCheckFsPath(path);
+    if (native) return native;
+    return { ok: false, audio: 0, error: 'Folder path check fail — path save dobara karein.' };
+  }
   const tree = normalizeSafTreeUri(uri);
   if (!isPhoneStorageFolder(tree)) return { ok: false, audio: 0, error: NOT_PHONE_FOLDER_MESSAGE };
   if (nativeCallRecordingSafAvailable()) {
@@ -439,16 +533,18 @@ export async function syncPhoneRecordings(opts: RunOpts = { manual: false }): Pr
     return { ...out, error: 'Call recording sync sirf Android phone par chalta hai.' };
   }
   const folder = await readFolder();
-  if (!folder?.uri) return { ...out, error: 'Pehle recording folder select karein (Select folder).' };
+  if (!folder?.uri) {
+    return { ...out, error: 'Pehle recording folder select karein ya path save karein.' };
+  }
   if (!isPhoneStorageFolder(folder.uri)) return { ...out, error: NOT_PHONE_FOLDER_MESSAGE };
 
   report({ phase: 'listing' });
-  const treeUri = normalizeSafTreeUri(folder.uri);
   let listed: Array<{ uri: string; name: string }> = [];
   try {
-    if (nativeCallRecordingSafAvailable()) {
+    if (isFsRecordingUri(folder.uri)) {
+      const path = folder.fsPath || fsPathFromRecordingUri(folder.uri);
       const entries = await withTimeout(
-        nativeListAudioEntries(treeUri),
+        nativeListAudioFromFsPath(path) ?? Promise.resolve([]),
         180000,
         'Folder list karne mein bahut time lag gaya',
       );
@@ -457,17 +553,30 @@ export async function syncPhoneRecordings(opts: RunOpts = { manual: false }): Pr
         name: String(row.name || '').trim() || 'recording.m4a',
       }));
     } else {
-      const uris = await withTimeout(
-        FileSystem.StorageAccessFramework.readDirectoryAsync(treeUri),
-        120000,
-        'Folder list karne mein bahut time lag gaya',
-      );
-      listed = uris
-        .filter((uri) => AUDIO.test(decodeURIComponent(uri)))
-        .map((uri) => {
-          const name = decodeURIComponent(uri).split('/').pop() || 'recording.m4a';
-          return { uri, name };
-        });
+      const treeUri = normalizeSafTreeUri(folder.uri);
+      if (nativeCallRecordingSafAvailable()) {
+        const entries = await withTimeout(
+          nativeListAudioEntries(treeUri),
+          180000,
+          'Folder list karne mein bahut time lag gaya',
+        );
+        listed = (entries || []).map((row) => ({
+          uri: row.uri,
+          name: String(row.name || '').trim() || 'recording.m4a',
+        }));
+      } else {
+        const uris = await withTimeout(
+          FileSystem.StorageAccessFramework.readDirectoryAsync(treeUri),
+          120000,
+          'Folder list karne mein bahut time lag gaya',
+        );
+        listed = uris
+          .filter((uri) => AUDIO.test(decodeURIComponent(uri)))
+          .map((uri) => {
+            const name = decodeURIComponent(uri).split('/').pop() || 'recording.m4a';
+            return { uri, name };
+          });
+      }
     }
   } catch (e: unknown) {
     return {
@@ -647,8 +756,10 @@ async function runBackgroundSync(manual: boolean, sinceMs?: number, windowLabel?
           : result.error || result.failed
             ? 'partial'
             : 'success';
+      const folderMissing =
+        Boolean(result.error && /Pehle recording folder select karein/i.test(result.error));
       // Auto runs only log when something happened, so history is not flooded.
-      if (manual || touched > 0 || result.error) {
+      if (!folderMissing && (manual || touched > 0 || result.error)) {
         const row = await appendSyncHistory({
           at: Date.now(),
           manual,

@@ -7,6 +7,7 @@ import { Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getRoleDashboardHome } from '@/lib/dashboard/roleHome';
 import { useAuthStore } from '@/store/authStore';
+import { formatClientNetworkError } from '@/lib/formatClientNetworkError';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,11 +39,20 @@ export default function LoginPage() {
     try {
       const supabase = createClient();
 
-      const { data: authData, error: authError } = await withTimeout(
-        supabase.auth.signInWithPassword({ email: email.trim(), password }),
-        20000,
-        'Sign in',
-      );
+      const signInOnce = () =>
+        withTimeout(
+          supabase.auth.signInWithPassword({ email: email.trim(), password }),
+          25000,
+          'Sign in',
+        );
+
+      let authData: Awaited<ReturnType<typeof signInOnce>>['data'];
+      let authError: Awaited<ReturnType<typeof signInOnce>>['error'];
+      ({ data: authData, error: authError } = await signInOnce());
+      if (authError && /aborted|AbortError|fetch failed|network/i.test(String(authError.message || ''))) {
+        await new Promise((r) => setTimeout(r, 800));
+        ({ data: authData, error: authError } = await signInOnce());
+      }
 
       if (authError) throw authError;
       if (!authData?.user?.id) throw new Error('Sign in failed');
@@ -125,8 +135,8 @@ export default function LoginPage() {
           /* audit / punch-in must not bounce the user after login */
         }
       })();
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+    } catch (err: unknown) {
+      setError(formatClientNetworkError(err, 'Login failed. Please try again.'));
       setLoading(false);
     }
   };

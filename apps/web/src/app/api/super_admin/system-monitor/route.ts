@@ -4455,10 +4455,11 @@ async function checkPublicStatusPage(): Promise<HealthCheck> {
     };
   }
   try {
-    const [incidents, updates, maintenance] = await Promise.all([
+    const [incidents, updates, maintenance, sourceCol] = await Promise.all([
       (client as any).from('status_incidents').select('id', { count: 'exact', head: true }).neq('state', 'resolved'),
       (client as any).from('status_incident_updates').select('id').limit(1),
       (client as any).from('status_maintenances').select('id').limit(1),
+      (client as any).from('status_incidents').select('source').limit(1),
     ]);
     const missing = [incidents.error, updates.error, maintenance.error].find((error) => {
       const code = String(error?.code || '');
@@ -4478,13 +4479,21 @@ async function checkPublicStatusPage(): Promise<HealthCheck> {
       };
     }
     const openCount = Number(incidents.count || 0);
+    const autoSourceReady = !sourceCol.error;
+    const statusLevel = autoSourceReady ? 'healthy' : 'degraded';
     return {
       name: 'Public Status Page',
       category: 'Operations',
-      status: 'healthy',
+      status: statusLevel,
       responseTime: Date.now() - start,
-      message: openCount ? `${openCount} open incident${openCount === 1 ? '' : 's'} on /status` : 'Public status page is ready',
-      reason: 'status_incidents, status_incident_updates, and status_maintenances are available.',
+      message: openCount
+        ? `${openCount} open incident${openCount === 1 ? '' : 's'} on /status`
+        : autoSourceReady
+          ? 'Public status page is ready'
+          : 'Auto incident history needs migration 408',
+      reason: autoSourceReady
+        ? 'status_incidents + cron /api/cron/status-probe-sync log automatic slowdowns to Past incidents.'
+        : 'Run database/408_status_incidents_auto_source.sql so orange/green from live checks is saved to Past incidents.',
       quickFix: { label: 'Open Public Status', action: 'internal-link', actionPayload: { url: '/dashboard/super_admin/status' } },
       lastChecked: new Date().toISOString(),
     };

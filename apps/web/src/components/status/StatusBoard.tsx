@@ -13,6 +13,7 @@ type Incident = {
   title: string;
   impact: PublicStatus;
   state: string;
+  source?: 'manual' | 'auto';
   componentKeys?: string[];
   updates: Update[];
 };
@@ -29,6 +30,7 @@ type HistoryItem = {
   id: string;
   kind: 'incident' | 'maintenance';
   title: string;
+  auto?: boolean;
   endedAt: string;
   updates: Update[];
 };
@@ -47,6 +49,7 @@ type Payload = {
   headline: string;
   summary?: string;
   updatedAt: string;
+  historyEnabled?: boolean;
   components: ComponentRow[];
   incidents: Incident[];
   maintenances: Maintenance[];
@@ -184,10 +187,20 @@ export default function StatusBoard() {
           {data?.incidents?.length ? (
             <section className="mt-8">
               <h2 className="text-lg font-semibold text-slate-900">Active incidents</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Orange or red banners can also come from live checks alone. Manual notes from the admin team appear here too.
+              </p>
               <div className="mt-3 space-y-4">
                 {data.incidents.map((incident) => (
                   <article key={incident.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="font-semibold text-slate-900">{incident.title}</h3>
+                    <h3 className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
+                      {incident.title}
+                      {incident.source === 'auto' ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                          Auto
+                        </span>
+                      ) : null}
+                    </h3>
                     <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
                       {LEGEND.find((item) => item.status === incident.impact)?.label || incident.impact} · {affectedLabel(incident.componentKeys, data?.components || [])}
                     </p>
@@ -273,7 +286,14 @@ export default function StatusBoard() {
                     <div className="mt-2 space-y-3">
                       {group.items.map((item) => (
                         <article key={`${item.kind}-${item.id}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                          <h4 className="font-semibold text-slate-900">{item.title}</h4>
+                          <h4 className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
+                            {item.title}
+                            {item.auto ? (
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                Auto
+                              </span>
+                            ) : null}
+                          </h4>
                           <ol className="mt-3 space-y-2">
                             {item.updates.slice(0, 4).map((update) => (
                               <li key={update.id}>
@@ -292,7 +312,11 @@ export default function StatusBoard() {
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-sm text-slate-600">No incidents were reported in the last 30 days.</p>
+              <p className="mt-2 text-sm text-slate-600">
+                {data?.historyEnabled === false
+                  ? 'Incident history is not saved until database migrations 385 and 408 are applied on Supabase.'
+                  : 'No incidents in the last 30 days. Slowdowns and brief outages detected by live checks are logged here automatically once they end.'}
+              </p>
             )}
           </section>
         </div>
